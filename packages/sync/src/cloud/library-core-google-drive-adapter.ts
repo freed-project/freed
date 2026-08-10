@@ -137,6 +137,7 @@ export interface GoogleDriveLibraryCoreIntentAdapterOptionsV1
   extends GoogleDriveLibraryCoreAdapterOptionsV1,
     GoogleDriveLibraryCoreIntentHeadLocatorV1 {
   readonly actorId: string;
+  readonly epochId: string;
 }
 
 export interface GoogleDriveLibraryCoreResultAdapterOptionsV1
@@ -402,12 +403,14 @@ function controlAppProperties(
 
 function intentHeadAppProperties(
   libraryDigest: string,
+  epochDigest: string,
   actorDigest: string,
 ): Readonly<Record<string, string>> {
   return Object.freeze({
     freedProtocol: PROTOCOL_PROPERTY,
     freedLibraryDigest: libraryDigest,
     freedObjectKind: "intent_head",
+    freedEpochDigest: epochDigest,
     freedActorDigest: actorDigest,
   });
 }
@@ -809,6 +812,7 @@ export function discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input: {
 export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
   readonly accessToken: string;
   readonly actorId: string;
+  readonly epochId: string;
   readonly libraryId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
@@ -819,6 +823,7 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   assertLibraryId(input.libraryId);
+  assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
   const googleFetch = input.googleFetch ?? fetch;
   const libraryDigest = await libraryIdentityDigest(input.libraryId);
@@ -833,7 +838,7 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
     signal: input.signal,
     maxFiles: MAX_INTENT_SEGMENTS,
   });
-  const prefix = `freed-v2-intents~${input.libraryId}~${input.actorId}~s`;
+  const prefix = `freed-v2-intents~${input.libraryId}~e${input.epochId}~${input.actorId}~s`;
   const grouped = new Map<string, DriveFileMetadataV1[]>();
   for (const file of files) {
     if (!file.name.startsWith(prefix)) continue;
@@ -865,6 +870,7 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
     const expectedKey = createLibraryCoreImmutableObjectKey({
       actorId: input.actorId,
       digest: match[3]!,
+      epochId: input.epochId,
       firstSequence: firstIntentSequence,
       kind: "intent_segment",
       lastSequence: lastIntentSequence,
@@ -1066,6 +1072,7 @@ export async function provisionGoogleDriveLibraryCoreControlV1(input: {
 export async function discoverGoogleDriveLibraryCoreIntentHeadV1(input: {
   readonly accessToken: string;
   readonly actorId: string;
+  readonly epochId: string;
   readonly libraryId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
@@ -1076,10 +1083,12 @@ export async function discoverGoogleDriveLibraryCoreIntentHeadV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   assertLibraryId(input.libraryId);
+  assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
   const googleFetch = input.googleFetch ?? fetch;
   const expectedProperties = intentHeadAppProperties(
     await libraryIdentityDigest(input.libraryId),
+    await libraryIdentityDigest(input.epochId),
     await actorIdentityDigest(input.actorId),
   );
   const files = await listDriveFilesByProperties({
@@ -1120,6 +1129,7 @@ export async function provisionGoogleDriveLibraryCoreIntentHeadV1(input: {
   const discovery = {
     accessToken: input.accessToken,
     actorId: head.actor_id,
+    epochId: head.epoch_id,
     libraryId: head.library_id,
     googleFetch: input.googleFetch,
     signal: input.signal,
@@ -1146,11 +1156,13 @@ export async function provisionGoogleDriveLibraryCoreIntentHeadV1(input: {
         {
           name: createLibraryCoreIntentHeadObjectKey(
             head.library_id,
+            head.epoch_id,
             head.actor_id,
           ),
           parents: ["appDataFolder"],
           appProperties: intentHeadAppProperties(
             await libraryIdentityDigest(head.library_id),
+            await libraryIdentityDigest(head.epoch_id),
             actorDigest,
           ),
         },
@@ -1186,6 +1198,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
   options: GoogleDriveLibraryCoreIntentAdapterOptionsV1,
 ): LibraryCoreIntentPublicationAdapterV1 {
   assertLibraryId(options.libraryId);
+  assertLibraryId(options.epochId);
   assertLibraryId(options.actorId);
   assertBoundedText(
     options.intentHeadFileId,
@@ -1196,9 +1209,10 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
   const immutableAdapter = createGoogleDriveLibraryCoreAdapterV1(options);
   const expectedPropertiesPromise = Promise.all([
     libraryIdentityDigest(options.libraryId),
+    libraryIdentityDigest(options.epochId),
     actorIdentityDigest(options.actorId),
-  ]).then(([libraryDigest, actorDigest]) =>
-    intentHeadAppProperties(libraryDigest, actorDigest),
+  ]).then(([libraryDigest, epochDigest, actorDigest]) =>
+    intentHeadAppProperties(libraryDigest, epochDigest, actorDigest),
   );
 
   const readIntentHead = async (): Promise<LibraryCoreIntentHeadReadV1> => {

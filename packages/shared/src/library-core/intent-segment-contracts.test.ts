@@ -86,7 +86,7 @@ describe("Library Core PWA intent segment contract", () => {
           descriptor: {
             byteLength: 512,
             contentDigest: STORED_DIGEST,
-            objectKey: `freed-v2-intents~${LIBRARY_ID}~${ACTOR_ID}~s1-2~${STORED_DIGEST}.fseg.gz`,
+            objectKey: `freed-v2-intents~${LIBRARY_ID}~e${EPOCH_ID}~${ACTOR_ID}~s1-2~${STORED_DIGEST}.fseg.gz`,
           },
           transportObjectId: "drive-intent-segment-1",
         },
@@ -155,7 +155,7 @@ describe("Library Core PWA intent segment contract", () => {
           descriptor: {
             byteLength: 512,
             contentDigest: STORED_DIGEST,
-            objectKey: `freed-v2-intents~${LIBRARY_ID}~other-actor~s1-2~${STORED_DIGEST}.fseg.gz`,
+            objectKey: `freed-v2-intents~${LIBRARY_ID}~e${EPOCH_ID}~other-actor~s1-2~${STORED_DIGEST}.fseg.gz`,
           },
           transportObjectId: "drive-intent-segment-1",
         },
