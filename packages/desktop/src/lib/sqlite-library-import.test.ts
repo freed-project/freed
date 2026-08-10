@@ -27,12 +27,18 @@ function stateWithItems(itemCount: number): DocState {
     capturedAt: index,
     author: { id: "author", displayName: "Author", handle: "author" },
     sourceUrl: `https://example.com/${index.toLocaleString("en-US", { useGrouping: false })}`,
-    text: "x".repeat(6_000),
+    content: {
+      text: "x".repeat(6_000),
+      mediaUrls: [],
+      mediaTypes: [],
+    },
+    topics: [],
     userState: {
       hidden: false,
       saved: false,
       archived: false,
       liked: false,
+      tags: [],
     },
   })) as FeedItem[];
   return {
@@ -91,7 +97,10 @@ describe("SQLite legacy import batching", () => {
     const state = stateWithItems(300);
     await importLegacyLibraryIntoSqlite(state, {
       binary: new Uint8Array([1, 2, 3]),
+      heads: ["head-1"],
       revision: { generation: 4, saveRevision: 9 },
+      itemCount: 300,
+      friendCount: 0,
     });
 
     expect(mocks.appendCalls.flat()).toHaveLength(300);
