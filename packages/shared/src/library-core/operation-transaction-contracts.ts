@@ -9,6 +9,7 @@ import {
 } from "./protocol-scalars.js";
 import type {
   FeedItemReadAssignmentTransactionMemberBodyV1,
+  FeedItemUserStateToggleTransactionMemberBodyV1,
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
@@ -31,9 +32,19 @@ export interface FeedItemReadAssignmentSigningBodyV1 extends FeedItemReadAssignm
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface FeedItemUserStateToggleSigningBodyV1 extends FeedItemUserStateToggleTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
+export type LibraryCoreOperationSigningBodyV1 =
+  | FeedItemReadAssignmentSigningBodyV1
+  | FeedItemUserStateToggleSigningBodyV1;
+
 export interface LibraryCoreSigningMemberV1 {
   readonly member_digest: LibraryCoreLowercaseHex64;
-  readonly signing_body: FeedItemReadAssignmentSigningBodyV1;
+  readonly signing_body: LibraryCoreOperationSigningBodyV1;
   readonly signing_body_digest: LibraryCoreLowercaseHex64;
 }
 
@@ -233,7 +244,7 @@ export function assembleLibraryCoreTransactionV1(
       previous_actor_chain_digest: previousChainDigest,
       actor_chain_digest: actorChainDigest,
       transaction_digest: transactionDigest,
-    }) satisfies FeedItemReadAssignmentSigningBodyV1;
+    }) as LibraryCoreOperationSigningBodyV1;
     const signingBodyDigest = digest(
       digestValue,
       "operation-signing-body",

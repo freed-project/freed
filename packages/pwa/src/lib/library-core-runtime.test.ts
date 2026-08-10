@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  enqueueUserStateToggle: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
   createPwaLibraryCorePortableCheckpointStore: () => ({
+    enqueueUserStateToggle: mocks.enqueueUserStateToggle,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
   }),
@@ -19,6 +21,7 @@ vi.mock("./factory-reset-coordinator", () => ({
 import {
   PWA_LIBRARY_CORE_ENABLED_KEY,
   isPwaLibraryCoreEnabled,
+  enqueuePwaLibraryCoreUserStateToggle,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
@@ -37,6 +40,7 @@ describe("PWA Library Core bounded scanner", () => {
     localStorage.clear();
     mocks.readSelectedCollectionPage.mockReset();
     mocks.readSelectedMaterializedRow.mockReset();
+    mocks.enqueueUserStateToggle.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -89,5 +93,18 @@ describe("PWA Library Core bounded scanner", () => {
       "10_feed_items",
       "item-9",
     );
+  });
+
+  it("queues user-state changes through the signed IndexedDB intent path", async () => {
+    mocks.enqueueUserStateToggle.mockResolvedValue({ operationId: "op:toggle" });
+
+    await enqueuePwaLibraryCoreUserStateToggle("item-9", "liked");
+
+    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledOnce();
+    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledWith({
+      entityId: "item-9",
+      toggle: "liked",
+      toggledAtMs: expect.any(Number),
+    });
   });
 });

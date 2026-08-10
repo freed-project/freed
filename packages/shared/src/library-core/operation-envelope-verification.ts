@@ -5,13 +5,16 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
 import {
   LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES,
-  type FeedItemReadAssignmentEnvelopeV1,
+  type LibraryCoreOperationEnvelopeV1,
 } from "./operation-envelope-finalization.js";
 import {
   assembleLibraryCoreTransactionV1,
@@ -85,7 +88,7 @@ export interface LibraryCoreAcceptedActorStateV1 {
 }
 
 export interface LibraryCoreVerifiedOperationEnvelopeV1 {
-  readonly envelope: FeedItemReadAssignmentEnvelopeV1;
+  readonly envelope: LibraryCoreOperationEnvelopeV1;
   readonly member_digest: LibraryCoreLowercaseHex64;
   readonly signing_body_digest: LibraryCoreLowercaseHex64;
   readonly envelope_digest: LibraryCoreLowercaseHex64;
@@ -398,12 +401,21 @@ export async function verifyLibraryCoreOperationTransactionV1(
       `operation envelope[${index.toLocaleString()}]`,
     ),
   );
-  const memberConstructions = decodedEnvelopes.map((envelope) =>
-    FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-      memberInputFromEnvelope(envelope),
-      digestDependencies,
-    ),
-  );
+  const memberConstructions = decodedEnvelopes.map((envelope) => {
+    const schema = envelope.operation_type === "feed_item_read_assignment"
+      ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+      : envelope.operation_type === "feed_item_saved_assignment"
+        ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+        : envelope.operation_type === "feed_item_archive_assignment"
+          ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+          : envelope.operation_type === "feed_item_like_assignment"
+            ? FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+        : null;
+    if (schema === null) {
+      throw new TypeError("operation envelope has an unsupported operation_type");
+    }
+    return schema.construct(memberInputFromEnvelope(envelope), digestDependencies);
+  });
   const firstBody = memberConstructions[0].body;
   if (
     firstBody.library_id !== actorState.library_id ||
@@ -470,7 +482,7 @@ export async function verifyLibraryCoreOperationTransactionV1(
     const envelope = Object.freeze({
       ...member.signing_body,
       signature: signatures[index],
-    }) satisfies FeedItemReadAssignmentEnvelopeV1;
+    }) as LibraryCoreOperationEnvelopeV1;
     return Object.freeze({
       envelope,
       member_digest: member.member_digest,

@@ -14809,7 +14809,7 @@ pub fn run() {
             library_core_desktop_runtime::bootstrap_sqlite_library_authority,
             library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
             library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
-            library_core_desktop_runtime::accept_pwa_read_intent_transaction,
+            library_core_desktop_runtime::accept_pwa_intent_transaction,
             library_core_desktop_runtime::read_pwa_intent_result_outbox,
             library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
             library_core_desktop_runtime::list_sqlite_library_actor_enrollments,

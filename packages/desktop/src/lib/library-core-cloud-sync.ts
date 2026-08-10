@@ -40,7 +40,7 @@ import {
   appendPortableSqliteLibraryItems,
   acknowledgePwaIntentResultOutbox,
   acceptPwaActorEnrollmentRequest,
-  acceptPwaReadIntentTransaction,
+  acceptPwaIntentTransaction,
   beginPortableSqliteLibraryImport,
   bootstrapSqliteLibraryAuthority,
   createSqliteLibraryBackup,
@@ -569,7 +569,7 @@ async function acceptPendingPwaReadIntents(input: {
         writer: {
           async appendIntentSegment({ entries, header }) {
             for (const transaction of canonicalIntentTransactions(entries)) {
-              await acceptPwaReadIntentTransaction(transaction);
+              await acceptPwaIntentTransaction(transaction);
             }
             return Object.freeze({
               actorId: header.actor_id,

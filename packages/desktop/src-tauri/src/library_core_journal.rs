@@ -297,7 +297,7 @@ pub(crate) struct VerifiedAuthorityEpoch {
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedReadAssignment {
+struct VerifiedOperation {
     operation_id: String,
     actor_sequence: i64,
     previous_actor_operation_id: Option<String>,
@@ -307,13 +307,16 @@ struct VerifiedReadAssignment {
     signing_body_digest: String,
     envelope_digest: String,
     entity_id: String,
-    read_at_ms: i64,
+    operation_type: String,
+    read_at_ms: Option<i64>,
+    toggle: Option<String>,
+    toggled_at_ms: Option<i64>,
     canonical_envelope_json: String,
     causal_tips: Vec<VerifiedCausalTip>,
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedReadTransaction {
+struct VerifiedOperationTransaction {
     transaction_id: String,
     transaction_digest: String,
     library_id: String,
@@ -321,7 +324,7 @@ struct VerifiedReadTransaction {
     epoch_id: String,
     actor_id: String,
     canonical_envelope_bytes: usize,
-    members: Vec<VerifiedReadAssignment>,
+    members: Vec<VerifiedOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -479,7 +482,7 @@ fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalRes
     Ok(())
 }
 
-fn validate_transaction(transaction: &VerifiedReadTransaction) -> JournalResult<()> {
+fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalResult<()> {
     if !is_operation_id(&transaction.transaction_id) {
         return Err(JournalError::InvalidVerifiedInput {
             field: "transaction_id",
@@ -568,10 +571,52 @@ fn validate_transaction(transaction: &VerifiedReadTransaction) -> JournalResult<
         if member.entity_id.is_empty() || member.entity_id.len() > MAX_ENTITY_ID_BYTES {
             return Err(JournalError::InvalidVerifiedInput { field: "entity_id" });
         }
-        if !(0..=MAX_SAFE_INTEGER).contains(&member.read_at_ms) {
-            return Err(JournalError::InvalidVerifiedInput {
-                field: "read_at_ms",
-            });
+        match member.operation_type.as_str() {
+            "feed_item_read_assignment" => {
+                if member
+                    .read_at_ms
+                    .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                    || member.toggle.is_some()
+                    || member.toggled_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "read_at_ms",
+                    });
+                }
+            }
+            "feed_item_saved_assignment"
+            | "feed_item_archive_assignment"
+            | "feed_item_like_assignment" => {
+                if member.read_at_ms.is_some()
+                    || member
+                        .toggle
+                        .as_deref()
+                        .is_none_or(|value| !matches!(value, "saved" | "archived" | "liked"))
+                    || member
+                        .toggled_at_ms
+                        .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "user_state_toggle",
+                    });
+                }
+                let expected_toggle = match member.operation_type.as_str() {
+                    "feed_item_saved_assignment" => "saved",
+                    "feed_item_archive_assignment" => "archived",
+                    "feed_item_like_assignment" => "liked",
+                    _ => unreachable!("validated toggle operation type"),
+                };
+                if member.toggle.as_deref() != Some(expected_toggle) {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "user_state_toggle",
+                    });
+                }
+            }
+            _ => {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "operation_type",
+                });
+            }
         }
         if member.canonical_envelope_json.is_empty() {
             return Err(JournalError::InvalidVerifiedInput {
@@ -1070,11 +1115,11 @@ impl LibraryCoreJournal {
         Ok(actors)
     }
 
-    fn verify_read_transaction(
+    fn verify_operation_transaction(
         &self,
         canonical_envelopes: &[Vec<u8>],
-    ) -> JournalResult<VerifiedReadTransaction> {
-        operation_verifier::verify_read_transaction(canonical_envelopes, |identity| {
+    ) -> JournalResult<VerifiedOperationTransaction> {
+        operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
             self.actor_state(&identity.library_id, &identity.epoch_id, &identity.actor_id)?
                 .ok_or_else(|| JournalError::ActorNotFound {
                     actor_id: identity.actor_id.clone(),
@@ -1087,18 +1132,18 @@ impl LibraryCoreJournal {
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
     ) -> JournalResult<TransactionReceipt> {
-        let verified = self.verify_read_transaction(canonical_envelopes)?;
+        let verified = self.verify_operation_transaction(canonical_envelopes)?;
         self.commit_read_transaction(&verified, committed_at_ms)
     }
 
     /// Admit one renderer-independent signed read transaction through the
     /// native verifier and authoritative commit boundary.
-    pub(crate) fn accept_read_transaction(
+    pub(crate) fn accept_operation_transaction(
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
     ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
-        let verified = self.verify_read_transaction(canonical_envelopes)?;
+        let verified = self.verify_operation_transaction(canonical_envelopes)?;
         let transaction_id = verified.transaction_id.clone();
         self.commit_read_transaction(&verified, committed_at_ms)?;
         self.intent_results_for_transaction(&transaction_id)
@@ -1354,7 +1399,7 @@ impl LibraryCoreJournal {
 
     fn commit_read_transaction(
         &mut self,
-        verified: &VerifiedReadTransaction,
+        verified: &VerifiedOperationTransaction,
         committed_at_ms: i64,
     ) -> JournalResult<TransactionReceipt> {
         validate_transaction(verified)?;
@@ -1501,8 +1546,8 @@ impl LibraryCoreJournal {
                    canonicalEnvelopeJson, committedAtMs
                  ) VALUES (
                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                   ?13, ?14, ?15, ?16, ?17, 'feed_item_read_assignment',
-                   'FeedItem', ?18, ?19, ?20
+                   ?13, ?14, ?15, ?16, ?17, ?18,
+                   'FeedItem', ?19, ?20, ?21
                  );",
                 params![
                     member.operation_id,
@@ -1522,6 +1567,7 @@ impl LibraryCoreJournal {
                     member.member_digest,
                     member.signing_body_digest,
                     member.envelope_digest,
+                    member.operation_type,
                     member.entity_id,
                     member.canonical_envelope_json,
                     committed_at_ms,
@@ -1543,32 +1589,34 @@ impl LibraryCoreJournal {
                     ],
                 )?;
             }
-            transaction.execute(
-                "INSERT INTO library_core_feed_item_read_state (
-                   entityId, readAtMs, sourceOperationId, sourceActorId,
-                   sourceSequence, sourceChainDigest
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                 ON CONFLICT(entityId) DO UPDATE SET
-                   readAtMs = excluded.readAtMs,
-                   sourceOperationId = excluded.sourceOperationId,
-                   sourceActorId = excluded.sourceActorId,
-                   sourceSequence = excluded.sourceSequence,
-                   sourceChainDigest = excluded.sourceChainDigest
-                 WHERE excluded.readAtMs < library_core_feed_item_read_state.readAtMs
-                    OR (
-                      excluded.readAtMs = library_core_feed_item_read_state.readAtMs
-                      AND excluded.sourceOperationId
-                        < library_core_feed_item_read_state.sourceOperationId
-                    );",
-                params![
-                    member.entity_id,
-                    member.read_at_ms,
-                    member.operation_id,
-                    verified.actor_id,
-                    member.actor_sequence,
-                    member.actor_chain_digest,
-                ],
-            )?;
+            if let Some(read_at_ms) = member.read_at_ms {
+                transaction.execute(
+                    "INSERT INTO library_core_feed_item_read_state (
+                       entityId, readAtMs, sourceOperationId, sourceActorId,
+                       sourceSequence, sourceChainDigest
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT(entityId) DO UPDATE SET
+                       readAtMs = excluded.readAtMs,
+                       sourceOperationId = excluded.sourceOperationId,
+                       sourceActorId = excluded.sourceActorId,
+                       sourceSequence = excluded.sourceSequence,
+                       sourceChainDigest = excluded.sourceChainDigest
+                     WHERE excluded.readAtMs < library_core_feed_item_read_state.readAtMs
+                        OR (
+                          excluded.readAtMs = library_core_feed_item_read_state.readAtMs
+                          AND excluded.sourceOperationId
+                            < library_core_feed_item_read_state.sourceOperationId
+                        );",
+                    params![
+                        member.entity_id,
+                        read_at_ms,
+                        member.operation_id,
+                        verified.actor_id,
+                        member.actor_sequence,
+                        member.actor_chain_digest,
+                    ],
+                )?;
+            }
             transaction.execute(
                 "INSERT INTO library_core_replication_outbox (
                    operationId, ingestSequence, enqueuedAtMs, acknowledgedAtMs
@@ -1612,15 +1660,62 @@ impl LibraryCoreJournal {
                     committed_at_ms,
                 ],
             )?;
-            product_rows_updated += transaction.execute(
-                "UPDATE library_core_feed_items
-                 SET readAt = ?1,
-                     payloadJson = json_set(payloadJson, '$.userState.readAt', ?1),
-                     updatedAtMs = ?2
-                 WHERE globalId = ?3 AND deletedAt IS NULL
-                   AND (readAt IS NULL OR ?1 < readAt);",
-                params![member.read_at_ms, committed_at_ms, member.entity_id],
-            )?;
+            product_rows_updated += if let Some(read_at_ms) = member.read_at_ms {
+                transaction.execute(
+                    "UPDATE library_core_feed_items
+                     SET readAt = ?1,
+                         payloadJson = json_set(payloadJson, '$.userState.readAt', ?1),
+                         updatedAtMs = ?2
+                     WHERE globalId = ?3 AND deletedAt IS NULL
+                       AND (readAt IS NULL OR ?1 < readAt);",
+                    params![read_at_ms, committed_at_ms, member.entity_id],
+                )?
+            } else {
+                let toggled_at_ms = member.toggled_at_ms.expect("validated toggle time");
+                match member.toggle.as_deref().expect("validated toggle kind") {
+                    "saved" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           saved = CASE WHEN saved = 1 THEN 0 ELSE 1 END,
+                           archived = CASE WHEN saved = 1 THEN archived ELSE 0 END,
+                           archivedAt = CASE WHEN saved = 1 THEN archivedAt ELSE NULL END,
+                           payloadJson = CASE WHEN saved = 1
+                             THEN json_remove(json_set(payloadJson, '$.userState.saved', json('false')), '$.userState.savedAt')
+                             ELSE json_remove(json_set(payloadJson,
+                               '$.userState.saved', json('true'), '$.userState.savedAt', ?1,
+                               '$.userState.archived', json('false')), '$.userState.archivedAt')
+                           END,
+                           updatedAtMs = ?2
+                         WHERE globalId = ?3 AND deletedAt IS NULL;",
+                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                    )?,
+                    "archived" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           archived = CASE WHEN archived = 1 THEN 0 ELSE 1 END,
+                           archivedAt = CASE WHEN archived = 1 THEN NULL ELSE ?1 END,
+                           payloadJson = CASE WHEN archived = 1
+                             THEN json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt')
+                             ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?1)
+                           END,
+                           updatedAtMs = ?2
+                         WHERE globalId = ?3 AND deletedAt IS NULL AND saved IS NOT 1;",
+                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                    )?,
+                    "liked" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           liked = CASE WHEN liked = 1 THEN 0 ELSE 1 END,
+                           likedAt = CASE WHEN liked = 1 THEN NULL ELSE ?1 END,
+                           likedSyncedAt = NULL,
+                           payloadJson = CASE WHEN liked = 1
+                             THEN json_remove(json_set(payloadJson, '$.userState.liked', json('false')), '$.userState.likedAt', '$.userState.likedSyncedAt')
+                             ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?1), '$.userState.likedSyncedAt')
+                           END,
+                           updatedAtMs = ?2
+                         WHERE globalId = ?3 AND deletedAt IS NULL;",
+                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                    )?,
+                    _ => unreachable!("validated toggle kind"),
+                }
+            };
         }
         if product_rows_updated > 0 {
             let updated = transaction.execute(
@@ -2176,7 +2271,7 @@ mod tests {
         previous_operation_id: Option<&str>,
         previous_chain_digest: &str,
         reads: &[(&str, i64)],
-    ) -> VerifiedReadTransaction {
+    ) -> VerifiedOperationTransaction {
         let enrollment = actor();
         let transaction_digest = digest("7");
         let mut previous_operation = previous_operation_id.map(str::to_string);
@@ -2186,7 +2281,7 @@ mod tests {
             let operation_id = format!("{transaction_id}:member:{index}");
             let actor_chain_digest = format!("{:064x}", first_sequence + index as i64 + 100);
             let canonical_envelope_json = format!("{{\"operation_id\":\"{operation_id}\"}}");
-            members.push(VerifiedReadAssignment {
+            members.push(VerifiedOperation {
                 operation_id: operation_id.clone(),
                 actor_sequence: first_sequence + index as i64,
                 previous_actor_operation_id: previous_operation.clone(),
@@ -2196,7 +2291,10 @@ mod tests {
                 signing_body_digest: format!("{:064x}", first_sequence + index as i64 + 175),
                 envelope_digest: format!("{:064x}", first_sequence + index as i64 + 200),
                 entity_id: (*entity_id).to_string(),
-                read_at_ms: *read_at_ms,
+                operation_type: "feed_item_read_assignment".to_string(),
+                read_at_ms: Some(*read_at_ms),
+                toggle: None,
+                toggled_at_ms: None,
                 canonical_envelope_json,
                 causal_tips: Vec::new(),
             });
@@ -2207,7 +2305,7 @@ mod tests {
             .iter()
             .map(|member| member.canonical_envelope_json.len())
             .sum();
-        VerifiedReadTransaction {
+        VerifiedOperationTransaction {
             transaction_id: transaction_id.to_string(),
             transaction_digest,
             library_id: enrollment.library_id,
@@ -2217,6 +2315,36 @@ mod tests {
             canonical_envelope_bytes,
             members,
         }
+    }
+
+    fn toggle_transaction(
+        transaction_id: &str,
+        actor_sequence: i64,
+        previous_operation_id: Option<&str>,
+        previous_chain_digest: &str,
+        entity_id: &str,
+        toggle: &str,
+        toggled_at_ms: i64,
+    ) -> VerifiedOperationTransaction {
+        let mut verified = transaction(
+            transaction_id,
+            actor_sequence,
+            previous_operation_id,
+            previous_chain_digest,
+            &[(entity_id, toggled_at_ms)],
+        );
+        let member = &mut verified.members[0];
+        member.operation_type = match toggle {
+            "saved" => "feed_item_saved_assignment",
+            "archived" => "feed_item_archive_assignment",
+            "liked" => "feed_item_like_assignment",
+            _ => panic!("unsupported fixture toggle"),
+        }
+        .to_string();
+        member.read_at_ms = None;
+        member.toggle = Some(toggle.to_string());
+        member.toggled_at_ms = Some(toggled_at_ms);
+        verified
     }
 
     #[test]
@@ -2798,6 +2926,89 @@ mod tests {
     }
 
     #[test]
+    fn user_state_toggle_materializes_once_and_replay_is_idempotent() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 1, '{}', 1, 1, '{{}}', 1, 1);
+                 INSERT INTO library_core_feed_items (
+                   globalId, saved, archived, liked, payloadJson, updatedAtMs
+                 ) VALUES (
+                   'rss:item:toggle', 0, 0, 0,
+                   '{{"globalId":"rss:item:toggle","userState":{{}}}}', 1
+                 );"#,
+                digest("a")
+            ))
+            .expect("install product fixture");
+
+        let verified = toggle_transaction(
+            "tx:toggle:saved",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            "rss:item:toggle",
+            "saved",
+            900,
+        );
+        let receipt = journal
+            .commit_read_transaction(&verified, 1_100)
+            .expect("commit toggle");
+        let replay = journal
+            .commit_read_transaction(&verified, 9_999)
+            .expect("replay toggle");
+        assert_eq!(receipt, replay);
+
+        let state: (i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT saved, archived,
+                        json_extract(payloadJson, '$.userState.saved'),
+                        updatedAtMs,
+                        (SELECT revision FROM library_core_desktop_state
+                         WHERE singletonId = 1)
+                 FROM library_core_feed_items WHERE globalId = 'rss:item:toggle';",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read materialized toggle");
+        assert_eq!(state, (1, 0, 1, 1_100, 8));
+        assert_eq!(
+            journal
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM library_core_replication_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("count replication outbox"),
+            1
+        );
+        assert_eq!(
+            journal
+                .intent_results_for_transaction(&verified.transaction_id)
+                .expect("read accepted result")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
     fn operation_outbox_pages_by_ingest_sequence_and_byte_budget() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         install_actor_authority(&mut journal);
@@ -3320,7 +3531,7 @@ mod tests {
             .commit_read_transaction(&first, 1_100)
             .expect("first transaction");
 
-        let conflicting_replay = VerifiedReadTransaction {
+        let conflicting_replay = VerifiedOperationTransaction {
             transaction_digest: digest("8"),
             ..first.clone()
         };
@@ -3525,7 +3736,7 @@ mod tests {
         journal
             .enroll_actor(&second_enrollment)
             .expect("enroll same actor in second epoch");
-        let second_transaction = VerifiedReadTransaction {
+        let second_transaction = VerifiedOperationTransaction {
             epoch: second_enrollment.epoch,
             epoch_id: second_enrollment.epoch_id.clone(),
             ..transaction(
@@ -3586,7 +3797,7 @@ mod tests {
             &enrollment.actor_chain_genesis,
             &[("rss:item:1", 900)],
         );
-        verified.members[0].read_at_ms = MAX_SAFE_INTEGER + 1;
+        verified.members[0].read_at_ms = Some(MAX_SAFE_INTEGER + 1);
         assert!(matches!(
             journal.commit_read_transaction(&verified, 1_100),
             Err(JournalError::InvalidVerifiedInput {

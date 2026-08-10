@@ -97,7 +97,7 @@ pub(super) struct AcceptPwaActorEnrollmentRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AcceptPwaReadIntentRequest {
+pub(super) struct AcceptPwaIntentRequest {
     canonical_envelope_json: Vec<String>,
     committed_at_ms: i64,
 }
@@ -936,17 +936,17 @@ pub(super) fn accept_pwa_actor_enrollment_request(
     })
 }
 
-/// Verify and commit one complete signed PWA read-intent transaction.
+/// Verify and commit one complete signed PWA intent transaction.
 #[tauri::command]
-pub(super) fn accept_pwa_read_intent_transaction(
+pub(super) fn accept_pwa_intent_transaction(
     app: tauri::AppHandle,
-    request: AcceptPwaReadIntentRequest,
+    request: AcceptPwaIntentRequest,
 ) -> Result<Vec<IntentResultOutboxEntry>, String> {
     if request.canonical_envelope_json.is_empty()
         || request.canonical_envelope_json.len() > 1_000
         || request.committed_at_ms < 0
     {
-        return Err("SQLite Library PWA read intent request is invalid".into());
+        return Err("SQLite Library PWA intent request is invalid".into());
     }
     let root = app_root(&app)?;
     let connection = open_database_at(&root)?;
@@ -960,7 +960,7 @@ pub(super) fn accept_pwa_read_intent_transaction(
     let mut journal =
         LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
     journal
-        .accept_read_transaction(&canonical_envelopes, request.committed_at_ms)
+        .accept_operation_transaction(&canonical_envelopes, request.committed_at_ms)
         .map_err(|error| error.to_string())
 }
 

@@ -269,14 +269,14 @@ export async function acceptPwaActorEnrollmentRequest(
   );
 }
 
-/** Admit one complete signed PWA read-intent transaction into SQLite. */
-export async function acceptPwaReadIntentTransaction(
+/** Admit one complete signed PWA intent transaction into SQLite. */
+export async function acceptPwaIntentTransaction(
   canonicalEnvelopeJson: readonly string[],
 ): Promise<readonly SqliteLibraryIntentResultOutboxEntry[]> {
   if (canonicalEnvelopeJson.length === 0 || canonicalEnvelopeJson.length > 1_000) {
-    throw new RangeError("PWA read intent transaction has an invalid member count");
+    throw new RangeError("PWA intent transaction has an invalid member count");
   }
-  return invoke<SqliteLibraryIntentResultOutboxEntry[]>("accept_pwa_read_intent_transaction", {
+  return invoke<SqliteLibraryIntentResultOutboxEntry[]>("accept_pwa_intent_transaction", {
     request: {
       canonicalEnvelopeJson: [...canonicalEnvelopeJson],
       committedAtMs: Date.now(),

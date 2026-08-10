@@ -11,6 +11,7 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
+  type FeedItemUserStateToggleKindV1,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
@@ -188,6 +189,18 @@ export async function enqueuePwaLibraryCoreReadAssignments(
   await getPortableStore().enqueueReadAssignments({
     entityIds: globalIds,
     readAtMs: Date.now(),
+  });
+}
+
+/** Queue one signed PWA user-state toggle and update the local IndexedDB row. */
+export async function enqueuePwaLibraryCoreUserStateToggle(
+  globalId: string,
+  toggle: FeedItemUserStateToggleKindV1,
+): Promise<void> {
+  await getPortableStore().enqueueUserStateToggle({
+    entityId: globalId,
+    toggle,
+    toggledAtMs: Date.now(),
   });
 }
 
