@@ -47,6 +47,32 @@ pub(super) struct DesktopLibraryShell {
     unread_by_platform: std::collections::BTreeMap<String, i64>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibrarySyncDescriptor {
+    revision: i64,
+    item_count: i64,
+    source_digest: String,
+    shell_json: String,
+    materialized_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SyncPageRequest {
+    revision: i64,
+    offset: u32,
+    limit: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibrarySyncPage {
+    revision: i64,
+    items_json: Vec<String>,
+    next_offset: Option<u32>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct BeginImportRequest {
@@ -176,6 +202,13 @@ fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
         current = current.get(*key)?;
     }
     current.as_str()
+}
+
+fn hash_bounded_record(hasher: &mut Sha256, value: &str) -> Result<(), String> {
+    let length = u64::try_from(value.len()).map_err(|_| "SQLite Library record is too large")?;
+    hasher.update(length.to_be_bytes());
+    hasher.update(value.as_bytes());
+    Ok(())
 }
 
 fn integer_at(value: &Value, path: &[&str]) -> Option<i64> {
@@ -511,6 +544,123 @@ pub(super) fn read_sqlite_library_shell(
         archivable_count,
         counts_by_platform,
         unread_by_platform,
+    })
+}
+
+/// Describe one exact SQLite revision without retaining the corpus in memory.
+#[tauri::command]
+pub(super) fn read_sqlite_library_sync_descriptor(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibrarySyncDescriptor, String> {
+    let mut connection = open_database(&app)?;
+    require_active(&connection)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let (revision, source_digest, shell_json): (i64, String, String) = transaction
+        .query_row(
+            "SELECT revision, sourceDigest, shellJson
+             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    hash_bounded_record(&mut hasher, &shell_json)?;
+    let mut statement = transaction
+        .prepare(
+            "SELECT globalId, payloadJson FROM library_core_feed_items
+             WHERE deletedAt IS NULL ORDER BY globalId ASC;",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut item_count = 0_i64;
+    for row in rows {
+        let (global_id, payload_json) = row.map_err(|error| error.to_string())?;
+        hash_bounded_record(&mut hasher, &global_id)?;
+        hash_bounded_record(&mut hasher, &payload_json)?;
+        item_count += 1;
+    }
+    drop(statement);
+    transaction.commit().map_err(|error| error.to_string())?;
+    let materialized_digest = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(DesktopLibrarySyncDescriptor {
+        revision,
+        item_count,
+        source_digest,
+        shell_json,
+        materialized_digest,
+    })
+}
+
+/// Stream one bounded, revision-pinned page for immutable checkpoint export.
+#[tauri::command]
+pub(super) fn read_sqlite_library_sync_page(
+    app: tauri::AppHandle,
+    request: SyncPageRequest,
+) -> Result<DesktopLibrarySyncPage, String> {
+    if request.revision < 0 || request.limit == 0 || request.limit > 128 {
+        return Err("invalid SQLite Library sync page request".into());
+    }
+    let mut connection = open_database(&app)?;
+    require_active(&connection)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let current_revision: i64 = transaction
+        .query_row(
+            "SELECT revision FROM library_core_desktop_state
+             WHERE singletonId = 1 AND active = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if current_revision != request.revision {
+        return Err("SQLite Library changed during checkpoint export".into());
+    }
+    let mut statement = transaction
+        .prepare(
+            "SELECT payloadJson FROM library_core_feed_items
+             WHERE deletedAt IS NULL ORDER BY globalId ASC LIMIT ?1 OFFSET ?2;",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(
+            params![i64::from(request.limit + 1), i64::from(request.offset)],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    let mut items_json = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+    let has_more = items_json.len() > request.limit as usize;
+    if has_more {
+        items_json.truncate(request.limit as usize);
+    }
+    let next_offset = if has_more {
+        Some(
+            request
+                .offset
+                .checked_add(request.limit)
+                .ok_or("SQLite Library sync offset overflow")?,
+        )
+    } else {
+        None
+    };
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(DesktopLibrarySyncPage {
+        revision: current_revision,
+        items_json,
+        next_offset,
     })
 }
 

@@ -168,6 +168,32 @@ function materializedRows(
 }
 
 describe("Library Core portable checkpoint", () => {
+  it("publishes the first pointer into a provisioned empty CAS control", async () => {
+    const adapter = new FakeCheckpointAdapter();
+    adapter.control = {
+      revision: '"empty-control-etag"',
+      bytes: new TextEncoder().encode("{}"),
+    };
+    const rows = materializedRows(1);
+
+    const published = await publishLibraryCorePortableCheckpointV1({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      entries: rows,
+      expectedControl: {
+        pointer: null,
+        revision: '"empty-control-etag"',
+      },
+      generation: 0,
+      header: header(rows.length),
+      subtle,
+      writerId: "desktop-1",
+    });
+
+    expect(published.status).toBe("committed");
+    expect(adapter.control.revision).toBe("revision-1");
+  });
+
   it("publishes and imports a complete logical checkpoint through bounded pages", async () => {
     const adapter = new FakeCheckpointAdapter();
     const rows = materializedRows(130);

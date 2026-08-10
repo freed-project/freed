@@ -188,6 +188,17 @@ function parseControlBytes(
   } catch {
     throw new TypeError("control bytes must contain canonical UTF-8 JSON");
   }
+  if (
+    parsed !== null
+    && typeof parsed === "object"
+    && !Array.isArray(parsed)
+    && Object.keys(parsed).length === 0
+  ) {
+    if (!bytesEqual(snapshot, new TextEncoder().encode("{}"))) {
+      throw new TypeError("empty control bytes are not canonical");
+    }
+    return null;
+  }
   const pointer = parseLibraryCoreControlPointerV1(parsed);
   if (!bytesEqual(snapshot, encodeControlPointer(pointer))) {
     throw new TypeError("control bytes are not canonical");
@@ -284,12 +295,9 @@ async function publishLibraryCoreGenerationV1<Source>(
     request.expectedControl.pointer === null
       ? null
       : parseLibraryCoreControlPointerV1(request.expectedControl.pointer);
-  if (
-    (request.expectedControl.revision === null) !==
-    (expectedPointer === null)
-  ) {
+  if (request.expectedControl.revision === null && expectedPointer !== null) {
     throw new TypeError(
-      "expected control revision and pointer must both be present or both be absent",
+      "an expected control pointer requires its exact revision",
     );
   }
   if (request.expectedControl.revision !== null) {
