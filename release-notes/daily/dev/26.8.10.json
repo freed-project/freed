@@ -8,9 +8,11 @@
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Move Freed Desktop Library startup, reads, writes, resets, and daily backups to native SQLite after a verified one-time import"
+  ],
   "editorialNotes": [
     "Lead with the working SQLite Desktop outcome and restored maps. Omit internal census and contract churn."
   ],
-  "updatedAt": "2026-08-10T14:02:18.321Z"
+  "updatedAt": "2026-08-10T17:21:34.133Z"
 }
