@@ -1064,7 +1064,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         platforms: ["desktop"],
         locator: "origin:localStorage",
         keys: [
-          "freed.libraryCore.externalMigrationV1.disabled",
           "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled",
           "freed.libraryCore.feedBrowseReaderV1.disabled",
           "freed.libraryCore.friendEditorReaderV1.disabled",
@@ -2636,13 +2635,10 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "library-core-derived-runtime",
     sourcePath: "packages/desktop/src/lib/automerge.ts",
     sourceTokens: [
-      'const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =',
-      '"freed.libraryCore.externalMigrationV1.disabled"',
       'const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =',
       '"freed.libraryCore.rendererItemEvictionV1.disabled"',
     ],
     registeredKeys: [
-      "freed.libraryCore.externalMigrationV1.disabled",
       "freed.libraryCore.rendererItemEvictionV1.disabled",
     ],
   },
