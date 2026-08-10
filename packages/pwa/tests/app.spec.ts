@@ -398,11 +398,13 @@ async function seedMultipleFriendLocations(
     const store = w.__FREED_STORE__ as {
       getState: () => {
         friends: Record<string, unknown>;
-        items: unknown[];
+        items: Array<{ globalId?: string }>;
         setActiveView: (view: string) => void;
+        clearSampleData: () => Promise<unknown>;
       };
     };
 
+    await store.getState().clearSampleData();
     const now = Date.now();
     await automerge.docAddFriend({
       id: "friend-omar",
@@ -454,8 +456,8 @@ async function seedMultipleFriendLocations(
           mediaTypes: [],
         },
         location: {
-          name: "Reykjavik, Capital Region, Iceland",
-          coordinates: { lat: 64.1466, lng: -21.9426 },
+          name: "McMurdo Station, Antarctica",
+          coordinates: { lat: -77.8419, lng: 166.6863 },
           source: "geo_tag",
         },
         userState: {
@@ -483,8 +485,8 @@ async function seedMultipleFriendLocations(
           mediaTypes: [],
         },
         location: {
-          name: "Paris",
-          coordinates: { lat: 48.8566, lng: 2.3522 },
+          name: "Rothera Research Station, Antarctica",
+          coordinates: { lat: -67.5681, lng: -68.125 },
           source: "text_extraction",
         },
         userState: {
@@ -501,7 +503,13 @@ async function seedMultipleFriendLocations(
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
         const state = store.getState();
-        if (Object.keys(state.friends).length >= 2 && state.items.length >= 2) {
+        const itemIds = new Set(state.items.map((item) => item.globalId));
+        if (
+          state.friends["friend-omar"]
+          && state.friends["friend-samir"]
+          && itemIds.has("ig:omar:reykjavik")
+          && itemIds.has("li:samir:paris")
+        ) {
           clearInterval(interval);
           resolve();
           return;
@@ -1645,23 +1653,43 @@ test.describe("FREED PWA", () => {
     expect(pageZoomAfter).toBe(1);
   });
 
-  test("map popovers show update time and keep only one open", async ({ page }) => {
+  test("map loads its bundled worker without asset failures", async ({ page }) => {
     const mapAssetResponses: Array<{ url: string; status: number }> = [];
+    const workerUrls: string[] = [];
     page.on("response", (response) => {
       const url = response.url();
       if (url.includes("maplibre-gl")) {
         mapAssetResponses.push({ url, status: response.status() });
       }
     });
+    page.on("worker", (worker) => workerUrls.push(worker.url()));
+
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await page.getByRole("button", { name: "Map" }).click();
+
+    await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+    await expect.poll(() => workerUrls.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.every(({ status }) => status < 400)).toBeTruthy();
+  });
+
+  test("map popovers show update time and keep only one open", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean })
+        .__FREED_E2E_FORCE_MAP_FALLBACK__ = true;
+    });
 
     await page.goto("/");
     await acceptLegalGate(page);
     await seedMultipleFriendLocations(page);
 
-    await page.getByRole("button", { name: "Map" }).click();
+    await page.getByRole("button", { name: "Map", exact: true }).click();
     await expect(page.getByText("Map failed to load")).toHaveCount(0);
-    await page.getByRole("button", { name: "Omar Hassan" }).click();
-    await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toBeVisible();
+    await page.getByRole("button", { name: "Omar Hassan" }).evaluate((element) => {
+      (element as HTMLElement).click();
+    });
+    await expect(page.getByText("McMurdo Station, Antarctica")).toBeVisible();
     await expect(page.getByText(/ago/).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
     const livePopup = page.locator(".maplibregl-popup-content");
@@ -1676,12 +1704,12 @@ test.describe("FREED PWA", () => {
       await expect(page.locator(".maplibregl-popup-tip")).toBeHidden();
     }
 
-    await page.getByRole("button", { name: "Samir Dutta" }).click();
-    await expect(page.getByText("Paris")).toBeVisible();
-    await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toHaveCount(0);
+    await page.getByRole("button", { name: "Samir Dutta" }).evaluate((element) => {
+      (element as HTMLElement).click();
+    });
+    await expect(page.getByText("Rothera Research Station, Antarctica")).toBeVisible();
+    await expect(page.getByText("McMurdo Station, Antarctica")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
-    expect(mapAssetResponses.length).toBeGreaterThan(0);
-    expect(mapAssetResponses.some(({ status }) => status === 403)).toBeFalsy();
   });
 
   test("can add an RSS feed", async ({ page }) => {

@@ -49,6 +49,9 @@ export default defineConfig({
     format: 'es',
     plugins: () => [wasm(), topLevelAwait()],
   },
+  optimizeDeps: {
+    exclude: ['maplibre-gl/dist/maplibre-gl-worker.mjs'],
+  },
   server: {
     fs: {
       allow: fsAllow,
