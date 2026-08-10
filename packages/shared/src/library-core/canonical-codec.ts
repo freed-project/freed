@@ -44,6 +44,7 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "operation-envelope",
   "operation-segment-body",
   "intent-segment-body",
+  "result-segment-body",
   "causal-frontier",
   "legacy-source-admission-key",
   "legacy-source-admission-claim",

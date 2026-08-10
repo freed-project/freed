@@ -95,6 +95,7 @@ describe("Library Core immutable transport contract", () => {
       createLibraryCoreImmutableObjectKey({
         kind: "result_segment",
         libraryId: LIBRARY_ID,
+        epochId: "epoch-1",
         actorId: "pwa-1",
         firstSequence: 1,
         lastSequence: 9,
@@ -123,7 +124,7 @@ describe("Library Core immutable transport contract", () => {
       `freed-v2-search~library-1~eepoch-1~g7~s2~${DIGEST}.fidx.gz`,
       `freed-v2-search-delta~library-1~eepoch-1~s129-256~${DIGEST}.fidx.gz`,
       `freed-v2-intents~library-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
-      `freed-v2-results~library-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
+      `freed-v2-results~library-1~eepoch-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
       `freed-v2-blob~library-1~${DIGEST}`,
       `freed-v2-backup~library-1~backup-2026-07-30~${DIGEST}.json`,
     ]);
@@ -135,13 +136,13 @@ describe("Library Core immutable transport contract", () => {
     const mutableKeys = [
       createLibraryCoreControlObjectKey(LIBRARY_ID),
       createLibraryCoreIntentHeadObjectKey(LIBRARY_ID, "pwa-1"),
-      createLibraryCoreResultHeadObjectKey(LIBRARY_ID, "pwa-1"),
+      createLibraryCoreResultHeadObjectKey(LIBRARY_ID, "epoch-1", "pwa-1"),
     ];
 
     expect(mutableKeys).toEqual([
       "freed-v2-control~library-1.json",
       "freed-v2-intent-head~library-1~pwa-1.json",
-      "freed-v2-result-head~library-1~pwa-1.json",
+      "freed-v2-result-head~library-1~eepoch-1~pwa-1.json",
     ]);
     expect(mutableKeys.some(isLibraryCoreImmutableObjectKey)).toBe(false);
   });

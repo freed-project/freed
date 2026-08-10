@@ -4,22 +4,30 @@ import {
   encodeLibraryCoreCanonicalValue,
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreControlPointerV1,
+  parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreControlPointerV1,
   type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
+  type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
+  discoverGoogleDriveLibraryCoreResultHeadV1,
+  discoverGoogleDriveLibraryCoreResultSegmentsV1,
   importLibraryCoreIntentSegmentV1,
+  importLibraryCoreResultSegmentV1,
   importLibraryCorePortableCheckpointV1,
   provisionGoogleDriveLibraryCoreControlV1,
+  provisionGoogleDriveLibraryCoreResultHeadV1,
   publishLibraryCorePortableCheckpointV1,
+  publishLibraryCoreResultEntriesV1,
   reassignLibraryCorePortableCheckpointV1,
   type GoogleDriveFetch,
   type LibraryCoreControlReadV1,
@@ -30,6 +38,7 @@ import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
 import {
   appendPortableSqliteLibraryItems,
+  acknowledgePwaIntentResultOutbox,
   acceptPwaActorEnrollmentRequest,
   acceptPwaReadIntentTransaction,
   beginPortableSqliteLibraryImport,
@@ -39,12 +48,14 @@ import {
   listSqliteLibraryActorEnrollments,
   readSqliteLibrarySyncDescriptor,
   readSqliteLibrarySyncPage,
+  readPwaIntentResultOutbox,
   reassignSqliteLibraryWriterEpoch,
   restoreSqliteLibraryBackup,
   sqliteLibraryStatus,
   type SqliteLibrarySyncDescriptor,
   type SqliteLibraryAuthorityBootstrap,
   type SqliteLibraryActorCheckpointState,
+  type SqliteLibraryIntentResultOutboxEntry,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 
@@ -537,6 +548,196 @@ async function acceptPendingPwaReadIntents(input: {
   }
 }
 
+function resultEntryMatches(
+  local: SqliteLibraryIntentResultOutboxEntry,
+  remote: Readonly<{
+    actor_id: string;
+    intent_operation_id: string;
+    intent_sequence: number;
+    provider_receipt_digest: string | null;
+    result_operation_id: string;
+    result_sequence: number;
+    status: "accepted" | "provider_completed" | "provider_failed";
+  }>,
+): boolean {
+  return local.actorId === remote.actor_id
+    && local.intentOperationId === remote.intent_operation_id
+    && local.intentSequence === remote.intent_sequence
+    && local.providerReceiptDigest === remote.provider_receipt_digest
+    && local.resultOperationId === remote.result_operation_id
+    && local.resultSequence === remote.result_sequence
+    && local.status === remote.status;
+}
+
+async function verifyPublishedResultPrefix(input: {
+  readonly accessToken: string;
+  readonly actorId: string;
+  readonly adapter: ReturnType<typeof createGoogleDriveLibraryCoreResultAdapterV1>;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly head: LibraryCoreResultHeadV1;
+  readonly libraryId: string;
+  readonly pending: readonly SqliteLibraryIntentResultOutboxEntry[];
+  readonly signal?: AbortSignal;
+}): Promise<readonly string[]> {
+  if (input.head.next_result_sequence === 1) return Object.freeze([]);
+  const segments = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
+    accessToken: input.accessToken,
+    actorId: input.actorId,
+    epochId: input.epochId,
+    googleFetch: input.googleFetch,
+    libraryId: input.libraryId,
+    signal: input.signal,
+  });
+  const pendingBySequence = new Map(
+    input.pending.map((entry) => [entry.resultSequence, entry] as const),
+  );
+  const confirmed = new Set<string>();
+  let nextSequence = 1;
+  let previousDigest: LibraryCoreResultHeadV1["latest_segment_digest"] = null;
+  for (const segment of segments) {
+    if (segment.firstResultSequence !== nextSequence) {
+      throw new Error("PWA result segment chain has a gap or overlap");
+    }
+    await importLibraryCoreResultSegmentV1({
+      actorId: input.actorId,
+      adapter: input.adapter,
+      expectedFirstResultSequence: nextSequence,
+      expectedPreviousSegmentDigest: previousDigest,
+      libraryId: input.libraryId,
+      reference: segment.reference,
+      storageEpoch: input.epochId,
+      subtle: crypto.subtle,
+      writer: {
+        async appendResultSegment({ entries }) {
+          for (const remote of entries) {
+            const local = pendingBySequence.get(remote.result_sequence);
+            if (local && !resultEntryMatches(local, remote)) {
+              throw new Error("published PWA result differs from the durable SQLite receipt");
+            }
+            if (local) confirmed.add(local.resultOperationId);
+          }
+        },
+      },
+    });
+    nextSequence = segment.lastResultSequence + 1;
+    previousDigest = segment.reference.descriptor.contentDigest;
+    if (nextSequence >= input.head.next_result_sequence) break;
+  }
+  if (
+    nextSequence !== input.head.next_result_sequence
+    || previousDigest !== input.head.latest_segment_digest
+  ) {
+    throw new Error("PWA result objects do not match the actor result head");
+  }
+  for (const local of input.pending) {
+    if (
+      local.resultSequence < input.head.next_result_sequence
+      && !confirmed.has(local.resultOperationId)
+    ) {
+      throw new Error("published PWA result head omits a durable SQLite receipt");
+    }
+  }
+  return Object.freeze([...confirmed]);
+}
+
+async function flushPwaIntentResultOutbox(input: {
+  readonly accessToken: string;
+  readonly controlFileId: string;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly libraryId: string;
+  readonly signal?: AbortSignal;
+}): Promise<void> {
+  for (let page = 0; page < 100; page += 1) {
+    const pending = await readPwaIntentResultOutbox({
+      epochId: input.epochId,
+      libraryId: input.libraryId,
+    }, 256);
+    if (pending.length === 0) return;
+    const actorIds = [...new Set(pending.map((entry) => entry.actorId))].sort();
+    for (const actorId of actorIds) {
+      const actorEntries = pending
+        .filter((entry) => entry.actorId === actorId)
+        .sort((left, right) => left.resultSequence - right.resultSequence);
+      let locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
+        accessToken: input.accessToken,
+        actorId,
+        epochId: input.epochId,
+        googleFetch: input.googleFetch,
+        libraryId: input.libraryId,
+        signal: input.signal,
+      });
+      if (locator === null) {
+        locator = await provisionGoogleDriveLibraryCoreResultHeadV1({
+          accessToken: input.accessToken,
+          googleFetch: input.googleFetch,
+          head: parseLibraryCoreResultHeadV1({
+            actor_id: actorId,
+            epoch_id: input.epochId,
+            latest_segment: null,
+            latest_segment_digest: null,
+            library_id: input.libraryId,
+            next_result_sequence: 1,
+            protocol: "result_head_v1",
+            protocol_version: 1,
+            schema_version: 1,
+          }),
+          signal: input.signal,
+        });
+      }
+      const adapter = createGoogleDriveLibraryCoreResultAdapterV1({
+        accessToken: input.accessToken,
+        actorId,
+        controlFileId: input.controlFileId,
+        epochId: input.epochId,
+        googleFetch: input.googleFetch,
+        libraryId: input.libraryId,
+        resultHeadFileId: locator.resultHeadFileId,
+        signal: input.signal,
+      });
+      let head = (await adapter.readResultHead()).head;
+      if (head.epoch_id !== input.epochId) {
+        throw new Error("PWA result head belongs to a retired writer epoch");
+      }
+      const recovered = await verifyPublishedResultPrefix({
+        accessToken: input.accessToken,
+        actorId,
+        adapter,
+        epochId: input.epochId,
+        googleFetch: input.googleFetch,
+        head,
+        libraryId: input.libraryId,
+        pending: actorEntries,
+        signal: input.signal,
+      });
+      if (recovered.length > 0) {
+        await acknowledgePwaIntentResultOutbox(recovered);
+      }
+      const unpublished = actorEntries.filter(
+        (entry) => entry.resultSequence >= head.next_result_sequence,
+      );
+      if (unpublished.length === 0) continue;
+      if (unpublished[0]!.resultSequence !== head.next_result_sequence) {
+        throw new Error("durable PWA result outbox does not extend the cloud result head");
+      }
+      await publishLibraryCoreResultEntriesV1({
+        adapter,
+        entries: unpublished,
+        subtle: crypto.subtle,
+      });
+      await acknowledgePwaIntentResultOutbox(
+        unpublished.map((entry) => entry.resultOperationId),
+      );
+      head = (await adapter.readResultHead()).head;
+      if (head.next_result_sequence !== unpublished.at(-1)!.resultSequence + 1) {
+        throw new Error("PWA result head did not advance through published receipts");
+      }
+    }
+  }
+  throw new Error("PWA result outbox exceeded the bounded flush budget");
+}
+
 function materializedRow(record: LibraryCorePortableCheckpointRecordV1): {
   readonly registryKey: string;
   readonly row: unknown;
@@ -837,6 +1038,14 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     actors,
     controlFileId: provisioned.controlFileId,
     desktopActorId: loaded.currentWriterId,
+    epochId: loaded.bootstrap.authority.epoch_id,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
+  await flushPwaIntentResultOutbox({
+    accessToken: input.accessToken,
+    controlFileId: provisioned.controlFileId,
     epochId: loaded.bootstrap.authority.epoch_id,
     googleFetch: input.googleFetch,
     libraryId: state.libraryId,

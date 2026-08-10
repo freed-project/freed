@@ -247,6 +247,49 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       epochId,
       libraryId,
     });
+    const preparedResult = await sync.prepareLibraryCoreResultSegmentV1({
+      actorId,
+      entries: boundedCandidate.body.entries.map((entry, index) => ({
+        actorId,
+        intentOperationId: entry.operation_id,
+        intentSequence: entry.intent_sequence,
+        providerReceiptDigest: null,
+        resultOperationId: `accepted-${entry.operation_id}`,
+        resultSequence: index + 1,
+        status: "accepted" as const,
+      })),
+      epochId,
+      libraryId,
+      previousSegmentDigest: null,
+      subtle: crypto.subtle,
+    });
+    const resultReference = {
+      descriptor: preparedResult.object.descriptor,
+      transportObjectId: "drive-result-segment-1",
+    };
+    const importResult = () => sync.importLibraryCoreResultSegmentV1({
+      actorId,
+      adapter: {
+        async readImmutable() {
+          return preparedResult.object.source.slice();
+        },
+      },
+      expectedFirstResultSequence: 1,
+      expectedPreviousSegmentDigest: null,
+      libraryId,
+      reference: resultReference,
+      storageEpoch: epochId,
+      subtle: crypto.subtle,
+      writer: store,
+    });
+    await importResult();
+    await importResult();
+    const acceptedResult = await store.readIntentResult({
+      actorId,
+      epochId,
+      intentOperationId: boundedCandidate.body.entries[0]!.operation_id,
+      libraryId,
+    });
     await store.quiesce();
     const reopened = createPwaLibraryCorePortableCheckpointStore({
       databaseName,
@@ -257,6 +300,12 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     const afterRestart = await reopened.readUnpublishedIntentSegmentCandidate({
       actorId,
       epochId,
+      libraryId,
+    });
+    const acceptedAfterRestart = await reopened.readIntentResult({
+      actorId,
+      epochId,
+      intentOperationId: boundedCandidate.body.entries[0]!.operation_id,
       libraryId,
     });
     await reopened.quiesce();
@@ -272,6 +321,8 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
 
     return {
       afterRestart: afterRestart?.body,
+      acceptedResult,
+      acceptedAfterRestart,
       boundedBody: boundedCandidate.body,
       changedRetryError,
       firstReceipt,
@@ -332,6 +383,14 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     status: "recorded",
   });
   expect(result.publicationReplay.status).toBe("already_recorded");
+  expect(result.acceptedResult).toMatchObject({
+    intentOperationId: "read-item-1",
+    providerReceiptDigest: null,
+    resultOperationId: "accepted-read-item-1",
+    resultSequence: 1,
+    status: "accepted",
+  });
+  expect(result.acceptedAfterRestart).toEqual(result.acceptedResult);
   expect(result.remainingBody).toMatchObject({
     first_intent_sequence: 3,
     last_intent_sequence: 3,

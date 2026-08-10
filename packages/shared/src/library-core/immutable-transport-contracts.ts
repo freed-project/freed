@@ -87,6 +87,7 @@ export type LibraryCoreImmutableObjectKeyRequest =
     })
   | (LibraryScopedObjectRequest & {
       readonly kind: "result_segment";
+      readonly epochId: string;
       readonly actorId: string;
       readonly firstSequence: number;
       readonly lastSequence: number;
@@ -176,11 +177,13 @@ export function createLibraryCoreIntentHeadObjectKey(
 
 export function createLibraryCoreResultHeadObjectKey(
   libraryId: string,
+  epochId: string,
   actorId: string,
 ): string {
   assertIdentifier(libraryId, "libraryId");
+  assertIdentifier(epochId, "epochId");
   assertIdentifier(actorId, "actorId");
-  return `freed-v2-result-head~${libraryId}~${actorId}.json`;
+  return `freed-v2-result-head~${libraryId}~e${epochId}~${actorId}.json`;
 }
 
 /**
@@ -246,10 +249,11 @@ export function createLibraryCoreImmutableObjectKey(
       assertDigest(request.digest, "digest");
       return `freed-v2-intents~${request.libraryId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "result_segment":
+      assertIdentifier(request.epochId, "epochId");
       assertIdentifier(request.actorId, "actorId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-results~${request.libraryId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
+      return `freed-v2-results~${request.libraryId}~e${request.epochId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "blob":
       assertDigest(request.digest, "digest");
       return `freed-v2-blob~${request.libraryId}~${request.digest}`;
@@ -500,7 +504,7 @@ const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
   },
   {
     pattern: new RegExp(
-      `^freed-v2-results~${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
+      `^freed-v2-results~${ID}~e${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],

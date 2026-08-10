@@ -26,9 +26,11 @@ import {
   parseLibraryCoreIntentSegmentBodyV1,
   parseLibraryCoreIntentSegmentEntryV1,
   parseLibraryCoreIntentSegmentHeaderV1,
+  parseLibraryCoreIntentResultEntryV1,
   parseLibraryCoreOperationSegmentEntryV1,
   parseLibraryCoreOperationSegmentHeaderV1,
   parseLibraryCorePortableCheckpointRecordV1,
+  parseLibraryCoreResultSegmentHeaderV1,
   projectLibraryCoreFeedCardV1,
   isLibraryCoreLowercaseHex64,
   sha256LowerHex,
@@ -54,6 +56,7 @@ import {
   type LibraryCoreIntentSegmentBodyV1,
   type LibraryCoreIntentSegmentEntryV1,
   type LibraryCoreIntentSegmentHeaderV1,
+  type LibraryCoreIntentResultEntryV1,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreOperationSegmentEntryV1,
@@ -62,6 +65,7 @@ import {
   type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
+  type LibraryCoreResultSegmentHeaderV1,
 } from "@freed/shared/library-core";
 import type { FeedItem } from "@freed/shared";
 import type {
@@ -78,7 +82,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
@@ -96,6 +100,8 @@ const INTENT_ACTORS_STORE = "portable_intent_actors";
 const INTENT_OPERATIONS_STORE = "portable_intent_operations";
 const INTENT_TRANSACTIONS_STORE = "portable_intent_transactions";
 const INTENT_PUBLICATIONS_STORE = "portable_intent_publications";
+const INTENT_RESULTS_STORE = "portable_intent_results";
+const RESULT_ACTORS_STORE = "portable_result_actors";
 const PWA_ACTOR_IDENTITIES_STORE = "portable_pwa_actor_identities";
 const PWA_ACTOR_ENROLLMENT_REQUESTS_STORE =
   "portable_pwa_actor_enrollment_requests";
@@ -300,6 +306,25 @@ interface PortableIntentPublicationRecord {
   readonly storedContentDigest: LibraryCoreLowercaseHex64;
 }
 
+interface PortableResultActorRecord {
+  readonly actorId: LibraryCoreOperationInstanceId;
+  readonly epochId: LibraryCoreOperationInstanceId;
+  readonly latestSegment: LibraryCoreImmutableObjectReferenceV1;
+  readonly latestSegmentDigest: LibraryCoreLowercaseHex64;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly nextResultSequence: number;
+}
+
+interface PortableIntentResultRecord {
+  readonly actorId: LibraryCoreOperationInstanceId;
+  readonly entry: LibraryCoreIntentResultEntryV1;
+  readonly epochId: LibraryCoreOperationInstanceId;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly resultSequence: number;
+  readonly segmentDigest: LibraryCoreLowercaseHex64;
+  readonly segmentReference: LibraryCoreImmutableObjectReferenceV1;
+}
+
 interface PortablePwaActorIdentityRecord {
   readonly actorId: LibraryCoreLowercaseHex64;
   readonly actorIncarnationNonce: LibraryCoreLowercaseHex64;
@@ -384,6 +409,14 @@ export interface PwaLibraryCoreIntentPublicationReceiptV1 {
   readonly operationCount: number;
   readonly status: "already_recorded" | "recorded";
   readonly storedContentDigest: LibraryCoreLowercaseHex64;
+}
+
+export interface PwaLibraryCoreIntentResultV1 {
+  readonly intentOperationId: LibraryCoreOperationInstanceId;
+  readonly providerReceiptDigest: LibraryCoreLowercaseHex64 | null;
+  readonly resultOperationId: LibraryCoreOperationInstanceId;
+  readonly resultSequence: number;
+  readonly status: "accepted" | "provider_completed" | "provider_failed";
 }
 
 export interface ReadPwaLibraryCorePortableCollectionPageInput {
@@ -702,6 +735,20 @@ function sameIntentPublication(
     left.storedContentDigest === right.storedContentDigest &&
     sameIntentReference(left.segmentReference, right.segmentReference)
   );
+}
+
+function sameIntentResult(
+  left: PortableIntentResultRecord,
+  right: PortableIntentResultRecord,
+): boolean {
+  return left.actorId === right.actorId
+    && left.epochId === right.epochId
+    && left.libraryId === right.libraryId
+    && left.resultSequence === right.resultSequence
+    && left.segmentDigest === right.segmentDigest
+    && sameIntentReference(left.segmentReference, right.segmentReference)
+    && canonicalStringKey(left.entry as unknown as LibraryCoreCanonicalValue) ===
+      canonicalStringKey(right.entry as unknown as LibraryCoreCanonicalValue);
 }
 
 function snapshotIntentEntry(
@@ -2864,6 +2911,38 @@ class PwaLibraryCorePortableCheckpointStore
     );
   }
 
+  async readIntentActors(input: {
+    readonly epochId: LibraryCoreOperationInstanceId;
+    readonly libraryId: LibraryCoreOperationInstanceId;
+    readonly limit?: number;
+  }): Promise<readonly PwaLibraryCorePendingIntentActorV1[]> {
+    this.#requireAvailable();
+    const limit = input.limit ?? 16;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) {
+      throw new TypeError("intent actor limit must be between 1 and 64");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(INTENT_ACTORS_STORE, "readonly");
+    const records = (await requestResult(
+      transaction.objectStore(INTENT_ACTORS_STORE).getAll(
+        this.#keyRange.bound([input.libraryId], [input.libraryId, []]),
+        limit + 1,
+      ),
+    )) as PortableIntentActorRecord[];
+    await transactionDone(transaction);
+    if (records.length > limit) {
+      throw new Error("intent actor count exceeds the runtime bound");
+    }
+    return Object.freeze(records
+      .filter((actor) => actor.epochId === input.epochId)
+      .sort((left, right) => left.actorId.localeCompare(right.actorId))
+      .map((actor) => Object.freeze({
+        actorId: actor.actorId,
+        epochId: actor.epochId,
+        libraryId: actor.libraryId,
+      })));
+  }
+
   async recordIntentSegmentPublication(
     input: RecordPwaLibraryCoreIntentPublicationInput,
   ): Promise<PwaLibraryCoreIntentPublicationReceiptV1> {
@@ -3024,6 +3103,150 @@ class PwaLibraryCorePortableCheckpointStore
     } satisfies PortableIntentActorRecord);
     await transactionDone(transaction);
     return receipt("recorded");
+  }
+
+  async appendResultSegment(input: Readonly<{
+    entries: readonly LibraryCoreIntentResultEntryV1[];
+    header: LibraryCoreResultSegmentHeaderV1;
+    reference: LibraryCoreImmutableObjectReferenceV1;
+  }>): Promise<void> {
+    this.#requireAvailable();
+    const header = parseLibraryCoreResultSegmentHeaderV1(input.header);
+    const entries = Object.freeze(
+      input.entries.map((entry) => parseLibraryCoreIntentResultEntryV1(entry)),
+    );
+    const reference = snapshotReference(
+      parseLibraryCoreImmutableObjectReferenceV1(input.reference),
+    );
+    if (
+      entries.length !== header.result_count
+      || reference.descriptor.objectKey.length === 0
+    ) {
+      throw new TypeError("result segment import evidence is incomplete");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        INTENT_OPERATIONS_STORE,
+        INTENT_RESULTS_STORE,
+        RESULT_ACTORS_STORE,
+      ],
+      "readwrite",
+    );
+    const intentOperations = transaction.objectStore(INTENT_OPERATIONS_STORE);
+    const results = transaction.objectStore(INTENT_RESULTS_STORE);
+    const resultActors = transaction.objectStore(RESULT_ACTORS_STORE);
+    const actorKey = [header.library_id, header.epoch_id, header.actor_id];
+    const actor = (await requestResult(resultActors.get(actorKey))) as
+      PortableResultActorRecord | undefined;
+    const expectedSequence = actor?.nextResultSequence ?? 1;
+    const expectedPreviousDigest = actor?.latestSegmentDigest ?? null;
+    const existingRows = (await requestResult(results.getAll(
+      this.#keyRange.bound(
+        [
+          header.library_id,
+          header.epoch_id,
+          header.actor_id,
+          header.first_result_sequence,
+        ],
+        [
+          header.library_id,
+          header.epoch_id,
+          header.actor_id,
+          header.last_result_sequence,
+        ],
+      ),
+    ))) as PortableIntentResultRecord[];
+    const records = entries.map((entry) => Object.freeze({
+      actorId: header.actor_id,
+      entry,
+      epochId: header.epoch_id,
+      libraryId: header.library_id,
+      resultSequence: entry.result_sequence,
+      segmentDigest: reference.descriptor.contentDigest,
+      segmentReference: reference,
+    }) satisfies PortableIntentResultRecord);
+    if (existingRows.length > 0) {
+      if (
+        existingRows.length !== records.length
+        || existingRows.some((stored, index) =>
+          !sameIntentResult(stored, records[index]!)
+        )
+        || !actor
+        || actor.nextResultSequence < header.last_result_sequence + 1
+      ) {
+        transaction.abort();
+        throw new Error("result segment replay conflicts with durable PWA state");
+      }
+      await transactionDone(transaction);
+      return;
+    }
+    if (
+      header.first_result_sequence !== expectedSequence
+      || header.previous_segment_digest !== expectedPreviousDigest
+      || (actor && actor.epochId !== header.epoch_id)
+    ) {
+      transaction.abort();
+      throw new Error("result segment does not extend the durable PWA result head");
+    }
+    for (const record of records) {
+      const intent = (await requestResult(intentOperations.get([
+        record.libraryId,
+        record.actorId,
+        record.entry.intent_sequence,
+      ]))) as PortableIntentOperationRecord | undefined;
+      if (
+        !intent
+        || intent.entry.operation_id !== record.entry.intent_operation_id
+        || intent.epochId !== record.epochId
+      ) {
+        transaction.abort();
+        throw new Error("result segment references an unknown durable PWA intent");
+      }
+      results.add(record);
+    }
+    resultActors.put({
+      actorId: header.actor_id,
+      epochId: header.epoch_id,
+      latestSegment: reference,
+      latestSegmentDigest: reference.descriptor.contentDigest,
+      libraryId: header.library_id,
+      nextResultSequence: header.last_result_sequence + 1,
+    } satisfies PortableResultActorRecord);
+    await transactionDone(transaction);
+  }
+
+  async readIntentResult(input: {
+    readonly actorId: LibraryCoreOperationInstanceId;
+    readonly epochId: LibraryCoreOperationInstanceId;
+    readonly intentOperationId: LibraryCoreOperationInstanceId;
+    readonly libraryId: LibraryCoreOperationInstanceId;
+  }): Promise<PwaLibraryCoreIntentResultV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(INTENT_RESULTS_STORE, "readonly");
+    const records = (await requestResult(
+      transaction.objectStore(INTENT_RESULTS_STORE)
+        .index("by_actor_intent_operation_id")
+        .getAll([
+          input.libraryId,
+          input.epochId,
+          input.actorId,
+          input.intentOperationId,
+        ]),
+    )) as PortableIntentResultRecord[];
+    await transactionDone(transaction);
+    const latest = records.sort(
+      (left, right) => left.resultSequence - right.resultSequence,
+    ).at(-1);
+    if (!latest) return null;
+    return Object.freeze({
+      intentOperationId: latest.entry.intent_operation_id,
+      providerReceiptDigest: latest.entry.provider_receipt_digest,
+      resultOperationId: latest.entry.result_operation_id,
+      resultSequence: latest.entry.result_sequence,
+      status: latest.entry.status,
+    });
   }
 
   async readSelectedFeedPage(
@@ -3830,6 +4053,34 @@ class PwaLibraryCorePortableCheckpointStore
           if (!database.objectStoreNames.contains(INTENT_PUBLICATIONS_STORE)) {
             database.createObjectStore(INTENT_PUBLICATIONS_STORE, {
               keyPath: ["libraryId", "actorId", "firstIntentSequence"],
+            });
+          }
+          if (!database.objectStoreNames.contains(INTENT_RESULTS_STORE)) {
+            const intentResults = database.createObjectStore(
+              INTENT_RESULTS_STORE,
+              {
+                keyPath: [
+                  "libraryId",
+                  "epochId",
+                  "actorId",
+                  "resultSequence",
+                ],
+              },
+            );
+            intentResults.createIndex(
+              "by_actor_intent_operation_id",
+              [
+                "libraryId",
+                "epochId",
+                "actorId",
+                "entry.intent_operation_id",
+              ],
+              { unique: false },
+            );
+          }
+          if (!database.objectStoreNames.contains(RESULT_ACTORS_STORE)) {
+            database.createObjectStore(RESULT_ACTORS_STORE, {
+              keyPath: ["libraryId", "epochId", "actorId"],
             });
           }
           if (!database.objectStoreNames.contains(PWA_ACTOR_IDENTITIES_STORE)) {

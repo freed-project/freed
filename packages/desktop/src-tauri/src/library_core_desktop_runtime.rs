@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
@@ -22,7 +22,7 @@ use super::library_core_authority_genesis::{
     establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
     reassign_writer_epoch, LegacySourceRevision,
 };
-use super::library_core_journal::LibraryCoreJournal;
+use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
 use super::library_core_journal_runtime::journal_path;
 
 const BACKUP_DIRECTORY: &str = "library-backups";
@@ -30,6 +30,7 @@ const MAX_IMPORT_BATCH: usize = 1_000;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SHELL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IDS: usize = 10_000;
+const MAX_BACKUP_CHUNK_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +100,21 @@ pub(super) struct AcceptPwaActorEnrollmentRequest {
 pub(super) struct AcceptPwaReadIntentRequest {
     canonical_envelope_json: Vec<String>,
     committed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadPwaIntentResultOutboxRequest {
+    library_id: String,
+    epoch_id: String,
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AcknowledgePwaIntentResultOutboxRequest {
+    result_operation_ids: Vec<String>,
+    acknowledged_at_ms: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -256,6 +272,25 @@ pub(super) struct DesktopBackupSummary {
     reason: String,
     byte_length: u64,
     sha256: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadDesktopBackupChunkRequest {
+    backup_id: String,
+    offset: u64,
+    limit: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopBackupChunk {
+    backup_id: String,
+    bytes: Vec<u8>,
+    next_offset: Option<u64>,
+    offset: u64,
+    sha256: String,
+    total_byte_length: u64,
 }
 
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -905,7 +940,7 @@ pub(super) fn accept_pwa_actor_enrollment_request(
 pub(super) fn accept_pwa_read_intent_transaction(
     app: tauri::AppHandle,
     request: AcceptPwaReadIntentRequest,
-) -> Result<(), String> {
+) -> Result<Vec<IntentResultOutboxEntry>, String> {
     if request.canonical_envelope_json.is_empty()
         || request.canonical_envelope_json.len() > 1_000
         || request.committed_at_ms < 0
@@ -925,6 +960,40 @@ pub(super) fn accept_pwa_read_intent_transaction(
         LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
     journal
         .accept_read_transaction(&canonical_envelopes, request.committed_at_ms)
+        .map_err(|error| error.to_string())
+}
+
+/// Read a bounded page of durable PWA acceptance/provider result receipts.
+#[tauri::command]
+pub(super) fn read_pwa_intent_result_outbox(
+    app: tauri::AppHandle,
+    request: ReadPwaIntentResultOutboxRequest,
+) -> Result<Vec<IntentResultOutboxEntry>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .pending_intent_results(&request.library_id, &request.epoch_id, request.limit)
+        .map_err(|error| error.to_string())
+}
+
+/// Mark only receipts whose exact immutable result segment is cloud-visible.
+#[tauri::command]
+pub(super) fn acknowledge_pwa_intent_result_outbox(
+    app: tauri::AppHandle,
+    request: AcknowledgePwaIntentResultOutboxRequest,
+) -> Result<(), String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .acknowledge_intent_results(&request.result_operation_ids, request.acknowledged_at_ms)
         .map_err(|error| error.to_string())
 }
 
@@ -1545,6 +1614,79 @@ pub(super) fn list_sqlite_library_backups(
         .collect())
 }
 
+/// Read one verified, closed backup in bounded chunks for off-device archival.
+#[tauri::command]
+pub(super) fn read_sqlite_library_backup_chunk(
+    app: tauri::AppHandle,
+    request: ReadDesktopBackupChunkRequest,
+) -> Result<DesktopBackupChunk, String> {
+    read_sqlite_library_backup_chunk_at(&app_root(&app)?, request)
+}
+
+fn read_sqlite_library_backup_chunk_at(
+    root: &Path,
+    request: ReadDesktopBackupChunkRequest,
+) -> Result<DesktopBackupChunk, String> {
+    if request.backup_id.is_empty()
+        || request.backup_id.len() > 128
+        || request.limit == 0
+        || request.limit > MAX_BACKUP_CHUNK_BYTES
+    {
+        return Err("invalid SQLite Library backup chunk request".into());
+    }
+    let connection = open_database_at(root)?;
+    require_active(&connection)?;
+    let summary = connection
+        .query_row(
+            "SELECT backupId, fileName, createdAtMs, itemCount, reason, byteLength, sha256
+             FROM library_core_desktop_backups WHERE backupId = ?1;",
+            [&request.backup_id],
+            |row| {
+                Ok(DesktopBackupSummary {
+                    backup_id: row.get(0)?,
+                    file_name: row.get(1)?,
+                    created_at_ms: row.get(2)?,
+                    item_count: row.get(3)?,
+                    reason: row.get(4)?,
+                    byte_length: row.get::<_, i64>(5)? as u64,
+                    sha256: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library backup does not exist".to_string())?;
+    let expected_file_name = format!("{}.sqlite", summary.backup_id);
+    if summary.file_name != expected_file_name || request.offset > summary.byte_length {
+        return Err("SQLite Library backup metadata is invalid".into());
+    }
+    let path = root.join(BACKUP_DIRECTORY).join(&summary.file_name);
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() != summary.byte_length {
+        return Err("SQLite Library backup bytes do not match metadata".into());
+    }
+    let remaining = summary.byte_length - request.offset;
+    let byte_count = remaining.min(request.limit as u64) as usize;
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    file.seek(SeekFrom::Start(request.offset))
+        .map_err(|error| error.to_string())?;
+    let mut bytes = vec![0_u8; byte_count];
+    file.read_exact(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let consumed = request
+        .offset
+        .checked_add(byte_count as u64)
+        .ok_or_else(|| "SQLite Library backup offset overflowed".to_string())?;
+    Ok(DesktopBackupChunk {
+        backup_id: summary.backup_id,
+        bytes,
+        next_offset: (consumed < summary.byte_length).then_some(consumed),
+        offset: request.offset,
+        sha256: summary.sha256,
+        total_byte_length: summary.byte_length,
+    })
+}
+
 #[tauri::command]
 pub(super) fn restore_sqlite_library_backup(
     app: tauri::AppHandle,
@@ -1774,6 +1916,33 @@ mod tests {
             .join(BACKUP_DIRECTORY)
             .join(&backup.file_name)
             .is_file());
+        let mut offset = 0_u64;
+        let mut copied = Vec::new();
+        loop {
+            let chunk = read_sqlite_library_backup_chunk_at(
+                &root,
+                ReadDesktopBackupChunkRequest {
+                    backup_id: backup.backup_id.clone(),
+                    offset,
+                    limit: 127,
+                },
+            )
+            .expect("read bounded backup chunk");
+            assert_eq!(chunk.offset, offset);
+            assert_eq!(chunk.total_byte_length, backup.byte_length);
+            assert_eq!(chunk.sha256, backup.sha256);
+            copied.extend_from_slice(&chunk.bytes);
+            let Some(next_offset) = chunk.next_offset else {
+                break;
+            };
+            assert!(next_offset > offset);
+            offset = next_offset;
+        }
+        assert_eq!(copied.len() as u64, backup.byte_length);
+        assert_eq!(
+            crate::automerge_external_common::lower_hex(&Sha256::digest(&copied)),
+            backup.sha256,
+        );
 
         let connection = open_database_at(&root).expect("reopen Library database");
         connection

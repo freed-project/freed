@@ -80,6 +80,17 @@ export interface SqliteLibraryActorCheckpointState {
   readonly canonical_enrollment_certificate_json: string;
 }
 
+export interface SqliteLibraryIntentResultOutboxEntry {
+  readonly resultOperationId: string;
+  readonly actorId: string;
+  readonly resultSequence: number;
+  readonly intentOperationId: string;
+  readonly intentSequence: number;
+  readonly status: "accepted" | "provider_completed" | "provider_failed";
+  readonly providerReceiptDigest: string | null;
+  readonly enqueuedAtMs: number;
+}
+
 export interface PortableSqliteLibraryImportRequest {
   expectedItemCount: number;
   shell: unknown;
@@ -112,6 +123,15 @@ export interface SqliteLibraryBackupSummary {
   reason: "auto" | "manual";
   byteLength: number;
   sha256: string;
+}
+
+export interface SqliteLibraryBackupChunk {
+  readonly backupId: string;
+  readonly bytes: number[];
+  readonly nextOffset: number | null;
+  readonly offset: number;
+  readonly sha256: string;
+  readonly totalByteLength: number;
 }
 
 let sqliteActive = false;
@@ -251,14 +271,41 @@ export async function acceptPwaActorEnrollmentRequest(
 /** Admit one complete signed PWA read-intent transaction into SQLite. */
 export async function acceptPwaReadIntentTransaction(
   canonicalEnvelopeJson: readonly string[],
-): Promise<void> {
+): Promise<readonly SqliteLibraryIntentResultOutboxEntry[]> {
   if (canonicalEnvelopeJson.length === 0 || canonicalEnvelopeJson.length > 1_000) {
     throw new RangeError("PWA read intent transaction has an invalid member count");
   }
-  return invoke("accept_pwa_read_intent_transaction", {
+  return invoke<SqliteLibraryIntentResultOutboxEntry[]>("accept_pwa_read_intent_transaction", {
     request: {
       canonicalEnvelopeJson: [...canonicalEnvelopeJson],
       committedAtMs: Date.now(),
+    },
+  });
+}
+
+export async function readPwaIntentResultOutbox(
+  input: Readonly<{ libraryId: string; epochId: string }>,
+  limit = 256,
+): Promise<readonly SqliteLibraryIntentResultOutboxEntry[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) {
+    throw new RangeError("PWA result outbox page limit is invalid");
+  }
+  return invoke<SqliteLibraryIntentResultOutboxEntry[]>(
+    "read_pwa_intent_result_outbox",
+    { request: { ...input, limit } },
+  );
+}
+
+export async function acknowledgePwaIntentResultOutbox(
+  resultOperationIds: readonly string[],
+): Promise<void> {
+  if (resultOperationIds.length < 1 || resultOperationIds.length > 256) {
+    throw new RangeError("PWA result acknowledgement count is invalid");
+  }
+  return invoke("acknowledge_pwa_intent_result_outbox", {
+    request: {
+      resultOperationIds: [...resultOperationIds],
+      acknowledgedAtMs: Date.now(),
     },
   });
 }
@@ -845,6 +892,20 @@ export async function createSqliteLibraryBackup(
 
 export async function listSqliteLibraryBackups(): Promise<SqliteLibraryBackupSummary[]> {
   return invoke<SqliteLibraryBackupSummary[]>("list_sqlite_library_backups");
+}
+
+export async function readSqliteLibraryBackupChunk(input: {
+  readonly backupId: string;
+  readonly offset: number;
+  readonly limit?: number;
+}): Promise<SqliteLibraryBackupChunk> {
+  return invoke<SqliteLibraryBackupChunk>("read_sqlite_library_backup_chunk", {
+    request: {
+      backupId: input.backupId,
+      offset: input.offset,
+      limit: input.limit ?? 1_048_576,
+    },
+  });
 }
 
 export async function restoreSqliteLibraryBackup(
