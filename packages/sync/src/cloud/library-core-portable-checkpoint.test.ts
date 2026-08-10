@@ -1,6 +1,7 @@
 import { createHash, webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  createLibraryCoreImmutableObjectKey,
   libraryCorePortableCheckpointRecordIdentityV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCorePortableCheckpointRecordV1,
@@ -29,6 +30,7 @@ import {
   importLibraryCorePortableCheckpointV1,
   prepareLibraryCorePortableCheckpointPagesV1,
   publishLibraryCorePortableCheckpointV1,
+  reassignLibraryCorePortableCheckpointV1,
 } from "./library-core-portable-checkpoint.js";
 
 const FRONTIER_DIGEST = "ab".repeat(32) as LibraryCoreLowercaseHex64;
@@ -110,6 +112,7 @@ class FakeCheckpointAdapter
 
 function header(
   materializedRows: number,
+  epochId = "epoch-1",
 ): LibraryCorePortableCheckpointHeaderV1 {
   const parsed = parseLibraryCorePortableCheckpointRecordV1({
     anchor_kind: "accepted_authority",
@@ -127,7 +130,7 @@ function header(
       tombstones: 0,
     },
     epoch: 1,
-    epoch_id: "epoch-1",
+    epoch_id: epochId,
     field_registry_version: 1,
     format: "freed_logical_checkpoint_v1",
     kind: "logical_checkpoint_header",
@@ -147,6 +150,28 @@ function header(
     throw new TypeError("portable checkpoint test header is invalid");
   }
   return parsed;
+}
+
+function epochCertificateObject(
+  epochId: string,
+): LibraryCorePreparedImmutableObjectV1<Uint8Array> {
+  const source = new TextEncoder().encode(
+    JSON.stringify({ kind: "writer_epoch_certificate", epochId }),
+  );
+  const contentDigest = digest(source) as LibraryCoreLowercaseHex64;
+  return {
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      byteLength: source.byteLength,
+      contentDigest,
+      objectKey: createLibraryCoreImmutableObjectKey({
+        digest: contentDigest,
+        epochId,
+        kind: "epoch_certificate",
+        libraryId: "library-1",
+      }),
+    }),
+    source,
+  };
 }
 
 function materializedRows(
@@ -192,6 +217,54 @@ describe("Library Core portable checkpoint", () => {
 
     expect(published.status).toBe("committed");
     expect(adapter.control.revision).toBe("revision-1");
+  });
+
+  it("publishes generation zero and changes authority only through the exact control CAS", async () => {
+    const adapter = new FakeCheckpointAdapter();
+    const rows = materializedRows(1);
+    const initial = await publishLibraryCorePortableCheckpointV1({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      entries: rows,
+      expectedControl: { pointer: null, revision: null },
+      generation: 0,
+      header: header(rows.length),
+      subtle,
+      writerId: "desktop-1",
+    });
+    if (initial.status === "conflict") {
+      throw new Error("initial checkpoint publication unexpectedly conflicted");
+    }
+
+    const reassigned = await reassignLibraryCorePortableCheckpointV1({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      entries: rows,
+      epochCertificate: epochCertificateObject("epoch-2"),
+      expectedControl: {
+        pointer: initial.controlPointer,
+        revision: initial.revision,
+      },
+      generation: 0,
+      header: header(rows.length, "epoch-2"),
+      subtle,
+      writerId: "desktop-2",
+    });
+
+    expect(reassigned).toMatchObject({
+      status: "committed",
+      controlPointer: {
+        generation: 0,
+        storageEpoch: "epoch-2",
+        writerId: "desktop-2",
+      },
+    });
+    if (reassigned.status === "conflict") {
+      throw new Error("writer reassignment unexpectedly conflicted");
+    }
+    expect(reassigned.dependencies[0]?.descriptor.objectKey).toMatch(
+      /^freed-v2-epoch~/,
+    );
   });
 
   it("publishes and imports a complete logical checkpoint through bounded pages", async () => {

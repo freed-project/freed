@@ -17,12 +17,14 @@ import {
 import { importLibraryCoreCheckpointManifestV1 } from "./library-core-checkpoint-import.js";
 import {
   publishLibraryCoreCheckpointGenerationV1,
+  reassignLibraryCoreCheckpointGenerationV1,
   type LibraryCorePreparedCheckpointPageV1,
 } from "./library-core-checkpoint-publication.js";
 import type {
   LibraryCoreImmutablePublicationAdapterV1,
   LibraryCoreImmutablePublicationResultV1,
   LibraryCoreImmutableReadAdapterV1,
+  LibraryCorePreparedImmutableObjectV1,
 } from "./library-core-immutable-publication.js";
 import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
@@ -189,6 +191,15 @@ export interface PublishLibraryCorePortableCheckpointRequestV1 {
   readonly writerId: string;
 }
 
+export interface ReassignLibraryCorePortableCheckpointRequestV1
+  extends PublishLibraryCorePortableCheckpointRequestV1 {
+  readonly expectedControl: {
+    readonly revision: string;
+    readonly pointer: LibraryCoreControlPointerV1;
+  };
+  readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
+}
+
 /**
  * Publish a complete portable logical checkpoint through the exact immutable
  * page, manifest, and control compare-and-swap pipeline.
@@ -207,6 +218,39 @@ export async function publishLibraryCorePortableCheckpointV1(
     adapter: request.adapter,
     causalFrontierDigest: parsedHeader.materializer_position.frontier_digest,
     datasetSchemaId: PORTABLE_CHECKPOINT_DATASET_SCHEMA_ID,
+    expectedControl: request.expectedControl,
+    generation: request.generation,
+    libraryId: parsedHeader.library_id,
+    pages: prepareLibraryCorePortableCheckpointPagesV1({
+      entries: request.entries,
+      generation: request.generation,
+      header: parsedHeader,
+      subtle: request.subtle,
+    }),
+    parseRecord: parseLibraryCorePortableCheckpointRecordV1,
+    recordIdentity: libraryCorePortableCheckpointRecordIdentityV1,
+    storageEpoch: parsedHeader.epoch_id,
+    subtle: request.subtle,
+    writerId: request.writerId,
+  });
+}
+
+/** Publish a complete portable checkpoint as generation zero of a new writer epoch. */
+export async function reassignLibraryCorePortableCheckpointV1(
+  request: ReassignLibraryCorePortableCheckpointRequestV1,
+): Promise<LibraryCoreImmutablePublicationResultV1> {
+  const parsedHeader = parseLibraryCorePortableCheckpointRecordV1(
+    request.header,
+  );
+  if (parsedHeader.kind !== "logical_checkpoint_header") {
+    throw new TypeError("portable checkpoint header is invalid");
+  }
+  return reassignLibraryCoreCheckpointGenerationV1({
+    activeTransport: request.activeTransport,
+    adapter: request.adapter,
+    causalFrontierDigest: parsedHeader.materializer_position.frontier_digest,
+    datasetSchemaId: PORTABLE_CHECKPOINT_DATASET_SCHEMA_ID,
+    epochCertificate: request.epochCertificate,
     expectedControl: request.expectedControl,
     generation: request.generation,
     libraryId: parsedHeader.library_id,

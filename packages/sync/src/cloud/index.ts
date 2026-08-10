@@ -58,19 +58,23 @@ export {
 export {
   LIBRARY_CORE_CHECKPOINT_PUBLICATION_PAGE_LIMIT,
   publishLibraryCoreCheckpointGenerationV1,
+  reassignLibraryCoreCheckpointGenerationV1,
   type LibraryCorePreparedCheckpointPageV1,
   type PublishLibraryCoreCheckpointGenerationRequestV1,
+  type ReassignLibraryCoreCheckpointGenerationRequestV1,
 } from "./library-core-checkpoint-publication.js";
 export {
   importLibraryCorePortableCheckpointV1,
   prepareLibraryCorePortableCheckpointPagesV1,
   publishLibraryCorePortableCheckpointV1,
+  reassignLibraryCorePortableCheckpointV1,
   type ImportLibraryCorePortableCheckpointRequestV1,
   type ImportLibraryCorePortableCheckpointResultV1,
   type LibraryCorePortableCheckpointImportWriterV1,
   type LibraryCorePortableCheckpointStagingReceiptV1,
   type PrepareLibraryCorePortableCheckpointPagesRequestV1,
   type PublishLibraryCorePortableCheckpointRequestV1,
+  type ReassignLibraryCorePortableCheckpointRequestV1,
 } from "./library-core-portable-checkpoint.js";
 export {
   importLibraryCoreIntentSegmentV1,
