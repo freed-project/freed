@@ -3,8 +3,10 @@
   "version": "26.8.900-dev",
   "channel": "dev",
   "dayKey": "26.8.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Lead with the working SQLite Desktop outcome and the restored maps. Omit internal census and contract churn."
+  ],
   "generatedAt": "2026-08-10T06:29:49.023Z",
   "model": "heuristic",
   "source": {
@@ -143,10 +145,10 @@
       ],
       "inspectionDigest": "sha256:f012671bd09857ce2899e283ee94cac0b444eea6417f1a4b5690574f712b5d81",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-8-900-dev#sha256:7bcbd56fa05e431daa49eac7126367995f12ad38f9f2f9f01e304bc2141dd029",
+        "approvedInspectionDigest": "sha256:f012671bd09857ce2899e283ee94cac0b444eea6417f1a4b5690574f712b5d81",
+        "approvedReleaseArtifactDigest": "sha256:631fefd3a26042cb362318303fd8865654db218f4597c6a103c45c8c62c73c47"
       }
     },
     "isLatestOfDay": true,
@@ -268,21 +270,16 @@
     ]
   },
   "release": {
-    "deck": "Enroll this desktop installation's own Library Core actor, close the feed item capture and sync receipt inventories, and let a desktop installation establish its own authority epoch",
+    "deck": "Freed Desktop now runs its local Library on native SQLite with a bounded renderer",
     "features": [
-      "Enroll this desktop installation's own Library Core actor",
-      "Let a desktop installation establish its own authority epoch",
-      "Close the feed item capture and sync receipt inventories"
+      "Move Freed Desktop Library startup, reads, writes, resets, and daily backups to native SQLite after a verified one-time import",
+      "Keep the renderer corpus bounded and stop the legacy Automerge worker after SQLite takes over"
     ],
     "fixes": [
-      "Stop choosing a Library Core creator at desktop startup",
-      "Make one file the only source of Library Core canonical domains",
-      "Register the shipping queries the census was missing",
-      "Count feed signal chips from bounded pages"
+      "Restore geographic map backgrounds in Freed Desktop and PWA",
+      "Restore SQLite-backed mocked Desktop previews for manual testing"
     ],
-    "followUps": [
-      "Pin the destructive merge guard policy and its blind spots"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.900-dev\n\nEnroll this desktop installation's own Library Core actor, close the feed item capture and sync receipt inventories, and let a desktop installation establish its own authority epoch\n\n### Features\n\n- Enroll this desktop installation's own Library Core actor\n- Let a desktop installation establish its own authority epoch\n- Close the feed item capture and sync receipt inventories\n\n### Fixes\n\n- Stop choosing a Library Core creator at desktop startup\n- Make one file the only source of Library Core canonical domains\n- Register the shipping queries the census was missing\n- Count feed signal chips from bounded pages\n\n### Follow-ups\n\n- Pin the destructive merge guard policy and its blind spots\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.900-dev\n\nFreed Desktop now runs its local Library on native SQLite with a bounded renderer.\n\n### Features\n\n- Move Freed Desktop Library startup, reads, writes, resets, and daily backups to native SQLite after a verified one-time import\n- Keep the renderer corpus bounded and stop the legacy Automerge worker after SQLite takes over\n\n### Fixes\n\n- Restore geographic map backgrounds in Freed Desktop and PWA\n- Restore SQLite-backed mocked Desktop previews for manual testing\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
