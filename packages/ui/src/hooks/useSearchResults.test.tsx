@@ -135,6 +135,67 @@ describe("SQLite-streamed Library search", () => {
     vi.restoreAllMocks();
   });
 
+  it("prefers the persistent row-store search projection over a corpus scan", async () => {
+    const corpus = Array.from({ length: 101 }, (_, index) => item(index));
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async (_query, _version, visit) => {
+      for (let offset = 0; offset < corpus.length; offset += 17) {
+        if (
+          visit(
+            corpus.slice(offset, offset + 17).map((entry, index) => ({
+              item: entry,
+              score: corpus.length - offset - index,
+            })),
+          ) === "stop"
+        ) {
+          return;
+        }
+      }
+    });
+    const scanLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["scanLibraryItems"]>
+    >(async () => undefined);
+    const platform = {
+      store: createPlatformStore(),
+      scanLibraryItems,
+      searchLibraryItems,
+    } as unknown as PlatformConfig;
+    let latest: SearchResults | null = null;
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <PlatformProvider value={platform}>
+          <Harness onResult={(result) => { latest = result; }} />
+        </PlatformProvider>,
+      );
+    });
+
+    for (
+      let attempt = 0;
+      attempt < 100 && latest?.resultCount !== 101;
+      attempt += 1
+    ) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
+    expect(searchLibraryItems).toHaveBeenCalledWith(
+      "needle",
+      41,
+      expect.any(Function),
+    );
+    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(latest?.resultCount).toBe(101);
+    expect(latest?.filteredItems).toHaveLength(100);
+    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
+  });
+
   it("indexes bounded pages and retains only the first 100 ordered matches", async () => {
     const corpus = Array.from({ length: 101 }, (_, index) => item(index));
     const scanLibraryItems = vi.fn<

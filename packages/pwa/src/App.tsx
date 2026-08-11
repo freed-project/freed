@@ -86,6 +86,7 @@ import {
   openPwaLibraryCoreFeedReader,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
+  searchPwaLibraryCoreItems,
 } from "./lib/library-core-runtime";
 import {
   refreshSampleLibraryData,
@@ -479,6 +480,9 @@ function App() {
         : undefined,
       scanLibraryItems: isPwaLibraryCoreEnabled()
         ? scanPwaLibraryCoreItems
+        : undefined,
+      searchLibraryItems: isPwaLibraryCoreEnabled()
+        ? searchPwaLibraryCoreItems
         : undefined,
       readLibraryItemDetail: isPwaLibraryCoreEnabled()
         ? readPwaLibraryCoreItemDetail
