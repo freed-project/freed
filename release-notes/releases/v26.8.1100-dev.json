@@ -53,12 +53,12 @@
     ]
   },
   "release": {
-    "deck": "Complete SQLite Library imports without losing Unicode text",
+    "deck": "Every saved character reaches the new local database",
     "features": [],
     "fixes": [
       "SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1100-dev\n\nComplete SQLite Library imports without losing Unicode text\n\n### Fixes\n\n- SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1100-dev\n\nEvery saved character reaches the new local database\n\n### Fixes\n\n- SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
