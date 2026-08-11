@@ -14819,6 +14819,7 @@ pub fn run() {
             library_core_desktop_runtime::mutate_sqlite_library_items,
             library_core_desktop_runtime::read_sqlite_library_items,
             library_core_desktop_runtime::query_sqlite_library_items,
+            library_core_desktop_runtime::search_sqlite_library_items,
             library_core_desktop_runtime::create_sqlite_library_backup,
             library_core_desktop_runtime::list_sqlite_library_backups,
             library_core_desktop_runtime::read_sqlite_library_backup_chunk,
