@@ -116,6 +116,16 @@ interface SqliteQueryResult {
   totalCount: number;
 }
 
+interface SqliteSearchMatch {
+  itemJson: string;
+  score: number;
+}
+
+interface SqliteSearchPage {
+  matches: SqliteSearchMatch[];
+  nextAfterGlobalId: string | null;
+}
+
 export interface SqliteLibraryBackupSummary {
   backupId: string;
   fileName: string;
@@ -599,6 +609,26 @@ export async function querySqliteItems(options: {
     items: result.itemsJson.map((item) => decodeJson(item) as FeedItem),
     nextOffset: result.nextOffset,
     totalCount: result.totalCount,
+  };
+}
+
+export async function searchSqliteItemsPage(
+  query: string,
+  afterGlobalId: string | null,
+  limit = 32,
+): Promise<{
+  matches: Array<{ item: FeedItem; score: number }>;
+  nextAfterGlobalId: string | null;
+}> {
+  const page = await invoke<SqliteSearchPage>("search_sqlite_library_items", {
+    request: { query, afterGlobalId, limit },
+  });
+  return {
+    matches: page.matches.map(({ itemJson, score }) => ({
+      item: decodeJson(itemJson) as FeedItem,
+      score,
+    })),
+    nextAfterGlobalId: page.nextAfterGlobalId,
   };
 }
 

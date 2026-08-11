@@ -19,6 +19,7 @@ import {
   type AvailableUpdateInfo,
   type PlatformConfig,
   type ScanLibraryItems,
+  type SearchLibraryItems,
   type UpdateDownloadProgress,
 } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -178,7 +179,7 @@ import {
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
-import { isSqliteLibraryActive } from "./lib/sqlite-library";
+import { isSqliteLibraryActive, searchSqliteItemsPage } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
@@ -233,6 +234,23 @@ const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
     }
   } finally {
     await session.close();
+  }
+};
+
+const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
+  query,
+  _searchCorpusVersion,
+  visit,
+) => {
+  let afterGlobalId: string | null = null;
+  for (;;) {
+    const page = await searchSqliteItemsPage(query, afterGlobalId);
+    if (page.matches.length > 0 && visit(page.matches) === "stop") return;
+    if (!page.nextAfterGlobalId) return;
+    if (page.nextAfterGlobalId === afterGlobalId) {
+      throw new Error("SQLite Library search cursor did not advance");
+    }
+    afterGlobalId = page.nextAfterGlobalId;
   }
 };
 
@@ -1479,6 +1497,10 @@ function App() {
       scanLibraryItems: tauriRuntimeAvailable
         ? scanLibraryCoreItemsForDesktop
         : undefined,
+      searchLibraryItems:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? searchLibraryCoreItemsForDesktop
+          : undefined,
       acquireLegacyLibraryItems:
         tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()
           ? acquireLegacyRendererItems

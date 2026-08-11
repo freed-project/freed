@@ -32,6 +32,11 @@ const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SHELL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IDS: usize = 10_000;
 const MAX_BACKUP_CHUNK_BYTES: usize = 1_048_576;
+const MAX_SEARCH_PAGE_SIZE: usize = 32;
+const MAX_SEARCH_QUERY_BYTES: usize = 1_024;
+const MAX_SEARCH_QUERY_TERMS: usize = 32;
+const MAX_SEARCH_TERMS_PER_ITEM: usize = 384;
+const SEARCH_PRESERVED_TEXT_LIMIT: usize = 1_200;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -261,6 +266,30 @@ pub(super) struct QueryItemsResult {
     items_json: Vec<String>,
     next_offset: Option<u32>,
     total_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SearchItemsRequest {
+    query: String,
+    after_global_id: Option<String>,
+    limit: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ScoredDesktopLibraryItem {
+    item_json: String,
+    score: f64,
+    #[serde(skip)]
+    global_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibrarySearchPage {
+    matches: Vec<ScoredDesktopLibraryItem>,
+    next_after_global_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1466,6 +1495,259 @@ pub(super) fn query_sqlite_library_items(
     })
 }
 
+fn search_terms(value: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut current = String::new();
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() || matches!(character, '_' | '@' | '#') {
+            current.push(character);
+        } else if !current.is_empty() {
+            if !terms.contains(&current) {
+                terms.push(std::mem::take(&mut current));
+            } else {
+                current.clear();
+            }
+        }
+    }
+    if !current.is_empty() && !terms.contains(&current) {
+        terms.push(current);
+    }
+    terms
+}
+
+fn bounded_edit_distance(left: &str, right: &str, maximum: usize) -> usize {
+    let left = left.chars().collect::<Vec<_>>();
+    let right = right.chars().collect::<Vec<_>>();
+    if left.len().abs_diff(right.len()) > maximum {
+        return maximum + 1;
+    }
+    let mut previous = (0..=right.len()).collect::<Vec<_>>();
+    for (left_index, left_character) in left.iter().enumerate() {
+        let mut current = vec![left_index + 1];
+        let mut row_minimum = left_index + 1;
+        for (right_index, right_character) in right.iter().enumerate() {
+            let value = std::cmp::min(
+                std::cmp::min(current[right_index] + 1, previous[right_index + 1] + 1),
+                previous[right_index] + usize::from(left_character != right_character),
+            );
+            current.push(value);
+            row_minimum = row_minimum.min(value);
+        }
+        if row_minimum > maximum {
+            return maximum + 1;
+        }
+        previous = current;
+    }
+    previous[right.len()]
+}
+
+fn search_term_score(query: &str, candidate: &str, weight: f64) -> f64 {
+    if candidate == query {
+        return weight * 4.0;
+    }
+    if candidate.starts_with(query) {
+        return weight * 3.0;
+    }
+    if query.chars().count() < 4 {
+        return 0.0;
+    }
+    let maximum = std::cmp::max(1, query.chars().count() / 5);
+    let distance = bounded_edit_distance(query, candidate, maximum);
+    if distance <= maximum {
+        weight * 2.0 - distance as f64 / 10.0
+    } else {
+        0.0
+    }
+}
+
+fn collect_search_field(value: Option<&str>, weight: f64, fields: &mut Vec<(String, f64)>) {
+    if fields.len() >= MAX_SEARCH_TERMS_PER_ITEM {
+        return;
+    }
+    if let Some(value) = value {
+        for term in search_terms(value) {
+            if fields.len() >= MAX_SEARCH_TERMS_PER_ITEM {
+                break;
+            }
+            fields.push((term, weight));
+        }
+    }
+}
+
+fn collect_search_array(item: &Value, path: &[&str], weight: f64, fields: &mut Vec<(String, f64)>) {
+    let mut value = item;
+    for key in path {
+        let Some(next) = value.get(*key) else {
+            return;
+        };
+        value = next;
+    }
+    if let Some(values) = value.as_array() {
+        for value in values {
+            collect_search_field(value.as_str(), weight, fields);
+        }
+    }
+}
+
+fn search_item_score(item: &Value, query_terms: &[String]) -> f64 {
+    let mut fields = Vec::new();
+    collect_search_field(
+        string_at(item, &["content", "linkPreview", "title"]),
+        4.0,
+        &mut fields,
+    );
+    for path in [
+        &["eventCandidate", "title"][..],
+        &["eventCandidate", "locationName"][..],
+        &["eventCandidate", "evidence"][..],
+        &["location", "name"][..],
+    ] {
+        collect_search_field(string_at(item, path), 3.0, &mut fields);
+    }
+    collect_search_array(item, &["topics"], 3.0, &mut fields);
+    collect_search_array(item, &["contentSignals", "tags"], 3.0, &mut fields);
+    collect_search_array(item, &["userState", "tags"], 3.0, &mut fields);
+    collect_search_field(
+        string_at(item, &["author", "displayName"]),
+        3.0,
+        &mut fields,
+    );
+    collect_search_field(string_at(item, &["author", "handle"]), 3.0, &mut fields);
+    collect_search_field(string_at(item, &["author", "id"]), 3.0, &mut fields);
+    collect_search_field(string_at(item, &["content", "text"]), 2.0, &mut fields);
+    collect_search_field(
+        string_at(item, &["content", "linkPreview", "description"]),
+        2.0,
+        &mut fields,
+    );
+    collect_search_field(
+        string_at(item, &["rssSource", "feedTitle"]),
+        2.0,
+        &mut fields,
+    );
+    collect_search_field(
+        string_at(item, &["preservedContent", "text"]),
+        1.0,
+        &mut fields,
+    );
+    if let Some(highlights) = item
+        .pointer("/userState/highlights")
+        .and_then(Value::as_array)
+    {
+        for highlight in highlights {
+            collect_search_field(string_at(highlight, &["text"]), 2.0, &mut fields);
+            collect_search_field(string_at(highlight, &["note"]), 2.0, &mut fields);
+        }
+    }
+
+    let mut total = 0.0;
+    for query in query_terms {
+        let best = fields
+            .iter()
+            .map(|(candidate, weight)| search_term_score(query, candidate, *weight))
+            .fold(0.0_f64, f64::max);
+        if best == 0.0 {
+            return 0.0;
+        }
+        total += best;
+    }
+    total
+}
+
+fn strip_large_search_payload(item: &mut Value) {
+    let Some(preserved) = item
+        .get_mut("preservedContent")
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    preserved.remove("html");
+    if let Some(text) = preserved.get("text").and_then(Value::as_str) {
+        let bounded = text
+            .chars()
+            .take(SEARCH_PRESERVED_TEXT_LIMIT)
+            .collect::<String>();
+        preserved.insert("text".into(), Value::String(bounded));
+    }
+}
+
+/// Search the active SQLite Library without copying its corpus into WebKit.
+#[tauri::command]
+pub(super) fn search_sqlite_library_items(
+    app: tauri::AppHandle,
+    request: SearchItemsRequest,
+) -> Result<DesktopLibrarySearchPage, String> {
+    let connection = open_database(&app)?;
+    require_active(&connection)?;
+    search_sqlite_library_items_at(&connection, request)
+}
+
+fn search_sqlite_library_items_at(
+    connection: &Connection,
+    request: SearchItemsRequest,
+) -> Result<DesktopLibrarySearchPage, String> {
+    if request.query.len() > MAX_SEARCH_QUERY_BYTES {
+        return Err("SQLite Library search query is too large".into());
+    }
+    let query_terms = search_terms(&request.query)
+        .into_iter()
+        .take(MAX_SEARCH_QUERY_TERMS)
+        .collect::<Vec<_>>();
+    if query_terms.is_empty() {
+        return Ok(DesktopLibrarySearchPage {
+            matches: Vec::new(),
+            next_after_global_id: None,
+        });
+    }
+    if request
+        .after_global_id
+        .as_deref()
+        .is_some_and(|value| value.is_empty() || value.len() > 4_096)
+    {
+        return Err("SQLite Library search cursor is invalid".into());
+    }
+    let limit = request.limit.clamp(1, MAX_SEARCH_PAGE_SIZE);
+    let mut statement = connection
+        .prepare(
+            "SELECT payloadJson FROM library_core_feed_items
+             WHERE deletedAt IS NULL
+               AND (?1 IS NULL OR globalId COLLATE BINARY > ?1)
+             ORDER BY globalId COLLATE BINARY ASC;",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([request.after_global_id], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    let mut matches = Vec::with_capacity(limit);
+    let mut next_after_global_id = None;
+    for row in rows {
+        let item_json = row.map_err(|error| error.to_string())?;
+        let mut item = validate_json_object(&item_json, MAX_ITEM_BYTES)?;
+        let score = search_item_score(&item, &query_terms);
+        if score <= 0.0 {
+            continue;
+        }
+        let global_id = string_at(&item, &["globalId"])
+            .ok_or_else(|| "SQLite Library search item has no identity".to_string())?
+            .to_string();
+        strip_large_search_payload(&mut item);
+        let item_json = serde_json::to_string(&item).map_err(|error| error.to_string())?;
+        matches.push(ScoredDesktopLibraryItem {
+            item_json,
+            score,
+            global_id,
+        });
+        if matches.len() == limit {
+            next_after_global_id = matches.last().map(|item| item.global_id.clone());
+            break;
+        }
+    }
+    Ok(DesktopLibrarySearchPage {
+        matches,
+        next_after_global_id,
+    })
+}
+
 fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let mut digest = Sha256::new();
@@ -1912,6 +2194,115 @@ mod tests {
         let decoded = decode_base64_json(&encoded).expect("decode item transport");
         assert_eq!(decoded, source);
         assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
+    }
+
+    #[test]
+    fn native_search_scores_fields_and_strips_large_reader_content() {
+        let mut title_match = serde_json::json!({
+            "globalId": "rss:title",
+            "content": {
+                "text": "ordinary words",
+                "linkPreview": { "title": "SQLite architecture" }
+            },
+            "author": { "id": "one", "displayName": "Author", "handle": "author" },
+            "topics": [],
+            "userState": { "tags": [], "highlights": [] },
+            "preservedContent": { "html": "<p>large</p>", "text": "x".repeat(2_000) }
+        });
+        let text_match = serde_json::json!({
+            "globalId": "rss:text",
+            "content": { "text": "sqlite architecture" },
+            "author": { "id": "two", "displayName": "Author", "handle": "author" },
+            "topics": [],
+            "userState": { "tags": [], "highlights": [] }
+        });
+        let query = search_terms("sqlte architecture");
+        let title_score = search_item_score(&title_match, &query);
+        let text_score = search_item_score(&text_match, &query);
+        assert!(title_score > text_score);
+        assert!(title_score > 0.0, "one-character typo remains searchable");
+
+        strip_large_search_payload(&mut title_match);
+        assert!(title_match.pointer("/preservedContent/html").is_none());
+        assert_eq!(
+            title_match
+                .pointer("/preservedContent/text")
+                .and_then(Value::as_str)
+                .expect("bounded preserved text")
+                .chars()
+                .count(),
+            SEARCH_PRESERVED_TEXT_LIMIT,
+        );
+    }
+
+    #[test]
+    fn native_search_streams_the_complete_corpus_in_bounded_pages() {
+        let root = temporary_root("sqlite-native-search");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 1, 1, 1, ?1, 125, 125, '{}', 100, 200);",
+                ["b".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin item insert");
+        for index in 0..125 {
+            let item = serde_json::json!({
+                "globalId": format!("rss:{index:03}"),
+                "platform": "rss",
+                "contentType": "article",
+                "content": { "text": format!("bounded sqlite search item {index}") },
+                "author": { "id": "one", "displayName": "Author", "handle": "author" },
+                "topics": [],
+                "userState": { "hidden": false, "saved": false, "archived": false, "tags": [], "highlights": [] },
+                "preservedContent": { "html": "<p>large</p>", "text": "x".repeat(2_000) }
+            });
+            upsert_item(&transaction, &item.to_string(), 300).expect("insert searchable item");
+        }
+        transaction.commit().expect("commit searchable items");
+
+        let mut after_global_id = None;
+        let mut seen = Vec::new();
+        loop {
+            let page = search_sqlite_library_items_at(
+                &connection,
+                SearchItemsRequest {
+                    query: "sqlite search".into(),
+                    after_global_id: after_global_id.clone(),
+                    limit: 32,
+                },
+            )
+            .expect("search SQLite Library");
+            assert!(page.matches.len() <= MAX_SEARCH_PAGE_SIZE);
+            for result in page.matches {
+                let item: Value =
+                    serde_json::from_str(&result.item_json).expect("decode search item");
+                assert!(item.pointer("/preservedContent/html").is_none());
+                assert_eq!(
+                    item.pointer("/preservedContent/text")
+                        .and_then(Value::as_str)
+                        .expect("bounded preserved text")
+                        .chars()
+                        .count(),
+                    SEARCH_PRESERVED_TEXT_LIMIT,
+                );
+                seen.push(result.global_id);
+            }
+            let Some(next) = page.next_after_global_id else {
+                break;
+            };
+            assert_ne!(Some(&next), after_global_id.as_ref());
+            after_global_id = Some(next);
+        }
+        assert_eq!(seen.len(), 125);
+        assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
     }
 
     #[test]
