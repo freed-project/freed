@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.11",
   "date": "2026-08-11",
-  "preferredDeck": null,
+  "preferredDeck": "Search the whole Library without loading it into browser memory",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,5 +10,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "updatedAt": "2026-08-11T20:46:12.825Z"
+  "updatedAt": "2026-08-11T23:22:06.437Z"
 }
