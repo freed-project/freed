@@ -16,6 +16,8 @@ export {
   type ReaderThreadReply,
   type SidebarSourceStatusSummary,
   type ScanLibraryItems,
+  type ScoredLibraryItem,
+  type SearchLibraryItems,
   type SyncProviderSectionProps,
   type SyncProviderSectionSurface,
   type UpdateDownloadProgress,

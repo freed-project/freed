@@ -16,7 +16,11 @@ import {
   type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
-import type { BoundedFeedReader, ScanLibraryItems } from "@freed/ui/context";
+import type {
+  BoundedFeedReader,
+  ScanLibraryItems,
+  SearchLibraryItems,
+} from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
@@ -33,11 +37,13 @@ import {
 import type { DocState } from "./automerge-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import { createPwaLibraryCorePortableCheckpointStore } from "./library-core-portable-checkpoint-store";
+import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
 
 export const PWA_LIBRARY_CORE_ENABLED_KEY =
   "freed.libraryCore.pwaIndexedDbV1.enabled";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
+const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
 const LIBRARY_SCAN_PAGE_LIMIT = 32;
@@ -52,6 +58,7 @@ let lastState: DocState | null = null;
 let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
 > | null = null;
+let searchIndex: PwaLibraryCoreSearchIndex | null = null;
 
 function getPortableStore(): ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
@@ -63,6 +70,15 @@ function getPortableStore(): ReturnType<
     subtle: globalThis.crypto.subtle,
   });
   return portableStore;
+}
+
+function getSearchIndex(): PwaLibraryCoreSearchIndex {
+  searchIndex ??= new PwaLibraryCoreSearchIndex({
+    databaseName: SEARCH_DATABASE_NAME,
+    indexedDb: globalThis.indexedDB,
+    keyRange: globalThis.IDBKeyRange,
+  });
+  return searchIndex;
 }
 
 function emptyState(): DocState {
@@ -190,6 +206,7 @@ export async function enqueuePwaLibraryCoreReadAssignments(
     entityIds: globalIds,
     readAtMs: Date.now(),
   });
+  await refreshPersistentSearchItems(globalIds);
 }
 
 /** Queue one signed PWA user-state toggle and update the local IndexedDB row. */
@@ -202,6 +219,22 @@ export async function enqueuePwaLibraryCoreUserStateToggle(
     toggle,
     toggledAtMs: Date.now(),
   });
+  await refreshPersistentSearchItems([globalId]);
+}
+
+async function refreshPersistentSearchItems(
+  globalIds: readonly string[],
+): Promise<void> {
+  if (!searchIndex || !lastState) return;
+  const items: FeedItem[] = [];
+  for (const globalId of globalIds) {
+    const row = await getPortableStore().readSelectedMaterializedRow(
+      "10_feed_items",
+      globalId,
+    );
+    if (row?.globalId === globalId) items.push(row as unknown as FeedItem);
+  }
+  await searchIndex.updateItems(lastState.searchCorpusVersion, items);
 }
 
 /**
@@ -233,6 +266,17 @@ export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
     }
     afterOrdinal = page.nextOrdinal;
   } while (afterOrdinal !== null);
+};
+
+/** Search the selected Library through a persistent IndexedDB projection. */
+export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
+  query,
+  searchCorpusVersion,
+  visit,
+) => {
+  const index = getSearchIndex();
+  await index.ensureBuilt(searchCorpusVersion, scanPwaLibraryCoreItems);
+  await index.search(query, searchCorpusVersion, visit);
 };
 
 /** Read one complete FeedItem from the selected IndexedDB generation. */
@@ -495,6 +539,13 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   if (!state) {
     throw new Error("Imported SQLite Library checkpoint has no readable shell");
   }
+  if (searchIndex) {
+    if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
+      await searchIndex.invalidate();
+    } else {
+      await searchIndex.updateItems(state.searchCorpusVersion, state.items);
+    }
+  }
   publishState(state);
   return state;
 }
@@ -504,9 +555,11 @@ registerPwaFactoryResetQuiesceHandler(
   async () => {
     await portableStore?.quiesce();
     portableStore = null;
+    await searchIndex?.close();
+    searchIndex = null;
     lastState = null;
-    await new Promise<void>((resolve, reject) => {
-      const request = globalThis.indexedDB.deleteDatabase(DATABASE_NAME);
+    const deleteDatabase = (databaseName: string) => new Promise<void>((resolve, reject) => {
+      const request = globalThis.indexedDB.deleteDatabase(databaseName);
       request.addEventListener("success", () => resolve(), { once: true });
       request.addEventListener(
         "error",
@@ -519,6 +572,8 @@ registerPwaFactoryResetQuiesceHandler(
         { once: true },
       );
     });
+    await deleteDatabase(DATABASE_NAME);
+    await deleteDatabase(SEARCH_DATABASE_NAME);
   },
   25,
 );

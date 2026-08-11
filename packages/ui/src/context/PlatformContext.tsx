@@ -122,6 +122,25 @@ export type ScanLibraryItems = (
   ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
 ) => Promise<void>;
 
+export interface ScoredLibraryItem {
+  readonly item: FeedItem;
+  readonly score: number;
+}
+
+/**
+ * Stream scored matches from a platform-owned persistent search projection.
+ *
+ * The platform keeps the corpus and index outside React memory. Shared UI may
+ * retain a bounded result set, but must not collect every match.
+ */
+export type SearchLibraryItems = (
+  query: string,
+  searchCorpusVersion: number,
+  visit: (
+    matches: readonly ScoredLibraryItem[],
+  ) => LibraryItemScanDecision,
+) => Promise<void>;
+
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
   readonly sampleItemCount: number;
@@ -600,6 +619,9 @@ export interface PlatformConfig {
 
   /** Stream the selected local Library generation without hydrating a corpus array. */
   scanLibraryItems?: ScanLibraryItems;
+
+  /** Search a persistent local projection without building an in-memory corpus index. */
+  searchLibraryItems?: SearchLibraryItems;
 
   /**
    * Temporarily acquire the legacy full item projection for a surface that has
