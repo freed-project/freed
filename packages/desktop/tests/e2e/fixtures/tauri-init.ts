@@ -82,8 +82,12 @@ export function tauriInitScript(): string {
     function sqliteUpsertItems(args) {
       var state = sqliteState();
       var request = args && args.request ? args.request : {};
-      (request.itemsJson || []).forEach(function(encoded) {
-        var item = JSON.parse(encoded);
+      (request.itemsBase64 || []).forEach(function(encoded) {
+        var binary = atob(encoded);
+        var bytes = Uint8Array.from(binary, function(character) {
+          return character.charCodeAt(0);
+        });
+        var item = JSON.parse(new TextDecoder().decode(bytes));
         state.items[item.globalId] = item;
       });
       state.revision += 1;

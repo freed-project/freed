@@ -233,9 +233,13 @@ function sqliteShellResult() {
 
 function sqliteUpsertItems(args: Record<string, unknown>): null {
   const state = sqliteLibrary();
-  const request = (args.request ?? {}) as { itemsJson?: string[] };
-  for (const encoded of request.itemsJson ?? []) {
-    const item = JSON.parse(encoded) as MockSqliteItem;
+  const request = (args.request ?? {}) as { itemsBase64?: string[] };
+  for (const encoded of request.itemsBase64 ?? []) {
+    const binary = atob(encoded);
+    const json = new TextDecoder().decode(
+      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    );
+    const item = JSON.parse(json) as MockSqliteItem;
     state.items[item.globalId] = item;
   }
   state.revision += 1;

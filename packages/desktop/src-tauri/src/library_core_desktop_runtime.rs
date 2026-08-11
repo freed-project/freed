@@ -5,6 +5,7 @@
 //! is retained only as the cold source file that can be restored if the import
 //! is rejected. Normal startup, reads, and writes do not open it.
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -206,14 +207,14 @@ pub(super) struct BeginImportRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct AppendImportRequest {
-    items_json: Vec<String>,
+    items_base64: Vec<String>,
     updated_at_ms: i64,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct UpsertItemsRequest {
-    items_json: Vec<String>,
+    items_base64: Vec<String>,
     updated_at_ms: i64,
 }
 
@@ -333,6 +334,16 @@ fn validate_json_object(value: &str, maximum_bytes: usize) -> Result<Value, Stri
         return Err("JSON payload must be an object".into());
     }
     Ok(parsed)
+}
+
+fn decode_base64_json(value: &str) -> Result<String, String> {
+    let bytes = BASE64_STANDARD
+        .decode(value)
+        .map_err(|_| "SQLite Library item is not valid base64".to_string())?;
+    if bytes.len() > MAX_ITEM_BYTES {
+        return Err("JSON payload exceeds its storage bound".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "SQLite Library item is not valid UTF-8".to_string())
 }
 
 fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
@@ -548,15 +559,16 @@ pub(super) fn append_sqlite_library_import(
     app: tauri::AppHandle,
     request: AppendImportRequest,
 ) -> Result<i64, String> {
-    if request.items_json.is_empty() || request.items_json.len() > MAX_IMPORT_BATCH {
+    if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library import batch must contain 1 through 1,000 items".into());
     }
     let mut connection = open_database(&app)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    for item in &request.items_json {
-        upsert_item(&transaction, item, request.updated_at_ms)?;
+    for encoded in &request.items_base64 {
+        let item = decode_base64_json(encoded)?;
+        upsert_item(&transaction, &item, request.updated_at_ms)?;
     }
     let count: i64 = transaction
         .query_row(
@@ -1122,7 +1134,7 @@ pub(super) fn upsert_sqlite_library_items(
     app: tauri::AppHandle,
     request: UpsertItemsRequest,
 ) -> Result<(), String> {
-    if request.items_json.is_empty() || request.items_json.len() > MAX_IMPORT_BATCH {
+    if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library write batch must contain 1 through 1,000 items".into());
     }
     let mut connection = open_database(&app)?;
@@ -1130,8 +1142,9 @@ pub(super) fn upsert_sqlite_library_items(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    for item in &request.items_json {
-        upsert_item(&transaction, item, request.updated_at_ms)?;
+    for encoded in &request.items_base64 {
+        let item = decode_base64_json(encoded)?;
+        upsert_item(&transaction, &item, request.updated_at_ms)?;
     }
     transaction
         .execute(
@@ -1890,6 +1903,15 @@ mod tests {
             .expect("valid item object");
         assert_eq!(string_at(&parsed, &["globalId"]), Some("rss:one"));
         assert!(validate_json_object("[]", MAX_ITEM_BYTES).is_err());
+    }
+
+    #[test]
+    fn base64_item_transport_preserves_non_bmp_and_escape_text() {
+        let source = r#"{"globalId":"x:one","text":"Spain 🇪🇸 and Morocco 🇲🇦 with \\x text"}"#;
+        let encoded = BASE64_STANDARD.encode(source.as_bytes());
+        let decoded = decode_base64_json(&encoded).expect("decode item transport");
+        assert_eq!(decoded, source);
+        assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
     }
 
     #[test]

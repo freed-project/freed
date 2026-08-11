@@ -148,6 +148,15 @@ interface EncodedImportItem {
   readonly utf8Bytes: number;
 }
 
+function encodeUtf8Base64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
 function* legacyImportBatches(
   items: readonly FeedItem[],
 ): Generator<EncodedImportItem[]> {
@@ -187,7 +196,9 @@ async function appendLegacyImportBatch(
   try {
     await invoke("append_sqlite_library_import", {
       request: {
-        itemsJson: batch.map((item) => item.json),
+        // Keep the nested JSON bytes opaque across Tauri's own JSON command
+        // envelope. This preserves non-BMP text exactly between WebKit and Rust.
+        itemsBase64: batch.map((item) => encodeUtf8Base64(item.json)),
         updatedAtMs,
       },
     });
@@ -431,7 +442,9 @@ export async function appendPortableSqliteLibraryItems(
   for (let start = 0; start < items.length; start += 1_000) {
     await invoke("append_sqlite_library_import", {
       request: {
-        itemsJson: items.slice(start, start + 1_000).map((item) => encodeJson(item)),
+        itemsBase64: items
+          .slice(start, start + 1_000)
+          .map((item) => encodeUtf8Base64(encodeJson(item))),
         updatedAtMs: Date.now(),
       },
     });
@@ -514,7 +527,9 @@ async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
   for (let start = 0; start < items.length; start += 1_000) {
     await invoke("upsert_sqlite_library_items", {
       request: {
-        itemsJson: items.slice(start, start + 1_000).map((item) => encodeJson(item)),
+        itemsBase64: items
+          .slice(start, start + 1_000)
+          .map((item) => encodeUtf8Base64(encodeJson(item))),
         updatedAtMs: Date.now(),
       },
     });
