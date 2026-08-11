@@ -71,7 +71,13 @@ describe("SQLite legacy import batching", () => {
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
       if (command === "append_sqlite_library_import") {
-        const items = (args as { request: { itemsJson: string[] } }).request.itemsJson;
+        const encoded = (args as { request: { itemsBase64: string[] } }).request
+          .itemsBase64;
+        const items = encoded.map((item) =>
+          new TextDecoder().decode(
+            Uint8Array.from(atob(item), (character) => character.charCodeAt(0)),
+          ),
+        );
         // Model a platform transport that accepts fewer records than the
         // caller's normal bound. The importer must split and continue.
         if (items.length > 64) throw new Error("transport request rejected");
@@ -115,5 +121,22 @@ describe("SQLite legacy import batching", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("finalize_sqlite_library_import", {
       activatedAtMs: expect.any(Number),
     });
+  });
+
+  it("keeps non-BMP item text intact across the native command envelope", async () => {
+    const state = stateWithItems(1);
+    state.items[0]!.content.text = "Spain 🇪🇸 and Morocco 🇲🇦 with \\x text";
+
+    await importLegacyLibraryIntoSqlite(state, {
+      binary: new Uint8Array([1, 2, 3]),
+      heads: ["head-1"],
+      revision: { generation: 4, saveRevision: 9 },
+      itemCount: 1,
+      friendCount: 0,
+    });
+
+    expect(JSON.parse(mocks.appendCalls[0]![0]!).content.text).toBe(
+      "Spain 🇪🇸 and Morocco 🇲🇦 with \\x text",
+    );
   });
 });
