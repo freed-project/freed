@@ -5,14 +5,14 @@
   "dayKey": "26.8.12",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-12T07:07:21.288Z",
+  "generatedAt": "2026-08-12T07:49:55.823Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.1103-dev",
     "previousPublishedDayTag": "v26.8.1103-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "8ed33238df9684896060cd1832b216c24dcb3aa1",
+    "productCommitSha": "136914362d6ff64fd947c35c174edbcb3eb71b6d",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.1103-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "6450f55c67c4bfc7e19d23e5aaf5500d6a76c4ea",
-        "toInclusiveProductCommitSha": "8ed33238df9684896060cd1832b216c24dcb3aa1"
+        "toInclusiveProductCommitSha": "136914362d6ff64fd947c35c174edbcb3eb71b6d"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -30,7 +30,7 @@
         "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:376c6de2e4d8480e0fcb26d1f7c8c3a664b49e02a4f71ab8c746306dd2d62857",
+      "inspectionDigest": "sha256:ac8d982c56b499a80ff30d96e3413ae804ed0501b3f1dc709c2d51bde7013161",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -48,9 +48,13 @@
     "prNumbers": [
       1409,
       1410,
-      1411
+      1411,
+      1412,
+      1413
     ],
     "commitSubjects": [
+      "fix: refresh Library Core persistence census (#1413)",
+      "chore: prepare v26.8.1200-dev (#1412)",
       "feat: complete PWA SQLite runtime fence (#1411)",
       "fix: fence retired SQLite library writers (#1410)",
       "fix: import actor-bearing SQLite checkpoints (#1409)",
