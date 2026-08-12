@@ -183,6 +183,15 @@ type MockSqliteLibrary = {
   expectedItemCount: number;
   shell: Record<string, unknown>;
   items: Record<string, MockSqliteItem>;
+  writerAdmission?: {
+    configured: boolean;
+    allowed: boolean;
+    localWriterId: string | null;
+    activeWriterId: string | null;
+    storageEpoch: string | null;
+    controlRevision: string | null;
+    verifiedAtMs: number | null;
+  };
 };
 
 function sqliteLibrary(): MockSqliteLibrary {
@@ -436,6 +445,36 @@ const handlers: Record<string, Handler> = {
     state.revision += 1;
     return affected;
   },
+  set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
+    const request = args.request as {
+      localWriterId: string;
+      activeWriterId: string;
+      storageEpoch: string;
+      controlRevision: string;
+      verifiedAtMs: number;
+    };
+    const admission = {
+      configured: true,
+      allowed: request.localWriterId === request.activeWriterId,
+      localWriterId: request.localWriterId,
+      activeWriterId: request.activeWriterId,
+      storageEpoch: request.storageEpoch,
+      controlRevision: request.controlRevision,
+      verifiedAtMs: request.verifiedAtMs,
+    };
+    sqliteLibrary().writerAdmission = admission;
+    return admission;
+  },
+  sqlite_library_cloud_writer_admission_status: () =>
+    sqliteLibrary().writerAdmission ?? {
+      configured: false,
+      allowed: true,
+      localWriterId: null,
+      activeWriterId: null,
+      storageEpoch: null,
+      controlRevision: null,
+      verifiedAtMs: null,
+    },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,

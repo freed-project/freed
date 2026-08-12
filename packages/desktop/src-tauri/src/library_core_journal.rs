@@ -23,12 +23,12 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 3;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 4;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 2] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 3] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -36,6 +36,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 2] = [
     (
         3,
         include_str!("../../../shared/src/library-core/authoritative-migration-003.sql"),
+    ),
+    (
+        4,
+        include_str!("../../../shared/src/library-core/authoritative-migration-004.sql"),
     ),
 ];
 
@@ -1254,6 +1258,7 @@ impl LibraryCoreJournal {
                 actor_id: enrollment.actor_id.clone(),
             });
         }
+        Self::require_cloud_writer_admission(&transaction, &enrollment.library_id)?;
         authority::require_active_authority(&transaction, expected_authority)?;
         let state = Self::enroll_actor_in(&transaction, enrollment)?;
         transaction.commit()?;
@@ -1397,6 +1402,34 @@ impl LibraryCoreJournal {
         )
     }
 
+    /// Fail closed when the most recently verified cloud control tuple names
+    /// another Desktop as the active writer. This check intentionally runs in
+    /// the same immediate transaction as the authoritative mutation. A stale
+    /// renderer decision cannot race a control refresh and commit afterward.
+    fn require_cloud_writer_admission(
+        transaction: &Transaction<'_>,
+        library_id: &str,
+    ) -> JournalResult<()> {
+        let writer_ids = transaction
+            .query_row(
+                "SELECT localWriterId, activeWriterId
+                 FROM library_core_cloud_writer_admission
+                 WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        if writer_ids
+            .as_ref()
+            .is_some_and(|(local_writer_id, active_writer_id)| local_writer_id != active_writer_id)
+        {
+            return Err(JournalError::StaleAuthority {
+                library_id: library_id.to_owned(),
+            });
+        }
+        Ok(())
+    }
+
     fn commit_read_transaction(
         &mut self,
         verified: &VerifiedOperationTransaction,
@@ -1424,6 +1457,7 @@ impl LibraryCoreJournal {
                 transaction_id: verified.transaction_id.clone(),
             });
         }
+        Self::require_cloud_writer_admission(&transaction, &verified.library_id)?;
         authority::require_active_epoch(
             &transaction,
             &verified.library_id,
@@ -2462,34 +2496,51 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_the_installed_v2_schema_to_v3_without_resetting_the_database() {
+    fn upgrades_the_installed_v3_schema_to_v4_without_resetting_the_database() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("library-core.sqlite");
-        let mut connection = Connection::open(&path).expect("create v2 database");
+        let mut connection = Connection::open(&path).expect("create v3 database");
         {
-            let transaction = connection.transaction().expect("begin v2 schema");
-            apply_schema_range(&transaction, 0, 2).expect("apply v2 schema");
-            transaction.commit().expect("commit v2 schema");
+            let transaction = connection.transaction().expect("begin v3 schema");
+            apply_schema_range(&transaction, 0, 3).expect("apply v3 schema");
+            transaction
+                .execute(
+                    "INSERT INTO library_core_meta (key, integerValue)
+                     VALUES ('upgradeSentinel', 42);",
+                    [],
+                )
+                .expect("write installed data sentinel");
+            transaction.commit().expect("commit v3 schema");
         }
         drop(connection);
 
-        let journal = LibraryCoreJournal::open(&path).expect("upgrade v2 journal");
+        let journal = LibraryCoreJournal::open(&path).expect("upgrade v3 journal");
         let version: i64 = journal
             .connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read upgraded version");
-        let result_outbox_exists: bool = journal
+        let admission_table_exists: bool = journal
             .connection
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_schema
                  WHERE type = 'table'
-                   AND name = 'library_core_intent_result_outbox');",
+                   AND name = 'library_core_cloud_writer_admission');",
                 [],
                 |row| row.get(0),
             )
-            .expect("read result outbox catalog entry");
+            .expect("read writer admission catalog entry");
+        let sentinel: i64 = journal
+            .connection
+            .query_row(
+                "SELECT integerValue FROM library_core_meta
+                 WHERE key = 'upgradeSentinel';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read preserved installed data");
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
-        assert!(result_outbox_exists);
+        assert!(admission_table_exists);
+        assert_eq!(sentinel, 42);
     }
 
     #[test]
@@ -3265,6 +3316,70 @@ mod tests {
             )
             .expect("atomic row counts");
         assert_eq!(counts, (0, 0, 0, 0));
+    }
+
+    #[test]
+    fn retired_cloud_writer_cannot_enroll_or_commit_authoritative_operations() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?2, ?3, ?4, ?5);",
+                params![digest("8"), digest("9"), digest("a"), "etag-retired", 1_000],
+            )
+            .expect("record retired writer admission");
+
+        let enrollment = actor();
+        assert!(matches!(
+            journal.enroll_actor(&enrollment),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_cloud_writer_admission
+                 SET activeWriterId = localWriterId WHERE singletonId = 1;",
+                [],
+            )
+            .expect("restore writer admission");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_cloud_writer_admission
+                 SET activeWriterId = ?1 WHERE singletonId = 1;",
+                params![digest("9")],
+            )
+            .expect("retire writer after enrollment");
+
+        let verified = transaction(
+            "tx:read:retired-writer",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:retired-writer", 900)],
+        );
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        let counts: (i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("authoritative row counts");
+        assert_eq!(counts, (0, 0, 0));
     }
 
     #[test]

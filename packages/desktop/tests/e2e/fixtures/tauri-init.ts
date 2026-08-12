@@ -222,6 +222,30 @@ export function tauriInitScript(): string {
       },
       upsert_sqlite_library_items: sqliteUpsertItems,
       mutate_sqlite_library_items: sqliteMutateItems,
+      set_sqlite_library_cloud_writer_admission: (args) => {
+        var request = args.request;
+        var admission = {
+          configured: true,
+          allowed: request.localWriterId === request.activeWriterId,
+          localWriterId: request.localWriterId,
+          activeWriterId: request.activeWriterId,
+          storageEpoch: request.storageEpoch,
+          controlRevision: request.controlRevision,
+          verifiedAtMs: request.verifiedAtMs,
+        };
+        window.__TAURI_MOCK_SQLITE_WRITER_ADMISSION__ = admission;
+        return admission;
+      },
+      sqlite_library_cloud_writer_admission_status: () =>
+        window.__TAURI_MOCK_SQLITE_WRITER_ADMISSION__ || {
+          configured: false,
+          allowed: true,
+          localWriterId: null,
+          activeWriterId: null,
+          storageEpoch: null,
+          controlRevision: null,
+          verifiedAtMs: null,
+        },
       read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
         var item = sqliteState().items[id];
         return item && !item.__deleted ? JSON.stringify(item) : null;

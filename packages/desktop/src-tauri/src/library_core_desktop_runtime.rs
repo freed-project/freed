@@ -140,6 +140,28 @@ pub(super) struct ListActorEnrollmentsRequest {
     epoch_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SetCloudWriterAdmissionRequest {
+    local_writer_id: String,
+    active_writer_id: String,
+    storage_epoch: String,
+    control_revision: String,
+    verified_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CloudWriterAdmissionStatus {
+    configured: bool,
+    allowed: bool,
+    local_writer_id: Option<String>,
+    active_writer_id: Option<String>,
+    storage_epoch: Option<String>,
+    control_revision: Option<String>,
+    verified_at_ms: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryCausalTip {
@@ -951,6 +973,109 @@ pub(super) fn reassign_sqlite_library_writer_epoch(
     })
 }
 
+fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissionStatus, String> {
+    let stored = connection
+        .query_row(
+            "SELECT localWriterId, activeWriterId, storageEpoch,
+                    controlRevision, verifiedAtMs
+             FROM library_core_cloud_writer_admission WHERE singletonId = 1;",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    Ok(match stored {
+        None => CloudWriterAdmissionStatus {
+            configured: false,
+            allowed: true,
+            local_writer_id: None,
+            active_writer_id: None,
+            storage_epoch: None,
+            control_revision: None,
+            verified_at_ms: None,
+        },
+        Some((local, active, epoch, revision, verified_at_ms)) => CloudWriterAdmissionStatus {
+            configured: true,
+            allowed: local == active,
+            local_writer_id: Some(local),
+            active_writer_id: Some(active),
+            storage_epoch: Some(epoch),
+            control_revision: Some(revision),
+            verified_at_ms: Some(verified_at_ms),
+        },
+    })
+}
+
+fn require_writer_admission(connection: &Connection) -> Result<(), String> {
+    if writer_admission_status(connection)?.allowed {
+        Ok(())
+    } else {
+        Err("Another Freed Desktop currently owns writes for this Library".into())
+    }
+}
+
+#[tauri::command]
+pub(super) fn set_sqlite_library_cloud_writer_admission(
+    app: tauri::AppHandle,
+    request: SetCloudWriterAdmissionRequest,
+) -> Result<CloudWriterAdmissionStatus, String> {
+    if !validate_hex_digest(&request.local_writer_id)
+        || !validate_hex_digest(&request.active_writer_id)
+        || !validate_hex_digest(&request.storage_epoch)
+        || request.control_revision.is_empty()
+        || request.control_revision.len() > 512
+        || request.verified_at_ms < 0
+    {
+        return Err("SQLite Library cloud writer admission is invalid".into());
+    }
+    let mut connection = open_database(&app)?;
+    require_active(&connection)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO library_core_cloud_writer_admission (
+               singletonId, localWriterId, activeWriterId, storageEpoch,
+               controlRevision, verifiedAtMs
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(singletonId) DO UPDATE SET
+               localWriterId = excluded.localWriterId,
+               activeWriterId = excluded.activeWriterId,
+               storageEpoch = excluded.storageEpoch,
+               controlRevision = excluded.controlRevision,
+               verifiedAtMs = excluded.verifiedAtMs;",
+            params![
+                request.local_writer_id,
+                request.active_writer_id,
+                request.storage_epoch,
+                request.control_revision,
+                request.verified_at_ms,
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    let status = writer_admission_status(&transaction)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(status)
+}
+
+#[tauri::command]
+pub(super) fn sqlite_library_cloud_writer_admission_status(
+    app: tauri::AppHandle,
+) -> Result<CloudWriterAdmissionStatus, String> {
+    let connection = open_database(&app)?;
+    require_active(&connection)?;
+    writer_admission_status(&connection)
+}
+
 /// Countersign and atomically enroll one PWA actor under the active epoch.
 #[tauri::command]
 pub(super) fn accept_pwa_actor_enrollment_request(
@@ -1146,16 +1271,20 @@ pub(super) fn replace_sqlite_library_shell(
     request: ReplaceShellRequest,
 ) -> Result<(), String> {
     validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let connection = open_database(&app)?;
+    let mut connection = open_database(&app)?;
     require_active(&connection)?;
-    connection
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    require_writer_admission(&transaction)?;
+    transaction
         .execute(
             "UPDATE library_core_desktop_state
              SET shellJson = ?1, revision = revision + 1 WHERE singletonId = 1;",
             [request.shell_json],
         )
         .map_err(|error| error.to_string())?;
-    Ok(())
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1171,6 +1300,7 @@ pub(super) fn upsert_sqlite_library_items(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    require_writer_admission(&transaction)?;
     for encoded in &request.items_base64 {
         let item = decode_base64_json(encoded)?;
         upsert_item(&transaction, &item, request.updated_at_ms)?;
@@ -1197,6 +1327,7 @@ pub(super) fn mutate_sqlite_library_items(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    require_writer_admission(&transaction)?;
     let mut affected = 0_i64;
     let mut apply_to_id = |global_id: &str| -> Result<(), String> {
         let (set_clause, predicate, values): (&str, &str, Vec<i64>) = match request.mutation.as_str() {
@@ -2194,6 +2325,59 @@ mod tests {
         let decoded = decode_base64_json(&encoded).expect("decode item transport");
         assert_eq!(decoded, source);
         assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
+    }
+
+    #[test]
+    fn retired_cloud_writer_is_rejected_before_row_or_revision_changes() {
+        let root = temporary_root("sqlite-retired-writer");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let mut connection = open_database_at(&root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 1, ?1, 1, 1, '{}', 100, 200);",
+                ["a".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin item insert");
+        upsert_item(
+            &transaction,
+            r#"{"globalId":"rss:test","userState":{"saved":false}}"#,
+            300,
+        )
+        .expect("insert item");
+        transaction.commit().expect("commit item");
+        connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?2, ?3, 'etag-2', 400);",
+                params!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
+            )
+            .expect("record retired writer");
+
+        let transaction = connection.transaction().expect("begin rejected mutation");
+        let error = require_writer_admission(&transaction).expect_err("retired writer rejected");
+        assert!(error.contains("Another Freed Desktop"), "{error}");
+        drop(transaction);
+
+        let (saved, revision): (i64, i64) = connection
+            .query_row(
+                "SELECT item.saved, state.revision
+                 FROM library_core_feed_items AS item
+                 CROSS JOIN library_core_desktop_state AS state
+                 WHERE item.globalId = 'rss:test' AND state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read unchanged state");
+        assert_eq!((saved, revision), (0, 7));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
     }
 
     #[test]

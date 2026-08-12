@@ -51,6 +51,7 @@ import {
   readPwaIntentResultOutbox,
   reassignSqliteLibraryWriterEpoch,
   restoreSqliteLibraryBackup,
+  setSqliteLibraryCloudWriterAdmission,
   sqliteLibraryStatus,
   type SqliteLibrarySyncDescriptor,
   type SqliteLibraryAuthorityBootstrap,
@@ -221,6 +222,19 @@ function parseControl(read: LibraryCoreControlReadV1): LibraryCoreControlPointer
     return null;
   }
   return parseLibraryCoreControlPointerV1(value);
+}
+
+async function persistVerifiedWriterAdmission(input: {
+  readonly localWriterId: string;
+  readonly pointer: LibraryCoreControlPointerV1;
+  readonly revision: string;
+}): Promise<void> {
+  await setSqliteLibraryCloudWriterAdmission({
+    localWriterId: input.localWriterId,
+    activeWriterId: input.pointer.writerId,
+    storageEpoch: input.pointer.storageEpoch,
+    controlRevision: input.revision,
+  });
 }
 
 async function sha256Text(value: string): Promise<string> {
@@ -944,6 +958,11 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     throw new Error("The cloud Library has no writer to transfer");
   }
   if (pointer.writerId === loaded.currentWriterId) {
+    await persistVerifiedWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      pointer,
+      revision: controlRead.revision,
+    });
     if (
       state.writerId !== pointer.writerId
       || state.storageEpoch !== pointer.storageEpoch
@@ -1019,9 +1038,15 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     writerId: loaded.currentWriterId,
   });
   if (result.status === "conflict") {
+    const currentPointer = result.currentControlPointer ?? pointer;
+    await persistVerifiedWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      pointer: currentPointer,
+      revision: result.currentRevision ?? controlRead.revision,
+    });
     return {
       status: "ownership_required",
-      currentWriterId: result.currentControlPointer?.writerId ?? pointer.writerId,
+      currentWriterId: currentPointer.writerId,
       localWriterId: loaded.currentWriterId,
     };
   }
@@ -1030,6 +1055,12 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     lastPublishedActorDigest: await actorStateDigest(actors),
     lastPublishedRevision: descriptor.revision,
   }));
+  await setSqliteLibraryCloudWriterAdmission({
+    localWriterId: loaded.currentWriterId,
+    activeWriterId: loaded.currentWriterId,
+    storageEpoch: targetStorageEpoch,
+    controlRevision: result.revision,
+  });
   return { status: "writer_transferred", revision: descriptor.revision };
 }
 
@@ -1042,6 +1073,12 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   const loaded = await loadOrCreateCloudState(descriptor);
   let state = loaded.state;
   if (state.writerId !== loaded.currentWriterId) {
+    await setSqliteLibraryCloudWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      activeWriterId: state.writerId,
+      storageEpoch: state.storageEpoch,
+      controlRevision: "copied-local-cloud-state",
+    });
     return {
       status: "ownership_required",
       currentWriterId: state.writerId,
@@ -1068,11 +1105,26 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   const controlRead = await adapter.readControl();
   const pointer = parseControl(controlRead);
   if (pointer !== null && pointer.writerId !== state.writerId) {
+    if (controlRead.revision === null) {
+      throw new Error("Library Core control revision is missing");
+    }
+    await persistVerifiedWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      pointer,
+      revision: controlRead.revision,
+    });
     return {
       status: "ownership_required",
       currentWriterId: pointer.writerId,
       localWriterId: state.writerId,
     };
+  }
+  if (pointer !== null && controlRead.revision !== null) {
+    await persistVerifiedWriterAdmission({
+      localWriterId: loaded.currentWriterId,
+      pointer,
+      revision: controlRead.revision,
+    });
   }
   await acceptPendingPwaActorEnrollments({
     accessToken: input.accessToken,
@@ -1146,6 +1198,12 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   if (result.status !== "committed") {
     throw new Error("Library Core cloud authority changed during publication");
   }
+  await setSqliteLibraryCloudWriterAdmission({
+    localWriterId: loaded.currentWriterId,
+    activeWriterId: state.writerId,
+    storageEpoch: state.storageEpoch,
+    controlRevision: result.revision,
+  });
   state = Object.freeze({
     ...state,
     lastPublishedActorDigest: publishedActorDigest,
