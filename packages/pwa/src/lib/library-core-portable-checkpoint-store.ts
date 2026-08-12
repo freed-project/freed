@@ -13,6 +13,7 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
@@ -54,6 +55,7 @@ import {
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFinalizedTransactionV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
+  type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
@@ -2395,6 +2397,21 @@ class PwaLibraryCorePortableCheckpointStore
               if (projected) feedRows.put(projected);
             }
           }
+        } else if (member.envelope.operation_type === "feed_item_remove") {
+          if (storedRow) {
+            const projected = projectPortableFeedRow(
+              generation.generationId,
+              storedRow,
+            );
+            materializedRows.delete([
+              generation.generationId,
+              storedRow.registryKey,
+              storedRow.primaryKey,
+            ]);
+            if (projected) {
+              feedRows.delete([generation.generationId, projected.orderKey]);
+            }
+          }
         } else if (storedRow) {
           const updatedRow = assignedPortableFeedRow(
             storedRow,
@@ -3138,6 +3155,179 @@ class PwaLibraryCorePortableCheckpointStore
       materializedRows.put(updated);
       const projected = projectPortableFeedRow(selected.generationId, updated);
       if (projected) feedRows.put(projected);
+    }
+    await transactionDone(transaction);
+    this.#feedSessions.clear();
+  }
+
+  /** Sign, enqueue, and optimistically apply one FeedItem tombstone intent. */
+  async enqueueFeedItemRemove(input: {
+    readonly entityId: string;
+    readonly removedAtMs: number;
+  }): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    this.#requireAvailable();
+    if (!input.entityId) throw new TypeError("remove entity ID is required");
+    if (!Number.isSafeInteger(input.removedAtMs) || input.removedAtMs < 0) {
+      throw new TypeError("remove time must be a nonnegative integer");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        PWA_ACTOR_IDENTITIES_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const identity = generation
+      ? ((await requestResult(
+          transaction
+            .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+            .get(generation.libraryId),
+        )) as PortablePwaActorIdentityRecord | undefined)
+      : undefined;
+    const actorTip =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
+    const enrollment =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorEnrollmentRecord | undefined)
+        : undefined;
+    const activeEpochId =
+      generation?.header?.anchor_kind === "accepted_authority" &&
+      generation.header.accepted_authority !== null
+        ? generation.header.accepted_authority.epoch_id
+        : null;
+    const intentActor =
+      generation && identity && activeEpochId
+        ? ((await requestResult(
+            transaction
+              .objectStore(INTENT_ACTORS_STORE)
+              .get([generation.libraryId, activeEpochId, identity.actorId]),
+          )) as PortableIntentActorRecord | undefined)
+        : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null ||
+      !identity ||
+      !actorTip ||
+      actorTip.retired ||
+      !enrollment ||
+      enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("PWA remove intent requires an active enrolled actor");
+    }
+    const authority = generation.header.accepted_authority;
+    const actorSequence =
+      intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      intentActor?.latestOperationId ?? actorTip.acceptedOperationId;
+    const previousChainDigest =
+      intentActor?.latestActorChainDigest ?? actorTip.acceptedChainDigest;
+    const transactionId =
+      `pwa-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const member = FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: authority.library_id,
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id,
+        actor_id: identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: authority.observed_frontier,
+        hlc_wall_ms: input.removedAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: input.entityId,
+        payload: { removed_at_ms: input.removedAtMs },
+        created_at_ms: input.removedAtMs,
+      } satisfies FeedItemRemoveTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1(
+      [member],
+      previousChainDigest,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: libraryCoreDigest,
+      signOperation: async (message) =>
+        lowerHex(
+          await this.#subtle.sign(
+            { name: "Ed25519" },
+            identity.actorPrivateKey,
+            exactArrayBuffer(message),
+          ),
+        ) as LibraryCoreEd25519SignatureHex,
+    });
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.applySelectedFeedItemRemove(input.entityId);
+    return receipt;
+  }
+
+  private async applySelectedFeedItemRemove(entityId: string): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE, FEED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA remove intent has no selected Library generation");
+    }
+    const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+    let removed = false;
+    for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
+      const key = [
+        selected.generationId,
+        registryKey,
+        canonicalStringKey(entityId),
+      ];
+      const stored = (await requestResult(materializedRows.get(key))) as
+        PortableMaterializedRowRecord | undefined;
+      if (!stored) continue;
+      const projected = projectPortableFeedRow(selected.generationId, stored);
+      materializedRows.delete(key);
+      if (projected) {
+        feedRows.delete([selected.generationId, projected.orderKey]);
+      }
+      removed = true;
+    }
+    if (!removed) {
+      transaction.abort();
+      throw new Error("PWA remove intent targets an unavailable FeedItem");
     }
     await transactionDone(transaction);
     this.#feedSessions.clear();

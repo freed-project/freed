@@ -1,6 +1,7 @@
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
   type FeedItemUserStateAssignmentOperationTypeV1,
@@ -44,6 +45,8 @@ export interface FeedItemReadAssignmentTransactionMemberInputV1 {
 }
 
 export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -99,9 +102,35 @@ export interface FeedItemUserStateAssignmentTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface FeedItemRemoveTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "feed_item_remove";
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: Readonly<{ removed_at_ms: number }>;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemReadAssignmentTransactionMemberBodyV1
-  | FeedItemUserStateAssignmentTransactionMemberBodyV1;
+  | FeedItemUserStateAssignmentTransactionMemberBodyV1
+  | FeedItemRemoveTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -397,6 +426,10 @@ function constructFeedItemTransactionMember(
     | {
         readonly operationType: FeedItemUserStateAssignmentOperationTypeV1;
         readonly validatePayload: typeof FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+      }
+    | {
+        readonly operationType: "feed_item_remove";
+        readonly validatePayload: typeof FEED_ITEM_REMOVE_PAYLOAD_SCHEMA.validate;
       },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
@@ -574,6 +607,16 @@ function constructFeedItemUserStateAssignmentTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1>;
 }
 
+function constructFeedItemRemoveTransactionMember(
+  input: FeedItemRemoveTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemRemoveTransactionMemberBodyV1> {
+  return constructFeedItemTransactionMember(input, dependencies, {
+    operationType: "feed_item_remove",
+    validatePayload: FEED_ITEM_REMOVE_PAYLOAD_SCHEMA.validate,
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemRemoveTransactionMemberBodyV1>;
+}
+
 /**
  * Closed construction schema for the first dormant Library Core operation.
  *
@@ -621,3 +664,15 @@ export const FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
   userStateAssignmentTransactionMemberSchema("feed_item_archive_assignment");
 export const FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
   userStateAssignmentTransactionMemberSchema("feed_item_like_assignment");
+
+export const FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "feed_item_remove_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_remove",
+  entityType: "FeedItem",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructFeedItemRemoveTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  FeedItemRemoveTransactionMemberInputV1,
+  FeedItemRemoveTransactionMemberBodyV1
+>;

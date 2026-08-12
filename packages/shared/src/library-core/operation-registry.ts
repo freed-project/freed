@@ -9,6 +9,7 @@ import {
 } from "./operation-materializer-contracts.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
@@ -33,6 +34,7 @@ import {
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
@@ -374,6 +376,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_remove: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
+    transactionMemberSchema: FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["removeItem"],
     legacyWorkerRequests: ["REMOVE_FEED_ITEM"],
   }),

@@ -111,6 +111,7 @@ import { pinReaderItemInPwa } from "./reader-cache";
 import {
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
+  enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUserStateToggle,
@@ -713,7 +714,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:removeItem",
       (state) => projectRemoveItem(state, id),
-      () => docRemoveFeedItem(id),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreFeedItemRemove(id)
+          : docRemoveFeedItem(id),
+      { allowLibraryCoreIntent: true },
     );
   },
 

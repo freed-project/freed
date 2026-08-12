@@ -353,6 +353,20 @@ export async function enqueuePwaLibraryCoreUserStateAssignment(
   );
 }
 
+/** Queue one signed FeedItem removal and remove it from local IndexedDB. */
+export async function enqueuePwaLibraryCoreFeedItemRemove(
+  globalId: string,
+): Promise<void> {
+  if (!globalId) throw new TypeError("remove entity ID is required");
+  await getPortableStore().enqueueFeedItemRemove({
+    entityId: globalId,
+    removedAtMs: Date.now(),
+  });
+  if (searchIndex && lastState) {
+    await searchIndex.removeItems(lastState.searchCorpusVersion, [globalId]);
+  }
+}
+
 async function enqueuePwaLibraryCoreUserStateAssignments(
   globalIds: readonly string[],
   field: FeedItemUserStateAssignmentFieldV1,

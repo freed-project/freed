@@ -8,6 +8,7 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
@@ -410,7 +411,9 @@ export async function verifyLibraryCoreOperationTransactionV1(
           ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
           : envelope.operation_type === "feed_item_like_assignment"
             ? FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-        : null;
+            : envelope.operation_type === "feed_item_remove"
+              ? FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA
+              : null;
     if (schema === null) {
       throw new TypeError("operation envelope has an unsupported operation_type");
     }

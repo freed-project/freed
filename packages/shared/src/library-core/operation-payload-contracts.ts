@@ -4,6 +4,10 @@ export interface FeedItemReadAssignmentPayloadV1 {
   readonly read_at_ms: number;
 }
 
+export interface FeedItemRemovePayloadV1 {
+  readonly removed_at_ms: number;
+}
+
 export const FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS = Object.freeze([
   "saved",
   "archived",
@@ -48,6 +52,7 @@ export interface LibraryCoreOperationPayloadSchema<
 }
 
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
+const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 function invalid<T>(reason: string): LibraryCorePayloadValidationResult<T> {
@@ -89,6 +94,38 @@ function validateFeedItemReadAssignmentPayload(
   return {
     ok: true,
     value: Object.freeze({ read_at_ms: descriptor.value }),
+  };
+}
+
+function validateFeedItemRemovePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemRemovePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== FEED_ITEM_REMOVE_KEYS[0]) {
+    return invalid("payload must contain only removed_at_ms");
+  }
+  const removedAt = Object.getOwnPropertyDescriptor(value, "removed_at_ms");
+  if (
+    removedAt === undefined ||
+    !removedAt.enumerable ||
+    !("value" in removedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(removedAt.value)
+  ) {
+    return invalid("removed_at_ms must be a nonnegative safe integer");
+  }
+  return {
+    ok: true,
+    value: Object.freeze({ removed_at_ms: removedAt.value }),
   };
 }
 
@@ -152,6 +189,17 @@ export const FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "feed_item_read_assignment",
   FeedItemReadAssignmentPayloadV1
+>;
+
+export const FEED_ITEM_REMOVE_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "feed_item_remove_payload_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_remove",
+  canonicalKeys: FEED_ITEM_REMOVE_KEYS,
+  validate: validateFeedItemRemovePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "feed_item_remove",
+  FeedItemRemovePayloadV1
 >;
 
 /** Closed payload for idempotent local PWA user-state assignments. */
