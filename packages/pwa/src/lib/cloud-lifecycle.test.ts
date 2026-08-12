@@ -109,17 +109,22 @@ describe("PWA cloud lifecycle", () => {
       "an invalid expiry",
       JSON.stringify({ accessToken: "metadata-token", expiresAt: "never" }),
     ],
-  ])("fails closed for %s and preserves the exact cloud credential record", async (_case, raw) => {
-    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
-    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+  ])(
+    "fails closed for %s and preserves the exact cloud credential record",
+    async (_case, raw) => {
+      localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+      localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
 
-    const { getCloudToken, getValidCloudToken } = await import("./sync");
+      const { getCloudToken, getValidCloudToken } = await import("./sync");
 
-    expect(getCloudToken("gdrive")).toBeNull();
-    await expect(getValidCloudToken("gdrive")).resolves.toBeNull();
-    expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
-    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("legacy-token");
-  });
+      expect(getCloudToken("gdrive")).toBeNull();
+      await expect(getValidCloudToken("gdrive")).resolves.toBeNull();
+      expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
+      expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe(
+        "legacy-token",
+      );
+    },
+  );
 
   it("lets an explicit reconnect replace a corrupt cloud credential record", async () => {
     const raw = "{corrupt-cloud-credentials";
@@ -134,8 +139,12 @@ describe("PWA cloud lifecycle", () => {
     });
 
     expect(getCloudToken("gdrive")).toBe("replacement-token");
-    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("replacement-token");
-    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}")).toMatchObject({
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe(
+      "replacement-token",
+    );
+    expect(
+      JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}"),
+    ).toMatchObject({
       accessToken: "replacement-token",
       refreshToken: "replacement-refresh",
     });
@@ -155,6 +164,22 @@ describe("PWA cloud lifecycle", () => {
     expect(gdriveStartPollLoopMock).not.toHaveBeenCalled();
     expect(gdriveUploadSafeMock).not.toHaveBeenCalled();
     expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
+  });
+
+  it("does not wake Automerge or the LAN relay while IndexedDB Library Core is active", async () => {
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "1");
+    const socket = vi.fn();
+    vi.stubGlobal("WebSocket", socket);
+
+    const sync = await import("./sync");
+    sync.storeRelayUrl("wss://legacy-relay.example.test");
+    sync.connect(sync.getStoredRelayUrl()!);
+    sync.broadcastDoc();
+
+    expect(socket).not.toHaveBeenCalled();
+    expect(initDocMock).not.toHaveBeenCalled();
+    expect(getDocBinaryMock).not.toHaveBeenCalled();
+    expect(subscribeMock).not.toHaveBeenCalled();
   });
 
   it("publishes an offline PWA change once when the remote history lacks it", async () => {
@@ -230,17 +255,24 @@ describe("PWA cloud lifecycle", () => {
     const start = sync.startCloudSync("gdrive", "expired");
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     sync.stopCloudSync();
-    refresh.resolve(new Response(JSON.stringify({
-      access_token: "refreshed",
-      expires_in: 3600,
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
+    refresh.resolve(
+      new Response(
+        JSON.stringify({
+          access_token: "refreshed",
+          expires_in: 3600,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
     await start;
 
     expect(gdriveDownloadLatestMock).not.toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}")).toMatchObject({
+    expect(
+      JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}"),
+    ).toMatchObject({
       accessToken: "expired",
       refreshToken: "refresh",
     });
@@ -260,13 +292,18 @@ describe("PWA cloud lifecycle", () => {
     const start = sync.startCloudSync("gdrive", "expired");
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     sync.clearCloudSync("gdrive");
-    refresh.resolve(new Response(JSON.stringify({
-      access_token: "late-refresh",
-      expires_in: 3600,
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
+    refresh.resolve(
+      new Response(
+        JSON.stringify({
+          access_token: "late-refresh",
+          expires_in: 3600,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
     await start;
 
     expect(localStorage.getItem("freed_cloud_token_gdrive")).toBeNull();
@@ -291,20 +328,31 @@ describe("PWA cloud lifecycle", () => {
       accessToken: "new-dropbox",
       expiresAt: Date.now() + 60_000,
     });
-    refresh.resolve(new Response(JSON.stringify({
-      access_token: "late-google",
-      expires_in: 3600,
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
+    refresh.resolve(
+      new Response(
+        JSON.stringify({
+          access_token: "late-google",
+          expires_in: 3600,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
     await start;
 
     expect(localStorage.getItem("freed_cloud_provider")).toBe("dropbox");
-    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_dropbox") ?? "{}")).toMatchObject({
+    expect(
+      JSON.parse(
+        localStorage.getItem("freed_cloud_token_meta_dropbox") ?? "{}",
+      ),
+    ).toMatchObject({
       accessToken: "new-dropbox",
     });
-    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}")).toMatchObject({
+    expect(
+      JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}"),
+    ).toMatchObject({
       accessToken: "expired-google",
       refreshToken: "google-refresh",
     });
@@ -319,7 +367,9 @@ describe("PWA cloud lifecycle", () => {
     await sync.clearStoredCloudDataForFactoryReset(true);
 
     expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
-    expect(dropboxDeleteFileMock).toHaveBeenCalledWith("selected-dropbox-token");
+    expect(dropboxDeleteFileMock).toHaveBeenCalledWith(
+      "selected-dropbox-token",
+    );
     expect(sync.getCloudToken("gdrive")).toBe("unselected-gdrive-token");
     expect(sync.getCloudToken("dropbox")).toBeNull();
     expect(sync.getCloudProvider()).toBeNull();
@@ -328,7 +378,10 @@ describe("PWA cloud lifecycle", () => {
   it("does not contact a provider for a corrupt stored provider selection", async () => {
     localStorage.setItem("freed_cloud_provider", "not-a-cloud-provider");
     localStorage.setItem("freed_cloud_token_gdrive", "preserved-gdrive-token");
-    localStorage.setItem("freed_cloud_token_dropbox", "preserved-dropbox-token");
+    localStorage.setItem(
+      "freed_cloud_token_dropbox",
+      "preserved-dropbox-token",
+    );
     const sync = await import("./sync");
 
     expect(sync.getCloudProvider()).toBeNull();
@@ -345,18 +398,22 @@ describe("PWA cloud lifecycle", () => {
     const sync = await import("./sync");
     sync.storeCloudToken("dropbox", "dropbox-retry-token");
     sync.storeCloudToken("gdrive", "gdrive-retry-token");
-    gdriveDeleteFileMock.mockRejectedValueOnce(new Error("Drive deletion failed"));
-
-    await expect(sync.clearStoredCloudDataForFactoryReset(true)).rejects.toThrow(
-      "Drive deletion failed",
+    gdriveDeleteFileMock.mockRejectedValueOnce(
+      new Error("Drive deletion failed"),
     );
+
+    await expect(
+      sync.clearStoredCloudDataForFactoryReset(true),
+    ).rejects.toThrow("Drive deletion failed");
 
     expect(gdriveDeleteFileMock).toHaveBeenCalledWith("gdrive-retry-token");
     expect(dropboxDeleteFileMock).not.toHaveBeenCalled();
     expect(sync.getCloudToken("gdrive")).toBe("gdrive-retry-token");
     expect(sync.getCloudToken("dropbox")).toBe("dropbox-retry-token");
     expect(sync.getCloudProvider()).toBe("gdrive");
-    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBe("1");
+    expect(
+      localStorage.getItem("freed_factory_reset_cloud_cleanup_pending"),
+    ).toBe("1");
 
     vi.resetModules();
     const reloadedSync = await import("./sync");
@@ -367,7 +424,9 @@ describe("PWA cloud lifecycle", () => {
     expect(gdriveDeleteFileMock).toHaveBeenCalledTimes(2);
     expect(reloadedSync.getCloudToken("gdrive")).toBeNull();
     expect(reloadedSync.getCloudToken("dropbox")).toBe("dropbox-retry-token");
-    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBe("1");
+    expect(
+      localStorage.getItem("freed_factory_reset_cloud_cleanup_pending"),
+    ).toBe("1");
   });
 
   it("lets an explicit reconnect supersede a failed-cleanup barrier", async () => {
@@ -377,7 +436,9 @@ describe("PWA cloud lifecycle", () => {
     sync.storeCloudToken("gdrive", "new-explicit-token");
     await sync.startCloudSync("gdrive", "new-explicit-token");
 
-    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBeNull();
+    expect(
+      localStorage.getItem("freed_factory_reset_cloud_cleanup_pending"),
+    ).toBeNull();
     expect(gdriveDownloadLatestMock).toHaveBeenCalledOnce();
   });
 
@@ -385,12 +446,15 @@ describe("PWA cloud lifecycle", () => {
     const sync = await import("./sync");
     sync.storeCloudToken("gdrive", "new-generation-token");
     sync.storeRelayUrl("wss://relay.example.test");
-    localStorage.setItem("freed_pwa_factory_reset_tombstone", JSON.stringify({
-      version: 1,
-      resetId: "reset-one",
-      generation: 1,
-      startedAt: Date.now(),
-    }));
+    localStorage.setItem(
+      "freed_pwa_factory_reset_tombstone",
+      JSON.stringify({
+        version: 1,
+        resetId: "reset-one",
+        generation: 1,
+        startedAt: Date.now(),
+      }),
+    );
     localStorage.setItem("freed_pwa_installation_generation", "1");
 
     expect(() => sync.clearCloudSync("gdrive")).toThrow(
@@ -429,7 +493,8 @@ describe("PWA cloud lifecycle", () => {
 
       const deleteFile = sync.deleteCloudFile(provider, "token");
       await Promise.resolve();
-      const deleteMock = provider === "gdrive" ? gdriveDeleteFileMock : dropboxDeleteFileMock;
+      const deleteMock =
+        provider === "gdrive" ? gdriveDeleteFileMock : dropboxDeleteFileMock;
       expect(deleteMock).not.toHaveBeenCalled();
 
       activeUpload.resolve(provider === "gdrive" ? uploadResult : undefined);
@@ -437,7 +502,8 @@ describe("PWA cloud lifecycle", () => {
       expect(deleteMock).toHaveBeenCalledTimes(1);
 
       await vi.runAllTimersAsync();
-      const uploadMock = provider === "gdrive" ? gdriveUploadSafeMock : dropboxUploadSafeMock;
+      const uploadMock =
+        provider === "gdrive" ? gdriveUploadSafeMock : dropboxUploadSafeMock;
       expect(uploadMock).toHaveBeenCalledTimes(1);
     },
   );

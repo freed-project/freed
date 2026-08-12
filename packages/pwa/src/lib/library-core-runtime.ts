@@ -13,7 +13,6 @@ import {
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateToggleKindV1,
   type LibraryCoreOperationInstanceId,
-  type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type {
@@ -296,11 +295,17 @@ export async function readPwaLibraryCoreItemDetail(
 
 function supportsPortableFeedFilter(filter: FilterOptions): boolean {
   const normalized = normalizeLibraryCoreFeedBrowseFilterV1(filter);
-  return !normalized.archivedOnly && normalized.authorId === null &&
-    normalized.feedUrl === null && normalized.platform === null &&
-    !normalized.savedOnly && !normalized.showHidden &&
-    normalized.signals.length === 0 && normalized.socialContentFilter === "all" &&
-    normalized.tags.length === 0;
+  return (
+    !normalized.archivedOnly &&
+    normalized.authorId === null &&
+    normalized.feedUrl === null &&
+    normalized.platform === null &&
+    !normalized.savedOnly &&
+    !normalized.showHidden &&
+    normalized.signals.length === 0 &&
+    normalized.socialContentFilter === "all" &&
+    normalized.tags.length === 0
+  );
 }
 
 /** Open the complete ordinary feed directly from the selected IndexedDB generation. */
@@ -308,7 +313,9 @@ export async function openPwaLibraryCoreFeedReader(
   filter: FilterOptions,
 ): Promise<BoundedFeedReader> {
   if (!supportsPortableFeedFilter(filter)) {
-    throw new Error("This SQLite Library filter does not have a bounded PWA reader yet");
+    throw new Error(
+      "This SQLite Library filter does not have a bounded PWA reader yet",
+    );
   }
   const store = getPortableStore();
   const readerSessionId = crypto.randomUUID();
@@ -401,7 +408,9 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   const store = getPortableStore();
   const acceptedAuthority = await store.readSelectedAcceptedAuthorityState();
   if (acceptedAuthority === null) {
-    throw new Error("Imported SQLite Library checkpoint has no accepted authority");
+    throw new Error(
+      "Imported SQLite Library checkpoint has no accepted authority",
+    );
   }
   const enrollments = await discoverGoogleDriveLibraryCoreActorEnrollmentsV1({
     accessToken: input.accessToken,
@@ -426,7 +435,8 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     await store.recordPwaActorEnrollmentRequestPublication({
       actorId: enrollment.actorId,
       authorityStateDigest: enrollment.authorityStateDigest,
-      libraryId: enrollment.acceptedAuthorityState.library_id as unknown as LibraryCoreOperationInstanceId,
+      libraryId: enrollment.acceptedAuthorityState
+        .library_id as unknown as LibraryCoreOperationInstanceId,
       reference,
     });
   }
@@ -497,18 +507,23 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     if (resultHead.epoch_id !== pointer.storageEpoch) {
       throw new Error("PWA result head belongs to a retired writer epoch");
     }
-    const segments = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
-      accessToken: input.accessToken,
-      actorId: actor.actorId,
-      epochId: pointer.storageEpoch,
-      libraryId: pointer.libraryId,
-      signal: input.signal,
-    });
+    const discoveredSegments =
+      await discoverGoogleDriveLibraryCoreResultSegmentsV1({
+        accessToken: input.accessToken,
+        actorId: actor.actorId,
+        epochId: pointer.storageEpoch,
+        libraryId: pointer.libraryId,
+        signal: input.signal,
+      });
+    const cursor = await store.readResultImportCursor(actor);
+    const segments = discoveredSegments.filter(
+      (segment) => segment.lastResultSequence >= cursor.nextResultSequence,
+    );
     if (segments.length > MAXIMUM_RESULT_SEGMENTS_PER_SYNC) {
-      throw new Error("PWA result import exceeded its sync bound");
+      throw new Error("PWA pending result import exceeded its sync bound");
     }
-    let nextResultSequence = 1;
-    let previousSegmentDigest: LibraryCoreLowercaseHex64 | null = null;
+    let nextResultSequence = cursor.nextResultSequence;
+    let previousSegmentDigest = cursor.latestSegmentDigest;
     for (const segment of segments) {
       if (segment.firstResultSequence !== nextResultSequence) {
         throw new Error("PWA result segment chain has a gap or overlap");
@@ -529,8 +544,8 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       if (nextResultSequence >= resultHead.next_result_sequence) break;
     }
     if (
-      nextResultSequence !== resultHead.next_result_sequence
-      || previousSegmentDigest !== resultHead.latest_segment_digest
+      nextResultSequence !== resultHead.next_result_sequence ||
+      previousSegmentDigest !== resultHead.latest_segment_digest
     ) {
       throw new Error("PWA result objects do not match the actor result head");
     }
@@ -558,20 +573,25 @@ registerPwaFactoryResetQuiesceHandler(
     await searchIndex?.close();
     searchIndex = null;
     lastState = null;
-    const deleteDatabase = (databaseName: string) => new Promise<void>((resolve, reject) => {
-      const request = globalThis.indexedDB.deleteDatabase(databaseName);
-      request.addEventListener("success", () => resolve(), { once: true });
-      request.addEventListener(
-        "error",
-        () => reject(request.error ?? new Error("SQLite Library reset failed")),
-        { once: true },
-      );
-      request.addEventListener(
-        "blocked",
-        () => reject(new Error("SQLite Library reset was blocked by another tab")),
-        { once: true },
-      );
-    });
+    const deleteDatabase = (databaseName: string) =>
+      new Promise<void>((resolve, reject) => {
+        const request = globalThis.indexedDB.deleteDatabase(databaseName);
+        request.addEventListener("success", () => resolve(), { once: true });
+        request.addEventListener(
+          "error",
+          () =>
+            reject(request.error ?? new Error("SQLite Library reset failed")),
+          { once: true },
+        );
+        request.addEventListener(
+          "blocked",
+          () =>
+            reject(
+              new Error("SQLite Library reset was blocked by another tab"),
+            ),
+          { once: true },
+        );
+      });
     await deleteDatabase(DATABASE_NAME);
     await deleteDatabase(SEARCH_DATABASE_NAME);
   },

@@ -2,27 +2,44 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockDocAddStubItem = vi.fn(async () => undefined);
 
-vi.mock("./automerge", () => ({
+vi.mock("./legacy-automerge-runtime", () => ({
   docAddStubItem: mockDocAddStubItem,
 }));
 
 vi.mock("@freed/capture-save/normalize", () => ({
-  hashSavedUrl: (url: string) => url === "https://example.com/article" ? "abc123" : "stub123",
+  hashSavedUrl: (url: string) =>
+    url === "https://example.com/article" ? "abc123" : "stub123",
 }));
 
 describe("saveUrlInPwa", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
+  });
+
+  it("does not wake the legacy writer while SQLite Library Core is active", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    const { saveUrlInPwa } = await import("./save-url");
+
+    await expect(saveUrlInPwa("https://example.com/article")).rejects.toThrow(
+      "SQLite Library intent is active",
+    );
+    expect(mockDocAddStubItem).not.toHaveBeenCalled();
   });
 
   it("writes a saved stub without foreground article fetching", async () => {
     vi.stubGlobal("fetch", vi.fn());
     const { saveUrlInPwa } = await import("./save-url");
 
-    const result = await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
+    const result = await saveUrlInPwa("https://example.com/article", {
+      tags: ["research"],
+    });
 
     expect(fetch).not.toHaveBeenCalled();
-    expect(mockDocAddStubItem).toHaveBeenCalledWith("https://example.com/article", ["research"]);
+    expect(mockDocAddStubItem).toHaveBeenCalledWith(
+      "https://example.com/article",
+      ["research"],
+    );
     expect(result).toEqual({ globalId: "saved:abc123" });
     vi.unstubAllGlobals();
   });
@@ -44,7 +61,9 @@ describe("saveUrlInPwa", () => {
   });
 
   it("propagates Automerge persistence failures", async () => {
-    mockDocAddStubItem.mockRejectedValueOnce(new Error("Automerge unavailable"));
+    mockDocAddStubItem.mockRejectedValueOnce(
+      new Error("Automerge unavailable"),
+    );
     const { saveUrlInPwa } = await import("./save-url");
 
     await expect(saveUrlInPwa("https://example.com/article")).rejects.toThrow(

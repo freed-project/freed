@@ -1,10 +1,9 @@
 /**
  * Global app state management with Zustand
  *
- * PWA version - uses Automerge for persistence and syncs with desktop.
- * Hydration (CRDT → plain JS) now runs in the Automerge Web Worker, so the
- * subscriber callback receives already-processed DocState — no O(n) work
- * or WASM calls on the main thread.
+ * PWA version. IndexedDB Library Core is the active store. The lazy legacy
+ * facade remains only for rollback and mutations that have not reached the
+ * replacement intent protocol yet.
  */
 
 import { create } from "zustand";
@@ -73,8 +72,6 @@ import {
   restoreReplacedDeviceAccountGraphPositions,
 } from "@freed/ui/lib/device-graph-layout";
 import {
-  initDoc,
-  subscribe,
   docAddFeedItems,
   docAddSampleLibraryData,
   docAddRssFeed,
@@ -107,10 +104,13 @@ import {
   docRemoveAccount,
   docRemovePerson,
   docLogReachOut,
-} from "./automerge";
-import type { DocState } from "./automerge";
+} from "./legacy-automerge-runtime";
+import { loadLegacyAutomerge } from "./legacy-automerge-runtime";
+import type { DocState } from "./automerge-types";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
+  enqueuePwaLibraryCoreReadAssignments,
+  enqueuePwaLibraryCoreUserStateToggle,
   initializePwaLibraryCoreState,
   isPwaLibraryCoreEnabled,
   subscribePwaLibraryCoreState,
@@ -188,9 +188,11 @@ function optimisticMutationTestFailure(source: string): Error | null {
   return message ? new Error(message) : null;
 }
 
-function assertPwaStoreWritable(options: {
-  readonly allowLibraryCoreIntent?: boolean;
-} = {}): void {
+function assertPwaStoreWritable(
+  options: {
+    readonly allowLibraryCoreIntent?: boolean;
+  } = {},
+): void {
   if (storeQuiesced) throw new Error("PWA store is quiesced for factory reset");
   assertPwaRuntimeCurrent();
   if (isPwaLibraryCoreEnabled() && options.allowLibraryCoreIntent !== true) {
@@ -433,7 +435,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           });
           return;
         }
-        const state = await initDoc();
+        const legacyAutomerge = await loadLegacyAutomerge();
+        const state = await legacyAutomerge.initDoc();
         runtimeLifecycle.assertCurrent();
         if (storeQuiesced)
           throw new Error("PWA store is quiesced for factory reset");
@@ -447,39 +450,43 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Reuse count map references when values are unchanged to avoid
         // re-rendering sidebar selectors on unrelated mutations.
         documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribe((next: DocState, event) => {
-          if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
-          if (
-            event.mutation === "MERGE_DOC" ||
-            event.mutation === "REMOVE_PERSON" ||
-            event.mutation === "REMOVE_ACCOUNT"
-          ) {
-            pruneDeviceGraphLayout(next.persons, next.accounts);
-          }
-          const prev = get();
-          const merged = {
-            ...next,
-          } as Partial<AppState>;
-          if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
-            merged.feedUnreadCounts = prev.feedUnreadCounts;
-          if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
-            merged.feedTotalCounts = prev.feedTotalCounts;
-          if (
-            shallowEqualRecord(
-              next.unreadCountByPlatform,
-              prev.unreadCountByPlatform,
+        documentSubscriptionTeardown = legacyAutomerge.subscribe(
+          (next: DocState, event) => {
+            if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
+            if (
+              event.mutation === "MERGE_DOC" ||
+              event.mutation === "REMOVE_PERSON" ||
+              event.mutation === "REMOVE_ACCOUNT"
+            ) {
+              pruneDeviceGraphLayout(next.persons, next.accounts);
+            }
+            const prev = get();
+            const merged = {
+              ...next,
+            } as Partial<AppState>;
+            if (
+              shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts)
             )
-          )
-            merged.unreadCountByPlatform = prev.unreadCountByPlatform;
-          if (
-            shallowEqualRecord(
-              next.itemCountByPlatform,
-              prev.itemCountByPlatform,
+              merged.feedUnreadCounts = prev.feedUnreadCounts;
+            if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
+              merged.feedTotalCounts = prev.feedTotalCounts;
+            if (
+              shallowEqualRecord(
+                next.unreadCountByPlatform,
+                prev.unreadCountByPlatform,
+              )
             )
-          )
-            merged.itemCountByPlatform = prev.itemCountByPlatform;
-          set(merged);
-        });
+              merged.unreadCountByPlatform = prev.unreadCountByPlatform;
+            if (
+              shallowEqualRecord(
+                next.itemCountByPlatform,
+                prev.itemCountByPlatform,
+              )
+            )
+              merged.itemCountByPlatform = prev.itemCountByPlatform;
+            set(merged);
+          },
+        );
 
         set({
           ...state,
@@ -537,7 +544,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:readState",
       (state) => projectMarkItemsAsRead(state, [id]),
-      () => docMarkAsRead(id),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreReadAssignments([id])
+          : docMarkAsRead(id),
       { allowLibraryCoreIntent: true, recordFailure: false },
     );
   },
@@ -563,7 +573,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         set,
         "pwa:readState",
         (state) => projectMarkItemsAsRead(state, nextIds),
-        () => docMarkItemsAsRead(nextIds),
+        () =>
+          isPwaLibraryCoreEnabled()
+            ? enqueuePwaLibraryCoreReadAssignments(nextIds)
+            : docMarkItemsAsRead(nextIds),
         { allowLibraryCoreIntent: true, recordFailure: false },
       );
       recordReadStateInfo(
@@ -606,7 +619,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleSaved",
       (state) => projectToggleSaved(state, id),
-      () => docToggleSaved(id),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreUserStateToggle(id, "saved")
+          : docToggleSaved(id),
+      { allowLibraryCoreIntent: true },
     );
     if (shouldPin) {
       void pinReaderItemInPwa(item).catch((error) => {
@@ -625,8 +642,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleArchived",
       (state) => projectToggleArchived(state, id),
-      () => docToggleArchived(id),
-      { waitForPersistence: false },
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreUserStateToggle(id, "archived")
+          : docToggleArchived(id),
+      { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
 
@@ -646,8 +666,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleLiked",
       (state) => projectToggleLiked(state, id),
-      () => docToggleLiked(id),
-      { waitForPersistence: false },
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreUserStateToggle(id, "liked")
+          : docToggleLiked(id),
+      { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
 

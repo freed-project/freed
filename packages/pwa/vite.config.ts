@@ -1,33 +1,35 @@
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
-import { VitePWA } from 'vite-plugin-pwa'
-import { realpathSync } from 'fs'
-import { fileURLToPath } from 'url'
-import pkg from './package.json' with { type: 'json' }
-import { getBuildMetadata } from '../../scripts/lib/build-metadata.mjs'
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
+import { VitePWA } from "vite-plugin-pwa";
+import { realpathSync } from "fs";
+import { fileURLToPath } from "url";
+import pkg from "./package.json" with { type: "json" };
+import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
 const src = (name: string) =>
-  fileURLToPath(new URL(`../${name}/src`, import.meta.url))
+  fileURLToPath(new URL(`../${name}/src`, import.meta.url));
 
-const workspaceRoot = fileURLToPath(new URL('../..', import.meta.url))
-const workspaceNodeModules = fileURLToPath(new URL('../../node_modules', import.meta.url))
+const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
+const workspaceNodeModules = fileURLToPath(
+  new URL("../../node_modules", import.meta.url),
+);
 const fsAllow = [
   workspaceRoot,
   workspaceNodeModules,
   (() => {
     try {
-      return realpathSync(workspaceNodeModules)
+      return realpathSync(workspaceNodeModules);
     } catch {
-      return workspaceNodeModules
+      return workspaceNodeModules;
     }
   })(),
-]
+];
 
-const buildMetadata = getBuildMetadata(pkg.version)
+const buildMetadata = getBuildMetadata(pkg.version);
 
 export default defineConfig({
   define: {
@@ -39,18 +41,18 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@freed/capture-save': src('capture-save'),
-      '@freed/ui': src('ui'),
-      '@freed/shared': src('shared'),
-      '@freed/sync': src('sync'),
+      "@freed/capture-save": src("capture-save"),
+      "@freed/ui": src("ui"),
+      "@freed/shared": src("shared"),
+      "@freed/sync": src("sync"),
     },
   },
   worker: {
-    format: 'es',
+    format: "es",
     plugins: () => [wasm(), topLevelAwait()],
   },
   optimizeDeps: {
-    exclude: ['maplibre-gl/dist/maplibre-gl-worker.mjs'],
+    exclude: ["maplibre-gl/dist/maplibre-gl-worker.mjs"],
   },
   server: {
     fs: {
@@ -58,7 +60,7 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'esnext',
+    target: "esnext",
   },
 
   plugins: [
@@ -70,8 +72,8 @@ export default defineConfig({
       // so the user sees a toast and chooses when to reload. The app checks
       // periodically in the background (see pwa-updater.ts) so long-running
       // sessions are not skipped.
-      registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'icons/*.png'],
+      registerType: "prompt",
+      includeAssets: ["favicon.svg", "icons/*.png"],
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
@@ -79,6 +81,7 @@ export default defineConfig({
         // worker available on demand, but do not make every installation
         // download and precache its worker and WASM payloads.
         globIgnores: [
+          "**/automerge-*.js",
           "**/automerge.worker-*.js",
           "**/automerge_wasm_bg-*.wasm",
         ],
@@ -87,17 +90,17 @@ export default defineConfig({
             // API routes must bypass the service worker entirely — Workbox's
             // NetworkFirst strategy doesn't handle POST requests correctly and
             // will silently hang the fetch (no network request, no error).
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-            handler: 'NetworkOnly',
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+            handler: "NetworkOnly",
           },
           {
             // Article HTML cached by the PWA reader (Layer 2 for PWA devices).
             // CacheFirst: once cached, served offline indefinitely up to 30 days.
             // The PWA reader writes to this cache after a successful live fetch.
-            urlPattern: ({ url }) => url.pathname.startsWith('/content/'),
-            handler: 'CacheFirst',
+            urlPattern: ({ url }) => url.pathname.startsWith("/content/"),
+            handler: "CacheFirst",
             options: {
-              cacheName: 'freed-articles-v1',
+              cacheName: "freed-articles-v1",
               expiration: {
                 maxEntries: 5_000,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
@@ -107,10 +110,11 @@ export default defineConfig({
           {
             // Saved reader HTML is pinned by user intent and has no time based
             // expiration. Manual cache clearing can still remove it.
-            urlPattern: ({ url }) => url.pathname.startsWith('/pinned-content/'),
-            handler: 'CacheFirst',
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith("/pinned-content/"),
+            handler: "CacheFirst",
             options: {
-              cacheName: 'freed-articles-pinned-v1',
+              cacheName: "freed-articles-pinned-v1",
               expiration: {
                 maxEntries: 10_000,
               },
@@ -119,18 +123,18 @@ export default defineConfig({
           {
             // Automerge relay sync -- NetworkFirst so we always attempt live sync
             // but fall back to last cached state when offline.
-            urlPattern: ({ url }) => url.pathname === '/sync',
-            handler: 'NetworkFirst',
+            urlPattern: ({ url }) => url.pathname === "/sync",
+            handler: "NetworkFirst",
             options: {
-              cacheName: 'freed-sync-v1',
+              cacheName: "freed-sync-v1",
               networkTimeoutSeconds: 5,
             },
           },
           {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
-            handler: 'CacheFirst',
+            handler: "CacheFirst",
             options: {
-              cacheName: 'freed-images',
+              cacheName: "freed-images",
               expiration: {
                 maxEntries: 500,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
@@ -142,9 +146,9 @@ export default defineConfig({
             // Not precached because automerge emits a duplicate web/ WASM
             // via low_level.js that's never actually fetched at runtime.
             urlPattern: /\.wasm$/i,
-            handler: 'CacheFirst',
+            handler: "CacheFirst",
             options: {
-              cacheName: 'freed-wasm',
+              cacheName: "freed-wasm",
               expiration: {
                 maxEntries: 5,
                 maxAgeSeconds: 60 * 60 * 24 * 365,
@@ -155,9 +159,9 @@ export default defineConfig({
             // Catch-all for external resources (CDN, external APIs).
             // Same-origin fetches not matched above bypass the SW natively.
             urlPattern: /^https?:\/\/(?!freed-pwa)/,
-            handler: 'NetworkFirst',
+            handler: "NetworkFirst",
             options: {
-              cacheName: 'freed-network',
+              cacheName: "freed-network",
               networkTimeoutSeconds: 10,
               expiration: {
                 maxEntries: 200,
@@ -166,7 +170,7 @@ export default defineConfig({
             },
           },
         ],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
         clientsClaim: true,
       },
       devOptions: {
@@ -176,8 +180,8 @@ export default defineConfig({
   ],
 
   test: {
-    environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
-    setupFiles: ['./src/vitest.setup.ts'],
+    environment: "jsdom",
+    include: ["src/**/*.test.ts"],
+    setupFiles: ["./src/vitest.setup.ts"],
   },
-})
+});

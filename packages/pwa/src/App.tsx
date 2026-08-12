@@ -29,7 +29,7 @@ import {
 import {
   clearLocalDocAfterPwaQuiesce,
   getItemLegacyHtml,
-} from "./lib/automerge";
+} from "./lib/legacy-automerge-runtime";
 import {
   applyPwaUpdate,
   checkForPwaUpdate,
@@ -228,6 +228,11 @@ function App() {
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW) return;
+    // The shared preview seed still writes the retired document model. Do not
+    // wake Automerge or report a false startup failure in an active IndexedDB
+    // Library preview. SQLite preview fixtures are imported through the same
+    // portable checkpoint path as production acceptance tests.
+    if (isPwaLibraryCoreEnabled()) return;
 
     const state = useAppStore.getState();
     const sampleSummary = summarizeSampleData(state);
@@ -258,7 +263,7 @@ function App() {
 
     // Resume LAN relay connection if previously paired.
     const storedUrl = getStoredRelayUrl();
-    if (storedUrl) {
+    if (storedUrl && !isPwaLibraryCoreEnabled()) {
       connect(storedUrl);
     }
 
@@ -449,12 +454,12 @@ function App() {
           const libraryCoreEnabled = isPwaLibraryCoreEnabled();
           const item = libraryCoreEnabled
             ? await readPwaLibraryCoreItemDetail(globalId)
-            : useAppStore
+            : (useAppStore
                 .getState()
                 .items.find((candidate) => candidate.globalId === globalId) ??
-              null;
+              null);
           const html = libraryCoreEnabled
-            ? item?.preservedContent?.html ?? null
+            ? (item?.preservedContent?.html ?? null)
             : await getItemLegacyHtml(globalId);
           if (!html) return null;
           const articleUrl =

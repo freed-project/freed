@@ -85,6 +85,9 @@ Run `./scripts/release.sh` with no args from a fresh release-prep worktree based
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
 For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
+- **Local-first iteration:** Build, run, and test feature work locally in its worktree. Do not push a branch, update a PR, or wait for GitHub Actions merely to obtain a test build or to see whether an ordinary implementation step works. GitHub CI validates a locally runnable final candidate. It is not the development loop.
+- Publish only when the complete intended slice is locally runnable and ready for exact-head gates. An intermediate push is justified only when the failure depends on a GitHub-hosted runner, signing, notarization, release infrastructure, or another environment that cannot be reproduced locally, or when the owner explicitly requests remote publication.
+- A local Desktop build does not require a version bump, tag, release, or GitHub workflow. Use the native worktree preview or build commands for manual testing, then publish once at the real integration boundary.
 - product work usually uses `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"`
 - website work uses `PORT=$(node scripts/lib/find-free-port.mjs 3000) && ./scripts/worktree-preview.sh website --port "$PORT"`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do

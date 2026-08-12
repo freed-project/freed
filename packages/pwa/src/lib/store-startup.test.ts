@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences, type Account, type ContentSignalBackfillSummary, type Person, type SampleLibraryData } from "@freed/shared";
+import {
+  createDefaultPreferences,
+  type Account,
+  type ContentSignalBackfillSummary,
+  type Person,
+  type SampleLibraryData,
+} from "@freed/shared";
 import type { DocState, WorkerRequest } from "./automerge-types";
 import {
   getDeviceDisplayPreferences,
@@ -31,7 +37,15 @@ const automerge = vi.hoisted(() => {
     docMarkAllAsRead: resolved(),
     docToggleSaved: resolved(),
     docRemoveFeedItem: resolved(),
-    docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
+    docClearSampleData: vi.fn(() =>
+      Promise.resolve({
+        feeds: 0,
+        items: 0,
+        persons: 0,
+        accounts: 0,
+        total: 0,
+      }),
+    ),
     docToggleArchived: resolved(),
     docToggleLiked: resolved(),
     docArchiveAllReadUnsaved: resolved(),
@@ -52,7 +66,20 @@ const automerge = vi.hoisted(() => {
   };
 });
 
+const libraryCore = vi.hoisted(() => ({
+  enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreUserStateToggle: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock("./automerge", () => automerge);
+vi.mock("./legacy-automerge-runtime", () => ({
+  ...automerge,
+  loadLegacyAutomerge: vi.fn(() => Promise.resolve(automerge)),
+}));
+vi.mock("./library-core-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./library-core-runtime")>()),
+  ...libraryCore,
+}));
 
 vi.mock("./reader-cache", () => ({
   pinReaderItemInPwa: vi.fn(),
@@ -119,7 +146,9 @@ describe("PWA store startup maintenance", () => {
     resetDeviceGraphLayoutForTests();
     useAppStore.setState(useAppStore.getInitialState(), true);
     automerge.initDoc.mockResolvedValue(makeDocState());
-    automerge.docBackfillContentSignals.mockResolvedValue(makeBackfillSummary(0, 0));
+    automerge.docBackfillContentSignals.mockResolvedValue(
+      makeBackfillSummary(0, 0),
+    );
   });
 
   it("admits SQLite read intents while unsupported mutations remain read-only", async () => {
@@ -130,13 +159,18 @@ describe("PWA store startup maintenance", () => {
       .getState()
       .markItemsAsRead(["item-read-intent-2", "item-read-intent-3"]);
 
-    expect(automerge.docMarkAsRead).toHaveBeenCalledWith("item-read-intent");
-    expect(automerge.docMarkItemsAsRead).toHaveBeenCalledWith([
-      "item-read-intent-2",
-      "item-read-intent-3",
-    ]);
+    expect(
+      libraryCore.enqueuePwaLibraryCoreReadAssignments,
+    ).toHaveBeenNthCalledWith(1, ["item-read-intent"]);
+    expect(
+      libraryCore.enqueuePwaLibraryCoreReadAssignments,
+    ).toHaveBeenNthCalledWith(2, ["item-read-intent-2", "item-read-intent-3"]);
+    await useAppStore.getState().toggleSaved("saved-intent");
+    expect(
+      libraryCore.enqueuePwaLibraryCoreUserStateToggle,
+    ).toHaveBeenCalledWith("saved-intent", "saved");
     await expect(
-      useAppStore.getState().toggleSaved("unsupported-item"),
+      useAppStore.getState().updateItem("unsupported-item", { priority: 1 }),
     ).rejects.toThrow("read-only until its PWA intent outbox is active");
   });
 
@@ -171,26 +205,36 @@ describe("PWA store startup maintenance", () => {
       graphPinned: true,
     });
 
-    expect(getDevicePersonGraphLayout(person.id)).toMatchObject({ graphX: 11, graphY: 22 });
-    expect(useAppStore.getState().persons[person.id]).not.toHaveProperty("graphX");
+    expect(getDevicePersonGraphLayout(person.id)).toMatchObject({
+      graphX: 11,
+      graphY: 22,
+    });
+    expect(useAppStore.getState().persons[person.id]).not.toHaveProperty(
+      "graphX",
+    );
     expect(automerge.docUpdatePerson).not.toHaveBeenCalled();
   });
 
   it("rejects a device-local preference write after this tab becomes stale", async () => {
-    localStorage.setItem("freed_pwa_factory_reset_tombstone", JSON.stringify({
-      version: 1,
-      resetId: "reset-preferences",
-      generation: 1,
-      startedAt: Date.now(),
-    }));
+    localStorage.setItem(
+      "freed_pwa_factory_reset_tombstone",
+      JSON.stringify({
+        version: 1,
+        resetId: "reset-preferences",
+        generation: 1,
+        startedAt: Date.now(),
+      }),
+    );
     localStorage.setItem("freed_pwa_installation_generation", "1");
 
-    await expect(useAppStore.getState().updatePreferences({
-      display: {
-        ...createDefaultPreferences().display,
-        sidebarMode: "closed",
-      },
-    })).rejects.toThrow("installation generation that has been reset");
+    await expect(
+      useAppStore.getState().updatePreferences({
+        display: {
+          ...createDefaultPreferences().display,
+          sidebarMode: "closed",
+        },
+      }),
+    ).rejects.toThrow("installation generation that has been reset");
     expect(getDeviceDisplayPreferences().sidebarMode).toBe("expanded");
   });
 
@@ -224,8 +268,7 @@ describe("PWA store startup maintenance", () => {
     expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
 
     const subscriber = automerge.subscribe.mock.calls.at(-1)?.[0] as
-      | StoreSubscriber
-      | undefined;
+      StoreSubscriber | undefined;
     const restored = makeDocState();
     restored.persons = { [person.id]: person };
     restored.accounts = { [account.id]: account };
@@ -253,8 +296,16 @@ describe("PWA store startup maintenance", () => {
       createdAt: 1,
       updatedAt: 1,
     };
-    const samplePerson = { ...cascadePerson, id: "person-sample", name: "Sample" };
-    const updatedPerson = { ...cascadePerson, id: "person-updated", name: "Updated" };
+    const samplePerson = {
+      ...cascadePerson,
+      id: "person-sample",
+      name: "Sample",
+    };
+    const updatedPerson = {
+      ...cascadePerson,
+      id: "person-updated",
+      name: "Updated",
+    };
     const livePerson = { ...cascadePerson, id: "person-live", name: "Live" };
     const makeAccount = (id: string, personId: string): Account => ({
       id,
@@ -268,7 +319,10 @@ describe("PWA store startup maintenance", () => {
       createdAt: 1,
       updatedAt: 1,
     });
-    const linkedAccount = makeAccount("account-linked-cascade", cascadePerson.id);
+    const linkedAccount = makeAccount(
+      "account-linked-cascade",
+      cascadePerson.id,
+    );
     const sampleAccount = makeAccount("account-sample", samplePerson.id);
     const displacedAccount = makeAccount("account-displaced", updatedPerson.id);
     const liveAccount = makeAccount("account-live", livePerson.id);
@@ -290,13 +344,26 @@ describe("PWA store startup maintenance", () => {
 
     await useAppStore.getState().initialize();
     for (const [index, person] of Object.values(initial.persons).entries()) {
-      setDevicePersonGraphPosition(person.id, index + 1, index + 2, 100 + index);
+      setDevicePersonGraphPosition(
+        person.id,
+        index + 1,
+        index + 2,
+        100 + index,
+      );
     }
     for (const [index, account] of Object.values(initial.accounts).entries()) {
-      setDeviceAccountGraphPosition(account.id, index + 10, index + 20, 200 + index);
+      setDeviceAccountGraphPosition(
+        account.id,
+        index + 10,
+        index + 20,
+        200 + index,
+      );
     }
 
-    const replacementAccount = makeAccount("account-replacement", updatedPerson.id);
+    const replacementAccount = makeAccount(
+      "account-replacement",
+      updatedPerson.id,
+    );
     const afterSuccessfulMutations = makeDocState();
     afterSuccessfulMutations.persons = {
       [updatedPerson.id]: updatedPerson,
@@ -307,8 +374,7 @@ describe("PWA store startup maintenance", () => {
       [liveAccount.id]: liveAccount,
     };
     const subscriber = automerge.subscribe.mock.calls.at(-1)?.[0] as
-      | StoreSubscriber
-      | undefined;
+      StoreSubscriber | undefined;
     expect(subscriber).toBeTypeOf("function");
     subscriber?.(afterSuccessfulMutations, { mutation: "UPDATE_PERSON" });
 
@@ -345,8 +411,9 @@ describe("PWA store startup maintenance", () => {
     await useAppStore.getState().initialize();
 
     await vi.waitFor(() => {
-      expect(automerge.docPruneArchivedItems).toHaveBeenCalledWith(30 * 24 * 60 * 60 * 1000);
-      expect(automerge.docBackfillContentSignals).toHaveBeenCalledTimes(1);
+      expect(automerge.docPruneArchivedItems).toHaveBeenCalledWith(
+        30 * 24 * 60 * 60 * 1000,
+      );
     });
     await vi.waitFor(() => {
       expect(automerge.docBackfillContentSignals).toHaveBeenCalledTimes(2);
@@ -381,9 +448,10 @@ describe("PWA store startup maintenance", () => {
   it("coalesces concurrent initialization into one worker subscription", async () => {
     let resolveInit!: (state: DocState) => void;
     automerge.initDoc.mockImplementationOnce(
-      () => new Promise((resolve) => {
-        resolveInit = resolve;
-      }),
+      () =>
+        new Promise((resolve) => {
+          resolveInit = resolve;
+        }),
     );
 
     const initialize = useAppStore.getState().initialize;
@@ -391,7 +459,9 @@ describe("PWA store startup maintenance", () => {
     const second = initialize();
 
     expect(second).toBe(first);
-    expect(automerge.initDoc).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(automerge.initDoc).toHaveBeenCalledTimes(1);
+    });
     resolveInit(makeDocState());
     await Promise.all([first, second]);
 
@@ -415,7 +485,9 @@ describe("PWA store startup maintenance", () => {
     const summary = { feeds: 1, items: 2, persons: 3, accounts: 4, total: 10 };
     automerge.docClearSampleData.mockResolvedValueOnce(summary);
 
-    await expect(useAppStore.getState().clearSampleData()).resolves.toEqual(summary);
+    await expect(useAppStore.getState().clearSampleData()).resolves.toEqual(
+      summary,
+    );
     expect(automerge.docClearSampleData).toHaveBeenCalledTimes(1);
   });
 
@@ -465,8 +537,12 @@ describe("PWA store startup maintenance", () => {
       expect.objectContaining({
         feeds: data.feeds,
         items: data.items,
-        persons: expect.arrayContaining([expect.objectContaining({ id: "friend-1" })]),
-        accounts: expect.arrayContaining([expect.objectContaining({ provider: "instagram" })]),
+        persons: expect.arrayContaining([
+          expect.objectContaining({ id: "friend-1" }),
+        ]),
+        accounts: expect.arrayContaining([
+          expect.objectContaining({ provider: "instagram" }),
+        ]),
       }),
     );
   });
@@ -474,9 +550,10 @@ describe("PWA store startup maintenance", () => {
   it("stops new startup migration writes and drains the mutation already running", async () => {
     let finishPrune!: () => void;
     automerge.docPruneArchivedItems.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        finishPrune = resolve;
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          finishPrune = resolve;
+        }),
     );
 
     await useAppStore.getState().initialize();

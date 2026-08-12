@@ -390,6 +390,7 @@ export async function captureDomFeed(
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. The prior renderer MiniSearch path remains only as the browser-test fallback.
 - [x] Map candidates are classified when SQLite rows are written and ordered through a partial location timeline index, so opening Map does not scan and sort the full Library before returning its bounded page.
+- [x] Freed Desktop and PWA keep a bundled geographic map style that uses the same OpenFreeMap vector tiles and glyphs when the remote style document is unavailable. A transient style-endpoint failure no longer leaves the map background blank, and the live OpenFreeMap style remains preferred when it loads.
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
