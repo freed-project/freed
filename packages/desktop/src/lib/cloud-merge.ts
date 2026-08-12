@@ -11,7 +11,7 @@
  * removes, so the terminate is load-bearing.
  */
 
-import type { CloudMergeStrategy } from "@freed/sync/cloud/merge";
+import type { CloudMergeStrategy } from "@freed/sync/cloud/merge-strategy";
 
 import type {
   CloudMergeRequest,
