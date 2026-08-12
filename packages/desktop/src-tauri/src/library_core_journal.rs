@@ -23,12 +23,12 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 5;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 6;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 4] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 5] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -44,6 +44,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 4] = [
     (
         5,
         include_str!("../../../shared/src/library-core/authoritative-migration-005.sql"),
+    ),
+    (
+        6,
+        include_str!("../../../shared/src/library-core/authoritative-migration-006.sql"),
     ),
 ];
 
@@ -2540,7 +2544,11 @@ mod tests {
                  WHERE type = 'index'
                    AND name IN (
                      'library_core_feed_items_all_timeline',
-                     'library_core_feed_items_visible_timeline'
+                     'library_core_feed_items_visible_timeline',
+                     'library_core_feed_items_all_author_timeline',
+                     'library_core_feed_items_visible_author_timeline',
+                     'library_core_feed_items_all_feed_timeline',
+                     'library_core_feed_items_visible_feed_timeline'
                    );",
                 [],
                 |row| row.get(0),
@@ -2557,7 +2565,7 @@ mod tests {
             .expect("read preserved installed data");
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
         assert!(admission_table_exists);
-        assert_eq!(timeline_indexes, 2);
+        assert_eq!(timeline_indexes, 6);
         assert_eq!(sentinel, 42);
     }
 

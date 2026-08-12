@@ -332,6 +332,90 @@ const ALL_LIBRARY_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_fee
        AND (?7 IS NULL OR authorId = ?7)
        AND (?8 IS NULL OR feedUrl = ?8);";
 
+const VISIBLE_AUTHOR_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND authorId = ?7
+       AND (?8 IS NULL OR feedUrl = ?8)
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const ALL_AUTHOR_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND authorId = ?7
+       AND (?8 IS NULL OR feedUrl = ?8)
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const VISIBLE_FEED_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND feedUrl = ?8
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const ALL_FEED_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND feedUrl = ?8
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const VISIBLE_AUTHOR_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND authorId = ?7
+       AND (?8 IS NULL OR feedUrl = ?8);";
+
+const ALL_AUTHOR_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND authorId = ?7
+       AND (?8 IS NULL OR feedUrl = ?8);";
+
+const VISIBLE_FEED_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND feedUrl = ?8;";
+
+const ALL_FEED_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND platform = ?3
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND feedUrl = ?8;";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SearchItemsRequest {
@@ -1602,10 +1686,26 @@ pub(super) fn query_sqlite_library_items(
     // Keep the visibility predicate literal. Hiding it behind an optional OR
     // prevents SQLite from proving either partial timeline index applies and
     // turns every OFFSET page into a full-table temporary sort.
-    let page_sql = if request.show_hidden {
-        ALL_LIBRARY_ITEMS_PAGE_SQL
-    } else {
-        VISIBLE_LIBRARY_ITEMS_PAGE_SQL
+    let has_platform = request.platform.is_some();
+    let has_author = request.author_id.is_some();
+    let has_feed = request.feed_url.is_some();
+    let (page_sql, count_sql) = match (
+        request.show_hidden,
+        has_platform && has_author,
+        has_platform && has_feed,
+    ) {
+        (true, _, true) => (ALL_FEED_ITEMS_PAGE_SQL, ALL_FEED_ITEMS_COUNT_SQL),
+        (false, _, true) => (VISIBLE_FEED_ITEMS_PAGE_SQL, VISIBLE_FEED_ITEMS_COUNT_SQL),
+        (true, true, false) => (ALL_AUTHOR_ITEMS_PAGE_SQL, ALL_AUTHOR_ITEMS_COUNT_SQL),
+        (false, true, false) => (
+            VISIBLE_AUTHOR_ITEMS_PAGE_SQL,
+            VISIBLE_AUTHOR_ITEMS_COUNT_SQL,
+        ),
+        (true, false, false) => (ALL_LIBRARY_ITEMS_PAGE_SQL, ALL_LIBRARY_ITEMS_COUNT_SQL),
+        (false, false, false) => (
+            VISIBLE_LIBRARY_ITEMS_PAGE_SQL,
+            VISIBLE_LIBRARY_ITEMS_COUNT_SQL,
+        ),
     };
     let mut statement = connection
         .prepare(page_sql)
@@ -1633,11 +1733,6 @@ pub(super) fn query_sqlite_library_items(
     drop(statement);
     let has_more = items_json.len() > limit as usize;
     items_json.truncate(limit as usize);
-    let count_sql = if request.show_hidden {
-        ALL_LIBRARY_ITEMS_COUNT_SQL
-    } else {
-        VISIBLE_LIBRARY_ITEMS_COUNT_SQL
-    };
     let total_count = connection
         .query_row(
             count_sql,
@@ -2368,14 +2463,48 @@ mod tests {
         fs::create_dir_all(&root).expect("create temporary root");
         let connection = open_database_at(&root).expect("open Library database");
 
-        for (sql, expected_index) in [
+        for (sql, expected_index, platform, author_id, feed_url) in [
             (
                 VISIBLE_LIBRARY_ITEMS_PAGE_SQL,
                 "library_core_feed_items_visible_timeline",
+                None,
+                None,
+                None,
             ),
             (
                 ALL_LIBRARY_ITEMS_PAGE_SQL,
                 "library_core_feed_items_all_timeline",
+                None,
+                None,
+                None,
+            ),
+            (
+                VISIBLE_AUTHOR_ITEMS_PAGE_SQL,
+                "library_core_feed_items_visible_author_timeline",
+                Some("x"),
+                Some("author:one"),
+                None,
+            ),
+            (
+                ALL_AUTHOR_ITEMS_PAGE_SQL,
+                "library_core_feed_items_all_author_timeline",
+                Some("x"),
+                Some("author:one"),
+                None,
+            ),
+            (
+                VISIBLE_FEED_ITEMS_PAGE_SQL,
+                "library_core_feed_items_visible_feed_timeline",
+                Some("rss"),
+                None,
+                Some("https://feed.test/rss"),
+            ),
+            (
+                ALL_FEED_ITEMS_PAGE_SQL,
+                "library_core_feed_items_all_feed_timeline",
+                Some("rss"),
+                None,
+                Some("https://feed.test/rss"),
             ),
         ] {
             let mut statement = connection
@@ -2386,12 +2515,12 @@ mod tests {
                     params![
                         "",
                         "%%",
-                        Option::<String>::None,
+                        platform,
                         Option::<i64>::None,
                         Option::<i64>::None,
                         0_i64,
-                        Option::<String>::None,
-                        Option::<String>::None,
+                        author_id,
+                        feed_url,
                         129_i64,
                         0_i64,
                     ],
@@ -2409,6 +2538,62 @@ mod tests {
                     .iter()
                     .all(|detail| !detail.contains("USE TEMP B-TREE")),
                 "Library paging must not rebuild a corpus-sized sort: {details:?}"
+            );
+        }
+
+        for (sql, expected_index, platform, author_id, feed_url) in [
+            (
+                VISIBLE_AUTHOR_ITEMS_COUNT_SQL,
+                "library_core_feed_items_visible_author_timeline",
+                "x",
+                Some("author:one"),
+                None,
+            ),
+            (
+                ALL_AUTHOR_ITEMS_COUNT_SQL,
+                "library_core_feed_items_all_author_timeline",
+                "x",
+                Some("author:one"),
+                None,
+            ),
+            (
+                VISIBLE_FEED_ITEMS_COUNT_SQL,
+                "library_core_feed_items_visible_feed_timeline",
+                "rss",
+                None,
+                Some("https://feed.test/rss"),
+            ),
+            (
+                ALL_FEED_ITEMS_COUNT_SQL,
+                "library_core_feed_items_all_feed_timeline",
+                "rss",
+                None,
+                Some("https://feed.test/rss"),
+            ),
+        ] {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .expect("prepare Library count plan");
+            let details = statement
+                .query_map(
+                    params![
+                        "",
+                        "%%",
+                        platform,
+                        Option::<i64>::None,
+                        Option::<i64>::None,
+                        0_i64,
+                        author_id,
+                        feed_url,
+                    ],
+                    |row| row.get::<_, String>(3),
+                )
+                .expect("query Library count plan")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect Library count plan");
+            assert!(
+                details.iter().any(|detail| detail.contains(expected_index)),
+                "Library source counts must use {expected_index}: {details:?}"
             );
         }
 
