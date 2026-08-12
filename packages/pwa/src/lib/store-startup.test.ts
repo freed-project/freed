@@ -67,6 +67,8 @@ const automerge = vi.hoisted(() => {
 });
 
 const libraryCore = vi.hoisted(() => ({
+  enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUserStateToggle: vi.fn(() => Promise.resolve()),
 }));
@@ -151,7 +153,7 @@ describe("PWA store startup maintenance", () => {
     );
   });
 
-  it("admits SQLite read intents while unsupported mutations remain read-only", async () => {
+  it("routes ordinary PWA bulk actions through SQLite intents", async () => {
     localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
 
     await useAppStore.getState().markAsRead("item-read-intent");
@@ -165,6 +167,14 @@ describe("PWA store startup maintenance", () => {
     expect(
       libraryCore.enqueuePwaLibraryCoreReadAssignments,
     ).toHaveBeenNthCalledWith(2, ["item-read-intent-2", "item-read-intent-3"]);
+    await useAppStore.getState().markAllAsRead("rss");
+    expect(libraryCore.enqueuePwaLibraryCoreMarkAllAsRead).toHaveBeenCalledWith(
+      "rss",
+    );
+    await useAppStore.getState().archiveItems(["item-read-intent"]);
+    expect(libraryCore.enqueuePwaLibraryCoreArchiveItems).toHaveBeenCalledWith([
+      "item-read-intent",
+    ]);
     await useAppStore.getState().toggleSaved("saved-intent");
     expect(
       libraryCore.enqueuePwaLibraryCoreUserStateToggle,

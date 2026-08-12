@@ -7,6 +7,7 @@ import {
 } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
   libraryCoreFeedCardToItemV1,
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
@@ -200,12 +201,74 @@ export async function initializePwaLibraryCoreState(): Promise<DocState> {
 export async function enqueuePwaLibraryCoreReadAssignments(
   globalIds: readonly string[],
 ): Promise<void> {
-  if (globalIds.length === 0) return;
-  await getPortableStore().enqueueReadAssignments({
-    entityIds: globalIds,
-    readAtMs: Date.now(),
+  const uniqueIds = [...new Set(globalIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return;
+  const readAtMs = Date.now();
+  for (
+    let start = 0;
+    start < uniqueIds.length;
+    start += LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT
+  ) {
+    const batch = uniqueIds.slice(
+      start,
+      start + LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+    );
+    await getPortableStore().enqueueReadAssignments({
+      entityIds: batch,
+      readAtMs,
+    });
+    await refreshPersistentSearchItems(batch);
+  }
+}
+
+/** Queue complete-library read intents through bounded IndexedDB scans. */
+export async function enqueuePwaLibraryCoreMarkAllAsRead(
+  platform?: string,
+): Promise<void> {
+  let pending: string[] = [];
+  await scanPwaLibraryCoreItems(async (items) => {
+    for (const item of items) {
+      if (
+        item.userState.hidden ||
+        item.userState.archived ||
+        item.userState.readAt ||
+        (platform && item.platform !== platform)
+      ) {
+        continue;
+      }
+      pending.push(item.globalId);
+      if (pending.length === LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT) {
+        const batch = pending;
+        pending = [];
+        await enqueuePwaLibraryCoreReadAssignments(batch);
+      }
+    }
+    return "continue" as const;
   });
-  await refreshPersistentSearchItems(globalIds);
+  await enqueuePwaLibraryCoreReadAssignments(pending);
+}
+
+/** Queue explicit item archives without waking the legacy worker. */
+export async function enqueuePwaLibraryCoreArchiveItems(
+  globalIds: readonly string[],
+): Promise<void> {
+  for (const globalId of new Set(globalIds.filter(Boolean))) {
+    const row = await getPortableStore().readSelectedMaterializedRow(
+      "10_feed_items",
+      globalId,
+    );
+    const item = row as unknown as FeedItem | null;
+    if (
+      !item ||
+      item.userState.hidden ||
+      item.userState.archived ||
+      item.userState.saved ||
+      !item.userState.readAt
+    ) {
+      continue;
+    }
+    await enqueuePwaLibraryCoreUserStateToggle(globalId, "archived");
+  }
 }
 
 /** Queue one signed PWA user-state toggle and update the local IndexedDB row. */

@@ -2823,7 +2823,84 @@ class PwaLibraryCorePortableCheckpointStore
           ),
         ) as LibraryCoreEd25519SignatureHex,
     });
-    return this.enqueueIntentTransaction(finalized);
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.applySelectedReadAssignments({
+      entityIds,
+      readAtMs: input.readAtMs,
+    });
+    return receipt;
+  }
+
+  private async applySelectedReadAssignments(input: {
+    readonly entityIds: readonly string[];
+    readonly readAtMs: number;
+  }): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE, FEED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA read intent has no selected Library generation");
+    }
+    const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+    for (const entityId of input.entityIds) {
+      let stored: PortableMaterializedRowRecord | undefined;
+      for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
+        stored = (await requestResult(
+          materializedRows.get([
+            selected.generationId,
+            registryKey,
+            canonicalStringKey(entityId),
+          ]),
+        )) as PortableMaterializedRowRecord | undefined;
+        if (stored) break;
+      }
+      if (!stored) {
+        transaction.abort();
+        throw new Error("PWA read intent targets an unavailable FeedItem");
+      }
+      const currentUserState: Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      > =
+        typeof stored.row.userState === "object" &&
+          stored.row.userState !== null &&
+          !Array.isArray(stored.row.userState)
+          ? stored.row.userState as Readonly<
+              Record<string, LibraryCoreCanonicalValue>
+            >
+          : {};
+      const existingReadAt = currentUserState.readAt;
+      if (
+        typeof existingReadAt === "number" &&
+        Number.isSafeInteger(existingReadAt) &&
+        existingReadAt <= input.readAtMs
+      ) {
+        continue;
+      }
+      const updated = {
+        ...stored,
+        row: {
+          ...stored.row,
+          userState: {
+            ...currentUserState,
+            readAt: input.readAtMs,
+          },
+        },
+      } satisfies PortableMaterializedRowRecord;
+      materializedRows.put(updated);
+      const projected = projectPortableFeedRow(
+        selected.generationId,
+        updated,
+      );
+      if (projected) feedRows.put(projected);
+    }
+    await transactionDone(transaction);
   }
 
   /** Sign and durably enqueue one local FeedItem user-state toggle. */
