@@ -35,8 +35,14 @@
   padding: clamp(5rem, 10vw, 9rem) 0 clamp(4rem, 8vw, 7rem);
 }
 
+/* The opening is deliberately tighter than the rest of the page, which stays
+   at the shared 76rem frame. Scoped to the hero so no other section moves. */
+.hero .frame {
+  max-width: 64rem;
+}
+
 .heroGrid {
-  align-items: end;
+  align-items: start;
   display: grid;
   gap: clamp(3rem, 8vw, 8rem);
   grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
@@ -55,10 +61,18 @@
 }
 
 .hero h1 {
-  font-size: clamp(4.25rem, 9vw, 8.6rem);
+  font-size: clamp(2.75rem, 6.25vw, 6.5rem);
   line-height: 0.88;
   margin-bottom: 0;
-  max-width: 8.5ch;
+  /* Sized so the headline fills its grid column and ends level with the body
+     copy beside it. max-width is in ch, so it tracks the font size: shrink one
+     without the other and the headline leaves a hole across the middle. */
+  max-width: 10ch;
+  /* Nudge the headline down so its cap height lines up with the first line of
+     body copy beside it. Measured against real glyph ink, not line boxes: the
+     two fonts sit differently inside their line boxes, so aligning the boxes
+     leaves the caps visibly off. In em so it tracks the clamped font size. */
+  padding-top: 0.05em;
 }
 
 .hero h1 span {
@@ -68,6 +82,10 @@
 .heroCopy {
   border-left: 1px solid var(--theme-border-subtle);
   padding-left: clamp(1.5rem, 3vw, 3rem);
+  /* The copy is much shorter than the headline, so without this the divider
+     rule stops partway down and leaves the column looking unfinished. Stretch
+     keeps the rule full height while the text stays top-aligned. */
+  align-self: stretch;
 }
 
 .heroCopy > p {
@@ -76,7 +94,6 @@
   line-height: 1.7;
 }
 
-.actions,
 .invitationActions {
   display: flex;
   flex-wrap: wrap;
@@ -113,8 +130,8 @@
   border-top: 1px solid var(--theme-border-subtle);
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: clamp(4.5rem, 9vw, 8rem);
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: clamp(2.5rem, 5vw, 4rem);
   padding: 1.25rem 0;
 }
 
@@ -308,6 +325,70 @@
   letter-spacing: 0.1em;
   margin-bottom: 0.6rem;
   text-transform: uppercase;
+}
+
+.supportLoop {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+.supportLoop > p {
+  margin-bottom: 1rem;
+}
+
+.supportLoop ol {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.supportLoop li {
+  min-height: 8rem;
+  padding: 1.35rem 1.25rem;
+  position: relative;
+}
+
+.supportLoop li + li {
+  border-left: 1px solid var(--theme-border-subtle);
+}
+
+.supportLoop li:not(:last-child)::after {
+  align-items: center;
+  background: var(--theme-bg-base);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 999px;
+  color: var(--theme-heading-accent);
+  content: "→";
+  display: flex;
+  height: 1.75rem;
+  justify-content: center;
+  position: absolute;
+  right: -0.9rem;
+  top: 1.15rem;
+  width: 1.75rem;
+  z-index: 1;
+}
+
+.supportLoop strong,
+.supportLoop span {
+  display: block;
+}
+
+.supportLoop strong {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.supportLoop span {
+  color: var(--theme-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin-top: 0.7rem;
 }
 
 .scenarioGrid {
@@ -540,12 +621,10 @@
 }
 
 .disclaimer {
-  border-top: 1px solid var(--theme-border-subtle);
   color: var(--theme-text-muted);
   font-size: 0.75rem;
   line-height: 1.7;
   margin: clamp(4rem, 8vw, 7rem) 0 0;
-  padding-top: 1.5rem;
 }
 
 @media (max-width: 1023px) {
@@ -589,6 +668,25 @@
 
   .evidenceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportLoop ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportLoop li:nth-child(3) {
+    border-left: 0;
+  }
+
+  .supportLoop li:nth-child(n + 3) {
+    border-top: 1px solid var(--theme-border-subtle);
+  }
+
+  .supportLoop li:nth-child(2)::after {
+    content: "↓";
+    right: 1.15rem;
+    top: auto;
+    bottom: -0.9rem;
   }
 }
 
@@ -639,6 +737,28 @@
   .primaryAction,
   .secondaryAction {
     width: 100%;
+  }
+
+  .supportLoop ol {
+    grid-template-columns: 1fr;
+  }
+
+  .supportLoop li {
+    min-height: 0;
+  }
+
+  .supportLoop li + li,
+  .supportLoop li:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--theme-border-subtle);
+  }
+
+  .supportLoop li:not(:last-child)::after,
+  .supportLoop li:nth-child(2)::after {
+    bottom: -0.9rem;
+    content: "↓";
+    right: 1.15rem;
+    top: auto;
   }
 
   .sources ul {

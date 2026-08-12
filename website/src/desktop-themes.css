@@ -324,65 +324,27 @@ html[data-theme="dark-star"]
   pointer-events: none;
 }
 
-.website-theme-grid-button {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  min-height: 2.75rem;
-  align-items: center;
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--theme-bg-surface) 74%, transparent);
-  box-shadow: none;
-  opacity: 1;
-  padding: 0.45rem 0.55rem;
-  transform: none;
-  transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.website-theme-grid-button:hover,
-.website-theme-grid-button:focus-visible {
-  border-color: var(--theme-border-strong);
-  background: var(--theme-bg-card-hover);
-  box-shadow: none;
-  opacity: 1;
-  outline: none;
+/* Hovering a swatch previews the theme, which repaints the whole shell. The
+   swatch must not change size while that happens: the shared button grows its
+   surface from 1.1rem to 1.65rem on hover, and that reflow resizes the grid
+   row, slides the swatch out from under the pointer, and drops the hover. The
+   preview then reverts and the pointer lands on it again, so the row oscillates.
+   Pin every state to the resting size and drop the scale. Hover feedback stays,
+   via the compact variant's opacity and shadow, neither of which reflows. */
+.website-theme-swatch:hover,
+.website-theme-swatch:focus-visible {
   transform: none;
 }
 
-.website-theme-grid-button.theme-preview-button-active {
-  border-color: var(--theme-border-strong);
-  background: color-mix(
-    in srgb,
-    var(--theme-control-accent) 12%,
-    var(--theme-bg-card)
-  );
-  box-shadow: inset 0 0 0 1px rgb(var(--theme-control-accent-rgb) / 0.16);
-}
-
-.website-theme-grid-button .theme-preview-button-surface,
-.website-theme-grid-button:hover .theme-preview-button-surface,
-.website-theme-grid-button:focus-visible .theme-preview-button-surface,
-.website-theme-grid-button.theme-preview-button-active .theme-preview-button-surface,
-.website-theme-grid-button.theme-preview-button-active:hover .theme-preview-button-surface,
-.website-theme-grid-button.theme-preview-button-active:focus-visible
+.website-theme-swatch .theme-preview-button-surface,
+.website-theme-swatch:hover .theme-preview-button-surface,
+.website-theme-swatch:focus-visible .theme-preview-button-surface,
+.website-theme-swatch.theme-preview-button-active .theme-preview-button-surface,
+.website-theme-swatch.theme-preview-button-active:hover
+  .theme-preview-button-surface,
+.website-theme-swatch.theme-preview-button-active:focus-visible
   .theme-preview-button-surface {
-  width: 2.45rem;
-  height: 1.55rem;
+  width: 3rem;
+  height: 1.1rem;
   flex: none;
-}
-
-.website-theme-grid-label {
-  right: 0.55rem;
-  left: 3.55rem;
-  color: var(--theme-text-secondary);
-}
-
-.website-theme-grid-button[aria-pressed="true"]
-  + .website-theme-grid-label {
-  color: var(--theme-text-primary);
-  font-weight: 600;
 }

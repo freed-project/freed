@@ -939,15 +939,12 @@ export default function RoadmapContent() {
             <h1 className="theme-display-large mb-4 text-3xl font-bold sm:mb-6 sm:text-5xl md:text-6xl">
               <span className="theme-page-heading-accent">Roadmap</span>
             </h1>
-            <p className="mb-2 text-base text-text-secondary sm:text-lg">
+            <p className="text-base text-text-secondary sm:text-lg">
               Built for humans, not algorithms.
             </p>
             {/*<p className="text-text-secondary text-lg sm:text-xl mb-2">*/}
             {/*  We build in daylight.*/}
             {/*</p>*/}
-            <p className="text-sm text-text-muted sm:text-base">
-              Every commit, decision, and pivot. Visible.
-            </p>
           </div>
           <PlanProofLink
             destination="proof"

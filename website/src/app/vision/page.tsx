@@ -40,18 +40,18 @@ const dollars = new Intl.NumberFormat("en-US", {
 
 const supportPaths = [
   {
-    stage: "Users",
-    title: "Prove that people want their minds back",
-    body: "Use Freed with real sources. Tell us where it fails. Return if it changes how you read. Invite people who feel the same pressure. If Freed earns a place in your life, support the work from inside Freed Desktop. Monthly support turns goodwill into dependable runway.",
+    stage: "Angels",
+    title: "Fund the proof that Freed can endure",
+    body: "Freed has working software, but no public traction yet. Patient angel capital can fund a stable launch, more engineering, security review, specialist counsel, provider adaptation, and distribution before recurring support can carry the company on its own.",
     effect:
-      "Usage proves demand. Retention proves value. Referrals create reach. Recurring support funds independent work and gives patient investors evidence that people value Freed enough to sustain it.",
+      "The right investor accepts the open-source core, the privacy boundary, provider hostility, and a mission I will not sell to an advertising model. The next proof is usage, retention, referrals, and recurring support.",
   },
   {
-    stage: "Angels",
-    title: "Multiply what users have already proven",
-    body: "Patient angel capital can turn early user support into more engineering capacity, security review, specialist counsel, provider adaptation, and distribution before recurring support carries the company.",
+    stage: "Users",
+    title: "Prove that people want their minds back",
+    body: "Use Freed with real sources. Tell me where it fails. Come back if it changes how you read. Invite people who feel the same pressure. If Freed earns a place in your life, support the work from inside Freed Desktop. Every dollar you send does double duty. It pays for the work now, and it hands me the evidence that brings angels in behind you.",
     effect:
-      "The right investor accepts the open-source core, the privacy boundary, the provider conflict, and a mission that cannot be sold to an advertising model.",
+      "Your usage shows demand, your renewals show value, and your referrals create reach. Together they give a patient investor evidence to act, so your ten dollars can move far more than ten dollars.",
   },
 ] as const;
 
@@ -76,24 +76,12 @@ export default function VisionPage() {
             </div>
             <div className={styles.heroCopy}>
               <p>
-                An entire generation is learning to think inside feeds built to
-                hold attention. Platforms choose the order of ideas, the
-                emotional temperature, and the absence of an ending. They profit
-                when people cannot look away.
+                Big tech profits when you are destabilized and addicted.
               </p>
               <p>
-                Freed gives the controls back to the reader. The aim is to help
-                millions of people recover authority over their attention, then
-                give the next generation a healthier cultural inheritance.
+                Freed curates the feed with your algos, not theirs. We&rsquo;re
+                restoring digital sovereignty at scale.
               </p>
-              <div className={styles.actions}>
-                <a className={`${styles.primaryAction} btn-primary`} href="#support">
-                  Help build it <Arrow />
-                </a>
-                <Link className={`${styles.secondaryAction} btn-secondary`} href="/manifesto">
-                  Read the manifesto
-                </Link>
-              </div>
             </div>
           </div>
 
@@ -101,17 +89,13 @@ export default function VisionPage() {
             <div>
               <strong>Working software</strong>
               <span>
-                Open source and in{" "}
-                <Link href="/changelog">active development</Link>
+                Open source.{" "}
+                <Link href="/changelog">Active development</Link>.
               </span>
             </div>
             <div>
               <strong>Pre-launch</strong>
               <span>No public user, retention, or revenue claims</span>
-            </div>
-            <div>
-              <strong>Current gate</strong>
-              <span>Stabilize storage, then invite the first cohort</span>
             </div>
           </aside>
         </div>
@@ -167,10 +151,10 @@ export default function VisionPage() {
           <div className={styles.sectionHeading}>
             <h2 id="support-title">Two groups can make Freed endure.</h2>
             <p>
-              Users make the thesis real through use, trust, referrals, and
-              recurring support. Every contribution funds the work and
-              strengthens the case for angels to back it at a scale that lets
-              Freed move faster.
+              I need angels who can fund real engineering now, and I need users
+              whose support proves the thesis those angels are betting on. Every
+              dollar a user sends makes that bet more rational, which is why the
+              two groups are one system rather than two asks.
             </p>
           </div>
 
@@ -190,29 +174,48 @@ export default function VisionPage() {
             ))}
           </div>
 
+          <div className={styles.supportLoop}>
+            <p className={styles.cardLabel}>How support compounds</p>
+            <ol>
+              <li>
+                <strong>Monthly support</strong>
+                <span>Funds each month of work.</span>
+              </li>
+              <li>
+                <strong>Evidence</strong>
+                <span>
+                  Shows that Freed keeps earning a place in people&rsquo;s lives.
+                </span>
+              </li>
+              <li>
+                <strong>Angel confidence</strong>
+                <span>Makes a larger check easier to justify.</span>
+              </li>
+              <li>
+                <strong>More capacity</strong>
+                <span>Buys engineering, security, counsel, and reach.</span>
+              </li>
+            </ol>
+          </div>
+
           <aside className={styles.modelNote}>
-            <strong>Recurring contributors are force multipliers.</strong>
+            <strong>Every contribution works twice.</strong>
             <p>
-              Every dollar from a user funds the work and becomes a vote of
-              confidence when Freed speaks with angels. Monthly support carries
-              more weight because people renew that vote. It shows that Freed
-              keeps earning a place in their lives, gives the project dependable
-              runway, and reduces the risk of a larger investment.
-            </p>
-            <p>
-              An individual contribution can work twice. It pays for Freed now,
-              then strengthens the case for angel capital that can add engineering
-              capacity, fund specialist work, and move the project faster. A large
-              investor may write the bigger check, but recurring contributors help
-              make that check rational.
+              Every dollar you send funds the work and becomes a vote of
+              confidence when I sit down with angels. Monthly support carries
+              more weight because you renew that vote. It shows Freed keeps
+              earning its place in your life, gives me dependable runway, and
+              makes an angel check easier to justify. Angel capital can then buy
+              engineering capacity, specialist work, and speed I cannot reach
+              alone.
             </p>
             <p>
               If Freed reaches {integer.format(10_000)} active users and
               {" "}{percent.format(0.1)} choose to contribute {dollars.format(10)}
               {" "}per month, that is {dollars.format(120_000)} in gross annual
-              support. Recurring user support can eventually make Freed permanently
-              independent. Before then, it can help attract the patient capital
-              required to reach that scale.
+              support. That can eventually make Freed permanently independent.
+              Before then, that evidence can attract the patient capital I need
+              to get there.
             </p>
           </aside>
         </div>
@@ -231,7 +234,7 @@ export default function VisionPage() {
                 trust, distribution, adaptation, and execution.
               </p>
               <p>
-                Some platforms will fight Freed. They can change technical
+                Some platforms may fight Freed. They can change technical
                 controls, suspend accounts, and bring legal claims. The company
                 must budget for that conflict, build beyond any one provider,
                 and avoid promises of uninterrupted access.
