@@ -23,12 +23,12 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 4;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 5;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 3] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 4] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -40,6 +40,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 3] = [
     (
         4,
         include_str!("../../../shared/src/library-core/authoritative-migration-004.sql"),
+    ),
+    (
+        5,
+        include_str!("../../../shared/src/library-core/authoritative-migration-005.sql"),
     ),
 ];
 
@@ -2496,7 +2500,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_the_installed_v3_schema_to_v4_without_resetting_the_database() {
+    fn upgrades_the_installed_v3_schema_to_current_without_resetting_the_database() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("library-core.sqlite");
         let mut connection = Connection::open(&path).expect("create v3 database");
@@ -2529,6 +2533,19 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read writer admission catalog entry");
+        let timeline_indexes: i64 = journal
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type = 'index'
+                   AND name IN (
+                     'library_core_feed_items_all_timeline',
+                     'library_core_feed_items_visible_timeline'
+                   );",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read bounded timeline indexes");
         let sentinel: i64 = journal
             .connection
             .query_row(
@@ -2540,6 +2557,7 @@ mod tests {
             .expect("read preserved installed data");
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
         assert!(admission_table_exists);
+        assert_eq!(timeline_indexes, 2);
         assert_eq!(sentinel, 42);
     }
 

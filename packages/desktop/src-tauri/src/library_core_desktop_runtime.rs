@@ -290,6 +290,48 @@ pub(super) struct QueryItemsResult {
     total_count: i64,
 }
 
+const VISIBLE_LIBRARY_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND (?3 IS NULL OR platform = ?3)
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND (?8 IS NULL OR feedUrl = ?8)
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const ALL_LIBRARY_ITEMS_PAGE_SQL: &str = "SELECT payloadJson FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND (?3 IS NULL OR platform = ?3)
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND (?8 IS NULL OR feedUrl = ?8)
+     ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
+     LIMIT ?9 OFFSET ?10;";
+
+const VISIBLE_LIBRARY_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND hidden IS NOT 1
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND (?3 IS NULL OR platform = ?3)
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND (?8 IS NULL OR feedUrl = ?8);";
+
+const ALL_LIBRARY_ITEMS_COUNT_SQL: &str = "SELECT COUNT(*) FROM library_core_feed_items
+     WHERE deletedAt IS NULL
+       AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
+       AND (?3 IS NULL OR platform = ?3)
+       AND (?4 IS NULL OR saved = ?4)
+       AND (?5 IS NULL OR archived = ?5)
+       AND (?7 IS NULL OR authorId = ?7)
+       AND (?8 IS NULL OR feedUrl = ?8);";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SearchItemsRequest {
@@ -1557,20 +1599,16 @@ pub(super) fn query_sqlite_library_items(
     require_active(&connection)?;
     let query = request.query.unwrap_or_default();
     let like = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
+    // Keep the visibility predicate literal. Hiding it behind an optional OR
+    // prevents SQLite from proving either partial timeline index applies and
+    // turns every OFFSET page into a full-table temporary sort.
+    let page_sql = if request.show_hidden {
+        ALL_LIBRARY_ITEMS_PAGE_SQL
+    } else {
+        VISIBLE_LIBRARY_ITEMS_PAGE_SQL
+    };
     let mut statement = connection
-        .prepare(
-            "SELECT payloadJson FROM library_core_feed_items
-             WHERE deletedAt IS NULL
-               AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
-               AND (?3 IS NULL OR platform = ?3)
-               AND (?4 IS NULL OR saved = ?4)
-               AND (?5 IS NULL OR archived = ?5)
-               AND (?6 = 1 OR hidden IS NOT 1)
-               AND (?7 IS NULL OR authorId = ?7)
-               AND (?8 IS NULL OR feedUrl = ?8)
-             ORDER BY publishedAt DESC, capturedAt DESC, globalId ASC
-             LIMIT ?9 OFFSET ?10;",
-        )
+        .prepare(page_sql)
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
@@ -1595,17 +1633,14 @@ pub(super) fn query_sqlite_library_items(
     drop(statement);
     let has_more = items_json.len() > limit as usize;
     items_json.truncate(limit as usize);
+    let count_sql = if request.show_hidden {
+        ALL_LIBRARY_ITEMS_COUNT_SQL
+    } else {
+        VISIBLE_LIBRARY_ITEMS_COUNT_SQL
+    };
     let total_count = connection
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items
-             WHERE deletedAt IS NULL
-               AND (?1 = '' OR payloadJson LIKE ?2 ESCAPE '\\')
-               AND (?3 IS NULL OR platform = ?3)
-               AND (?4 IS NULL OR saved = ?4)
-               AND (?5 IS NULL OR archived = ?5)
-               AND (?6 = 1 OR hidden IS NOT 1)
-               AND (?7 IS NULL OR authorId = ?7)
-               AND (?8 IS NULL OR feedUrl = ?8);",
+            count_sql,
             params![
                 query,
                 like,
@@ -2325,6 +2360,60 @@ mod tests {
         let decoded = decode_base64_json(&encoded).expect("decode item transport");
         assert_eq!(decoded, source);
         assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
+    }
+
+    #[test]
+    fn library_item_pages_walk_timeline_indexes_without_temporary_sorts() {
+        let root = temporary_root("sqlite-library-query-plan");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let connection = open_database_at(&root).expect("open Library database");
+
+        for (sql, expected_index) in [
+            (
+                VISIBLE_LIBRARY_ITEMS_PAGE_SQL,
+                "library_core_feed_items_visible_timeline",
+            ),
+            (
+                ALL_LIBRARY_ITEMS_PAGE_SQL,
+                "library_core_feed_items_all_timeline",
+            ),
+        ] {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .expect("prepare Library page plan");
+            let details = statement
+                .query_map(
+                    params![
+                        "",
+                        "%%",
+                        Option::<String>::None,
+                        Option::<i64>::None,
+                        Option::<i64>::None,
+                        0_i64,
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        129_i64,
+                        0_i64,
+                    ],
+                    |row| row.get::<_, String>(3),
+                )
+                .expect("query Library page plan")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect Library page plan");
+            assert!(
+                details.iter().any(|detail| detail.contains(expected_index)),
+                "Library paging must walk {expected_index}: {details:?}"
+            );
+            assert!(
+                details
+                    .iter()
+                    .all(|detail| !detail.contains("USE TEMP B-TREE")),
+                "Library paging must not rebuild a corpus-sized sort: {details:?}"
+            );
+        }
+
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
     }
 
     #[test]
