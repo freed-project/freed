@@ -21,6 +21,8 @@ copy the backlog into local task state.
 | GitHub Issues with the `debt` label                        | Canonical technical debt backlog, evidence, gates, completion criteria, and disposition                                                                   |
 | `automation/specs/*.json`                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
 | `automation/prompts/*.md`                                  | Checked-in behavioral contract for each automation                                                                                                        |
+| `automation/host-assignments.json`                         | Reviewed opaque host ID assigned to the single `primary-automation-host` role                                                                             |
+| `/Library/Application Support/Freed/automation-host.json`  | Root-owned local host identity enrolled by the owner                                                                                                      |
 | `.github/rulesets/*.json`                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
 | `~/.freed/automation/control/current-tasks.json`           | Atomic active execution authority; every task references its canonical GitHub issue                                                                       |
 | `~/.freed/automation/control/task-transactions/`           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
@@ -70,6 +72,59 @@ registry or a selected-project hint. A `pr-only` or `merge-safe` actor must use
 worktree execution.
 Guessed model names, alternate repositories, extra working directories,
 self-expiring schedules, and unsupported execution modes are drift.
+
+## Primary automation host
+
+Freed designates one machine for repository-wide scheduled ownership. The
+checked-in `automation/host-assignments.json` maps
+`primary-automation-host` to an opaque UUID. The designated Mac stores the same
+UUID in the root-owned, read-only
+`/Library/Application Support/Freed/automation-host.json` profile. Hostnames,
+usernames, network addresses, and `inv.local` files are not identity. They are
+mutable labels and, in the case of `inv.local`, merely another same-user file
+that can drift outside review.
+
+Inspect the current machine without mutation:
+
+```bash
+npm run automation:hosts -- inspect
+```
+
+After the assignment has been reviewed and merged, the owner enrolls that exact
+identity once from a canonical clean checkout:
+
+```bash
+npm run automation:hosts -- enroll
+```
+
+Enrollment is idempotent for the exact valid identity. It refuses to overwrite
+an existing invalid or differently assigned profile. Reassignment requires a
+reviewed change to the checked-in mapping plus an explicit owner migration. It
+never happens automatically. There is no election, opportunistic takeover, or
+multi-primary failover.
+
+Only the assigned primary may activate or acquire the `freed-nightly-runner`.
+`validate:host-automations` reports an active nightly runner on another machine
+as drift, and the canonical actor acquisition command fails before invoking the
+trusted launcher. This extends the existing cooperative same-user boundary. A
+same-user process can still invoke a provisioned launcher directly, but it does
+not thereby gain task, provider, merge, release, or publisher authority.
+
+The primary runs one nightly executor cron. Other repository maintenance lives
+in a single `Freed automation custodian` heartbeat attached to a durable Codex
+task. Its checked-in prompt is
+`automation/prompts/freed-automation-custodian.md`. The custodian validates
+saved actors, enforces runner models only from current callable capability data,
+and archives confirmed no-op automation tasks through Codex thread controls.
+It never archives failures, authority blocks, actionable findings, changed
+runs, or tasks waiting for the owner. The custodian is a Codex host utility, not
+a sixth Freed actor, and it holds no control-plane lease.
+
+Automation state under `~/.freed/automation/` remains host-local evidence and
+is not synchronized between machines. The checked-in assignment is the shared
+coordination point. This avoids pretending that local validation snapshots form
+a distributed consensus protocol. Computers love inventing theology where a
+single UUID would do.
 
 Every actor specification also requires `trusted-launcher` and
 `short-lived-lease-handoff`. Readiness means all of these are present:
@@ -123,8 +178,7 @@ CryptoKit and has no Security framework or Keychain API dependency. The second
 program links Security only for one bounded migration from the installed schema
 1 contract. Provisioning validates the real root-owned legacy binding, deletes
 the fixed `freed-automation-actor` Keychain item with interaction disabled,
-removes the matching owner digest record when present, and then installs schema
-4. Migration tolerates all four item and digest-record presence combinations,
+removes the matching owner digest record when present, and then installs schema 4. Migration tolerates all four item and digest-record presence combinations,
 so an exact retry completes safely after response loss. Fresh installs and
 schema 4 replacements never invoke the migration program. Provision and rotate
 are rejected by the migration program.

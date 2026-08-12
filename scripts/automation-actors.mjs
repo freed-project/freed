@@ -33,9 +33,18 @@ import {
   sha256File,
   validateActorBindingRecord,
 } from "./lib/automation-actor-readiness.mjs";
+import {
+  AUTOMATION_HOST_PROFILE_PATH,
+  inspectAutomationHostAssignment,
+} from "./lib/automation-host-identity.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
+const HOST_ASSIGNMENT_PATH = path.join(
+  REPO_ROOT,
+  "automation",
+  "host-assignments.json",
+);
 const DEFAULT_LAUNCHER_ROOT = ACTOR_LAUNCHER_RECORD_ROOT;
 const DEFAULT_RUNTIME_ROOT = ACTOR_RUNTIME_ROOT;
 const LAUNCHER_PURPOSE = ACTOR_LAUNCHER_PURPOSE;
@@ -1575,6 +1584,19 @@ function acquireActor(
   stateRoot,
   installedBindingOverride = undefined,
 ) {
+  if (command.actor === "freed-nightly-runner") {
+    const hostAssignment = dependencies.hostAssignmentInspector({
+      assignmentPath: dependencies.hostAssignmentPath,
+      profilePath: dependencies.hostProfilePath,
+      requiredUid: dependencies.trustedUid,
+    });
+    if (!hostAssignment.ready) {
+      fail(
+        "primary_host_required",
+        `freed-nightly-runner may acquire its lease only on the assigned primary automation host: ${hostAssignment.reason}`,
+      );
+    }
+  }
   const binding =
     installedBindingOverride ??
     installedBinding(command, dependencies, stateRoot).binding;
@@ -2081,12 +2103,19 @@ function dependenciesWithDefaults(overrides = {}) {
     repositoryInspector: defaultRepositoryInspector,
     pinnedNodeResolver: defaultPinnedNodeResolver,
     leaseOperationIdGenerator: () => randomUUID(),
+    hostAssignmentInspector: inspectAutomationHostAssignment,
+    hostAssignmentPath: HOST_ASSIGNMENT_PATH,
+    hostProfilePath: AUTOMATION_HOST_PROFILE_PATH,
     ...overrides,
   };
   dependencies.repoRoot = path.resolve(dependencies.repoRoot);
   dependencies.launcherRoot = path.resolve(dependencies.launcherRoot);
   dependencies.runtimeRoot = path.resolve(dependencies.runtimeRoot);
   dependencies.hostBuildPath = path.resolve(dependencies.hostBuildPath);
+  dependencies.hostAssignmentPath = path.resolve(
+    dependencies.hostAssignmentPath,
+  );
+  dependencies.hostProfilePath = path.resolve(dependencies.hostProfilePath);
   return dependencies;
 }
 

@@ -13,6 +13,7 @@
   "scripts": {
     "postinstall": "node scripts/patch-automerge.mjs",
     "automation:actors": "node scripts/automation-actors.mjs",
+    "automation:hosts": "node scripts/automation-hosts.mjs",
     "automation:control": "node scripts/automation-control.mjs",
     "automation:cutover-kernel-guards": "node scripts/automation-kernel-guard-cutover.mjs",
     "automation:repair-outcome-ledger": "node scripts/outcome-ledger-repair.mjs",
