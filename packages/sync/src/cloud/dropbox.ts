@@ -11,9 +11,9 @@
 
 import {
   delay,
-  inProcessCloudMerge,
+  lazyInProcessCloudMerge,
   type CloudMergeStrategy,
-} from "./merge.js";
+} from "./merge-strategy.js";
 
 const FILE_NAME = "freed.automerge";
 const DBX_UPLOAD = "https://content.dropboxapi.com/2/files/upload";
@@ -66,7 +66,7 @@ async function download(token: string, signal?: AbortSignal): Promise<DownloadRe
 export async function dropboxUploadSafe(
   token: string,
   localBinary: Uint8Array,
-  mergeStrategy: CloudMergeStrategy = inProcessCloudMerge,
+  mergeStrategy: CloudMergeStrategy = lazyInProcessCloudMerge,
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const { binary: remoteBinary, rev } = await download(token);

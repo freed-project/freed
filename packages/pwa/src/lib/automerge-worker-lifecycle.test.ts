@@ -136,9 +136,17 @@ describe("PWA Automerge worker lifecycle", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     localStorage.clear();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
     sessionStorage.clear();
     MockWorker.instances = [];
     vi.stubGlobal("Worker", MockWorker);
+  });
+
+  it("keeps the legacy worker dormant while Library Core is enabled", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    await import("./automerge");
+
+    expect(MockWorker.instances).toHaveLength(0);
   });
 
   afterEach(() => {
