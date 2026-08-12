@@ -530,7 +530,7 @@ jobs:
 
   # After all platform builds succeed, promote the draft to a published release
   publish:
-    needs: updater-manifest
+    needs: [updater-manifest, create-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write

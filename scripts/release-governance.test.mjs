@@ -211,6 +211,11 @@ test("draft release assets and publication use the exact release ID", () => {
     publishJob,
     /releases\/\$\{\{ needs\.create-release\.outputs\.release_id \}\}/,
   );
+  assert.match(
+    publishJob,
+    /needs:\s*\[updater-manifest, create-release\]/,
+    "publish must directly depend on create-release before reading its output",
+  );
   assert.doesNotMatch(publishJob, /gh release edit/);
 });
 
