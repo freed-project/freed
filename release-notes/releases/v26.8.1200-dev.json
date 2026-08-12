@@ -1,0 +1,74 @@
+{
+  "tag": "v26.8.1200-dev",
+  "version": "26.8.1200-dev",
+  "channel": "dev",
+  "dayKey": "26.8.12",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-12T07:07:21.288Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1103-dev",
+    "previousPublishedDayTag": "v26.8.1103-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "8ed33238df9684896060cd1832b216c24dcb3aa1",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1103-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "6450f55c67c4bfc7e19d23e5aaf5500d6a76c4ea",
+        "toInclusiveProductCommitSha": "8ed33238df9684896060cd1832b216c24dcb3aa1"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:376c6de2e4d8480e0fcb26d1f7c8c3a664b49e02a4f71ab8c746306dd2d62857",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1200-dev"
+    ],
+    "prNumbers": [
+      1409,
+      1410,
+      1411
+    ],
+    "commitSubjects": [
+      "feat: complete PWA SQLite runtime fence (#1411)",
+      "fix: fence retired SQLite library writers (#1410)",
+      "fix: import actor-bearing SQLite checkpoints (#1409)",
+      "docs: require local-first release testing (#1407)"
+    ]
+  },
+  "release": {
+    "deck": "Freed now runs its active Desktop Library on SQLite and its PWA Library on IndexedDB, with safer writer ownership and a resilient geographic map.",
+    "features": [
+      "Freed Desktop now enforces the active SQLite writer epoch before committing Library changes or contacting providers.",
+      "The PWA now stays on its bounded IndexedDB Library without starting the retired Automerge relay."
+    ],
+    "fixes": [
+      "Restored the geographic map background when its remote style document is unavailable.",
+      "Made PWA result synchronization resume from a durable cursor after interruption.",
+      "Allowed verified actor state from a retired writer epoch to import without granting that actor authority in the active epoch."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1200-dev\n\nFreed now runs its active Desktop Library on SQLite and its PWA Library on IndexedDB, with safer writer ownership and a resilient geographic map.\n\n### Features\n\n- Freed Desktop now enforces the active SQLite writer epoch before committing Library changes or contacting providers.\n- The PWA now stays on its bounded IndexedDB Library without starting the retired Automerge relay.\n\n### Fixes\n\n- Restored the geographic map background when its remote style document is unavailable.\n- Made PWA result synchronization resume from a durable cursor after interruption.\n- Allowed verified actor state from a retired writer epoch to import without granting that actor authority in the active epoch.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
