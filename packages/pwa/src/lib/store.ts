@@ -110,6 +110,7 @@ import type { DocState } from "./automerge-types";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   enqueuePwaLibraryCoreArchiveItems,
+  enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUserStateToggle,
@@ -690,7 +691,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:archiveAllReadUnsaved",
       (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
-      () => docArchiveAllReadUnsaved(platform, feedUrl),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreArchiveAllReadUnsaved(platform, feedUrl)
+          : docArchiveAllReadUnsaved(platform, feedUrl),
+      { allowLibraryCoreIntent: true },
     );
   },
 

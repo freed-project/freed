@@ -49,7 +49,7 @@ const ENVELOPE_KEYS: [&str; 26] = [
 ];
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
 const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
-const TOGGLE_PAYLOAD_KEYS: [&str; 2] = ["toggle", "toggled_at_ms"];
+const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -75,8 +75,8 @@ struct ParsedEnvelope {
     entity_id: String,
     operation_type: String,
     read_at_ms: Option<i64>,
-    toggle: Option<String>,
-    toggled_at_ms: Option<i64>,
+    assigned: Option<bool>,
+    assigned_at_ms: Option<i64>,
     previous_actor_chain_digest: String,
     actor_chain_digest: String,
     transaction_digest: String,
@@ -307,7 +307,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let (read_at_ms, toggle, toggled_at_ms) = match operation_type.as_str() {
+    let (read_at_ms, assigned, assigned_at_ms) = match operation_type.as_str() {
         "feed_item_read_assignment" => {
             let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
             (
@@ -319,21 +319,15 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "feed_item_saved_assignment"
         | "feed_item_archive_assignment"
         | "feed_item_like_assignment" => {
-            let payload_object = exact_object(payload, &TOGGLE_PAYLOAD_KEYS, index, "payload")?;
-            let toggle = required_string(payload_object, "toggle", index)?;
-            let expected_toggle = match operation_type.as_str() {
-                "feed_item_saved_assignment" => "saved",
-                "feed_item_archive_assignment" => "archived",
-                "feed_item_like_assignment" => "liked",
-                _ => unreachable!("validated toggle operation type"),
-            };
-            if toggle != expected_toggle {
-                return Err(invalid(index, "toggle"));
-            }
+            let payload_object = exact_object(payload, &ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
+            let assigned = payload_object
+                .get("assigned")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| invalid(index, "assigned"))?;
             (
                 None,
-                Some(toggle),
-                Some(safe_integer(payload_object, "toggled_at_ms", index)?),
+                Some(assigned),
+                Some(safe_integer(payload_object, "assigned_at_ms", index)?),
             )
         }
         _ => unreachable!("validated operation type"),
@@ -402,8 +396,8 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         entity_id,
         operation_type,
         read_at_ms,
-        toggle,
-        toggled_at_ms,
+        assigned,
+        assigned_at_ms,
         previous_actor_chain_digest,
         actor_chain_digest,
         transaction_digest,
@@ -553,8 +547,8 @@ where
             entity_id: member.entity_id.clone(),
             operation_type: member.operation_type.clone(),
             read_at_ms: member.read_at_ms,
-            toggle: member.toggle.clone(),
-            toggled_at_ms: member.toggled_at_ms,
+            assigned: member.assigned,
+            assigned_at_ms: member.assigned_at_ms,
             canonical_envelope_json: member.canonical_json.clone(),
             causal_tips: member.causal_tips.clone(),
         });

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import {
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+} from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
   it("snapshots the exact feed-item read assignment payload", () => {
@@ -43,6 +46,28 @@ describe("Library Core operation payload contracts", () => {
     ]) {
       expect(
         FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("requires an explicit idempotent user-state assignment", () => {
+    expect(
+      FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned: true,
+        assigned_at_ms: 1_783_000_000_000,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: { assigned: true, assigned_at_ms: 1_783_000_000_000 },
+    });
+    for (const invalid of [
+      { toggle: "archived", toggled_at_ms: 1 },
+      { assigned: "true", assigned_at_ms: 1 },
+      { assigned: true, assigned_at_ms: -1 },
+      { assigned: true, assigned_at_ms: 1, extra: true },
+    ]) {
+      expect(
+        FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
       ).toMatchObject({ ok: false, code: "invalid" });
     }
   });

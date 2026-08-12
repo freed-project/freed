@@ -54,8 +54,8 @@ import {
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFinalizedTransactionV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
-  type FeedItemUserStateToggleKindV1,
-  type FeedItemUserStateToggleTransactionMemberInputV1,
+  type FeedItemUserStateAssignmentFieldV1,
+  type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -621,10 +621,11 @@ function projectPortableFeedRow(
   });
 }
 
-function toggledPortableFeedRow(
+function assignedPortableFeedRow(
   stored: PortableMaterializedRowRecord,
-  toggle: FeedItemUserStateToggleKindV1,
-  toggledAtMs: number,
+  field: FeedItemUserStateAssignmentFieldV1,
+  assigned: boolean,
+  assignedAtMs: number,
 ): PortableMaterializedRowRecord {
   const current =
     typeof stored.row.userState === "object" &&
@@ -635,26 +636,23 @@ function toggledPortableFeedRow(
         >)
       : {};
   const next: Record<string, LibraryCoreCanonicalValue> = { ...current };
-  if (toggle === "saved") {
-    const enabled = current.saved !== true;
-    next.saved = enabled;
-    if (enabled) {
-      next.savedAt = toggledAtMs;
+  if (field === "saved") {
+    next.saved = assigned;
+    if (assigned) {
+      next.savedAt = assignedAtMs;
       next.archived = false;
       delete next.archivedAt;
     } else {
       delete next.savedAt;
     }
-  } else if (toggle === "archived") {
-    if (current.saved === true) return stored;
-    const enabled = current.archived !== true;
-    next.archived = enabled;
-    if (enabled) next.archivedAt = toggledAtMs;
+  } else if (field === "archived") {
+    if (assigned && current.saved === true) return stored;
+    next.archived = assigned;
+    if (assigned) next.archivedAt = assignedAtMs;
     else delete next.archivedAt;
   } else {
-    const enabled = current.liked !== true;
-    next.liked = enabled;
-    if (enabled) next.likedAt = toggledAtMs;
+    next.liked = assigned;
+    if (assigned) next.likedAt = assignedAtMs;
     else delete next.likedAt;
     delete next.likedSyncedAt;
   }
@@ -2398,10 +2396,15 @@ class PwaLibraryCorePortableCheckpointStore
             }
           }
         } else if (storedRow) {
-          const updatedRow = toggledPortableFeedRow(
+          const updatedRow = assignedPortableFeedRow(
             storedRow,
-            member.envelope.payload.toggle,
-            member.envelope.payload.toggled_at_ms,
+            member.envelope.operation_type === "feed_item_saved_assignment"
+              ? "saved"
+              : member.envelope.operation_type === "feed_item_archive_assignment"
+                ? "archived"
+                : "liked",
+            member.envelope.payload.assigned,
+            member.envelope.payload.assigned_at_ms,
           );
           materializedRows.put(updatedRow);
           const projected = projectPortableFeedRow(
@@ -2903,16 +2906,48 @@ class PwaLibraryCorePortableCheckpointStore
     await transactionDone(transaction);
   }
 
-  /** Sign and durably enqueue one local FeedItem user-state toggle. */
-  async enqueueUserStateToggle(input: {
+  /** Sign and durably enqueue one idempotent FeedItem user-state assignment. */
+  async enqueueUserStateAssignment(input: {
     readonly entityId: string;
-    readonly toggle: FeedItemUserStateToggleKindV1;
-    readonly toggledAtMs: number;
+    readonly field: FeedItemUserStateAssignmentFieldV1;
+    readonly assigned: boolean;
+    readonly assignedAtMs: number;
   }): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    return this.enqueueUserStateAssignments([input]);
+  }
+
+  /** Sign and enqueue one bounded, atomic batch of user-state assignments. */
+  async enqueueUserStateAssignments(
+    assignments: readonly {
+      readonly entityId: string;
+      readonly field: FeedItemUserStateAssignmentFieldV1;
+      readonly assigned: boolean;
+      readonly assignedAtMs: number;
+    }[],
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
     this.#requireAvailable();
-    if (!input.entityId) throw new TypeError("toggle entity ID is required");
-    if (!Number.isSafeInteger(input.toggledAtMs) || input.toggledAtMs < 0) {
-      throw new TypeError("toggle time must be a nonnegative integer");
+    if (
+      assignments.length === 0 ||
+      assignments.length > LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT
+    ) {
+      throw new RangeError("assignment batch exceeds the intent segment bound");
+    }
+    const identities = new Set<string>();
+    for (const assignment of assignments) {
+      if (!assignment.entityId) {
+        throw new TypeError("assignment entity ID is required");
+      }
+      if (
+        !Number.isSafeInteger(assignment.assignedAtMs) ||
+        assignment.assignedAtMs < 0
+      ) {
+        throw new TypeError("assignment time must be a nonnegative integer");
+      }
+      const identity = `${assignment.field}\u0000${assignment.entityId}`;
+      if (identities.has(identity)) {
+        throw new TypeError("assignment batch contains a duplicate field and entity");
+      }
+      identities.add(identity);
     }
     const database = await this.#database();
     const transaction = database.transaction(
@@ -2985,50 +3020,58 @@ class PwaLibraryCorePortableCheckpointStore
       !enrollment ||
       enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
     ) {
-      throw new Error("PWA toggle intent requires an active enrolled actor");
+      throw new Error("PWA assignment intent requires an active enrolled actor");
     }
 
     const authority = generation.header.accepted_authority;
-    const actorSequence =
+    const firstActorSequence =
       intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
+    if (
+      !Number.isSafeInteger(firstActorSequence + assignments.length - 1)
+    ) {
+      throw new RangeError("intent actor sequence is exhausted");
+    }
     const previousOperationId =
       intentActor?.latestOperationId ?? actorTip.acceptedOperationId;
     const previousChainDigest =
       intentActor?.latestActorChainDigest ?? actorTip.acceptedChainDigest;
     const transactionId =
-      `pwa-toggle:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const schema =
-      input.toggle === "saved"
-        ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-        : input.toggle === "archived"
-          ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-          : FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA;
-    const member = schema.construct(
-      {
-        operation_id: `${transactionId}:0`,
-        library_id: authority.library_id,
-        epoch: authority.epoch,
-        epoch_id: authority.epoch_id,
-        actor_id: identity.actorId,
-        actor_sequence: actorSequence,
-        previous_actor_operation_id: previousOperationId,
-        causal_frontier: authority.observed_frontier,
-        hlc_wall_ms: input.toggledAtMs,
-        hlc_counter: 0,
-        transaction_id: transactionId,
-        transaction_member_index: 0,
-        transaction_member_count: 1,
-        entity_id: input.entityId,
-        payload: {
-          toggle: input.toggle,
-          toggled_at_ms: input.toggledAtMs,
-        },
-        created_at_ms: input.toggledAtMs,
-      } satisfies FeedItemUserStateToggleTransactionMemberInputV1,
-      { digest: libraryCoreDigest },
-    );
+      `pwa-assignment:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = assignments.map((assignment, index) => {
+      const schema =
+        assignment.field === "saved"
+          ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+          : assignment.field === "archived"
+            ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+            : FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA;
+      return schema.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: authority.library_id,
+          epoch: authority.epoch,
+          epoch_id: authority.epoch_id,
+          actor_id: identity.actorId,
+          actor_sequence: firstActorSequence + index,
+          previous_actor_operation_id:
+            index === 0 ? previousOperationId : `${transactionId}:${index - 1}`,
+          causal_frontier: authority.observed_frontier,
+          hlc_wall_ms: assignment.assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: assignments.length,
+          entity_id: assignment.entityId,
+          payload: {
+            assigned: assignment.assigned,
+            assigned_at_ms: assignment.assignedAtMs,
+          },
+          created_at_ms: assignment.assignedAtMs,
+        } satisfies FeedItemUserStateAssignmentTransactionMemberInputV1,
+        { digest: libraryCoreDigest },
+      );
+    });
     const assembled = assembleLibraryCoreTransactionV1(
-      [member],
+      members,
       previousChainDigest,
       { digest: libraryCoreDigest },
     );
@@ -3044,15 +3087,18 @@ class PwaLibraryCorePortableCheckpointStore
         ) as LibraryCoreEd25519SignatureHex,
     });
     const receipt = await this.enqueueIntentTransaction(finalized);
-    await this.applySelectedUserStateToggle(input);
+    await this.applySelectedUserStateAssignments(assignments);
     return receipt;
   }
 
-  private async applySelectedUserStateToggle(input: {
-    readonly entityId: string;
-    readonly toggle: FeedItemUserStateToggleKindV1;
-    readonly toggledAtMs: number;
-  }): Promise<void> {
+  private async applySelectedUserStateAssignments(
+    assignments: readonly {
+      readonly entityId: string;
+      readonly field: FeedItemUserStateAssignmentFieldV1;
+      readonly assigned: boolean;
+      readonly assignedAtMs: number;
+    }[],
+  ): Promise<void> {
     const database = await this.#database();
     const transaction = database.transaction(
       [CONTROL_STORE, MATERIALIZED_ROWS_STORE, FEED_ROWS_STORE],
@@ -3063,32 +3109,36 @@ class PwaLibraryCorePortableCheckpointStore
     )) as SelectedPortableGenerationRecord | undefined;
     if (!selected) {
       transaction.abort();
-      throw new Error("PWA toggle intent has no selected Library generation");
+      throw new Error("PWA assignment intent has no selected Library generation");
     }
     const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
-    let stored: PortableMaterializedRowRecord | undefined;
-    for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
-      stored = (await requestResult(
-        materializedRows.get([
-          selected.generationId,
-          registryKey,
-          canonicalStringKey(input.entityId),
-        ]),
-      )) as PortableMaterializedRowRecord | undefined;
-      if (stored) break;
+    const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+    for (const input of assignments) {
+      let stored: PortableMaterializedRowRecord | undefined;
+      for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
+        stored = (await requestResult(
+          materializedRows.get([
+            selected.generationId,
+            registryKey,
+            canonicalStringKey(input.entityId),
+          ]),
+        )) as PortableMaterializedRowRecord | undefined;
+        if (stored) break;
+      }
+      if (!stored) {
+        transaction.abort();
+        throw new Error("PWA assignment intent targets an unavailable FeedItem");
+      }
+      const updated = assignedPortableFeedRow(
+        stored,
+        input.field,
+        input.assigned,
+        input.assignedAtMs,
+      );
+      materializedRows.put(updated);
+      const projected = projectPortableFeedRow(selected.generationId, updated);
+      if (projected) feedRows.put(projected);
     }
-    if (!stored) {
-      transaction.abort();
-      throw new Error("PWA toggle intent targets an unavailable FeedItem");
-    }
-    const updated = toggledPortableFeedRow(
-      stored,
-      input.toggle,
-      input.toggledAtMs,
-    );
-    materializedRows.put(updated);
-    const projected = projectPortableFeedRow(selected.generationId, updated);
-    if (projected) transaction.objectStore(FEED_ROWS_STORE).put(projected);
     await transactionDone(transaction);
     this.#feedSessions.clear();
   }

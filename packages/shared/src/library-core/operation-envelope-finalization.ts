@@ -12,7 +12,7 @@ import {
 import {
   isLibraryCoreAssembledTransactionV1,
   type FeedItemReadAssignmentSigningBodyV1,
-  type FeedItemUserStateToggleSigningBodyV1,
+  type FeedItemUserStateAssignmentSigningBodyV1,
   type LibraryCoreOperationSigningBodyV1,
   type LibraryCoreAssembledTransactionV1,
   type LibraryCoreTransactionBodyV1,
@@ -27,13 +27,13 @@ export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignment
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
-export interface FeedItemUserStateToggleEnvelopeV1 extends FeedItemUserStateToggleSigningBodyV1 {
+export interface FeedItemUserStateAssignmentEnvelopeV1 extends FeedItemUserStateAssignmentSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemReadAssignmentEnvelopeV1
-  | FeedItemUserStateToggleEnvelopeV1;
+  | FeedItemUserStateAssignmentEnvelopeV1;
 
 export interface LibraryCoreFinalizedEnvelopeV1 {
   readonly envelope: LibraryCoreOperationEnvelopeV1;
