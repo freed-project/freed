@@ -109,6 +109,8 @@ import { loadLegacyAutomerge } from "./legacy-automerge-runtime";
 import type { DocState } from "./automerge-types";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
+  enqueuePwaLibraryCoreArchiveItems,
+  enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUserStateToggle,
   initializePwaLibraryCoreState,
@@ -607,7 +609,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:markAllAsRead",
       (state) => projectMarkAllAsRead(state, platform),
-      () => docMarkAllAsRead(platform),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreMarkAllAsRead(platform)
+          : docMarkAllAsRead(platform),
+      { allowLibraryCoreIntent: true },
     );
   },
 
@@ -656,7 +662,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:archiveItems",
       (state) => projectArchiveItems(state, ids),
-      () => docArchiveItems(ids),
+      () =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreArchiveItems(ids)
+          : docArchiveItems(ids),
+      { allowLibraryCoreIntent: true },
     );
   },
 
