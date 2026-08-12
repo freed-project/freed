@@ -55,6 +55,9 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://freed.wtf"),
+  icons: {
+    icon: "/favicon.svg",
+  },
   title: {
     default: "Freed - Take Back Your Feed",
     template: "%s | Freed",
@@ -120,6 +123,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${manrope.variable} ${spaceGrotesk.variable} ${barlow.variable} ${barlowCondensed.variable}`}
     >
       <body className={manrope.className}>
