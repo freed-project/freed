@@ -291,7 +291,8 @@ async function createSnapshotInternal(
   reason: SnapshotReason = "manual",
 ): Promise<SnapshotSummary | null> {
   const state = getDocState();
-  if (!state) {
+  const sqliteActive = isSqliteLibraryActive();
+  if (!state && !sqliteActive) {
     return null;
   }
 
@@ -301,7 +302,7 @@ async function createSnapshotInternal(
   }
 
   const createdAt = Date.now();
-  if (isSqliteLibraryActive()) {
+  if (sqliteActive) {
     const backup = await createSqliteLibraryBackup(reason);
     const contactSyncState = readContactSyncState();
     const summary: SnapshotSummary = {
@@ -309,7 +310,7 @@ async function createSnapshotInternal(
       createdAt: backup.createdAtMs,
       byteSize: backup.byteLength,
       itemCount: backup.itemCount,
-      friendCount: Object.keys(state.friends ?? {}).length,
+      friendCount: Object.keys(state?.friends ?? {}).length,
       contactCount: contactSyncState.cachedContacts.length,
       pendingMatchCount: contactSyncState.pendingSuggestions.length,
       reason,
@@ -519,7 +520,7 @@ export async function startSnapshotManager(): Promise<void> {
   const existing = await listSnapshots();
   lastSnapshotAt = existing[0]?.createdAt ?? 0;
 
-  if (existing.length === 0 && getDocState()) {
+  if (existing.length === 0 && (isSqliteLibraryActive() || getDocState())) {
     await createSnapshot("auto");
   }
 
