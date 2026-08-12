@@ -274,7 +274,7 @@ Production release closeout now also requires a dedicated `main` back into `dev`
 | ---- | -------------------------------------------- | ------ |
 | 1.1  | Initialize monorepo with npm workspaces      | ✓      |
 | 1.2  | Create `@freed/shared` with core types       | ✓      |
-| 1.3  | Implement Automerge document schema          | ✓ (bugfixes: toggleSaved delete, updatePreferences deepMerge) |
+| 1.3  | Implement Automerge document schema          | ✓ (bugfixes: toggleSaved delete, updatePreferences deepMerge, canonical safe object-key admission across entity writers and reconcilers) |
 | 1.4  | Build marketing site (landing, manifesto)    | ✓      |
 | 1.5  | Set up GitHub Actions CI/CD                  | ✓      |
 | 1.6  | Configure custom domain (freed.wtf)          | ✓      |
