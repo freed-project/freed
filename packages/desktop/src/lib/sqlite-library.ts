@@ -158,6 +158,41 @@ interface EncodedImportItem {
   readonly utf8Bytes: number;
 }
 
+function replaceUnpairedSurrogates(value: string): string {
+  let normalized = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        normalized += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        normalized += "\ufffd";
+      }
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      normalized += "\ufffd";
+    } else {
+      normalized += value[index];
+    }
+  }
+  return normalized;
+}
+
+function normalizeLegacyUnicode(value: unknown): unknown {
+  if (typeof value === "string") return replaceUnpairedSurrogates(value);
+  if (Array.isArray(value)) return value.map(normalizeLegacyUnicode);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        replaceUnpairedSurrogates(key),
+        normalizeLegacyUnicode(entry),
+      ]),
+    );
+  }
+  return value;
+}
+
 function encodeUtf8Base64(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -177,7 +212,10 @@ function* legacyImportBatches(
   for (let sourceIndex = 0; sourceIndex < items.length; sourceIndex += 1) {
     const item = items[sourceIndex];
     if (!item) continue;
-    const json = encodeJson(item);
+    // Old provider captures can contain isolated UTF-16 surrogate halves.
+    // JavaScript permits them, but Rust strings and SQLite's UTF-8 boundary do
+    // not. Preserve the record and replace only those invalid scalar values.
+    const json = encodeJson(normalizeLegacyUnicode(item));
     const encoded: EncodedImportItem = {
       globalId: item.globalId,
       json,

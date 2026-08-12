@@ -139,4 +139,21 @@ describe("SQLite legacy import batching", () => {
       "Spain 🇪🇸 and Morocco 🇲🇦 with \\x text",
     );
   });
+
+  it("preserves a legacy item while repairing isolated surrogate halves", async () => {
+    const state = stateWithItems(1);
+    state.items[0]!.content.text = "before\ud800after\udc00 🇪🇸";
+
+    await importLegacyLibraryIntoSqlite(state, {
+      binary: new Uint8Array([1, 2, 3]),
+      heads: ["head-1"],
+      revision: { generation: 4, saveRevision: 9 },
+      itemCount: 1,
+      friendCount: 0,
+    });
+
+    expect(JSON.parse(mocks.appendCalls[0]![0]!).content.text).toBe(
+      "before�after� 🇪🇸",
+    );
+  });
 });
