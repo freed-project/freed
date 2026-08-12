@@ -6,6 +6,7 @@ import {
   addFeedItem,
   addPerson,
   addRssFeed,
+  isSafeObjectKey,
 } from "./schema.js";
 import type { FreedDoc } from "./schema.js";
 import type { Account, FeedItem, Person, RssFeed } from "./types.js";
@@ -18,15 +19,9 @@ import type { Account, FeedItem, Person, RssFeed } from "./types.js";
  * identifiers come from provider capture, so these values are influenced from
  * outside the app rather than chosen by it.
  *
- * The codebase agrees this matters and disagrees about how to say so. There is
- * a canonical `UNSAFE_OBJECT_KEYS` set, six inline copies of the same literal
- * array across the reconcilers, a `__proto__`-only check in Facebook group
- * discovery, and two writers with no check at all. Nothing tested any of it.
- *
- * These tests state the behavior as it ships. They are deliberately not a fix:
- * adding a guard to `addPerson` would start rejecting records it accepts today,
- * which is a product decision. See
- * https://github.com/freed-project/freed/issues/1337.
+ * One exported predicate now owns the rule. Every direct entity writer rejects
+ * the same keys and returns whether it accepted the write, so callers can
+ * observe a refused record instead of mistaking a silent drop for success.
  */
 
 const UNSAFE_KEYS = ["__proto__", "constructor", "prototype"] as const;
@@ -82,30 +77,26 @@ const item = (globalId: string): FeedItem =>
     userState: { hidden: false, saved: false, archived: false, tags: [] },
   }) as unknown as FeedItem;
 
-/** Each writer, its collection, and whether the source checks unsafe keys. */
+/** Each writer and its collection. */
 const WRITERS = [
   {
     name: "addFeedItem",
     collection: "feedItems",
-    guarded: true,
     write: (doc: FreedDoc, key: string) => addFeedItem(doc, item(key)),
   },
   {
     name: "addAccount",
     collection: "accounts",
-    guarded: true,
     write: (doc: FreedDoc, key: string) => addAccount(doc, account(key)),
   },
   {
     name: "addPerson",
     collection: "persons",
-    guarded: false,
     write: (doc: FreedDoc, key: string) => addPerson(doc, person(key)),
   },
   {
     name: "addRssFeed",
     collection: "rssFeeds",
-    guarded: false,
     write: (doc: FreedDoc, key: string) => addRssFeed(doc, feed(key)),
   },
 ] as const;
@@ -125,50 +116,41 @@ const storedKeys = (
 };
 
 describe("unsafe map keys in the entity writers", () => {
-  it("covers every writer and both guard states", () => {
-    // Guard the guard. If the table collapsed to one side, the contrast below
-    // would stop being a contrast.
-    expect(WRITERS.filter((writer) => writer.guarded)).toHaveLength(2);
-    expect(WRITERS.filter((writer) => !writer.guarded)).toHaveLength(2);
+  it("owns one canonical key rule", () => {
     expect(UNSAFE_KEYS).toStrictEqual(["__proto__", "constructor", "prototype"]);
+    expect(UNSAFE_KEYS.every((key) => !isSafeObjectKey(key))).toBe(true);
+    expect(isSafeObjectKey("ordinary-id")).toBe(true);
   });
 
   it("never writes a record under __proto__, guarded or not", () => {
-    // Assignment through `__proto__` does not create an own property, so the
-    // record is discarded by every writer. No error is raised, which means a
-    // caller cannot tell the write was dropped.
     for (const writer of WRITERS) {
       expect(storedKeys(writer, "__proto__")).toStrictEqual([]);
     }
   });
 
-  describe.each(WRITERS.filter((writer) => writer.guarded))(
-    "$name checks the key",
+  describe.each(WRITERS)(
+    "$name",
     (writer) => {
-      it.each(["constructor", "prototype"])("refuses %s", (key) => {
+      it.each(UNSAFE_KEYS)("refuses %s observably", (key) => {
+        let accepted = true;
+        const doc = A.change(emptyDoc() as never, (draft: never) => {
+          accepted = writer.write(draft as unknown as FreedDoc, key);
+        });
+        expect(accepted).toBe(false);
         expect(storedKeys(writer, key)).toStrictEqual([]);
+        expect(
+          Object.keys(
+            (doc as unknown as Record<string, Record<string, unknown>>)[writer.collection],
+          ),
+        ).toStrictEqual([]);
       });
 
-      it("still accepts an ordinary identifier", () => {
-        // The positive control. A writer that refused everything would satisfy
-        // the two assertions above without guarding anything.
-        expect(storedKeys(writer, "ordinary-id")).toStrictEqual(["ordinary-id"]);
-      });
-    },
-  );
-
-  describe.each(WRITERS.filter((writer) => !writer.guarded))(
-    "$name does not check the key",
-    (writer) => {
-      it.each(["constructor", "prototype"])("stores a record under %s", (key) => {
-        // Recorded as the shipping behavior, not endorsed. A record living at
-        // `constructor` shadows `Object.prototype.constructor` the moment the
-        // collection is materialized into a plain object, which the SQLite
-        // projection does.
-        expect(storedKeys(writer, key)).toStrictEqual([key]);
-      });
-
-      it("still accepts an ordinary identifier", () => {
+      it("accepts an ordinary identifier observably", () => {
+        let accepted = false;
+        A.change(emptyDoc() as never, (draft: never) => {
+          accepted = writer.write(draft as unknown as FreedDoc, "ordinary-id");
+        });
+        expect(accepted).toBe(true);
         expect(storedKeys(writer, "ordinary-id")).toStrictEqual(["ordinary-id"]);
       });
     },

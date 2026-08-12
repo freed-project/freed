@@ -506,6 +506,17 @@ export function migrateLegacyIdentityGraph(doc: FreedDoc): boolean {
  */
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Return whether a dynamic key can be stored safely in a plain object map.
+ *
+ * Freed still materializes several entity collections as ordinary JavaScript
+ * objects. These three property names can mutate or shadow the prototype chain
+ * instead of creating an ordinary entity entry.
+ */
+export function isSafeObjectKey(key: string): boolean {
+  return !UNSAFE_OBJECT_KEYS.has(key);
+}
+
 export function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map(stripUndefined) as unknown as T;
@@ -513,7 +524,7 @@ export function stripUndefined<T>(value: T): T {
   if (value !== null && typeof value === "object") {
     const entries: Array<[string, unknown]> = [];
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (v === undefined || UNSAFE_OBJECT_KEYS.has(k)) continue;
+      if (v === undefined || !isSafeObjectKey(k)) continue;
       entries.push([k, stripUndefined(v)]);
     }
     return Object.fromEntries(entries) as T;
@@ -1365,13 +1376,14 @@ export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
  * @param doc - The Automerge document (mutable within A.change)
  * @param item - The feed item to add
  */
-export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
-  if (UNSAFE_OBJECT_KEYS.has(item.globalId)) return;
+export function addFeedItem(doc: FreedDoc, item: FeedItem): boolean {
+  if (!isSafeObjectKey(item.globalId)) return false;
   const next = stripUndefined(sanitizeFeedItemWrite(item)) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
     applySemanticEnrichmentToItem(next);
   }
   doc.feedItems[item.globalId] = stripUndefined(next);
+  return true;
 }
 
 /**
@@ -1846,8 +1858,10 @@ export function confirmSeenSynced(
  * @param doc - The Automerge document (mutable within A.change)
  * @param feed - The RSS feed to add
  */
-export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
+export function addRssFeed(doc: FreedDoc, feed: RssFeed): boolean {
+  if (!isSafeObjectKey(feed.url)) return false;
   doc.rssFeeds[feed.url] = stripUndefined(stripDeviceLocalRssFeedState(feed));
+  return true;
 }
 
 /**
@@ -1939,9 +1953,11 @@ export function removeAllFeeds(doc: FreedDoc, includeItems: boolean): void {
  * @param doc - The Automerge document (mutable within A.change)
  * @param friend - The friend to add
  */
-export function addPerson(doc: FreedDoc, person: Person): void {
+export function addPerson(doc: FreedDoc, person: Person): boolean {
+  if (!isSafeObjectKey(person.id)) return false;
   ensureIdentityGraphRoots(doc);
   doc.persons[person.id] = normalizePerson(person);
+  return true;
 }
 
 /**
@@ -2060,10 +2076,11 @@ export function logReachOut(
 // Account Operations
 // =============================================================================
 
-export function addAccount(doc: FreedDoc, account: Account): void {
+export function addAccount(doc: FreedDoc, account: Account): boolean {
+  if (!isSafeObjectKey(account.id)) return false;
   ensureIdentityGraphRoots(doc);
-  if (UNSAFE_OBJECT_KEYS.has(account.id)) return;
   doc.accounts[account.id] = stripUndefined(sanitizeAccountWrite(account)) as Account;
+  return true;
 }
 
 export function addAccounts(doc: FreedDoc, accounts: Account[]): void {
@@ -2249,7 +2266,7 @@ export function reconcileProviderEssayItems(
   }
 
   for (const incoming of items) {
-    if (["__proto__", "constructor", "prototype"].includes(incoming.globalId)) continue;
+    if (!isSafeObjectKey(incoming.globalId)) continue;
     if (incoming.platform !== provider || incoming.contentType !== "article") continue;
     const url = canonicalEssayItemUrl(incoming);
     const exact = doc.feedItems[incoming.globalId] as FeedItem | undefined;
@@ -2314,11 +2331,11 @@ export function reconcileFollowRosterCapture(
   const providerItems = items.filter(
     (item) =>
       item.platform === options.provider &&
-      !["__proto__", "constructor", "prototype"].includes(item.globalId),
+      isSafeObjectKey(item.globalId),
   );
 
   for (const account of accounts) {
-    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
+    if (!isSafeObjectKey(account.id)) continue;
     if (account.provider !== options.provider) continue;
     const existing = doc.accounts[account.id];
     if (!existing) {
@@ -2367,7 +2384,7 @@ export function reconcileFollowRosterCapture(
 
   for (const item of providerItems) {
     if (item.contentType === "article") continue;
-    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
+    if (!isSafeObjectKey(item.globalId)) continue;
     const existing = doc.feedItems[item.globalId];
     if (existing) {
       mergeFeedItemInto(existing, item);
@@ -2403,7 +2420,7 @@ export function reconcileYouTubeCapture(
   const incomingAccountIds = new Set(accounts.map((account) => account.id));
 
   for (const account of accounts) {
-    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
+    if (!isSafeObjectKey(account.id)) continue;
     const existing = doc.accounts[account.id];
     if (!existing) {
       addAccount(doc, {
@@ -2441,7 +2458,7 @@ export function reconcileYouTubeCapture(
   }
 
   for (const item of items) {
-    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
+    if (!isSafeObjectKey(item.globalId)) continue;
     const existing = doc.feedItems[item.globalId];
     if (existing) {
       mergeFeedItemInto(
