@@ -43,6 +43,8 @@ import {
   type SocialOutboxAction,
   type SocialOutboxIntent,
 } from "./social-outbox-state";
+import { isSqliteLibraryActive } from "./sqlite-library";
+import { sqliteLibraryCloudWriterAdmissionStatus } from "./sqlite-library";
 
 // =============================================================================
 // Constants
@@ -301,6 +303,18 @@ export function startOutboxProcessor(
     if (stopped || isDraining) return;
     isDraining = true;
     drainRequested = false;
+
+    if (isSqliteLibraryActive()) {
+      const admission = await sqliteLibraryCloudWriterAdmissionStatus();
+      if (!admission.allowed) {
+        addDebugEvent(
+          "change",
+          "[Outbox] provider actions paused because another Freed Desktop owns Library writes",
+        );
+        isDraining = false;
+        return;
+      }
+    }
 
     let likeQueue: PendingAction[] = [];
     let seenQueue: PendingAction[] = [];

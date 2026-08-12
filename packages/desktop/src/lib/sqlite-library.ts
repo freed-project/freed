@@ -92,6 +92,36 @@ export interface SqliteLibraryIntentResultOutboxEntry {
   readonly enqueuedAtMs: number;
 }
 
+export interface SqliteLibraryCloudWriterAdmissionStatus {
+  readonly configured: boolean;
+  readonly allowed: boolean;
+  readonly localWriterId: string | null;
+  readonly activeWriterId: string | null;
+  readonly storageEpoch: string | null;
+  readonly controlRevision: string | null;
+  readonly verifiedAtMs: number | null;
+}
+
+export async function setSqliteLibraryCloudWriterAdmission(input: {
+  readonly localWriterId: string;
+  readonly activeWriterId: string;
+  readonly storageEpoch: string;
+  readonly controlRevision: string;
+}): Promise<SqliteLibraryCloudWriterAdmissionStatus> {
+  return invoke<SqliteLibraryCloudWriterAdmissionStatus>(
+    "set_sqlite_library_cloud_writer_admission",
+    { request: { ...input, verifiedAtMs: Date.now() } },
+  );
+}
+
+export async function sqliteLibraryCloudWriterAdmissionStatus(): Promise<
+  SqliteLibraryCloudWriterAdmissionStatus
+> {
+  return invoke<SqliteLibraryCloudWriterAdmissionStatus>(
+    "sqlite_library_cloud_writer_admission_status",
+  );
+}
+
 export interface PortableSqliteLibraryImportRequest {
   expectedItemCount: number;
   shell: unknown;

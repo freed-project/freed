@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
     },
   },
   writeNative: vi.fn(),
+  setWriterAdmission: vi.fn(async () => ({ configured: true, allowed: true })),
   publish: vi.fn(),
   reassign: vi.fn(),
   importCheckpoint: vi.fn(),
@@ -101,6 +102,7 @@ vi.mock("./sqlite-library", () => ({
   readPwaIntentResultOutbox: mocks.readIntentResults,
   reassignSqliteLibraryWriterEpoch: mocks.reassignNative,
   restoreSqliteLibraryBackup: mocks.restoreBackup,
+  setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
 }));
 
@@ -275,6 +277,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.restoreBackup.mockClear();
     mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
+    mocks.setWriterAdmission.mockClear();
     mocks.readDescriptor.mockReset().mockResolvedValue({
       revision: 7,
       itemCount: 2,
@@ -349,6 +352,10 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.writeNative).not.toHaveBeenCalled();
+    expect(mocks.setWriterAdmission).toHaveBeenCalledWith(expect.objectContaining({
+      activeWriterId: "desktop-original-installation",
+      localWriterId: mocks.bootstrapAuthority.actor.actor_id,
+    }));
   });
 
   it("moves a current restored SQLite copy to a fresh writer epoch with one control CAS", async () => {
@@ -413,6 +420,11 @@ describe("SQLite Library Google Drive production wiring", () => {
       lastPublishedRevision: 7,
       writerId: mocks.bootstrapAuthority.actor.actor_id,
     });
+    expect(mocks.setWriterAdmission).toHaveBeenLastCalledWith(expect.objectContaining({
+      activeWriterId: mocks.bootstrapAuthority.actor.actor_id,
+      localWriterId: mocks.bootstrapAuthority.actor.actor_id,
+      controlRevision: '"etag-2"',
+    }));
   });
 
   it("backs up and imports the active cloud checkpoint before taking over from a newer epoch", async () => {

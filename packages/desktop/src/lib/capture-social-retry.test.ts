@@ -1,4 +1,12 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -31,6 +39,8 @@ const mocks = vi.hoisted(() => {
     withProviderSyncing: vi.fn(
       async (_provider: string, run: () => Promise<unknown>) => run(),
     ),
+    sqliteActive: false,
+    writerAllowed: true,
   };
 });
 
@@ -87,6 +97,19 @@ vi.mock("./store", () => ({
   withProviderSyncing: mocks.withProviderSyncing,
 }));
 
+vi.mock("./sqlite-library", () => ({
+  isSqliteLibraryActive: () => mocks.sqliteActive,
+  sqliteLibraryCloudWriterAdmissionStatus: vi.fn(async () => ({
+    configured: true,
+    allowed: mocks.writerAllowed,
+    localWriterId: "writer-local",
+    activeWriterId: mocks.writerAllowed ? "writer-local" : "writer-other",
+    storageEpoch: "epoch-1",
+    controlRevision: "revision-1",
+    verifiedAtMs: 1,
+  })),
+}));
+
 let captureModule: typeof import("./capture");
 
 describe("scheduled social capture retries", () => {
@@ -118,6 +141,8 @@ describe("scheduled social capture retries", () => {
     mocks.state.substackAuth = { isAuthenticated: false };
     mocks.state.mediumAuth = { isAuthenticated: false };
     mocks.state.ytAuth = { isAuthenticated: false };
+    mocks.sqliteActive = false;
+    mocks.writerAllowed = true;
   });
 
   afterEach(() => {
@@ -132,7 +157,8 @@ describe("scheduled social capture retries", () => {
         items: [],
         diag: {
           errorStage: "memory_pressure",
-          errorMessage: "Facebook sync did not start because Freed Desktop memory is high.",
+          errorMessage:
+            "Facebook sync did not start because Freed Desktop memory is high.",
         },
       })
       .mockResolvedValueOnce({
@@ -160,6 +186,26 @@ describe("scheduled social capture retries", () => {
       "facebook",
       expect.any(Function),
     );
+  });
+
+  it("does not contact providers after another Desktop becomes the writer", async () => {
+    mocks.sqliteActive = true;
+    mocks.writerAllowed = false;
+
+    const result = await captureModule.refreshSocialProvider(
+      "facebook",
+      "scheduled",
+    );
+    await captureModule.refreshAllFeeds();
+
+    expect(result).toMatchObject({
+      status: "ignored",
+      stage: "retired_writer",
+    });
+    expect(mocks.captureFbFeed).not.toHaveBeenCalled();
+    expect(mocks.captureXTimeline).not.toHaveBeenCalled();
+    expect(mocks.captureYouTube).not.toHaveBeenCalled();
+    expect(mocks.docBatchRefreshFeeds).not.toHaveBeenCalled();
   });
 
   it("returns success details when Facebook sees posts", async () => {
@@ -248,7 +294,10 @@ describe("scheduled social capture retries", () => {
       },
     });
 
-    const result = await captureModule.refreshSocialProvider("substack", "scheduled");
+    const result = await captureModule.refreshSocialProvider(
+      "substack",
+      "scheduled",
+    );
 
     expect(mocks.captureSubstackFeed).toHaveBeenCalledWith("scheduled");
     expect(result).toMatchObject({
@@ -288,7 +337,10 @@ describe("scheduled social capture retries", () => {
         },
       });
 
-    const first = await captureModule.refreshSocialProvider("medium", "scheduled");
+    const first = await captureModule.refreshSocialProvider(
+      "medium",
+      "scheduled",
+    );
 
     expect(first.status).toBe("deferred");
     expect(mocks.captureMediumFeed).toHaveBeenCalledTimes(1);
