@@ -67,6 +67,7 @@ const automerge = vi.hoisted(() => {
 });
 
 const libraryCore = vi.hoisted(() => ({
+  enqueuePwaLibraryCoreArchiveAllReadUnsaved: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
@@ -175,6 +176,12 @@ describe("PWA store startup maintenance", () => {
     expect(libraryCore.enqueuePwaLibraryCoreArchiveItems).toHaveBeenCalledWith([
       "item-read-intent",
     ]);
+    await useAppStore
+      .getState()
+      .archiveAllReadUnsaved("rss", "https://example.test/feed");
+    expect(
+      libraryCore.enqueuePwaLibraryCoreArchiveAllReadUnsaved,
+    ).toHaveBeenCalledWith("rss", "https://example.test/feed");
     await useAppStore.getState().toggleSaved("saved-intent");
     expect(
       libraryCore.enqueuePwaLibraryCoreUserStateToggle,

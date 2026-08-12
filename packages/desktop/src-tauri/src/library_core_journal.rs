@@ -321,8 +321,8 @@ struct VerifiedOperation {
     entity_id: String,
     operation_type: String,
     read_at_ms: Option<i64>,
-    toggle: Option<String>,
-    toggled_at_ms: Option<i64>,
+    assigned: Option<bool>,
+    assigned_at_ms: Option<i64>,
     canonical_envelope_json: String,
     causal_tips: Vec<VerifiedCausalTip>,
 }
@@ -588,8 +588,8 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member
                     .read_at_ms
                     .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
-                    || member.toggle.is_some()
-                    || member.toggled_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "read_at_ms",
@@ -600,27 +600,13 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
             | "feed_item_archive_assignment"
             | "feed_item_like_assignment" => {
                 if member.read_at_ms.is_some()
+                    || member.assigned.is_none()
                     || member
-                        .toggle
-                        .as_deref()
-                        .is_none_or(|value| !matches!(value, "saved" | "archived" | "liked"))
-                    || member
-                        .toggled_at_ms
+                        .assigned_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                 {
                     return Err(JournalError::InvalidVerifiedInput {
-                        field: "user_state_toggle",
-                    });
-                }
-                let expected_toggle = match member.operation_type.as_str() {
-                    "feed_item_saved_assignment" => "saved",
-                    "feed_item_archive_assignment" => "archived",
-                    "feed_item_like_assignment" => "liked",
-                    _ => unreachable!("validated toggle operation type"),
-                };
-                if member.toggle.as_deref() != Some(expected_toggle) {
-                    return Err(JournalError::InvalidVerifiedInput {
-                        field: "user_state_toggle",
+                        field: "user_state_assignment",
                     });
                 }
             }
@@ -1713,49 +1699,54 @@ impl LibraryCoreJournal {
                     params![read_at_ms, committed_at_ms, member.entity_id],
                 )?
             } else {
-                let toggled_at_ms = member.toggled_at_ms.expect("validated toggle time");
-                match member.toggle.as_deref().expect("validated toggle kind") {
-                    "saved" => transaction.execute(
+                let assigned = i64::from(member.assigned.expect("validated assignment"));
+                let assigned_at_ms = member.assigned_at_ms.expect("validated assignment time");
+                match member.operation_type.as_str() {
+                    "feed_item_saved_assignment" => transaction.execute(
                         "UPDATE library_core_feed_items SET
-                           saved = CASE WHEN saved = 1 THEN 0 ELSE 1 END,
-                           archived = CASE WHEN saved = 1 THEN archived ELSE 0 END,
-                           archivedAt = CASE WHEN saved = 1 THEN archivedAt ELSE NULL END,
-                           payloadJson = CASE WHEN saved = 1
+                           saved = ?1,
+                           archived = CASE WHEN ?1 = 1 THEN 0 ELSE archived END,
+                           archivedAt = CASE WHEN ?1 = 1 THEN NULL ELSE archivedAt END,
+                           payloadJson = CASE WHEN ?1 = 0
                              THEN json_remove(json_set(payloadJson, '$.userState.saved', json('false')), '$.userState.savedAt')
                              ELSE json_remove(json_set(payloadJson,
-                               '$.userState.saved', json('true'), '$.userState.savedAt', ?1,
+                               '$.userState.saved', json('true'), '$.userState.savedAt', ?2,
                                '$.userState.archived', json('false')), '$.userState.archivedAt')
                            END,
-                           updatedAtMs = ?2
-                         WHERE globalId = ?3 AND deletedAt IS NULL;",
-                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND (saved IS NOT ?1 OR (?1 = 1 AND archived IS 1));",
+                        params![assigned, assigned_at_ms, committed_at_ms, member.entity_id],
                     )?,
-                    "archived" => transaction.execute(
+                    "feed_item_archive_assignment" => transaction.execute(
                         "UPDATE library_core_feed_items SET
-                           archived = CASE WHEN archived = 1 THEN 0 ELSE 1 END,
-                           archivedAt = CASE WHEN archived = 1 THEN NULL ELSE ?1 END,
-                           payloadJson = CASE WHEN archived = 1
+                           archived = ?1,
+                           archivedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
+                           payloadJson = CASE WHEN ?1 = 0
                              THEN json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt')
-                             ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?1)
+                             ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?2)
                            END,
-                           updatedAtMs = ?2
-                         WHERE globalId = ?3 AND deletedAt IS NULL AND saved IS NOT 1;",
-                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND archived IS NOT ?1
+                           AND (?1 = 0 OR saved IS NOT 1);",
+                        params![assigned, assigned_at_ms, committed_at_ms, member.entity_id],
                     )?,
-                    "liked" => transaction.execute(
+                    "feed_item_like_assignment" => transaction.execute(
                         "UPDATE library_core_feed_items SET
-                           liked = CASE WHEN liked = 1 THEN 0 ELSE 1 END,
-                           likedAt = CASE WHEN liked = 1 THEN NULL ELSE ?1 END,
+                           liked = ?1,
+                           likedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
                            likedSyncedAt = NULL,
-                           payloadJson = CASE WHEN liked = 1
+                           payloadJson = CASE WHEN ?1 = 0
                              THEN json_remove(json_set(payloadJson, '$.userState.liked', json('false')), '$.userState.likedAt', '$.userState.likedSyncedAt')
-                             ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?1), '$.userState.likedSyncedAt')
+                             ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?2), '$.userState.likedSyncedAt')
                            END,
-                           updatedAtMs = ?2
-                         WHERE globalId = ?3 AND deletedAt IS NULL;",
-                        params![toggled_at_ms, committed_at_ms, member.entity_id],
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND liked IS NOT ?1;",
+                        params![assigned, assigned_at_ms, committed_at_ms, member.entity_id],
                     )?,
-                    _ => unreachable!("validated toggle kind"),
+                    _ => unreachable!("validated assignment operation type"),
                 }
             };
         }
@@ -2335,8 +2326,8 @@ mod tests {
                 entity_id: (*entity_id).to_string(),
                 operation_type: "feed_item_read_assignment".to_string(),
                 read_at_ms: Some(*read_at_ms),
-                toggle: None,
-                toggled_at_ms: None,
+                assigned: None,
+                assigned_at_ms: None,
                 canonical_envelope_json,
                 causal_tips: Vec::new(),
             });
@@ -2359,33 +2350,34 @@ mod tests {
         }
     }
 
-    fn toggle_transaction(
+    fn assignment_transaction(
         transaction_id: &str,
         actor_sequence: i64,
         previous_operation_id: Option<&str>,
         previous_chain_digest: &str,
         entity_id: &str,
-        toggle: &str,
-        toggled_at_ms: i64,
+        field: &str,
+        assigned: bool,
+        assigned_at_ms: i64,
     ) -> VerifiedOperationTransaction {
         let mut verified = transaction(
             transaction_id,
             actor_sequence,
             previous_operation_id,
             previous_chain_digest,
-            &[(entity_id, toggled_at_ms)],
+            &[(entity_id, assigned_at_ms)],
         );
         let member = &mut verified.members[0];
-        member.operation_type = match toggle {
+        member.operation_type = match field {
             "saved" => "feed_item_saved_assignment",
             "archived" => "feed_item_archive_assignment",
             "liked" => "feed_item_like_assignment",
-            _ => panic!("unsupported fixture toggle"),
+            _ => panic!("unsupported fixture assignment field"),
         }
         .to_string();
         member.read_at_ms = None;
-        member.toggle = Some(toggle.to_string());
-        member.toggled_at_ms = Some(toggled_at_ms);
+        member.assigned = Some(assigned);
+        member.assigned_at_ms = Some(assigned_at_ms);
         verified
     }
 
@@ -3003,7 +2995,7 @@ mod tests {
     }
 
     #[test]
-    fn user_state_toggle_materializes_once_and_replay_is_idempotent() {
+    fn user_state_assignment_materializes_once_and_replay_is_idempotent() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         install_actor_authority(&mut journal);
         let enrollment = actor();
@@ -3026,22 +3018,37 @@ mod tests {
             ))
             .expect("install product fixture");
 
-        let verified = toggle_transaction(
-            "tx:toggle:saved",
+        let verified = assignment_transaction(
+            "tx:assignment:saved",
             1,
             None,
             &enrollment.actor_chain_genesis,
             "rss:item:toggle",
             "saved",
+            true,
             900,
         );
         let receipt = journal
             .commit_read_transaction(&verified, 1_100)
-            .expect("commit toggle");
+            .expect("commit assignment");
         let replay = journal
             .commit_read_transaction(&verified, 9_999)
-            .expect("replay toggle");
+            .expect("replay assignment");
         assert_eq!(receipt, replay);
+
+        let repeated_true = assignment_transaction(
+            "tx:assignment:saved:repeat",
+            2,
+            Some(&verified.members[0].operation_id),
+            &verified.members[0].actor_chain_digest,
+            "rss:item:toggle",
+            "saved",
+            true,
+            950,
+        );
+        journal
+            .commit_read_transaction(&repeated_true, 1_200)
+            .expect("commit repeated true assignment");
 
         let state: (i64, i64, i64, i64, i64) = journal
             .connection
@@ -3074,7 +3081,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("count replication outbox"),
-            1
+            2
         );
         assert_eq!(
             journal

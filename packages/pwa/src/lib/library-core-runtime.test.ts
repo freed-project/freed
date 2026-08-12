@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
-  enqueueUserStateToggle: vi.fn(),
+  enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
 }));
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./library-core-portable-checkpoint-store", () => ({
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
-    enqueueUserStateToggle: mocks.enqueueUserStateToggle,
+    enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
   }),
@@ -23,6 +23,7 @@ vi.mock("./factory-reset-coordinator", () => ({
 import {
   PWA_LIBRARY_CORE_ENABLED_KEY,
   enqueuePwaLibraryCoreArchiveItems,
+  enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   isPwaLibraryCoreEnabled,
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
@@ -44,7 +45,7 @@ describe("PWA Library Core bounded scanner", () => {
     localStorage.clear();
     mocks.readSelectedCollectionPage.mockReset();
     mocks.readSelectedMaterializedRow.mockReset();
-    mocks.enqueueUserStateToggle.mockReset();
+    mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
   });
 
@@ -101,16 +102,23 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("queues user-state changes through the signed IndexedDB intent path", async () => {
-    mocks.enqueueUserStateToggle.mockResolvedValue({ operationId: "op:toggle" });
+    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:assignment" });
+    mocks.readSelectedMaterializedRow.mockResolvedValue({
+      globalId: "item-9",
+      userState: { liked: false },
+    });
 
     await enqueuePwaLibraryCoreUserStateToggle("item-9", "liked");
 
-    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledOnce();
-    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledWith({
-      entityId: "item-9",
-      toggle: "liked",
-      toggledAtMs: expect.any(Number),
-    });
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledOnce();
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
+      {
+        assigned: true,
+        assignedAtMs: expect.any(Number),
+        entityId: "item-9",
+        field: "liked",
+      },
+    ]);
   });
 
   it("marks the complete selected platform read in bounded intent batches", async () => {
@@ -147,8 +155,8 @@ describe("PWA Library Core bounded scanner", () => {
     });
   });
 
-  it("archives only eligible selected items through signed toggles", async () => {
-    mocks.enqueueUserStateToggle.mockResolvedValue({ operationId: "op:archive" });
+  it("archives only eligible selected items through explicit assignments", async () => {
+    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:archive" });
     mocks.readSelectedMaterializedRow
       .mockResolvedValueOnce({
         globalId: "eligible",
@@ -170,11 +178,55 @@ describe("PWA Library Core bounded scanner", () => {
       "eligible",
     ]);
 
-    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledOnce();
-    expect(mocks.enqueueUserStateToggle).toHaveBeenCalledWith({
-      entityId: "eligible",
-      toggle: "archived",
-      toggledAtMs: expect.any(Number),
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledOnce();
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
+      {
+        assigned: true,
+        assignedAtMs: expect.any(Number),
+        entityId: "eligible",
+        field: "archived",
+      },
+    ]);
+  });
+
+  it("archives the complete selected scope in one bounded assignment batch", async () => {
+    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:bulk" });
+    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
+      entries: [
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "rss-eligible",
+          platform: "rss",
+          rssSource: { feedUrl: "https://example.test/feed" },
+          userState: { readAt: 1 },
+        } } },
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "rss-saved",
+          platform: "rss",
+          rssSource: { feedUrl: "https://example.test/feed" },
+          userState: { readAt: 1, saved: true },
+        } } },
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "other-feed",
+          platform: "rss",
+          rssSource: { feedUrl: "https://other.test/feed" },
+          userState: { readAt: 1 },
+        } } },
+      ],
+      nextOrdinal: null,
     });
+
+    await enqueuePwaLibraryCoreArchiveAllReadUnsaved(
+      "rss",
+      "https://example.test/feed",
+    );
+
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
+      {
+        assigned: true,
+        assignedAtMs: expect.any(Number),
+        entityId: "rss-eligible",
+        field: "archived",
+      },
+    ]);
   });
 });

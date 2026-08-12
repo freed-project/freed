@@ -12,7 +12,7 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
-  type FeedItemUserStateToggleKindV1,
+  type FeedItemUserStateAssignmentFieldV1,
   type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
@@ -252,6 +252,7 @@ export async function enqueuePwaLibraryCoreMarkAllAsRead(
 export async function enqueuePwaLibraryCoreArchiveItems(
   globalIds: readonly string[],
 ): Promise<void> {
+  const assignments: string[] = [];
   for (const globalId of new Set(globalIds.filter(Boolean))) {
     const row = await getPortableStore().readSelectedMaterializedRow(
       "10_feed_items",
@@ -267,21 +268,107 @@ export async function enqueuePwaLibraryCoreArchiveItems(
     ) {
       continue;
     }
-    await enqueuePwaLibraryCoreUserStateToggle(globalId, "archived");
+    assignments.push(globalId);
+    if (assignments.length === LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT) {
+      await enqueuePwaLibraryCoreUserStateAssignments(
+        assignments.splice(0),
+        "archived",
+        true,
+      );
+    }
   }
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    assignments,
+    "archived",
+    true,
+  );
 }
 
-/** Queue one signed PWA user-state toggle and update the local IndexedDB row. */
+/** Archive every eligible item through bounded IndexedDB scans and intents. */
+export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
+  platform?: string,
+  feedUrl?: string,
+): Promise<void> {
+  let pending: string[] = [];
+  await scanPwaLibraryCoreItems(async (items) => {
+    for (const item of items) {
+      if (
+        item.userState.hidden ||
+        item.userState.archived ||
+        item.userState.saved ||
+        !item.userState.readAt ||
+        (platform && item.platform !== platform) ||
+        (feedUrl && item.rssSource?.feedUrl !== feedUrl)
+      ) {
+        continue;
+      }
+      pending.push(item.globalId);
+      if (pending.length === LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT) {
+        const batch = pending;
+        pending = [];
+        await enqueuePwaLibraryCoreUserStateAssignments(
+          batch,
+          "archived",
+          true,
+        );
+      }
+    }
+    return "continue" as const;
+  });
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    pending,
+    "archived",
+    true,
+  );
+}
+
+/** Queue the explicit state selected by a local toggle gesture. */
 export async function enqueuePwaLibraryCoreUserStateToggle(
   globalId: string,
-  toggle: FeedItemUserStateToggleKindV1,
+  field: FeedItemUserStateAssignmentFieldV1,
 ): Promise<void> {
-  await getPortableStore().enqueueUserStateToggle({
-    entityId: globalId,
-    toggle,
-    toggledAtMs: Date.now(),
-  });
-  await refreshPersistentSearchItems([globalId]);
+  const row = await getPortableStore().readSelectedMaterializedRow(
+    "10_feed_items",
+    globalId,
+  );
+  const item = row as unknown as FeedItem | null;
+  if (!item) throw new Error("PWA assignment targets an unavailable FeedItem");
+  await enqueuePwaLibraryCoreUserStateAssignment(
+    globalId,
+    field,
+    item.userState[field] !== true,
+  );
+}
+
+/** Queue one signed, idempotent PWA user-state assignment. */
+export async function enqueuePwaLibraryCoreUserStateAssignment(
+  globalId: string,
+  field: FeedItemUserStateAssignmentFieldV1,
+  assigned: boolean,
+): Promise<void> {
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    [globalId],
+    field,
+    assigned,
+  );
+}
+
+async function enqueuePwaLibraryCoreUserStateAssignments(
+  globalIds: readonly string[],
+  field: FeedItemUserStateAssignmentFieldV1,
+  assigned: boolean,
+): Promise<void> {
+  if (globalIds.length === 0) return;
+  const assignedAtMs = Date.now();
+  await getPortableStore().enqueueUserStateAssignments(
+    globalIds.map((entityId) => ({
+      assigned,
+      assignedAtMs,
+      entityId,
+      field,
+    })),
+  );
+  await refreshPersistentSearchItems(globalIds);
 }
 
 async function refreshPersistentSearchItems(

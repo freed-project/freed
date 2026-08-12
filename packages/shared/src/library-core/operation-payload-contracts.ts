@@ -4,23 +4,23 @@ export interface FeedItemReadAssignmentPayloadV1 {
   readonly read_at_ms: number;
 }
 
-export const FEED_ITEM_USER_STATE_TOGGLE_KINDS = Object.freeze([
+export const FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS = Object.freeze([
   "saved",
   "archived",
   "liked",
 ] as const);
 
-export type FeedItemUserStateToggleKindV1 =
-  (typeof FEED_ITEM_USER_STATE_TOGGLE_KINDS)[number];
+export type FeedItemUserStateAssignmentFieldV1 =
+  (typeof FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS)[number];
 
-export type FeedItemUserStateToggleOperationTypeV1 =
+export type FeedItemUserStateAssignmentOperationTypeV1 =
   | "feed_item_saved_assignment"
   | "feed_item_archive_assignment"
   | "feed_item_like_assignment";
 
-export interface FeedItemUserStateTogglePayloadV1 {
-  readonly toggled_at_ms: number;
-  readonly toggle: FeedItemUserStateToggleKindV1;
+export interface FeedItemUserStateAssignmentPayloadV1 {
+  readonly assigned: boolean;
+  readonly assigned_at_ms: number;
 }
 
 export type LibraryCorePayloadValidationResult<T> =
@@ -48,7 +48,7 @@ export interface LibraryCoreOperationPayloadSchema<
 }
 
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
-const USER_STATE_TOGGLE_KEYS = ["toggle", "toggled_at_ms"] as const;
+const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 function invalid<T>(reason: string): LibraryCorePayloadValidationResult<T> {
   return { ok: false, code: "invalid", reason };
@@ -92,9 +92,9 @@ function validateFeedItemReadAssignmentPayload(
   };
 }
 
-function validateFeedItemUserStateTogglePayload(
+function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
-): LibraryCorePayloadValidationResult<FeedItemUserStateTogglePayloadV1> {
+): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return invalid("payload must be a plain object");
   }
@@ -107,36 +107,34 @@ function validateFeedItemUserStateTogglePayload(
   }
   const keys = Object.getOwnPropertyNames(value);
   if (
-    keys.length !== USER_STATE_TOGGLE_KEYS.length ||
-    USER_STATE_TOGGLE_KEYS.some((key) => !keys.includes(key))
+    keys.length !== USER_STATE_ASSIGNMENT_KEYS.length ||
+    USER_STATE_ASSIGNMENT_KEYS.some((key) => !keys.includes(key))
   ) {
-    return invalid("payload must contain only toggle and toggled_at_ms");
+    return invalid("payload must contain only assigned and assigned_at_ms");
   }
-  const toggle = Object.getOwnPropertyDescriptor(value, "toggle");
-  const toggledAt = Object.getOwnPropertyDescriptor(value, "toggled_at_ms");
+  const assigned = Object.getOwnPropertyDescriptor(value, "assigned");
+  const assignedAt = Object.getOwnPropertyDescriptor(value, "assigned_at_ms");
   if (
-    toggle === undefined ||
-    !toggle.enumerable ||
-    !("value" in toggle) ||
-    !FEED_ITEM_USER_STATE_TOGGLE_KINDS.includes(
-      toggle.value as FeedItemUserStateToggleKindV1,
-    )
+    assigned === undefined ||
+    !assigned.enumerable ||
+    !("value" in assigned) ||
+    typeof assigned.value !== "boolean"
   ) {
-    return invalid("toggle must name a supported user-state field");
+    return invalid("assigned must be a boolean");
   }
   if (
-    toggledAt === undefined ||
-    !toggledAt.enumerable ||
-    !("value" in toggledAt) ||
-    !isLibraryCoreNonnegativeSafeInteger(toggledAt.value)
+    assignedAt === undefined ||
+    !assignedAt.enumerable ||
+    !("value" in assignedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(assignedAt.value)
   ) {
-    return invalid("toggled_at_ms must be a nonnegative safe integer");
+    return invalid("assigned_at_ms must be a nonnegative safe integer");
   }
   return {
     ok: true,
     value: Object.freeze({
-      toggle: toggle.value as FeedItemUserStateToggleKindV1,
-      toggled_at_ms: toggledAt.value,
+      assigned: assigned.value,
+      assigned_at_ms: assignedAt.value,
     }),
   };
 }
@@ -156,22 +154,22 @@ export const FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
   FeedItemReadAssignmentPayloadV1
 >;
 
-/** Closed payload for local PWA user-state toggles. Provider execution is separate. */
-function userStateTogglePayloadSchema(
-  operationType: FeedItemUserStateToggleOperationTypeV1,
+/** Closed payload for idempotent local PWA user-state assignments. */
+function userStateAssignmentPayloadSchema(
+  operationType: FeedItemUserStateAssignmentOperationTypeV1,
 ) {
   return Object.freeze({
     schemaId: `${operationType}_payload_v1`,
     schemaVersion: 1 as const,
     operationType,
-    canonicalKeys: USER_STATE_TOGGLE_KEYS,
-    validate: validateFeedItemUserStateTogglePayload,
+    canonicalKeys: USER_STATE_ASSIGNMENT_KEYS,
+    validate: validateFeedItemUserStateAssignmentPayload,
   });
 }
 
 export const FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA =
-  userStateTogglePayloadSchema("feed_item_saved_assignment");
+  userStateAssignmentPayloadSchema("feed_item_saved_assignment");
 export const FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA =
-  userStateTogglePayloadSchema("feed_item_archive_assignment");
+  userStateAssignmentPayloadSchema("feed_item_archive_assignment");
 export const FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA =
-  userStateTogglePayloadSchema("feed_item_like_assignment");
+  userStateAssignmentPayloadSchema("feed_item_like_assignment");

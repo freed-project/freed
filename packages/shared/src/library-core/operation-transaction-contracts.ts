@@ -9,7 +9,7 @@ import {
 } from "./protocol-scalars.js";
 import type {
   FeedItemReadAssignmentTransactionMemberBodyV1,
-  FeedItemUserStateToggleTransactionMemberBodyV1,
+  FeedItemUserStateAssignmentTransactionMemberBodyV1,
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
@@ -32,7 +32,7 @@ export interface FeedItemReadAssignmentSigningBodyV1 extends FeedItemReadAssignm
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
-export interface FeedItemUserStateToggleSigningBodyV1 extends FeedItemUserStateToggleTransactionMemberBodyV1 {
+export interface FeedItemUserStateAssignmentSigningBodyV1 extends FeedItemUserStateAssignmentTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly transaction_digest: LibraryCoreLowercaseHex64;
@@ -40,7 +40,7 @@ export interface FeedItemUserStateToggleSigningBodyV1 extends FeedItemUserStateT
 
 export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemReadAssignmentSigningBodyV1
-  | FeedItemUserStateToggleSigningBodyV1;
+  | FeedItemUserStateAssignmentSigningBodyV1;
 
 export interface LibraryCoreSigningMemberV1 {
   readonly member_digest: LibraryCoreLowercaseHex64;

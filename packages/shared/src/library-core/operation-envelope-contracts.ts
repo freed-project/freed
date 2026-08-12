@@ -3,8 +3,7 @@ import {
   FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
-  type FeedItemUserStateToggleKindV1,
-  type FeedItemUserStateToggleOperationTypeV1,
+  type FeedItemUserStateAssignmentOperationTypeV1,
 } from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
@@ -44,7 +43,7 @@ export interface FeedItemReadAssignmentTransactionMemberInputV1 {
   readonly created_at_ms: unknown;
 }
 
-export type FeedItemUserStateToggleTransactionMemberInputV1 =
+export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -72,7 +71,7 @@ export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
-export interface FeedItemUserStateToggleTransactionMemberBodyV1 {
+export interface FeedItemUserStateAssignmentTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
   readonly epoch: number;
@@ -87,12 +86,12 @@ export interface FeedItemUserStateToggleTransactionMemberBodyV1 {
   readonly transaction_id: LibraryCoreOperationInstanceId;
   readonly transaction_member_index: number;
   readonly transaction_member_count: number;
-  readonly operation_type: FeedItemUserStateToggleOperationTypeV1;
+  readonly operation_type: FeedItemUserStateAssignmentOperationTypeV1;
   readonly entity_type: "FeedItem";
   readonly entity_id: LibraryCoreEntityId;
   readonly payload: Readonly<{
-    toggled_at_ms: number;
-    toggle: FeedItemUserStateToggleKindV1;
+    assigned: boolean;
+    assigned_at_ms: number;
   }>;
   readonly payload_digest: LibraryCoreLowercaseHex64;
   readonly blob_references: readonly [];
@@ -102,7 +101,7 @@ export interface FeedItemUserStateToggleTransactionMemberBodyV1 {
 
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemReadAssignmentTransactionMemberBodyV1
-  | FeedItemUserStateToggleTransactionMemberBodyV1;
+  | FeedItemUserStateAssignmentTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -396,7 +395,7 @@ function constructFeedItemTransactionMember(
         readonly validatePayload: typeof FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
       }
     | {
-        readonly operationType: FeedItemUserStateToggleOperationTypeV1;
+        readonly operationType: FeedItemUserStateAssignmentOperationTypeV1;
         readonly validatePayload: typeof FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
       },
 ): LibraryCoreTransactionMemberConstruction {
@@ -559,11 +558,11 @@ function constructFeedItemReadAssignmentTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<FeedItemReadAssignmentTransactionMemberBodyV1>;
 }
 
-function constructFeedItemUserStateToggleTransactionMember(
-  input: FeedItemUserStateToggleTransactionMemberInputV1,
+function constructFeedItemUserStateAssignmentTransactionMember(
+  input: FeedItemUserStateAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
-  operationType: FeedItemUserStateToggleOperationTypeV1,
-): LibraryCoreTransactionMemberConstruction<FeedItemUserStateToggleTransactionMemberBodyV1> {
+  operationType: FeedItemUserStateAssignmentOperationTypeV1,
+): LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1> {
   return constructFeedItemTransactionMember(input, dependencies, {
     operationType,
     validatePayload:
@@ -572,7 +571,7 @@ function constructFeedItemUserStateToggleTransactionMember(
         : operationType === "feed_item_archive_assignment"
           ? FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate
           : FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
-  }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateToggleTransactionMemberBodyV1>;
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1>;
 }
 
 /**
@@ -595,8 +594,8 @@ export const FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
     FeedItemReadAssignmentTransactionMemberBodyV1
   >;
 
-function userStateToggleTransactionMemberSchema(
-  operationType: FeedItemUserStateToggleOperationTypeV1,
+function userStateAssignmentTransactionMemberSchema(
+  operationType: FeedItemUserStateAssignmentOperationTypeV1,
 ) {
   return Object.freeze({
     schemaId: `${operationType}_transaction_member_v1`,
@@ -605,10 +604,10 @@ function userStateToggleTransactionMemberSchema(
     entityType: "FeedItem" as const,
     maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
     construct: (
-      input: FeedItemUserStateToggleTransactionMemberInputV1,
+      input: FeedItemUserStateAssignmentTransactionMemberInputV1,
       dependencies: LibraryCoreOperationDigestDependencies,
     ) =>
-      constructFeedItemUserStateToggleTransactionMember(
+      constructFeedItemUserStateAssignmentTransactionMember(
         input,
         dependencies,
         operationType,
@@ -617,8 +616,8 @@ function userStateToggleTransactionMemberSchema(
 }
 
 export const FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
-  userStateToggleTransactionMemberSchema("feed_item_saved_assignment");
+  userStateAssignmentTransactionMemberSchema("feed_item_saved_assignment");
 export const FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
-  userStateToggleTransactionMemberSchema("feed_item_archive_assignment");
+  userStateAssignmentTransactionMemberSchema("feed_item_archive_assignment");
 export const FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
-  userStateToggleTransactionMemberSchema("feed_item_like_assignment");
+  userStateAssignmentTransactionMemberSchema("feed_item_like_assignment");
