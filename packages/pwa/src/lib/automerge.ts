@@ -813,7 +813,13 @@ function handleWorkerMessage(
   }
 }
 
-createWorkerGeneration();
+// Library Core is the normal PWA engine. Keep the legacy Automerge worker
+// completely dormant on that path so startup does not download or instantiate
+// its WASM runtime. Any explicit rollback operation still starts the worker
+// lazily through getReadyGeneration().
+if (!isPwaLibraryCoreEnabled()) {
+  createWorkerGeneration();
+}
 
 // ---------------------------------------------------------------------------
 // Public API

@@ -11,9 +11,9 @@
 
 import {
   delay,
-  inProcessCloudMerge,
+  lazyInProcessCloudMerge,
   type CloudMergeStrategy,
-} from "./merge.js";
+} from "./merge-strategy.js";
 
 const FILE_NAME = "freed.automerge";
 const GDRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
@@ -152,7 +152,7 @@ export async function gdriveUploadSafe(
   token: string,
   localBinary: Uint8Array,
   googleFetch: GoogleDriveFetch = fetch,
-  mergeStrategy: CloudMergeStrategy = inProcessCloudMerge,
+  mergeStrategy: CloudMergeStrategy = lazyInProcessCloudMerge,
 ): Promise<CloudUploadResult> {
   const fileId = await ensureFile(token, undefined, googleFetch);
 

@@ -75,6 +75,13 @@ export default defineConfig({
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Library Core is the normal PWA engine. Keep the legacy rollback
+        // worker available on demand, but do not make every installation
+        // download and precache its worker and WASM payloads.
+        globIgnores: [
+          "**/automerge.worker-*.js",
+          "**/automerge_wasm_bg-*.wasm",
+        ],
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's

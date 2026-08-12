@@ -11,6 +11,7 @@ import {
   type DestructiveMergeGuardReport,
   type FreedDoc,
 } from "@freed/shared/schema";
+import type { CloudMergeStrategy } from "./merge-strategy.js";
 
 /**
  * A stale empty first-sync document can carry delete history that resolves a
@@ -61,12 +62,6 @@ function restorePopulatedFeedAfterBlockedEmptyMerge(
  * remain storage-agnostic and run in a browser, in Node, and in the PWA, none
  * of which have the desktop's worker.
  */
-export type CloudMergeStrategy = (
-  local: Uint8Array,
-  remote: Uint8Array,
-  options?: DestructiveMergeGuardOptions,
-) => Promise<Uint8Array>;
-
 /** Default strategy: merge in the calling thread. */
 export const inProcessCloudMerge: CloudMergeStrategy = async (
   local,
@@ -103,8 +98,4 @@ export function mergeBinaries(
 
   assertNonDestructiveMerge(docA, docB, resolved, guardOptions);
   return A.save(resolved);
-}
-
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

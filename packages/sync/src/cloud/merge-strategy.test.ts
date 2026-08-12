@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { dropboxUploadSafe } from "./dropbox.js";
 import { gdriveUploadSafe } from "./gdrive.js";
-import { inProcessCloudMerge, mergeBinaries } from "./merge.js";
+import { mergeBinaries } from "./merge.js";
+import { lazyInProcessCloudMerge } from "./merge-strategy.js";
 
 // The contract: the cloud merge is injectable, and it defaults to running in
 // the calling thread. Desktop injects a worker-backed strategy so the measured
@@ -10,8 +11,8 @@ import { inProcessCloudMerge, mergeBinaries } from "./merge.js";
 // memory grows and never shrinks, so on the main thread that peak was a
 // permanent floor.
 describe("cloud merge strategy injection", () => {
-  it("defaults to the in-process merge so PWA and Node behavior is unchanged", async () => {
-    expect(inProcessCloudMerge).toBeTypeOf("function");
+  it("loads the in-process merge only when a legacy upload needs it", async () => {
+    expect(lazyInProcessCloudMerge).toBeTypeOf("function");
     const a = mergeBinaries;
     expect(a).toBeTypeOf("function");
   });

@@ -27,7 +27,6 @@ export {
   dropboxStartLongpollLoop,
   dropboxDeleteFile,
 } from "./dropbox.js";
-export { mergeBinaries, delay } from "./merge.js";
 export {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
