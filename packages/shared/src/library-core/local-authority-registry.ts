@@ -2295,8 +2295,8 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "cloud-oauth-credentials",
     sourcePath: "packages/pwa/src/lib/sync.ts",
     sourceTokens: [
-      "const CLOUD_TOKEN_KEY = (provider: CloudProvider) => `freed_cloud_token_${provider}`",
-      "const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) => `freed_cloud_token_meta_${provider}`",
+      "const CLOUD_TOKEN_KEY = (provider: CloudProvider) =>\n  `freed_cloud_token_${provider}`",
+      "const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) =>\n  `freed_cloud_token_meta_${provider}`",
       'const CLOUD_PROVIDER_KEY = "freed_cloud_provider"',
     ],
     registeredKeys: [
@@ -3088,8 +3088,8 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "pwa-service-worker-build-caches",
     sourcePath: "packages/pwa/vite.config.ts",
     sourceTokens: [
-      "cacheName: 'freed-wasm'",
-      "globPatterns: ['**/*.{js,css,html,ico,png,svg}']",
+      'cacheName: "freed-wasm"',
+      'globPatterns: ["**/*.{js,css,html,ico,png,svg}"]',
     ],
     registeredKeys: [
       "GET <http-or-https URL ending .wasm>",
@@ -3100,7 +3100,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "pwa-service-worker-network-cache",
     sourcePath: "packages/pwa/vite.config.ts",
     sourceTokens: [
-      "cacheName: 'freed-network'",
+      'cacheName: "freed-network"',
       "maxEntries: 200",
       "maxAgeSeconds: 60 * 60 * 24 * 7",
     ],
@@ -3112,7 +3112,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "pwa-service-worker-sync-cache",
     sourcePath: "packages/pwa/vite.config.ts",
     sourceTokens: [
-      "cacheName: 'freed-sync-v1'",
+      'cacheName: "freed-sync-v1"',
       "networkTimeoutSeconds: 5",
     ],
     registeredKeys: ["GET <origin>/sync[?<query>]"],
