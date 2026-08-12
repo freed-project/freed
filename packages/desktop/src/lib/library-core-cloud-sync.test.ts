@@ -171,7 +171,7 @@ vi.mock("@freed/sync/cloud", async (importOriginal) => {
             field_clocks: 0,
             relationships: 0,
             tombstones: 0,
-            actor_states: 0,
+            actor_states: 1,
             receipt_records: 0,
             blob_roots: 0,
             excluded_registry_keys: 0,
@@ -211,8 +211,22 @@ vi.mock("@freed/sync/cloud", async (importOriginal) => {
             },
           },
         ]);
-        await writer.finalizeImport({ header, manifest: { totalRecordCount: 4 } });
-        return { status: "imported", importedPageCount: 1, importedRecordCount: 4 };
+        await writer.appendPage(1, [{
+          kind: "logical_checkpoint_entry",
+          collection: "actor_states",
+          ordinal: 0,
+          value: {
+            accepted_chain_digest: "45".repeat(32),
+            accepted_operation_id: null,
+            accepted_sequence: 0,
+            actor_id: "12".repeat(32),
+            enrollment_certificate_digest: "44".repeat(32),
+            retired: false,
+            retirement_certificate_digest: null,
+          },
+        }]);
+        await writer.finalizeImport({ header, manifest: { totalRecordCount: 5 } });
+        return { status: "imported", importedPageCount: 1, importedRecordCount: 5 };
       },
     ),
     reassignLibraryCorePortableCheckpointV1: mocks.reassign.mockImplementation(
