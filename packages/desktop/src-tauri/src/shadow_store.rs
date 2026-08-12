@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use url::Url;
 
-pub(super) const SHADOW_SCHEMA_VERSION: i64 = 4;
+pub(super) const SHADOW_SCHEMA_VERSION: i64 = 5;
 const MIN_READABLE_SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
@@ -359,6 +359,8 @@ const SHADOW_SCHEMA_V3_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v3.sql");
 const SHADOW_SCHEMA_V4_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v4.sql");
+const SHADOW_SCHEMA_V5_SQL: &str =
+    include_str!("../../../shared/src/library-core/shadow-schema-v5.sql");
 const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/read-assignment-projection-v1.sql");
 
@@ -1924,30 +1926,16 @@ const FRIENDS_GRAPH_RSS_SQL: &str = "WITH requested AS (
        ON json_extract(f.rest, '$.rssSource.feedUrl') = r.feedUrl
      WHERE f.platform = 'rss' AND f.hidden IS NOT 1;";
 
-/// The surface predicate and page order, factored out so the query-plan test
-/// can explain exactly the SQL the reader runs.
-///
-/// The predicate uses json_type, json_extract, and GLOB, none of which an index
-/// can satisfy. The ORDER BY must still be answered by the timeline index or
-/// each open sorts the whole filtered corpus.
 fn surface_items_sql(surface: LibrarySurface) -> String {
-    let predicate = match surface {
-        LibrarySurface::Map => {
-            "json_type(rest, '$.location') = 'object'
-                   OR json_extract(contentBlob, '$.text') GLOB '*📍*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌍*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌎*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌏*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'in [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'at [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'from [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* in [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* at [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* from [A-Z]*'
-            "
-        }
-        LibrarySurface::StoryWall => {
-            "hidden IS NOT 1
+    match surface {
+        LibrarySurface::Map => format!(
+            "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items INDEXED BY feed_items_map_timeline
+             WHERE hasLocation = 1
+             ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
+        ),
+        LibrarySurface::StoryWall => format!(
+            "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items
+             WHERE hidden IS NOT 1
                    AND archived IS NOT 1
                    AND CASE
                      WHEN json_valid(contentBlob)
@@ -1955,14 +1943,9 @@ fn surface_items_sql(surface: LibrarySurface) -> String {
                       AND json_array_length(contentBlob, '$.mediaUrls') > 0
                      ELSE 0
                    END
-            "
-        }
-    };
-    format!(
-        "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items
-         WHERE {predicate}
-         ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
-    )
+             ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
+        ),
+    }
 }
 
 fn person_timeline_page_sql(after: bool, use_friends_timeline_index: bool) -> StoreResult<String> {
@@ -2369,8 +2352,20 @@ ORDER BY sortAt DESC, globalId ASC LIMIT ?3;";
 const UPSERT_SQL: &str = "INSERT INTO feed_items (\
 globalId, platform, contentType, publishedAt, capturedAt, authorId, authorDisplayName, \
 authorHandle, sourceUrl, hidden, saved, archived, readAt, archivedAt, likedAt, tags, \
-contentBlob, preservedBlob, rest, sortAt) \
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20) \
+contentBlob, preservedBlob, rest, sortAt, hasLocation) \
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, \
+CASE WHEN json_type(?19, '$.location') = 'object' \
+  OR json_extract(?17, '$.text') GLOB '*📍*' \
+  OR json_extract(?17, '$.text') GLOB '*🌍*' \
+  OR json_extract(?17, '$.text') GLOB '*🌎*' \
+  OR json_extract(?17, '$.text') GLOB '*🌏*' \
+  OR json_extract(?17, '$.text') GLOB 'in [A-Z]*' \
+  OR json_extract(?17, '$.text') GLOB 'at [A-Z]*' \
+  OR json_extract(?17, '$.text') GLOB 'from [A-Z]*' \
+  OR json_extract(?17, '$.text') GLOB '* in [A-Z]*' \
+  OR json_extract(?17, '$.text') GLOB '* at [A-Z]*' \
+  OR json_extract(?17, '$.text') GLOB '* from [A-Z]*' \
+THEN 1 ELSE 0 END) \
 ON CONFLICT(globalId) DO UPDATE SET \
 platform = excluded.platform, contentType = excluded.contentType, \
 publishedAt = excluded.publishedAt, capturedAt = excluded.capturedAt, \
@@ -2379,7 +2374,8 @@ authorHandle = excluded.authorHandle, sourceUrl = excluded.sourceUrl, \
 hidden = excluded.hidden, saved = excluded.saved, archived = excluded.archived, \
 readAt = excluded.readAt, archivedAt = excluded.archivedAt, likedAt = excluded.likedAt, \
 tags = excluded.tags, contentBlob = excluded.contentBlob, \
-preservedBlob = excluded.preservedBlob, rest = excluded.rest, sortAt = excluded.sortAt;";
+preservedBlob = excluded.preservedBlob, rest = excluded.rest, sortAt = excluded.sortAt, \
+hasLocation = excluded.hasLocation;";
 
 const DELETE_SQL: &str = "DELETE FROM feed_items WHERE globalId = ?1;";
 const CURRENT_REVISION_SQL: &str =
@@ -2519,6 +2515,9 @@ impl ShadowStore {
         }
         if prior < 4 {
             tx.execute_batch(SHADOW_SCHEMA_V4_SQL)?;
+        }
+        if prior < 5 {
+            tx.execute_batch(SHADOW_SCHEMA_V5_SQL)?;
         }
         let actual = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if actual != SHADOW_SCHEMA_VERSION {
@@ -3385,8 +3384,11 @@ impl ShadowStore {
         reference.execute_batch(SHADOW_SCHEMA_V1_SQL)?;
         reference.execute_batch(SHADOW_SCHEMA_V2_SQL)?;
         reference.execute_batch(SHADOW_SCHEMA_V3_SQL)?;
-        if schema_version >= SHADOW_SCHEMA_VERSION {
+        if schema_version >= 4 {
             reference.execute_batch(SHADOW_SCHEMA_V4_SQL)?;
+        }
+        if schema_version >= 5 {
+            reference.execute_batch(SHADOW_SCHEMA_V5_SQL)?;
         }
         if Self::schema_catalog(conn)? != Self::schema_catalog(&reference)? {
             return Err(ShadowStoreError::ProjectionPublicationInvalid {
@@ -5240,12 +5242,7 @@ mod tests {
     }
 
     #[test]
-    fn surface_queries_order_through_the_index_except_the_known_map_defect() {
-        // Both surfaces filter with json_type, json_extract, and GLOB, none of
-        // which an index can satisfy. What matters is whether the ORDER BY is
-        // still answered by an index: if SQLite sorts instead, every open of
-        // that surface sorts the whole filtered corpus, and the page is bounded
-        // while the work behind it is not.
+    fn surface_queries_order_through_bounded_indexes() {
         let store = seeded(500);
 
         // Story Wall leads with `hidden IS NOT 1 AND archived IS NOT 1`, which
@@ -5261,16 +5258,14 @@ mod tests {
             "Story Wall must not sort, got: {story_wall}"
         );
 
-        // Map has no indexable leading term, so it scans and sorts. This
-        // characterizes a KNOWN DEFECT tracked in issue #1323, it does not
-        // bless it. Fixing that issue makes this assertion fail, which is the
-        // signal to replace it with the same no-sort assertion above.
         let map = explain_surface(&store, LibrarySurface::Map);
         assert!(
-            map.to_uppercase().contains("TEMP B-TREE"),
-            "Map is expected to still sort until issue #1323 lands. If this \
-             failed, the defect is fixed: assert the absence of TEMP B-TREE \
-             here instead. Got: {map}"
+            map.contains("feed_items_map_timeline"),
+            "Map should read through its bounded location timeline index, got: {map}"
+        );
+        assert!(
+            !map.to_uppercase().contains("TEMP B-TREE"),
+            "Map must not sort the corpus, got: {map}"
         );
     }
 
@@ -5971,6 +5966,56 @@ mod tests {
             )
             .expect("friends timeline index");
         assert!(index_exists);
+
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn a_v4_store_indexes_existing_map_candidates_without_losing_rows() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-store-v4-migration-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        {
+            let conn = Connection::open(&path).expect("create v4 store");
+            conn.execute_batch(SHADOW_SCHEMA_V1_SQL)
+                .expect("install v1 schema");
+            conn.execute_batch(SHADOW_SCHEMA_V2_SQL)
+                .expect("install v2 schema");
+            conn.execute_batch(SHADOW_SCHEMA_V3_SQL)
+                .expect("install v3 schema");
+            conn.execute_batch(SHADOW_SCHEMA_V4_SQL)
+                .expect("install v4 schema");
+            conn.execute(
+                "INSERT INTO feed_items (globalId, contentBlob, rest, sortAt) \
+                 VALUES ('x:map', '{\"text\":\"hello\"}', '{\"location\":{\"name\":\"Portland\"}}', 2), \
+                        ('x:plain', '{\"text\":\"hello\"}', '{}', 1);",
+                [],
+            )
+            .expect("seed v4 rows");
+        }
+
+        let store = ShadowStore::open(&path).expect("migrate v4 store");
+        assert_eq!(store.total_count().expect("count"), 2);
+        let indexed: Vec<(String, i64)> = store
+            .conn
+            .prepare("SELECT globalId, hasLocation FROM feed_items ORDER BY globalId;")
+            .expect("prepare map index check")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query map index check")
+            .collect::<SqlResult<Vec<_>>>()
+            .expect("collect map index check");
+        assert_eq!(indexed, vec![("x:map".into(), 1), ("x:plain".into(), 0)]);
+        let plan = explain_surface(&store, LibrarySurface::Map);
+        assert!(plan.contains("feed_items_map_timeline"), "{plan}");
+        assert!(!plan.to_uppercase().contains("TEMP B-TREE"), "{plan}");
 
         drop(store);
         for suffix in ["", "-wal", "-shm"] {

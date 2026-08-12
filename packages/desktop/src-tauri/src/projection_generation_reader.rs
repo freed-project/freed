@@ -485,8 +485,13 @@ mod tests {
         let mut first = fixture.publish_empty(4);
         {
             let conn = Connection::open(&first.path).expect("open prior-schema generation");
-            conn.execute_batch("DROP INDEX feed_items_friends_timeline; PRAGMA user_version = 3;")
-                .expect("restore exact v3 catalog");
+            conn.execute_batch(
+                "DROP INDEX feed_items_map_timeline;
+                 ALTER TABLE feed_items DROP COLUMN hasLocation;
+                 DROP INDEX feed_items_friends_timeline;
+                 PRAGMA user_version = 3;",
+            )
+            .expect("restore exact v3 catalog");
         }
         first.byte_length = std::fs::metadata(&first.path)
             .expect("prior-schema generation metadata")
