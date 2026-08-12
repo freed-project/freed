@@ -492,18 +492,41 @@ jobs:
           RELEASE_BODY: ${{ needs.notes.outputs.release_body }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          RELEASE_ID="${{ needs.create-release.outputs.release_id }}"
           printf '%s' "$RELEASE_BODY" > release-body.md
-          gh api "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" > release.json
+          gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}" > release-api.json
+          jq --arg tag "$TAG" '.tag_name = $tag' release-api.json > release.json
           rm -rf updater-signatures
           mkdir -p updater-signatures
-          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "*.sig" --dir updater-signatures
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api \
+              -H "Accept: application/octet-stream" \
+              "repos/${{ github.repository }}/releases/assets/${asset_id}" \
+              > "updater-signatures/${asset_name}"
+          done < <(
+            jq -r '.assets[] | select(.name | endswith(".sig")) | [.id, .name] | @tsv' release-api.json
+          )
           node scripts/generate-tauri-latest-from-release.mjs \
             --release-json release.json \
             --signature-dir updater-signatures \
             --notes-file release-body.md \
             --output latest.json \
             --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
+          existing_latest_id=$(jq -r '.assets[] | select(.name == "latest.json") | .id' release-api.json | head -n 1)
+          if [[ -n "$existing_latest_id" ]]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${existing_latest_id}"
+          fi
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data-binary @latest.json \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=latest.json" \
+            >/dev/null
 
   # After all platform builds succeed, promote the draft to a published release
   publish:
@@ -515,7 +538,16 @@ jobs:
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
+        run: |
+          jq -n \
+            --arg tag_name "${{ github.ref_name }}" \
+            --argjson draft false \
+            '{tag_name: $tag_name, draft: $draft}' \
+            > release-publish.json
+          gh api \
+            -X PATCH \
+            "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" \
+            --input release-publish.json >/dev/null
 
   # Redeploy the public marketing site after any GitHub release is public so
   # the checked-in changelog snapshot is rebuilt against the newly published

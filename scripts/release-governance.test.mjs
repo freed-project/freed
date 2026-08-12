@@ -183,6 +183,37 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
+test("draft release assets and publication use the exact release ID", () => {
+  const updaterJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  updater-manifest:"),
+    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+  );
+  const publishJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish:"),
+    releaseWorkflow.indexOf("\n  # Redeploy the public marketing site"),
+  );
+
+  assert.match(
+    updaterJob,
+    /releases\/\$\{RELEASE_ID\}/,
+  );
+  assert.match(
+    updaterJob,
+    /releases\/assets\/\$\{asset_id\}/,
+  );
+  assert.match(
+    updaterJob,
+    /uploads\.github\.com\/repos\/\$\{\{ github\.repository \}\}\/releases\/\$\{RELEASE_ID\}\/assets\?name=latest\.json/,
+  );
+  assert.doesNotMatch(updaterJob, /gh release download/);
+  assert.doesNotMatch(updaterJob, /gh release upload/);
+  assert.match(
+    publishJob,
+    /releases\/\$\{\{ needs\.create-release\.outputs\.release_id \}\}/,
+  );
+  assert.doesNotMatch(publishJob, /gh release edit/);
+});
+
 test("release failure triage binds GitHub CLI to the triggering repository", () => {
   const triageJobStart = releaseWorkflow.indexOf("\n  triage-on-failure:");
   assert.ok(
