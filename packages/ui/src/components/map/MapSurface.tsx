@@ -67,6 +67,8 @@ const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_CAMERA_PADDING_PX = 72;
+const MAP_MAX_PIXEL_RATIO = 1.5;
+const MAP_MAX_TILE_CACHE_SIZE = 24;
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -871,6 +873,13 @@ export function MapSurface({
           style: mapStyle,
           center: [0, 20],
           zoom: 1.8,
+          // A full device-pixel-ratio canvas and MapLibre's dynamically sized
+          // tile cache retained hundreds of megabytes after visiting Map on a
+          // Retina display. The map is a browsing surface, not a print canvas.
+          // Bound both owners so one route cannot consume the memory saved by
+          // moving the Library corpus into SQLite.
+          pixelRatio: Math.min(window.devicePixelRatio || 1, MAP_MAX_PIXEL_RATIO),
+          maxTileCacheSize: MAP_MAX_TILE_CACHE_SIZE,
           interactive,
           attributionControl: false,
         });
