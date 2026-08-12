@@ -1,5 +1,6 @@
 import { hashSavedUrl } from "@freed/capture-save/normalize";
-import { docAddStubItem } from "./automerge";
+import { docAddStubItem } from "./legacy-automerge-runtime";
+import { isPwaLibraryCoreEnabled } from "./library-core-runtime";
 
 export interface SaveUrlOptions {
   tags?: string[];
@@ -25,6 +26,11 @@ export async function saveUrlInPwa(
   }
 
   const stableUrl = parsed.toString();
+  if (isPwaLibraryCoreEnabled()) {
+    throw new Error(
+      "Saving new links is unavailable until the SQLite Library intent is active",
+    );
+  }
   await docAddStubItem(stableUrl, options.tags);
   return { globalId: `saved:${hashSavedUrl(stableUrl)}` };
 }

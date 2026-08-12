@@ -590,7 +590,9 @@ const PORTABLE_FEED_REGISTRY_KEYS = Object.freeze([
 ] as const);
 
 function isPortableFeedRegistryKey(registryKey: string): boolean {
-  return PORTABLE_FEED_REGISTRY_KEYS.some((candidate) => candidate === registryKey);
+  return PORTABLE_FEED_REGISTRY_KEYS.some(
+    (candidate) => candidate === registryKey,
+  );
 }
 
 function projectPortableFeedRow(
@@ -624,10 +626,14 @@ function toggledPortableFeedRow(
   toggle: FeedItemUserStateToggleKindV1,
   toggledAtMs: number,
 ): PortableMaterializedRowRecord {
-  const current = typeof stored.row.userState === "object" &&
-      stored.row.userState !== null && !Array.isArray(stored.row.userState)
-    ? stored.row.userState as Readonly<Record<string, LibraryCoreCanonicalValue>>
-    : {};
+  const current =
+    typeof stored.row.userState === "object" &&
+    stored.row.userState !== null &&
+    !Array.isArray(stored.row.userState)
+      ? (stored.row.userState as Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >)
+      : {};
   const next: Record<string, LibraryCoreCanonicalValue> = { ...current };
   if (toggle === "saved") {
     const enabled = current.saved !== true;
@@ -787,14 +793,16 @@ function sameIntentResult(
   left: PortableIntentResultRecord,
   right: PortableIntentResultRecord,
 ): boolean {
-  return left.actorId === right.actorId
-    && left.epochId === right.epochId
-    && left.libraryId === right.libraryId
-    && left.resultSequence === right.resultSequence
-    && left.segmentDigest === right.segmentDigest
-    && sameIntentReference(left.segmentReference, right.segmentReference)
-    && canonicalStringKey(left.entry as unknown as LibraryCoreCanonicalValue) ===
-      canonicalStringKey(right.entry as unknown as LibraryCoreCanonicalValue);
+  return (
+    left.actorId === right.actorId &&
+    left.epochId === right.epochId &&
+    left.libraryId === right.libraryId &&
+    left.resultSequence === right.resultSequence &&
+    left.segmentDigest === right.segmentDigest &&
+    sameIntentReference(left.segmentReference, right.segmentReference) &&
+    canonicalStringKey(left.entry as unknown as LibraryCoreCanonicalValue) ===
+      canonicalStringKey(right.entry as unknown as LibraryCoreCanonicalValue)
+  );
 }
 
 function snapshotIntentEntry(
@@ -987,9 +995,7 @@ class PwaLibraryCorePortableCheckpointStore
     )) as SelectedPortableGenerationRecord | undefined;
     const generation = selected
       ? ((await requestResult(
-          transaction
-            .objectStore(GENERATIONS_STORE)
-            .get(selected.generationId),
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
         )) as PortableGenerationRecord | undefined)
       : undefined;
     await transactionDone(transaction);
@@ -1038,13 +1044,14 @@ class PwaLibraryCorePortableCheckpointStore
             .get(generation.libraryId),
         )) as PortablePwaActorIdentityRecord | undefined)
       : undefined;
-    const acceptedActor = generation && existingIdentity
-      ? ((await requestResult(
-          readTransaction
-            .objectStore(ACTOR_TIPS_STORE)
-            .get([generation.generationId, existingIdentity.actorId]),
-        )) as PortableActorTipRecord | undefined)
-      : undefined;
+    const acceptedActor =
+      generation && existingIdentity
+        ? ((await requestResult(
+            readTransaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([generation.generationId, existingIdentity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
     await transactionDone(readTransaction);
     if (
       !selected ||
@@ -1106,7 +1113,9 @@ class PwaLibraryCorePortableCheckpointStore
       { digest: libraryCoreDigest },
     );
     if (body.body.actor_id !== identity.actorId) {
-      throw new Error("stored PWA actor identity does not match its public key");
+      throw new Error(
+        "stored PWA actor identity does not match its public key",
+      );
     }
     const request = await constructLibraryCoreActorEnrollmentRequestV1(body, {
       digest: libraryCoreDigest,
@@ -1177,25 +1186,35 @@ class PwaLibraryCorePortableCheckpointStore
       record.actorId !== input.actorId ||
       record.authorityStateDigest !== input.authorityStateDigest ||
       record.canonicalBytes.byteLength !== reference.descriptor.byteLength ||
-      sha256LowerHex(record.canonicalBytes) !== reference.descriptor.contentDigest
+      sha256LowerHex(record.canonicalBytes) !==
+        reference.descriptor.contentDigest
     ) {
       transaction.abort();
-      throw new Error("PWA actor enrollment publication does not match its request");
+      throw new Error(
+        "PWA actor enrollment publication does not match its request",
+      );
     }
     if (record.publishedReference) {
       if (
-        record.publishedReference.transportObjectId !== reference.transportObjectId ||
-        record.publishedReference.descriptor.objectKey !== reference.descriptor.objectKey ||
+        record.publishedReference.transportObjectId !==
+          reference.transportObjectId ||
+        record.publishedReference.descriptor.objectKey !==
+          reference.descriptor.objectKey ||
         record.publishedReference.descriptor.contentDigest !==
           reference.descriptor.contentDigest
       ) {
         transaction.abort();
-        throw new Error("PWA actor enrollment request was published under another identity");
+        throw new Error(
+          "PWA actor enrollment request was published under another identity",
+        );
       }
       await transactionDone(transaction);
       return "already_recorded";
     }
-    store.put({ ...record, publishedReference: reference } satisfies PortablePwaActorEnrollmentRequestRecord);
+    store.put({
+      ...record,
+      publishedReference: reference,
+    } satisfies PortablePwaActorEnrollmentRequestRecord);
     await transactionDone(transaction);
     return "recorded";
   }
@@ -1213,7 +1232,9 @@ class PwaLibraryCorePortableCheckpointStore
       generated.privateKey.type !== "private" ||
       !generated.privateKey.usages.includes("sign")
     ) {
-      throw new Error("PWA actor private key is not nonextractable signing key");
+      throw new Error(
+        "PWA actor private key is not nonextractable signing key",
+      );
     }
     const actorPublicKey = lowerHex(
       await this.#subtle.exportKey("raw", generated.publicKey),
@@ -2352,28 +2373,28 @@ class PwaLibraryCorePortableCheckpointStore
               readAtMs: merged.value,
             } satisfies PortableReadStateRecord);
             if (storedRow) {
-            const currentUserState =
-              typeof storedRow.row.userState === "object" &&
-              storedRow.row.userState !== null &&
-              !Array.isArray(storedRow.row.userState)
-                ? storedRow.row.userState
-                : {};
-            const updatedRow = {
-              ...storedRow,
-              row: {
-                ...storedRow.row,
-                userState: {
-                  ...currentUserState,
-                  readAt: merged.value,
+              const currentUserState =
+                typeof storedRow.row.userState === "object" &&
+                storedRow.row.userState !== null &&
+                !Array.isArray(storedRow.row.userState)
+                  ? storedRow.row.userState
+                  : {};
+              const updatedRow = {
+                ...storedRow,
+                row: {
+                  ...storedRow.row,
+                  userState: {
+                    ...currentUserState,
+                    readAt: merged.value,
+                  },
                 },
-              },
-            } satisfies PortableMaterializedRowRecord;
-            materializedRows.put(updatedRow);
-            const projected = projectPortableFeedRow(
-              generation.generationId,
-              updatedRow,
-            );
-            if (projected) feedRows.put(projected);
+              } satisfies PortableMaterializedRowRecord;
+              materializedRows.put(updatedRow);
+              const projected = projectPortableFeedRow(
+                generation.generationId,
+                updatedRow,
+              );
+              if (projected) feedRows.put(projected);
             }
           }
         } else if (storedRow) {
@@ -2388,7 +2409,7 @@ class PwaLibraryCorePortableCheckpointStore
             updatedRow,
           );
           if (projected) feedRows.put(projected);
-          }
+        }
         entryOffset += 1;
       }
     }
@@ -2706,32 +2727,35 @@ class PwaLibraryCorePortableCheckpointStore
             .get(generation.libraryId),
         )) as PortablePwaActorIdentityRecord | undefined)
       : undefined;
-    const actorTip = selected && identity
-      ? ((await requestResult(
-          transaction
-            .objectStore(ACTOR_TIPS_STORE)
-            .get([selected.generationId, identity.actorId]),
-        )) as PortableActorTipRecord | undefined)
-      : undefined;
-    const enrollment = selected && identity
-      ? ((await requestResult(
-          transaction
-            .objectStore(ACTOR_ENROLLMENTS_STORE)
-            .get([selected.generationId, identity.actorId]),
-        )) as PortableActorEnrollmentRecord | undefined)
-      : undefined;
+    const actorTip =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
+    const enrollment =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorEnrollmentRecord | undefined)
+        : undefined;
     const activeEpochId =
       generation?.header?.anchor_kind === "accepted_authority" &&
       generation.header.accepted_authority !== null
         ? generation.header.accepted_authority.epoch_id
         : null;
-    const intentActor = generation && identity && activeEpochId
-      ? ((await requestResult(
-          transaction
-            .objectStore(INTENT_ACTORS_STORE)
-            .get([generation.libraryId, activeEpochId, identity.actorId]),
-        )) as PortableIntentActorRecord | undefined)
-      : undefined;
+    const intentActor =
+      generation && identity && activeEpochId
+        ? ((await requestResult(
+            transaction
+              .objectStore(INTENT_ACTORS_STORE)
+              .get([generation.libraryId, activeEpochId, identity.actorId]),
+          )) as PortableIntentActorRecord | undefined)
+        : undefined;
     await transactionDone(transaction);
 
     if (
@@ -2751,13 +2775,14 @@ class PwaLibraryCorePortableCheckpointStore
     }
 
     const authority = generation.header.accepted_authority;
-    const firstSequence = intentActor?.nextIntentSequence ??
-      actorTip.acceptedSequence + 1;
-    const previousOperationId = intentActor?.latestOperationId ??
-      actorTip.acceptedOperationId;
-    const previousChainDigest = intentActor?.latestActorChainDigest ??
-      actorTip.acceptedChainDigest;
-    const transactionId = `pwa-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const firstSequence =
+      intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      intentActor?.latestOperationId ?? actorTip.acceptedOperationId;
+    const previousChainDigest =
+      intentActor?.latestActorChainDigest ?? actorTip.acceptedChainDigest;
+    const transactionId =
+      `pwa-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = entityIds.map((entityId, index) =>
       FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
@@ -2839,32 +2864,35 @@ class PwaLibraryCorePortableCheckpointStore
             .get(generation.libraryId),
         )) as PortablePwaActorIdentityRecord | undefined)
       : undefined;
-    const actorTip = selected && identity
-      ? ((await requestResult(
-          transaction
-            .objectStore(ACTOR_TIPS_STORE)
-            .get([selected.generationId, identity.actorId]),
-        )) as PortableActorTipRecord | undefined)
-      : undefined;
-    const enrollment = selected && identity
-      ? ((await requestResult(
-          transaction
-            .objectStore(ACTOR_ENROLLMENTS_STORE)
-            .get([selected.generationId, identity.actorId]),
-        )) as PortableActorEnrollmentRecord | undefined)
-      : undefined;
+    const actorTip =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
+    const enrollment =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorEnrollmentRecord | undefined)
+        : undefined;
     const activeEpochId =
       generation?.header?.anchor_kind === "accepted_authority" &&
-        generation.header.accepted_authority !== null
+      generation.header.accepted_authority !== null
         ? generation.header.accepted_authority.epoch_id
         : null;
-    const intentActor = generation && identity && activeEpochId
-      ? ((await requestResult(
-          transaction
-            .objectStore(INTENT_ACTORS_STORE)
-            .get([generation.libraryId, activeEpochId, identity.actorId]),
-        )) as PortableIntentActorRecord | undefined)
-      : undefined;
+    const intentActor =
+      generation && identity && activeEpochId
+        ? ((await requestResult(
+            transaction
+              .objectStore(INTENT_ACTORS_STORE)
+              .get([generation.libraryId, activeEpochId, identity.actorId]),
+          )) as PortableIntentActorRecord | undefined)
+        : undefined;
     await transactionDone(transaction);
 
     if (
@@ -2884,18 +2912,20 @@ class PwaLibraryCorePortableCheckpointStore
     }
 
     const authority = generation.header.accepted_authority;
-    const actorSequence = intentActor?.nextIntentSequence ??
-      actorTip.acceptedSequence + 1;
-    const previousOperationId = intentActor?.latestOperationId ??
-      actorTip.acceptedOperationId;
-    const previousChainDigest = intentActor?.latestActorChainDigest ??
-      actorTip.acceptedChainDigest;
-    const transactionId = `pwa-toggle:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const schema = input.toggle === "saved"
-      ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-      : input.toggle === "archived"
-        ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-        : FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA;
+    const actorSequence =
+      intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      intentActor?.latestOperationId ?? actorTip.acceptedOperationId;
+    const previousChainDigest =
+      intentActor?.latestActorChainDigest ?? actorTip.acceptedChainDigest;
+    const transactionId =
+      `pwa-toggle:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const schema =
+      input.toggle === "saved"
+        ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+        : input.toggle === "archived"
+          ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+          : FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA;
     const member = schema.construct(
       {
         operation_id: `${transactionId}:0`,
@@ -3130,7 +3160,9 @@ class PwaLibraryCorePortableCheckpointStore
     this.#requireAvailable();
     const limit = input.limit ?? 16;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) {
-      throw new TypeError("pending intent actor limit must be between 1 and 64");
+      throw new TypeError(
+        "pending intent actor limit must be between 1 and 64",
+      );
     }
     const database = await this.#database();
     const transaction = database.transaction(INTENT_ACTORS_STORE, "readonly");
@@ -3152,7 +3184,11 @@ class PwaLibraryCorePortableCheckpointStore
           actor.publishedThroughIntentSequence < actor.nextIntentSequence - 1,
       )
       .sort((left, right) =>
-        left.actorId < right.actorId ? -1 : left.actorId > right.actorId ? 1 : 0,
+        left.actorId < right.actorId
+          ? -1
+          : left.actorId > right.actorId
+            ? 1
+            : 0,
       );
     if (records.length > limit || pending.length > limit) {
       throw new Error("pending intent actor count exceeds the runtime bound");
@@ -3181,25 +3217,56 @@ class PwaLibraryCorePortableCheckpointStore
     const database = await this.#database();
     const transaction = database.transaction(INTENT_ACTORS_STORE, "readonly");
     const records = (await requestResult(
-      transaction.objectStore(INTENT_ACTORS_STORE).getAll(
-        this.#keyRange.bound(
-          [input.libraryId, input.epochId],
-          [input.libraryId, input.epochId, []],
+      transaction
+        .objectStore(INTENT_ACTORS_STORE)
+        .getAll(
+          this.#keyRange.bound(
+            [input.libraryId, input.epochId],
+            [input.libraryId, input.epochId, []],
+          ),
+          limit + 1,
         ),
-        limit + 1,
-      ),
     )) as PortableIntentActorRecord[];
     await transactionDone(transaction);
     if (records.length > limit) {
       throw new Error("intent actor count exceeds the runtime bound");
     }
-    return Object.freeze(records
-      .sort((left, right) => left.actorId.localeCompare(right.actorId))
-      .map((actor) => Object.freeze({
-        actorId: actor.actorId,
-        epochId: actor.epochId,
-        libraryId: actor.libraryId,
-      })));
+    return Object.freeze(
+      records
+        .sort((left, right) => left.actorId.localeCompare(right.actorId))
+        .map((actor) =>
+          Object.freeze({
+            actorId: actor.actorId,
+            epochId: actor.epochId,
+            libraryId: actor.libraryId,
+          }),
+        ),
+    );
+  }
+
+  async readResultImportCursor(input: {
+    readonly actorId: LibraryCoreOperationInstanceId;
+    readonly epochId: LibraryCoreOperationInstanceId;
+    readonly libraryId: LibraryCoreOperationInstanceId;
+  }): Promise<
+    Readonly<{
+      latestSegmentDigest: LibraryCoreLowercaseHex64 | null;
+      nextResultSequence: number;
+    }>
+  > {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(RESULT_ACTORS_STORE, "readonly");
+    const actor = (await requestResult(
+      transaction
+        .objectStore(RESULT_ACTORS_STORE)
+        .get([input.libraryId, input.epochId, input.actorId]),
+    )) as PortableResultActorRecord | undefined;
+    await transactionDone(transaction);
+    return Object.freeze({
+      latestSegmentDigest: actor?.latestSegmentDigest ?? null,
+      nextResultSequence: actor?.nextResultSequence ?? 1,
+    });
   }
 
   async recordIntentSegmentPublication(
@@ -3287,8 +3354,18 @@ class PwaLibraryCorePortableCheckpointStore
       const replayOperations = (await requestResult(
         operations.getAll(
           this.#keyRange.bound(
-            [body.library_id, body.epoch_id, body.actor_id, body.first_intent_sequence],
-            [body.library_id, body.epoch_id, body.actor_id, body.last_intent_sequence],
+            [
+              body.library_id,
+              body.epoch_id,
+              body.actor_id,
+              body.first_intent_sequence,
+            ],
+            [
+              body.library_id,
+              body.epoch_id,
+              body.actor_id,
+              body.last_intent_sequence,
+            ],
           ),
         ),
       )) as PortableIntentOperationRecord[];
@@ -3331,8 +3408,18 @@ class PwaLibraryCorePortableCheckpointStore
       );
     }
     const operationRange = this.#keyRange.bound(
-      [body.library_id, body.epoch_id, body.actor_id, body.first_intent_sequence],
-      [body.library_id, body.epoch_id, body.actor_id, body.last_intent_sequence],
+      [
+        body.library_id,
+        body.epoch_id,
+        body.actor_id,
+        body.first_intent_sequence,
+      ],
+      [
+        body.library_id,
+        body.epoch_id,
+        body.actor_id,
+        body.last_intent_sequence,
+      ],
     );
     const storedOperations = (await requestResult(
       operations.getAll(operationRange),
@@ -3370,11 +3457,13 @@ class PwaLibraryCorePortableCheckpointStore
     return receipt("recorded");
   }
 
-  async appendResultSegment(input: Readonly<{
-    entries: readonly LibraryCoreIntentResultEntryV1[];
-    header: LibraryCoreResultSegmentHeaderV1;
-    reference: LibraryCoreImmutableObjectReferenceV1;
-  }>): Promise<void> {
+  async appendResultSegment(
+    input: Readonly<{
+      entries: readonly LibraryCoreIntentResultEntryV1[];
+      header: LibraryCoreResultSegmentHeaderV1;
+      reference: LibraryCoreImmutableObjectReferenceV1;
+    }>,
+  ): Promise<void> {
     this.#requireAvailable();
     const header = parseLibraryCoreResultSegmentHeaderV1(input.header);
     const entries = Object.freeze(
@@ -3384,18 +3473,14 @@ class PwaLibraryCorePortableCheckpointStore
       parseLibraryCoreImmutableObjectReferenceV1(input.reference),
     );
     if (
-      entries.length !== header.result_count
-      || reference.descriptor.objectKey.length === 0
+      entries.length !== header.result_count ||
+      reference.descriptor.objectKey.length === 0
     ) {
       throw new TypeError("result segment import evidence is incomplete");
     }
     const database = await this.#database();
     const transaction = database.transaction(
-      [
-        INTENT_OPERATIONS_STORE,
-        INTENT_RESULTS_STORE,
-        RESULT_ACTORS_STORE,
-      ],
+      [INTENT_OPERATIONS_STORE, INTENT_RESULTS_STORE, RESULT_ACTORS_STORE],
       "readwrite",
     );
     const intentOperations = transaction.objectStore(INTENT_OPERATIONS_STORE);
@@ -3406,68 +3491,81 @@ class PwaLibraryCorePortableCheckpointStore
       PortableResultActorRecord | undefined;
     const expectedSequence = actor?.nextResultSequence ?? 1;
     const expectedPreviousDigest = actor?.latestSegmentDigest ?? null;
-    const existingRows = (await requestResult(results.getAll(
-      this.#keyRange.bound(
-        [
-          header.library_id,
-          header.epoch_id,
-          header.actor_id,
-          header.first_result_sequence,
-        ],
-        [
-          header.library_id,
-          header.epoch_id,
-          header.actor_id,
-          header.last_result_sequence,
-        ],
+    const existingRows = (await requestResult(
+      results.getAll(
+        this.#keyRange.bound(
+          [
+            header.library_id,
+            header.epoch_id,
+            header.actor_id,
+            header.first_result_sequence,
+          ],
+          [
+            header.library_id,
+            header.epoch_id,
+            header.actor_id,
+            header.last_result_sequence,
+          ],
+        ),
       ),
-    ))) as PortableIntentResultRecord[];
-    const records = entries.map((entry) => Object.freeze({
-      actorId: header.actor_id,
-      entry,
-      epochId: header.epoch_id,
-      libraryId: header.library_id,
-      resultSequence: entry.result_sequence,
-      segmentDigest: reference.descriptor.contentDigest,
-      segmentReference: reference,
-    }) satisfies PortableIntentResultRecord);
+    )) as PortableIntentResultRecord[];
+    const records = entries.map(
+      (entry) =>
+        Object.freeze({
+          actorId: header.actor_id,
+          entry,
+          epochId: header.epoch_id,
+          libraryId: header.library_id,
+          resultSequence: entry.result_sequence,
+          segmentDigest: reference.descriptor.contentDigest,
+          segmentReference: reference,
+        }) satisfies PortableIntentResultRecord,
+    );
     if (existingRows.length > 0) {
       if (
-        existingRows.length !== records.length
-        || existingRows.some((stored, index) =>
-          !sameIntentResult(stored, records[index]!)
-        )
-        || !actor
-        || actor.nextResultSequence < header.last_result_sequence + 1
+        existingRows.length !== records.length ||
+        existingRows.some(
+          (stored, index) => !sameIntentResult(stored, records[index]!),
+        ) ||
+        !actor ||
+        actor.nextResultSequence < header.last_result_sequence + 1
       ) {
         transaction.abort();
-        throw new Error("result segment replay conflicts with durable PWA state");
+        throw new Error(
+          "result segment replay conflicts with durable PWA state",
+        );
       }
       await transactionDone(transaction);
       return;
     }
     if (
-      header.first_result_sequence !== expectedSequence
-      || header.previous_segment_digest !== expectedPreviousDigest
-      || (actor && actor.epochId !== header.epoch_id)
+      header.first_result_sequence !== expectedSequence ||
+      header.previous_segment_digest !== expectedPreviousDigest ||
+      (actor && actor.epochId !== header.epoch_id)
     ) {
       transaction.abort();
-      throw new Error("result segment does not extend the durable PWA result head");
+      throw new Error(
+        "result segment does not extend the durable PWA result head",
+      );
     }
     for (const record of records) {
-      const intent = (await requestResult(intentOperations.get([
-        record.libraryId,
-        record.epochId,
-        record.actorId,
-        record.entry.intent_sequence,
-      ]))) as PortableIntentOperationRecord | undefined;
+      const intent = (await requestResult(
+        intentOperations.get([
+          record.libraryId,
+          record.epochId,
+          record.actorId,
+          record.entry.intent_sequence,
+        ]),
+      )) as PortableIntentOperationRecord | undefined;
       if (
-        !intent
-        || intent.entry.operation_id !== record.entry.intent_operation_id
-        || intent.epochId !== record.epochId
+        !intent ||
+        intent.entry.operation_id !== record.entry.intent_operation_id ||
+        intent.epochId !== record.epochId
       ) {
         transaction.abort();
-        throw new Error("result segment references an unknown durable PWA intent");
+        throw new Error(
+          "result segment references an unknown durable PWA intent",
+        );
       }
       results.add(record);
     }
@@ -3492,7 +3590,8 @@ class PwaLibraryCorePortableCheckpointStore
     const database = await this.#database();
     const transaction = database.transaction(INTENT_RESULTS_STORE, "readonly");
     const records = (await requestResult(
-      transaction.objectStore(INTENT_RESULTS_STORE)
+      transaction
+        .objectStore(INTENT_RESULTS_STORE)
         .index("by_actor_intent_operation_id")
         .getAll([
           input.libraryId,
@@ -3502,9 +3601,9 @@ class PwaLibraryCorePortableCheckpointStore
         ]),
     )) as PortableIntentResultRecord[];
     await transactionDone(transaction);
-    const latest = records.sort(
-      (left, right) => left.resultSequence - right.resultSequence,
-    ).at(-1);
+    const latest = records
+      .sort((left, right) => left.resultSequence - right.resultSequence)
+      .at(-1);
     if (!latest) return null;
     return Object.freeze({
       intentOperationId: latest.entry.intent_operation_id,
@@ -4319,7 +4418,12 @@ class PwaLibraryCorePortableCheckpointStore
             const intentTransactions = database.createObjectStore(
               INTENT_TRANSACTIONS_STORE,
               {
-                keyPath: ["libraryId", "epochId", "actorId", "firstIntentSequence"],
+                keyPath: [
+                  "libraryId",
+                  "epochId",
+                  "actorId",
+                  "firstIntentSequence",
+                ],
               },
             );
             intentTransactions.createIndex(
@@ -4330,29 +4434,24 @@ class PwaLibraryCorePortableCheckpointStore
           }
           if (!database.objectStoreNames.contains(INTENT_PUBLICATIONS_STORE)) {
             database.createObjectStore(INTENT_PUBLICATIONS_STORE, {
-              keyPath: ["libraryId", "epochId", "actorId", "firstIntentSequence"],
+              keyPath: [
+                "libraryId",
+                "epochId",
+                "actorId",
+                "firstIntentSequence",
+              ],
             });
           }
           if (!database.objectStoreNames.contains(INTENT_RESULTS_STORE)) {
             const intentResults = database.createObjectStore(
               INTENT_RESULTS_STORE,
               {
-                keyPath: [
-                  "libraryId",
-                  "epochId",
-                  "actorId",
-                  "resultSequence",
-                ],
+                keyPath: ["libraryId", "epochId", "actorId", "resultSequence"],
               },
             );
             intentResults.createIndex(
               "by_actor_intent_operation_id",
-              [
-                "libraryId",
-                "epochId",
-                "actorId",
-                "entry.intent_operation_id",
-              ],
+              ["libraryId", "epochId", "actorId", "entry.intent_operation_id"],
               { unique: false },
             );
           }
