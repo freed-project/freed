@@ -780,6 +780,13 @@ function materializedRow(record: LibraryCorePortableCheckpointRecordV1): {
   readonly row: unknown;
 } | null {
   if (record.kind === "logical_checkpoint_header") return null;
+  // Actor state authenticates the checkpoint and its operation frontier, but
+  // it belongs to the retiring writer epoch. A restored Desktop creates a
+  // fresh epoch and actor after importing the materialized Library, so these
+  // rows must be verified by the portable checkpoint reader and then omitted
+  // from the new local authority instead of making ownership transfer
+  // impossible for every real checkpoint.
+  if (record.collection === "actor_states") return null;
   if (record.collection !== "materialized_rows") {
     throw new Error(
       `SQLite cloud import does not support ${record.collection} checkpoint rows yet`,
@@ -828,7 +835,9 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
             const header = records[0];
             const unsupportedCount = Object.entries(header.collection_counts)
               .some(([collection, count]) =>
-                collection !== "materialized_rows" && count !== 0,
+                collection !== "materialized_rows"
+                && collection !== "actor_states"
+                && count !== 0,
               );
             if (unsupportedCount) {
               throw new Error("SQLite cloud import contains unsupported Library collections");
@@ -855,6 +864,12 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
             }
           } else {
             for (const record of records) {
+              if (
+                record.kind === "logical_checkpoint_entry"
+                && record.collection === "actor_states"
+              ) {
+                continue;
+              }
               const row = materializedRow(record);
               if (row === null) {
                 throw new Error("SQLite cloud import repeats its logical header");
