@@ -46,6 +46,7 @@ vi.mock("./automerge", () => ({
 
 import { exists, readDir, remove, writeFile } from "@tauri-apps/plugin-fs";
 import * as fs from "@tauri-apps/plugin-fs";
+import * as sqliteLibrary from "./sqlite-library";
 import {
   clearSnapshots,
   createSnapshot,
@@ -393,6 +394,38 @@ describe("snapshots", () => {
     const snapshots = await listSnapshots();
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]?.reason).toBe("auto");
+  });
+
+  it("creates the initial SQLite backup without an Automerge document", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-01T15:00:00Z"));
+    mockDocState.mockReturnValue(null);
+    const listBackups = vi
+      .spyOn(sqliteLibrary, "listSqliteLibraryBackups")
+      .mockResolvedValue([]);
+    const createBackup = vi
+      .spyOn(sqliteLibrary, "createSqliteLibraryBackup")
+      .mockResolvedValue({
+        backupId: "sqlite-initial",
+        byteLength: 4_096,
+        createdAtMs: Date.now(),
+        fileName: "sqlite-initial.sqlite",
+        itemCount: 19_278,
+        reason: "auto",
+        revision: 8,
+        sha256: "ab".repeat(32),
+      });
+    const active = vi
+      .spyOn(sqliteLibrary, "isSqliteLibraryActive")
+      .mockReturnValue(true);
+
+    await startSnapshotManager();
+
+    expect(createBackup).toHaveBeenCalledWith("auto");
+    expect(listBackups).toHaveBeenCalled();
+    active.mockRestore();
+    createBackup.mockRestore();
+    listBackups.mockRestore();
   });
 
   it("keeps one self-rearming daily backup chain while Freed remains open", async () => {
