@@ -577,6 +577,38 @@ fn positive_safe_integer(
     })
 }
 
+fn decode_binary64_wrappers(value: &mut Value) -> Result<(), ()> {
+    match value {
+        Value::Array(values) => {
+            for nested in values {
+                decode_binary64_wrappers(nested)?;
+            }
+        }
+        Value::Object(object) => {
+            if object.len() == 2
+                && object.get("codec").and_then(Value::as_str) == Some("ieee754_binary64_hex_v1")
+                && object.contains_key("bits")
+            {
+                let bits = object.get("bits").and_then(Value::as_str).ok_or(())?;
+                if bits.len() != 16 || !bits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                    return Err(());
+                }
+                let decoded = f64::from_bits(u64::from_str_radix(bits, 16).map_err(|_| ())?);
+                if !decoded.is_finite() {
+                    return Err(());
+                }
+                *value = Value::Number(serde_json::Number::from_f64(decoded).ok_or(())?);
+                return Ok(());
+            }
+            for nested in object.values_mut() {
+                decode_binary64_wrappers(nested)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn require_literal(
     object: &Map<String, Value>,
     key: &'static str,
@@ -785,13 +817,14 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
                 return Err(invalid(index, "item_identity"));
             }
-            let canonical_item =
-                encode_canonical_value(&Value::Object(item.clone()), MAX_CAPTURE_ITEM_BYTES)
-                    .map_err(|_| invalid(index, "item"))?;
+            encode_canonical_value(&Value::Object(item.clone()), MAX_CAPTURE_ITEM_BYTES)
+                .map_err(|_| invalid(index, "item"))?;
+            let mut materialized_item = Value::Object(item.clone());
+            decode_binary64_wrappers(&mut materialized_item).map_err(|_| invalid(index, "item"))?;
             (
                 Some(
-                    String::from_utf8(canonical_item)
-                        .expect("canonical encoder always emits UTF-8"),
+                    serde_json::to_string(&materialized_item)
+                        .map_err(|_| invalid(index, "item"))?,
                 ),
                 None,
                 None,
@@ -1264,6 +1297,20 @@ mod tests {
                 "feed_item_capture_upsert" => json!({
                     "item": {
                         "globalId": entity_id,
+                        "location": {
+                            "coordinates": {
+                                "lat": {
+                                    "bits": "4042e32fec56d5d0",
+                                    "codec": "ieee754_binary64_hex_v1"
+                                },
+                                "lng": {
+                                    "bits": "c05e9ad77318fc50",
+                                    "codec": "ieee754_binary64_hex_v1"
+                                }
+                            },
+                            "name": "San Francisco",
+                            "source": "explicit"
+                        },
                         "platform": "saved",
                         "userState": { "saved": true }
                     }
@@ -1612,6 +1659,17 @@ mod tests {
             .verify_and_commit_read_transaction(&envelopes, 9_999)
             .expect("retry capture after response loss");
         assert_eq!(retry, receipt);
+        let item_json: String = journal
+            .connection
+            .query_row(
+                "SELECT payloadJson FROM library_core_feed_items WHERE globalId = 'saved:item:capture';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("captured item JSON");
+        let item: Value = serde_json::from_str(&item_json).expect("parse captured item JSON");
+        assert_eq!(item["location"]["coordinates"]["lat"], json!(37.7749));
+        assert_eq!(item["location"]["coordinates"]["lng"], json!(-122.4194));
         let rows: (i64, i64, i64, i64) = journal
             .connection
             .query_row(

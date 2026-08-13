@@ -2,12 +2,15 @@ import {
   assembleLibraryCoreTransactionV1,
   decodeLibraryCoreFeedPageCursorV1,
   constructLibraryCoreActorEnrollmentBodyV1,
+  constructLibraryCoreActorEnrollmentCertificateV1,
   constructLibraryCoreActorEnrollmentRequestV1,
   encodeLibraryCoreFeedPageCursorV1,
   LIBRARY_CORE_PORTABLE_CHECKPOINT_COLLECTIONS,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
+  decodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreDigestInput,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -104,7 +107,7 @@ import type {
   LibraryCorePortableCheckpointImportWriterV1,
   LibraryCorePortableCheckpointStagingReceiptV1,
   LibraryCorePreparedImmutableObjectV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
 
 import {
   lowerHex,
@@ -499,6 +502,15 @@ export interface PwaLibraryCorePortableCollectionPage {
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly materializedDigest: LibraryCoreLowercaseHex64;
   readonly nextOrdinal: number | null;
+}
+
+export interface PwaLibraryCoreMaterializedPageV1 {
+  readonly entries: readonly Readonly<{
+    primaryKey: string;
+    registryKey: string;
+    row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+  }>[];
+  readonly nextCursor: string | null;
 }
 
 export interface ReadPwaLibraryCoreOperationPageInput {
@@ -1069,6 +1081,216 @@ class PwaLibraryCorePortableCheckpointStore
       return null;
     }
     return generation.header.accepted_authority;
+  }
+
+  /**
+   * Create one isolated local authority for the feature preview.
+   *
+   * Preview data still exercises the real IndexedDB materializer and signed
+   * intent path. The generated authority never leaves this browser database
+   * and production startup never calls this method.
+   */
+  async bootstrapFeaturePreviewAuthority(): Promise<"created" | "existing"> {
+    if ((await this.readSelectedAcceptedAuthorityState()) !== null) {
+      return "existing";
+    }
+
+    this.#requireAvailable();
+    const libraryId = this.#randomHex64() as LibraryCoreLowercaseHex64 &
+      LibraryCoreOperationInstanceId;
+    const epochId = this.#randomHex64() as LibraryCoreLowercaseHex64 &
+      LibraryCoreOperationInstanceId;
+    const authorityKeys = (await this.#subtle.generateKey(
+      { name: "Ed25519" },
+      false,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const authorityPublicKey = lowerHex(
+      await this.#subtle.exportKey("raw", authorityKeys.publicKey),
+    ) as LibraryCoreEd25519PublicKeyHex;
+    const authorityKeyId = libraryCoreDigest("authority-key", {
+      authority_public_key: authorityPublicKey,
+      signature_algorithm: "ed25519",
+    });
+    const authority = Object.freeze({
+      authority_key_id: authorityKeyId,
+      authority_public_key: authorityPublicKey,
+      epoch: 1,
+      epoch_id: epochId,
+      library_id: libraryId,
+      observed_frontier: [],
+    }) satisfies LibraryCoreAcceptedAuthorityStateV1;
+    const identity = await this.#createPwaActorIdentity(libraryId);
+    const enrollmentBody = constructLibraryCoreActorEnrollmentBodyV1(
+      {
+        actor_incarnation_nonce: identity.actorIncarnationNonce,
+        actor_public_key: identity.actorPublicKey,
+        authority_key_id: authorityKeyId,
+        created_at_ms: this.#now(),
+        epoch: 1,
+        epoch_id: epochId,
+        installation_incarnation: identity.installationIncarnation,
+        library_id: libraryId,
+        observed_frontier: [],
+        operation_id:
+          `preview-enrollment:${identity.actorId}` as LibraryCoreOperationInstanceId,
+      },
+      { digest: libraryCoreDigest },
+    );
+    const enrollment = await constructLibraryCoreActorEnrollmentCertificateV1(
+      enrollmentBody,
+      {
+        digest: libraryCoreDigest,
+        signActorProof: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+        signAuthorityCertificate: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              authorityKeys.privateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+
+    const frontierDigest = libraryCoreDigest("causal-frontier", []);
+    const materializedDigest = this.#randomHex64();
+    const manifestDigest = this.#randomHex64();
+    const pageDigest = this.#randomHex64();
+    const header = Object.freeze({
+      anchor_kind: "accepted_authority",
+      accepted_authority: authority,
+      canonical_codec_version: 1,
+      collection_counts: {
+        accepted_frontier: 0,
+        actor_states: 1,
+        blob_roots: 0,
+        excluded_registry_keys: 0,
+        field_clocks: 0,
+        materialized_rows: 1,
+        quarantined_frontier: 0,
+        receipt_records: 0,
+        relationships: 0,
+        tombstones: 0,
+      },
+      epoch: 1,
+      epoch_id: epochId,
+      field_registry_version: 1,
+      format: "freed_logical_checkpoint_v1",
+      kind: "logical_checkpoint_header",
+      library_id: libraryId,
+      materializer_position: {
+        frontier_digest: frontierDigest,
+        ingest_sequence: 0,
+        materialized_digest: materializedDigest,
+      },
+      promoted_receipt_digests: [],
+      schema_version: 1,
+      source_manifest_digest: this.#randomHex64(),
+      source_transition_digest: this.#randomHex64(),
+      transition_candidate_anchor: null,
+    }) satisfies LibraryCorePortableCheckpointHeaderV1;
+    const shellEntry = Object.freeze({
+      collection: "materialized_rows",
+      kind: "logical_checkpoint_entry",
+      ordinal: 0,
+      value: {
+        primary_key: "shell",
+        registry_key: "00_library_shell",
+        row: {},
+      },
+    }) satisfies LibraryCorePortableCheckpointEntryV1;
+    const actorEntry = Object.freeze({
+      collection: "actor_states",
+      kind: "logical_checkpoint_entry",
+      ordinal: 0,
+      value: {
+        accepted_chain_digest: enrollment.actor_chain_genesis,
+        accepted_operation_id: null,
+        accepted_sequence: 0,
+        actor_id: identity.actorId,
+        enrollment_certificate_digest:
+          enrollment.certificate.certificate_digest,
+        retired: false,
+        retirement_certificate_digest: null,
+      },
+    }) satisfies LibraryCorePortableCheckpointEntryV1;
+    const pageReference = Object.freeze({
+      descriptor: Object.freeze({
+        byteLength: 1,
+        contentDigest: pageDigest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          digest: pageDigest,
+          epochId,
+          generation: 0,
+          kind: "checkpoint_page",
+          libraryId,
+          pageIndex: 0,
+        }),
+      }),
+      transportObjectId: `preview-page:${pageDigest}`,
+    }) satisfies LibraryCoreImmutableObjectReferenceV1;
+    const manifest = Object.freeze({
+      causalFrontierDigest: frontierDigest,
+      datasetSchemaId: "library_core_logical_checkpoint_v1",
+      generation: 0,
+      kind: "checkpoint_manifest",
+      libraryId,
+      pages: [
+        Object.freeze({
+          firstRecordIdentity: "00:header",
+          lastRecordIdentity: "07:0000000",
+          object: pageReference,
+          pageIndex: 0,
+          recordCount: 3,
+        }),
+      ],
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch: epochId,
+      totalRecordCount: 3,
+    }) satisfies LibraryCoreCheckpointManifestV1;
+    const manifestReference = Object.freeze({
+      descriptor: Object.freeze({
+        byteLength: 1,
+        contentDigest: manifestDigest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          digest: manifestDigest,
+          epochId,
+          generation: 0,
+          kind: "checkpoint_manifest",
+          libraryId,
+        }),
+      }),
+      transportObjectId: `preview-manifest:${manifestDigest}`,
+    }) satisfies LibraryCoreImmutableObjectReferenceV1;
+
+    await this.beginImport({ manifest, manifestReference });
+    await this.appendPage(0, [header, shellEntry, actorEntry]);
+    await this.finalizeImport({ header, manifest, manifestReference });
+    const database = await this.#database();
+    const identityTransaction = database.transaction(
+      PWA_ACTOR_IDENTITIES_STORE,
+      "readwrite",
+    );
+    identityTransaction
+      .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+      .add(identity);
+    await transactionDone(identityTransaction);
+    await this.installActorEnrollment({
+      acceptedAuthorityState: authority,
+      certificateBytes: encodeLibraryCoreCanonicalValue(
+        enrollment.certificate as unknown as LibraryCoreCanonicalValue,
+      ),
+    });
+    return "created";
   }
 
   async #activeIntentContext(): Promise<PortableActiveIntentContext> {
@@ -2485,11 +2707,14 @@ class PwaLibraryCorePortableCheckpointStore
           if (storedRow) break;
         }
         if (member.envelope.operation_type === "feed_item_capture_upsert") {
+          const decodedItem = decodeLibraryCoreFractionalNumbersV1(
+            member.envelope.payload.item,
+          ) as Readonly<Record<string, LibraryCoreCanonicalValue>>;
           const incoming: PortableMaterializedRowRecord = {
             generationId: generation.generationId,
             registryKey: "10_feed_items",
             primaryKey,
-            row: member.envelope.payload.item,
+            row: decodedItem,
           };
           materializedRows.put(incoming);
           const projected = projectPortableFeedRow(
@@ -4356,7 +4581,10 @@ class PwaLibraryCorePortableCheckpointStore
           transaction_member_count: items.length,
           entity_id: item.globalId,
           payload: {
-            item: item as unknown as Record<string, LibraryCoreCanonicalValue>,
+            item: encodeLibraryCoreFractionalNumbersV1(item) as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
           },
           created_at_ms: createdAtMs,
         } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
@@ -4402,6 +4630,17 @@ class PwaLibraryCorePortableCheckpointStore
     const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
     const feedRows = transaction.objectStore(FEED_ROWS_STORE);
     for (const item of items) {
+      const materializedKey = [
+        selected.generationId,
+        "10_feed_items",
+        canonicalStringKey(item.globalId),
+      ];
+      const previous = (await requestResult(
+        materializedRows.get(materializedKey),
+      )) as PortableMaterializedRowRecord | undefined;
+      const previousFeedRow = previous
+        ? projectPortableFeedRow(selected.generationId, previous)
+        : null;
       const stored: PortableMaterializedRowRecord = {
         generationId: selected.generationId,
         registryKey: "10_feed_items",
@@ -4412,11 +4651,15 @@ class PwaLibraryCorePortableCheckpointStore
       };
       materializedRows.put(stored);
       const projected = projectPortableFeedRow(selected.generationId, stored);
-      if (!projected) {
-        transaction.abort();
-        throw new Error("PWA capture intent produced an invalid FeedItem");
+      if (
+        previousFeedRow &&
+        previousFeedRow.orderKey !== projected?.orderKey
+      ) {
+        feedRows.delete([selected.generationId, previousFeedRow.orderKey]);
       }
-      feedRows.put(projected);
+      if (projected) {
+        feedRows.put(projected);
+      }
     }
     await transactionDone(transaction);
     this.#feedSessions.clear();
@@ -5257,6 +5500,14 @@ class PwaLibraryCorePortableCheckpointStore
         admission.cursor !== null,
         false,
       );
+      const totalCount = await requestResult(
+        transaction.objectStore(FEED_ROWS_STORE).count(
+          this.#keyRange.bound(
+            [generation.generationId],
+            [generation.generationId, []],
+          ),
+        ),
+      );
       const rows: LibraryCoreFeedCardV1[] = [];
       let cursor = await requestResult(
         transaction.objectStore(FEED_ROWS_STORE).openCursor(range, "next"),
@@ -5300,7 +5551,7 @@ class PwaLibraryCorePortableCheckpointStore
           rows,
           schemaVersion: request.value.schemaVersion,
           source,
-          totalCount: generation.visibleFeedRowCount,
+          totalCount,
         },
         request.value,
       );
@@ -5748,6 +5999,79 @@ class PwaLibraryCorePortableCheckpointStore
           ? finalOrdinal
           : null,
     });
+  }
+
+  /** Page the current materialized projection, including local intent writes. */
+  async readSelectedMaterializedPage(input: {
+    readonly cursor: string | null;
+    readonly limit: number;
+  }): Promise<PwaLibraryCoreMaterializedPageV1> {
+    this.#requireAvailable();
+    if (
+      !Number.isSafeInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 512
+    ) {
+      throw new RangeError("materialized page limit must be between 1 and 512");
+    }
+    let after: readonly [string, string] | null = null;
+    if (input.cursor !== null) {
+      const decoded = JSON.parse(input.cursor) as unknown;
+      if (
+        !Array.isArray(decoded) ||
+        decoded.length !== 2 ||
+        decoded.some((value) => typeof value !== "string")
+      ) {
+        throw new TypeError("materialized page cursor is invalid");
+      }
+      after = decoded as [string, string];
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("no complete portable checkpoint is selected");
+    }
+    const range = after
+      ? this.#keyRange.bound(
+          [selected.generationId, after[0], after[1]],
+          [selected.generationId, []],
+          true,
+          false,
+        )
+      : this.#keyRange.bound(
+          [selected.generationId],
+          [selected.generationId, []],
+        );
+    const entries: Array<{
+      primaryKey: string;
+      registryKey: string;
+      row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+    }> = [];
+    let cursor = await requestResult(
+      transaction.objectStore(MATERIALIZED_ROWS_STORE).openCursor(range),
+    );
+    let lastKey: readonly [string, string] | null = null;
+    while (cursor && entries.length < input.limit) {
+      const stored = cursor.value as PortableMaterializedRowRecord;
+      entries.push(Object.freeze({
+        primaryKey: stored.primaryKey,
+        registryKey: stored.registryKey,
+        row: stored.row,
+      }));
+      lastKey = [stored.registryKey, stored.primaryKey];
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+    const nextCursor = cursor && lastKey ? JSON.stringify(lastKey) : null;
+    await transactionDone(transaction);
+    return Object.freeze({ entries: Object.freeze(entries), nextCursor });
   }
 
   async quiesce(): Promise<void> {

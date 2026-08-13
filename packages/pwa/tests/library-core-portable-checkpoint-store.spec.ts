@@ -567,3 +567,112 @@ test("portable database upgrade builds the bounded feed index from authenticated
     },
   });
 });
+
+test("preview authority persists fractional captures in the current materialized projection", async ({
+  page,
+}) => {
+  await page.goto("/favicon.svg");
+
+  const result = await page.evaluate(async () => {
+    const { createPwaLibraryCorePortableCheckpointStore } = await import(
+      "/src/lib/library-core-portable-checkpoint-store.ts"
+    );
+    const databaseName = `freed-library-core-preview-${crypto.randomUUID()}`;
+    const store = createPwaLibraryCorePortableCheckpointStore({
+      databaseName,
+      indexedDb: indexedDB,
+      keyRange: IDBKeyRange,
+      subtle: crypto.subtle,
+    });
+    const baseItem = {
+      author: {
+        displayName: "Map Friend",
+        handle: "map-friend",
+        id: "person-1",
+      },
+      capturedAt: 1_786_000_000_000,
+      content: {
+        mediaTypes: [],
+        mediaUrls: [],
+        text: "A fractional location",
+      },
+      contentType: "post",
+      globalId: "preview:fractional-item",
+      location: {
+        coordinates: { lat: 37.7749, lng: -122.4194 },
+        name: "San Francisco",
+        source: "explicit",
+      },
+      platform: "test",
+      publishedAt: 1_786_000_000_000,
+      topics: [],
+      userState: {
+        archived: true,
+        hidden: false,
+        saved: false,
+        tags: [],
+      },
+    };
+
+    const bootstrap = await store.bootstrapFeaturePreviewAuthority();
+    await store.enqueueFeedItemCaptures([baseItem]);
+    const hiddenFeed = await store.readSelectedFeedPage({
+      cancellationId: "hidden-feed",
+      cursor: null,
+      limit: 10,
+      queryId: "feed_page_v1",
+      readerSessionId: "hidden-reader",
+      schemaVersion: 1,
+    });
+    const hiddenMaterialized = await store.readSelectedMaterializedPage({
+      cursor: null,
+      limit: 10,
+    });
+
+    await store.enqueueFeedItemCaptures([
+      {
+        ...baseItem,
+        userState: { ...baseItem.userState, archived: false },
+      },
+    ]);
+    const visibleFeed = await store.readSelectedFeedPage({
+      cancellationId: "visible-feed",
+      cursor: null,
+      limit: 10,
+      queryId: "feed_page_v1",
+      readerSessionId: "visible-reader",
+      schemaVersion: 1,
+    });
+    const visibleMaterialized = await store.readSelectedMaterializedPage({
+      cursor: null,
+      limit: 10,
+    });
+    await store.quiesce();
+    await new Promise<void>((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase(databaseName);
+      deletion.onsuccess = () => resolve();
+      deletion.onerror = () => reject(deletion.error);
+    });
+
+    const captureRow = visibleMaterialized.entries.find(
+      (entry) => entry.primaryKey === JSON.stringify(baseItem.globalId),
+    )?.row as typeof baseItem | undefined;
+    return {
+      bootstrap,
+      hiddenFeedCount: hiddenFeed.ok ? hiddenFeed.value.totalCount : null,
+      hiddenMaterializedCount: hiddenMaterialized.entries.length,
+      latitude: captureRow?.location.coordinates.lat,
+      longitude: captureRow?.location.coordinates.lng,
+      visibleFeedCount: visibleFeed.ok ? visibleFeed.value.totalCount : null,
+    };
+  });
+
+  expect(result).toEqual({
+    bootstrap: "created",
+    hiddenFeedCount: 0,
+    hiddenMaterializedCount: 2,
+    latitude: 37.7749,
+    longitude: -122.4194,
+    visibleFeedCount: 1,
+  });
+});

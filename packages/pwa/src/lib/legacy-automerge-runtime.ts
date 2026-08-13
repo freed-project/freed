@@ -1,19 +1,19 @@
 /**
- * Lazy access to the retired PWA Automerge runtime.
+ * Fail-closed compatibility surface for the retired PWA Automerge runtime.
  *
- * SQLite Library Core is the normal product path. Keeping this boundary lazy
- * prevents the legacy worker and WASM runtime from joining the active bundle
- * graph while rollback and factory-reset support still exist.
+ * SQLite Library Core is the only product path. The typed surface remains
+ * temporarily so old rollback branches fail clearly while their callers are
+ * deleted, but it deliberately has no runtime import of Automerge. This keeps
+ * the worker and WASM binaries out of the shipped PWA bundle.
  */
 
 type LegacyAutomergeModule = typeof import("./automerge");
 type AsyncLegacyMethod = (...args: never[]) => Promise<unknown>;
 
-let legacyAutomergeModule: Promise<LegacyAutomergeModule> | null = null;
-
 export function loadLegacyAutomerge(): Promise<LegacyAutomergeModule> {
-  legacyAutomergeModule ??= import("./automerge");
-  return legacyAutomergeModule;
+  return Promise.reject(
+    new Error("The PWA Automerge runtime has been retired; use Library Core"),
+  );
 }
 
 function legacyMethod<Name extends keyof LegacyAutomergeModule>(

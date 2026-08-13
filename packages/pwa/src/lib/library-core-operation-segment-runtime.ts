@@ -7,5 +7,5 @@
 export {
   importLibraryCoreOperationSegmentV1,
   prepareLibraryCoreOperationSegmentV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
 export { encodeLibraryCoreCanonicalValue } from "@freed/shared/library-core";

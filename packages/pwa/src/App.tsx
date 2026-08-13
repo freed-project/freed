@@ -15,10 +15,8 @@ import {
 } from "@freed/ui/context";
 import { quiescePwaStartupMigrations, useAppStore } from "./lib/store";
 import {
-  connect,
   disconnect,
   onStatusChange,
-  getStoredRelayUrl,
   clearStoredRelayUrlForFactoryReset,
   startCloudSync,
   stopCloudSync,
@@ -26,10 +24,6 @@ import {
   getCloudToken,
   clearStoredCloudDataForFactoryReset,
 } from "./lib/sync";
-import {
-  clearLocalDocAfterPwaQuiesce,
-  getItemLegacyHtml,
-} from "./lib/legacy-automerge-runtime";
 import {
   applyPwaUpdate,
   checkForPwaUpdate,
@@ -82,7 +76,7 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
-  isPwaLibraryCoreEnabled,
+  ensurePwaLibraryCoreFeaturePreviewState,
   openPwaLibraryCoreFeedReader,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -228,12 +222,6 @@ function App() {
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW) return;
-    // The shared preview seed still writes the retired document model. Do not
-    // wake Automerge or report a false startup failure in an active IndexedDB
-    // Library preview. SQLite preview fixtures are imported through the same
-    // portable checkpoint path as production acceptance tests.
-    if (isPwaLibraryCoreEnabled()) return;
-
     const state = useAppStore.getState();
     const sampleSummary = summarizeSampleData(state);
     const hasTimeWindowMapSamples = state.items.some(
@@ -245,6 +233,7 @@ function App() {
     if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
 
     void (async () => {
+      await ensurePwaLibraryCoreFeaturePreviewState();
       if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
         await state.clearSampleData();
       }
@@ -260,12 +249,6 @@ function App() {
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
-
-    // Resume LAN relay connection if previously paired.
-    const storedUrl = getStoredRelayUrl();
-    if (storedUrl && !isPwaLibraryCoreEnabled()) {
-      connect(storedUrl);
-    }
 
     // Resume cloud sync if previously authenticated.
     const provider = getCloudProvider();
@@ -366,7 +349,7 @@ function App() {
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
               clearStoredRelayUrlForFactoryReset();
             },
-            clearDocument: clearLocalDocAfterPwaQuiesce,
+            clearDocument: async () => {},
           });
           clearFactoryResetCloudCleanupBarrier();
         });
@@ -451,16 +434,8 @@ function App() {
         try {
           const cached = await getCachedArticleHtml(globalId);
           if (cached) return cached;
-          const libraryCoreEnabled = isPwaLibraryCoreEnabled();
-          const item = libraryCoreEnabled
-            ? await readPwaLibraryCoreItemDetail(globalId)
-            : (useAppStore
-                .getState()
-                .items.find((candidate) => candidate.globalId === globalId) ??
-              null);
-          const html = libraryCoreEnabled
-            ? (item?.preservedContent?.html ?? null)
-            : await getItemLegacyHtml(globalId);
+          const item = await readPwaLibraryCoreItemDetail(globalId);
+          const html = item?.preservedContent?.html ?? null;
           if (!html) return null;
           const articleUrl =
             item?.content.linkPreview?.url ??
@@ -480,18 +455,10 @@ function App() {
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       openUrl: openPwaUrl,
-      openBoundedFeedReader: isPwaLibraryCoreEnabled()
-        ? openPwaLibraryCoreFeedReader
-        : undefined,
-      scanLibraryItems: isPwaLibraryCoreEnabled()
-        ? scanPwaLibraryCoreItems
-        : undefined,
-      searchLibraryItems: isPwaLibraryCoreEnabled()
-        ? searchPwaLibraryCoreItems
-        : undefined,
-      readLibraryItemDetail: isPwaLibraryCoreEnabled()
-        ? readPwaLibraryCoreItemDetail
-        : undefined,
+      openBoundedFeedReader: openPwaLibraryCoreFeedReader,
+      scanLibraryItems: scanPwaLibraryCoreItems,
+      searchLibraryItems: searchPwaLibraryCoreItems,
+      readLibraryItemDetail: readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
