@@ -15,6 +15,8 @@ import {
   type FeedItemReadAssignmentSigningBodyV1,
   type FeedItemRemoveSigningBodyV1,
   type FeedItemUserStateAssignmentSigningBodyV1,
+  type RssFeedRemoveSigningBodyV1,
+  type RssFeedUpsertSigningBodyV1,
   type LibraryCoreOperationSigningBodyV1,
   type LibraryCoreAssembledTransactionV1,
   type LibraryCoreTransactionBodyV1,
@@ -41,11 +43,21 @@ export interface FeedItemRemoveEnvelopeV1 extends FeedItemRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface RssFeedUpsertEnvelopeV1 extends RssFeedUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface RssFeedRemoveEnvelopeV1 extends RssFeedRemoveSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemCaptureUpsertEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
   | FeedItemUserStateAssignmentEnvelopeV1
-  | FeedItemRemoveEnvelopeV1;
+  | FeedItemRemoveEnvelopeV1
+  | RssFeedUpsertEnvelopeV1
+  | RssFeedRemoveEnvelopeV1;
 
 export interface LibraryCoreFinalizedEnvelopeV1 {
   readonly envelope: LibraryCoreOperationEnvelopeV1;
@@ -106,9 +118,7 @@ export async function finalizeLibraryCoreTransactionV1(
     typeof signOperation !== "function" ||
     typeof digestEnvelope !== "function"
   ) {
-    throw new TypeError(
-      "operation finalization dependencies must be callable",
-    );
+    throw new TypeError("operation finalization dependencies must be callable");
   }
 
   const memberByteLengths = assembled.members.map((member) =>

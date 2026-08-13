@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
@@ -70,5 +72,61 @@ describe("Library Core operation payload contracts", () => {
         FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
       ).toMatchObject({ ok: false, code: "invalid" });
     }
+  });
+
+  it("accepts only synchronized RSS feed fields", () => {
+    const result = RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
+      feed: {
+        url: "https://example.com/feed.xml",
+        title: "Example",
+        enabled: true,
+        trackUnread: true,
+        pollInterval: 3_600,
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+
+    for (const invalid of [
+      { feed: { url: "https://example.com/feed.xml" } },
+      {
+        feed: {
+          url: "https://example.com/feed.xml",
+          title: "Example",
+          enabled: true,
+          trackUnread: true,
+          consecutiveFailures: 2,
+        },
+      },
+      {
+        feed: {
+          url: "https://example.com/feed.xml",
+          title: "Example",
+          enabled: "true",
+          trackUnread: true,
+        },
+      },
+    ]) {
+      expect(RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate(invalid)).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
+    }
+  });
+
+  it("requires an exact RSS removal timestamp", () => {
+    expect(
+      RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA.validate({
+        removed_at_ms: 1_783_000_000_000,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: { removed_at_ms: 1_783_000_000_000 },
+    });
+    expect(
+      RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA.validate({
+        removed_at_ms: 1,
+        include_items: true,
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
   });
 });

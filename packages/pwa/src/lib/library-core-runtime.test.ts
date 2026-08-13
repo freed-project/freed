@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
   enqueueFeedItemRemove: vi.fn(),
+  enqueueRssFeedRemove: vi.fn(),
+  enqueueRssFeedUpsert: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
@@ -12,6 +14,8 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
     enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
+    enqueueRssFeedRemove: mocks.enqueueRssFeedRemove,
+    enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -31,6 +35,8 @@ import {
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreFeedItemRemove,
+  enqueuePwaLibraryCoreRssFeedRemove,
+  enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -53,6 +59,8 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemRemove.mockReset();
+    mocks.enqueueRssFeedRemove.mockReset();
+    mocks.enqueueRssFeedUpsert.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -299,5 +307,27 @@ describe("PWA Library Core bounded scanner", () => {
         field: "archived",
       },
     ]);
+  });
+
+  it("routes RSS configuration through signed Library Core intents", async () => {
+    mocks.enqueueRssFeedUpsert.mockResolvedValue({ operationId: "op:rss:add" });
+    mocks.enqueueRssFeedRemove.mockResolvedValue({ operationId: "op:rss:remove" });
+    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
+    const feed = {
+      url: "https://example.test/feed.xml",
+      title: "Example",
+      enabled: true,
+      trackUnread: true,
+    };
+
+    await enqueuePwaLibraryCoreRssFeedUpsert(feed);
+    await enqueuePwaLibraryCoreRssFeedRemove(feed.url, true);
+
+    expect(mocks.enqueueRssFeedUpsert).toHaveBeenCalledWith(feed);
+    expect(mocks.enqueueRssFeedRemove).toHaveBeenCalledWith({
+      includeItems: true,
+      removedAtMs: expect.any(Number),
+      url: feed.url,
+    });
   });
 });

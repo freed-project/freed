@@ -73,11 +73,17 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
@@ -206,7 +212,22 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   },
   // Traced from `addRssFeed`, `updateRssFeed`, and the batch refresh path.
   rss_feed_upsert: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys: RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema: RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  },
+  rss_feed_remove_keep_items: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  },
+  rss_feed_remove_with_items: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `addPerson` / `updatePerson` and the friend and connection
   // surfaces that funnel into them.

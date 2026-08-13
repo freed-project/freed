@@ -11,6 +11,9 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
@@ -37,6 +40,9 @@ import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
@@ -98,7 +104,8 @@ export const LIBRARY_CORE_OPERATION_IDS = [
   "sample_library_remove",
 ] as const;
 
-export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
+export type LibraryCoreOperationId =
+  (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export type LibraryCoreOperationEntity =
   | LibraryCoreEntity
@@ -156,12 +163,8 @@ export interface LibraryCoreOperationDefinition {
    * inventory says what changes, not how concurrent changes converge.
    */
   readonly touchedFieldRegistryKeys: readonly string[] | null;
-  readonly fieldAlgebra:
-    | LibraryCoreOperationFieldAlgebraContract<unknown>
-    | null;
-  readonly transactionMemberSchema:
-    | LibraryCoreTransactionMemberSchemaDescriptor
-    | null;
+  readonly fieldAlgebra: LibraryCoreOperationFieldAlgebraContract<unknown> | null;
+  readonly transactionMemberSchema: LibraryCoreTransactionMemberSchemaDescriptor | null;
   /**
    * How this operation lands in the authoritative tables.
    *
@@ -565,11 +568,19 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   rss_feed_remove_keep_items: localUserOperation({
     entityType: "RssFeed",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["removeFeed"],
     legacyWorkerRequests: ["REMOVE_RSS_FEED"],
   }),
   rss_feed_remove_with_items: localUserOperation({
     entityType: "RssFeed",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
     relationshipEffects: ["delete_feed_items_for_feed"],
     candidateStoreSurfaces: ["removeFeed"],
     legacyWorkerRequests: ["REMOVE_RSS_FEED"],
@@ -590,9 +601,16 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   rss_feed_upsert: localUserOperation({
     entityType: "RssFeed",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+    transactionMemberSchema: RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys: RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["addFeed"],
-    legacyWorkerRequests: ["ADD_RSS_FEED", "BATCH_REFRESH_FEEDS", "UPDATE_RSS_FEED"],
+    legacyWorkerRequests: [
+      "ADD_RSS_FEED",
+      "BATCH_REFRESH_FEEDS",
+      "UPDATE_RSS_FEED",
+    ],
   }),
   rss_feeds_heal_untitled_frozen: plannedOperation({
     entityType: "RssFeed",

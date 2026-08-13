@@ -18,6 +18,7 @@ import {
   personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
   stripDeviceLocalGraphPositionUpdates,
+  sanitizeRssFeedWrite,
 } from "@freed/shared";
 import {
   projectArchiveAllReadUnsaved,
@@ -113,6 +114,8 @@ import {
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
   enqueuePwaLibraryCoreFeedItemRemove,
+  enqueuePwaLibraryCoreRssFeedRemove,
+  enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -751,11 +754,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Feed actions
   addFeed: async (feed) => {
-    await docAddRssFeed(feed);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreRssFeedUpsert(feed);
+    } else {
+      await docAddRssFeed(feed);
+    }
   },
 
   removeFeed: async (url, options?: RemoveFeedOptions) => {
-    await docRemoveRssFeed(url, options?.includeItems ?? false);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreRssFeedRemove(
+        url,
+        options?.includeItems ?? false,
+      );
+    } else {
+      await docRemoveRssFeed(url, options?.includeItems ?? false);
+    }
   },
 
   removeAllFeeds: async (includeItems) => {
@@ -768,7 +782,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:renameFeed",
       (state) => projectRenameFeed(state, url, title),
-      () => docUpdateRssFeed(url, { title }),
+      () => {
+        if (!isPwaLibraryCoreEnabled()) {
+          return docUpdateRssFeed(url, { title });
+        }
+        const feed = get().feeds[url];
+        if (!feed) throw new Error("RSS feed is unavailable");
+        return enqueuePwaLibraryCoreRssFeedUpsert({
+          ...feed,
+          ...sanitizeRssFeedWrite({ title }),
+        });
+      },
+      { allowLibraryCoreIntent: true },
     );
   },
 

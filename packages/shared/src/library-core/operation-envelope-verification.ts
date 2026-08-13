@@ -11,6 +11,9 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
@@ -404,23 +407,35 @@ export async function verifyLibraryCoreOperationTransactionV1(
     ),
   );
   const memberConstructions = decodedEnvelopes.map((envelope) => {
-    const schema = envelope.operation_type === "feed_item_capture_upsert"
-      ? FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA
-      : envelope.operation_type === "feed_item_read_assignment"
-        ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-      : envelope.operation_type === "feed_item_saved_assignment"
-        ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-        : envelope.operation_type === "feed_item_archive_assignment"
-          ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-          : envelope.operation_type === "feed_item_like_assignment"
-            ? FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-            : envelope.operation_type === "feed_item_remove"
-              ? FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA
-              : null;
+    const schema =
+      envelope.operation_type === "feed_item_capture_upsert"
+        ? FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA
+        : envelope.operation_type === "feed_item_read_assignment"
+          ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+          : envelope.operation_type === "feed_item_saved_assignment"
+            ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+            : envelope.operation_type === "feed_item_archive_assignment"
+              ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+              : envelope.operation_type === "feed_item_like_assignment"
+                ? FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+                : envelope.operation_type === "feed_item_remove"
+                  ? FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA
+                  : envelope.operation_type === "rss_feed_upsert"
+                    ? RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA
+                    : envelope.operation_type === "rss_feed_remove_keep_items"
+                      ? RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA
+                      : envelope.operation_type === "rss_feed_remove_with_items"
+                        ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
+                        : null;
     if (schema === null) {
-      throw new TypeError("operation envelope has an unsupported operation_type");
+      throw new TypeError(
+        "operation envelope has an unsupported operation_type",
+      );
     }
-    return schema.construct(memberInputFromEnvelope(envelope), digestDependencies);
+    return schema.construct(
+      memberInputFromEnvelope(envelope),
+      digestDependencies,
+    );
   });
   const firstBody = memberConstructions[0].body;
   if (

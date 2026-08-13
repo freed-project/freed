@@ -1,9 +1,11 @@
 import {
   createDefaultPreferences,
   friendFromPerson,
+  sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
   type Person,
+  type RssFeed,
 } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
@@ -315,11 +317,7 @@ export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
     }
     return "continue" as const;
   });
-  await enqueuePwaLibraryCoreUserStateAssignments(
-    pending,
-    "archived",
-    true,
-  );
+  await enqueuePwaLibraryCoreUserStateAssignments(pending, "archived", true);
 }
 
 /** Repair every saved and archived item through bounded IndexedDB scans. */
@@ -341,11 +339,7 @@ export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> 
     }
     return "continue" as const;
   });
-  await enqueuePwaLibraryCoreUserStateAssignments(
-    pending,
-    "archived",
-    false,
-  );
+  await enqueuePwaLibraryCoreUserStateAssignments(pending, "archived", false);
   const state = await readSelectedState();
   if (state) publishState(state);
 }
@@ -387,11 +381,7 @@ export async function enqueuePwaLibraryCoreUserStateAssignment(
   field: FeedItemUserStateAssignmentFieldV1,
   assigned: boolean,
 ): Promise<void> {
-  await enqueuePwaLibraryCoreUserStateAssignments(
-    [globalId],
-    field,
-    assigned,
-  );
+  await enqueuePwaLibraryCoreUserStateAssignments([globalId], field, assigned);
 }
 
 /** Queue one signed FeedItem removal and remove it from local IndexedDB. */
@@ -416,6 +406,30 @@ export async function enqueuePwaLibraryCoreFeedItemCapture(
   if (searchIndex && lastState) {
     await searchIndex.updateItems(lastState.searchCorpusVersion, [item]);
   }
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one signed RSS feed upsert and update the selected IndexedDB shell. */
+export async function enqueuePwaLibraryCoreRssFeedUpsert(
+  input: RssFeed,
+): Promise<void> {
+  const feed = sanitizeRssFeedWrite(input) as RssFeed;
+  await getPortableStore().enqueueRssFeedUpsert(feed);
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one signed RSS removal, optionally removing its local feed items. */
+export async function enqueuePwaLibraryCoreRssFeedRemove(
+  url: string,
+  includeItems: boolean,
+): Promise<void> {
+  await getPortableStore().enqueueRssFeedRemove({
+    includeItems,
+    removedAtMs: Date.now(),
+    url,
+  });
   const state = await readSelectedState();
   if (state) publishState(state);
 }

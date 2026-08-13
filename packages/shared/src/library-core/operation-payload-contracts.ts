@@ -6,6 +6,7 @@ import {
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 
 const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
+const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 
 export interface FeedItemCaptureUpsertPayloadV1 {
   readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
@@ -16,6 +17,14 @@ export interface FeedItemReadAssignmentPayloadV1 {
 }
 
 export interface FeedItemRemovePayloadV1 {
+  readonly removed_at_ms: number;
+}
+
+export interface RssFeedUpsertPayloadV1 {
+  readonly feed: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface RssFeedRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
 
@@ -65,7 +74,22 @@ export interface LibraryCoreOperationPayloadSchema<
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
 const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
+const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
+const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
+
+const RSS_FEED_KEYS = Object.freeze([
+  "enabled",
+  "folder",
+  "imageUrl",
+  "lastFetched",
+  "pollInterval",
+  "sampleDataFingerprint",
+  "siteUrl",
+  "title",
+  "trackUnread",
+  "url",
+] as const);
 
 function invalid<T>(reason: string): LibraryCorePayloadValidationResult<T> {
   return { ok: false, code: "invalid", reason };
@@ -204,6 +228,124 @@ function validateFeedItemRemovePayload(
   };
 }
 
+function validateRssFeedUpsertPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<RssFeedUpsertPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== RSS_FEED_UPSERT_KEYS[0]) {
+    return invalid("payload must contain only feed");
+  }
+  const feedDescriptor = Object.getOwnPropertyDescriptor(value, "feed");
+  if (
+    feedDescriptor === undefined ||
+    !feedDescriptor.enumerable ||
+    !("value" in feedDescriptor) ||
+    typeof feedDescriptor.value !== "object" ||
+    feedDescriptor.value === null ||
+    Array.isArray(feedDescriptor.value)
+  ) {
+    return invalid("feed must be a plain canonical object");
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      feedDescriptor.value as LibraryCoreCanonicalValue,
+      { maximumBytes: RSS_FEED_UPSERT_MAXIMUM_BYTES },
+    );
+    const decoded = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: RSS_FEED_UPSERT_MAXIMUM_BYTES,
+    });
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      Array.isArray(decoded)
+    ) {
+      return invalid("feed must be a plain canonical object");
+    }
+    const feed = decoded as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+    const feedKeys = Object.keys(feed);
+    if (feedKeys.some((key) => !RSS_FEED_KEYS.includes(key as never))) {
+      return invalid("feed contains an unsupported synchronized field");
+    }
+    if (
+      typeof feed.url !== "string" ||
+      feed.url.length === 0 ||
+      feed.url.length > 4_096
+    ) {
+      return invalid("feed.url must be a bounded nonempty string");
+    }
+    if (
+      typeof feed.title !== "string" ||
+      feed.title.length > 4_096 ||
+      typeof feed.enabled !== "boolean" ||
+      typeof feed.trackUnread !== "boolean"
+    ) {
+      return invalid("feed requires title, enabled, and trackUnread");
+    }
+    for (const key of ["siteUrl", "imageUrl", "folder"] as const) {
+      const candidate = feed[key];
+      if (
+        candidate !== undefined &&
+        (typeof candidate !== "string" || candidate.length > 4_096)
+      ) {
+        return invalid(`feed.${key} must be a bounded string`);
+      }
+    }
+    for (const key of ["lastFetched", "pollInterval"] as const) {
+      const candidate = feed[key];
+      if (
+        candidate !== undefined &&
+        !isLibraryCoreNonnegativeSafeInteger(candidate)
+      ) {
+        return invalid(`feed.${key} must be a nonnegative safe integer`);
+      }
+    }
+    return { ok: true, value: Object.freeze({ feed }) };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "feed is not canonical",
+    );
+  }
+}
+
+function validateRssFeedRemovePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<RssFeedRemovePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== RSS_FEED_REMOVE_KEYS[0]) {
+    return invalid("payload must contain only removed_at_ms");
+  }
+  const removedAt = Object.getOwnPropertyDescriptor(value, "removed_at_ms");
+  if (
+    removedAt === undefined ||
+    !removedAt.enumerable ||
+    !("value" in removedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(removedAt.value)
+  ) {
+    return invalid("removed_at_ms must be a nonnegative safe integer");
+  }
+  return { ok: true, value: Object.freeze({ removed_at_ms: removedAt.value }) };
+}
+
 function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
@@ -287,6 +429,34 @@ export const FEED_ITEM_REMOVE_PAYLOAD_SCHEMA = Object.freeze({
   "feed_item_remove",
   FeedItemRemovePayloadV1
 >;
+
+export const RSS_FEED_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "rss_feed_upsert_payload_v1",
+  schemaVersion: 1,
+  operationType: "rss_feed_upsert",
+  canonicalKeys: RSS_FEED_UPSERT_KEYS,
+  validate: validateRssFeedUpsertPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "rss_feed_upsert",
+  RssFeedUpsertPayloadV1
+>;
+
+function rssFeedRemovePayloadSchema(
+  operationType: "rss_feed_remove_keep_items" | "rss_feed_remove_with_items",
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_payload_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    canonicalKeys: RSS_FEED_REMOVE_KEYS,
+    validate: validateRssFeedRemovePayload,
+  });
+}
+
+export const RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA =
+  rssFeedRemovePayloadSchema("rss_feed_remove_keep_items");
+export const RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA =
+  rssFeedRemovePayloadSchema("rss_feed_remove_with_items");
 
 /** Closed payload for idempotent local PWA user-state assignments. */
 function userStateAssignmentPayloadSchema(
