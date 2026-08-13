@@ -1,12 +1,14 @@
 import {
   createDefaultPreferences,
   friendFromPerson,
+  hasSampleDataFingerprint,
   sanitizeFeedItemWrite,
   sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
   type Person,
   type RssFeed,
+  type SampleDataClearSummary,
   type UserPreferences,
 } from "@freed/shared";
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
@@ -465,8 +467,72 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
     removedAtMs: Date.now(),
     url,
   });
+  if (includeItems && searchIndex) {
+    await searchIndex.invalidate();
+  }
   const state = await readSelectedState();
   if (state) publishState(state);
+}
+
+/** Remove only fingerprinted sample records from the selected Library Core store. */
+export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSummary> {
+  const state = lastState ?? (await readSelectedState()) ?? emptyState();
+  const feedUrls = Object.values(state.feeds)
+    .filter(hasSampleDataFingerprint)
+    .map((feed) => feed.url);
+  const personIds = new Set(
+    Object.values(state.persons)
+      .filter(hasSampleDataFingerprint)
+      .map((person) => person.id),
+  );
+  const sampleAccountIds = Object.values(state.accounts)
+    .filter(hasSampleDataFingerprint)
+    .map((account) => account.id);
+  const realLinkedAccounts = Object.values(state.accounts).filter(
+    (account) =>
+      !hasSampleDataFingerprint(account) &&
+      account.personId !== undefined &&
+      personIds.has(account.personId),
+  );
+  const itemIds: string[] = [];
+  await scanPwaLibraryCoreItems((items) => {
+    for (const item of items) {
+      if (hasSampleDataFingerprint(item)) itemIds.push(item.globalId);
+    }
+    return "continue";
+  });
+
+  const updatedAt = Date.now();
+  await enqueuePwaLibraryCoreAccountUpserts(
+    realLinkedAccounts.map(({ personId: _personId, ...account }) => ({
+      ...account,
+      updatedAt,
+    })),
+  );
+  for (const accountId of sampleAccountIds) {
+    await enqueuePwaLibraryCoreAccountRemove(accountId);
+  }
+  for (const personId of personIds) {
+    await enqueuePwaLibraryCorePersonRemove(personId);
+  }
+  for (const url of feedUrls) {
+    await enqueuePwaLibraryCoreRssFeedRemove(url, false);
+  }
+  for (const itemId of itemIds) {
+    await enqueuePwaLibraryCoreFeedItemRemove(itemId);
+  }
+
+  return {
+    feeds: feedUrls.length,
+    items: itemIds.length,
+    persons: personIds.size,
+    accounts: sampleAccountIds.length,
+    total:
+      feedUrls.length +
+      itemIds.length +
+      personIds.size +
+      sampleAccountIds.length,
+  };
 }
 
 /** Queue one synchronized preference patch and update the selected shell. */

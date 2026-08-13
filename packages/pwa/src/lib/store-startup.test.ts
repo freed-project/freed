@@ -68,6 +68,9 @@ const automerge = vi.hoisted(() => {
 });
 
 const libraryCore = vi.hoisted(() => ({
+  clearPwaLibraryCoreSampleData: vi.fn(() =>
+    Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 }),
+  ),
   enqueuePwaLibraryCoreArchiveAllReadUnsaved: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreDeleteAllArchived: vi.fn(() => Promise.resolve()),
@@ -75,7 +78,11 @@ const libraryCore = vi.hoisted(() => ({
   enqueuePwaLibraryCoreFeedItemCaptures: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCorePersonUpsert: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCorePersonUpserts: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCorePersonRemove: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreAccountUpserts: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreRssFeedRemove: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreRssFeedUpsert: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUnarchiveSavedItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUserStateToggle: vi.fn(() => Promise.resolve()),
@@ -593,17 +600,31 @@ describe("PWA store startup maintenance", () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("delegates sample data clearing to the worker", async () => {
+  it("routes sample data clearing through Library Core", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
     const summary = { feeds: 1, items: 2, persons: 3, accounts: 4, total: 10 };
-    automerge.docClearSampleData.mockResolvedValueOnce(summary);
+    libraryCore.clearPwaLibraryCoreSampleData.mockResolvedValueOnce(summary);
 
     await expect(useAppStore.getState().clearSampleData()).resolves.toEqual(
       summary,
     );
-    expect(automerge.docClearSampleData).toHaveBeenCalledTimes(1);
+    expect(libraryCore.clearPwaLibraryCoreSampleData).toHaveBeenCalledOnce();
+    expect(automerge.docClearSampleData).not.toHaveBeenCalled();
   });
 
-  it("delegates sample library data to one worker mutation", async () => {
+  it("routes sample library data through Library Core", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    const item: FeedItem = {
+      globalId: "rss:sample-item",
+      platform: "rss",
+      contentType: "article",
+      capturedAt: 1,
+      publishedAt: 1,
+      author: { id: "sample", handle: "sample", displayName: "Sample" },
+      content: { text: "Sample", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: false, archived: false, tags: [] },
+      topics: [],
+    };
     const data: SampleLibraryData = {
       feeds: [
         {
@@ -614,7 +635,7 @@ describe("PWA store startup maintenance", () => {
           lastFetched: 1,
         },
       ],
-      items: [],
+      items: [item],
       friends: [
         {
           id: "friend-1",
@@ -640,23 +661,58 @@ describe("PWA store startup maintenance", () => {
 
     await useAppStore.getState().addSampleLibraryData(data);
 
-    expect(automerge.docAddSampleLibraryData).toHaveBeenCalledTimes(1);
-    expect(automerge.docAddRssFeed).not.toHaveBeenCalled();
-    expect(automerge.docAddFeedItems).not.toHaveBeenCalled();
-    expect(automerge.docAddPersons).not.toHaveBeenCalled();
-    expect(automerge.docAddAccounts).not.toHaveBeenCalled();
-    expect(automerge.docAddSampleLibraryData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        feeds: data.feeds,
-        items: data.items,
-        persons: expect.arrayContaining([
-          expect.objectContaining({ id: "friend-1" }),
-        ]),
-        accounts: expect.arrayContaining([
-          expect.objectContaining({ provider: "instagram" }),
-        ]),
-      }),
+    expect(libraryCore.enqueuePwaLibraryCoreRssFeedUpsert).toHaveBeenCalledWith(
+      data.feeds[0],
     );
+    expect(
+      libraryCore.enqueuePwaLibraryCoreFeedItemCaptures,
+    ).toHaveBeenCalledWith([item]);
+    expect(libraryCore.enqueuePwaLibraryCorePersonUpserts).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: "friend-1" })]),
+    );
+    expect(
+      libraryCore.enqueuePwaLibraryCoreAccountUpserts,
+    ).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "instagram" }),
+      ]),
+    );
+    expect(automerge.docAddSampleLibraryData).not.toHaveBeenCalled();
+  });
+
+  it("routes bulk feed removal through Library Core", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    useAppStore.setState({
+      feeds: {
+        "https://one.test/feed": {
+          url: "https://one.test/feed",
+          title: "One",
+          enabled: true,
+          trackUnread: true,
+          lastFetched: 1,
+        },
+        "https://two.test/feed": {
+          url: "https://two.test/feed",
+          title: "Two",
+          enabled: true,
+          trackUnread: true,
+          lastFetched: 1,
+        },
+      },
+    });
+
+    await useAppStore.getState().removeAllFeeds(true);
+
+    expect(
+      libraryCore.enqueuePwaLibraryCoreRssFeedRemove,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      libraryCore.enqueuePwaLibraryCoreRssFeedRemove,
+    ).toHaveBeenNthCalledWith(1, "https://one.test/feed", true);
+    expect(
+      libraryCore.enqueuePwaLibraryCoreRssFeedRemove,
+    ).toHaveBeenNthCalledWith(2, "https://two.test/feed", true);
+    expect(automerge.docRemoveAllFeeds).not.toHaveBeenCalled();
   });
 
   it("stops new startup migration writes and drains the mutation already running", async () => {

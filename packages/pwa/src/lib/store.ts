@@ -75,10 +75,8 @@ import {
 } from "@freed/ui/lib/device-graph-layout";
 import {
   docAddFeedItems,
-  docAddSampleLibraryData,
   docAddRssFeed,
   docRemoveRssFeed,
-  docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
   docBackfillContentSignals,
@@ -87,7 +85,6 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
-  docClearSampleData,
   docToggleArchived,
   docArchiveItems,
   docToggleLiked,
@@ -111,6 +108,7 @@ import { loadLegacyAutomerge } from "./legacy-automerge-runtime";
 import type { DocState } from "./automerge-types";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
+  clearPwaLibraryCoreSampleData,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
@@ -760,20 +758,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearSampleData: async () => {
-    return docClearSampleData();
+    if (isPwaLibraryCoreEnabled()) {
+      return clearPwaLibraryCoreSampleData();
+    }
+    const legacyAutomerge = await loadLegacyAutomerge();
+    return legacyAutomerge.docClearSampleData();
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
-    await docAddSampleLibraryData({
-      feeds: data.feeds,
-      items: data.items,
-      persons: data.friends.map((friend) =>
-        personFromLegacyFriend(friend as Friend),
-      ),
-      accounts: data.friends.flatMap((friend) =>
-        accountsFromLegacyFriend(friend as Friend),
-      ),
-    });
+    const persons = data.friends.map((friend) =>
+      personFromLegacyFriend(friend as Friend),
+    );
+    const accounts = data.friends.flatMap((friend) =>
+      accountsFromLegacyFriend(friend as Friend),
+    );
+    if (!isPwaLibraryCoreEnabled()) {
+      const legacyAutomerge = await loadLegacyAutomerge();
+      await legacyAutomerge.docAddSampleLibraryData({
+        feeds: data.feeds,
+        items: data.items,
+        persons,
+        accounts,
+      });
+      return;
+    }
+    for (const feed of data.feeds) {
+      await enqueuePwaLibraryCoreRssFeedUpsert(feed);
+    }
+    await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
+    await enqueuePwaLibraryCorePersonUpserts(persons);
+    await enqueuePwaLibraryCoreAccountUpserts(accounts);
   },
 
   // Feed actions
@@ -797,7 +811,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeAllFeeds: async (includeItems) => {
-    await docRemoveAllFeeds(includeItems);
+    if (!isPwaLibraryCoreEnabled()) {
+      const legacyAutomerge = await loadLegacyAutomerge();
+      await legacyAutomerge.docRemoveAllFeeds(includeItems);
+      return;
+    }
+    for (const url of Object.keys(get().feeds)) {
+      await enqueuePwaLibraryCoreRssFeedRemove(url, includeItems);
+    }
   },
 
   renameFeed: async (url, title) => {
