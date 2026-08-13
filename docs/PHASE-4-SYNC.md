@@ -423,6 +423,9 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.135 | Signed PWA saved-link capture with immediate IndexedDB and search materialization, native whole-item verification, atomic SQLite upsert, acceptance receipt, and replication outbox | ✓ | High |
 | 4.136 | Signed PWA RSS add, rename, and removal intents with immediate IndexedDB shell materialization, native canonical verification, atomic SQLite shell update, optional item tombstones, acceptance receipt, and replication outbox | ✓ | High |
 | 4.137 | Signed PWA synchronized preference patches with device-local field rejection, immediate IndexedDB shell merge, authenticated replay, and atomic native SQLite shell, journal, acceptance receipt, and replication outbox commit | ✓ | High |
+| 4.138 | Signed PWA Person lifecycle intents with bounded whole-record batches, device-local graph rejection, immediate IndexedDB shell materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
+| 4.139 | Signed PWA Account lifecycle intents with bounded whole-record batches, relationship updates, connection-person promotion, device-local graph rejection, immediate IndexedDB shell materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
+| 4.140 | Signed PWA FeedItem capture and update intents with 128-item transaction bounds, duplicate-safe ordered batching, device-local ranking removal, immediate IndexedDB and search materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
 
 ---
 
@@ -569,6 +572,7 @@ not mean those internal stages remain unreachable.
 - [x] PWA synchronized preference changes use one canonical signed patch operation. Device-local and compatibility fields are rejected, IndexedDB applies the recursive patch immediately and on authenticated replay, and Freed Desktop commits the same recursive merge with the journal, acceptance receipt, and replication outbox in one SQLite transaction.
 - [x] PWA Person add, bounded batch add, and synchronized profile updates use canonical whole-record operations. Device-local graph coordinates never enter the signed payload, and Freed Desktop materializes verified Person transactions atomically with acceptance and replication receipts.
 - [x] PWA Account add, bounded batch add, synchronized relationship updates, connection-person promotion, legacy Friend replacement, and removal use canonical whole-record or tombstone operations. Device-local graph coordinates never enter signed Account payloads. Provider and sample-data fields fail closed against the shared contract, and Freed Desktop materializes verified Account transactions atomically with acceptance and replication receipts.
+- [x] PWA FeedItem capture and whole-record update use signed Library Core intents instead of Automerge. Capture arrays become ordered transactions of at most 128 unique items, repeated identities start a later transaction without reordering, device-local ranking fields stay out of canonical payloads, and IndexedDB plus local search expose each committed batch immediately.
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules
