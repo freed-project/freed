@@ -70,10 +70,12 @@ import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
@@ -226,6 +228,8 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // against, so the codec is a reuse rather than a new claim.
   feed_item_capture_upsert: {
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
+    transactionMemberSchema: FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   },

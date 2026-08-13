@@ -8,6 +8,7 @@ import {
   type LibraryCoreOperationMaterializerContract,
 } from "./operation-materializer-contracts.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
@@ -33,6 +34,7 @@ import {
   FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
@@ -325,6 +327,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   feed_item_capture_upsert: plannedOperation({
     entityType: "FeedItem",
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
+    transactionMemberSchema: FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["addItems", "updateItem"],

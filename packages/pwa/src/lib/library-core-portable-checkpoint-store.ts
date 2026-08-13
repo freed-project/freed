@@ -11,6 +11,7 @@ import {
   encodeLibraryCoreDigestInput,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
@@ -55,6 +56,7 @@ import {
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFinalizedTransactionV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
+  type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
@@ -2345,7 +2347,20 @@ class PwaLibraryCorePortableCheckpointStore
           )) as PortableMaterializedRowRecord | undefined;
           if (storedRow) break;
         }
-        if (member.envelope.operation_type === "feed_item_read_assignment") {
+        if (member.envelope.operation_type === "feed_item_capture_upsert") {
+          const incoming: PortableMaterializedRowRecord = {
+            generationId: generation.generationId,
+            registryKey: "10_feed_items",
+            primaryKey,
+            row: member.envelope.payload.item,
+          };
+          materializedRows.put(incoming);
+          const projected = projectPortableFeedRow(
+            generation.generationId,
+            incoming,
+          );
+          if (projected) feedRows.put(projected);
+        } else if (member.envelope.operation_type === "feed_item_read_assignment") {
           const existingReadState = (await requestResult(
             readStates.get([generation.generationId, entityId]),
           )) as PortableReadStateRecord | undefined;
@@ -3156,6 +3171,165 @@ class PwaLibraryCorePortableCheckpointStore
       const projected = projectPortableFeedRow(selected.generationId, updated);
       if (projected) feedRows.put(projected);
     }
+    await transactionDone(transaction);
+    this.#feedSessions.clear();
+  }
+
+  /** Sign, enqueue, and optimistically apply one FeedItem tombstone intent. */
+  async enqueueFeedItemCapture(
+    item: FeedItem,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    this.#requireAvailable();
+    if (!item.globalId) throw new TypeError("capture item global ID is required");
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        PWA_ACTOR_IDENTITIES_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const identity = generation
+      ? ((await requestResult(
+          transaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).get(generation.libraryId),
+        )) as PortablePwaActorIdentityRecord | undefined)
+      : undefined;
+    const actorTip = selected && identity
+      ? ((await requestResult(
+          transaction.objectStore(ACTOR_TIPS_STORE).get([
+            selected.generationId,
+            identity.actorId,
+          ]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const enrollment = selected && identity
+      ? ((await requestResult(
+          transaction.objectStore(ACTOR_ENROLLMENTS_STORE).get([
+            selected.generationId,
+            identity.actorId,
+          ]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    const activeEpochId =
+      generation?.header?.anchor_kind === "accepted_authority" &&
+      generation.header.accepted_authority !== null
+        ? generation.header.accepted_authority.epoch_id
+        : null;
+    const intentActor = generation && identity && activeEpochId
+      ? ((await requestResult(
+          transaction.objectStore(INTENT_ACTORS_STORE).get([
+            generation.libraryId,
+            activeEpochId,
+            identity.actorId,
+          ]),
+        )) as PortableIntentActorRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null ||
+      !identity ||
+      !actorTip ||
+      actorTip.retired ||
+      !enrollment ||
+      enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("PWA capture intent requires an active enrolled actor");
+    }
+    const authority = generation.header.accepted_authority;
+    const actorSequence =
+      intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      intentActor?.latestOperationId ?? actorTip.acceptedOperationId;
+    const previousChainDigest =
+      intentActor?.latestActorChainDigest ?? actorTip.acceptedChainDigest;
+    const createdAtMs = Date.now();
+    const transactionId =
+      `pwa-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: authority.library_id,
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id,
+        actor_id: identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: authority.observed_frontier,
+        hlc_wall_ms: createdAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: item.globalId,
+        payload: { item: item as unknown as Record<string, LibraryCoreCanonicalValue> },
+        created_at_ms: createdAtMs,
+      } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1(
+      [member],
+      previousChainDigest,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: libraryCoreDigest,
+      signOperation: async (message) =>
+        lowerHex(
+          await this.#subtle.sign(
+            { name: "Ed25519" },
+            identity.actorPrivateKey,
+            exactArrayBuffer(message),
+          ),
+        ) as LibraryCoreEd25519SignatureHex,
+    });
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.applySelectedFeedItemCapture(item);
+    return receipt;
+  }
+
+  private async applySelectedFeedItemCapture(item: FeedItem): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE, FEED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA capture intent has no selected Library generation");
+    }
+    const stored: PortableMaterializedRowRecord = {
+      generationId: selected.generationId,
+      registryKey: "10_feed_items",
+      primaryKey: canonicalStringKey(item.globalId),
+      row: item as unknown as Readonly<Record<string, LibraryCoreCanonicalValue>>,
+    };
+    transaction.objectStore(MATERIALIZED_ROWS_STORE).put(stored);
+    const projected = projectPortableFeedRow(selected.generationId, stored);
+    if (!projected) {
+      transaction.abort();
+      throw new Error("PWA capture intent produced an invalid FeedItem");
+    }
+    transaction.objectStore(FEED_ROWS_STORE).put(projected);
     await transactionDone(transaction);
     this.#feedSessions.clear();
   }

@@ -8,6 +8,7 @@ import {
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
 import type {
+  FeedItemCaptureUpsertTransactionMemberBodyV1,
   FeedItemReadAssignmentTransactionMemberBodyV1,
   FeedItemRemoveTransactionMemberBodyV1,
   FeedItemUserStateAssignmentTransactionMemberBodyV1,
@@ -33,6 +34,12 @@ export interface FeedItemReadAssignmentSigningBodyV1 extends FeedItemReadAssignm
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface FeedItemCaptureUpsertSigningBodyV1 extends FeedItemCaptureUpsertTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export interface FeedItemUserStateAssignmentSigningBodyV1 extends FeedItemUserStateAssignmentTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
@@ -46,6 +53,7 @@ export interface FeedItemRemoveSigningBodyV1 extends FeedItemRemoveTransactionMe
 }
 
 export type LibraryCoreOperationSigningBodyV1 =
+  | FeedItemCaptureUpsertSigningBodyV1
   | FeedItemReadAssignmentSigningBodyV1
   | FeedItemUserStateAssignmentSigningBodyV1
   | FeedItemRemoveSigningBodyV1;

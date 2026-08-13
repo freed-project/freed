@@ -11,6 +11,7 @@ import {
 } from "./protocol-scalars.js";
 import {
   isLibraryCoreAssembledTransactionV1,
+  type FeedItemCaptureUpsertSigningBodyV1,
   type FeedItemReadAssignmentSigningBodyV1,
   type FeedItemRemoveSigningBodyV1,
   type FeedItemUserStateAssignmentSigningBodyV1,
@@ -28,6 +29,10 @@ export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignment
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface FeedItemCaptureUpsertEnvelopeV1 extends FeedItemCaptureUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export interface FeedItemUserStateAssignmentEnvelopeV1 extends FeedItemUserStateAssignmentSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
@@ -37,6 +42,7 @@ export interface FeedItemRemoveEnvelopeV1 extends FeedItemRemoveSigningBodyV1 {
 }
 
 export type LibraryCoreOperationEnvelopeV1 =
+  | FeedItemCaptureUpsertEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
   | FeedItemUserStateAssignmentEnvelopeV1
   | FeedItemRemoveEnvelopeV1;

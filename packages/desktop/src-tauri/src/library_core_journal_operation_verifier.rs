@@ -12,7 +12,8 @@ use super::{
     MAX_TRANSACTION_MEMBERS,
 };
 use crate::library_core_canonical::{
-    decode_canonical_value, encode_operation_digest_input, encode_operation_signature_input,
+    decode_canonical_value, encode_canonical_value, encode_operation_digest_input,
+    encode_operation_signature_input,
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use serde_json::{json, Map, Value};
@@ -49,8 +50,10 @@ const ENVELOPE_KEYS: [&str; 26] = [
 ];
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
 const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
+const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
+const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -75,6 +78,7 @@ struct ParsedEnvelope {
     transaction_member_count: i64,
     entity_id: String,
     operation_type: String,
+    item_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -252,6 +256,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     if !matches!(
         operation_type.as_str(),
         "feed_item_read_assignment"
+            | "feed_item_capture_upsert"
             | "feed_item_saved_assignment"
             | "feed_item_archive_assignment"
             | "feed_item_like_assignment"
@@ -310,10 +315,38 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let (read_at_ms, assigned, assigned_at_ms, removed_at_ms) = match operation_type.as_str() {
+    let (item_json, read_at_ms, assigned, assigned_at_ms, removed_at_ms) = match operation_type
+        .as_str()
+    {
+        "feed_item_capture_upsert" => {
+            let payload_object = exact_object(payload, &CAPTURE_PAYLOAD_KEYS, index, "payload")?;
+            let item = payload_object
+                .get("item")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "item"))?;
+            if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
+                return Err(invalid(index, "item_identity"));
+            }
+            let canonical_item = encode_canonical_value(
+                &Value::Object(item.clone()),
+                MAX_CAPTURE_ITEM_BYTES,
+            )
+            .map_err(|_| invalid(index, "item"))?;
+            (
+                Some(
+                    String::from_utf8(canonical_item)
+                        .expect("canonical encoder always emits UTF-8"),
+                ),
+                None,
+                None,
+                None,
+                None,
+            )
+        }
         "feed_item_read_assignment" => {
             let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 Some(safe_integer(payload_object, "read_at_ms", index)?),
                 None,
                 None,
@@ -330,6 +363,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 .ok_or_else(|| invalid(index, "assigned"))?;
             (
                 None,
+                None,
                 Some(assigned),
                 Some(safe_integer(payload_object, "assigned_at_ms", index)?),
                 None,
@@ -338,6 +372,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "feed_item_remove" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -409,6 +444,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         transaction_member_count,
         entity_id,
         operation_type,
+        item_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -561,6 +597,7 @@ where
             envelope_digest,
             entity_id: member.entity_id.clone(),
             operation_type: member.operation_type.clone(),
+            item_json: member.item_json.clone(),
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
@@ -631,6 +668,13 @@ mod tests {
         let mut member_digests = Vec::new();
         for (index, (entity_id, timestamp_ms)) in entities.iter().enumerate() {
             let payload = match operation_type {
+                "feed_item_capture_upsert" => json!({
+                    "item": {
+                        "globalId": entity_id,
+                        "platform": "saved",
+                        "userState": { "saved": true }
+                    }
+                }),
                 "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
                 "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
                 _ => panic!("unsupported fixture operation type"),
@@ -771,7 +815,6 @@ mod tests {
             )
             .expect("install authority");
         journal.enroll_actor(&enrollment).expect("enroll actor");
-
         let receipt = journal
             .verify_and_commit_read_transaction(&envelopes, 1_500)
             .expect("verify and commit");
@@ -842,6 +885,65 @@ mod tests {
             committed,
             ("feed_item_remove".to_owned(), "rss:item:remove".to_owned())
         );
+    }
+
+    #[test]
+    fn verifies_and_materializes_signed_feed_item_capture() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[11_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:capture:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("saved:item:capture", 1_234)],
+            "feed_item_capture_upsert",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0, '{{}}', 1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop materialization state");
+
+        let receipt = journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("verify and commit capture");
+        let retry = journal
+            .verify_and_commit_read_transaction(&envelopes, 9_999)
+            .expect("retry capture after response loss");
+        assert_eq!(retry, receipt);
+        let rows: (i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_feed_items
+                    WHERE globalId = 'saved:item:capture' AND saved = 1),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("capture rows");
+        assert_eq!(rows, (1, 1, 1, 1));
     }
 
     #[test]
