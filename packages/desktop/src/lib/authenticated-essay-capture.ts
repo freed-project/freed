@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Account, FeedItem } from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docReconcileFollowRosterCapture } from "./automerge";
+import { docReconcileFollowRosterCapture } from "./library-client";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   formatScrapeMemoryPressureDetails,

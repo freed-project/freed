@@ -25,7 +25,7 @@ import { captureLiFeed } from "./li-capture";
 import { captureSubstackFeed } from "./substack-capture";
 import { captureMediumFeed } from "./medium-capture";
 import { captureYouTube } from "./youtube-capture";
-import { docBatchRefreshFeeds } from "./automerge";
+import { docBatchRefreshFeeds } from "./library-client";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";

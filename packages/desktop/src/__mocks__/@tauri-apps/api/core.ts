@@ -293,8 +293,17 @@ const handlers: Record<string, Handler> = {
   },
   append_sqlite_library_import: sqliteUpsertItems,
   finalize_sqlite_library_import: () => {
-    sqliteLibrary().active = true;
-    return null;
+    const state = sqliteLibrary();
+    state.active = true;
+    return {
+      active: true,
+      revision: state.revision,
+      expectedItemCount: state.expectedItemCount,
+      importedItemCount: Object.keys(state.items).length,
+      sourceGeneration: state.sourceGeneration,
+      sourceRevision: state.sourceRevision,
+      sourceDigest: state.sourceDigest,
+    };
   },
   read_sqlite_library_shell: sqliteShellResult,
   replace_sqlite_library_shell: (args: Record<string, unknown>) => {

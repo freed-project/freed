@@ -106,8 +106,8 @@ vi.mock("./sqlite-library", () => ({
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
 }));
 
-vi.mock("@freed/sync/cloud", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@freed/sync/cloud")>();
+vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@freed/sync/cloud/library-core")>();
   return {
     ...actual,
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1: vi.fn(async () => []),

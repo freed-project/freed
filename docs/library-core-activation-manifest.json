@@ -150,6 +150,16 @@
         "retirement_receipt",
         "roll_forward_recovery_receipt"
       ]
+    },
+    {
+      "activationId": "sqlite-desktop-legacy-engine-retirement-v1",
+      "gate": "H",
+      "kind": "legacy_engine_retirement",
+      "rollbackTrigger": "Restore the retained pre-cutover Automerge library with the last released Freed Desktop build if native SQLite integrity, item counts, bounded reads, mutations, backup, or immutable replication cannot preserve the verified cutover frontier without the retired Automerge runtime.",
+      "receiptExpectations": [
+        "retirement_receipt",
+        "roll_forward_recovery_receipt"
+      ]
     }
   ]
 }

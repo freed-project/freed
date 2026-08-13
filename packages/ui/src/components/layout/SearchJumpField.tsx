@@ -708,6 +708,9 @@ export function SearchJumpField({
     () => filterCommandPaletteActions(actions, inputValue),
     [actions, inputValue],
   );
+  const filteredActionIdentity = filteredActions
+    .map((action) => action.id)
+    .join("\u0000");
   const actionSections = useMemo(
     () => groupActionsBySection(filteredActions),
     [filteredActions],
@@ -754,7 +757,7 @@ export function SearchJumpField({
   useEffect(() => {
     if (confirmAction) return;
     setActiveIndex(filteredActions.length > 0 ? 0 : -1);
-  }, [confirmAction, filteredActions]);
+  }, [confirmAction, filteredActionIdentity, filteredActions.length]);
 
   useEffect(() => {
     if (!confirmAction) return;

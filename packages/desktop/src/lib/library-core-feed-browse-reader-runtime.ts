@@ -32,7 +32,7 @@ import {
   getDocState,
   getLibraryCoreProjectionSource,
   materializeLibraryCoreFeedBrowseGeneration,
-} from "./automerge";
+} from "./library-client";
 import { isSqliteLibraryActive, querySqliteItems } from "./sqlite-library";
 import type {
   LibraryCoreFeedBrowseGenerationBindingV1,

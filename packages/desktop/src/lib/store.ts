@@ -1,11 +1,9 @@
 /**
  * Global app state management with Zustand
  *
- * State is synced with Automerge CRDT for persistence and multi-device sync.
- *
- * After the Web Worker migration (Phase 4), all CRDT and hydration work runs
- * in automerge.worker.ts. The subscriber here receives a pre-hydrated DocState
- * and calls set() directly - zero hydrateFromDoc cost on the main thread.
+ * Native SQLite owns persistence and emits bounded materialized state updates.
+ * The subscriber here applies them directly, with no document decode or
+ * corpus-sized hydration on the main thread.
  */
 
 import { create } from "zustand";
@@ -113,7 +111,7 @@ import {
   quiesceDesktopAutomergeForFactoryReset,
   type DocChangeEvent,
   type DocState,
-} from "./automerge";
+} from "./library-client";
 import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor, stopAndDrainOutboxProcessor } from "./outbox";
 import {
@@ -843,7 +841,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  // Initialize from Automerge worker
+  // Initialize from the native SQLite Library.
   initialize: () => {
     assertDesktopStoreWritable();
     if (get().isInitialized) return Promise.resolve();
@@ -853,18 +851,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         set({ isLoading: true });
 
-        // Prime the empty-shell probe before initDoc materializes the corpus.
+        // Prime the empty-shell probe before the SQLite shell is loaded.
         // This is intentionally fire-and-forget: telemetry must never delay
         // startup. The hydration-start marker below rejects a late result.
         void captureShellMemoryBaseline();
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
 
-        // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
         recordDocumentHydrationStarted();
         assertDesktopStoreWritable();
         const docState = await initDoc(desktopClientRegistration);
         // Closes the shell-baseline window. Any memory sample after this point
-        // includes the Automerge document, so it cannot serve as a baseline.
+        // includes the materialized Library shell, so it cannot be a baseline.
         recordDocumentHydrated();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
@@ -873,9 +870,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
 
-        // Subscribe to future state updates from the worker. Each update is already
-        // hydrated - no hydrateFromDoc(), no sort, no rank on the main thread.
-        // Preserve object identity on count maps to avoid spurious selector re-renders.
+        // Subscribe to bounded SQLite state updates. Preserve object identity on
+        // count maps to avoid spurious selector re-renders.
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribe((state: DocState, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;

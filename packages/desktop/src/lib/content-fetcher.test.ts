@@ -89,10 +89,11 @@ async function loadContentFetcherModule(options: {
   const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
+  let latestItems: readonly FeedItem[] = [];
   const mockScanLibraryCoreItems = vi.fn(
     options.scanItems ??
-      (async () => {
-        throw new Error("SQLite projection unavailable in this fixture");
+      (async (visitPage) => {
+        await visitPage(latestItems);
       }),
   );
   const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
@@ -100,7 +101,10 @@ async function loadContentFetcherModule(options: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
-    subscriberRef.current = cb;
+    subscriberRef.current = (state) => {
+      latestItems = state.items;
+      cb(state);
+    };
     return () => {
       subscriberRef.current = null;
     };
@@ -223,12 +227,16 @@ async function loadContentFetcherModuleWithAi({
   const mockCacheSet = vi.fn(async () => undefined);
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
+  let latestItems: readonly FeedItem[] = [];
   const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
-    subscriberRef.current = cb;
+    subscriberRef.current = (state) => {
+      latestItems = state.items;
+      cb(state);
+    };
     return () => {
       subscriberRef.current = null;
     };
@@ -253,9 +261,7 @@ async function loadContentFetcherModuleWithAi({
     subscribe: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
-    scanLibraryCoreItems: vi.fn(async () => {
-      throw new Error("SQLite projection unavailable in this fixture");
-    }),
+    scanLibraryCoreItems: vi.fn(async (visitPage) => visitPage(latestItems)),
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {

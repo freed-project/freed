@@ -54,6 +54,43 @@ const tauriMockExclude = process.env.VITE_TEST_TAURI
   ? Object.keys(tauriMockAliases)
   : [];
 
+// Product code imports the SQLite-only Library client. Browser and unit tests
+// retain the historical in-memory harness so UI coverage does not need a native
+// process. These aliases do not exist in production builds.
+const libraryClientTestAliases: Record<string, string> =
+  process.env.VITE_TEST_TAURI || process.env.VITEST
+    ? {
+        "./library-client": rootFile("src/lib/automerge.ts"),
+        "./lib/library-client": rootFile("src/lib/automerge.ts"),
+      }
+    : {};
+const retiredProductionAliases: Record<string, string> =
+  process.env.VITE_TEST_TAURI || process.env.VITEST
+    ? {}
+    : {
+        "./legacy-cloud-sync-entry": rootFile("src/lib/retired-legacy-cloud-sync.ts"),
+        "./cloud-merge": rootFile("src/lib/retired-legacy-cloud-merge.ts"),
+      };
+
+const rejectRetiredDesktopLibraryAssets = {
+  name: "reject-retired-desktop-library-assets",
+  generateBundle(_options: unknown, bundle: Record<string, unknown>) {
+    const retiredAssets = Object.keys(bundle).filter((fileName) => {
+      const normalized = fileName.toLowerCase();
+      return (
+        normalized.includes("automerge") ||
+        normalized.includes("cloud-merge") ||
+        normalized.endsWith(".wasm")
+      );
+    });
+    if (retiredAssets.length > 0) {
+      throw new Error(
+        `The retired Desktop document runtime leaked into the production bundle: ${retiredAssets.join(", ")}`,
+      );
+    }
+  },
+};
+
 const buildMetadata = getBuildMetadata(pkg.version);
 
 export default defineConfig({
@@ -76,17 +113,18 @@ export default defineConfig({
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
       '@freed/capture-linkedin': src('capture-linkedin'),
+      ...libraryClientTestAliases,
+      ...retiredProductionAliases,
       ...tauriMockAliases,
     },
   },
-  // vite-plugin-wasm must also be applied to the worker sub-bundle.
-  // Without this, Vite 7's worker pipeline processes automerge.worker.ts
-  // without WASM support and fails on the automerge_wasm_bg.wasm import.
+  // Test builds retain the historical Automerge harness. Production imports
+  // the SQLite-only client and rejects any retired worker or WASM artifact.
   worker: {
     format: "es",
     plugins: () => [wasm(), topLevelAwait()],
   },
-  plugins: [wasm(), topLevelAwait(), react()],
+  plugins: [rejectRetiredDesktopLibraryAssets, wasm(), topLevelAwait(), react()],
   optimizeDeps: {
     exclude: [
       ...tauriMockExclude,
