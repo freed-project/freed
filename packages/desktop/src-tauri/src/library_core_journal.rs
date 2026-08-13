@@ -326,6 +326,7 @@ struct VerifiedOperation {
     rss_feed_json: Option<String>,
     preferences_patch_json: Option<String>,
     person_json: Option<String>,
+    account_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -594,6 +595,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
             + usize::from(member.rss_feed_json.is_some())
             + usize::from(member.preferences_patch_json.is_some())
             + usize::from(member.person_json.is_some())
+            + usize::from(member.account_json.is_some())
             + usize::from(member.read_at_ms.is_some())
             + usize::from(member.assigned.is_some() || member.assigned_at_ms.is_some())
             + usize::from(member.removed_at_ms.is_some());
@@ -748,6 +750,42 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "person_remove",
+                    });
+                }
+            }
+            "account_upsert" => {
+                if member.entity_type != "Account"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_some()
+                    || member.account_json.is_none()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "account_json",
+                    });
+                }
+            }
+            "account_remove" => {
+                if member.entity_type != "Account"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_some()
+                    || member.account_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member
+                        .removed_at_ms
+                        .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "account_remove",
                     });
                 }
             }
@@ -1836,8 +1874,12 @@ impl LibraryCoreJournal {
                 Self::materialize_preferences(&transaction, member)?
             } else if member.operation_type == "person_remove_and_accounts" {
                 Self::materialize_person_remove(&transaction, member)?
+            } else if member.operation_type == "account_remove" {
+                Self::materialize_account_remove(&transaction, member)?
             } else if member.entity_type == "Person" {
                 Self::materialize_person(&transaction, member)?
+            } else if member.entity_type == "Account" {
+                Self::materialize_account(&transaction, member)?
             } else if let Some(item_json) = member.item_json.as_deref() {
                 let deleted_at = transaction
                     .query_row(
@@ -2292,6 +2334,108 @@ impl LibraryCoreJournal {
             params![updated_shell],
         )?;
         Ok(usize::from(person_removed) + account_ids.len())
+    }
+
+    fn materialize_account(
+        transaction: &Transaction<'_>,
+        member: &VerifiedOperation,
+    ) -> JournalResult<usize> {
+        let shell_json = transaction
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_state",
+            })?;
+        let mut shell: Value =
+            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let account: Value = serde_json::from_str(
+            member
+                .account_json
+                .as_deref()
+                .expect("validated account payload"),
+        )
+        .map_err(|_| JournalError::InvalidVerifiedInput {
+            field: "account_json",
+        })?;
+        let accounts = shell
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?
+            .entry("accounts")
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_accounts",
+            })?;
+        if accounts.get(&member.entity_id) == Some(&account) {
+            return Ok(0);
+        }
+        accounts.insert(member.entity_id.clone(), account);
+        let updated_shell =
+            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        transaction.execute(
+            "UPDATE library_core_desktop_state SET shellJson = ?1
+             WHERE singletonId = 1 AND active = 1;",
+            params![updated_shell],
+        )?;
+        Ok(1)
+    }
+
+    fn materialize_account_remove(
+        transaction: &Transaction<'_>,
+        member: &VerifiedOperation,
+    ) -> JournalResult<usize> {
+        let shell_json = transaction
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_state",
+            })?;
+        let mut shell: Value =
+            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let removed = shell
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?
+            .entry("accounts")
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_accounts",
+            })?
+            .remove(&member.entity_id)
+            .is_some();
+        if !removed {
+            return Ok(0);
+        }
+        let updated_shell =
+            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        transaction.execute(
+            "UPDATE library_core_desktop_state SET shellJson = ?1
+             WHERE singletonId = 1 AND active = 1;",
+            params![updated_shell],
+        )?;
+        Ok(1)
     }
 
     fn intent_results_for_transaction(
@@ -2780,6 +2924,7 @@ mod tests {
                 rss_feed_json: None,
                 preferences_patch_json: None,
                 person_json: None,
+                account_json: None,
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,

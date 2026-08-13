@@ -9,12 +9,15 @@ const mocks = vi.hoisted(() => ({
   enqueuePreferencesLeafAssignment: vi.fn(),
   enqueuePersonUpserts: vi.fn(),
   enqueuePersonRemove: vi.fn(),
+  enqueueAccountUpserts: vi.fn(),
+  enqueueAccountRemove: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
+  PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT: 128,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT: 128,
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
@@ -24,6 +27,8 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     enqueuePreferencesLeafAssignment: mocks.enqueuePreferencesLeafAssignment,
     enqueuePersonUpserts: mocks.enqueuePersonUpserts,
     enqueuePersonRemove: mocks.enqueuePersonRemove,
+    enqueueAccountUpserts: mocks.enqueueAccountUpserts,
+    enqueueAccountRemove: mocks.enqueueAccountRemove,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -48,6 +53,8 @@ import {
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpserts,
   enqueuePwaLibraryCorePersonRemove,
+  enqueuePwaLibraryCoreAccountUpserts,
+  enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -75,6 +82,8 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueuePreferencesLeafAssignment.mockReset();
     mocks.enqueuePersonUpserts.mockReset();
     mocks.enqueuePersonRemove.mockReset();
+    mocks.enqueueAccountUpserts.mockReset();
+    mocks.enqueueAccountRemove.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -463,6 +472,52 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.enqueuePersonRemove).toHaveBeenCalledOnce();
     expect(mocks.enqueuePersonRemove).toHaveBeenCalledWith(
       "person:one",
+      expect.any(Number),
+    );
+  });
+
+  it("batches synchronized Accounts, strips graph state, and queues removal", async () => {
+    mocks.enqueueAccountUpserts.mockResolvedValue({
+      operationId: "op:accounts",
+    });
+    mocks.enqueueAccountRemove.mockResolvedValue({
+      operationId: "op:account-remove",
+    });
+    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
+    const account = {
+      id: "account:one",
+      personId: "person:one",
+      kind: "social" as const,
+      provider: "instagram" as const,
+      externalId: "one",
+      discoveredFrom: "manual_entry" as const,
+      firstSeenAt: 1,
+      lastSeenAt: 2,
+      graphX: 12,
+      graphY: 34,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+
+    await enqueuePwaLibraryCoreAccountUpserts([account]);
+    await enqueuePwaLibraryCoreAccountRemove(account.id);
+
+    expect(mocks.enqueueAccountUpserts).toHaveBeenCalledWith([
+      {
+        id: "account:one",
+        personId: "person:one",
+        kind: "social",
+        provider: "instagram",
+        externalId: "one",
+        discoveredFrom: "manual_entry",
+        firstSeenAt: 1,
+        lastSeenAt: 2,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ]);
+    expect(mocks.enqueueAccountRemove).toHaveBeenCalledWith(
+      "account:one",
       expect.any(Number),
     );
   });

@@ -22,6 +22,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
   isLibraryCoreFinalizedTransactionV1,
@@ -71,6 +73,8 @@ import {
   type PreferencesLeafAssignmentTransactionMemberInputV1,
   type PersonUpsertTransactionMemberInputV1,
   type PersonRemoveTransactionMemberInputV1,
+  type AccountUpsertTransactionMemberInputV1,
+  type AccountRemoveTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -87,7 +91,13 @@ import {
   type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreResultSegmentHeaderV1,
 } from "@freed/shared/library-core";
-import type { FeedItem, Person, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  Person,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 import type {
   LibraryCoreOperationSegmentImportReceiptV1,
   LibraryCoreOperationSegmentImportWriterV1,
@@ -129,6 +139,7 @@ const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
 export const PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT = 128;
+export const PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT = 128;
 const FEED_PROJECTION_REVISION = 1;
 const FEED_SESSION_MAXIMUM_AGE_MS = 60_000;
 const MAXIMUM_FEED_READER_SESSIONS = 2;
@@ -2688,6 +2699,82 @@ class PwaLibraryCorePortableCheckpointStore
             },
           } satisfies PortableMaterializedRowRecord);
         } else if (
+          member.envelope.operation_type === "person_remove_and_accounts"
+        ) {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated Person removal has no materialized Library shell",
+            );
+          }
+          const persons = { ...(canonicalObject(shell.row.persons) ?? {}) };
+          delete persons[member.envelope.entity_id];
+          const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
+          for (const [accountId, account] of Object.entries(accounts)) {
+            if (canonicalObject(account)?.personId === member.envelope.entity_id) {
+              delete accounts[accountId];
+            }
+          }
+          materializedRows.put({
+            ...shell,
+            row: { ...shell.row, accounts, persons },
+          } satisfies PortableMaterializedRowRecord);
+        } else if (member.envelope.operation_type === "account_upsert") {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated Account upsert has no materialized Library shell",
+            );
+          }
+          const accounts = canonicalObject(shell.row.accounts) ?? {};
+          materializedRows.put({
+            ...shell,
+            row: {
+              ...shell.row,
+              accounts: {
+                ...accounts,
+                [member.envelope.entity_id]: member.envelope.payload.account,
+              },
+            },
+          } satisfies PortableMaterializedRowRecord);
+        } else if (member.envelope.operation_type === "account_remove") {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated Account removal has no materialized Library shell",
+            );
+          }
+          const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
+          delete accounts[member.envelope.entity_id];
+          materializedRows.put({
+            ...shell,
+            row: { ...shell.row, accounts },
+          } satisfies PortableMaterializedRowRecord);
+        } else if (
           storedRow &&
           (member.envelope.operation_type === "feed_item_saved_assignment" ||
             member.envelope.operation_type === "feed_item_archive_assignment" ||
@@ -3403,6 +3490,209 @@ class PwaLibraryCorePortableCheckpointStore
     rows.put({
       ...stored,
       row: { ...stored.row, persons: next },
+    } satisfies PortableMaterializedRowRecord);
+    await transactionDone(transaction);
+  }
+
+  async enqueueAccountUpsert(
+    account: Account,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    return this.enqueueAccountUpserts([account]);
+  }
+
+  async enqueueAccountUpserts(
+    accounts: readonly Account[],
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    if (
+      accounts.length === 0 ||
+      accounts.length > PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT
+    ) {
+      throw new RangeError("Account batch exceeds the intent segment bound");
+    }
+    const identities = new Set<string>();
+    for (const account of accounts) {
+      if (!account.id) throw new TypeError("Account ID is required");
+      if (identities.has(account.id)) {
+        throw new TypeError("Account batch contains a duplicate ID");
+      }
+      identities.add(account.id);
+    }
+    const context = await this.#activeIntentContext();
+    const firstActorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    if (!Number.isSafeInteger(firstActorSequence + accounts.length - 1)) {
+      throw new RangeError("intent actor sequence is exhausted");
+    }
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const createdAtMs = this.#now();
+    const transactionId =
+      `pwa-account-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = accounts.map((account, index) =>
+      ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.authority.library_id,
+          epoch: context.authority.epoch,
+          epoch_id: context.authority.epoch_id,
+          actor_id: context.identity.actorId,
+          actor_sequence: firstActorSequence + index,
+          previous_actor_operation_id:
+            index === 0 ? previousOperationId : `${transactionId}:${index - 1}`,
+          causal_frontier: context.authority.observed_frontier,
+          hlc_wall_ms: createdAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: accounts.length,
+          entity_id: account.id,
+          payload: {
+            account: account as unknown as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
+          },
+          created_at_ms: createdAtMs,
+        } satisfies AccountUpsertTransactionMemberInputV1,
+        { digest: libraryCoreDigest },
+      ),
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(members, previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedAccountUpserts(accounts);
+    return receipt;
+  }
+
+  async enqueueAccountRemove(
+    accountId: string,
+    removedAtMs: number,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    if (!accountId) throw new TypeError("Account ID is required");
+    const context = await this.#activeIntentContext();
+    const actorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const transactionId =
+      `pwa-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const member = ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: removedAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: accountId,
+        payload: { removed_at_ms: removedAtMs },
+        created_at_ms: removedAtMs,
+      } satisfies AccountRemoveTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedAccountRemove(accountId);
+    return receipt;
+  }
+
+  async #applySelectedAccountUpserts(accounts: readonly Account[]): Promise<void> {
+    await this.#mutateSelectedAccounts((current) => {
+      const next = { ...current };
+      for (const account of accounts) {
+        next[account.id] = account as unknown as LibraryCoreCanonicalValue;
+      }
+      return next;
+    });
+  }
+
+  async #applySelectedAccountRemove(accountId: string): Promise<void> {
+    await this.#mutateSelectedAccounts((current) => {
+      const next = { ...current };
+      delete next[accountId];
+      return next;
+    });
+  }
+
+  async #mutateSelectedAccounts(
+    mutate: (
+      current: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+    ) => Record<string, LibraryCoreCanonicalValue>,
+  ): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA Account intent has no selected Library generation");
+    }
+    const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const key = [
+      selected.generationId,
+      "00_library_shell",
+      canonicalStringKey("shell"),
+    ];
+    const stored = (await requestResult(rows.get(key))) as
+      PortableMaterializedRowRecord | undefined;
+    if (!stored) {
+      transaction.abort();
+      throw new Error("PWA Account intent has no materialized Library shell");
+    }
+    const accounts = mutate(canonicalObject(stored.row.accounts) ?? {});
+    rows.put({
+      ...stored,
+      row: { ...stored.row, accounts },
     } satisfies PortableMaterializedRowRecord);
     await transactionDone(transaction);
   }

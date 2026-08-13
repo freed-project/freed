@@ -8,7 +8,7 @@ import {
   type RssFeed,
   type UserPreferences,
 } from "@freed/shared";
-import { sanitizePersonWrite } from "@freed/shared";
+import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
@@ -43,6 +43,7 @@ import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinat
 import {
   createPwaLibraryCorePortableCheckpointStore,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
 } from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
 
@@ -483,6 +484,45 @@ export async function enqueuePwaLibraryCorePersonRemove(
   personId: string,
 ): Promise<void> {
   await getPortableStore().enqueuePersonRemove(personId, Date.now());
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one whole sanitized Account and update the selected IndexedDB shell. */
+export async function enqueuePwaLibraryCoreAccountUpsert(
+  account: Account,
+): Promise<void> {
+  await enqueuePwaLibraryCoreAccountUpserts([account]);
+}
+
+/** Queue one bounded batch of whole sanitized Accounts and update the selected shell. */
+export async function enqueuePwaLibraryCoreAccountUpserts(
+  accounts: readonly Account[],
+): Promise<void> {
+  const synchronized = accounts.map(
+    (account) => sanitizeAccountWrite(account) as Account,
+  );
+  for (
+    let offset = 0;
+    offset < synchronized.length;
+    offset += PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT
+  ) {
+    await getPortableStore().enqueueAccountUpserts(
+      synchronized.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
+      ),
+    );
+  }
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one Account removal and refresh the selected IndexedDB shell. */
+export async function enqueuePwaLibraryCoreAccountRemove(
+  accountId: string,
+): Promise<void> {
+  await getPortableStore().enqueueAccountRemove(accountId, Date.now());
   const state = await readSelectedState();
   if (state) publishState(state);
 }

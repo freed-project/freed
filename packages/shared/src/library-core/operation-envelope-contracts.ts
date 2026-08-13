@@ -11,12 +11,16 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
+  ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
   type RssFeedUpsertPayloadV1,
   type PreferencesLeafAssignmentPayloadV1,
   type PersonUpsertPayloadV1,
   type PersonRemovePayloadV1,
+  type AccountRemovePayloadV1,
+  type AccountUpsertPayloadV1,
 } from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
@@ -71,6 +75,10 @@ export type PreferencesLeafAssignmentTransactionMemberInputV1 =
 export type PersonUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonRemoveTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type AccountUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type AccountRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -302,6 +310,56 @@ export interface PersonRemoveTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface AccountUpsertTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "account_upsert";
+  readonly entity_type: "Account";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: AccountUpsertPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface AccountRemoveTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "account_remove";
+  readonly entity_type: "Account";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: AccountRemovePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
@@ -311,7 +369,9 @@ export type LibraryCoreTransactionMemberBodyV1 =
   | RssFeedRemoveTransactionMemberBodyV1
   | PreferencesLeafAssignmentTransactionMemberBodyV1
   | PersonUpsertTransactionMemberBodyV1
-  | PersonRemoveTransactionMemberBodyV1;
+  | PersonRemoveTransactionMemberBodyV1
+  | AccountUpsertTransactionMemberBodyV1
+  | AccountRemoveTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -645,6 +705,16 @@ function constructEntityTransactionMember(
         readonly operationType: "person_remove_and_accounts";
         readonly validatePayload: typeof PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
+      }
+    | {
+        readonly operationType: "account_upsert";
+        readonly validatePayload: typeof ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Account";
+      }
+    | {
+        readonly operationType: "account_remove";
+        readonly validatePayload: typeof ACCOUNT_REMOVE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Account";
       },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
@@ -917,6 +987,32 @@ function constructPersonRemoveTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1>;
 }
 
+function constructAccountUpsertTransactionMember(
+  input: AccountUpsertTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<AccountUpsertTransactionMemberBodyV1> {
+  const construction = constructEntityTransactionMember(input, dependencies, {
+    operationType: "account_upsert",
+    validatePayload: ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate,
+    entityType: "Account",
+  }) as LibraryCoreTransactionMemberConstruction<AccountUpsertTransactionMemberBodyV1>;
+  if (construction.body.payload.account.id !== construction.body.entity_id) {
+    throw new TypeError("Account ID must equal entity_id");
+  }
+  return construction;
+}
+
+function constructAccountRemoveTransactionMember(
+  input: AccountRemoveTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<AccountRemoveTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "account_remove",
+    validatePayload: ACCOUNT_REMOVE_PAYLOAD_SCHEMA.validate,
+    entityType: "Account",
+  }) as LibraryCoreTransactionMemberConstruction<AccountRemoveTransactionMemberBodyV1>;
+}
+
 /**
  * Closed construction schema for the first dormant Library Core operation.
  *
@@ -1064,5 +1160,29 @@ export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
     construct: constructPersonRemoveTransactionMember,
   }) satisfies LibraryCoreTransactionMemberSchema<
     PersonRemoveTransactionMemberInputV1,
-    PersonRemoveTransactionMemberBodyV1
+  PersonRemoveTransactionMemberBodyV1
   >;
+
+export const ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "account_upsert_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "account_upsert",
+  entityType: "Account",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructAccountUpsertTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  AccountUpsertTransactionMemberInputV1,
+  AccountUpsertTransactionMemberBodyV1
+>;
+
+export const ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "account_remove_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "account_remove",
+  entityType: "Account",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructAccountRemoveTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  AccountRemoveTransactionMemberInputV1,
+  AccountRemoveTransactionMemberBodyV1
+>;
