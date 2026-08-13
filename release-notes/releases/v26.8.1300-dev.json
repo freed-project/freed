@@ -1,0 +1,118 @@
+{
+  "tag": "v26.8.1300-dev",
+  "version": "26.8.1300-dev",
+  "channel": "dev",
+  "dayKey": "26.8.13",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-13T17:34:03.837Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1203-dev",
+    "previousPublishedDayTag": "v26.8.1203-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "35001083e2c0f85bdda80ffd179d60e5121a76f9",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1203-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2199a5d825a380a551bdb8a306a7a42a7795404d",
+        "toInclusiveProductCommitSha": "35001083e2c0f85bdda80ffd179d60e5121a76f9"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94"
+      },
+      "transitions": [
+        {
+          "activationId": "sqlite-desktop-legacy-engine-retirement-v1",
+          "gate": "H",
+          "kind": "legacy_engine_retirement",
+          "rollbackTrigger": "Restore the retained pre-cutover Automerge library with the last released Freed Desktop build if native SQLite integrity, item counts, bounded reads, mutations, backup, or immutable replication cannot preserve the verified cutover frontier without the retired Automerge runtime.",
+          "receiptExpectations": [
+            "retirement_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "sqlite-pwa-legacy-engine-retirement-v1",
+          "gate": "H",
+          "kind": "legacy_engine_retirement",
+          "rollbackTrigger": "Restore the previous PWA deployment if the IndexedDB Library Core cannot import the active immutable checkpoint, preserve bounded reads, publish signed intents, reconcile results, or complete factory reset without the retired Automerge runtime.",
+          "receiptExpectations": [
+            "retirement_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:b898e7ed7c3ce5d1aa8370363d78de41d55291e7a5483496bf1fc726cfa98794",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1300-dev"
+    ],
+    "prNumbers": [
+      1423,
+      1424,
+      1425,
+      1426,
+      1427,
+      1428,
+      1429,
+      1430,
+      1431,
+      1432,
+      1433,
+      1434,
+      1435,
+      1436,
+      1437,
+      1438,
+      1440
+    ],
+    "commitSubjects": [
+      "perf: retire Desktop Automerge runtime (#1440)",
+      "feat: retire PWA Automerge runtime (#1438)",
+      "feat: move PWA Library maintenance to Library Core (#1437)",
+      "feat: move PWA FeedItem writes to Library Core (#1436)",
+      "feat: move PWA Accounts to Library Core (#1435)",
+      "feat: move PWA People lifecycle to Library Core (#1434)",
+      "feat: route PWA people through Library Core (#1433)",
+      "feat: route PWA preferences through Library Core (#1432)",
+      "feat: route PWA RSS configuration through Library Core (#1431)",
+      "feat: route PWA archive maintenance through Library Core (#1430)",
+      "feat: save PWA links through SQLite Library Core (#1429)",
+      "feat: route PWA item deletion through Library Core (#1428)",
+      "fix: make Library Core assignments idempotent (#1427)",
+      "feat: route PWA bulk actions through Library Core (#1426)",
+      "fix: start SQLite backups without Automerge (#1425)",
+      "fix: preserve release publication output (#1424)",
+      "perf: bound map renderer memory (#1423)"
+    ]
+  },
+  "release": {
+    "deck": "Retire PWA Automerge runtime, move PWA Library maintenance to Library Core, and preserve release publication output",
+    "features": [
+      "Retire PWA Automerge runtime",
+      "Move PWA Library maintenance to Library Core"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1300-dev\n\nRetire PWA Automerge runtime, move PWA Library maintenance to Library Core, and preserve release publication output\n\n### Features\n\n- Retire PWA Automerge runtime\n- Move PWA Library maintenance to Library Core\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
