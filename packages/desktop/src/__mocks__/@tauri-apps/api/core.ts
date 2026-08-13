@@ -32,32 +32,12 @@ type PluginEventRecord = {
   callbackId: number;
 };
 
-type IpcTiming = {
-  cmd: string;
-  startMs: number;
-  endMs: number;
-  args: Record<string, unknown>;
-};
-
 function mockArray<T>(name: string): T[] {
   const w = window as unknown as Record<string, unknown>;
   if (!Array.isArray(w[name])) {
     w[name] = [] as T[];
   }
   return w[name] as T[];
-}
-
-function ipcTimings(): IpcTiming[] {
-  return mockArray<IpcTiming>("__TAURI_MOCK_IPC_TIMINGS__");
-}
-
-function timedHandler(cmd: string, handler: Handler): Handler {
-  return (args: Record<string, unknown>) => {
-    const startMs = performance.now();
-    const result = handler(args);
-    ipcTimings().push({ cmd, startMs, endMs: performance.now(), args });
-    return result;
-  };
 }
 
 function setMockYouTubeWindowVisible(visible: boolean): null {
@@ -257,7 +237,6 @@ function sqliteUpsertItems(args: Record<string, unknown>): null {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  broadcast_doc: timedHandler("broadcast_doc", () => null),
   sqlite_library_status: () => {
     const state = sqliteLibrary();
     return state.active ? {
@@ -499,16 +478,12 @@ const handlers: Record<string, Handler> = {
   google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
   fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
-  get_local_ip: () => "127.0.0.1",
-  get_all_local_ips: () => [],
-  get_sync_url: () => "ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
     const request = args.request as { expectedSizeBytes?: number } | undefined;
     return request?.expectedSizeBytes ?? 0;
   },
   cancel_local_ai_model_download: () => null,
-  get_sync_client_count: () => 0,
   get_desktop_session_state: () =>
     (window as unknown as {
       __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
@@ -590,12 +565,7 @@ const handlers: Record<string, Handler> = {
   retry_startup_after_crash: () => null,
   export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
   clear_factory_reset_runtime_artifacts: () => null,
-  factory_reset_sync_relay: () => "factory-reset-pairing-token",
-  resume_sync_relay_after_factory_reset: () => null,
-  reset_pairing_token: () => null,
   get_recent_logs: () => [],
-  start_relay: () => null,
-  stop_relay: () => null,
   show_window: () => null,
   list_snapshots: () => [],
   save_url_content: () => null,

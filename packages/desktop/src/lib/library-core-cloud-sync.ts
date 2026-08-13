@@ -33,7 +33,7 @@ import {
   type LibraryCoreImmutableReadAdapterV1,
   type LibraryCorePreparedImmutableObjectV1,
 } from "@freed/sync/cloud/library-core";
-import type { GoogleDriveFetch } from "@freed/sync/cloud";
+import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
 import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
 import {

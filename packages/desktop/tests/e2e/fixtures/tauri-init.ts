@@ -13,15 +13,12 @@
 export function tauriInitScript(): string {
   return `(function () {
     // Handler map - tests override individual entries after page.addInitScript.
-    // The broadcast_doc handler wraps the real call to capture IPC timing data
-    // consumed by the IPC latency harness in perf-feed.spec.ts.
     function mockArray(name) {
       if (!Array.isArray(window[name])) {
         window[name] = [];
       }
       return window[name];
     }
-    window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     var SQLITE_LIBRARY_WINDOW_PREFIX = '__freed_e2e_sqlite_library_v1__';
     var persistedSqliteLibrary = null;
@@ -164,14 +161,6 @@ export function tauriInitScript(): string {
       persistSqliteState();
       return affected;
     }
-    function timedHandler(cmd, fn) {
-      return function(args) {
-        var start = performance.now();
-        var result = fn(args);
-        mockArray('__TAURI_MOCK_IPC_TIMINGS__').push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
-        return result;
-      };
-    }
     window.__TAURI_MOCK_HANDLERS__ = {
       sqlite_library_status: () => {
         var state = sqliteState();
@@ -294,19 +283,14 @@ export function tauriInitScript(): string {
           totalCount: items.length,
         };
       },
-      broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"connections":[],"nextSyncToken":"test-sync-token"}')) }),
       google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}')) }),
       google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"files":[]}')) }),
       fetch_binary_url: () => [],
-      get_local_ip: () => '127.0.0.1',
-      get_all_local_ips: () => [],
-      get_sync_url: () => 'ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
-      get_sync_client_count: () => 0,
       get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,
@@ -410,14 +394,9 @@ export function tauriInitScript(): string {
       get_updater_target: () => 'darwin-aarch64',
       retry_startup_after_crash: () => null,
       export_startup_diagnostics: () => '/Users/test/Downloads/freed-diagnostics-test.json',
-      reset_pairing_token: () => null,
       clear_factory_reset_runtime_artifacts: () => null,
-      factory_reset_sync_relay: () => 'factory-reset-pairing-token',
-      resume_sync_relay_after_factory_reset: () => null,
       get_recent_logs: () => [],
       get_recent_runtime_health: () => [],
-      start_relay: () => null,
-      stop_relay: () => null,
       show_window: () => null,
       list_snapshots: () => [],
       save_url_content: () => null,

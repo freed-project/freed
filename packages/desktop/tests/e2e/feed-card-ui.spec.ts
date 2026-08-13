@@ -30,7 +30,7 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
     }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docBatchImportItems: (items: unknown[]) => Promise<unknown>;
       };
 
@@ -180,7 +180,7 @@ async function injectXLikeRetentionItem(page: import("@playwright/test").Page): 
     async ({ title, sourceUrl }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docBatchImportItems: (items: unknown[]) => Promise<unknown>;
       };
 
@@ -1055,7 +1055,7 @@ test("feed cards show compact event metadata from semantic enrichment", async ({
 
   await app.page.evaluate(async () => {
     const publishedAt = Date.parse("2026-04-25T12:00:00Z");
-    const automerge = (window as Record<string, unknown>).__FREED_AUTOMERGE__ as {
+    const automerge = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
 

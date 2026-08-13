@@ -278,6 +278,7 @@ pub(super) struct QueryItemsRequest {
     saved: Option<bool>,
     archived: Option<bool>,
     show_hidden: bool,
+    sort_mode: Option<String>,
     offset: u32,
     limit: u32,
 }
@@ -1707,8 +1708,27 @@ pub(super) fn query_sqlite_library_items(
             VISIBLE_LIBRARY_ITEMS_COUNT_SQL,
         ),
     };
+    let order_by = match request.sort_mode.as_deref() {
+        None | Some("date_published") => {
+            "publishedAt DESC, capturedAt DESC, globalId ASC"
+        }
+        Some("date_saved") => {
+            "COALESCE(json_extract(payloadJson, '$.userState.savedAt'), capturedAt) DESC, globalId ASC"
+        }
+        Some("recommended") => {
+            "COALESCE(json_extract(payloadJson, '$.priority'), -1.0e308) DESC, publishedAt DESC, globalId ASC"
+        }
+        Some("shortest_read") => {
+            "CASE WHEN json_extract(payloadJson, '$.preservedContent.readingTime') IS NULL THEN 1 ELSE 0 END ASC, json_extract(payloadJson, '$.preservedContent.readingTime') ASC, COALESCE(json_extract(payloadJson, '$.userState.savedAt'), capturedAt) DESC, globalId ASC"
+        }
+        Some(_) => return Err("SQLite Library sort mode is invalid".into()),
+    };
+    let page_sql = page_sql.replace(
+        "publishedAt DESC, capturedAt DESC, globalId ASC",
+        order_by,
+    );
     let mut statement = connection
-        .prepare(page_sql)
+        .prepare(&page_sql)
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
@@ -2020,7 +2040,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         }
         digest.update(&buffer[..count]);
     }
-    Ok(crate::automerge_external_common::lower_hex(
+    Ok(crate::library_core_hash::lower_hex(
         &digest.finalize(),
     ))
 }
@@ -2820,7 +2840,7 @@ mod tests {
         }
         assert_eq!(copied.len() as u64, backup.byte_length);
         assert_eq!(
-            crate::automerge_external_common::lower_hex(&Sha256::digest(&copied)),
+            crate::library_core_hash::lower_hex(&Sha256::digest(&copied)),
             backup.sha256,
         );
 

@@ -322,7 +322,6 @@ let lastWebkitCacheTrimAt = 0;
 type MemoryPressureLevel = "normal" | "high" | "critical";
 
 interface MemoryMonitorOptions {
-  getAutomergeStats?: () => { binaryBytes?: number; itemCount?: number } | null;
   onCriticalPressure?: (snapshot: RuntimeMemorySnapshot) => void;
   onSample?: (snapshot: RuntimeMemorySnapshot) => void;
 }
@@ -454,7 +453,6 @@ async function sampleRuntimeMemory(
   const fetcher = getContentFetcherStatus();
   const renderer = getRendererMemoryStats();
   const domNodeCount = getDomNodeCount();
-  const automerge = options.getAutomergeStats?.() ?? null;
   const nativeOptions = memorySampleOptions(reason);
   const nativeStartedAt = performance.now();
   const native = canSampleNativeMemoryStats()
@@ -529,8 +527,6 @@ async function sampleRuntimeMemory(
     webkitProcesses: native.webkitProcesses,
     webkitTelemetryAvailable: native.webkitTelemetryAvailable,
     webkitAttributionPrecise: native.webkitAttributionPrecise,
-    automergeBinaryBytes: automerge?.binaryBytes,
-    automergeItemCount: automerge?.itemCount,
     indexedDbBytes: native.indexedDbBytes,
     webkitCacheBytes: native.webkitCacheBytes,
     storageSizesSampled: native.storageSizesSampled,
@@ -615,8 +611,6 @@ async function sampleRuntimeMemory(
     webkitLargestProcessId: snapshot.webkitLargestProcessId,
     webkitLargestResidentBytes: snapshot.webkitLargestResidentBytes,
     webkitProcessCount: snapshot.webkitProcessCount,
-    automergeBinaryBytes: snapshot.automergeBinaryBytes,
-    automergeItemCount: snapshot.automergeItemCount,
     indexedDbBytes: snapshot.indexedDbBytes,
     webkitCacheBytes: snapshot.webkitCacheBytes,
     rendererHeapAvailable: snapshot.rendererHeapAvailable,
@@ -646,12 +640,6 @@ async function sampleRuntimeMemory(
           `peak_webkit_rss=${formatBytesForMemoryLog(peakWebkitResidentBytes)} ` +
           `webkit_virtual=${formatBytesForMemoryLog(native.webkitVirtualBytes ?? 0)} `
         : "webkit_rss=unavailable ") +
-      (automerge?.binaryBytes !== undefined
-        ? `automerge_binary=${formatBytesForMemoryLog(automerge.binaryBytes)} `
-        : "") +
-      (automerge?.itemCount !== undefined
-        ? `automerge_items=${automerge.itemCount.toLocaleString()} `
-        : "") +
       (native.indexedDbBytes !== undefined
         ? `indexeddb=${formatBytesForMemoryLog(native.indexedDbBytes)} `
         : "") +

@@ -1,9 +1,7 @@
 /**
  * Global app state management with Zustand
  *
- * PWA version. IndexedDB Library Core is the active store. The lazy legacy
- * facade remains only for rollback and mutations that have not reached the
- * replacement intent protocol yet.
+ * PWA version. IndexedDB Library Core is the only durable product store.
  */
 
 import { create } from "zustand";
@@ -70,42 +68,8 @@ import {
   applyDevicePersonGraphPositionUpdate,
   getDeviceGraphLayout,
   migrateLegacyDeviceGraphLayout,
-  pruneDeviceGraphLayout,
   restoreReplacedDeviceAccountGraphPositions,
 } from "@freed/ui/lib/device-graph-layout";
-import {
-  docAddFeedItems,
-  docAddRssFeed,
-  docRemoveRssFeed,
-  docUpdateRssFeed,
-  docUpdateFeedItem,
-  docBackfillContentSignals,
-  docMarkAsRead,
-  docMarkItemsAsRead,
-  docMarkAllAsRead,
-  docToggleSaved,
-  docRemoveFeedItem,
-  docToggleArchived,
-  docArchiveItems,
-  docToggleLiked,
-  docArchiveAllReadUnsaved,
-  docUnarchiveSavedItems,
-  docDeleteAllArchived,
-  docPruneArchivedItems,
-  docUpdatePreferences,
-  docAddAccount,
-  docAddAccounts,
-  docAddPerson,
-  docAddPersons,
-  docUpdateAccount,
-  docUpdatePerson,
-  docUpsertConnectionPersons,
-  docRemoveAccount,
-  docRemovePerson,
-  docLogReachOut,
-} from "./legacy-automerge-runtime";
-import { loadLegacyAutomerge } from "./legacy-automerge-runtime";
-import type { DocState } from "./automerge-types";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   clearPwaLibraryCoreSampleData,
@@ -128,8 +92,8 @@ import {
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   enqueuePwaLibraryCoreUserStateToggle,
+  ensurePwaLibraryCoreFeaturePreviewState,
   initializePwaLibraryCoreState,
-  isPwaLibraryCoreEnabled,
   subscribePwaLibraryCoreState,
 } from "./library-core-runtime";
 import {
@@ -140,9 +104,7 @@ import {
 
 let appInitializationPromise: Promise<void> | null = null;
 let documentSubscriptionTeardown: (() => void) | null = null;
-let startupMigrationsStopped = false;
 let storeQuiesced = false;
-const pendingStartupMigrations = new Set<Promise<void>>();
 
 function readStateIdTails(ids: readonly string[]): string[] {
   return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
@@ -171,16 +133,6 @@ interface AppState extends BaseAppState {
  * Preserves object identity on count maps so Zustand selectors don't trigger
  * re-renders when values haven't changed.
  */
-function shallowEqualRecord(
-  a: Record<string, number>,
-  b: Record<string, number>,
-): boolean {
-  const aKeys = Object.keys(a);
-  return (
-    aKeys.length === Object.keys(b).length && aKeys.every((k) => a[k] === b[k])
-  );
-}
-
 function optimisticBefore(
   state: AppState,
   patch: OptimisticPatch,
@@ -212,7 +164,7 @@ function assertPwaStoreWritable(
 ): void {
   if (storeQuiesced) throw new Error("PWA store is quiesced for factory reset");
   assertPwaRuntimeCurrent();
-  if (isPwaLibraryCoreEnabled() && options.allowLibraryCoreIntent !== true) {
+  if (options.allowLibraryCoreIntent !== true) {
     throw new Error(
       "This SQLite Library is read-only until its PWA intent outbox is active",
     );
@@ -308,53 +260,14 @@ async function pruneConnectionPersonIfNeeded(
   ) {
     return;
   }
-  if (isPwaLibraryCoreEnabled()) {
-    await enqueuePwaLibraryCorePersonRemove(personId!);
-  } else {
-    await docRemovePerson(personId!);
-  }
-}
-
-async function runStartupMigrations(archivePruneDays: number): Promise<void> {
-  if (startupMigrationsStopped || storeQuiesced) return;
-  try {
-    if (archivePruneDays > 0 && !startupMigrationsStopped) {
-      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
-    }
-  } catch {
-    // non-fatal
-  }
-
-  try {
-    while (!startupMigrationsStopped) {
-      const summary = await docBackfillContentSignals(200);
-      if (
-        startupMigrationsStopped ||
-        summary.updated === 0 ||
-        summary.remaining === 0
-      )
-        break;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  } catch {
-    // non-fatal
-  }
-}
-
-function startStartupMigrations(archivePruneDays: number): void {
-  if (startupMigrationsStopped || storeQuiesced) return;
-  const migration = runStartupMigrations(archivePruneDays);
-  pendingStartupMigrations.add(migration);
-  void migration.finally(() => {
-    pendingStartupMigrations.delete(migration);
-  });
+  await enqueuePwaLibraryCorePersonRemove(personId!);
 }
 
 /** Stop new startup maintenance and drain work already touching the local document. */
 export async function quiescePwaStartupMigrations(): Promise<void> {
   stopPwaStoreForFactoryReset();
   await waitForFactoryResetDrain(
-    () => [...pendingStartupMigrations],
+    () => [],
     "PWA startup migrations",
     DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS,
   );
@@ -364,24 +277,11 @@ export async function quiescePwaStartupMigrations(): Promise<void> {
 
 function stopPwaStoreForFactoryReset(): void {
   storeQuiesced = true;
-  startupMigrationsStopped = true;
   documentSubscriptionTeardown?.();
   documentSubscriptionTeardown = null;
 }
 
 registerPwaFactoryResetQuiesceHandler("store", stopPwaStoreForFactoryReset, 20);
-
-function hasStoredCloudSyncCredentials(): boolean {
-  try {
-    return (
-      localStorage.getItem("freed_cloud_provider") !== null ||
-      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
-      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
-    );
-  } catch {
-    return false;
-  }
-}
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
@@ -417,7 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeView: "feed",
   pendingMatchCount: 0,
 
-  // Initialize from Automerge worker
+  // Initialize from IndexedDB Library Core.
   initialize: () => {
     if (storeQuiesced)
       return Promise.reject(
@@ -431,84 +331,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       const runtimeLifecycle = capturePwaRuntimeLifecycle();
       try {
         set({ isLoading: true });
-        if (isPwaLibraryCoreEnabled()) {
-          const state = await initializePwaLibraryCoreState();
-          runtimeLifecycle.assertCurrent();
-          migrateLegacyDeviceDisplayPreferences(state.preferences.display);
-          migrateLegacyThemePreference(state.preferences.display.themeId);
-          migrateLegacyDeviceAIPreferences(state.preferences.ai);
-          migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
-          documentSubscriptionTeardown?.();
-          documentSubscriptionTeardown = subscribePwaLibraryCoreState(
-            (next) => {
-              if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
-              set(next);
-            },
-          );
-          set({
-            ...state,
-            activeFilter: applyFeedSignalModesToFilter(
-              get().activeFilter,
-              getDeviceDisplayPreferences().feedSignalModes,
-            ),
-            isInitialized: true,
-            isLoading: false,
-          });
-          return;
-        }
-        const legacyAutomerge = await loadLegacyAutomerge();
-        const state = await legacyAutomerge.initDoc();
+        const state = await initializePwaLibraryCoreState();
         runtimeLifecycle.assertCurrent();
-        if (storeQuiesced)
-          throw new Error("PWA store is quiesced for factory reset");
         migrateLegacyDeviceDisplayPreferences(state.preferences.display);
         migrateLegacyThemePreference(state.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(state.preferences.ai);
         migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
-
-        // Subscribe to future changes before flipping isInitialized so background
-        // mutations and sync merges propagate to the UI immediately.
-        // Reuse count map references when values are unchanged to avoid
-        // re-rendering sidebar selectors on unrelated mutations.
         documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = legacyAutomerge.subscribe(
-          (next: DocState, event) => {
+        documentSubscriptionTeardown = subscribePwaLibraryCoreState(
+          (next) => {
             if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
-            if (
-              event.mutation === "MERGE_DOC" ||
-              event.mutation === "REMOVE_PERSON" ||
-              event.mutation === "REMOVE_ACCOUNT"
-            ) {
-              pruneDeviceGraphLayout(next.persons, next.accounts);
-            }
-            const prev = get();
-            const merged = {
-              ...next,
-            } as Partial<AppState>;
-            if (
-              shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts)
-            )
-              merged.feedUnreadCounts = prev.feedUnreadCounts;
-            if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
-              merged.feedTotalCounts = prev.feedTotalCounts;
-            if (
-              shallowEqualRecord(
-                next.unreadCountByPlatform,
-                prev.unreadCountByPlatform,
-              )
-            )
-              merged.unreadCountByPlatform = prev.unreadCountByPlatform;
-            if (
-              shallowEqualRecord(
-                next.itemCountByPlatform,
-                prev.itemCountByPlatform,
-              )
-            )
-              merged.itemCountByPlatform = prev.itemCountByPlatform;
-            set(merged);
+            set(next);
           },
         );
-
         set({
           ...state,
           activeFilter: applyFeedSignalModesToFilter(
@@ -518,12 +353,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           isInitialized: true,
           isLoading: false,
         });
-
-        // Do not mutate the local doc before cloud sync has reconciled it.
-        if (!hasStoredCloudSyncCredentials()) {
-          const pruneDays = state.preferences.display.archivePruneDays ?? 30;
-          startStartupMigrations(pruneDays);
-        }
       } catch (error) {
         recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
         recordBugReportEvent(
@@ -546,11 +375,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions — errors propagate to callers so UI can surface them
   addItems: async (items) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreFeedItemCaptures(items);
-    } else {
-      await docAddFeedItems(items);
-    }
+    await enqueuePwaLibraryCoreFeedItemCaptures(items);
   },
 
   updateItem: async (id, update) => {
@@ -560,7 +385,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:updateItem",
       (state) => projectUpdateItem(state, id, update),
       () => {
-        if (!isPwaLibraryCoreEnabled()) return docUpdateFeedItem(id, update);
         const item = get().items.find((candidate) => candidate.globalId === id);
         if (!item) throw new Error("Feed item is unavailable");
         return enqueuePwaLibraryCoreFeedItemCapture(item);
@@ -575,10 +399,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:readState",
       (state) => projectMarkItemsAsRead(state, [id]),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreReadAssignments([id])
-          : docMarkAsRead(id),
+      () => enqueuePwaLibraryCoreReadAssignments([id]),
       { allowLibraryCoreIntent: true, recordFailure: false },
     );
   },
@@ -604,10 +425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set,
         "pwa:readState",
         (state) => projectMarkItemsAsRead(state, nextIds),
-        () =>
-          isPwaLibraryCoreEnabled()
-            ? enqueuePwaLibraryCoreReadAssignments(nextIds)
-            : docMarkItemsAsRead(nextIds),
+        () => enqueuePwaLibraryCoreReadAssignments(nextIds),
         { allowLibraryCoreIntent: true, recordFailure: false },
       );
       recordReadStateInfo(
@@ -638,10 +456,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:markAllAsRead",
       (state) => projectMarkAllAsRead(state, platform),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreMarkAllAsRead(platform)
-          : docMarkAllAsRead(platform),
+      () => enqueuePwaLibraryCoreMarkAllAsRead(platform),
       { allowLibraryCoreIntent: true },
     );
   },
@@ -654,10 +469,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleSaved",
       (state) => projectToggleSaved(state, id),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreUserStateToggle(id, "saved")
-          : docToggleSaved(id),
+      () => enqueuePwaLibraryCoreUserStateToggle(id, "saved"),
       { allowLibraryCoreIntent: true },
     );
     if (shouldPin) {
@@ -677,10 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleArchived",
       (state) => projectToggleArchived(state, id),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreUserStateToggle(id, "archived")
-          : docToggleArchived(id),
+      () => enqueuePwaLibraryCoreUserStateToggle(id, "archived"),
       { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
@@ -691,10 +500,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:archiveItems",
       (state) => projectArchiveItems(state, ids),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreArchiveItems(ids)
-          : docArchiveItems(ids),
+      () => enqueuePwaLibraryCoreArchiveItems(ids),
       { allowLibraryCoreIntent: true },
     );
   },
@@ -705,10 +511,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleLiked",
       (state) => projectToggleLiked(state, id),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreUserStateToggle(id, "liked")
-          : docToggleLiked(id),
+      () => enqueuePwaLibraryCoreUserStateToggle(id, "liked"),
       { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
@@ -719,28 +522,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:archiveAllReadUnsaved",
       (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreArchiveAllReadUnsaved(platform, feedUrl)
-          : docArchiveAllReadUnsaved(platform, feedUrl),
+      () => enqueuePwaLibraryCoreArchiveAllReadUnsaved(platform, feedUrl),
       { allowLibraryCoreIntent: true },
     );
   },
 
   unarchiveSavedItems: async () => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreUnarchiveSavedItems();
-      return;
-    }
-    await docUnarchiveSavedItems();
+    await enqueuePwaLibraryCoreUnarchiveSavedItems();
   },
 
   deleteAllArchived: async () => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreDeleteAllArchived();
-      return;
-    }
-    await docDeleteAllArchived();
+    await enqueuePwaLibraryCoreDeleteAllArchived();
   },
 
   removeItem: async (id) => {
@@ -749,39 +541,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:removeItem",
       (state) => projectRemoveItem(state, id),
-      () =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreFeedItemRemove(id)
-          : docRemoveFeedItem(id),
+      () => enqueuePwaLibraryCoreFeedItemRemove(id),
       { allowLibraryCoreIntent: true },
     );
   },
 
   clearSampleData: async () => {
-    if (isPwaLibraryCoreEnabled()) {
-      return clearPwaLibraryCoreSampleData();
-    }
-    const legacyAutomerge = await loadLegacyAutomerge();
-    return legacyAutomerge.docClearSampleData();
+    return clearPwaLibraryCoreSampleData();
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
+    if (import.meta.env.DEV) {
+      await ensurePwaLibraryCoreFeaturePreviewState();
+    }
     const persons = data.friends.map((friend) =>
       personFromLegacyFriend(friend as Friend),
     );
     const accounts = data.friends.flatMap((friend) =>
       accountsFromLegacyFriend(friend as Friend),
     );
-    if (!isPwaLibraryCoreEnabled()) {
-      const legacyAutomerge = await loadLegacyAutomerge();
-      await legacyAutomerge.docAddSampleLibraryData({
-        feeds: data.feeds,
-        items: data.items,
-        persons,
-        accounts,
-      });
-      return;
-    }
     for (const feed of data.feeds) {
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }
@@ -792,30 +570,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Feed actions
   addFeed: async (feed) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreRssFeedUpsert(feed);
-    } else {
-      await docAddRssFeed(feed);
-    }
+    await enqueuePwaLibraryCoreRssFeedUpsert(feed);
   },
 
   removeFeed: async (url, options?: RemoveFeedOptions) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreRssFeedRemove(
-        url,
-        options?.includeItems ?? false,
-      );
-    } else {
-      await docRemoveRssFeed(url, options?.includeItems ?? false);
-    }
+    await enqueuePwaLibraryCoreRssFeedRemove(
+      url,
+      options?.includeItems ?? false,
+    );
   },
 
   removeAllFeeds: async (includeItems) => {
-    if (!isPwaLibraryCoreEnabled()) {
-      const legacyAutomerge = await loadLegacyAutomerge();
-      await legacyAutomerge.docRemoveAllFeeds(includeItems);
-      return;
-    }
     for (const url of Object.keys(get().feeds)) {
       await enqueuePwaLibraryCoreRssFeedRemove(url, includeItems);
     }
@@ -828,9 +593,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:renameFeed",
       (state) => projectRenameFeed(state, url, title),
       () => {
-        if (!isPwaLibraryCoreEnabled()) {
-          return docUpdateRssFeed(url, { title });
-        }
         const feed = get().feeds[url];
         if (!feed) throw new Error("RSS feed is unavailable");
         return enqueuePwaLibraryCoreRssFeedUpsert({
@@ -844,15 +606,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Person actions
   addPerson: async (person: Person) => {
-    if (isPwaLibraryCoreEnabled())
-      await enqueuePwaLibraryCorePersonUpsert(person);
-    else await docAddPerson(person);
+    await enqueuePwaLibraryCorePersonUpsert(person);
   },
 
   addPersons: async (persons: Person[]) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCorePersonUpserts(persons);
-    } else await docAddPersons(persons);
+    await enqueuePwaLibraryCorePersonUpserts(persons);
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
@@ -874,8 +632,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:updatePerson",
       (state) => projectUpdatePerson(state, id, syncedUpdates),
       () => {
-        if (!isPwaLibraryCoreEnabled())
-          return docUpdatePerson(id, syncedUpdates);
         const current = get().persons[id];
         if (!current) throw new Error("Person is unavailable");
         return enqueuePwaLibraryCorePersonUpsert({
@@ -888,18 +644,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removePerson: async (id: string) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCorePersonRemove(id);
-    } else {
-      await docRemovePerson(id);
-    }
+    await enqueuePwaLibraryCorePersonRemove(id);
   },
 
   logReachOut: async (id: string, entry: ReachOutLog) => {
-    if (!isPwaLibraryCoreEnabled()) {
-      await docLogReachOut(id, entry);
-      return;
-    }
     const current = get().persons[id];
     if (!current) return;
     const synchronizedEntry = sanitizeReachOutLogWrite(entry) as ReachOutLog;
@@ -939,9 +687,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:linkAccountToPerson",
       (state) => projectUpdateAccount(state, accountId, updates),
       () => {
-        if (!isPwaLibraryCoreEnabled()) {
-          return docUpdateAccount(accountId, updates);
-        }
         const current = get().accounts[accountId];
         if (!current) throw new Error("Account is unavailable");
         return enqueuePwaLibraryCoreAccountUpsert(current);
@@ -979,10 +724,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createConnectionPersonsFromCandidates: async (candidates) => {
     if (candidates.length === 0) return 0;
-    if (!isPwaLibraryCoreEnabled()) {
-      await docUpsertConnectionPersons(candidates);
-      return candidates.length;
-    }
     for (const { person, accountIds } of candidates) {
       if (get().persons[person.id]) {
         await get().updatePerson(person.id, person);
@@ -1047,9 +788,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const graphLayoutBeforeReplacement = getDeviceGraphLayout();
     await Promise.all(
       existingAccounts.map((account) =>
-        isPwaLibraryCoreEnabled()
-          ? enqueuePwaLibraryCoreAccountRemove(account.id)
-          : docRemoveAccount(account.id),
+        enqueuePwaLibraryCoreAccountRemove(account.id),
       ),
     );
     const nextAccounts = accountsFromLegacyFriend(nextFriend);
@@ -1070,19 +809,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addAccount: async (account: Account) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreAccountUpsert(account);
-    } else {
-      await docAddAccount(account);
-    }
+    await enqueuePwaLibraryCoreAccountUpsert(account);
   },
 
   addAccounts: async (accounts: Account[]) => {
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreAccountUpserts(accounts);
-    } else {
-      await docAddAccounts(accounts);
-    }
+    await enqueuePwaLibraryCoreAccountUpserts(accounts);
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
@@ -1104,9 +835,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:updateAccount",
       (state) => projectUpdateAccount(state, id, syncedUpdates),
       () => {
-        if (!isPwaLibraryCoreEnabled()) {
-          return docUpdateAccount(id, syncedUpdates);
-        }
         const current = get().accounts[id];
         if (!current) throw new Error("Account is unavailable");
         return enqueuePwaLibraryCoreAccountUpsert(current);
@@ -1117,11 +845,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeAccount: async (id: string) => {
     const previousPersonId = get().accounts[id]?.personId ?? null;
-    if (isPwaLibraryCoreEnabled()) {
-      await enqueuePwaLibraryCoreAccountRemove(id);
-    } else {
-      await docRemoveAccount(id);
-    }
+    await enqueuePwaLibraryCoreAccountRemove(id);
     await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 
@@ -1142,23 +866,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
     if (Object.keys(syncedUpdate).length === 0) return;
-    if (isPwaLibraryCoreEnabled()) {
-      await runOptimisticMutation(
-        get,
-        set,
-        "pwa:updatePreferences",
-        (state) => projectUpdatePreferences(state, syncedUpdate),
-        () => enqueuePwaLibraryCorePreferencesPatch(syncedUpdate),
-        { allowLibraryCoreIntent: true },
-      );
-      return;
-    }
     await runOptimisticMutation(
       get,
       set,
       "pwa:updatePreferences",
       (state) => projectUpdatePreferences(state, syncedUpdate),
-      () => docUpdatePreferences(syncedUpdate),
+      () => enqueuePwaLibraryCorePreferencesPatch(syncedUpdate),
+      { allowLibraryCoreIntent: true },
     );
   },
 

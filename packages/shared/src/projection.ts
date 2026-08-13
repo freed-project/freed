@@ -28,7 +28,7 @@
  */
 
 import { FEED_ITEM_WRITE_POLICY, dispositionOf, tierOf } from "./sync-write-policy.js";
-import type { FreedDoc } from "./schema.js";
+import type { FreedDoc } from "./types.js";
 import type { FeedItem } from "./types.js";
 
 /** Columns that live in the row itself, queried directly. */

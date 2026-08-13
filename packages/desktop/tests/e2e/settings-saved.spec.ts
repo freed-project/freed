@@ -36,7 +36,7 @@ test("saved settings overview survives items arriving while open", async ({ app,
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as
+    const automerge = w.__FREED_LIBRARY_CORE__ as
       | { docAddFeedItems: (items: unknown[]) => Promise<void> }
       | undefined;
 

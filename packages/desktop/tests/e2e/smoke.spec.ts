@@ -618,7 +618,7 @@ async function waitForGraphPresentationSyncAfter(
 async function seedStressIdentityGraph(page: Page) {
   return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;
@@ -700,7 +700,7 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
-test("locked macOS session defers full desktop startup", async ({ app, ipc }) => {
+test("locked macOS session defers full desktop startup", async ({ app }) => {
   await app.page.addInitScript(() => {
     window.localStorage.setItem(
       "__TAURI_MOCK_STORE__:legal.json",
@@ -732,12 +732,6 @@ test("locked macOS session defers full desktop startup", async ({ app, ipc }) =>
     app.page.getByText("Freed Desktop will finish opening after you unlock this Mac."),
   ).toBeVisible();
   await expect(app.page.locator("main")).toHaveCount(0);
-  await expect
-    .poll(async () => {
-      const invocations = await ipc.invocations();
-      return invocations.filter((call) => call.cmd === "broadcast_doc").length;
-    })
-    .toBe(0);
 });
 
 test("startup emits renderer health before background work can run", async ({ app, page }) => {
@@ -793,12 +787,7 @@ test("no console errors on startup", async ({ page }) => {
     (e) =>
       !e.includes("favicon") &&
       !e.includes("ResizeObserver") &&
-      !e.includes("[mock") &&
-      // The sync relay (broadcast_doc) is not available in the test
-      // environment. sync.ts already catches these and logs them as
-      // "[Sync] Failed to broadcast" -- safe to ignore.
-      !e.includes("broadcast_doc") &&
-      !e.includes("Failed to broadcast"),
+      !e.includes("[mock"),
   );
 
   expect(fatal, `Unexpected console errors: ${fatal.join("\n")}`).toHaveLength(0);
@@ -2900,7 +2889,7 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as {
@@ -3038,7 +3027,7 @@ test("feed toolbar title describes active content filters", async ({ app, page }
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as
@@ -3265,7 +3254,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   const { page } = app;
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -3644,7 +3633,7 @@ test("map time range defaults to all available location windows", async ({ app, 
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -3814,7 +3803,7 @@ test("map range slider narrows future and historical markers", async ({ app, pag
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -4537,7 +4526,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;
@@ -4693,7 +4682,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -4821,7 +4810,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
     };
@@ -4902,7 +4891,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -4974,7 +4963,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
@@ -5069,7 +5058,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5173,7 +5162,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }, { timeout: 10_000 });
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as
+    const automerge = w.__FREED_LIBRARY_CORE__ as
       | {
           getDocState: () => {
             accounts: Record<string, { personId?: string }>;
@@ -5205,7 +5194,7 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5324,7 +5313,7 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
 
   await expect.poll(() => page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as
+    const automerge = w.__FREED_LIBRARY_CORE__ as
       | {
           getDocState: () => {
             persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
@@ -5366,7 +5355,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5952,7 +5941,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;

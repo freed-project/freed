@@ -1,42 +1,7 @@
 //! Freed Desktop Application
 //!
-//! Native desktop app that bundles capture, sync relay, and reader UI.
+//! Native desktop app that bundles capture and the reader UI.
 
-// Gate B ships the SQLite engine dark. Its tests exercise the module, but no
-// production entry point may open the store until the activation contract is
-// reviewed.
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_change_rows;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_column;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_common;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_decoder;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_document;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_document_run;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_feed_item_projection;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_operation_rows;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_pipeline;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_projection_population;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_row_run;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_spool;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_sqlite_stage;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_token_run;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_value;
-#[cfg_attr(not(test), allow(dead_code))]
-mod automerge_external_value_run;
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -44,45 +9,21 @@ mod library_core_canonical;
 mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
-mod library_core_external_migration_runtime;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_feed_browse_reader;
-mod library_core_feed_browse_reader_runtime;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_feed_browse_registry;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_feed_browse_runtime;
-#[cfg_attr(not(test), allow(dead_code))]
-mod library_core_feed_browse_store;
-mod library_core_feed_reader_runtime;
+mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 mod library_core_journal_runtime;
-mod library_core_migration_claim;
 mod library_core_platform_key;
-mod library_core_saved_feed_runtime;
-mod library_core_shadow_runtime;
-#[cfg_attr(not(test), allow(dead_code))]
-mod projection_coordinator;
-#[cfg_attr(not(test), allow(dead_code))]
-mod projection_generation_reader;
-#[cfg_attr(not(test), allow(dead_code))]
-mod projection_generation_registry;
-#[cfg_attr(not(test), allow(dead_code))]
-mod shadow_store;
-#[cfg_attr(not(test), allow(dead_code))]
-mod sqlite_registry_file;
 mod youtube;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use futures_util::{SinkExt, StreamExt};
+use base64::Engine;
+use futures_util::StreamExt;
 use log::{error, info, warn};
-use rand::{Rng, RngExt};
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
 use std::mem::MaybeUninit;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
@@ -98,15 +39,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, RwLock};
 use tokio::time::{timeout, Duration};
-use tokio_tungstenite::{
-    accept_hdr_async,
-    tungstenite::{
-        handshake::server::{ErrorResponse, Request as WsRequest, Response as WsResponse},
-        Message,
-    },
-};
 
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
@@ -124,10 +57,6 @@ use objc2_web_kit::WKWebViewConfiguration;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
-const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
-const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
-const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
-const SYNC_RELAY_DOC_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
@@ -139,14 +68,6 @@ const MACOS_TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon-macos-te
 #[cfg(any(target_os = "macos", test))]
 fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
     tauri::image::Image::from_bytes(MACOS_TRAY_ICON_BYTES)
-}
-
-fn sync_relay_port() -> u16 {
-    std::env::var("FREED_SYNC_PORT")
-        .ok()
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .filter(|port| *port > 0)
-        .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
 }
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
@@ -198,8 +119,6 @@ const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
 const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
 const DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS: u64 = 45_000;
-const SYNC_RELAY_BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
-const SYNC_RELAY_BIND_MAX_RETRIES: usize = 60;
 /// Only bounds the non-unix single-file fallback; unix installs rotate
 /// runtime-health daily instead (see append_runtime_health_line).
 #[cfg(not(unix))]
@@ -1088,38 +1007,6 @@ async fn restore_scraper_feed(
     let _ = window.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
     tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Token management
-// ---------------------------------------------------------------------------
-
-/// Generates a cryptographically random 256-bit pairing token encoded as
-/// base64url without padding (43 ASCII characters).
-fn generate_token() -> String {
-    let mut bytes = [0u8; 32];
-    rand::rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-/// Loads the pairing token from `data_dir/pairing-token`, or creates and
-/// persists a fresh one if the file is missing or malformed.
-fn load_or_create_token(data_dir: &std::path::Path) -> String {
-    let path = data_dir.join("pairing-token");
-    if let Ok(raw) = std::fs::read_to_string(&path) {
-        let token = raw.trim().to_string();
-        // 32 bytes base64url-no-pad → exactly 43 chars, all URL-safe
-        let looks_valid = token.len() == 43
-            && token
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if looks_valid {
-            return token;
-        }
-    }
-    let token = generate_token();
-    let _ = std::fs::write(&path, &token);
-    token
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -2772,233 +2659,6 @@ fn write_startup_diagnostics_bundle(
         .map_err(|error| format!("failed to write diagnostics: {}", error))?;
     Ok(output_path)
 }
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// mDNS advertisement
-// ---------------------------------------------------------------------------
-
-/// Keeps the mDNS daemon alive for the application lifetime.
-/// The `Drop` impl shuts the daemon down cleanly on exit.
-struct MdnsState(Option<mdns_sd::ServiceDaemon>);
-
-impl Drop for MdnsState {
-    fn drop(&mut self) {
-        if let Some(daemon) = self.0.take() {
-            let _ = daemon.shutdown();
-        }
-    }
-}
-
-/// Register `_freed-sync._tcp.local` so future native clients can discover
-/// the relay without a QR scan.  The pairing token is intentionally absent
-/// from TXT records — discovery reveals the host/port, not the secret.
-fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
-    use mdns_sd::{ServiceDaemon, ServiceInfo};
-
-    let daemon = ServiceDaemon::new()
-        .map_err(|e| error!("[mDNS] Failed to create daemon: {}", e))
-        .ok()?;
-
-    let hostname = hostname::get()
-        .ok()
-        .and_then(|h| h.into_string().ok())
-        .unwrap_or_else(|| "freed-desktop".to_string());
-
-    let fqdn = format!("{}.local.", hostname);
-
-    let mut properties = std::collections::HashMap::new();
-    properties.insert("v".to_string(), "1".to_string());
-    properties.insert("app".to_string(), "freed".to_string());
-
-    // Pass `()` so mdns-sd auto-discovers all local interfaces — avoids
-    // hard-coding the LAN IP and handles multi-homed machines gracefully.
-    let service = ServiceInfo::new(
-        "_freed-sync._tcp.local.",
-        "Freed Desktop",
-        &fqdn,
-        (),
-        port,
-        Some(properties),
-    )
-    .map_err(|e| error!("[mDNS] Failed to build ServiceInfo: {}", e))
-    .ok()?;
-
-    daemon
-        .register(service)
-        .map_err(|e| error!("[mDNS] Failed to register service: {}", e))
-        .ok()?;
-
-    info!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
-    Some(daemon)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SyncRelayBindRetryPolicy {
-    max_retries: usize,
-    retry_delay: Duration,
-}
-
-const DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY: SyncRelayBindRetryPolicy = SyncRelayBindRetryPolicy {
-    max_retries: SYNC_RELAY_BIND_MAX_RETRIES,
-    retry_delay: SYNC_RELAY_BIND_RETRY_DELAY,
-};
-
-fn sync_relay_bind_retry_delay(
-    policy: SyncRelayBindRetryPolicy,
-    error: &std::io::Error,
-    retries_used: usize,
-) -> Option<Duration> {
-    if error.kind() != std::io::ErrorKind::AddrInUse || retries_used >= policy.max_retries {
-        return None;
-    }
-
-    Some(policy.retry_delay)
-}
-
-async fn bind_sync_relay_listener_with_policy(
-    addr: &str,
-    policy: SyncRelayBindRetryPolicy,
-) -> std::io::Result<(TcpListener, usize)> {
-    let mut retries_used = 0;
-    loop {
-        match TcpListener::bind(addr).await {
-            Ok(listener) => return Ok((listener, retries_used)),
-            Err(error) => {
-                let Some(retry_delay) = sync_relay_bind_retry_delay(policy, &error, retries_used)
-                else {
-                    return Err(error);
-                };
-
-                retries_used += 1;
-                warn!(
-                    "[Sync] Relay port is still busy on {}. retry_attempt={}/{} retry_delay_ms={}",
-                    addr,
-                    retries_used,
-                    policy.max_retries,
-                    retry_delay.as_millis()
-                );
-                tokio::time::sleep(retry_delay).await;
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Local snapshot rotation (grandfather-father-son)
-// ---------------------------------------------------------------------------
-
-/// Write a timestamped Automerge snapshot to `{app_data}/snapshots/` and
-/// prune old files using a GFS scheme:
-///   - last 60 minutely  (≤ 1 hour old)
-///   - last 24 hourly    (1–24 hours old)
-///   - last 30 daily     (> 24 hours old)
-#[cfg_attr(feature = "perf", tracing::instrument(skip(doc_bytes), fields(bytes = doc_bytes.len())))]
-fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    if let Err(e) = std::fs::create_dir_all(snapshot_dir) {
-        error!("[Snapshot] Failed to create dir: {}", e);
-        return;
-    }
-
-    let path = snapshot_dir.join(format!("freed-{}.automerge", ts));
-    if let Err(e) = std::fs::write(&path, doc_bytes) {
-        error!("[Snapshot] Failed to write: {}", e);
-        return;
-    }
-
-    prune_snapshots(snapshot_dir, ts);
-}
-
-#[cfg_attr(feature = "perf", tracing::instrument(skip(snapshot_dir)))]
-fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
-    use std::cmp::Reverse;
-
-    let mut entries: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(snapshot_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            let ts: u64 = name
-                .strip_prefix("freed-")?
-                .strip_suffix(".automerge")?
-                .parse()
-                .ok()?;
-            Some((ts, e.path()))
-        })
-        .collect();
-
-    entries.sort_by_key(|(ts, _)| Reverse(*ts));
-
-    let mut kept: HashSet<std::path::PathBuf> = Default::default();
-    let (mut minutely, mut hourly, mut daily) = (0usize, 0usize, 0usize);
-    let mut last_hour_bucket = u64::MAX;
-    let mut last_day_bucket = u64::MAX;
-
-    for (ts, path) in &entries {
-        let age = now_secs.saturating_sub(*ts);
-        if age < 3_600 && minutely < 60 {
-            kept.insert(path.clone());
-            minutely += 1;
-        } else if age < 86_400 {
-            let bucket = age / 3_600;
-            if bucket != last_hour_bucket && hourly < 24 {
-                kept.insert(path.clone());
-                last_hour_bucket = bucket;
-                hourly += 1;
-            }
-        } else {
-            let bucket = age / 86_400;
-            if bucket != last_day_bucket && daily < 30 {
-                kept.insert(path.clone());
-                last_day_bucket = bucket;
-                daily += 1;
-            }
-        }
-    }
-
-    for (_, path) in &entries {
-        if !kept.contains(path) {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
-// Relay state
-// ---------------------------------------------------------------------------
-
-struct SyncRelayState {
-    port: u16,
-    /// Serializes token snapshots and document exchange against relay reset.
-    epoch_gate: RwLock<()>,
-    /// Broadcast channel — sends doc bytes to all connected clients.
-    broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
-    /// Latest doc binary, served to new joiners immediately on connect.
-    current_doc: RwLock<Option<Arc<Vec<u8>>>>,
-    /// Disconnect signal for every connection authenticated before a factory reset.
-    disconnect_tx: broadcast::Sender<u64>,
-    /// Incremented before factory-reset relay state is cleared.
-    generation: std::sync::atomic::AtomicU64,
-    /// Blocks renderer and mobile writes until local document deletion completes.
-    accepting_doc_updates: std::sync::atomic::AtomicBool,
-    /// Live connection count (displayed in tray / sync indicator).
-    client_count: RwLock<usize>,
-    /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
-    ///
-    /// Uses `std::sync::RwLock` (not Tokio's) because it is never held
-    /// across an `.await` point; it is read/written synchronously and the
-    /// guard is dropped before any async work begins.
-    pairing_token: StdRwLock<String>,
-}
-
-type RelayState = Arc<SyncRelayState>;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5620,140 +5280,6 @@ async fn x_api_request(
 // Tauri commands — sync
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-fn get_local_ip() -> Result<String, String> {
-    local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .map_err(|e| e.to_string())
-}
-
-/// Get all non-loopback IPv4 addresses with their interface names.
-/// Useful for diagnosing cases where the primary IP is a VPN tunnel
-/// rather than the Wi-Fi interface the phone is connected to.
-#[tauri::command]
-fn get_all_local_ips() -> Vec<serde_json::Value> {
-    let port = sync_relay_port();
-    match local_ip_address::list_afinet_netifas() {
-        Ok(ifaces) => ifaces
-            .into_iter()
-            .filter(|(_, ip)| {
-                // IPv4 only, skip loopback
-                matches!(ip, std::net::IpAddr::V4(v4) if !v4.is_loopback())
-            })
-            .map(|(name, ip)| {
-                serde_json::json!({
-                    "interface": name,
-                    "ip": ip.to_string(),
-                    "url": format!("ws://{}:{}", ip, port),
-                })
-            })
-            .collect(),
-        Err(_) => vec![],
-    }
-}
-
-/// Returns the full WebSocket pairing URL including the auth token.
-///
-/// Format: `ws://<lan-ip>:<port>?t=<base64url-token>`
-///
-/// This URL is encoded into the QR code shown in the Mobile Sync tab.
-/// Only devices that scan the QR code (i.e. know the token) can connect.
-#[tauri::command]
-async fn get_sync_url(state: tauri::State<'_, RelayState>) -> Result<String, String> {
-    let _epoch = state.epoch_gate.read().await;
-    let port = state.port;
-    let token = state.pairing_token.read().unwrap().clone();
-    let ip = local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "localhost".to_string());
-    Ok(format!("ws://{}:{}?t={}", ip, port, token))
-}
-
-/// Rotates the pairing token and persists the new value to disk.
-///
-/// In-flight connections are unaffected (they already authenticated).
-/// New connection attempts with the old token will be rejected — devices
-/// must rescan the QR code to reconnect.
-#[tauri::command]
-async fn reset_pairing_token(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-) -> Result<String, String> {
-    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let new_token = generate_token();
-    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
-    let _epoch = state.epoch_gate.write().await;
-    *state.pairing_token.write().unwrap() = new_token.clone();
-    info!("[Sync] Pairing token rotated");
-    Ok(new_token)
-}
-
-async fn factory_reset_sync_relay_in(
-    data_dir: &Path,
-    state: &RelayState,
-) -> Result<String, String> {
-    let new_token = generate_token();
-    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
-
-    let _epoch = state.epoch_gate.write().await;
-    state
-        .accepting_doc_updates
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    let generation = state
-        .generation
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        + 1;
-    *state.current_doc.write().await = None;
-    *state.pairing_token.write().unwrap() = new_token.clone();
-    let _ = state.disconnect_tx.send(generation);
-    Ok(new_token)
-}
-
-async fn wait_for_relay_clients_to_disconnect(
-    state: &RelayState,
-    drain_timeout: Duration,
-) -> Result<(), String> {
-    let deadline = Instant::now() + drain_timeout;
-    loop {
-        let client_count = *state.client_count.read().await;
-        if client_count == 0 {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "sync relay still has {} client(s) after factory reset drain",
-                client_count
-            ));
-        }
-        tokio::time::sleep(FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL).await;
-    }
-}
-
-/// Revoke existing mobile sessions, clear held bytes, and drain old connections.
-#[tauri::command]
-async fn factory_reset_sync_relay(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-) -> Result<String, String> {
-    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let token = factory_reset_sync_relay_in(&data_dir, &state).await?;
-    wait_for_relay_clients_to_disconnect(&state, FACTORY_RESET_RELAY_DRAIN_TIMEOUT).await?;
-    info!("[Sync] Relay reset and old mobile clients drained for factory reset");
-    Ok(token)
-}
-
-/// Resume relay document updates only after the local Automerge document is cleared.
-#[tauri::command]
-async fn resume_sync_relay_after_factory_reset(
-    state: tauri::State<'_, RelayState>,
-) -> Result<(), String> {
-    let _epoch = state.epoch_gate.write().await;
-    state
-        .accepting_doc_updates
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    Ok(())
-}
-
 fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -5764,32 +5290,7 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
 
 fn clear_factory_reset_runtime_artifacts_in(
     data_dir: &Path,
-    browse_runtime: &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState,
-    browse_reader_runtime: &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState,
-    saved_feed_runtime: &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState,
-    external_migration_runtime: &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState,
-    feed_reader_runtime: &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState,
-    shadow_runtime: &library_core_shadow_runtime::LibraryCoreShadowRuntimeState,
 ) -> Result<(), String> {
-    library_core_feed_browse_reader_runtime::quiesce_library_core_feed_browse_reader_runtime(
-        browse_reader_runtime,
-    )?;
-    library_core_feed_browse_runtime::clear_library_core_feed_browse_runtime_in(
-        browse_runtime,
-        data_dir,
-    )?;
-    library_core_saved_feed_runtime::clear_library_core_saved_feed_runtime_in(
-        saved_feed_runtime,
-        data_dir,
-    )?;
-    library_core_external_migration_runtime::clear_library_core_external_migration_runtime_in(
-        external_migration_runtime,
-        data_dir,
-    )?;
-    library_core_feed_reader_runtime::quiesce_library_core_feed_reader_runtime(
-        feed_reader_runtime,
-    )?;
-    library_core_shadow_runtime::clear_library_core_shadow_runtime_in(shadow_runtime, data_dir)?;
     let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
         .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
     runtime_health_write_guard.state.active_target = None;
@@ -5827,41 +5328,12 @@ fn clear_factory_reset_runtime_artifacts_in(
 #[tauri::command]
 fn clear_factory_reset_runtime_artifacts(
     app: tauri::AppHandle,
-    browse_runtime: tauri::State<
-        '_,
-        library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState,
-    >,
-    browse_reader_runtime: tauri::State<
-        '_,
-        library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState,
-    >,
-    saved_feed_runtime: tauri::State<
-        '_,
-        library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState,
-    >,
-    external_migration_runtime: tauri::State<
-        '_,
-        library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState,
-    >,
-    feed_reader_runtime: tauri::State<
-        '_,
-        library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState,
-    >,
-    shadow_runtime: tauri::State<'_, library_core_shadow_runtime::LibraryCoreShadowRuntimeState>,
 ) -> Result<(), String> {
     let data_dir = app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
-    clear_factory_reset_runtime_artifacts_in(
-        &data_dir,
-        &browse_runtime,
-        &browse_reader_runtime,
-        &saved_feed_runtime,
-        &external_migration_runtime,
-        &feed_reader_runtime,
-        &shadow_runtime,
-    )
+    clear_factory_reset_runtime_artifacts_in(&data_dir)
 }
 
 #[tauri::command]
@@ -6140,11 +5612,6 @@ async fn download_local_ai_model_file(
     );
 
     Ok(request.expected_size_bytes)
-}
-
-#[tauri::command]
-async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<usize, String> {
-    Ok(*state.client_count.read().await)
 }
 
 fn dir_size_bytes(path: &Path) -> Option<u64> {
@@ -7759,23 +7226,13 @@ async fn ensure_social_scrape_memory(
 #[tauri::command]
 async fn get_runtime_memory_stats(
     app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
     include_storage_sizes: Option<bool>,
     precise_webkit_attribution: Option<bool>,
 ) -> Result<RuntimeMemoryStats, String> {
-    let relay_doc_bytes = state
-        .current_doc
-        .read()
-        .await
-        .as_ref()
-        .map(|doc| doc.len() as u64)
-        .unwrap_or(0);
-    let relay_client_count = *state.client_count.read().await as u64;
-
     Ok(collect_runtime_memory_stats_with_options(
         &app,
-        relay_doc_bytes,
-        relay_client_count,
+        0,
+        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: include_storage_sizes.unwrap_or(true),
             precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
@@ -7869,26 +7326,16 @@ async fn get_runtime_health_history(
 async fn prepare_social_scrape_memory(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    state: tauri::State<'_, RelayState>,
     provider: String,
     operation: String,
 ) -> Result<ScrapeMemoryPreparation, String> {
-    let relay_doc_bytes = state
-        .current_doc
-        .read()
-        .await
-        .as_ref()
-        .map(|doc| doc.len() as u64)
-        .unwrap_or(0);
-    let relay_client_count = *state.client_count.read().await as u64;
-
     Ok(prepare_social_scrape_memory_internal(
         &app,
         Some(&capture.background_runtime),
         &provider,
         &operation,
-        relay_doc_bytes,
-        relay_client_count,
+        0,
+        0,
         None,
     )
     .await)
@@ -7922,116 +7369,12 @@ async fn get_ai_hardware_profile(
     })
 }
 
-/// Relay broadcast volume counters (stability program P0-03, F07/F10).
-/// Aggregated over ~60 s windows so the counter itself cannot bloat
-/// runtime-health.jsonl at full-doc-per-mutation broadcast rates.
-struct RelayBroadcastAggregate {
-    window_started_at: Instant,
-    count: u64,
-    total_bytes: u64,
-}
-
-static RELAY_BROADCAST_AGGREGATE: StdMutex<Option<RelayBroadcastAggregate>> = StdMutex::new(None);
-const RELAY_BROADCAST_AGGREGATE_WINDOW: Duration = Duration::from_secs(60);
-
-/// Fold one broadcast into the current window. Returns the finished window
-/// to flush when this broadcast starts a new one. The trailing window is
-/// flushed by the first broadcast after it closes; a final partial window
-/// with no successor is dropped (acceptable for a rate counter).
-fn relay_broadcast_aggregate_update(
-    slot: &mut Option<RelayBroadcastAggregate>,
-    now: Instant,
-    doc_bytes: u64,
-) -> Option<RelayBroadcastAggregate> {
-    match slot {
-        Some(aggregate)
-            if now.duration_since(aggregate.window_started_at)
-                < RELAY_BROADCAST_AGGREGATE_WINDOW =>
-        {
-            aggregate.count += 1;
-            aggregate.total_bytes = aggregate.total_bytes.saturating_add(doc_bytes);
-            None
-        }
-        _ => {
-            let finished = slot.take();
-            *slot = Some(RelayBroadcastAggregate {
-                window_started_at: now,
-                count: 1,
-                total_bytes: doc_bytes,
-            });
-            finished
-        }
-    }
-}
-
-fn note_relay_broadcast(app: &tauri::AppHandle, doc_bytes: u64, client_count: u64) {
-    let now = Instant::now();
-    let finished = {
-        let mut slot = RELAY_BROADCAST_AGGREGATE.lock().unwrap();
-        relay_broadcast_aggregate_update(&mut slot, now, doc_bytes)
-    };
-    if let Some(aggregate) = finished {
-        append_runtime_health(
-            app,
-            serde_json::json!({
-                "event": "relay_broadcast_aggregate",
-                "count": aggregate.count,
-                "totalBytes": aggregate.total_bytes,
-                "clientCount": client_count,
-                "windowMs": now.duration_since(aggregate.window_started_at).as_millis(),
-            }),
-        );
-    }
-}
-
-/// Push a document update to all connected clients.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(app, state, doc_bytes), fields(bytes = doc_bytes.len())))]
-#[tauri::command]
-async fn broadcast_doc(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-    doc_bytes: Vec<u8>,
-) -> Result<(), String> {
-    let _epoch = state.epoch_gate.read().await;
-    if !state
-        .accepting_doc_updates
-        .load(std::sync::atomic::Ordering::SeqCst)
-    {
-        return Err("sync relay is being factory reset".to_string());
-    }
-    let byte_len = doc_bytes.len() as u64;
-    let doc_bytes = Arc::new(doc_bytes);
-    {
-        let mut current_doc = state.current_doc.write().await;
-        if !state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err("sync relay is being factory reset".to_string());
-        }
-        *current_doc = Some(doc_bytes.clone());
-    }
-    let _ = state.broadcast_tx.send(doc_bytes);
-    let client_count = *state.client_count.read().await as u64;
-    note_relay_broadcast(&app, byte_len, client_count);
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri commands — mDNS + snapshots
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn get_mdns_active(mdns: tauri::State<'_, MdnsState>) -> bool {
-    mdns.0.is_some()
-}
-
 #[tauri::command]
 fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
     let Ok(data_dir) = app.path().app_data_dir() else {
         return vec![];
     };
-    let dir = data_dir.join("snapshots");
+    let dir = data_dir.join("library-backups");
 
     let mut entries: Vec<String> = std::fs::read_dir(&dir)
         .into_iter()
@@ -8039,7 +7382,7 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
-            if name.starts_with("freed-") && name.ends_with(".automerge") {
+            if name.starts_with("sqlite-") && name.ends_with(".sqlite") {
                 Some(name)
             } else {
                 None
@@ -12247,248 +11590,6 @@ async fn medium_scrape_essays(
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket relay
-// ---------------------------------------------------------------------------
-
-fn relay_connection_can_exchange_docs(state: &RelayState, connection_generation: u64) -> bool {
-    state
-        .accepting_doc_updates
-        .load(std::sync::atomic::Ordering::SeqCst)
-        && connection_generation == state.generation.load(std::sync::atomic::Ordering::SeqCst)
-}
-
-fn relay_request_token_matches(query: Option<&str>, expected_token: &str) -> bool {
-    query
-        .and_then(|query| {
-            query.split('&').find_map(|pair| {
-                let mut fields = pair.splitn(2, '=');
-                (fields.next() == Some("t"))
-                    .then(|| fields.next())
-                    .flatten()
-            })
-        })
-        .map(|token| token == expected_token)
-        .unwrap_or(false)
-}
-
-async fn store_relay_client_doc_if_current(
-    state: &RelayState,
-    connection_generation: u64,
-    bytes: Arc<Vec<u8>>,
-) -> bool {
-    let _epoch = state.epoch_gate.read().await;
-    let mut current_doc = state.current_doc.write().await;
-    if !relay_connection_can_exchange_docs(state, connection_generation) {
-        return false;
-    }
-    *current_doc = Some(bytes.clone());
-    let _ = state.broadcast_tx.send(bytes);
-    true
-}
-
-/// Authenticate and handle a single WebSocket connection.
-///
-/// The client must include `?t=<token>` in the upgrade URI.  Any connection
-/// that omits the token or presents an incorrect value is rejected with HTTP
-/// 401 before the WebSocket handshake completes. No data is exchanged.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
-async fn handle_connection(
-    stream: TcpStream,
-    addr: SocketAddr,
-    state: RelayState,
-    app: tauri::AppHandle,
-) {
-    info!("[Sync] New connection from: {}", addr);
-
-    let (expected_token, connection_generation) = {
-        let _epoch = state.epoch_gate.read().await;
-        (
-            state.pairing_token.read().unwrap().clone(),
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-        )
-    };
-    let handshake_token = expected_token.clone();
-    let mut disconnect_rx = state.disconnect_tx.subscribe();
-
-    let ws_stream = match accept_hdr_async(
-        stream,
-        move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = relay_request_token_matches(req.uri().query(), &handshake_token);
-
-            if token_ok {
-                Ok(resp)
-            } else {
-                error!("[Sync] Rejected unauthorized connection from {}", addr);
-                Err(tokio_tungstenite::tungstenite::http::Response::builder()
-                    .status(401)
-                    .body(Some("Unauthorized: rescan the QR code to pair".to_owned()))
-                    .unwrap())
-            }
-        },
-    )
-    .await
-    {
-        Ok(ws) => ws,
-        Err(e) => {
-            // 401 rejections are normal; log everything else
-            if !e.to_string().contains("HTTP error") {
-                error!("[Sync] WebSocket handshake failed: {}", e);
-            }
-            return;
-        }
-    };
-
-    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    let mut broadcast_rx = state.broadcast_tx.subscribe();
-
-    let connected_count = {
-        let _epoch = state.epoch_gate.read().await;
-        let token_is_current =
-            state.pairing_token.read().unwrap().as_str() == expected_token.as_str();
-        if !token_is_current || !relay_connection_can_exchange_docs(&state, connection_generation) {
-            let _ = timeout(
-                SYNC_RELAY_DOC_SEND_TIMEOUT,
-                ws_sender.send(Message::Close(None)),
-            )
-            .await;
-            info!("[Sync] Client {} rejected during relay reset", addr);
-            return;
-        }
-
-        if let Some(doc) = state.current_doc.read().await.clone() {
-            match timeout(
-                SYNC_RELAY_DOC_SEND_TIMEOUT,
-                ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
-            )
-            .await
-            {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    error!("[Sync] Failed to send initial doc: {}", error);
-                    return;
-                }
-                Err(_) => {
-                    error!("[Sync] Timed out sending initial doc to {}", addr);
-                    return;
-                }
-            }
-        }
-
-        let mut count = state.client_count.write().await;
-        *count += 1;
-        *count
-    };
-    info!("[Sync] Client connected. Total: {}", connected_count);
-    let _ = app.emit("sync-client-count", connected_count);
-
-    loop {
-        tokio::select! {
-            msg = ws_receiver.next() => {
-                match msg {
-                    Some(Ok(Message::Binary(data))) => {
-                        // The client pushed a document update. Store and rebroadcast it.
-                        let bytes = Arc::new(data.to_vec());
-                        if !store_relay_client_doc_if_current(
-                            &state,
-                            connection_generation,
-                            bytes,
-                        ).await {
-                            info!("[Sync] Ignored stale client update after relay reset");
-                            break;
-                        }
-                    }
-                    Some(Ok(Message::Close(_))) | None => {
-                        info!("[Sync] Client {} disconnected", addr);
-                        break;
-                    }
-                    Some(Ok(Message::Ping(data))) => {
-                        let _ = ws_sender.send(Message::Pong(data)).await;
-                    }
-                    Some(Err(e)) => {
-                        error!("[Sync] Error from {}: {}", addr, e);
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            broadcast = broadcast_rx.recv() => {
-                if let Ok(doc) = broadcast {
-                    let _epoch = state.epoch_gate.read().await;
-                    if !relay_connection_can_exchange_docs(&state, connection_generation) {
-                        let _ = timeout(
-                            SYNC_RELAY_DOC_SEND_TIMEOUT,
-                            ws_sender.send(Message::Close(None)),
-                        ).await;
-                        info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
-                        break;
-                    }
-                    match timeout(
-                        SYNC_RELAY_DOC_SEND_TIMEOUT,
-                        ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
-                    ).await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            error!("[Sync] Failed to send to {}: {}", addr, error);
-                            break;
-                        }
-                        Err(_) => {
-                            error!("[Sync] Timed out sending to {}", addr);
-                            break;
-                        }
-                    }
-                }
-            }
-            reset = disconnect_rx.recv() => {
-                if reset.is_ok() {
-                    let _ = ws_sender.send(Message::Close(None)).await;
-                    info!("[Sync] Client {} disconnected by factory reset", addr);
-                    break;
-                }
-            }
-        }
-    }
-
-    // Decrement client count and notify frontend
-    {
-        let mut count = state.client_count.write().await;
-        *count = count.saturating_sub(1);
-        let new_count = *count;
-        info!("[Sync] Client disconnected. Total: {}", new_count);
-        let _ = app.emit("sync-client-count", new_count);
-    }
-}
-
-async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
-    let addr = format!("0.0.0.0:{}", state.port);
-
-    let (listener, retries_used) =
-        match bind_sync_relay_listener_with_policy(&addr, DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY)
-            .await
-        {
-            Ok(listener) => listener,
-            Err(e) => {
-                error!("[Sync] Failed to bind to {}: {}", addr, e);
-                return;
-            }
-        };
-
-    if retries_used == 0 {
-        info!("[Sync] Relay server listening on {}", addr);
-    } else {
-        info!(
-            "[Sync] Relay server listening on {} after {} retry attempt(s)",
-            addr, retries_used
-        );
-    }
-
-    while let Ok((stream, addr)) = listener.accept().await {
-        let state = state.clone();
-        let app = app.clone();
-        tokio::spawn(handle_connection(stream, addr, state, app));
-    }
-}
-
-// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -13581,8 +12682,7 @@ fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri:
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // When built with --features perf, initialise a JSON tracing subscriber so
-    // span durations for write_snapshot / prune_snapshots / broadcast_doc are
-    // emitted to stderr. Collect with:
+    // instrumented native span durations are emitted to stderr. Collect with:
     //   RUST_LOG=freed_desktop_lib=trace ./freed-desktop 2>trace.jsonl
     #[cfg(feature = "perf")]
     {
@@ -13594,23 +12694,6 @@ pub fn run() {
             .init();
     }
 
-    let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-    let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-
-    let relay_state = Arc::new(SyncRelayState {
-        port: sync_relay_port(),
-        epoch_gate: RwLock::new(()),
-        broadcast_tx,
-        current_doc: RwLock::new(None),
-        disconnect_tx,
-        generation: std::sync::atomic::AtomicU64::new(0),
-        accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-        client_count: RwLock::new(0),
-        // Populated from disk in .setup() before the relay starts accepting connections.
-        pairing_token: StdRwLock::new(String::new()),
-    });
-
-    let relay_state_clone = relay_state.clone();
     let log_plugin = {
         let builder = tauri_plugin_log::Builder::new()
             .level(log::LevelFilter::Info)
@@ -13638,20 +12721,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(relay_state)
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
-        .manage(library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default())
-        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default())
-        .manage(
-            library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
-        )
-        .manage(library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default())
-        .manage(
-            library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
-        )
-        .manage(library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default())
-        .manage(library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default());
+        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -13693,11 +12765,6 @@ pub fn run() {
             } else {
                 let _ = start_main_window_quietly(&app_handle)?;
             }
-
-            // Load (or generate) the persistent pairing token before the relay
-            // starts accepting connections.
-            let token = load_or_create_token(&data_dir);
-            *relay_state_clone.pairing_token.write().unwrap() = token;
 
             // Build system tray
             let (show_item, quit_item) = build_primary_action_items(app)?;
@@ -14755,8 +13822,7 @@ pub fn run() {
                 }
             });
 
-            info!("[library-core] SQLite Desktop build; legacy LAN relay disabled");
-            app.manage(MdnsState(None));
+            info!("[library-core] SQLite Desktop build");
 
             // Dev-only: auto-trigger a Facebook scrape on startup so we can
             // iterate without manual clicking. Set FB_AUTO_SCRAPE=1 env var.
@@ -14824,13 +13890,9 @@ pub fn run() {
             google_drive_request,
             fetch_binary_url,
             x_api_request,
-            get_local_ip,
-            get_all_local_ips,
-            get_sync_url,
             sha256_file,
             download_local_ai_model_file,
             cancel_local_ai_model_download,
-            get_sync_client_count,
             get_runtime_memory_stats,
             release_main_renderer_memory,
             trim_webkit_network_cache_now,
@@ -14871,49 +13933,11 @@ pub fn run() {
             library_core_desktop_runtime::restore_sqlite_library_backup,
             library_core_desktop_runtime::clear_sqlite_library_backups,
             library_core_desktop_runtime::clear_sqlite_library,
-            library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
-            library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
-            library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,
-            library_core_feed_browse_runtime::cancel_library_core_feed_browse_generation,
-            library_core_feed_browse_runtime::get_library_core_feed_browse_selection,
-            library_core_feed_browse_runtime::select_library_core_feed_browse_generation,
-            library_core_feed_browse_reader_runtime::read_library_core_feed_browse_page,
-            library_core_feed_browse_reader_runtime::cancel_library_core_feed_browse_reader,
-            library_core_saved_feed_runtime::begin_library_core_saved_feed_generation,
-            library_core_saved_feed_runtime::append_library_core_saved_feed_generation_page,
-            library_core_saved_feed_runtime::finalize_library_core_saved_feed_generation,
-            library_core_saved_feed_runtime::cancel_library_core_saved_feed_generation,
-            library_core_saved_feed_runtime::get_library_core_saved_feed_selection,
-            library_core_saved_feed_runtime::select_library_core_saved_feed_generation,
-            library_core_saved_feed_runtime::read_library_core_saved_feed_page,
-            library_core_saved_feed_runtime::cancel_library_core_saved_feed_reader,
-            library_core_external_migration_runtime::begin_library_core_external_migration,
-            library_core_external_migration_runtime::append_library_core_external_migration_chunk,
-            library_core_external_migration_runtime::finalize_library_core_external_migration,
-            library_core_external_migration_runtime::complete_library_core_external_migration,
-            library_core_external_migration_runtime::cancel_library_core_external_migration,
-            library_core_feed_reader_runtime::read_library_core_feed_page,
-            library_core_feed_reader_runtime::read_library_core_item_detail,
-            library_core_feed_reader_runtime::read_library_core_facet_summary,
-            library_core_feed_reader_runtime::read_library_core_saved_analytics,
-            library_core_feed_reader_runtime::read_library_core_persons_graph,
-            library_core_feed_reader_runtime::read_library_core_person_timeline,
-            library_core_feed_reader_runtime::read_library_core_surface_items,
-            library_core_feed_reader_runtime::read_library_core_item_scan_page,
-            library_core_feed_reader_runtime::cancel_library_core_feed_reader,
-            library_core_shadow_runtime::begin_library_core_shadow_projection,
-            library_core_shadow_runtime::apply_library_core_shadow_projection_batch,
-            library_core_shadow_runtime::finalize_library_core_shadow_projection,
-            broadcast_doc,
             clear_factory_reset_runtime_artifacts,
-            reset_pairing_token,
-            factory_reset_sync_relay,
-            resume_sync_relay_after_factory_reset,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
             close_x_login_window,
-            get_mdns_active,
             list_snapshots,
             get_recent_logs,
             start_oauth_server,
@@ -15057,7 +14081,6 @@ mod tests {
         let preserved_files = [
             "release-channel.json",
             "desktop-client-registration.json",
-            "pairing-token",
             "scraper-window-preferences.json",
             "user-agent.json",
         ];
@@ -15065,15 +14088,7 @@ mod tests {
             std::fs::write(data_dir.path().join(name), "installation state").unwrap();
         }
 
-        clear_factory_reset_runtime_artifacts_in(
-            data_dir.path(),
-            &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
-            &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
-            &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default(),
-            &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
-            &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
-            &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
-        )
+        clear_factory_reset_runtime_artifacts_in(data_dir.path())
         .unwrap();
 
         for name in cleared_files {
@@ -15088,142 +14103,8 @@ mod tests {
                 "installation state"
             );
         }
-        clear_factory_reset_runtime_artifacts_in(
-            data_dir.path(),
-            &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
-            &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
-            &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default(),
-            &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
-            &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
-            &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
-        )
+        clear_factory_reset_runtime_artifacts_in(data_dir.path())
         .unwrap();
-    }
-
-    #[tokio::test]
-    async fn factory_reset_relay_rejects_old_clients_and_clears_held_document() {
-        let data_dir = tempfile::tempdir().unwrap();
-        std::fs::write(data_dir.path().join("pairing-token"), "old-token").unwrap();
-        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-        let mut disconnect_rx = disconnect_tx.subscribe();
-        let state = Arc::new(SyncRelayState {
-            port: DEFAULT_SYNC_RELAY_PORT,
-            epoch_gate: RwLock::new(()),
-            broadcast_tx,
-            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
-            disconnect_tx,
-            generation: std::sync::atomic::AtomicU64::new(7),
-            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-            client_count: RwLock::new(1),
-            pairing_token: StdRwLock::new("old-token".to_string()),
-        });
-
-        let mut broadcast_rx = state.broadcast_tx.subscribe();
-        assert!(store_relay_client_doc_if_current(&state, 7, Arc::new(vec![4, 5, 6]),).await);
-        assert_eq!(broadcast_rx.recv().await.unwrap().as_slice(), &[4, 5, 6]);
-
-        let epoch = state.epoch_gate.read().await;
-        let reset_state = state.clone();
-        let reset_data_dir = data_dir.path().to_path_buf();
-        let reset = tokio::spawn(async move {
-            factory_reset_sync_relay_in(&reset_data_dir, &reset_state).await
-        });
-        tokio::task::yield_now().await;
-        assert!(!reset.is_finished());
-        drop(epoch);
-        let new_token = reset.await.unwrap().unwrap();
-
-        assert_ne!(new_token, "old-token");
-        assert_eq!(
-            std::fs::read_to_string(data_dir.path().join("pairing-token")).unwrap(),
-            new_token
-        );
-        assert_eq!(state.pairing_token.read().unwrap().as_str(), new_token);
-        assert!(state.current_doc.read().await.is_none());
-        assert_eq!(
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-            8
-        );
-        assert!(!state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst));
-        assert_eq!(disconnect_rx.recv().await.unwrap(), 8);
-
-        assert!(!store_relay_client_doc_if_current(&state, 7, Arc::new(vec![9, 9, 9])).await);
-        assert!(!store_relay_client_doc_if_current(&state, 8, Arc::new(vec![8, 8, 8])).await);
-        assert!(!relay_connection_can_exchange_docs(&state, 7));
-        assert!(!relay_connection_can_exchange_docs(&state, 8));
-        assert!(state.current_doc.read().await.is_none());
-
-        let drain_state = state.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            *drain_state.client_count.write().await = 0;
-        });
-        wait_for_relay_clients_to_disconnect(&state, Duration::from_millis(100))
-            .await
-            .unwrap();
-
-        state
-            .accepting_doc_updates
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        assert!(!relay_connection_can_exchange_docs(&state, 7));
-        assert!(relay_connection_can_exchange_docs(&state, 8));
-        assert!(!relay_request_token_matches(
-            Some("t=old-token"),
-            &new_token
-        ));
-        let new_query = format!("t={new_token}");
-        assert!(relay_request_token_matches(Some(&new_query), &new_token));
-    }
-
-    #[tokio::test]
-    async fn factory_reset_relay_persistence_failure_preserves_state_and_sessions() {
-        let data_dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(data_dir.path().join("pairing-token")).unwrap();
-        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-        let mut disconnect_rx = disconnect_tx.subscribe();
-        let state = Arc::new(SyncRelayState {
-            port: DEFAULT_SYNC_RELAY_PORT,
-            epoch_gate: RwLock::new(()),
-            broadcast_tx,
-            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
-            disconnect_tx,
-            generation: std::sync::atomic::AtomicU64::new(7),
-            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-            client_count: RwLock::new(1),
-            pairing_token: StdRwLock::new("old-token".to_string()),
-        });
-
-        assert!(factory_reset_sync_relay_in(data_dir.path(), &state)
-            .await
-            .is_err());
-
-        assert_eq!(state.pairing_token.read().unwrap().as_str(), "old-token");
-        assert_eq!(
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-            7
-        );
-        assert!(state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst));
-        assert_eq!(
-            state
-                .current_doc
-                .read()
-                .await
-                .as_deref()
-                .map(|bytes| bytes.as_slice()),
-            Some(&[1, 2, 3][..])
-        );
-        assert_eq!(*state.client_count.read().await, 1);
-        assert!(relay_connection_can_exchange_docs(&state, 7));
-        assert!(matches!(
-            disconnect_rx.try_recv(),
-            Err(broadcast::error::TryRecvError::Empty)
-        ));
     }
 
     #[cfg(unix)]
@@ -15602,96 +14483,6 @@ mod tests {
         assert!(take_window_age_seconds(label).is_some());
         // The destroy consumed the entry.
         assert_eq!(take_window_age_seconds(label), None);
-    }
-
-    #[test]
-    fn relay_broadcast_aggregate_flushes_on_window_rollover() {
-        let mut slot: Option<RelayBroadcastAggregate> = None;
-        let start = Instant::now();
-
-        assert!(relay_broadcast_aggregate_update(&mut slot, start, 100).is_none());
-        assert!(
-            relay_broadcast_aggregate_update(&mut slot, start + Duration::from_secs(10), 200)
-                .is_none()
-        );
-        {
-            let aggregate = slot.as_ref().unwrap();
-            assert_eq!(aggregate.count, 2);
-            assert_eq!(aggregate.total_bytes, 300);
-        }
-
-        let finished = relay_broadcast_aggregate_update(
-            &mut slot,
-            start + RELAY_BROADCAST_AGGREGATE_WINDOW + Duration::from_secs(1),
-            50,
-        )
-        .expect("window rollover flushes the finished aggregate");
-        assert_eq!(finished.count, 2);
-        assert_eq!(finished.total_bytes, 300);
-
-        let successor = slot.as_ref().unwrap();
-        assert_eq!(successor.count, 1);
-        assert_eq!(successor.total_bytes, 50);
-    }
-
-    #[test]
-    fn sync_relay_bind_retry_delay_only_retries_addr_in_use() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 3,
-            retry_delay: Duration::from_millis(25),
-        };
-
-        let addr_in_use = std::io::Error::new(std::io::ErrorKind::AddrInUse, "busy");
-        assert_eq!(
-            sync_relay_bind_retry_delay(policy, &addr_in_use, 0),
-            Some(Duration::from_millis(25))
-        );
-        assert_eq!(sync_relay_bind_retry_delay(policy, &addr_in_use, 3), None);
-
-        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
-        assert_eq!(
-            sync_relay_bind_retry_delay(policy, &permission_denied, 0),
-            None
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn sync_relay_bind_listener_retries_until_the_port_is_released() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 10,
-            retry_delay: Duration::from_millis(10),
-        };
-        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = occupied.local_addr().unwrap();
-        let addr_string = addr.to_string();
-
-        let release_task = tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(35)).await;
-            drop(occupied);
-        });
-
-        let (listener, retries_used) = bind_sync_relay_listener_with_policy(&addr_string, policy)
-            .await
-            .unwrap();
-        assert!(retries_used > 0);
-        drop(listener);
-        release_task.await.unwrap();
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn sync_relay_bind_listener_stops_after_retry_budget() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 2,
-            retry_delay: Duration::from_millis(5),
-        };
-        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr_string = occupied.local_addr().unwrap().to_string();
-
-        let error = bind_sync_relay_listener_with_policy(&addr_string, policy)
-            .await
-            .unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
-        drop(occupied);
     }
 
     #[test]

@@ -119,7 +119,6 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(diagnostics?.textContent).toContain("10,288");
     expect(diagnostics?.textContent).toContain("No remote changes found.");
     expect(diagnostics?.textContent).toContain("Waiting for local document changes or Sync now.");
-    expect(diagnostics?.textContent).toContain("Checked cloud storage. No remote changes found.");
     expect(container.querySelector("[data-testid='multiple-desktop-client-warning']")).toBeNull();
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
@@ -145,10 +144,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(warning?.getAttribute("role")).toBe("alert");
     expect(warning?.textContent).toContain("Multiple Freed Desktop clients detected");
     expect(warning?.textContent).toContain("2 Freed Desktop clients are registered");
-    expect(warning?.textContent).toContain("duplicate request traffic for the account");
-    expect(warning?.textContent).toContain("Use one Freed Desktop for polling");
-    expect(warning?.textContent).toContain("PWA devices for reading");
-    expect(warning?.textContent).toContain("not live presence");
+    expect(warning?.textContent).toContain("Only the current writer may publish SQLite Library revisions");
 
     const dismiss = Array.from(warning?.querySelectorAll("button") ?? []).find(
       (button) => button.textContent === "Got it",
@@ -182,7 +178,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
       "[data-testid='sqlite-writer-transfer-button']",
     );
     expect(transfer?.textContent).toBe("Make This Freed Desktop the Writer");
-    expect(container.textContent).toContain("The previous installation will become read-only");
+    expect(container.textContent).toContain("Transfer ownership here to publish from this installation");
 
     await act(async () => {
       transfer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -194,115 +190,4 @@ describe("MobileSyncTab cloud diagnostics", () => {
     confirmMock.mockRestore();
   });
 
-  it("lets the user choose a winner when a destructive cloud merge is blocked", async () => {
-    useDebugStore.setState({
-      cloudProviders: {
-        dropbox: { status: "idle" },
-        gdrive: {
-          status: "connected",
-          stage: "upload",
-          error: "Freed blocked a sync merge because it would remove too much feed history.",
-          statusMessage: "Watching for local document changes.",
-        },
-      },
-    });
-    const confirmMock = vi.spyOn(window, "confirm");
-
-    await act(async () => {
-      root.render(<MobileSyncTab />);
-    });
-
-    const recovery = container.querySelector("[data-testid='cloud-sync-conflict-recovery']");
-    const keepLocal = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-local-button']");
-    const keepCloud = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-cloud-button']");
-
-    expect(recovery?.textContent).toContain("Choose which copy should win.");
-    expect(recovery?.textContent).toContain("Keep this device replaces the cloud backup.");
-    expect(container.textContent).toContain("Upload has not completed because sync needs attention.");
-    expect(container.textContent).not.toContain("Uploading now.");
-    expect(keepLocal).toBeInstanceOf(HTMLButtonElement);
-    expect(keepCloud).toBeInstanceOf(HTMLButtonElement);
-
-    await act(async () => {
-      keepLocal?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(confirmMock).not.toHaveBeenCalled();
-    expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "local");
-
-    await act(async () => {
-      keepCloud?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "cloud");
-    confirmMock.mockRestore();
-  });
-
-  it("keeps the destructive merge recovery visible while a winner is applying", async () => {
-    let finishRecovery!: () => void;
-    mocks.resolveCloudSyncConflict.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        finishRecovery = resolve;
-      }),
-    );
-    useDebugStore.setState({
-      cloudProviders: {
-        dropbox: { status: "idle" },
-        gdrive: {
-          status: "connected",
-          stage: "idle",
-          error: "Freed blocked a sync merge because it would remove too much feed history.",
-          statusMessage: "Watching for local document changes.",
-        },
-      },
-    });
-    const confirmMock = vi.spyOn(window, "confirm");
-
-    await act(async () => {
-      root.render(<MobileSyncTab />);
-    });
-
-    const keepLocal = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-local-button']");
-    await act(async () => {
-      keepLocal?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(container.querySelector("[data-testid='cloud-sync-keep-local-spinner']")).toBeTruthy();
-    expect(keepLocal?.disabled).toBe(true);
-    expect(confirmMock).not.toHaveBeenCalled();
-
-    await act(async () => {
-      useDebugStore.setState({
-        cloudProviders: {
-          dropbox: { status: "idle" },
-          gdrive: {
-            status: "connected",
-            stage: "upload",
-            statusMessage: "Replacing the cloud backup with this device.",
-            pendingReason: "Applying the selected sync recovery path.",
-            error: undefined,
-          },
-        },
-      });
-      await Promise.resolve();
-    });
-
-    const recovery = container.querySelector("[data-testid='cloud-sync-conflict-recovery']");
-    const syncNow = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-now-button']");
-    const localSpinner = container.querySelector("[data-testid='cloud-sync-keep-local-spinner']");
-
-    expect(recovery?.textContent).toContain("Choose which copy should win.");
-    expect(recovery?.textContent).toContain("Replacing...");
-    expect(localSpinner).toBeTruthy();
-    expect(syncNow?.disabled).toBe(true);
-
-    await act(async () => {
-      finishRecovery();
-      await Promise.resolve();
-    });
-    confirmMock.mockRestore();
-  });
 });

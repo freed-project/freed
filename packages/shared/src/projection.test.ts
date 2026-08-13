@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -237,33 +235,4 @@ describe("feed item projection", () => {
     expect((back.author as Record<string, unknown>).displayName).toBe("Somebody Else");
     expect(back).not.toStrictEqual(complete);
   });
-});
-
-/**
- * The synthetic cases above were all written after the fact, each one pinning
- * something the corpus run had already caught. That ordering is the point: the
- * real document found two bugs that no case here would have been written to
- * look for. It stays opt-in because the fixture is the owner's private data and
- * cannot live in the repository.
- */
-const fixture = process.env.FREED_CORPUS_FIXTURE;
-const hasFixture = fixture !== undefined && fixture !== "" && existsSync(fixture);
-
-describe.skipIf(!hasFixture)("projection against a real corpus", () => {
-  it("loses nothing across every item in the document", async () => {
-    const automerge = await import("@automerge/automerge");
-    const doc = automerge.load(new Uint8Array(readFileSync(fixture as string)));
-    const items = Object.keys((doc as { feedItems?: object }).feedItems ?? {}).length;
-    expect(items).toBeGreaterThan(0);
-
-    const mismatches = diffProjection(doc as never);
-    if (mismatches.length > 0) {
-      const sample = mismatches
-        .slice(0, 10)
-        .map((m) => `${m.globalId} ${m.path}: ${String(m.original)} -> ${String(m.roundTripped)}`);
-      throw new Error(
-        `${mismatches.length} of ${items} items did not survive the round trip:\n${sample.join("\n")}`,
-      );
-    }
-  }, 120_000);
 });

@@ -167,7 +167,7 @@ export class AppFixture {
     await this.page.evaluate(
       async ({ count, feedUrl }) => {
         const w = window as Record<string, unknown>;
-        const automerge = w.__FREED_AUTOMERGE__ as {
+        const automerge = w.__FREED_LIBRARY_CORE__ as {
           docBatchImportItems: (items: unknown[]) => Promise<unknown>;
         };
 
@@ -240,7 +240,7 @@ export class AppFixture {
   async seedFriendLocation(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docAddPerson: (person: unknown) => Promise<void>;
         docAddAccount: (account: unknown) => Promise<void>;
         docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -342,7 +342,7 @@ export class AppFixture {
   async seedAllContentLocationsWithoutFriends(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docAddFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {

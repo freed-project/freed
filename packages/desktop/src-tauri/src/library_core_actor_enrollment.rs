@@ -21,7 +21,7 @@
 //! recognized as a replay. An already-enrolled actor is therefore returned
 //! from storage without rebuilding anything.
 
-use crate::automerge_external_common::{is_lower_sha256, lower_hex};
+use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_authority_genesis::load_established_authority_key_pair;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,

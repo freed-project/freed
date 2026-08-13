@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import type { DocChangeEvent } from "./automerge-types";
+import type { DocChangeEvent } from "./library-types";
 import type { ConfirmFn } from "./outbox";
 import type { PlatformActions } from "./platform-actions";
 
@@ -549,7 +549,7 @@ describe("outbox processor", () => {
         likedAt: 60,
         likedSyncedAt: -1,
       })),
-      mutation: "MERGE_DOC",
+      mutation: "BATCH_IMPORT_ITEMS",
     });
     await vi.advanceTimersByTimeAsync(5_000);
 

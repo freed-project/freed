@@ -22,7 +22,7 @@ if (import.meta.env.VITE_TEST_TAURI) {
   const w = window as unknown as Record<string, unknown>;
   w.__FREED_STORE__ = useAppStore;
   // Historical E2E name retained only inside test builds.
-  w.__FREED_AUTOMERGE__ = libraryClient;
+  w.__FREED_LIBRARY_CORE__ = libraryClient;
   w.__FREED_GRAPH_DEBUG_ENABLED__ = true;
 }
 

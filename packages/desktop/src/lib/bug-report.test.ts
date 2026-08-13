@@ -51,7 +51,7 @@ describe("desktop bug reporting", () => {
           "/Users/alice/Library/Application Support/Freed/logs/app.log",
         ];
       }
-      if (command === "list_snapshots") return ["freed-123.automerge"];
+      if (command === "list_snapshots") return ["sqlite-123.sqlite"];
       return null;
     });
     recordRuntimeError({

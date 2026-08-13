@@ -2,7 +2,7 @@ import {
   encodeLibraryCoreCanonicalValue,
   type LibraryCoreCanonicalValue,
 } from "@freed/shared/library-core";
-import type { GoogleDriveFetch } from "@freed/sync/cloud";
+import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
 import {
   listSqliteLibraryBackups,
   readSqliteLibraryBackupChunk,

@@ -54,37 +54,7 @@ const tauriMockExclude = process.env.VITE_TEST_TAURI
   ? Object.keys(tauriMockAliases)
   : [];
 
-// Product code imports the SQLite-only Library client. Browser and unit tests
-// retain the historical in-memory harness so UI coverage does not need a native
-// process. These aliases do not exist in production builds.
-const libraryClientTestAliases: Record<string, string> =
-  process.env.VITE_TEST_TAURI || process.env.VITEST
-    ? {
-        "./library-client": rootFile("src/lib/automerge.ts"),
-        "./lib/library-client": rootFile("src/lib/automerge.ts"),
-      }
-    : {};
-const isProductionLibraryBuild =
-  !process.env.VITE_TEST_TAURI && !process.env.VITEST;
-
-// Vite normalizes relative imports against their importer before its alias
-// table sees them. Resolve these two historical entry points at enforce:pre so
-// a production bundle cannot retain the mutable-document cloud worker merely
-// because sync.ts still exposes compatibility-shaped functions.
-const retiredProductionResolver = {
-  name: "resolve-retired-desktop-library-runtime",
-  enforce: "pre" as const,
-  resolveId(source: string) {
-    if (!isProductionLibraryBuild) return null;
-    if (source === "./legacy-cloud-sync-entry") {
-      return rootFile("src/lib/retired-legacy-cloud-sync.ts");
-    }
-    if (source === "./cloud-merge") {
-      return rootFile("src/lib/retired-legacy-cloud-merge.ts");
-    }
-    return null;
-  },
-};
+const libraryClientTestAliases: Record<string, string> = {};
 
 const rejectRetiredDesktopLibraryAssets = {
   name: "reject-retired-desktop-library-assets",
@@ -131,19 +101,16 @@ export default defineConfig({
       ...tauriMockAliases,
     },
   },
-  // Test builds retain the historical Automerge harness. Production imports
-  // the SQLite-only client and rejects any retired worker or WASM artifact.
+  // Production bundles reject retired document workers and WASM artifacts.
   worker: {
     format: "es",
     plugins: () => [
-      retiredProductionResolver,
       rejectRetiredDesktopLibraryAssets,
       wasm(),
       topLevelAwait(),
     ],
   },
   plugins: [
-    retiredProductionResolver,
     rejectRetiredDesktopLibraryAssets,
     wasm(),
     topLevelAwait(),

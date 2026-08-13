@@ -149,7 +149,6 @@ const DEBUG_JOB_PATTERNS: Array<[RegExp, BackgroundActivityJobKind]> = [
   [/^\[Fetcher\]/, "content-fetch"],
   [/^\[Semantic classifier\]/, "semantic-classifier"],
   [/^\[background-runtime\]/, "runtime-gated"],
-  [/^\[automerge-worker\]/, "snapshot"],
 ];
 
 function activityId(input: StartBackgroundActivityInput): string {

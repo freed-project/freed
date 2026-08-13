@@ -108,7 +108,7 @@ import {
   docToggleLiked,
   docConfirmLikedSynced,
   docConfirmSeenSynced,
-  quiesceDesktopAutomergeForFactoryReset,
+  quiesceDesktopLibraryForFactoryReset,
   type DocChangeEvent,
   type DocState,
 } from "./library-client";
@@ -144,7 +144,6 @@ import {
   recordDocumentHydrated,
   recordDocumentHydrationStarted,
 } from "./memory-monitor";
-import { onCloudReconciled } from "./cloud-reconcile-signal";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
@@ -154,9 +153,6 @@ import {
 
 let outboxTeardown: (() => void) | null = null;
 let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
-// Unsubscribes the pending "run maintenance once cloud reconciles" waiter, so a
-// re-initialize does not stack duplicate waiters.
-let cancelPendingCloudReconcileMaintenance: (() => void) | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalBackfillRunning = false;
 let appInitializationPromise: Promise<void> | null = null;
@@ -630,17 +626,6 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   }
 }
 
-function hasStoredCloudSyncCredentials(): boolean {
-  try {
-    return (
-      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
-      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
-    );
-  } catch {
-    return false;
-  }
-}
-
 const STARTUP_MAINTENANCE_INITIAL_DELAY_MS = 15 * 60 * 1000;
 const READ_MARK_BATCH_DELAY_MS = 50;
 const pendingReadIds = new Set<string>();
@@ -876,9 +861,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         documentSubscriptionTeardown = subscribe((state: DocState, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
           if (
-            event.mutation === "MERGE_DOC"
-            || event.mutation === "REPLACE_DOC"
-            || event.mutation === "REMOVE_PERSON"
+            event.mutation === "REMOVE_PERSON"
             || event.mutation === "REMOVE_ACCOUNT"
           ) {
             pruneDeviceGraphLayout(state.persons, state.accounts);
@@ -1008,28 +991,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           scanLibraryCoreItems,
         );
 
-        // Do not mutate the local doc before cloud sync has reconciled it.
-        //
-        // Run cleanup migrations later either way. On large local libraries,
-        // immediate maintenance can force another full Automerge load while the
-        // renderer is still recovering from initial hydration.
-        //
-        // With cloud credentials present this used to skip maintenance outright,
-        // which made the deferral permanent rather than deferred: archive
-        // pruning never ran on a machine with a cloud provider connected, and
-        // the document grew without bound. Wait for the reconciliation signal
-        // instead, so pruning still happens, just after the remote copy has been
-        // merged in.
+        // Schedule bounded local SQLite maintenance after initial hydration.
         const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
-        if (hasStoredCloudSyncCredentials() && !isSqliteLibraryActive()) {
-          cancelPendingCloudReconcileMaintenance?.();
-          cancelPendingCloudReconcileMaintenance = onCloudReconciled(() => {
-            cancelPendingCloudReconcileMaintenance = null;
-            scheduleStartupMigrations(archivePruneDays);
-          });
-        } else {
-          scheduleStartupMigrations(archivePruneDays);
-        }
+        scheduleStartupMigrations(archivePruneDays);
       } catch (error) {
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
         recordBugReportEvent("desktop:initialize", "error", "Initialization failed");
@@ -1558,7 +1522,7 @@ export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   readMarkBatchWaiters = [];
   readWaiters.forEach((resolve) => resolve());
 
-  await quiesceDesktopAutomergeForFactoryReset();
+  await quiesceDesktopLibraryForFactoryReset();
 
   const results = await Promise.allSettled([
     stopAndDrainOutboxProcessor(),

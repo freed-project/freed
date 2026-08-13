@@ -63,7 +63,6 @@ import {
 import {
   clearLocalDoc,
   acquireLegacyRendererItems,
-  getCachedDocStats,
 } from "./lib/library-client";
 import {
   openBoundedDesktopFeedReader,
@@ -589,7 +588,6 @@ function App() {
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
     startMemoryMonitor({
-      getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
         stopContentFetcher();
         stopSemanticClassifier();
@@ -1057,9 +1055,6 @@ function App() {
           phaseTimeoutMs: 255_000,
           trackedWorkDrainTimeoutMs: 240_000,
           quiesceLocalWriters: [
-            async () => {
-              await invoke("factory_reset_sync_relay");
-            },
             quiesceDesktopProviderAuthForFactoryReset,
             quiesceDesktopOAuthForFactoryReset,
             quiesceDesktopStoreForFactoryReset,
@@ -1108,7 +1103,6 @@ function App() {
           },
           clearDocument: async () => {
             await clearLocalDoc();
-            await invoke("resume_sync_relay_after_factory_reset");
           },
         });
         clearFactoryResetCloudCleanupBarrier();
@@ -1117,18 +1111,12 @@ function App() {
       onFailure: (error) => {
         const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
         const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
-        if (recovery.resumeRelay) {
-          void invoke("resume_sync_relay_after_factory_reset").catch(() => undefined);
-        }
         toast.error(recovery.message);
       },
     });
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
-    if (isSqliteLibraryActive()) {
-      throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
-    }
     await restartCloudSync(provider);
   }, []);
 
@@ -1140,9 +1128,6 @@ function App() {
   }, []);
 
   const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
-    if (isSqliteLibraryActive()) {
-      throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
-    }
     clearCloudProvider(provider);
     const lifecycle = captureCloudLifecycle(provider);
     try {
@@ -1365,8 +1350,8 @@ function App() {
         });
         return exportLibrary(items);
       },
-      retryCloudProvider: isSqliteLibraryActive() ? undefined : retryCloudProvider,
-      reconnectCloudProvider: isSqliteLibraryActive() ? undefined : reconnectCloudProvider,
+      retryCloudProvider,
+      reconnectCloudProvider,
       forgetRssFeedHealth,
       syncRssNow: refreshRssFeeds,
       syncSourceNow: async (sourceId) => {

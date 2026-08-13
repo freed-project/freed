@@ -37,9 +37,9 @@ const {
   mockDocUpdateRssFeed: vi.fn(),
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   initDoc: vi.fn(),
-  quiesceDesktopAutomergeForFactoryReset: vi.fn(() => Promise.resolve()),
+  quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
   subscribe: vi.fn(() => () => {}),
   getDocState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),

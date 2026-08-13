@@ -929,6 +929,23 @@ export interface LegacyDeviceContact {
   importedAt: number;
 }
 
+/** Historical Friend row retained only for deterministic Library import. */
+export interface LegacyFriend {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  bio?: string;
+  sources: LegacyFriendSource[];
+  contact?: LegacyDeviceContact;
+  careLevel: 1 | 2 | 3 | 4 | 5;
+  reachOutIntervalDays?: number;
+  reachOutLog?: ReachOutLog[];
+  tags?: string[];
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /**
  * A single reach-out event logged by the user.
  */
@@ -1057,6 +1074,16 @@ export interface DocumentMeta {
 
   /** Document version for migrations */
   version: number;
+}
+
+/** Portable Library shell imported into native SQLite. */
+export interface FreedDoc {
+  feedItems: Record<string, FeedItem>;
+  rssFeeds: Record<string, RssFeed>;
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  preferences: UserPreferences;
+  meta: DocumentMeta;
 }
 
 // =============================================================================

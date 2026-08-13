@@ -13,9 +13,11 @@ import type {
   FacebookCapturePreferences,
   FbGroupInfo,
   FeedItem,
+  FreedDoc,
   FriendSuggestionPreferences,
   Highlight,
   LegacyDeviceContact,
+  LegacyFriend,
   LegacyFriendSource,
   LinkPreview,
   Location,
@@ -38,11 +40,7 @@ import type {
   XAccount,
   XCapturePreferences,
 } from "../types.js";
-import type {
-  DesktopClientKeyPrefix,
-  FreedDoc,
-  LegacyFriend,
-} from "../schema.js";
+type DesktopClientKeyPrefix = "desktopClient:";
 import type {
   LibraryCoreActivationBlocker,
   LibraryCoreCurrentAuthority,
