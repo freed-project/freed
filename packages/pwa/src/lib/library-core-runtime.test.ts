@@ -26,10 +26,12 @@ import {
   PWA_LIBRARY_CORE_ENABLED_KEY,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
+  enqueuePwaLibraryCoreDeleteAllArchived,
   isPwaLibraryCoreEnabled,
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreFeedItemRemove,
+  enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
@@ -133,6 +135,59 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
     expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
       entityId: "item-9",
+      removedAtMs: expect.any(Number),
+    });
+  });
+
+  it("repairs saved archived items without waking Automerge", async () => {
+    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:unarchive" });
+    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
+      entries: [
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "saved-archived",
+          userState: { saved: true, archived: true },
+        } } },
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "plain-archived",
+          userState: { archived: true },
+        } } },
+      ],
+      nextOrdinal: null,
+    });
+
+    await enqueuePwaLibraryCoreUnarchiveSavedItems();
+
+    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
+      {
+        assigned: false,
+        assignedAtMs: expect.any(Number),
+        entityId: "saved-archived",
+        field: "archived",
+      },
+    ]);
+  });
+
+  it("deletes only archived unsaved items without waking Automerge", async () => {
+    mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
+    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
+      entries: [
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "plain-archived",
+          userState: { archived: true },
+        } } },
+        { value: { registry_key: "10_feed_items", row: {
+          globalId: "saved-archived",
+          userState: { saved: true, archived: true },
+        } } },
+      ],
+      nextOrdinal: null,
+    });
+
+    await enqueuePwaLibraryCoreDeleteAllArchived();
+
+    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
+    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
+      entityId: "plain-archived",
       removedAtMs: expect.any(Number),
     });
   });

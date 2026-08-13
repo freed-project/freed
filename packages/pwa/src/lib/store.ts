@@ -111,9 +111,11 @@ import { pinReaderItemInPwa } from "./reader-cache";
 import {
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
+  enqueuePwaLibraryCoreDeleteAllArchived,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
+  enqueuePwaLibraryCoreUnarchiveSavedItems,
   enqueuePwaLibraryCoreUserStateToggle,
   initializePwaLibraryCoreState,
   isPwaLibraryCoreEnabled,
@@ -701,10 +703,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   unarchiveSavedItems: async () => {
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreUnarchiveSavedItems();
+      return;
+    }
     await docUnarchiveSavedItems();
   },
 
   deleteAllArchived: async () => {
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreDeleteAllArchived();
+      return;
+    }
     await docDeleteAllArchived();
   },
 

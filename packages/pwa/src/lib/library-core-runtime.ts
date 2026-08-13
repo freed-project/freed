@@ -322,6 +322,47 @@ export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
   );
 }
 
+/** Repair every saved and archived item through bounded IndexedDB scans. */
+export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> {
+  let pending: string[] = [];
+  await scanPwaLibraryCoreItems(async (items) => {
+    for (const item of items) {
+      if (!item.userState.saved || !item.userState.archived) continue;
+      pending.push(item.globalId);
+      if (pending.length === LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT) {
+        const batch = pending;
+        pending = [];
+        await enqueuePwaLibraryCoreUserStateAssignments(
+          batch,
+          "archived",
+          false,
+        );
+      }
+    }
+    return "continue" as const;
+  });
+  await enqueuePwaLibraryCoreUserStateAssignments(
+    pending,
+    "archived",
+    false,
+  );
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Delete every archived, unsaved item through bounded IndexedDB scans. */
+export async function enqueuePwaLibraryCoreDeleteAllArchived(): Promise<void> {
+  await scanPwaLibraryCoreItems(async (items) => {
+    for (const item of items) {
+      if (!item.userState.archived || item.userState.saved) continue;
+      await enqueuePwaLibraryCoreFeedItemRemove(item.globalId);
+    }
+    return "continue" as const;
+  });
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
 /** Queue the explicit state selected by a local toggle gesture. */
 export async function enqueuePwaLibraryCoreUserStateToggle(
   globalId: string,
