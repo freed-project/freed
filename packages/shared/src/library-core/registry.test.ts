@@ -66,9 +66,7 @@ import {
   LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
   LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER,
 } from "./facet-summary-contracts.js";
-import {
-  LIBRARY_CORE_FIELD_REGISTRY,
-} from "./field-registry.js";
+import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
@@ -77,6 +75,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
@@ -86,6 +85,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+  PERSON_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
@@ -181,7 +181,8 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
-    transactionMemberSchema: FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+    transactionMemberSchema:
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `toggleArchived`. Algebra stays open: archive and save are
   // coupled by an exclusion invariant no single-leaf contract can express.
@@ -237,7 +238,10 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // Traced from `addPerson` / `updatePerson` and the friend and connection
   // surfaces that funnel into them.
   person_upsert: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: PERSON_UPSERT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys: PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema: PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `addAccount` / `updateAccount`.
   account_upsert: {
@@ -408,8 +412,11 @@ describe("Library Core operation registry", () => {
       // read as closed coverage it does not have.
       expect(keys.length).toBeGreaterThan(0);
       for (const key of keys) {
-        expect({ operationId, key, isKnownLeaf: knownLeaves.has(key) })
-          .toStrictEqual({ operationId, key, isKnownLeaf: true });
+        expect({
+          operationId,
+          key,
+          isKnownLeaf: knownLeaves.has(key),
+        }).toStrictEqual({ operationId, key, isKnownLeaf: true });
       }
       expect([...keys]).toStrictEqual([...keys].sort(compareCodeUnits));
       expect(new Set(keys).size).toBe(keys.length);
@@ -468,27 +475,31 @@ describe("Library Core operation registry", () => {
     // The account assignment sets personId and stamps updatedAt. Declaring the
     // whole account surface would overstate it, exactly as it would for the
     // feed title assignment.
-    expect([...ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([
-        "library-core-v1:accounts.{accountId}.personId",
-        "library-core-v1:accounts.{accountId}.updatedAt",
-      ]);
-    expect(
-      ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length,
-    ).toBeGreaterThan(ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS.length);
+    expect([
+      ...ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      "library-core-v1:accounts.{accountId}.personId",
+      "library-core-v1:accounts.{accountId}.updatedAt",
+    ]);
+    expect(ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length).toBeGreaterThan(
+      ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    );
     for (const key of ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS) {
       expect(ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
     }
 
     // The backfill re-runs semantic enrichment, so it writes both enrichment
     // subtrees and nothing outside them.
-    const backfill = FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS;
+    const backfill =
+      FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS;
     expect(backfill.length).toBeGreaterThan(3);
     for (const key of backfill) {
       expect(
         key.includes(".contentSignals.") || key.includes(".eventCandidate."),
       ).toBe(true);
-      expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+      expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(
+        key,
+      );
     }
     // Both halves are present. A filter that matched only one subtree would
     // understate the enrichment call.
@@ -496,7 +507,9 @@ describe("Library Core operation registry", () => {
     expect(backfill.some((key) => key.includes(".eventCandidate."))).toBe(true);
 
     // It must not claim the item body it never touches.
-    expect(backfill).not.toContain("library-core-v1:feedItems.{globalId}.content.text");
+    expect(backfill).not.toContain(
+      "library-core-v1:feedItems.{globalId}.content.text",
+    );
   });
 
   it("declares bulk repairs by reference to their single-item counterparts", () => {
@@ -539,7 +552,9 @@ describe("Library Core operation registry", () => {
     expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
       LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
     );
-    expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toHaveLength(2);
+    expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toHaveLength(
+      2,
+    );
   });
 
   it("keeps the feed item written sets faithful to their mutators", () => {
@@ -558,25 +573,32 @@ describe("Library Core operation registry", () => {
           (entry) => entry.registryKey === excluded,
         ),
       ).toBe(true);
-      expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
-        excluded,
-      );
+      expect(
+        FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+      ).not.toContain(excluded);
     }
 
     // The like assignment writes all three like leaves together, including the
     // receipt leaf it clears.
-    expect([...FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([
-        "library-core-v1:feedItems.{globalId}.userState.liked",
-        "library-core-v1:feedItems.{globalId}.userState.likedAt",
-        "library-core-v1:feedItems.{globalId}.userState.likedSyncedAt",
-      ]);
+    expect([
+      ...FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      "library-core-v1:feedItems.{globalId}.userState.liked",
+      "library-core-v1:feedItems.{globalId}.userState.likedAt",
+      "library-core-v1:feedItems.{globalId}.userState.likedSyncedAt",
+    ]);
 
     // Each receipt writes exactly one leaf, and they are different leaves.
-    expect([...FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual(["library-core-v1:feedItems.{globalId}.userState.seenSyncedAt"]);
-    expect([...FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual(["library-core-v1:feedItems.{globalId}.userState.likedSyncedAt"]);
+    expect([
+      ...FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      "library-core-v1:feedItems.{globalId}.userState.seenSyncedAt",
+    ]);
+    expect([
+      ...FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      "library-core-v1:feedItems.{globalId}.userState.likedSyncedAt",
+    ]);
 
     // Every narrow feed item set is a subset of the capture surface, which is
     // what makes the widths a hierarchy rather than four independent guesses.
@@ -587,7 +609,9 @@ describe("Library Core operation registry", () => {
     ]) {
       expect(narrow.length).toBeGreaterThan(0);
       for (const key of narrow) {
-        expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+        expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(
+          key,
+        );
       }
     }
   });
@@ -596,10 +620,17 @@ describe("Library Core operation registry", () => {
     // The four graph leaves are device-local. They are one screen's layout, so
     // replicating them would rearrange every other device's graph.
     for (const root of ["persons", "accounts"] as const) {
-      for (const leaf of ["graphX", "graphY", "graphPinned", "graphUpdatedAt"]) {
+      for (const leaf of [
+        "graphX",
+        "graphY",
+        "graphPinned",
+        "graphUpdatedAt",
+      ]) {
         const key = `library-core-v1:${root}.{${root === "persons" ? "personId" : "accountId"}}.${leaf}`;
         expect(
-          LIBRARY_CORE_FIELD_REGISTRY.some((entry) => entry.registryKey === key),
+          LIBRARY_CORE_FIELD_REGISTRY.some(
+            (entry) => entry.registryKey === key,
+          ),
         ).toBe(true);
         expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(key);
         expect(ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(key);
@@ -608,18 +639,19 @@ describe("Library Core operation registry", () => {
 
     // `logReachOut` appends one entry and touches nothing else, so its set must
     // stay the three log leaves rather than widening to the person surface.
-    expect([...PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([
-        "library-core-v1:persons.{personId}.reachOutLog[].channel",
-        "library-core-v1:persons.{personId}.reachOutLog[].loggedAt",
-        "library-core-v1:persons.{personId}.reachOutLog[].notes",
-      ]);
+    expect([
+      ...PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      "library-core-v1:persons.{personId}.reachOutLog[].channel",
+      "library-core-v1:persons.{personId}.reachOutLog[].loggedAt",
+      "library-core-v1:persons.{personId}.reachOutLog[].notes",
+    ]);
     for (const key of PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS) {
       expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
     }
-    expect(
-      PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length,
-    ).toBeGreaterThan(PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS.length);
+    expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length).toBeGreaterThan(
+      PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    );
 
     // `person_restore` has no store surface and no worker request, so there is
     // nothing to trace and its blocker stays. Asserted so a later declaration
@@ -638,8 +670,9 @@ describe("Library Core operation registry", () => {
   it("keeps the rss feed written sets faithful to their mutators", () => {
     // `renameFeed` sends only `{ title }`. The operation is a title
     // assignment, so declaring the whole feed surface would overstate it.
-    expect([...RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY]);
+    expect([
+      ...RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY]);
 
     // The upsert union is broader and must contain the title, since
     // `updateRssFeed` and the batch refresh both write it.
@@ -666,35 +699,39 @@ describe("Library Core operation registry", () => {
           (entry) => entry.registryKey === excluded,
         ),
       ).toBe(true);
-      expect(RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(excluded);
-      expect(RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
+      expect(RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
         excluded,
       );
+      expect(
+        RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+      ).not.toContain(excluded);
     }
   });
 
   it("keeps saved and archived written-leaf sets faithful to the legacy mutators", () => {
     // `toggleArchived` writes only archive state; it reads `saved` as a
     // precondition and must not claim to write it.
-    expect([...FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([
-        LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
-        LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
-      ]);
-    expect(FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
-      LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
-    );
+    expect([
+      ...FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
+      LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
+    ]);
+    expect(
+      FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ).not.toContain(LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY);
 
     // `toggleSaved` clears archive state on the save path, so it genuinely
     // writes all four leaves. Omitting the archive pair would hide the
     // coupling that keeps the algebra unresolved.
-    expect([...FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
-      .toStrictEqual([
-        LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
-        LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
-        LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
-        LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
-      ]);
+    expect([
+      ...FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]).toStrictEqual([
+      LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
+      LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
+      LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
+      LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
+    ]);
 
     // The coupling is the whole reason both stay blocked. If either ever
     // declares an algebra, that claim must be reviewed, not inherited.
@@ -717,9 +754,9 @@ describe("Library Core operation registry", () => {
     for (const operationId of LIBRARY_CORE_OPERATION_IDS.filter((id) =>
       id.includes("_frozen"),
     )) {
-      expect(
-        LIBRARY_CORE_OPERATION_REGISTRY[operationId].blockers,
-      ).toContain("frozen_bulk_contract_unresolved");
+      expect(LIBRARY_CORE_OPERATION_REGISTRY[operationId].blockers).toContain(
+        "frozen_bulk_contract_unresolved",
+      );
     }
 
     expect(
@@ -759,9 +796,7 @@ describe("Library Core operation registry", () => {
       LIBRARY_CORE_OPERATION_REGISTRY.feed_item_capture_upsert,
     ).toMatchObject({
       intendedAuthority: "capture_ingest",
-      blockers: expect.arrayContaining([
-        "capture_source_authority_unresolved",
-      ]),
+      blockers: expect.arrayContaining(["capture_source_authority_unresolved"]),
     });
     expect(
       LIBRARY_CORE_OPERATION_REGISTRY.feed_items_deduplicate_frozen,
@@ -778,9 +813,9 @@ describe("Library Core operation registry", () => {
       "feed_items_deduplicate_frozen",
       "rss_feeds_heal_untitled_frozen",
     ] as const) {
-      expect(
-        LIBRARY_CORE_OPERATION_REGISTRY[operationId].blockers,
-      ).toContain("frozen_bulk_contract_unresolved");
+      expect(LIBRARY_CORE_OPERATION_REGISTRY[operationId].blockers).toContain(
+        "frozen_bulk_contract_unresolved",
+      );
     }
   });
 
@@ -865,9 +900,7 @@ describe("Library Core query registry", () => {
           "runtime_adapter_unimplemented",
         );
       } else {
-        expect(definition.blockers).toContain(
-          "runtime_adapter_unimplemented",
-        );
+        expect(definition.blockers).toContain("runtime_adapter_unimplemented");
       }
       expect("supportedAdapters" in definition).toBe(false);
 
@@ -940,9 +973,9 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
-    ).toContain("saved_analytics_v1");
+    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
+      "saved_analytics_v1",
+    );
   });
 
   it("registers the active bounded Desktop Friends readers", () => {
@@ -976,15 +1009,15 @@ describe("Library Core query registry", () => {
       maximumResponseBytes: 2 * 1_048_576,
       totalCountIntent: "snapshot_exact",
     });
-    expect(
-      LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers,
-    ).not.toContain("runtime_adapter_unimplemented");
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers).not.toContain(
+      "runtime_adapter_unimplemented",
+    );
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
-    ).toEqual(expect.arrayContaining(["persons_graph_v1", "person_timeline_v1"]));
+    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toEqual(
+      expect.arrayContaining(["persons_graph_v1", "person_timeline_v1"]),
+    );
   });
 
   it("registers the active bounded Desktop Friends feed", () => {
@@ -1011,9 +1044,9 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
-    ).toContain("feed_browse_page_v2");
+    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
+      "feed_browse_page_v2",
+    );
   });
 
   it("closes five facet-summary fields and blocks the sort on UTF-16 collation", () => {
@@ -1139,9 +1172,9 @@ describe("Library Core query registry", () => {
       "nested_bounds_unresolved",
       "sort_contract_unresolved",
     ]) {
-      expect(
-        LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.blockers,
-      ).not.toContain(blocker);
+      expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.blockers).not.toContain(
+        blocker,
+      );
     }
     // The lookup selects contentBlob and preservedBlob, so it really does carry
     // full reader content and its ceiling is 8 MiB rather than the ordinary
@@ -1151,9 +1184,9 @@ describe("Library Core query registry", () => {
     expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.fullContentAllowed).toBe(
       true,
     );
-    expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.maximumResponseBytes).toBe(
-      8 * 1_048_576,
-    );
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.maximumResponseBytes,
+    ).toBe(8 * 1_048_576);
   });
 
   it("closes five persons-graph contract fields and keeps the sort blocked", () => {
@@ -1206,9 +1239,9 @@ describe("Library Core query registry", () => {
     });
     // The timeline pages the same shadow rows as the ordinary feed page, so its
     // order must be identical rather than a parallel copy that could drift.
-    expect(
-      LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.stableSort,
-    ).toEqual(LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.stableSort);
+    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.stableSort).toEqual(
+      LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.stableSort,
+    );
     expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.projection).toBe(
       LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.projection,
     );
@@ -1238,9 +1271,7 @@ describe("Library Core query registry", () => {
     });
     // Both count series are built from a label-keyed BTreeMap, so the only
     // ordering term is the label itself and it is also the tie-break.
-    expect(
-      LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.stableSort,
-    ).toEqual({
+    expect(LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.stableSort).toEqual({
       columns: [{ column: "label", direction: "asc" }],
       textCollation: "binary",
       nullOrdering: "all_sort_columns_not_null",
@@ -1287,9 +1318,9 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(
-      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
-    ).toContain("feed_browse_page_v3");
+    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
+      "feed_browse_page_v3",
+    );
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {
@@ -1323,8 +1354,7 @@ describe("Library Core query registry", () => {
   });
 
   it("requires a durable checkpoint for export enumeration", () => {
-    const definition =
-      LIBRARY_CORE_QUERY_REGISTRY.export_enumeration_v1;
+    const definition = LIBRARY_CORE_QUERY_REGISTRY.export_enumeration_v1;
     expect(definition.cursor).toStrictEqual({
       kind: "durable_checkpoint",
       version: 1,
@@ -1408,7 +1438,9 @@ describe("BaseAppState surface registry", () => {
       expect(BASE_APP_STORE_SURFACE_REGISTRY[key].classification).toBe(
         "legacy_unbounded",
       );
-      expect(BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker).toBeTruthy();
+      expect(
+        BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker,
+      ).toBeTruthy();
     }
     expect(BASE_APP_STORE_SURFACE_REGISTRY.initialize).toMatchObject({
       classification: "legacy_unbounded",
@@ -1427,14 +1459,14 @@ describe("BaseAppState surface registry", () => {
       expect(BASE_APP_STORE_SURFACE_REGISTRY[key].classification).toBe(
         "legacy_compatibility",
       );
-      expect(BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker).toBeTruthy();
+      expect(
+        BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker,
+      ).toBeTruthy();
     }
   });
 
   it("never leaves a legacy classification without a concrete activation blocker", () => {
-    for (const definition of Object.values(
-      BASE_APP_STORE_SURFACE_REGISTRY,
-    )) {
+    for (const definition of Object.values(BASE_APP_STORE_SURFACE_REGISTRY)) {
       if (
         definition.classification === "legacy_compatibility" ||
         definition.classification === "legacy_unbounded"
@@ -1463,9 +1495,7 @@ describe("BaseAppState surface registry", () => {
       }
     }
 
-    for (const [operationId, definition] of Object.entries(
-      operationRegistry,
-    )) {
+    for (const [operationId, definition] of Object.entries(operationRegistry)) {
       for (const surfaceKey of definition.candidateStoreSurfaces) {
         expect(
           storeRegistry[surfaceKey]?.successorOperationIds,

@@ -325,6 +325,7 @@ struct VerifiedOperation {
     item_json: Option<String>,
     rss_feed_json: Option<String>,
     preferences_patch_json: Option<String>,
+    person_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -589,6 +590,18 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
         if member.entity_id.is_empty() || member.entity_id.len() > MAX_ENTITY_ID_BYTES {
             return Err(JournalError::InvalidVerifiedInput { field: "entity_id" });
         }
+        let payload_slot_count = usize::from(member.item_json.is_some())
+            + usize::from(member.rss_feed_json.is_some())
+            + usize::from(member.preferences_patch_json.is_some())
+            + usize::from(member.person_json.is_some())
+            + usize::from(member.read_at_ms.is_some())
+            + usize::from(member.assigned.is_some() || member.assigned_at_ms.is_some())
+            + usize::from(member.removed_at_ms.is_some());
+        if payload_slot_count != 1 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "operation_payload",
+            });
+        }
         match member.operation_type.as_str() {
             "feed_item_capture_upsert" => {
                 if member.entity_type != "FeedItem"
@@ -701,6 +714,22 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "preferences_patch_json",
+                    });
+                }
+            }
+            "person_upsert" => {
+                if member.entity_type != "Person"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_none()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "person_json",
                     });
                 }
             }
@@ -1787,6 +1816,8 @@ impl LibraryCoreJournal {
                 Self::materialize_rss_feed(&transaction, member, committed_at_ms)?
             } else if member.entity_type == "UserPreferences" {
                 Self::materialize_preferences(&transaction, member)?
+            } else if member.entity_type == "Person" {
+                Self::materialize_person(&transaction, member)?
             } else if let Some(item_json) = member.item_json.as_deref() {
                 let deleted_at = transaction
                     .query_row(
@@ -2111,6 +2142,61 @@ impl LibraryCoreJournal {
         if *preferences == previous {
             return Ok(0);
         }
+        let updated_shell =
+            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        transaction.execute(
+            "UPDATE library_core_desktop_state SET shellJson = ?1
+             WHERE singletonId = 1 AND active = 1;",
+            params![updated_shell],
+        )?;
+        Ok(1)
+    }
+
+    fn materialize_person(
+        transaction: &Transaction<'_>,
+        member: &VerifiedOperation,
+    ) -> JournalResult<usize> {
+        let shell_json = transaction
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_state",
+            })?;
+        let mut shell: Value =
+            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let person: Value = serde_json::from_str(
+            member
+                .person_json
+                .as_deref()
+                .expect("validated person payload"),
+        )
+        .map_err(|_| JournalError::InvalidVerifiedInput {
+            field: "person_json",
+        })?;
+        let persons = shell
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?
+            .entry("persons")
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_persons",
+            })?;
+        if persons.get(&member.entity_id) == Some(&person) {
+            return Ok(0);
+        }
+        persons.insert(member.entity_id.clone(), person);
         let updated_shell =
             serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
                 field: "desktop_library_shell",
@@ -2608,6 +2694,7 @@ mod tests {
                 item_json: None,
                 rss_feed_json: None,
                 preferences_patch_json: None,
+                person_json: None,
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,

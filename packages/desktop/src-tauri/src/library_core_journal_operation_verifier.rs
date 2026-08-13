@@ -55,6 +55,7 @@ const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
+const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
 const RSS_FEED_KEYS: [&str; 10] = [
     "enabled",
     "folder",
@@ -67,9 +68,25 @@ const RSS_FEED_KEYS: [&str; 10] = [
     "trackUnread",
     "url",
 ];
+const PERSON_KEYS: [&str; 13] = [
+    "avatarUrl",
+    "bio",
+    "careLevel",
+    "createdAt",
+    "id",
+    "name",
+    "notes",
+    "reachOutIntervalDays",
+    "reachOutLog",
+    "relationshipStatus",
+    "sampleDataFingerprint",
+    "tags",
+    "updatedAt",
+];
 const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
 const MAX_RSS_FEED_BYTES: usize = 65_536;
 const MAX_PREFERENCES_PATCH_BYTES: usize = 262_144;
+const MAX_PERSON_BYTES: usize = 262_144;
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -98,6 +115,7 @@ struct ParsedEnvelope {
     item_json: Option<String>,
     rss_feed_json: Option<String>,
     preferences_patch_json: Option<String>,
+    person_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -158,6 +176,121 @@ fn validate_rss_feed(
         {
             return Err(invalid(index, "feed"));
         }
+    }
+    Ok(())
+}
+
+fn validate_person(
+    person: &Map<String, Value>,
+    entity_id: &str,
+    index: usize,
+) -> JournalResult<()> {
+    if person
+        .keys()
+        .any(|key| !PERSON_KEYS.contains(&key.as_str()))
+    {
+        return Err(invalid(index, "person"));
+    }
+    let id = person
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "person"))?;
+    let name = person
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "person"))?;
+    let relationship_status = person
+        .get("relationshipStatus")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "person"))?;
+    let care_level = person
+        .get("careLevel")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid(index, "person"))?;
+    if id != entity_id
+        || id.is_empty()
+        || id.len() > MAX_ENTITY_ID_BYTES
+        || name.len() > 16_384
+        || !matches!(relationship_status, "connection" | "friend")
+        || !(1..=5).contains(&care_level)
+    {
+        return Err(invalid(index, "person_identity"));
+    }
+    for key in ["createdAt", "updatedAt"] {
+        let value = person
+            .get(key)
+            .and_then(Value::as_i64)
+            .ok_or_else(|| invalid(index, "person"))?;
+        if !(0..=MAX_SAFE_INTEGER).contains(&value) {
+            return Err(invalid(index, "person"));
+        }
+    }
+    for key in ["avatarUrl", "bio", "notes"] {
+        if person.get(key).is_some_and(|value| {
+            value
+                .as_str()
+                .is_none_or(|text| text.len() > MAX_PERSON_BYTES)
+        }) {
+            return Err(invalid(index, "person"));
+        }
+    }
+    if person
+        .get("reachOutIntervalDays")
+        .is_some_and(|value| value.as_i64().is_none_or(|number| number < 0))
+        || person.get("tags").is_some_and(|value| {
+            value.as_array().is_none_or(|items| {
+                items.len() > 4_096
+                    || items.iter().any(|item| {
+                        item.as_str()
+                            .is_none_or(|text| text.len() > MAX_ENTITY_ID_BYTES)
+                    })
+            })
+        })
+        || person.get("reachOutLog").is_some_and(|value| {
+            value.as_array().is_none_or(|items| {
+                items.len() > 20
+                    || items.iter().any(|item| {
+                        let Some(entry) = item.as_object() else {
+                            return true;
+                        };
+                        entry
+                            .keys()
+                            .any(|key| !["loggedAt", "channel", "notes"].contains(&key.as_str()))
+                            || entry.get("loggedAt").and_then(Value::as_i64).is_none_or(
+                                |logged_at| !(0..=MAX_SAFE_INTEGER).contains(&logged_at),
+                            )
+                            || entry.get("channel").is_some_and(|channel| {
+                                channel.as_str().is_none_or(|channel| {
+                                    !matches!(
+                                        channel,
+                                        "phone" | "text" | "email" | "in_person" | "other"
+                                    )
+                                })
+                            })
+                            || entry
+                                .get("notes")
+                                .is_some_and(|notes| notes.as_str().is_none())
+                    })
+            })
+        })
+        || person.get("sampleDataFingerprint").is_some_and(|value| {
+            value.as_object().is_none_or(|fingerprint| {
+                fingerprint.len() != 4
+                    || fingerprint.get("marker").and_then(Value::as_str)
+                        != Some("freed.sample-data.v1")
+                    || fingerprint.get("batchId").and_then(Value::as_str).is_none()
+                    || fingerprint
+                        .get("generatedAt")
+                        .and_then(Value::as_i64)
+                        .is_none_or(|generated_at| !(0..=MAX_SAFE_INTEGER).contains(&generated_at))
+                    || fingerprint
+                        .get("generatorVersion")
+                        .and_then(Value::as_i64)
+                        .is_none_or(|version| !(0..=MAX_SAFE_INTEGER).contains(&version))
+            })
+        })
+    {
+        return Err(invalid(index, "person"));
     }
     Ok(())
 }
@@ -401,6 +534,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "rss_feed_remove_keep_items"
             | "rss_feed_remove_with_items"
             | "preferences_leaf_assignment"
+            | "person_upsert"
     ) {
         return Err(invalid(index, "operation_type"));
     }
@@ -408,6 +542,8 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "RssFeed"
     } else if operation_type == "preferences_leaf_assignment" {
         "UserPreferences"
+    } else if operation_type == "person_upsert" {
+        "Person"
     } else {
         "FeedItem"
     };
@@ -466,6 +602,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         item_json,
         rss_feed_json,
         preferences_patch_json,
+        person_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -494,11 +631,13 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "feed_item_read_assignment" => {
             let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -521,6 +660,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
                 Some(assigned),
                 Some(safe_integer(payload_object, "assigned_at_ms", index)?),
                 None,
@@ -529,6 +669,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "feed_item_remove" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -552,6 +693,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             (
                 None,
                 Some(String::from_utf8(canonical_feed).expect("canonical encoder emits UTF-8")),
+                None,
                 None,
                 None,
                 None,
@@ -583,11 +725,35 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
+            )
+        }
+        "person_upsert" => {
+            let payload_object =
+                exact_object(payload, &PERSON_UPSERT_PAYLOAD_KEYS, index, "payload")?;
+            let person = payload_object
+                .get("person")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "person"))?;
+            validate_person(person, &entity_id, index)?;
+            let canonical =
+                encode_canonical_value(&Value::Object(person.clone()), MAX_PERSON_BYTES)
+                    .map_err(|_| invalid(index, "person"))?;
+            (
+                None,
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
             )
         }
         "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -666,6 +832,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         item_json,
         rss_feed_json,
         preferences_patch_json,
+        person_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -822,6 +989,7 @@ where
             item_json: member.item_json.clone(),
             rss_feed_json: member.rss_feed_json.clone(),
             preferences_patch_json: member.preferences_patch_json.clone(),
+            person_json: member.person_json.clone(),
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
@@ -918,12 +1086,25 @@ mod tests {
                         "ai": { "autoSummarize": true }
                     }
                 }),
+                "person_upsert" => json!({
+                    "person": {
+                        "id": entity_id,
+                        "name": "Verified Person",
+                        "relationshipStatus": "friend",
+                        "careLevel": 3,
+                        "tags": ["local"],
+                        "createdAt": timestamp_ms,
+                        "updatedAt": timestamp_ms
+                    }
+                }),
                 _ => panic!("unsupported fixture operation type"),
             };
             let entity_type = if operation_type.starts_with("rss_feed_") {
                 "RssFeed"
             } else if operation_type == "preferences_leaf_assignment" {
                 "UserPreferences"
+            } else if operation_type == "person_upsert" {
+                "Person"
             } else {
                 "FeedItem"
             };
@@ -1394,6 +1575,59 @@ mod tests {
         );
         assert_eq!(shell["preferences"]["ai"]["autoSummarize"], true);
         assert_eq!(shell["preferences"]["ai"]["extractTopics"], true);
+    }
+
+    #[test]
+    fn verifies_and_materializes_signed_person_upsert() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[15_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let person_id = "person:verified";
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(person_id, 1_234)],
+            "person_upsert",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0,
+                   '{{"persons":{{}}}}', 1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit Person upsert");
+        let shell: String = journal
+            .connection
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read shell");
+        let shell: Value = serde_json::from_str(&shell).expect("parse shell");
+        assert_eq!(shell["persons"][person_id]["name"], "Verified Person");
+        assert_eq!(shell["persons"][person_id]["careLevel"], 3);
     }
 
     #[test]

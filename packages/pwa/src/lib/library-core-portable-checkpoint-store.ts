@@ -20,6 +20,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
   isLibraryCoreFinalizedTransactionV1,
@@ -67,6 +68,7 @@ import {
   type RssFeedRemoveTransactionMemberInputV1,
   type RssFeedUpsertTransactionMemberInputV1,
   type PreferencesLeafAssignmentTransactionMemberInputV1,
+  type PersonUpsertTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -83,7 +85,7 @@ import {
   type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreResultSegmentHeaderV1,
 } from "@freed/shared/library-core";
-import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
+import type { FeedItem, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type {
   LibraryCoreOperationSegmentImportReceiptV1,
   LibraryCoreOperationSegmentImportWriterV1,
@@ -124,6 +126,7 @@ const PWA_ACTOR_ENROLLMENT_REQUESTS_STORE =
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
+export const PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT = 128;
 const FEED_PROJECTION_REVISION = 1;
 const FEED_SESSION_MAXIMUM_AGE_MS = 60_000;
 const MAXIMUM_FEED_READER_SESSIONS = 2;
@@ -2656,6 +2659,32 @@ class PwaLibraryCorePortableCheckpointStore
               ),
             },
           } satisfies PortableMaterializedRowRecord);
+        } else if (member.envelope.operation_type === "person_upsert") {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated Person upsert has no materialized Library shell",
+            );
+          }
+          const persons = canonicalObject(shell.row.persons) ?? {};
+          materializedRows.put({
+            ...shell,
+            row: {
+              ...shell.row,
+              persons: {
+                ...persons,
+                [member.envelope.entity_id]: member.envelope.payload.person,
+              },
+            },
+          } satisfies PortableMaterializedRowRecord);
         } else if (
           storedRow &&
           (member.envelope.operation_type === "feed_item_saved_assignment" ||
@@ -3100,32 +3129,33 @@ class PwaLibraryCorePortableCheckpointStore
     const createdAtMs = this.#now();
     const transactionId =
       `pwa-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const member = PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-      {
-        operation_id: `${transactionId}:0`,
-        library_id: context.authority.library_id,
-        epoch: context.authority.epoch,
-        epoch_id: context.authority.epoch_id,
-        actor_id: context.identity.actorId,
-        actor_sequence: actorSequence,
-        previous_actor_operation_id: previousOperationId,
-        causal_frontier: context.authority.observed_frontier,
-        hlc_wall_ms: createdAtMs,
-        hlc_counter: 0,
-        transaction_id: transactionId,
-        transaction_member_index: 0,
-        transaction_member_count: 1,
-        entity_id: "preferences",
-        payload: {
-          updates: updates as unknown as Record<
-            string,
-            LibraryCoreCanonicalValue
-          >,
-        },
-        created_at_ms: createdAtMs,
-      } satisfies PreferencesLeafAssignmentTransactionMemberInputV1,
-      { digest: libraryCoreDigest },
-    );
+    const member =
+      PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:0`,
+          library_id: context.authority.library_id,
+          epoch: context.authority.epoch,
+          epoch_id: context.authority.epoch_id,
+          actor_id: context.identity.actorId,
+          actor_sequence: actorSequence,
+          previous_actor_operation_id: previousOperationId,
+          causal_frontier: context.authority.observed_frontier,
+          hlc_wall_ms: createdAtMs,
+          hlc_counter: 0,
+          transaction_id: transactionId,
+          transaction_member_index: 0,
+          transaction_member_count: 1,
+          entity_id: "preferences",
+          payload: {
+            updates: updates as unknown as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
+          },
+          created_at_ms: createdAtMs,
+        } satisfies PreferencesLeafAssignmentTransactionMemberInputV1,
+        { digest: libraryCoreDigest },
+      );
     const finalized = await finalizeLibraryCoreTransactionV1(
       assembleLibraryCoreTransactionV1([member], previousChainDigest, {
         digest: libraryCoreDigest,
@@ -3144,11 +3174,135 @@ class PwaLibraryCorePortableCheckpointStore
     );
     const receipt = await this.enqueueIntentTransaction(finalized);
     await this.#applySelectedPreferencesPatch(
-      updates as unknown as Readonly<
-        Record<string, LibraryCoreCanonicalValue>
-      >,
+      updates as unknown as Readonly<Record<string, LibraryCoreCanonicalValue>>,
     );
     return receipt;
+  }
+
+  async enqueuePersonUpsert(
+    person: Person,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    return this.enqueuePersonUpserts([person]);
+  }
+
+  async enqueuePersonUpserts(
+    persons: readonly Person[],
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    if (
+      persons.length === 0 ||
+      persons.length > PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT
+    ) {
+      throw new RangeError("Person batch exceeds the intent segment bound");
+    }
+    const identities = new Set<string>();
+    for (const person of persons) {
+      if (!person.id) throw new TypeError("Person ID is required");
+      if (identities.has(person.id)) {
+        throw new TypeError("Person batch contains a duplicate ID");
+      }
+      identities.add(person.id);
+    }
+    const context = await this.#activeIntentContext();
+    const firstActorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    if (!Number.isSafeInteger(firstActorSequence + persons.length - 1)) {
+      throw new RangeError("intent actor sequence is exhausted");
+    }
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const createdAtMs = this.#now();
+    const transactionId =
+      `pwa-person-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = persons.map((person, index) =>
+      PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.authority.library_id,
+          epoch: context.authority.epoch,
+          epoch_id: context.authority.epoch_id,
+          actor_id: context.identity.actorId,
+          actor_sequence: firstActorSequence + index,
+          previous_actor_operation_id:
+            index === 0 ? previousOperationId : `${transactionId}:${index - 1}`,
+          causal_frontier: context.authority.observed_frontier,
+          hlc_wall_ms: createdAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: persons.length,
+          entity_id: person.id,
+          payload: {
+            person: person as unknown as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
+          },
+          created_at_ms: createdAtMs,
+        } satisfies PersonUpsertTransactionMemberInputV1,
+        { digest: libraryCoreDigest },
+      ),
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(members, previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedPersonUpserts(persons);
+    return receipt;
+  }
+
+  async #applySelectedPersonUpserts(persons: readonly Person[]): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA Person intent has no selected Library generation");
+    }
+    const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const key = [
+      selected.generationId,
+      "00_library_shell",
+      canonicalStringKey("shell"),
+    ];
+    const stored = (await requestResult(rows.get(key))) as
+      PortableMaterializedRowRecord | undefined;
+    if (!stored) {
+      transaction.abort();
+      throw new Error("PWA Person intent has no materialized Library shell");
+    }
+    const current = canonicalObject(stored.row.persons) ?? {};
+    const next = { ...current };
+    for (const person of persons) {
+      next[person.id] = person as unknown as LibraryCoreCanonicalValue;
+    }
+    rows.put({
+      ...stored,
+      row: { ...stored.row, persons: next },
+    } satisfies PortableMaterializedRowRecord);
+    await transactionDone(transaction);
   }
 
   async #applySelectedPreferencesPatch(
@@ -3164,7 +3318,9 @@ class PwaLibraryCorePortableCheckpointStore
     )) as SelectedPortableGenerationRecord | undefined;
     if (!selected) {
       transaction.abort();
-      throw new Error("PWA preferences intent has no selected Library generation");
+      throw new Error(
+        "PWA preferences intent has no selected Library generation",
+      );
     }
     const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
     const key = [
@@ -3176,7 +3332,9 @@ class PwaLibraryCorePortableCheckpointStore
       PortableMaterializedRowRecord | undefined;
     if (!stored) {
       transaction.abort();
-      throw new Error("PWA preferences intent has no materialized Library shell");
+      throw new Error(
+        "PWA preferences intent has no materialized Library shell",
+      );
     }
     const preferences = canonicalObject(stored.row.preferences) ?? {};
     rows.put({

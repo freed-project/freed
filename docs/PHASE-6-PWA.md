@@ -23,6 +23,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Safe optimistic user mutations:** Read, saved, archived, and liked changes update the selected IndexedDB row immediately and enter the signed epoch-scoped intent outbox. They remain Pending until Freed Desktop publishes canonical acceptance, and provider-visible success requires a separate real provider result receipt. Device display controls and Friends graph pins remain local.
+- **People mutations:** Person add, bounded batch add, and synchronized profile updates enter the same signed epoch-scoped intent outbox and update the selected IndexedDB Library shell immediately. Device-local graph coordinates stay outside canonical payloads.
 - **SQLite-only normal startup:** The active IndexedDB Library Core path does not create the legacy Automerge worker or download its WASM runtime. The worker remains lazy rollback code until the final compatibility removal.
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
@@ -258,6 +259,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
 - [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser downloaded, merged, uploaded, hit an error, is waiting for local changes, or needs a manual `Sync now` pass, while local PWA edits schedule Drive uploads even when no LAN relay is connected
 - [x] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated immutable Library Core generation, publish signed epoch-scoped intents, and never synchronize a SQLite database, WAL, or SHM file
+- [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
 - [x] Full-library search keeps its normalized term projection in IndexedDB, streams scored matches in 32-row pages, and retains at most 100 result cards in React instead of rebuilding a corpus-wide MiniSearch heap
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes

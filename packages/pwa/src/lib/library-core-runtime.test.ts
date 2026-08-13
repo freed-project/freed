@@ -7,18 +7,21 @@ const mocks = vi.hoisted(() => ({
   enqueueRssFeedRemove: vi.fn(),
   enqueueRssFeedUpsert: vi.fn(),
   enqueuePreferencesLeafAssignment: vi.fn(),
+  enqueuePersonUpserts: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
+  PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT: 128,
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
     enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
     enqueueRssFeedRemove: mocks.enqueueRssFeedRemove,
     enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
     enqueuePreferencesLeafAssignment: mocks.enqueuePreferencesLeafAssignment,
+    enqueuePersonUpserts: mocks.enqueuePersonUpserts,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -41,6 +44,7 @@ import {
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCorePreferencesPatch,
+  enqueuePwaLibraryCorePersonUpserts,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -66,6 +70,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueRssFeedRemove.mockReset();
     mocks.enqueueRssFeedUpsert.mockReset();
     mocks.enqueuePreferencesLeafAssignment.mockReset();
+    mocks.enqueuePersonUpserts.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -121,7 +126,9 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("queues user-state changes through the signed IndexedDB intent path", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:assignment" });
+    mocks.enqueueUserStateAssignments.mockResolvedValue({
+      operationId: "op:assignment",
+    });
     mocks.readSelectedMaterializedRow.mockResolvedValue({
       globalId: "item-9",
       userState: { liked: false },
@@ -153,17 +160,29 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("repairs saved archived items without waking Automerge", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:unarchive" });
+    mocks.enqueueUserStateAssignments.mockResolvedValue({
+      operationId: "op:unarchive",
+    });
     mocks.readSelectedCollectionPage.mockResolvedValueOnce({
       entries: [
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "saved-archived",
-          userState: { saved: true, archived: true },
-        } } },
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "plain-archived",
-          userState: { archived: true },
-        } } },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "saved-archived",
+              userState: { saved: true, archived: true },
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "plain-archived",
+              userState: { archived: true },
+            },
+          },
+        },
       ],
       nextOrdinal: null,
     });
@@ -184,14 +203,24 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
     mocks.readSelectedCollectionPage.mockResolvedValueOnce({
       entries: [
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "plain-archived",
-          userState: { archived: true },
-        } } },
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "saved-archived",
-          userState: { saved: true, archived: true },
-        } } },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "plain-archived",
+              userState: { archived: true },
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "saved-archived",
+              userState: { saved: true, archived: true },
+            },
+          },
+        },
       ],
       nextOrdinal: null,
     });
@@ -207,27 +236,41 @@ describe("PWA Library Core bounded scanner", () => {
 
   it("marks the complete selected platform read in bounded intent batches", async () => {
     mocks.enqueueReadAssignments.mockResolvedValue({ operationId: "op:read" });
-    mocks.readSelectedCollectionPage
-      .mockResolvedValueOnce({
-        entries: [
-          { value: { registry_key: "10_feed_items", row: {
-            globalId: "rss-unread",
-            platform: "rss",
-            userState: {},
-          } } },
-          { value: { registry_key: "10_feed_items", row: {
-            globalId: "youtube-unread",
-            platform: "youtube",
-            userState: {},
-          } } },
-          { value: { registry_key: "10_feed_items", row: {
-            globalId: "rss-read",
-            platform: "rss",
-            userState: { readAt: 1 },
-          } } },
-        ],
-        nextOrdinal: null,
-      });
+    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
+      entries: [
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "rss-unread",
+              platform: "rss",
+              userState: {},
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "youtube-unread",
+              platform: "youtube",
+              userState: {},
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "rss-read",
+              platform: "rss",
+              userState: { readAt: 1 },
+            },
+          },
+        },
+      ],
+      nextOrdinal: null,
+    });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
 
     await enqueuePwaLibraryCoreMarkAllAsRead("rss");
@@ -240,7 +283,9 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("archives only eligible selected items through explicit assignments", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:archive" });
+    mocks.enqueueUserStateAssignments.mockResolvedValue({
+      operationId: "op:archive",
+    });
     mocks.readSelectedMaterializedRow
       .mockResolvedValueOnce({
         globalId: "eligible",
@@ -274,27 +319,44 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("archives the complete selected scope in one bounded assignment batch", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({ operationId: "op:bulk" });
+    mocks.enqueueUserStateAssignments.mockResolvedValue({
+      operationId: "op:bulk",
+    });
     mocks.readSelectedCollectionPage.mockResolvedValueOnce({
       entries: [
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "rss-eligible",
-          platform: "rss",
-          rssSource: { feedUrl: "https://example.test/feed" },
-          userState: { readAt: 1 },
-        } } },
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "rss-saved",
-          platform: "rss",
-          rssSource: { feedUrl: "https://example.test/feed" },
-          userState: { readAt: 1, saved: true },
-        } } },
-        { value: { registry_key: "10_feed_items", row: {
-          globalId: "other-feed",
-          platform: "rss",
-          rssSource: { feedUrl: "https://other.test/feed" },
-          userState: { readAt: 1 },
-        } } },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "rss-eligible",
+              platform: "rss",
+              rssSource: { feedUrl: "https://example.test/feed" },
+              userState: { readAt: 1 },
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "rss-saved",
+              platform: "rss",
+              rssSource: { feedUrl: "https://example.test/feed" },
+              userState: { readAt: 1, saved: true },
+            },
+          },
+        },
+        {
+          value: {
+            registry_key: "10_feed_items",
+            row: {
+              globalId: "other-feed",
+              platform: "rss",
+              rssSource: { feedUrl: "https://other.test/feed" },
+              userState: { readAt: 1 },
+            },
+          },
+        },
       ],
       nextOrdinal: null,
     });
@@ -316,7 +378,9 @@ describe("PWA Library Core bounded scanner", () => {
 
   it("routes RSS configuration through signed Library Core intents", async () => {
     mocks.enqueueRssFeedUpsert.mockResolvedValue({ operationId: "op:rss:add" });
-    mocks.enqueueRssFeedRemove.mockResolvedValue({ operationId: "op:rss:remove" });
+    mocks.enqueueRssFeedRemove.mockResolvedValue({
+      operationId: "op:rss:remove",
+    });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
     const feed = {
       url: "https://example.test/feed.xml",
@@ -351,5 +415,36 @@ describe("PWA Library Core bounded scanner", () => {
     await enqueuePwaLibraryCorePreferencesPatch(update);
 
     expect(mocks.enqueuePreferencesLeafAssignment).toHaveBeenCalledWith(update);
+  });
+
+  it("batches synchronized Persons and removes device-local graph state", async () => {
+    mocks.enqueuePersonUpserts.mockResolvedValue({
+      operationId: "op:persons",
+    });
+    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
+    const person = {
+      id: "person:one",
+      name: "One Person",
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
+      graphX: 12,
+      graphY: 34,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+
+    await enqueuePwaLibraryCorePersonUpserts([person]);
+
+    expect(mocks.enqueuePersonUpserts).toHaveBeenCalledOnce();
+    expect(mocks.enqueuePersonUpserts).toHaveBeenCalledWith([
+      {
+        id: "person:one",
+        name: "One Person",
+        relationshipStatus: "friend",
+        careLevel: 3,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    ]);
   });
 });
