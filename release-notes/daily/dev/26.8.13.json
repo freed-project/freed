@@ -8,7 +8,9 @@
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Bound map renderer memory on large libraries"
+  ],
   "editorialNotes": [],
-  "updatedAt": "2026-08-13T21:03:03.618Z"
+  "updatedAt": "2026-08-13T23:23:59.394Z"
 }
