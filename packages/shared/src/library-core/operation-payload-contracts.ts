@@ -1,4 +1,15 @@
+import {
+  decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
+  type LibraryCoreCanonicalValue,
+} from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
+
+const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
+
+export interface FeedItemCaptureUpsertPayloadV1 {
+  readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
 
 export interface FeedItemReadAssignmentPayloadV1 {
   readonly read_at_ms: number;
@@ -52,6 +63,7 @@ export interface LibraryCoreOperationPayloadSchema<
 }
 
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
+const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
@@ -95,6 +107,69 @@ function validateFeedItemReadAssignmentPayload(
     ok: true,
     value: Object.freeze({ read_at_ms: descriptor.value }),
   };
+}
+
+function validateFeedItemCaptureUpsertPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemCaptureUpsertPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== FEED_ITEM_CAPTURE_UPSERT_KEYS[0]) {
+    return invalid("payload must contain only item");
+  }
+  const itemDescriptor = Object.getOwnPropertyDescriptor(value, "item");
+  if (
+    itemDescriptor === undefined ||
+    !itemDescriptor.enumerable ||
+    !("value" in itemDescriptor) ||
+    typeof itemDescriptor.value !== "object" ||
+    itemDescriptor.value === null ||
+    Array.isArray(itemDescriptor.value)
+  ) {
+    return invalid("item must be a plain canonical object");
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      itemDescriptor.value as LibraryCoreCanonicalValue,
+      { maximumBytes: FEED_ITEM_CAPTURE_MAXIMUM_BYTES },
+    );
+    const item = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: FEED_ITEM_CAPTURE_MAXIMUM_BYTES,
+    });
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return invalid("item must be a plain canonical object");
+    }
+    const canonicalItem = item as Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >;
+    const globalId = canonicalItem.globalId;
+    if (
+      typeof globalId !== "string" ||
+      globalId.length === 0 ||
+      globalId.length > 4_096
+    ) {
+      return invalid("item.globalId must be a bounded nonempty string");
+    }
+    return {
+      ok: true,
+      value: Object.freeze({
+        item: canonicalItem,
+      }),
+    };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "item is not canonical",
+    );
+  }
 }
 
 function validateFeedItemRemovePayload(
@@ -189,6 +264,17 @@ export const FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "feed_item_read_assignment",
   FeedItemReadAssignmentPayloadV1
+>;
+
+export const FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "feed_item_capture_upsert_payload_v1",
+  schemaVersion: 1,
+  operationType: "feed_item_capture_upsert",
+  canonicalKeys: FEED_ITEM_CAPTURE_UPSERT_KEYS,
+  validate: validateFeedItemCaptureUpsertPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "feed_item_capture_upsert",
+  FeedItemCaptureUpsertPayloadV1
 >;
 
 export const FEED_ITEM_REMOVE_PAYLOAD_SCHEMA = Object.freeze({

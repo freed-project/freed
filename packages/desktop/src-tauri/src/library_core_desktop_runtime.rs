@@ -554,7 +554,7 @@ fn boolean_at(value: &Value, path: &[&str]) -> Option<i64> {
     current.as_bool().map(i64::from)
 }
 
-fn upsert_item(
+pub(crate) fn upsert_item(
     transaction: &Transaction<'_>,
     item_json: &str,
     updated_at_ms: i64,

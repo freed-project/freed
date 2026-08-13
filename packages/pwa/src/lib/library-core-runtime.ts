@@ -367,6 +367,18 @@ export async function enqueuePwaLibraryCoreFeedItemRemove(
   }
 }
 
+/** Queue one signed FeedItem capture and expose it from local IndexedDB. */
+export async function enqueuePwaLibraryCoreFeedItemCapture(
+  item: FeedItem,
+): Promise<void> {
+  await getPortableStore().enqueueFeedItemCapture(item);
+  if (searchIndex && lastState) {
+    await searchIndex.updateItems(lastState.searchCorpusVersion, [item]);
+  }
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
 async function enqueuePwaLibraryCoreUserStateAssignments(
   globalIds: readonly string[],
   field: FeedItemUserStateAssignmentFieldV1,

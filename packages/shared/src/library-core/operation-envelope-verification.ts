@@ -5,6 +5,7 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -403,8 +404,10 @@ export async function verifyLibraryCoreOperationTransactionV1(
     ),
   );
   const memberConstructions = decodedEnvelopes.map((envelope) => {
-    const schema = envelope.operation_type === "feed_item_read_assignment"
-      ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+    const schema = envelope.operation_type === "feed_item_capture_upsert"
+      ? FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA
+      : envelope.operation_type === "feed_item_read_assignment"
+        ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
       : envelope.operation_type === "feed_item_saved_assignment"
         ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
         : envelope.operation_type === "feed_item_archive_assignment"

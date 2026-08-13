@@ -1,6 +1,12 @@
-import { hashSavedUrl } from "@freed/capture-save/normalize";
+import {
+  buildSavedFeedItem,
+  hashSavedUrl,
+} from "@freed/capture-save/normalize";
 import { docAddStubItem } from "./legacy-automerge-runtime";
-import { isPwaLibraryCoreEnabled } from "./library-core-runtime";
+import {
+  enqueuePwaLibraryCoreFeedItemCapture,
+  isPwaLibraryCoreEnabled,
+} from "./library-core-runtime";
 
 export interface SaveUrlOptions {
   tags?: string[];
@@ -27,9 +33,17 @@ export async function saveUrlInPwa(
 
   const stableUrl = parsed.toString();
   if (isPwaLibraryCoreEnabled()) {
-    throw new Error(
-      "Saving new links is unavailable until the SQLite Library intent is active",
+    const item = buildSavedFeedItem(
+      { title: stableUrl, url: stableUrl },
+      null,
+      {
+        includeSourceUrl: true,
+        tags: options.tags,
+      },
     );
+    const canonicalItem = JSON.parse(JSON.stringify(item)) as typeof item;
+    await enqueuePwaLibraryCoreFeedItemCapture(canonicalItem);
+    return { globalId: item.globalId };
   }
   await docAddStubItem(stableUrl, options.tags);
   return { globalId: `saved:${hashSavedUrl(stableUrl)}` };

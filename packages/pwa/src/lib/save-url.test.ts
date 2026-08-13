@@ -1,14 +1,28 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockDocAddStubItem = vi.fn(async () => undefined);
+const mockEnqueueCapture = vi.fn(async () => undefined);
 
 vi.mock("./legacy-automerge-runtime", () => ({
   docAddStubItem: mockDocAddStubItem,
 }));
 
 vi.mock("@freed/capture-save/normalize", () => ({
+  buildSavedFeedItem: (metadata: { url: string }, _content: null, options: { tags?: string[] }) => ({
+    globalId: "saved:abc123",
+    platform: "saved",
+    capturedAt: 100,
+    userState: { saved: true, tags: options.tags ?? [] },
+    sourceUrl: metadata.url,
+  }),
   hashSavedUrl: (url: string) =>
     url === "https://example.com/article" ? "abc123" : "stub123",
+}));
+
+vi.mock("./library-core-runtime", () => ({
+  enqueuePwaLibraryCoreFeedItemCapture: mockEnqueueCapture,
+  isPwaLibraryCoreEnabled: () =>
+    localStorage.getItem("freed.libraryCore.pwaIndexedDbV1.enabled") !== "0",
 }));
 
 describe("saveUrlInPwa", () => {
@@ -17,14 +31,24 @@ describe("saveUrlInPwa", () => {
     localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
   });
 
-  it("does not wake the legacy writer while SQLite Library Core is active", async () => {
+  it("writes a signed local capture without waking Automerge or fetching", async () => {
     localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    vi.stubGlobal("fetch", vi.fn());
     const { saveUrlInPwa } = await import("./save-url");
 
-    await expect(saveUrlInPwa("https://example.com/article")).rejects.toThrow(
-      "SQLite Library intent is active",
-    );
+    await expect(saveUrlInPwa("https://example.com/article", {
+      tags: ["research"],
+    })).resolves.toEqual({ globalId: "saved:abc123" });
     expect(mockDocAddStubItem).not.toHaveBeenCalled();
+    expect(mockEnqueueCapture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        globalId: "saved:abc123",
+        sourceUrl: "https://example.com/article",
+        userState: expect.objectContaining({ tags: ["research"] }),
+      }),
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("writes a saved stub without foreground article fetching", async () => {
