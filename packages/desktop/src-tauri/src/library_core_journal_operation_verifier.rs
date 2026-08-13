@@ -54,6 +54,7 @@ const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
+const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const RSS_FEED_KEYS: [&str; 10] = [
     "enabled",
     "folder",
@@ -68,6 +69,7 @@ const RSS_FEED_KEYS: [&str; 10] = [
 ];
 const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
 const MAX_RSS_FEED_BYTES: usize = 65_536;
+const MAX_PREFERENCES_PATCH_BYTES: usize = 262_144;
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -95,6 +97,7 @@ struct ParsedEnvelope {
     operation_type: String,
     item_json: Option<String>,
     rss_feed_json: Option<String>,
+    preferences_patch_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -155,6 +158,75 @@ fn validate_rss_feed(
         {
             return Err(invalid(index, "feed"));
         }
+    }
+    Ok(())
+}
+
+fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> JournalResult<()> {
+    const TOP_LEVEL: [&str; 8] = [
+        "weights",
+        "ulysses",
+        "display",
+        "xCapture",
+        "fbCapture",
+        "friendSuggestions",
+        "ai",
+        "storyWall",
+    ];
+    if updates.is_empty() || updates.keys().any(|key| !TOP_LEVEL.contains(&key.as_str())) {
+        return Err(invalid(index, "preferences_updates"));
+    }
+    let rejects = [
+        (
+            "display",
+            [
+                "itemsPerPage",
+                "compactMode",
+                "themeId",
+                "sidebarWidth",
+                "sidebarMode",
+                "friendsSidebarWidth",
+                "friendsSidebarOpen",
+                "friendsMode",
+                "friendAvatarTint",
+                "debugPanelWidth",
+                "mapMode",
+                "mapTimeMode",
+                "feedSignalMode",
+                "feedSignalModes",
+                "savedContentSortMode",
+            ]
+            .as_slice(),
+        ),
+        ("ai", ["provider", "model", "ollamaUrl"].as_slice()),
+        ("fbCapture", ["knownGroups"].as_slice()),
+    ];
+    for (parent, forbidden) in rejects {
+        if updates
+            .get(parent)
+            .and_then(Value::as_object)
+            .is_some_and(|object| object.keys().any(|key| forbidden.contains(&key.as_str())))
+        {
+            return Err(invalid(index, "preferences_device_local"));
+        }
+    }
+    if updates
+        .get("display")
+        .and_then(Value::as_object)
+        .and_then(|display| display.get("reading"))
+        .and_then(Value::as_object)
+        .is_some_and(|reading| reading.contains_key("dualColumnMode"))
+    {
+        return Err(invalid(index, "preferences_device_local"));
+    }
+    if updates
+        .get("storyWall")
+        .and_then(Value::as_object)
+        .and_then(|story| story.get("publishTarget"))
+        .and_then(Value::as_object)
+        .is_some_and(|target| target.contains_key("lastError") || target.contains_key("status"))
+    {
+        return Err(invalid(index, "preferences_device_local"));
     }
     Ok(())
 }
@@ -328,11 +400,14 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "rss_feed_upsert"
             | "rss_feed_remove_keep_items"
             | "rss_feed_remove_with_items"
+            | "preferences_leaf_assignment"
     ) {
         return Err(invalid(index, "operation_type"));
     }
     let entity_type = if operation_type.starts_with("rss_feed_") {
         "RssFeed"
+    } else if operation_type == "preferences_leaf_assignment" {
+        "UserPreferences"
     } else {
         "FeedItem"
     };
@@ -387,106 +462,143 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let (item_json, rss_feed_json, read_at_ms, assigned, assigned_at_ms, removed_at_ms) =
-        match operation_type.as_str() {
-            "feed_item_capture_upsert" => {
-                let payload_object =
-                    exact_object(payload, &CAPTURE_PAYLOAD_KEYS, index, "payload")?;
-                let item = payload_object
-                    .get("item")
-                    .and_then(Value::as_object)
-                    .ok_or_else(|| invalid(index, "item"))?;
-                if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
-                    return Err(invalid(index, "item_identity"));
-                }
-                let canonical_item =
-                    encode_canonical_value(&Value::Object(item.clone()), MAX_CAPTURE_ITEM_BYTES)
-                        .map_err(|_| invalid(index, "item"))?;
-                (
-                    Some(
-                        String::from_utf8(canonical_item)
-                            .expect("canonical encoder always emits UTF-8"),
-                    ),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
+    let (
+        item_json,
+        rss_feed_json,
+        preferences_patch_json,
+        read_at_ms,
+        assigned,
+        assigned_at_ms,
+        removed_at_ms,
+    ) = match operation_type.as_str() {
+        "feed_item_capture_upsert" => {
+            let payload_object = exact_object(payload, &CAPTURE_PAYLOAD_KEYS, index, "payload")?;
+            let item = payload_object
+                .get("item")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "item"))?;
+            if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
+                return Err(invalid(index, "item_identity"));
             }
-            "feed_item_read_assignment" => {
-                let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
-                (
-                    None,
-                    None,
-                    Some(safe_integer(payload_object, "read_at_ms", index)?),
-                    None,
-                    None,
-                    None,
-                )
+            let canonical_item =
+                encode_canonical_value(&Value::Object(item.clone()), MAX_CAPTURE_ITEM_BYTES)
+                    .map_err(|_| invalid(index, "item"))?;
+            (
+                Some(
+                    String::from_utf8(canonical_item)
+                        .expect("canonical encoder always emits UTF-8"),
+                ),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "feed_item_read_assignment" => {
+            let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
+            (
+                None,
+                None,
+                None,
+                Some(safe_integer(payload_object, "read_at_ms", index)?),
+                None,
+                None,
+                None,
+            )
+        }
+        "feed_item_saved_assignment"
+        | "feed_item_archive_assignment"
+        | "feed_item_like_assignment" => {
+            let payload_object = exact_object(payload, &ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
+            let assigned = payload_object
+                .get("assigned")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| invalid(index, "assigned"))?;
+            (
+                None,
+                None,
+                None,
+                None,
+                Some(assigned),
+                Some(safe_integer(payload_object, "assigned_at_ms", index)?),
+                None,
+            )
+        }
+        "feed_item_remove" => {
+            let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(safe_integer(payload_object, "removed_at_ms", index)?),
+            )
+        }
+        "rss_feed_upsert" => {
+            let payload_object =
+                exact_object(payload, &RSS_FEED_UPSERT_PAYLOAD_KEYS, index, "payload")?;
+            let feed = payload_object
+                .get("feed")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "feed"))?;
+            validate_rss_feed(feed, &entity_id, index)?;
+            let canonical_feed =
+                encode_canonical_value(&Value::Object(feed.clone()), MAX_RSS_FEED_BYTES)
+                    .map_err(|_| invalid(index, "feed"))?;
+            (
+                None,
+                Some(String::from_utf8(canonical_feed).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "preferences_leaf_assignment" => {
+            if entity_id != "preferences" {
+                return Err(invalid(index, "preferences_identity"));
             }
-            "feed_item_saved_assignment"
-            | "feed_item_archive_assignment"
-            | "feed_item_like_assignment" => {
-                let payload_object =
-                    exact_object(payload, &ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
-                let assigned = payload_object
-                    .get("assigned")
-                    .and_then(Value::as_bool)
-                    .ok_or_else(|| invalid(index, "assigned"))?;
-                (
-                    None,
-                    None,
-                    None,
-                    Some(assigned),
-                    Some(safe_integer(payload_object, "assigned_at_ms", index)?),
-                    None,
-                )
-            }
-            "feed_item_remove" => {
-                let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
-                (
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(safe_integer(payload_object, "removed_at_ms", index)?),
-                )
-            }
-            "rss_feed_upsert" => {
-                let payload_object =
-                    exact_object(payload, &RSS_FEED_UPSERT_PAYLOAD_KEYS, index, "payload")?;
-                let feed = payload_object
-                    .get("feed")
-                    .and_then(Value::as_object)
-                    .ok_or_else(|| invalid(index, "feed"))?;
-                validate_rss_feed(feed, &entity_id, index)?;
-                let canonical_feed =
-                    encode_canonical_value(&Value::Object(feed.clone()), MAX_RSS_FEED_BYTES)
-                        .map_err(|_| invalid(index, "feed"))?;
-                (
-                    None,
-                    Some(String::from_utf8(canonical_feed).expect("canonical encoder emits UTF-8")),
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            }
-            "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
-                let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
-                (
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(safe_integer(payload_object, "removed_at_ms", index)?),
-                )
-            }
-            _ => unreachable!("validated operation type"),
-        };
+            let payload_object =
+                exact_object(payload, &PREFERENCES_PAYLOAD_KEYS, index, "payload")?;
+            let updates = payload_object
+                .get("updates")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "preferences_updates"))?;
+            validate_preferences_patch(updates, index)?;
+            let canonical = encode_canonical_value(
+                &Value::Object(updates.clone()),
+                MAX_PREFERENCES_PATCH_BYTES,
+            )
+            .map_err(|_| invalid(index, "preferences_updates"))?;
+            (
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+            let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(safe_integer(payload_object, "removed_at_ms", index)?),
+            )
+        }
+        _ => unreachable!("validated operation type"),
+    };
     let payload_digest = required_string(object, "payload_digest", index)?;
     let expected_payload_digest = digest_hex(
         "operation-payload",
@@ -553,6 +665,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         operation_type,
         item_json,
         rss_feed_json,
+        preferences_patch_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -708,6 +821,7 @@ where
             operation_type: member.operation_type.clone(),
             item_json: member.item_json.clone(),
             rss_feed_json: member.rss_feed_json.clone(),
+            preferences_patch_json: member.preferences_patch_json.clone(),
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
@@ -798,10 +912,18 @@ mod tests {
                 "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
                     json!({ "removed_at_ms": timestamp_ms })
                 }
+                "preferences_leaf_assignment" => json!({
+                    "updates": {
+                        "display": { "archivePruneDays": 14 },
+                        "ai": { "autoSummarize": true }
+                    }
+                }),
                 _ => panic!("unsupported fixture operation type"),
             };
             let entity_type = if operation_type.starts_with("rss_feed_") {
                 "RssFeed"
+            } else if operation_type == "preferences_leaf_assignment" {
+                "UserPreferences"
             } else {
                 "FeedItem"
             };
@@ -1214,6 +1336,64 @@ mod tests {
             )
             .expect("read removed state");
         assert_eq!(state, (0, 1));
+    }
+
+    #[test]
+    fn verifies_and_materializes_signed_preferences_patch() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[14_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:preferences:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("preferences", 1_234)],
+            "preferences_leaf_assignment",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0,
+                   '{{"preferences":{{"display":{{"archivePruneDays":30,"showEngagementCounts":false}},"ai":{{"autoSummarize":false,"extractTopics":true}}}}}}',
+                   1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit preferences patch");
+        let shell: String = journal
+            .connection
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read shell");
+        let shell: Value = serde_json::from_str(&shell).expect("parse shell");
+        assert_eq!(shell["preferences"]["display"]["archivePruneDays"], 14);
+        assert_eq!(
+            shell["preferences"]["display"]["showEngagementCounts"],
+            false
+        );
+        assert_eq!(shell["preferences"]["ai"]["autoSummarize"], true);
+        assert_eq!(shell["preferences"]["ai"]["extractTopics"], true);
     }
 
     #[test]

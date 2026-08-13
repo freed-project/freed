@@ -116,6 +116,7 @@ import {
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
+  enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -1009,6 +1010,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
     if (Object.keys(syncedUpdate).length === 0) return;
+    if (isPwaLibraryCoreEnabled()) {
+      await runOptimisticMutation(
+        get,
+        set,
+        "pwa:updatePreferences",
+        (state) => projectUpdatePreferences(state, syncedUpdate),
+        () => enqueuePwaLibraryCorePreferencesPatch(syncedUpdate),
+        { allowLibraryCoreIntent: true },
+      );
+      return;
+    }
     await runOptimisticMutation(
       get,
       set,

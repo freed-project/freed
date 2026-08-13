@@ -14,6 +14,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
@@ -43,6 +44,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
@@ -535,6 +537,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     // Declaring one would claim a key space this operation does not have.
     touchedFieldRegistryKeys:
       PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    payloadSchema: PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["updatePreferences"],
     legacyWorkerRequests: ["UPDATE_PREFERENCES"],
   }),

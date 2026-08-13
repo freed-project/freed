@@ -17,6 +17,7 @@ import {
   type FeedItemUserStateAssignmentSigningBodyV1,
   type RssFeedRemoveSigningBodyV1,
   type RssFeedUpsertSigningBodyV1,
+  type PreferencesLeafAssignmentSigningBodyV1,
   type LibraryCoreOperationSigningBodyV1,
   type LibraryCoreAssembledTransactionV1,
   type LibraryCoreTransactionBodyV1,
@@ -51,13 +52,18 @@ export interface RssFeedRemoveEnvelopeV1 extends RssFeedRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface PreferencesLeafAssignmentEnvelopeV1 extends PreferencesLeafAssignmentSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemCaptureUpsertEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
   | FeedItemUserStateAssignmentEnvelopeV1
   | FeedItemRemoveEnvelopeV1
   | RssFeedUpsertEnvelopeV1
-  | RssFeedRemoveEnvelopeV1;
+  | RssFeedRemoveEnvelopeV1
+  | PreferencesLeafAssignmentEnvelopeV1;
 
 export interface LibraryCoreFinalizedEnvelopeV1 {
   readonly envelope: LibraryCoreOperationEnvelopeV1;
