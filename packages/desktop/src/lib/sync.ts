@@ -3,7 +3,8 @@
  *
  * Desktop runs a WebSocket relay server via Tauri (Rust backend).
  * This module provides TypeScript interface to control and monitor it.
- * PWAs connect to this server to sync their Automerge documents.
+ * PWAs connect to the native relay while Library Core synchronization moves
+ * immutable SQLite operations and checkpoints through the native boundary.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -24,16 +25,17 @@ import {
   dropboxDeleteFile,
   type CloudProvider,
   type GoogleDriveFetch,
-} from "@freed/sync/cloud";
+} from "./legacy-cloud-sync-entry";
 import {
   compareDoc,
   getCommittedDoc,
   getDocHeads,
   mergeDoc,
+  reloadSqliteLibraryState,
   replaceLocalDoc,
   subscribe,
   setRelayClientCount,
-} from "./automerge";
+} from "./library-client";
 import { recordCloudUploadAttempt, recordCloudUploadSkipped, type CloudUploadCause } from "./runtime-health-events";
 import {
   addDebugEvent,
@@ -2512,6 +2514,10 @@ export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> 
       "Library ownership changed during transfer. Review the current owner and try again.",
     );
   }
+  // Ownership transfer may have bootstrapped a newer immutable checkpoint
+  // into native SQLite. Refresh the bounded renderer shell before restarting
+  // publication so the visible Library and the active writer frontier agree.
+  await reloadSqliteLibraryState();
   await startCloudSync(provider, token);
 }
 

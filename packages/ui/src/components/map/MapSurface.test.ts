@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LocationMarkerSummary } from "@freed/shared";
 import {
   areLocationMarkerListsRenderEquivalent,
+  fitMapToMarkers,
   getMapMovingPriority,
   getRenderedMapMarkers,
 } from "./MapSurface";
@@ -128,5 +129,28 @@ describe("dense map marker prioritization", () => {
         focusedMarkerKey,
       ),
     ).toBe("primary");
+  });
+});
+
+describe("map camera framing", () => {
+  it("keeps clustered markers at a geographic zoom", () => {
+    const fitBounds = vi.fn();
+    const map = {
+      fitBounds,
+      flyTo: vi.fn(),
+    } as unknown as Parameters<typeof fitMapToMarkers>[0];
+
+    fitMapToMarkers(map, [
+      marker(),
+      marker({ key: "friend:grace", lat: 48.8567, lng: 2.3523 }),
+    ]);
+
+    expect(fitBounds).toHaveBeenCalledWith(
+      [
+        [2.3522, 48.8566],
+        [2.3523, 48.8567],
+      ],
+      expect.objectContaining({ maxZoom: 7.5 }),
+    );
   });
 });

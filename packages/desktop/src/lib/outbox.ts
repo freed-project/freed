@@ -327,19 +327,13 @@ export function startOutboxProcessor(
             seenQueue.push(...pending.seenQueue);
           });
         } catch (error) {
-          likeQueue = [];
-          seenQueue = [];
-          log.warn(
-            `[Outbox] bounded SQLite scan unavailable; using Automerge fallback: ${
+          log.error(
+            `[Outbox] bounded SQLite scan unavailable; provider actions remain paused: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          const currentItems = getItems();
-          if (!currentItems) {
-            isDraining = false;
-            return;
-          }
-          ({ likeQueue, seenQueue } = await collectPendingQueues(currentItems));
+          isDraining = false;
+          return;
         }
       } else {
         const currentItems = getItems();

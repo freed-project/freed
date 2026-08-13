@@ -201,9 +201,18 @@ export function tauriInitScript(): string {
       },
       append_sqlite_library_import: sqliteUpsertItems,
       finalize_sqlite_library_import: () => {
-        sqliteState().active = true;
+        var state = sqliteState();
+        state.active = true;
         persistSqliteState();
-        return null;
+        return {
+          active: true,
+          revision: state.revision,
+          expectedItemCount: state.expectedItemCount,
+          importedItemCount: Object.keys(state.items).length,
+          sourceGeneration: state.sourceGeneration,
+          sourceRevision: state.sourceRevision,
+          sourceDigest: state.sourceDigest,
+        };
       },
       read_sqlite_library_shell: () => {
         // Scale benchmarks keep the corpus in mock SQLite while forcing the

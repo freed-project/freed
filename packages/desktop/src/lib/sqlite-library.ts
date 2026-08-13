@@ -15,7 +15,6 @@ import {
   type ReachOutLog,
   type UserPreferences,
 } from "@freed/shared";
-import { mergeFeedItemInto } from "@freed/shared/schema";
 import { decodeJson, encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type {
@@ -25,6 +24,7 @@ import type {
   WorkerRequest,
 } from "./automerge-types";
 import { recordRuntimeHealthEvent } from "./runtime-health-events";
+import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
 export interface SqliteStatus {
   active: boolean;
@@ -641,9 +641,7 @@ async function mergeIncomingSqliteItems(items: readonly FeedItem[]): Promise<Fee
   const merged = items.map((incoming) => {
     const current = existing.get(incoming.globalId);
     if (!current) return incoming;
-    const next = structuredClone(current);
-    mergeFeedItemInto(next, structuredClone(incoming));
-    return next;
+    return mergeSqliteFeedItem(current, incoming);
   });
   await upsertSqliteItems(merged);
   return merged;

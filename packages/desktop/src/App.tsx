@@ -64,7 +64,7 @@ import {
   clearLocalDoc,
   acquireLegacyRendererItems,
   getCachedDocStats,
-} from "./lib/automerge";
+} from "./lib/library-client";
 import {
   openBoundedDesktopFeedReader,
   openBoundedDesktopFriendsFeedReader,

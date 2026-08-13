@@ -20,7 +20,7 @@ import {
   type FeedItemRow,
 } from "@freed/shared/projection";
 
-import { getLibraryCoreProjectionSource } from "./automerge";
+import { getLibraryCoreProjectionSource } from "./library-client";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 import {
   isSqliteLibraryActive,

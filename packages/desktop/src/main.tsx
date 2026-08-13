@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { bootstrapDocumentTheme } from "@freed/ui/lib/theme";
 import App from "./App";
-import * as automerge from "./lib/automerge";
+import * as libraryClient from "./lib/library-client";
 import { installDevSyncTriggerBridge } from "./lib/dev-sync-triggers";
 import { useAppStore } from "./lib/store";
 import "./index.css";
@@ -21,7 +21,8 @@ if (previewLabel) {
 if (import.meta.env.VITE_TEST_TAURI) {
   const w = window as unknown as Record<string, unknown>;
   w.__FREED_STORE__ = useAppStore;
-  w.__FREED_AUTOMERGE__ = automerge;
+  // Historical E2E name retained only inside test builds.
+  w.__FREED_AUTOMERGE__ = libraryClient;
   w.__FREED_GRAPH_DEBUG_ENABLED__ = true;
 }
 

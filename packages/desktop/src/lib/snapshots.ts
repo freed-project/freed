@@ -16,7 +16,7 @@ import {
   reloadSqliteLibraryState,
   replaceLocalDoc,
   subscribe,
-} from "./automerge";
+} from "./library-client";
 import {
   clearSqliteLibraryBackups,
   createSqliteLibraryBackup,

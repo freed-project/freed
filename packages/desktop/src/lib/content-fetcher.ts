@@ -22,7 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe } from "./automerge.js";
+import { docUpdateFeedItem, subscribe } from "./library-client";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
@@ -253,16 +253,15 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
   return trackResetSensitiveOperation(pinReaderItemInternal(item));
 }
 
-function maybeScanLibraryItems(items: FeedItem[], docItemCount: number): void {
+function maybeScanLibraryItems(_items: FeedItem[], docItemCount: number): void {
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
   void scanLibraryCoreItems((page) => enqueue([...page])).catch((error) => {
-    log.warn(
-      `[content-fetcher] bounded SQLite scan unavailable; using Automerge fallback: ${
+    log.error(
+      `[content-fetcher] bounded SQLite scan unavailable; background fetch remains paused: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    enqueue(items);
   });
 }
 

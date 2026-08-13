@@ -67,6 +67,7 @@ const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_CAMERA_PADDING_PX = 72;
+const MAP_CLUSTER_MAX_ZOOM = 7.5;
 const MAP_MAX_PIXEL_RATIO = 1.5;
 const MAP_MAX_TILE_CACHE_SIZE = 24;
 
@@ -598,7 +599,7 @@ function mapCameraOffset(viewportInsets?: MapViewportInsets): [number, number] {
   ];
 }
 
-function fitMarkers(
+export function fitMapToMarkers(
   map: MapInstance,
   markers: LocationMarkerSummary[],
   focusedMarkerKey?: string | null,
@@ -649,7 +650,14 @@ function fitMarkers(
       [minLng, minLat],
       [maxLng, maxLat],
     ],
-    { padding: mapCameraPadding(viewportInsets), duration: 600 }
+    {
+      padding: mapCameraPadding(viewportInsets),
+      duration: 600,
+      // Closely clustered updates can otherwise drive fitBounds to building
+      // level. At that scale the map looks like an empty canvas with a few
+      // oversized road strokes, even though every tile loaded successfully.
+      maxZoom: MAP_CLUSTER_MAX_ZOOM,
+    }
   );
 }
 
@@ -1038,7 +1046,7 @@ export function MapSurface({
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    fitMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
+    fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
   }, [focusedMarkerKey, mapReady, stableMarkers, viewportInsets]);
 
   return (

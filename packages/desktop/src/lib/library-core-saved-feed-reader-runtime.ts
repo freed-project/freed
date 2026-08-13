@@ -20,7 +20,7 @@ import {
   type LibraryCoreSavedFeedPageResponseV1,
 } from "@freed/shared/library-core";
 
-import { getDocState, getLibraryCoreProjectionSource } from "./automerge";
+import { getDocState, getLibraryCoreProjectionSource } from "./library-client";
 import type {
   DocState,
   LibraryCoreFeedBrowseGenerationBindingV1,

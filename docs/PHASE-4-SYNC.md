@@ -428,6 +428,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.139 | Signed PWA Account lifecycle intents with bounded whole-record batches, relationship updates, connection-person promotion, device-local graph rejection, immediate IndexedDB shell materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
 | 4.140 | Signed PWA FeedItem capture and update intents with 128-item transaction bounds, duplicate-safe ordered batching, device-local ranking removal, immediate IndexedDB and search materialization, native SQLite verification, acceptance receipt, and replication outbox | ✓ | High |
 | 4.141 | PWA sample seeding, fingerprinted sample clearing, and bulk feed removal through signed Library Core operations, including real-account unlinking and derived-search invalidation when feed items are removed | ✓ | High |
+| 4.142 | Freed Desktop production entry points use the SQLite-only Library client, resolve retired mutable-document cloud paths to fail-closed stubs, and reject any Automerge worker, cloud-merge worker, or WASM artifact from the release bundle | ✓ | High |
 
 ---
 
@@ -577,6 +578,7 @@ not mean those internal stages remain unreachable.
 - [x] PWA FeedItem capture and whole-record update use signed Library Core intents instead of Automerge. Capture arrays become ordered transactions of at most 128 unique items, repeated identities start a later transaction without reordering, device-local ranking fields stay out of canonical payloads, and IndexedDB plus local search expose each committed batch immediately.
 - [x] PWA sample-library seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations instead of Automerge. Clearing scans the complete IndexedDB corpus, preserves real records, unlinks real accounts before removing sample people, and invalidates derived search when a feed removal also removes its items.
 - [x] FeedItem operations preserve finite fractional JSON numbers through the canonical protocol's exact IEEE 754 binary64 wrapper, while the PWA and native SQLite materializers restore ordinary numbers only after signature verification. PWA runtime state and bounded scans now read the current materialized IndexedDB projection rather than the immutable bootstrap checkpoint, hidden or archived captures remain durable without entering the visible feed index, and visible feed totals come from that index in the same read transaction.
+- [x] Freed Desktop product modules now import a SQLite-only Library client. Production builds resolve obsolete mutable-document cloud and merge entry points to fail-closed stubs and fail the build if an Automerge worker, cloud-merge worker, or WASM artifact leaks into the output. Browser and unit tests retain the historical in-memory harness through test-only aliases, so test scaffolding cannot silently become release code.
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

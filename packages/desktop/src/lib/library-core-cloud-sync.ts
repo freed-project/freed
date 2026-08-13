@@ -29,11 +29,11 @@ import {
   publishLibraryCorePortableCheckpointV1,
   publishLibraryCoreResultEntriesV1,
   reassignLibraryCorePortableCheckpointV1,
-  type GoogleDriveFetch,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutableReadAdapterV1,
   type LibraryCorePreparedImmutableObjectV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
+import type { GoogleDriveFetch } from "@freed/sync/cloud";
 import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
 import {
