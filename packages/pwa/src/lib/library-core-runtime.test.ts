@@ -44,6 +44,7 @@ vi.mock("./factory-reset-coordinator", () => ({
 
 import {
   PWA_LIBRARY_CORE_ENABLED_KEY,
+  clearPwaLibraryCoreSampleData,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
@@ -60,6 +61,7 @@ import {
   enqueuePwaLibraryCoreAccountUpserts,
   enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
+  initializePwaLibraryCoreState,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
@@ -567,5 +569,120 @@ describe("PWA Library Core bounded scanner", () => {
       "account:one",
       expect.any(Number),
     );
+  });
+
+  it("clears only fingerprinted sample records and unlinks real accounts", async () => {
+    const sampleDataFingerprint = {
+      marker: "freed.sample-data.v1" as const,
+      batchId: "sample-batch",
+      generatedAt: 1,
+      generatorVersion: 1,
+    };
+    mocks.readSelectedMaterializedRow.mockResolvedValue({
+      feeds: {
+        "https://sample.test/feed": {
+          url: "https://sample.test/feed",
+          title: "Sample",
+          enabled: true,
+          trackUnread: true,
+          lastFetched: 1,
+          sampleDataFingerprint,
+        },
+      },
+      persons: {
+        "person:sample": {
+          id: "person:sample",
+          name: "Sample",
+          relationshipStatus: "friend",
+          careLevel: 3,
+          createdAt: 1,
+          updatedAt: 1,
+          sampleDataFingerprint,
+        },
+      },
+      accounts: {
+        "account:sample": {
+          id: "account:sample",
+          personId: "person:sample",
+          kind: "social",
+          provider: "instagram",
+          externalId: "sample",
+          discoveredFrom: "manual_entry",
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          sampleDataFingerprint,
+        },
+        "account:real": {
+          id: "account:real",
+          personId: "person:sample",
+          kind: "social",
+          provider: "facebook",
+          externalId: "real",
+          discoveredFrom: "manual_entry",
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+      preferences: createDefaultPreferences(),
+    });
+    mocks.readSelectedCollectionPage.mockImplementation(({ limit }) =>
+      Promise.resolve({
+        entries:
+          limit === 32
+            ? [
+                {
+                  value: {
+                    registry_key: "10_feed_items",
+                    row: {
+                      globalId: "item:sample",
+                      sampleDataFingerprint,
+                    },
+                  },
+                },
+              ]
+            : [],
+        nextOrdinal: null,
+      }),
+    );
+    await initializePwaLibraryCoreState();
+
+    await expect(clearPwaLibraryCoreSampleData()).resolves.toEqual({
+      feeds: 1,
+      items: 1,
+      persons: 1,
+      accounts: 1,
+      total: 4,
+    });
+
+    expect(mocks.enqueueAccountUpserts).toHaveBeenCalledOnce();
+    const unlinkedAccount = mocks.enqueueAccountUpserts.mock.calls[0]?.[0]?.[0];
+    expect(unlinkedAccount).toEqual(
+      expect.objectContaining({
+        id: "account:real",
+        updatedAt: expect.any(Number),
+      }),
+    );
+    expect(unlinkedAccount).not.toHaveProperty("personId");
+    expect(mocks.enqueueAccountRemove).toHaveBeenCalledWith(
+      "account:sample",
+      expect.any(Number),
+    );
+    expect(mocks.enqueuePersonRemove).toHaveBeenCalledWith(
+      "person:sample",
+      expect.any(Number),
+    );
+    expect(mocks.enqueueRssFeedRemove).toHaveBeenCalledWith({
+      includeItems: false,
+      removedAtMs: expect.any(Number),
+      url: "https://sample.test/feed",
+    });
+    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
+      entityId: "item:sample",
+      removedAtMs: expect.any(Number),
+    });
   });
 });
