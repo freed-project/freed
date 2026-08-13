@@ -41,6 +41,10 @@ export interface PersonUpsertPayloadV1 {
   readonly person: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
+export interface PersonRemovePayloadV1 {
+  readonly removed_at_ms: number;
+}
+
 export const FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS = Object.freeze([
   "saved",
   "archived",
@@ -91,6 +95,7 @@ const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const PERSON_UPSERT_KEYS = ["person"] as const;
+const PERSON_REMOVE_KEYS = ["removed_at_ms"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -599,6 +604,23 @@ function validatePersonUpsertPayload(
   }
 }
 
+function validatePersonRemovePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<PersonRemovePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== PERSON_REMOVE_KEYS[0]) {
+    return invalid("payload must contain only removed_at_ms");
+  }
+  const removedAtMs = (value as { removed_at_ms?: unknown }).removed_at_ms;
+  if (!isLibraryCoreNonnegativeSafeInteger(removedAtMs)) {
+    return invalid("removed_at_ms must be a nonnegative safe integer");
+  }
+  return { ok: true, value: Object.freeze({ removed_at_ms: removedAtMs }) };
+}
+
 function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
@@ -731,6 +753,17 @@ export const PERSON_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "person_upsert",
   PersonUpsertPayloadV1
+>;
+
+export const PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "person_remove_and_accounts_payload_v1",
+  schemaVersion: 1,
+  operationType: "person_remove_and_accounts",
+  canonicalKeys: PERSON_REMOVE_KEYS,
+  validate: validatePersonRemovePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "person_remove_and_accounts",
+  PersonRemovePayloadV1
 >;
 
 /** Closed payload for idempotent local PWA user-state assignments. */

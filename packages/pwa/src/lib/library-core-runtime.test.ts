@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   enqueueRssFeedUpsert: vi.fn(),
   enqueuePreferencesLeafAssignment: vi.fn(),
   enqueuePersonUpserts: vi.fn(),
+  enqueuePersonRemove: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
     enqueuePreferencesLeafAssignment: mocks.enqueuePreferencesLeafAssignment,
     enqueuePersonUpserts: mocks.enqueuePersonUpserts,
+    enqueuePersonRemove: mocks.enqueuePersonRemove,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -45,6 +47,7 @@ import {
   enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpserts,
+  enqueuePwaLibraryCorePersonRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -71,6 +74,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueRssFeedUpsert.mockReset();
     mocks.enqueuePreferencesLeafAssignment.mockReset();
     mocks.enqueuePersonUpserts.mockReset();
+    mocks.enqueuePersonRemove.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -446,5 +450,20 @@ describe("PWA Library Core bounded scanner", () => {
         updatedAt: 2,
       },
     ]);
+  });
+
+  it("queues one atomic Person and linked-account removal", async () => {
+    mocks.enqueuePersonRemove.mockResolvedValue({
+      operationId: "op:person-remove",
+    });
+    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
+
+    await enqueuePwaLibraryCorePersonRemove("person:one");
+
+    expect(mocks.enqueuePersonRemove).toHaveBeenCalledOnce();
+    expect(mocks.enqueuePersonRemove).toHaveBeenCalledWith(
+      "person:one",
+      expect.any(Number),
+    );
   });
 });

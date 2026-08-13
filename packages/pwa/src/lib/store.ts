@@ -18,6 +18,7 @@ import {
   personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
   stripDeviceLocalGraphPositionUpdates,
+  sanitizeReachOutLogWrite,
   sanitizeRssFeedWrite,
 } from "@freed/shared";
 import {
@@ -119,6 +120,7 @@ import {
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpsert,
   enqueuePwaLibraryCorePersonUpserts,
+  enqueuePwaLibraryCorePersonRemove,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -846,11 +848,40 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removePerson: async (id: string) => {
-    await docRemovePerson(id);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCorePersonRemove(id);
+    } else {
+      await docRemovePerson(id);
+    }
   },
 
   logReachOut: async (id: string, entry: ReachOutLog) => {
-    await docLogReachOut(id, entry);
+    if (!isPwaLibraryCoreEnabled()) {
+      await docLogReachOut(id, entry);
+      return;
+    }
+    const current = get().persons[id];
+    if (!current) return;
+    const synchronizedEntry = sanitizeReachOutLogWrite(entry) as ReachOutLog;
+    const updates: Partial<Person> = {
+      reachOutLog: [synchronizedEntry, ...(current.reachOutLog ?? [])].slice(
+        0,
+        20,
+      ),
+      updatedAt: Date.now(),
+    };
+    await runOptimisticMutation(
+      get,
+      set,
+      "pwa:logReachOut",
+      (state) => projectUpdatePerson(state, id, updates),
+      () => {
+        const person = get().persons[id];
+        if (!person) throw new Error("Person is unavailable");
+        return enqueuePwaLibraryCorePersonUpsert(person);
+      },
+      { allowLibraryCoreIntent: true },
+    );
   },
 
   linkAccountToPerson: async (accountId: string, personId: string | null) => {

@@ -71,6 +71,8 @@ const libraryCore = vi.hoisted(() => ({
   enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreDeleteAllArchived: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCorePersonUpsert: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCorePersonRemove: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUnarchiveSavedItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUserStateToggle: vi.fn(() => Promise.resolve()),
@@ -242,6 +244,56 @@ describe("PWA store startup maintenance", () => {
       "graphX",
     );
     expect(automerge.docUpdatePerson).not.toHaveBeenCalled();
+  });
+
+  it("routes reach-out history through the bounded Person SQLite intent", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+    const person: Person = {
+      id: "person-reach-out",
+      name: "Reach Out",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      createdAt: 1,
+      updatedAt: 1,
+      reachOutLog: Array.from({ length: 20 }, (_, index) => ({
+        loggedAt: index + 1,
+        channel: "text" as const,
+      })),
+    };
+    useAppStore.setState({ persons: { [person.id]: person } });
+
+    await useAppStore.getState().logReachOut(person.id, {
+      loggedAt: 99,
+      channel: "phone",
+      notes: "Caught up",
+    });
+
+    expect(
+      libraryCore.enqueuePwaLibraryCorePersonUpsert,
+    ).toHaveBeenCalledOnce();
+    const written = (
+      libraryCore.enqueuePwaLibraryCorePersonUpsert.mock
+        .calls as unknown as Array<[Person]>
+    )[0]?.[0];
+    expect(written).toBeDefined();
+    expect(written.reachOutLog).toHaveLength(20);
+    expect(written.reachOutLog?.[0]).toEqual({
+      loggedAt: 99,
+      channel: "phone",
+      notes: "Caught up",
+    });
+    expect(automerge.docLogReachOut).not.toHaveBeenCalled();
+  });
+
+  it("routes Person removal through the atomic SQLite cascade", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+
+    await useAppStore.getState().removePerson("person:remove");
+
+    expect(libraryCore.enqueuePwaLibraryCorePersonRemove).toHaveBeenCalledWith(
+      "person:remove",
+    );
+    expect(automerge.docRemovePerson).not.toHaveBeenCalled();
   });
 
   it("rejects a device-local preference write after this tab becomes stale", async () => {

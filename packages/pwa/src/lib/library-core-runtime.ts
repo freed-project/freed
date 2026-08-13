@@ -478,6 +478,15 @@ export async function enqueuePwaLibraryCorePersonUpserts(
   if (state) publishState(state);
 }
 
+/** Queue one atomic Person and linked-account removal and refresh the shell. */
+export async function enqueuePwaLibraryCorePersonRemove(
+  personId: string,
+): Promise<void> {
+  await getPortableStore().enqueuePersonRemove(personId, Date.now());
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
 async function enqueuePwaLibraryCoreUserStateAssignments(
   globalIds: readonly string[],
   field: FeedItemUserStateAssignmentFieldV1,

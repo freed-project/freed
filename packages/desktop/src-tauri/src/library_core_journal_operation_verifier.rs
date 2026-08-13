@@ -535,6 +535,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "rss_feed_remove_with_items"
             | "preferences_leaf_assignment"
             | "person_upsert"
+            | "person_remove_and_accounts"
     ) {
         return Err(invalid(index, "operation_type"));
     }
@@ -542,7 +543,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "RssFeed"
     } else if operation_type == "preferences_leaf_assignment" {
         "UserPreferences"
-    } else if operation_type == "person_upsert" {
+    } else if operation_type == "person_upsert" || operation_type == "person_remove_and_accounts" {
         "Person"
     } else {
         "FeedItem"
@@ -666,7 +667,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
             )
         }
-        "feed_item_remove" => {
+        "feed_item_remove" | "person_remove_and_accounts" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
                 None,
@@ -1097,13 +1098,18 @@ mod tests {
                         "updatedAt": timestamp_ms
                     }
                 }),
+                "person_remove_and_accounts" => {
+                    json!({ "removed_at_ms": timestamp_ms })
+                }
                 _ => panic!("unsupported fixture operation type"),
             };
             let entity_type = if operation_type.starts_with("rss_feed_") {
                 "RssFeed"
             } else if operation_type == "preferences_leaf_assignment" {
                 "UserPreferences"
-            } else if operation_type == "person_upsert" {
+            } else if operation_type == "person_upsert"
+                || operation_type == "person_remove_and_accounts"
+            {
                 "Person"
             } else {
                 "FeedItem"
@@ -1628,6 +1634,64 @@ mod tests {
         let shell: Value = serde_json::from_str(&shell).expect("parse shell");
         assert_eq!(shell["persons"][person_id]["name"], "Verified Person");
         assert_eq!(shell["persons"][person_id]["careLevel"], 3);
+    }
+
+    #[test]
+    fn verifies_and_atomically_removes_person_and_linked_accounts() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[16_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let person_id = "person:verified";
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person-remove:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(person_id, 1_234)],
+            "person_remove_and_accounts",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0,
+                   '{{"persons":{{"person:verified":{{"id":"person:verified","name":"Verified Person"}}}},"accounts":{{"account:linked":{{"id":"account:linked","personId":"person:verified"}},"account:other":{{"id":"account:other","personId":"person:other"}}}}}}',
+                   1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit Person removal");
+        let shell: String = journal
+            .connection
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read shell");
+        let shell: Value = serde_json::from_str(&shell).expect("parse shell");
+        assert!(shell["persons"].get(person_id).is_none());
+        assert!(shell["accounts"].get("account:linked").is_none());
+        assert_eq!(
+            shell["accounts"]["account:other"]["personId"],
+            "person:other"
+        );
     }
 
     #[test]
