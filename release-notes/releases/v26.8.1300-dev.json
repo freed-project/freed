@@ -3,7 +3,7 @@
   "version": "26.8.1300-dev",
   "channel": "dev",
   "dayKey": "26.8.13",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-13T17:34:03.837Z",
   "model": "heuristic",
@@ -53,10 +53,10 @@
       ],
       "inspectionDigest": "sha256:b898e7ed7c3ce5d1aa8370363d78de41d55291e7a5483496bf1fc726cfa98794",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-8-1300-dev#sha256:ac2911b4fc390bbb87e046368ed0c9b784e2942724b27d69f956560a4ab963a6",
+        "approvedInspectionDigest": "sha256:b898e7ed7c3ce5d1aa8370363d78de41d55291e7a5483496bf1fc726cfa98794",
+        "approvedReleaseArtifactDigest": "sha256:066b6c60bcdba6749b40db56348f1662960d0127f43bcead43a4138866d090cb"
       }
     },
     "isLatestOfDay": true,
@@ -106,13 +106,17 @@
     ]
   },
   "release": {
-    "deck": "Retire PWA Automerge runtime, move PWA Library maintenance to Library Core, and preserve release publication output",
+    "deck": "Run Freed's Library on SQLite across Freed Desktop and the PWA, with bounded map memory and no active Automerge runtime",
     "features": [
-      "Retire PWA Automerge runtime",
-      "Move PWA Library maintenance to Library Core"
+      "Move PWA Library reads, writes, accounts, people, preferences, RSS feeds, bulk actions, saves, deletions, and maintenance to Library Core",
+      "Remove the active Automerge runtime from Freed Desktop and the PWA",
+      "Start daily SQLite Library backups without loading the legacy document engine"
     ],
-    "fixes": [],
+    "fixes": [
+      "Bound geographic map renderer memory on large libraries",
+      "Make Library Core state assignments idempotent across retries"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1300-dev\n\nRetire PWA Automerge runtime, move PWA Library maintenance to Library Core, and preserve release publication output\n\n### Features\n\n- Retire PWA Automerge runtime\n- Move PWA Library maintenance to Library Core\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1300-dev\n\nRun Freed's Library on SQLite across Freed Desktop and the PWA, with bounded map memory and no active Automerge runtime.\n\n### Features\n\n- Move PWA Library reads, writes, accounts, people, preferences, RSS feeds, bulk actions, saves, deletions, and maintenance to Library Core\n- Remove the active Automerge runtime from Freed Desktop and the PWA\n- Start daily SQLite Library backups without loading the legacy document engine\n\n### Fixes\n\n- Bound geographic map renderer memory on large libraries\n- Make Library Core state assignments idempotent across retries\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
