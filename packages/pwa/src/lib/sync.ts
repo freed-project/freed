@@ -58,32 +58,42 @@ function retiredLegacyCloudSyncError(): Error {
 }
 
 async function gdriveUploadSafe(
-  ..._args: unknown[]
+  ...args: unknown[]
 ): Promise<RetiredCloudUploadResult> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
-async function gdriveStartPollLoop(..._args: unknown[]): Promise<void> {
+async function gdriveStartPollLoop(...args: unknown[]): Promise<void> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
 async function gdriveDownloadLatest(
-  ..._args: unknown[]
+  ...args: unknown[]
 ): Promise<Uint8Array | null> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
-async function dropboxUploadSafe(..._args: unknown[]): Promise<void> {
+async function dropboxUploadSafe(...args: unknown[]): Promise<void> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
-async function dropboxStartLongpollLoop(..._args: unknown[]): Promise<void> {
+async function dropboxStartLongpollLoop(...args: unknown[]): Promise<void> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
 async function dropboxDownloadLatest(
-  ..._args: unknown[]
+  ...args: unknown[]
 ): Promise<Uint8Array | null> {
+  void args;
   throw retiredLegacyCloudSyncError();
 }
 
-async function gdriveDeleteFile(..._args: unknown[]): Promise<void> {}
-async function dropboxDeleteFile(..._args: unknown[]): Promise<void> {}
+async function gdriveDeleteFile(...args: unknown[]): Promise<void> {
+  void args;
+}
+async function dropboxDeleteFile(...args: unknown[]): Promise<void> {
+  void args;
+}
 
 // Connection state — WebSocket relay
 let ws: WebSocket | null = null;

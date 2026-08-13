@@ -532,10 +532,13 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
 
   const updatedAt = Date.now();
   await enqueuePwaLibraryCoreAccountUpserts(
-    realLinkedAccounts.map(({ personId: _personId, ...account }) => ({
-      ...account,
-      updatedAt,
-    })),
+    realLinkedAccounts.map(({ personId, ...account }) => {
+      void personId;
+      return {
+        ...account,
+        updatedAt,
+      };
+    }),
   );
   for (const accountId of sampleAccountIds) {
     await enqueuePwaLibraryCoreAccountRemove(accountId);
