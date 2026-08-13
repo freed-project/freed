@@ -6,6 +6,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+  PERSON_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
@@ -133,12 +134,14 @@ describe("Library Core operation payload contracts", () => {
 
   it("accepts synchronized preference patches and rejects device-local leaves", () => {
     const accepted = PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
-        updates: {
-          display: { archivePruneDays: 14 },
-          ai: { autoSummarize: true },
-        },
-      });
-    expect(accepted, accepted.ok ? undefined : accepted.reason).toMatchObject({ ok: true });
+      updates: {
+        display: { archivePruneDays: 14 },
+        ai: { autoSummarize: true },
+      },
+    });
+    expect(accepted, accepted.ok ? undefined : accepted.reason).toMatchObject({
+      ok: true,
+    });
     for (const updates of [
       {},
       { sync: { autoBackup: true } },
@@ -152,5 +155,25 @@ describe("Library Core operation payload contracts", () => {
         PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({ updates }),
       ).toMatchObject({ ok: false, code: "invalid" });
     }
+  });
+
+  it("accepts a whole synchronized Person and rejects device-local graph fields", () => {
+    const person = {
+      id: "person:one",
+      name: "One Person",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      tags: ["local"],
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    expect(PERSON_UPSERT_PAYLOAD_SCHEMA.validate({ person })).toMatchObject({
+      ok: true,
+    });
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
+        person: { ...person, graphX: 12 },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
   });
 });

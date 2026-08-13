@@ -8,6 +8,7 @@ import {
   type RssFeed,
   type UserPreferences,
 } from "@freed/shared";
+import { sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
@@ -39,7 +40,10 @@ import {
 } from "@freed/sync/cloud";
 import type { DocState } from "./automerge-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
-import { createPwaLibraryCorePortableCheckpointStore } from "./library-core-portable-checkpoint-store";
+import {
+  createPwaLibraryCorePortableCheckpointStore,
+  PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
+} from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
 
 export const PWA_LIBRARY_CORE_ENABLED_KEY =
@@ -440,6 +444,36 @@ export async function enqueuePwaLibraryCorePreferencesPatch(
   updates: Partial<UserPreferences>,
 ): Promise<void> {
   await getPortableStore().enqueuePreferencesLeafAssignment(updates);
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one whole sanitized Person and update the selected IndexedDB shell. */
+export async function enqueuePwaLibraryCorePersonUpsert(
+  person: Person,
+): Promise<void> {
+  await enqueuePwaLibraryCorePersonUpserts([person]);
+}
+
+/** Queue one bounded batch of whole sanitized Persons and update the selected shell. */
+export async function enqueuePwaLibraryCorePersonUpserts(
+  persons: readonly Person[],
+): Promise<void> {
+  const synchronized = persons.map(
+    (person) => sanitizePersonWrite(person) as Person,
+  );
+  for (
+    let offset = 0;
+    offset < synchronized.length;
+    offset += PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT
+  ) {
+    await getPortableStore().enqueuePersonUpserts(
+      synchronized.slice(
+        offset,
+        offset + PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
+      ),
+    );
+  }
   const state = await readSelectedState();
   if (state) publishState(state);
 }

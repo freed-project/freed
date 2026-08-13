@@ -15,6 +15,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+  PERSON_UPSERT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
@@ -45,6 +46,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
@@ -511,6 +513,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   person_upsert: localUserOperation({
     entityType: "Person",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: PERSON_UPSERT_PAYLOAD_SCHEMA,
+    transactionMemberSchema: PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys: PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: [
       "addFriend",

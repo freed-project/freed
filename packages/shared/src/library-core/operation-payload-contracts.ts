@@ -5,11 +5,13 @@ import {
 } from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 import { stripDeviceLocalPreferenceUpdates } from "../preferences.js";
-import type { UserPreferences } from "../types.js";
+import { sanitizePersonWrite } from "../sync-write-policy.js";
+import type { Person, UserPreferences } from "../types.js";
 
 const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
+const PERSON_UPSERT_MAXIMUM_BYTES = 262_144;
 
 export interface FeedItemCaptureUpsertPayloadV1 {
   readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
@@ -33,6 +35,10 @@ export interface RssFeedRemovePayloadV1 {
 
 export interface PreferencesLeafAssignmentPayloadV1 {
   readonly updates: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface PersonUpsertPayloadV1 {
+  readonly person: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
 export const FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS = Object.freeze([
@@ -84,6 +90,7 @@ const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
+const PERSON_UPSERT_KEYS = ["person"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -368,10 +375,7 @@ function validatePreferencesLeafAssignmentPayload(
     return invalid("payload may not contain symbol keys");
   }
   const keys = Object.getOwnPropertyNames(value);
-  if (
-    keys.length !== 1 ||
-    keys[0] !== PREFERENCES_LEAF_ASSIGNMENT_KEYS[0]
-  ) {
+  if (keys.length !== 1 || keys[0] !== PREFERENCES_LEAF_ASSIGNMENT_KEYS[0]) {
     return invalid("payload must contain only updates");
   }
   const descriptor = Object.getOwnPropertyDescriptor(value, "updates");
@@ -393,7 +397,11 @@ function validatePreferencesLeafAssignmentPayload(
     const updates = decodeLibraryCoreCanonicalValue(encoded, {
       maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES,
     });
-    if (typeof updates !== "object" || updates === null || Array.isArray(updates)) {
+    if (
+      typeof updates !== "object" ||
+      updates === null ||
+      Array.isArray(updates)
+    ) {
       return invalid("updates must be a plain canonical object");
     }
     if (Object.keys(updates).length === 0) {
@@ -414,14 +422,179 @@ function validatePreferencesLeafAssignmentPayload(
     return {
       ok: true,
       value: Object.freeze({
-        updates: updates as Readonly<
-          Record<string, LibraryCoreCanonicalValue>
-        >,
+        updates: updates as Readonly<Record<string, LibraryCoreCanonicalValue>>,
       }),
     };
   } catch (error) {
     return invalid(
       error instanceof Error ? error.message : "updates are not canonical",
+    );
+  }
+}
+
+function validatePersonUpsertPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<PersonUpsertPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== PERSON_UPSERT_KEYS[0]) {
+    return invalid("payload must contain only person");
+  }
+  const candidate = (value as { person?: unknown }).person;
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    return invalid("person must be a plain canonical object");
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      candidate as LibraryCoreCanonicalValue,
+      {
+        maximumBytes: PERSON_UPSERT_MAXIMUM_BYTES,
+      },
+    );
+    const decoded = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: PERSON_UPSERT_MAXIMUM_BYTES,
+    });
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      Array.isArray(decoded)
+    ) {
+      return invalid("person must be a plain canonical object");
+    }
+    const person = decoded as Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >;
+    if (
+      typeof person.id !== "string" ||
+      person.id.length === 0 ||
+      person.id.length > 4_096
+    ) {
+      return invalid("person.id must be a bounded nonempty string");
+    }
+    if (typeof person.name !== "string" || person.name.length > 16_384) {
+      return invalid("person.name must be a bounded string");
+    }
+    if (
+      (person.relationshipStatus !== "connection" &&
+        person.relationshipStatus !== "friend") ||
+      !Number.isSafeInteger(person.careLevel) ||
+      (person.careLevel as number) < 1 ||
+      (person.careLevel as number) > 5 ||
+      !Number.isSafeInteger(person.createdAt) ||
+      (person.createdAt as number) < 0 ||
+      !Number.isSafeInteger(person.updatedAt) ||
+      (person.updatedAt as number) < 0
+    ) {
+      return invalid("person has invalid required fields");
+    }
+    for (const key of ["avatarUrl", "bio", "notes"] as const) {
+      const field = person[key];
+      if (
+        field !== undefined &&
+        (typeof field !== "string" ||
+          field.length > PERSON_UPSERT_MAXIMUM_BYTES)
+      ) {
+        return invalid(`person.${key} must be a bounded string`);
+      }
+    }
+    if (
+      person.reachOutIntervalDays !== undefined &&
+      (!Number.isSafeInteger(person.reachOutIntervalDays) ||
+        (person.reachOutIntervalDays as number) < 0)
+    ) {
+      return invalid("person.reachOutIntervalDays must be nonnegative");
+    }
+    if (
+      person.tags !== undefined &&
+      (!Array.isArray(person.tags) ||
+        person.tags.length > 4_096 ||
+        person.tags.some(
+          (tag) => typeof tag !== "string" || tag.length > 4_096,
+        ))
+    ) {
+      return invalid("person.tags must be bounded strings");
+    }
+    if (person.reachOutLog !== undefined) {
+      if (
+        !Array.isArray(person.reachOutLog) ||
+        person.reachOutLog.length > 20
+      ) {
+        return invalid("person.reachOutLog must be a bounded array");
+      }
+      const channels = new Set([
+        "phone",
+        "text",
+        "email",
+        "in_person",
+        "other",
+      ]);
+      for (const entry of person.reachOutLog) {
+        if (
+          typeof entry !== "object" ||
+          entry === null ||
+          Array.isArray(entry) ||
+          Object.keys(entry).some(
+            (key) => !["loggedAt", "channel", "notes"].includes(key),
+          ) ||
+          !Number.isSafeInteger(entry.loggedAt) ||
+          (entry.loggedAt as number) < 0 ||
+          (entry.channel !== undefined &&
+            (typeof entry.channel !== "string" ||
+              !channels.has(entry.channel))) ||
+          (entry.notes !== undefined && typeof entry.notes !== "string")
+        ) {
+          return invalid("person.reachOutLog contains an invalid entry");
+        }
+      }
+    }
+    if (person.sampleDataFingerprint !== undefined) {
+      const fingerprint = person.sampleDataFingerprint;
+      if (
+        typeof fingerprint !== "object" ||
+        fingerprint === null ||
+        Array.isArray(fingerprint)
+      ) {
+        return invalid("person.sampleDataFingerprint is invalid");
+      }
+      const fields = fingerprint as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      if (
+        Object.keys(fields).length !== 4 ||
+        !["marker", "batchId", "generatedAt", "generatorVersion"].every((key) =>
+          Object.prototype.hasOwnProperty.call(fields, key),
+        ) ||
+        fields.marker !== "freed.sample-data.v1" ||
+        typeof fields.batchId !== "string" ||
+        !Number.isSafeInteger(fields.generatedAt) ||
+        (fields.generatedAt as number) < 0 ||
+        !Number.isSafeInteger(fields.generatorVersion) ||
+        (fields.generatorVersion as number) < 0
+      ) {
+        return invalid("person.sampleDataFingerprint is invalid");
+      }
+    }
+    const sanitized = sanitizePersonWrite(person as unknown as Partial<Person>);
+    const sanitizedBytes = encodeLibraryCoreCanonicalValue(
+      sanitized as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: PERSON_UPSERT_MAXIMUM_BYTES },
+    );
+    if (
+      sanitizedBytes.byteLength !== encoded.byteLength ||
+      sanitizedBytes.some((byte, index) => byte !== encoded[index])
+    ) {
+      return invalid("person contains device-local or unsupported fields");
+    }
+    return { ok: true, value: Object.freeze({ person }) };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "person is not canonical",
     );
   }
 }
@@ -547,6 +720,17 @@ export const PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "preferences_leaf_assignment",
   PreferencesLeafAssignmentPayloadV1
+>;
+
+export const PERSON_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "person_upsert_payload_v1",
+  schemaVersion: 1,
+  operationType: "person_upsert",
+  canonicalKeys: PERSON_UPSERT_KEYS,
+  validate: validatePersonUpsertPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "person_upsert",
+  PersonUpsertPayloadV1
 >;
 
 /** Closed payload for idempotent local PWA user-state assignments. */

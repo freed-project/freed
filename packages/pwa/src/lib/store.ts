@@ -117,6 +117,8 @@ import {
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCorePreferencesPatch,
+  enqueuePwaLibraryCorePersonUpsert,
+  enqueuePwaLibraryCorePersonUpserts,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -800,11 +802,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Person actions
   addPerson: async (person: Person) => {
-    await docAddPerson(person);
+    if (isPwaLibraryCoreEnabled())
+      await enqueuePwaLibraryCorePersonUpsert(person);
+    else await docAddPerson(person);
   },
 
   addPersons: async (persons: Person[]) => {
-    await docAddPersons(persons);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCorePersonUpserts(persons);
+    } else await docAddPersons(persons);
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
@@ -825,7 +831,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:updatePerson",
       (state) => projectUpdatePerson(state, id, syncedUpdates),
-      () => docUpdatePerson(id, syncedUpdates),
+      () => {
+        if (!isPwaLibraryCoreEnabled())
+          return docUpdatePerson(id, syncedUpdates);
+        const current = get().persons[id];
+        if (!current) throw new Error("Person is unavailable");
+        return enqueuePwaLibraryCorePersonUpsert({
+          ...current,
+          ...syncedUpdates,
+        });
+      },
+      { allowLibraryCoreIntent: true },
     );
   },
 
