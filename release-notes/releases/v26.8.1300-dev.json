@@ -5,14 +5,14 @@
   "dayKey": "26.8.13",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-13T17:34:03.837Z",
+  "generatedAt": "2026-08-13T18:13:44.942Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.1203-dev",
     "previousPublishedDayTag": "v26.8.1203-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "35001083e2c0f85bdda80ffd179d60e5121a76f9",
+    "productCommitSha": "77b29fb1100f43b548628c2c7565223526c272aa",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.1203-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "2199a5d825a380a551bdb8a306a7a42a7795404d",
-        "toInclusiveProductCommitSha": "35001083e2c0f85bdda80ffd179d60e5121a76f9"
+        "toInclusiveProductCommitSha": "77b29fb1100f43b548628c2c7565223526c272aa"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -51,12 +51,12 @@
           ]
         }
       ],
-      "inspectionDigest": "sha256:b898e7ed7c3ce5d1aa8370363d78de41d55291e7a5483496bf1fc726cfa98794",
+      "inspectionDigest": "sha256:7f1e8a3cd95f5ff8aaf431c005ca8a5efb2719d7ec7d9865d419ec72512c6072",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-1300-dev#sha256:ac2911b4fc390bbb87e046368ed0c9b784e2942724b27d69f956560a4ab963a6",
-        "approvedInspectionDigest": "sha256:b898e7ed7c3ce5d1aa8370363d78de41d55291e7a5483496bf1fc726cfa98794",
-        "approvedReleaseArtifactDigest": "sha256:066b6c60bcdba6749b40db56348f1662960d0127f43bcead43a4138866d090cb"
+        "ownerApprovalReference": "current-task:release-26-8-1300-dev#sha256:b82d6c9b48ed380a9bdd33b4af01d2f1ff3021156b9ab8f7b7ded2bd346c3b7c",
+        "approvedInspectionDigest": "sha256:7f1e8a3cd95f5ff8aaf431c005ca8a5efb2719d7ec7d9865d419ec72512c6072",
+        "approvedReleaseArtifactDigest": "sha256:7e11f60256fd850c230dbd25747d807f0e63abe62d4b0e5b8c43e22a9279df6e"
       }
     },
     "isLatestOfDay": true,
@@ -83,9 +83,13 @@
       1436,
       1437,
       1438,
-      1440
+      1440,
+      1441,
+      1442
     ],
     "commitSubjects": [
+      "fix: satisfy PWA SQLite runtime lint (#1442)",
+      "chore: prepare v26.8.1300-dev (#1441)",
       "perf: retire Desktop Automerge runtime (#1440)",
       "feat: retire PWA Automerge runtime (#1438)",
       "feat: move PWA Library maintenance to Library Core (#1437)",
@@ -106,17 +110,16 @@
     ]
   },
   "release": {
-    "deck": "Run Freed's Library on SQLite across Freed Desktop and the PWA, with bounded map memory and no active Automerge runtime",
+    "deck": "Finish the bounded-memory Library Core cutover and repair large-Library map behavior",
     "features": [
-      "Move PWA Library reads, writes, accounts, people, preferences, RSS feeds, bulk actions, saves, deletions, and maintenance to Library Core",
-      "Remove the active Automerge runtime from Freed Desktop and the PWA",
-      "Start daily SQLite Library backups without loading the legacy document engine"
+      "Write daily SQLite backups without loading the legacy document engine"
     ],
     "fixes": [
-      "Bound geographic map renderer memory on large libraries",
-      "Make Library Core state assignments idempotent across retries"
+      "Stop Freed Desktop from loading the retired Automerge engine after startup",
+      "Bound map renderer memory on large libraries",
+      "Make Library Core assignments idempotent"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1300-dev\n\nRun Freed's Library on SQLite across Freed Desktop and the PWA, with bounded map memory and no active Automerge runtime.\n\n### Features\n\n- Move PWA Library reads, writes, accounts, people, preferences, RSS feeds, bulk actions, saves, deletions, and maintenance to Library Core\n- Remove the active Automerge runtime from Freed Desktop and the PWA\n- Start daily SQLite Library backups without loading the legacy document engine\n\n### Fixes\n\n- Bound geographic map renderer memory on large libraries\n- Make Library Core state assignments idempotent across retries\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1300-dev\n\nFinish the bounded-memory Library Core cutover and repair large-Library map behavior\n\n### Features\n\n- Write daily SQLite backups without loading the legacy document engine\n\n### Fixes\n\n- Stop Freed Desktop from loading the retired Automerge engine after startup\n- Bound map renderer memory on large libraries\n- Make Library Core assignments idempotent\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
