@@ -19,6 +19,7 @@ import { buildThemedMapStyle } from "../../lib/map-style.js";
 type PopupInstance = MapLibrePopup;
 type MarkerInstance = MapLibreMarker;
 type MapInstance = MapLibreMap;
+type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
@@ -70,6 +71,34 @@ const MAP_CAMERA_PADDING_PX = 72;
 const MAP_CLUSTER_MAX_ZOOM = 7.5;
 const MAP_MAX_PIXEL_RATIO = 1.5;
 const MAP_MAX_TILE_CACHE_SIZE = 24;
+
+/**
+ * MapLibre removes its DOM and workers, but WebKit can retain the detached
+ * canvas backing store and GPU context for the rest of the renderer process.
+ * Release that context after MapLibre has stopped using it so leaving Map
+ * returns the browsing surface's memory to the system.
+ */
+export function disposeMapInstance(map: DisposableMapInstance): void {
+  let canvas: HTMLCanvasElement | null = null;
+  let loseContext: WEBGL_lose_context | null = null;
+
+  try {
+    try {
+      map.stop();
+      canvas = map.getCanvas();
+      const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+      loseContext = context?.getExtension("WEBGL_lose_context") ?? null;
+    } finally {
+      map.remove();
+    }
+  } finally {
+    loseContext?.loseContext();
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  }
+}
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -862,7 +891,7 @@ export function MapSurface({
         clearNativeMarkerRestoreTimeout();
         for (const { marker } of markersRef.current) marker.remove();
         markersRef.current = [];
-        mapRef.current?.remove();
+        if (mapRef.current) disposeMapInstance(mapRef.current);
         mapRef.current = null;
       };
     }
@@ -913,7 +942,7 @@ export function MapSurface({
         setTimeout(() => map.resize(), 0);
       } catch (error) {
         console.error("[MapSurface] Failed to initialize MapLibre", error);
-        mapRef.current?.remove();
+        if (mapRef.current) disposeMapInstance(mapRef.current);
         mapRef.current = null;
         setLoadFailed(true);
       }
@@ -929,7 +958,7 @@ export function MapSurface({
       clearNativeMarkerRestoreTimeout();
       for (const { marker } of markersRef.current) marker.remove();
       markersRef.current = [];
-      mapRef.current?.remove();
+      if (mapRef.current) disposeMapInstance(mapRef.current);
       mapRef.current = null;
       setShellMoving(false);
     };

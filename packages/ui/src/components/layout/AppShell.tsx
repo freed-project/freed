@@ -107,7 +107,8 @@ export function AppShell({ children }: AppShellProps) {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const { scanLibraryItems } = usePlatform();
+  const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
+  const previousActiveViewRef = useRef(activeView);
   const accounts = useAppStore((s) => s.accounts);
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
@@ -132,6 +133,23 @@ export function AppShell({ children }: AppShellProps) {
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
   const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
+
+  useEffect(() => {
+    const previousActiveView = previousActiveViewRef.current;
+    previousActiveViewRef.current = activeView;
+    if (previousActiveView !== "map" || activeView === "map" || !releaseMapRendererMemory) {
+      return;
+    }
+
+    void releaseMapRendererMemory().catch((error) => {
+      addDebugEvent(
+        "error",
+        `[map] native renderer memory release failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }, [activeView, releaseMapRendererMemory]);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.

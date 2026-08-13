@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LocationMarkerSummary } from "@freed/shared";
 import {
   areLocationMarkerListsRenderEquivalent,
+  disposeMapInstance,
   fitMapToMarkers,
   getMapMovingPriority,
   getRenderedMapMarkers,
@@ -152,5 +153,33 @@ describe("map camera framing", () => {
       ],
       expect.objectContaining({ maxZoom: 7.5 }),
     );
+  });
+});
+
+describe("map renderer disposal", () => {
+  it("releases the detached WebGL context and canvas backing store", () => {
+    const calls: string[] = [];
+    const loseContext = vi.fn(() => calls.push("lose"));
+    const canvas = {
+      width: 1_920,
+      height: 1_152,
+      getContext: vi.fn((kind: string) => {
+        calls.push(`context:${kind}`);
+        return kind === "webgl2"
+          ? { getExtension: () => ({ loseContext }) }
+          : null;
+      }),
+    } as unknown as HTMLCanvasElement;
+    const map = {
+      stop: vi.fn(() => calls.push("stop")),
+      getCanvas: vi.fn(() => canvas),
+      remove: vi.fn(() => calls.push("remove")),
+    };
+
+    disposeMapInstance(map as unknown as Parameters<typeof disposeMapInstance>[0]);
+
+    expect(calls).toEqual(["stop", "context:webgl2", "remove", "lose"]);
+    expect(canvas.width).toBe(1);
+    expect(canvas.height).toBe(1);
   });
 });
