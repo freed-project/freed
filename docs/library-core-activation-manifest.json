@@ -140,6 +140,16 @@
         "replication_convergence",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "sqlite-pwa-legacy-engine-retirement-v1",
+      "gate": "H",
+      "kind": "legacy_engine_retirement",
+      "rollbackTrigger": "Restore the previous PWA deployment if the IndexedDB Library Core cannot import the active immutable checkpoint, preserve bounded reads, publish signed intents, reconcile results, or complete factory reset without the retired Automerge runtime.",
+      "receiptExpectations": [
+        "retirement_receipt",
+        "roll_forward_recovery_receipt"
+      ]
     }
   ]
 }

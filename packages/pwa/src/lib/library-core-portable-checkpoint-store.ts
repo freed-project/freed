@@ -104,7 +104,7 @@ import type {
   LibraryCorePortableCheckpointImportWriterV1,
   LibraryCorePortableCheckpointStagingReceiptV1,
   LibraryCorePreparedImmutableObjectV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
 
 import {
   lowerHex,

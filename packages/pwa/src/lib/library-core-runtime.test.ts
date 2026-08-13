@@ -43,7 +43,6 @@ vi.mock("./factory-reset-coordinator", () => ({
 }));
 
 import {
-  PWA_LIBRARY_CORE_ENABLED_KEY,
   clearPwaLibraryCoreSampleData,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
@@ -93,10 +92,10 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueAccountRemove.mockReset();
   });
 
-  it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
+  it("keeps IndexedDB Library Core active when stale rollback state is present", () => {
     expect(isPwaLibraryCoreEnabled()).toBe(true);
-    localStorage.setItem(PWA_LIBRARY_CORE_ENABLED_KEY, "0");
-    expect(isPwaLibraryCoreEnabled()).toBe(false);
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
+    expect(isPwaLibraryCoreEnabled()).toBe(true);
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {

@@ -17,7 +17,6 @@
     "test:headed": "node ../../node_modules/playwright/cli.js test --headed"
   },
   "dependencies": {
-    "@automerge/automerge": "^2.2.8",
     "@freed/capture-save": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",
@@ -55,7 +54,6 @@
     "vite": "7.3.6",
     "vite-plugin-pwa": "^1.3.0",
     "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.10",
     "workbox-window": "^7.4.0"
   }

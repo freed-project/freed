@@ -8,7 +8,7 @@ import {
 import {
   importLibraryCoreCheckpointManifestV1,
   type LibraryCoreImmutableReadAdapterV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
 
 import type {
   AppendPwaLibraryCoreFeedGenerationPageInput,

@@ -11,7 +11,8 @@
     "./storage/filesystem": "./src/storage/filesystem.ts",
     "./storage/indexeddb": "./src/storage/indexeddb.ts",
     "./storage/repeatable-automerge-persistence": "./src/storage/repeatable-automerge-persistence.ts",
-    "./cloud": "./src/cloud/index.ts"
+    "./cloud": "./src/cloud/index.ts",
+    "./cloud/library-core": "./src/cloud/library-core.ts"
   },
   "scripts": {
     "build": "tsc",

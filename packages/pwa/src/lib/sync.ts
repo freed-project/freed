@@ -25,17 +25,15 @@ import {
   clearStoredCloudProvidersForFactoryReset,
   hasFactoryResetCloudCleanupBarrier,
 } from "@freed/ui/lib/factory-reset";
-import {
-  gdriveUploadSafe,
-  gdriveStartPollLoop,
-  gdriveDownloadLatest,
-  gdriveDeleteFile,
-  dropboxUploadSafe,
-  dropboxStartLongpollLoop,
-  dropboxDownloadLatest,
-  dropboxDeleteFile,
-  type CloudProvider,
-} from "@freed/sync/cloud";
+import type { CloudProvider } from "@freed/sync/cloud/library-core";
+
+interface RetiredCloudUploadResult {
+  readonly fileId: string;
+  readonly uploadedBinary: Uint8Array;
+  readonly uploadedBytes: number;
+  readonly remoteBytes: number;
+  readonly mergedRemote: boolean;
+}
 import {
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
@@ -46,6 +44,46 @@ import {
 } from "./library-core-runtime";
 
 const syncRuntimeLifecycle = capturePwaRuntimeLifecycle();
+
+/**
+ * The PWA no longer synchronizes one mutable Automerge file. These local
+ * compatibility shims keep stale in-memory callbacks fail-closed without
+ * importing the legacy Google Drive, Dropbox, merge, or WASM modules into the
+ * production bundle. Current Google Drive sync enters Library Core above.
+ */
+function retiredLegacyCloudSyncError(): Error {
+  return new Error(
+    "Legacy PWA cloud-file sync has been retired; use Library Core immutable sync",
+  );
+}
+
+async function gdriveUploadSafe(
+  ..._args: unknown[]
+): Promise<RetiredCloudUploadResult> {
+  throw retiredLegacyCloudSyncError();
+}
+async function gdriveStartPollLoop(..._args: unknown[]): Promise<void> {
+  throw retiredLegacyCloudSyncError();
+}
+async function gdriveDownloadLatest(
+  ..._args: unknown[]
+): Promise<Uint8Array | null> {
+  throw retiredLegacyCloudSyncError();
+}
+async function dropboxUploadSafe(..._args: unknown[]): Promise<void> {
+  throw retiredLegacyCloudSyncError();
+}
+async function dropboxStartLongpollLoop(..._args: unknown[]): Promise<void> {
+  throw retiredLegacyCloudSyncError();
+}
+async function dropboxDownloadLatest(
+  ..._args: unknown[]
+): Promise<Uint8Array | null> {
+  throw retiredLegacyCloudSyncError();
+}
+
+async function gdriveDeleteFile(..._args: unknown[]): Promise<void> {}
+async function dropboxDeleteFile(..._args: unknown[]): Promise<void> {}
 
 // Connection state — WebSocket relay
 let ws: WebSocket | null = null;

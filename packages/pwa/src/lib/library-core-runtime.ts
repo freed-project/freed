@@ -40,7 +40,7 @@ import {
   importLibraryCoreResultSegmentV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   publishLibraryCoreIntentCandidateV1,
-} from "@freed/sync/cloud";
+} from "@freed/sync/cloud/library-core";
 import type { DocState } from "./automerge-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
@@ -50,9 +50,6 @@ import {
   PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
 } from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
-
-export const PWA_LIBRARY_CORE_ENABLED_KEY =
-  "freed.libraryCore.pwaIndexedDbV1.enabled";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
@@ -188,11 +185,7 @@ function publishState(state: DocState): void {
 }
 
 export function isPwaLibraryCoreEnabled(): boolean {
-  try {
-    return localStorage.getItem(PWA_LIBRARY_CORE_ENABLED_KEY) !== "0";
-  } catch {
-    return true;
-  }
+  return true;
 }
 
 export function subscribePwaLibraryCoreState(

@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { VitePWA } from "vite-plugin-pwa";
 import { realpathSync } from "fs";
@@ -49,7 +48,7 @@ export default defineConfig({
   },
   worker: {
     format: "es",
-    plugins: () => [wasm(), topLevelAwait()],
+    plugins: () => [topLevelAwait()],
   },
   optimizeDeps: {
     exclude: ["maplibre-gl/dist/maplibre-gl-worker.mjs"],
@@ -64,7 +63,19 @@ export default defineConfig({
   },
 
   plugins: [
-    wasm(),
+    {
+      name: "reject-retired-automerge-assets",
+      generateBundle(_options, bundle) {
+        const retiredAssets = Object.keys(bundle).filter((fileName) =>
+          fileName.toLowerCase().includes("automerge"),
+        );
+        if (retiredAssets.length > 0) {
+          throw new Error(
+            `The retired PWA Automerge runtime leaked into the production bundle: ${retiredAssets.join(", ")}`,
+          );
+        }
+      },
+    },
     topLevelAwait(),
     react(),
     VitePWA({
@@ -77,14 +88,6 @@ export default defineConfig({
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        // Library Core is the normal PWA engine. Keep the legacy rollback
-        // worker available on demand, but do not make every installation
-        // download and precache its worker and WASM payloads.
-        globIgnores: [
-          "**/automerge-*.js",
-          "**/automerge.worker-*.js",
-          "**/automerge_wasm_bg-*.wasm",
-        ],
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's
