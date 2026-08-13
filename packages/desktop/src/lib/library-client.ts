@@ -1,9 +1,8 @@
 /**
  * Freed Desktop Library client.
  *
- * Production calls native SQLite directly. The historical Automerge client is
- * deliberately outside this module so importing the product entry point cannot
- * pull the worker or WASM runtime into a release bundle.
+ * Production calls native SQLite directly. No document worker or WASM database
+ * runtime is loaded by this client.
  */
 
 import { hashSavedUrl } from "@freed/capture-save/normalize";
@@ -24,19 +23,11 @@ import {
   type UserPreferences,
 } from "@freed/shared";
 import type {
-  LibraryCoreFeedBrowseFilterInputV1,
-  LibraryCoreFeedBrowseIdentityModeV2,
-} from "@freed/shared/library-core";
-import type {
   DocChangeEvent,
   DocState,
-  DocStats,
-  CommittedDocSnapshot,
-  DocumentHistoryRelation,
-  LibraryCoreProjectionSourceV1,
   RssFeedRefreshUpdate,
   WorkerRequest,
-} from "./automerge-types";
+} from "./library-types";
 import { registerDocAccessors, setDocSnapshot } from "@freed/ui/lib/debug-store";
 import {
   appendPortableSqliteLibraryItems,
@@ -49,9 +40,8 @@ import {
   readSqliteItems,
   sqliteLibraryStatus,
 } from "./sqlite-library";
-import type { MaterializeDesktopLibraryCoreFeedBrowseGenerationResult } from "./library-core-feed-browse-materializer-runtime";
 
-export type { DocChangeEvent, DocState } from "./automerge-types";
+export type { DocChangeEvent, DocState } from "./library-types";
 
 export class StaleDocumentRevisionError extends Error {}
 
@@ -69,7 +59,6 @@ function registerSqliteDebugAccessors(): void {
   registerDocAccessors(
     () => lastState,
     () => JSON.stringify(lastState),
-    getDocBinary,
   );
 }
 
@@ -185,36 +174,10 @@ export async function acquireLegacyRendererItems(): Promise<() => void> {
   return () => {};
 }
 
-export async function getDocBinary(): Promise<Uint8Array> {
-  throw new Error("Legacy document export is unavailable in the SQLite Library");
-}
-
-export async function getCommittedDoc(): Promise<CommittedDocSnapshot> {
-  throw new Error("Legacy document snapshots are unavailable in the SQLite Library");
-}
-
-export async function getDocHeads(): Promise<null> {
-  return null;
-}
-
-export async function getLibraryCoreProjectionSource(): Promise<LibraryCoreProjectionSourceV1> {
-  throw new Error("The SQLite Library has no legacy projection source");
-}
-
-export async function compareDoc(_incoming: Uint8Array): Promise<DocumentHistoryRelation> {
-  throw new Error("Legacy document comparison is unavailable in the SQLite Library");
-}
-
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
   const items: FeedItem[] = [];
   await scanAllItems((page) => items.push(...page));
   return collectSavedYouTubeVideoUrls(items);
-}
-
-export function getCachedDocStats(): DocStats | null {
-  return lastState
-    ? { binaryBytes: 0, itemCount: lastState.totalItemCount }
-    : null;
 }
 
 async function scanAllItems(visit: (page: FeedItem[]) => void): Promise<void> {
@@ -242,32 +205,13 @@ export async function getItemLegacyHtml(globalId: string): Promise<string | null
   return item?.preservedContent?.html ?? null;
 }
 
-export function materializeLibraryCoreFeedBrowseGeneration(
-  _filterInput: LibraryCoreFeedBrowseFilterInputV1 | undefined,
-  _rankingClockMs: number,
-  _identityMode: LibraryCoreFeedBrowseIdentityModeV2 = "all_content",
-): Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult> {
-  return Promise.reject(new Error("The SQLite Library reads its native browse generation directly"));
-}
-
-export async function mergeDoc(_incoming: Uint8Array): Promise<never> {
-  throw new Error("Legacy document merge is unavailable in the SQLite Library");
-}
-
 export async function clearLocalDoc(): Promise<void> {
   await clearSqliteLibrary();
   lastState = null;
 }
 
-export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
+export function quiesceDesktopLibraryForFactoryReset(): Promise<void> {
   return mutationQueue;
-}
-
-export async function replaceLocalDoc(
-  _binary: Uint8Array,
-  _expectedRevision: unknown,
-): Promise<never> {
-  throw new Error("Legacy document replacement is unavailable in the SQLite Library");
 }
 
 export const docAddFeedItem = (item: FeedItem) => request({ type: "ADD_FEED_ITEM", item }).then(() => {});

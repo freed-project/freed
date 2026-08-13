@@ -38,7 +38,7 @@
 
 import { diffProjection, projectFeedItem, reconstructFeedItem } from "./projection.js";
 import type { FeedItemRow, ProjectionMismatch } from "./projection.js";
-import type { FreedDoc } from "./schema.js";
+import type { FreedDoc } from "./types.js";
 import type { FeedItem } from "./types.js";
 
 /**

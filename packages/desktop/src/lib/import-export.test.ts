@@ -4,13 +4,13 @@
  * Strategy:
  *  - The real parseMarkdownArchiveFile is called with VALID markdown content
  *    (mocking it proved unreliable due to ESM static binding constraints).
- *  - External I/O (automerge, content-cache, content-fetcher) is mocked.
+ *  - External I/O (Library Core, content-cache, content-fetcher) is mocked.
  *  - folderTagsFromRelativePath is tested directly with various path shapes.
  *
  * Covers:
  *  - Hierarchical tags from webkitRelativePath
  *  - Phased progress callbacks (scanning → writing → caching → fetching)
- *  - Deduplication against existing Automerge items
+ *  - Deduplication against existing Library Core items
  *  - Chunking behaviour for large batches (>500 items)
  *  - Accurate imported / skipped counters
  */
@@ -51,7 +51,7 @@ const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoi
 // Module-level store accessible to test assertions
 const docStore: Record<string, FeedItem> = {};
 
-vi.mock("./automerge.js", () => ({
+vi.mock("./library-client.js", () => ({
   docBatchImportItems: mockBatchImport,
   getAllItemIds: mockGetAllItemIds,
 }));

@@ -94,7 +94,6 @@ import {
   type InstallNotice,
 } from "./lib/pwa-install";
 import { openPwaUrl } from "./lib/youtube-handoff";
-import { clearPersistedWorkerDebugEvents } from "./lib/automerge-worker-debug";
 import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
@@ -341,7 +340,6 @@ function App() {
               resetFeedCardDensity,
               resetInterfaceZoom,
               resetThemePreference,
-              clearPersistedWorkerDebugEvents,
             ],
             clearLocalData: [],
             clearProviderDataAndConnections: async () => {

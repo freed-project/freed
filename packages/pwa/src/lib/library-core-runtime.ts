@@ -41,7 +41,7 @@ import {
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   publishLibraryCoreIntentCandidateV1,
 } from "@freed/sync/cloud/library-core";
-import type { DocState } from "./automerge-types";
+import type { LibraryState } from "./library-state-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
   createPwaLibraryCorePortableCheckpointStore,
@@ -59,10 +59,10 @@ const LIBRARY_SCAN_PAGE_LIMIT = 32;
 const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
 const MAXIMUM_RESULT_SEGMENTS_PER_SYNC = 128;
 
-type LibraryCoreStateListener = (state: DocState) => void;
+type LibraryCoreStateListener = (state: LibraryState) => void;
 
 const listeners = new Set<LibraryCoreStateListener>();
-let lastState: DocState | null = null;
+let lastState: LibraryState | null = null;
 
 let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
@@ -90,7 +90,7 @@ function getSearchIndex(): PwaLibraryCoreSearchIndex {
   return searchIndex;
 }
 
-function emptyState(): DocState {
+function emptyState(): LibraryState {
   return {
     items: [],
     searchCorpusVersion: 0,
@@ -117,7 +117,7 @@ function stateFromShell(
   shell: Readonly<Record<string, LibraryCoreCanonicalValue>>,
   items: FeedItem[],
   counts: Pick<
-    DocState,
+    LibraryState,
     | "archivableCountByPlatform"
     | "archivableFeedCounts"
     | "feedTotalCounts"
@@ -128,8 +128,8 @@ function stateFromShell(
     | "totalUnreadCount"
     | "unreadCountByPlatform"
   >,
-): DocState {
-  const base = { ...emptyState(), ...shell } as DocState;
+): LibraryState {
+  const base = { ...emptyState(), ...shell } as LibraryState;
   const persons = base.persons as Record<string, Person>;
   const accounts = base.accounts as Record<string, Account>;
   return {
@@ -145,7 +145,7 @@ function stateFromShell(
   };
 }
 
-async function readSelectedState(): Promise<DocState | null> {
+async function readSelectedState(): Promise<LibraryState | null> {
   const store = getPortableStore();
   const shell = await store.readSelectedMaterializedRow(
     "00_library_shell",
@@ -207,7 +207,7 @@ async function readSelectedState(): Promise<DocState | null> {
   });
 }
 
-function publishState(state: DocState): void {
+function publishState(state: LibraryState): void {
   lastState = state;
   for (const listener of listeners) listener(state);
 }
@@ -224,7 +224,7 @@ export function subscribePwaLibraryCoreState(
   return () => listeners.delete(listener);
 }
 
-export async function initializePwaLibraryCoreState(): Promise<DocState> {
+export async function initializePwaLibraryCoreState(): Promise<LibraryState> {
   const state = (await readSelectedState()) ?? emptyState();
   publishState(state);
   return state;
@@ -823,7 +823,7 @@ export async function openPwaLibraryCoreFeedReader(
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
   readonly signal?: AbortSignal;
-}): Promise<DocState> {
+}): Promise<LibraryState> {
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
     signal: input.signal,

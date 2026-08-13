@@ -1,13 +1,4 @@
-/**
- * Message types for the desktop Automerge Web Worker boundary.
- *
- * Desktop-specific additions over the PWA types:
- *   WorkerRequest  - adds BATCH_REFRESH_FEEDS, BATCH_IMPORT_ITEMS,
- *                    HEAL_UNTITLED_FEEDS, DEDUPLICATE_ITEMS,
- *                    UPDATE_RELAY_CLIENT_COUNT
- *   WorkerResponse - adds BROADCAST_REQUEST (main thread calls Tauri invoke),
- *                    IMPORT_PROGRESS (chunk progress for large imports)
- */
+/** SQLite Library state and operation contracts used by Freed Desktop. */
 
 import type {
   Account,
@@ -21,7 +12,6 @@ import type {
   UserPreferences,
   DesktopClientRegistration,
 } from "@freed/shared";
-import type { DocumentHistoryRelation } from "@freed/shared/schema";
 import type { FeedItemRow } from "@freed/shared/projection";
 import type {
   LibraryCoreFeedBrowseFilterInputV1,
@@ -29,7 +19,11 @@ import type {
 } from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
 
-export type { DocumentHistoryRelation } from "@freed/shared/schema";
+export type DocumentHistoryRelation =
+  | "equal"
+  | "local-ahead"
+  | "incoming-ahead"
+  | "diverged";
 
 // ---------------------------------------------------------------------------
 // Hydrated state - identical to PWA's DocState (imported for type safety)
@@ -77,11 +71,6 @@ export interface RssFeedPatch {
 
 export type RssFeedRefreshUpdate = Pick<RssFeed, "url"> &
   Partial<Pick<RssFeed, "lastFetched" | "title" | "siteUrl">>;
-
-export interface DocStats {
-  binaryBytes: number;
-  itemCount: number;
-}
 
 export interface LibraryCoreExternalSnapshotV1 {
   schemaVersion: 1;
@@ -133,13 +122,6 @@ export type WorkerRequest =
     }
   | { reqId: number; type: "QUIESCE" }
   | { reqId: number; type: "CLEAR_LOCAL" }
-  | {
-      reqId: number;
-      type: "REPLACE_DOC";
-      binary: Uint8Array;
-      expectedRevision: StorageRevision;
-      desktopClientRegistration?: DesktopClientRegistration;
-    }
   // Mutations shared with PWA
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
@@ -249,7 +231,6 @@ export type WorkerRequest =
       updates: Partial<Account>;
     }
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
-  | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   // Desktop-specific mutations
   | {
       reqId: number;
@@ -334,8 +315,7 @@ export type WorkerRequest =
       type: "SET_RENDERER_ITEM_HYDRATION";
       enabled: boolean;
     }
-  // Relay management (fire-and-forget, reqId ignored)
-  | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
+  ;
 
 export type DocChangeEvent =
   | {
@@ -446,13 +426,6 @@ export type WorkerResponse =
     }
   /** Sent once when the worker module finishes loading */
   | { type: "READY" }
-  /**
-   * Desktop-only: the worker has run A.save() + Array.from(binary) and
-   * asks the main thread to call invoke("broadcast_doc", { docBytes }).
-   * Array.from() is O(binary size) - doing it in the worker avoids blocking
-   * the main thread for 10–100ms on large documents.
-   */
-  | { type: "BROADCAST_REQUEST"; data: number[] }
   /** On-demand full item-id snapshot for import dedup pre-scan. */
   | { reqId: number; type: "ALL_ITEM_IDS"; ids: string[] }
   /** On-demand full document binary for relay, snapshots, and cloud uploads. */

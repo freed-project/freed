@@ -4,7 +4,7 @@ const invoke = vi.fn();
 const getLibraryCoreProjectionSource = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
-vi.mock("./automerge", () => ({ getLibraryCoreProjectionSource }));
+vi.mock("./library-client", () => ({ getLibraryCoreProjectionSource }));
 
 const { openLibraryCoreJournalForStartup } = await import(
   "./library-core-journal-runtime.js"

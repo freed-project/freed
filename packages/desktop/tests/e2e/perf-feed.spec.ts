@@ -123,7 +123,7 @@ async function injectPreservedRssItems(
   await page.evaluate(
     async ({ count, feedUrl, preservedTextLength }) => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docBatchImportItems: (items: unknown[]) => Promise<unknown>;
       };
 
@@ -871,47 +871,6 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
 });
 
 // ─── 9. IPC round-trip latency ────────────────────────────────────────────────
-
-test.describe("IPC round-trip latency (broadcast_doc)", () => {
-  test("broadcast_doc timing at various corpus sizes", async ({ app, page }) => {
-    await app.goto();
-    await app.waitForReady();
-
-    for (const count of [ITEM_COUNT_MEDIUM, ITEM_COUNT_LARGE]) {
-      await app.injectRssItems(count);
-      const [targetId] = await sqliteItemIds(page, 1);
-      // Flush pending save
-      await page.waitForTimeout(600);
-
-      // Trigger a mark-as-read to force a broadcast_doc call
-      await page.evaluate(async (id) => {
-        const w = window as Record<string, unknown>;
-        const store = w.__FREED_STORE__ as {
-          getState: () => { markAsRead: (id: string) => Promise<void> };
-        };
-        const { markAsRead } = store.getState();
-        if (id) await markAsRead(id);
-      }, targetId);
-
-      // Wait for save to flush (debounce + idle callback)
-      await page.waitForTimeout(800);
-
-      const timings = await page.evaluate(() => {
-        const w = window as Record<string, unknown>;
-        const t = (w.__TAURI_MOCK_IPC_TIMINGS__ as Array<{ cmd: string; startMs: number; endMs: number }>) ?? [];
-        return t.filter((x) => x.cmd === "broadcast_doc");
-      });
-
-      const durations = timings.map((t) => t.endMs - t.startMs);
-      const avg = durations.length ? durations.reduce((s, d) => s + d, 0) / durations.length : 0;
-      const worst = durations.length ? Math.max(...durations) : 0;
-
-      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) calls: ${timings.length}`);
-      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) avg: ${avg.toFixed(1)} ms`);
-      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) worst: ${worst.toFixed(1)} ms`);
-    }
-  });
-});
 
 // ─── 10. React Profiler render cost ──────────────────────────────────────────
 

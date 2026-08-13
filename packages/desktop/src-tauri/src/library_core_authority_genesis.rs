@@ -25,7 +25,7 @@
 //!
 //! Automerge stays authoritative throughout.
 
-use crate::automerge_external_common::{is_lower_sha256, lower_hex};
+use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };

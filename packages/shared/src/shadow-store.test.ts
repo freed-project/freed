@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it } from "vitest";
@@ -298,51 +298,4 @@ describe("shadow store", () => {
     const rows = readAllRows(db);
     expect(rows[0]!.authorDisplayName).toBe("Tampered");
   });
-});
-
-const fixture = process.env.FREED_CORPUS_FIXTURE;
-const hasFixture = fixture !== undefined && fixture !== "" && existsSync(fixture);
-
-describe.skipIf(!hasFixture)("shadow store against a real corpus", () => {
-  it("writes every item to SQLite and reads back exactly what was written", async () => {
-    const automerge = await import("@automerge/automerge");
-    const doc = automerge.load(new Uint8Array(readFileSync(fixture as string)));
-    const db = openStore();
-
-    const report = diffThroughStore(db, doc as never);
-    expect(report.itemsProjected).toBeGreaterThan(0);
-    expect(report.rowsReadBack).toBe(report.itemsProjected);
-
-    if (report.projectionMismatches.length > 0 || report.storageMismatches.length > 0) {
-      const describe_ = (list: typeof report.storageMismatches): string =>
-        list
-          .slice(0, 10)
-          .map((m) => `${m.globalId} ${m.path}: ${String(m.original)} -> ${String(m.roundTripped)}`)
-          .join("\n");
-      throw new Error(
-        `projection lost ${report.projectionMismatches.length}, storage lost ${report.storageMismatches.length}\n` +
-          `projection:\n${describe_(report.projectionMismatches)}\n` +
-          `storage:\n${describe_(report.storageMismatches)}`,
-      );
-    }
-  }, 300_000);
-
-  it("reproduces every item from stored rows alone", async () => {
-    // The one that matters for Stage 8: once the document is gone, the rows have
-    // to be able to rebuild the corpus by themselves.
-    const automerge = await import("@automerge/automerge");
-    const doc = automerge.load(new Uint8Array(readFileSync(fixture as string)));
-    const original = (doc as { feedItems: Record<string, unknown> }).feedItems;
-    const db = openStore();
-    upsertRows(
-      db,
-      Object.values(original).map((entry) => projectFeedItem(entry as FeedItem)),
-    );
-
-    const rebuilt = reconstructAllFromStore(db);
-    expect(rebuilt).toHaveLength(Object.keys(original).length);
-    for (const entry of rebuilt) {
-      expect(entry).toStrictEqual(original[entry.globalId as string]);
-    }
-  }, 300_000);
 });

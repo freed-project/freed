@@ -23,7 +23,6 @@ import type {
   LibraryCorePreparedImmutableObjectV1,
   LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
-import type { GoogleDriveFetch } from "./gdrive.js";
 import type {
   LibraryCoreIntentHeadReadV1,
   LibraryCoreIntentPublicationAdapterV1,
@@ -47,6 +46,8 @@ const MAX_INTENT_HEAD_BYTES = 65_536;
 const MAX_RESULT_HEAD_BYTES = 65_536;
 const MAX_DRIVE_JSON_BYTES = 262_144;
 const MAX_DRIVE_ERROR_BYTES = 4_096;
+
+export type GoogleDriveFetch = typeof fetch;
 
 /**
  * Ordinary Library Core wire objects remain below 5 MB so Google Drive can

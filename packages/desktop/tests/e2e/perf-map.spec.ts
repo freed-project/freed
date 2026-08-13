@@ -13,7 +13,7 @@ const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
 

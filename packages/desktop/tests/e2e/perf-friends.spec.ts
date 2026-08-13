@@ -170,7 +170,7 @@ async function waitForGraphContractSettle(
 async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ personCount, accountCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;

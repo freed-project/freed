@@ -23,7 +23,7 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
-import type { DocChangeEvent } from "./automerge-types";
+import type { DocChangeEvent } from "./library-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import { scheduleSideEffect } from "./side-effect-scheduler";

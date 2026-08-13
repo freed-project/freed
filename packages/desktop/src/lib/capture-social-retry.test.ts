@@ -53,7 +53,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: mocks.addDebugEvent,
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
 }));
 

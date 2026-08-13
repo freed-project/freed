@@ -56,8 +56,8 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
   if (hasDevelopmentStore) {
     await page.evaluate(async ({ id, name }) => {
       const runtime = window as unknown as Record<string, unknown>;
-      const automerge = runtime.__FREED_AUTOMERGE__ as {
-        docAddFriend: (friend: unknown) => Promise<void>;
+      const libraryCore = runtime.__FREED_LIBRARY_CORE__ as {
+        addFriend: (friend: unknown) => Promise<void>;
       };
       const store = runtime.__FREED_STORE__ as {
         getState: () => {
@@ -65,7 +65,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
         };
       };
       const now = Date.now();
-      await automerge.docAddFriend({
+      await libraryCore.addFriend({
         id,
         name,
         careLevel: 5,

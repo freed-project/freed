@@ -429,7 +429,7 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
     store.setState({
       ytAuth: { isAuthenticated: true, lastCheckedAt: Date.now() },
     });
-    const automerge = globals.__FREED_AUTOMERGE__ as {
+    const automerge = globals.__FREED_LIBRARY_CORE__ as {
       docAddFeedItem: (item: unknown) => Promise<void>;
     };
     await automerge.docAddFeedItem({
@@ -458,7 +458,7 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
   });
   await ipc.setHandler("read_library_core_item_scan_page", async () => {
     const globals = window as unknown as Record<string, unknown>;
-    const automerge = globals.__FREED_AUTOMERGE__ as {
+    const automerge = globals.__FREED_LIBRARY_CORE__ as {
       getLibraryCoreProjectionSource: () => Promise<{
         documentId: string;
         headCount: number;

@@ -9,7 +9,7 @@ vi.mock("./user-agent", () => ({
   clearPlatformUA: vi.fn(),
   selectPlatformUA: vi.fn(() => "test-user-agent"),
 }));
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   getSavedYouTubeVideoUrls: vi.fn(async () => []),
 }));
 vi.mock("./runtime-health-events", () => ({

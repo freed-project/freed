@@ -42,7 +42,7 @@ async function loadSemanticClassifierModule({
     },
   ]);
 
-  vi.doMock("./automerge.js", () => ({
+  vi.doMock("./library-client.js", () => ({
     docBackfillContentSignals: mockDocBackfillContentSignals,
     subscribe: vi.fn((callback: (state: { docItemCount: number }) => void) => {
       callbacks.doc = callback;

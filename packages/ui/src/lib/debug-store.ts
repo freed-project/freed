@@ -2,7 +2,7 @@
  * Debug store for Freed sync diagnostics
  *
  * Zustand store that tracks sync events, document state snapshots, and
- * panel visibility. Consumed by DebugPanel; written to by automerge.ts
+ * panel visibility. Consumed by DebugPanel; written to by Library clients.
  * and sync.ts in both the PWA and desktop packages.
  *
  * Also exposes window.__freed as a console escape hatch for inspecting
@@ -85,8 +85,6 @@ export interface RuntimeMemorySnapshot {
   }>;
   webkitTelemetryAvailable?: boolean;
   webkitAttributionPrecise?: boolean;
-  automergeBinaryBytes?: number;
-  automergeItemCount?: number;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
   storageSizesSampled?: boolean;
@@ -498,8 +496,8 @@ export function setProviderHealth(state: ProviderHealthDebugState): void {
 // ---------------------------------------------------------------------------
 // window.__freed escape hatch
 //
-// Call registerDocAccessors(getDoc, getDocBinary) from automerge.ts after
-// initDoc() so the console can reach live document state without the panel.
+// Register the active Library accessors after initialization so the console
+// can reach live state without opening the panel.
 // ---------------------------------------------------------------------------
 
 declare global {
@@ -516,13 +514,13 @@ declare global {
 export function registerDocAccessors(
   getDoc: () => unknown,
   getDocJson: () => string,
-  getDocBinary: () => Uint8Array | Promise<Uint8Array>,
+  getDocBinary?: () => Uint8Array | Promise<Uint8Array>,
 ): void {
   window.__freed = {
     ...window.__freed,
     getDoc,
     getDocJson,
-    getDocBinary,
+    ...(getDocBinary ? { getDocBinary } : {}),
     debug: () => useDebugStore.getState(),
   };
 }

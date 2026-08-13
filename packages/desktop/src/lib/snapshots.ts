@@ -1,22 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { appDataDir } from "@tauri-apps/api/path";
-import {
-  exists,
-  mkdir,
-  readDir,
-  readFile,
-  readTextFile,
-  remove,
-  writeFile,
-  writeTextFile,
-} from "@tauri-apps/plugin-fs";
-import {
-  getCommittedDoc,
-  getDocState,
-  reloadSqliteLibraryState,
-  replaceLocalDoc,
-  subscribe,
-} from "./library-client";
+import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
+import { getDocState, reloadSqliteLibraryState, subscribe } from "./library-client";
 import {
   clearSqliteLibraryBackups,
   createSqliteLibraryBackup,
@@ -24,16 +8,9 @@ import {
   listSqliteLibraryBackups,
   restoreSqliteLibraryBackup,
 } from "./sqlite-library";
+import { readContactSyncState } from "./contact-sync-storage.js";
+import { isBackgroundRuntimeDeferredError, runBackgroundJob } from "./background-runtime-coordinator.js";
 import { log } from "./logger.js";
-import { readContactSyncState, readContactSyncStateJson, writeContactSyncStateJson } from "./contact-sync-storage.js";
-import {
-  isBackgroundRuntimeDeferredError,
-  runBackgroundJob,
-} from "./background-runtime-coordinator.js";
-import {
-  isFactoryResetInProgress,
-  waitForFactoryResetDrain,
-} from "@freed/ui/lib/factory-reset";
 
 export type SnapshotReason = "auto" | "manual";
 
@@ -48,26 +25,6 @@ export interface SnapshotSummary {
   reason: SnapshotReason;
 }
 
-interface SnapshotIndex {
-  version: 1;
-  snapshots: SnapshotSummary[];
-}
-
-interface BrowserSnapshotRecord {
-  summary: SnapshotSummary;
-  binaryBase64: string;
-  contactsRaw: string | null;
-}
-
-interface BrowserSnapshotState {
-  version: 1;
-  snapshots: BrowserSnapshotRecord[];
-}
-
-const SNAPSHOT_DIR_NAME = "snapshots";
-const SNAPSHOT_INDEX_FILE = "index.json";
-const SNAPSHOT_FALLBACK_STORAGE_KEY = "freed.snapshots";
-const MAX_SNAPSHOTS = 24;
 const AUTO_SNAPSHOT_DEBOUNCE_MS = 30_000;
 const AUTO_SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
@@ -78,7 +35,6 @@ let lastSnapshotAt = 0;
 let snapshotManagerStarted = false;
 let snapshotResetInProgress = false;
 const activeSnapshotOperations = new Set<Promise<unknown>>();
-
 const snapshotListeners = new Set<() => void>();
 
 function trackSnapshotOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -86,303 +42,61 @@ function trackSnapshotOperation<T>(operation: () => Promise<T>): Promise<T> {
     return Promise.reject(new Error("Snapshots are being reset"));
   }
   let tracked: Promise<T>;
-  tracked = Promise.resolve()
-    .then(operation)
-    .finally(() => activeSnapshotOperations.delete(tracked));
+  tracked = Promise.resolve().then(operation).finally(() => activeSnapshotOperations.delete(tracked));
   activeSnapshotOperations.add(tracked);
   return tracked;
 }
 
-function joinPath(base: string, ...parts: string[]): string {
-  const clean = [base, ...parts].map((part, index) => {
-    const trimmed = part.trim();
-    if (index === 0) return trimmed.replace(/\/+$/, "");
-    return trimmed.replace(/^\/+|\/+$/g, "");
-  });
-  return clean.filter(Boolean).join("/");
-}
-
-function canUseNativeSnapshotStorage(): boolean {
-  return isTauri();
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function readBrowserSnapshotState(): BrowserSnapshotState {
-  try {
-    const raw = window.localStorage.getItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
-    if (!raw) {
-      return { version: 1, snapshots: [] };
-    }
-    const parsed = JSON.parse(raw) as Partial<BrowserSnapshotState>;
-    return {
-      version: 1,
-      snapshots: Array.isArray(parsed.snapshots) ? parsed.snapshots : [],
-    };
-  } catch {
-    return { version: 1, snapshots: [] };
-  }
-}
-
-function writeBrowserSnapshotState(state: BrowserSnapshotState): void {
-  try {
-    window.localStorage.setItem(SNAPSHOT_FALLBACK_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Ignore preview fallback storage failures.
-  }
-}
-
-async function getSnapshotRootDir(): Promise<string> {
-  return joinPath(await appDataDir(), SNAPSHOT_DIR_NAME);
-}
-
-async function getSnapshotIndexPath(): Promise<string> {
-  return joinPath(await getSnapshotRootDir(), SNAPSHOT_INDEX_FILE);
-}
-
-async function ensureSnapshotDir(): Promise<string> {
-  const root = await getSnapshotRootDir();
-  await mkdir(root, { recursive: true });
-  return root;
-}
-
-function snapshotBinaryPath(root: string, id: string): string {
-  return joinPath(root, `${id}.automerge`);
-}
-
-function snapshotContactsPath(root: string, id: string): string {
-  return joinPath(root, `${id}.contacts.json`);
-}
-
-function snapshotIdFromFileName(name: string): string | null {
-  if (name.endsWith(".automerge")) {
-    return name.slice(0, -".automerge".length);
-  }
-  if (name.endsWith(".contacts.json")) {
-    return name.slice(0, -".contacts.json".length);
-  }
-  return null;
-}
-
-function normalizeSnapshotList(snapshots: SnapshotSummary[]): SnapshotSummary[] {
-  return snapshots
-    .slice()
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, MAX_SNAPSHOTS);
-}
-
 function notifySnapshotListeners(): void {
-  for (const listener of snapshotListeners) {
-    listener();
-  }
-}
-
-async function readSnapshotIndex(): Promise<SnapshotSummary[]> {
-  const indexPath = await getSnapshotIndexPath();
-  if (!(await exists(indexPath))) {
-    return [];
-  }
-
-  try {
-    const raw = await readTextFile(indexPath);
-    const parsed = JSON.parse(raw) as Partial<SnapshotIndex>;
-    return normalizeSnapshotList(parsed.snapshots ?? []);
-  } catch (error) {
-    log.warn(
-      `[snapshots] failed to read index: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return [];
-  }
-}
-
-async function writeSnapshotIndex(snapshots: SnapshotSummary[]): Promise<void> {
-  const indexPath = await getSnapshotIndexPath();
-  const index: SnapshotIndex = {
-    version: 1,
-    snapshots: normalizeSnapshotList(snapshots),
-  };
-  await writeTextFile(indexPath, JSON.stringify(index, null, 2));
-}
-
-async function pruneSnapshots(
-  root: string,
-  snapshots: SnapshotSummary[],
-): Promise<SnapshotSummary[]> {
-  const keep = normalizeSnapshotList(snapshots);
-  const keepIds = new Set(keep.map((snapshot) => snapshot.id));
-  const removals: Promise<unknown>[] = [];
-
-  for (const snapshot of snapshots) {
-    if (keepIds.has(snapshot.id)) continue;
-
-    removals.push(
-      remove(snapshotBinaryPath(root, snapshot.id)),
-      remove(snapshotContactsPath(root, snapshot.id)),
-    );
-  }
-
-  const files = await readDir(root).catch(() => []);
-  for (const entry of files) {
-    const name = entry.name;
-    if (!name) continue;
-    const id = snapshotIdFromFileName(name);
-    if (!id || keepIds.has(id)) continue;
-    removals.push(remove(joinPath(root, name)));
-  }
-
-  await Promise.allSettled(removals);
-  return keep;
+  for (const listener of snapshotListeners) listener();
 }
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
-  if (isSqliteLibraryActive()) {
-    return (await listSqliteLibraryBackups()).map((backup) => ({
-      id: backup.backupId,
-      createdAt: backup.createdAtMs,
-      byteSize: backup.byteLength,
-      itemCount: backup.itemCount,
-      friendCount: Object.keys(getDocState()?.friends ?? {}).length,
-      contactCount: readContactSyncState().cachedContacts.length,
-      pendingMatchCount: readContactSyncState().pendingSuggestions.length,
-      reason: backup.reason,
-    }));
-  }
-  if (!canUseNativeSnapshotStorage()) {
-    return normalizeSnapshotList(
-      readBrowserSnapshotState().snapshots.map((entry) => entry.summary),
-    );
-  }
-
-  const root = await ensureSnapshotDir();
-  const indexed = await readSnapshotIndex();
-  const pruned = await pruneSnapshots(root, indexed);
-  const filtered: SnapshotSummary[] = [];
-
-  for (const snapshot of pruned) {
-    if (await exists(snapshotBinaryPath(root, snapshot.id))) {
-      filtered.push(snapshot);
-    }
-  }
-
-  if (filtered.length !== indexed.length || filtered.length !== pruned.length) {
-    await writeSnapshotIndex(filtered);
-  }
-
-  return filtered;
+  const contacts = readContactSyncState();
+  const friendCount = Object.keys(getDocState()?.friends ?? {}).length;
+  return (await listSqliteLibraryBackups()).map((backup) => ({
+    id: backup.backupId,
+    createdAt: backup.createdAtMs,
+    byteSize: backup.byteLength,
+    itemCount: backup.itemCount,
+    friendCount,
+    contactCount: contacts.cachedContacts.length,
+    pendingMatchCount: contacts.pendingSuggestions.length,
+    reason: backup.reason,
+  }));
 }
 
-async function createSnapshotInternal(
-  reason: SnapshotReason = "manual",
-): Promise<SnapshotSummary | null> {
-  const state = getDocState();
-  const sqliteActive = isSqliteLibraryActive();
-  if (!state && !sqliteActive) {
-    return null;
-  }
-
+async function createSnapshotInternal(reason: SnapshotReason): Promise<SnapshotSummary | null> {
+  if (!isSqliteLibraryActive()) return null;
   if (snapshotTimer) {
     clearTimeout(snapshotTimer);
     snapshotTimer = null;
   }
 
-  const createdAt = Date.now();
-  if (sqliteActive) {
-    const backup = await createSqliteLibraryBackup(reason);
-    const contactSyncState = readContactSyncState();
-    const summary: SnapshotSummary = {
-      id: backup.backupId,
-      createdAt: backup.createdAtMs,
-      byteSize: backup.byteLength,
-      itemCount: backup.itemCount,
-      friendCount: Object.keys(state?.friends ?? {}).length,
-      contactCount: contactSyncState.cachedContacts.length,
-      pendingMatchCount: contactSyncState.pendingSuggestions.length,
-      reason,
-    };
-    lastSnapshotAt = createdAt;
-    notifySnapshotListeners();
-    log.info(`[snapshots] saved ${reason} SQLite backup ...${summary.id.slice(-8)}`);
-    return summary;
-  }
-  const id = String(createdAt);
-  const committed = await getCommittedDoc();
-  const binary = committed.binary;
-  const contactSyncState = readContactSyncState();
-
+  const backup = await createSqliteLibraryBackup(reason);
+  const contacts = readContactSyncState();
   const summary: SnapshotSummary = {
-    id,
-    createdAt,
-    byteSize: binary.byteLength,
-    itemCount: committed.itemCount,
-    friendCount: committed.friendCount,
-    contactCount: contactSyncState.cachedContacts.length,
-    pendingMatchCount: contactSyncState.pendingSuggestions.length,
+    id: backup.backupId,
+    createdAt: backup.createdAtMs,
+    byteSize: backup.byteLength,
+    itemCount: backup.itemCount,
+    friendCount: Object.keys(getDocState()?.friends ?? {}).length,
+    contactCount: contacts.cachedContacts.length,
+    pendingMatchCount: contacts.pendingSuggestions.length,
     reason,
   };
-
-  if (!canUseNativeSnapshotStorage()) {
-    const existing = readBrowserSnapshotState().snapshots;
-    const nextState: BrowserSnapshotState = {
-      version: 1,
-      snapshots: [
-        {
-          summary,
-          binaryBase64: uint8ArrayToBase64(binary),
-          contactsRaw: readContactSyncStateJson(),
-        },
-        ...existing.filter((entry) => entry.summary.id !== id),
-      ]
-        .sort((a, b) => b.summary.createdAt - a.summary.createdAt)
-        .slice(0, MAX_SNAPSHOTS),
-    };
-    writeBrowserSnapshotState(nextState);
-  } else {
-    const root = await ensureSnapshotDir();
-    await Promise.all([
-      writeFile(snapshotBinaryPath(root, id), binary),
-      writeTextFile(snapshotContactsPath(root, id), readContactSyncStateJson()),
-    ]);
-
-    const existing = await readSnapshotIndex();
-    const nextSnapshots = await pruneSnapshots(root, [summary, ...existing]);
-    await writeSnapshotIndex(nextSnapshots);
-  }
-
-  lastSnapshotAt = createdAt;
+  lastSnapshotAt = summary.createdAt;
   notifySnapshotListeners();
-  log.info(
-    `[snapshots] saved ${reason} snapshot ...${id.slice(-8)} (${binary.byteLength} bytes)`,
-  );
+  log.info(`[snapshots] saved ${reason} SQLite backup ...${summary.id.slice(-8)}`);
   return summary;
 }
 
-export function createSnapshot(
-  reason: SnapshotReason = "manual",
-): Promise<SnapshotSummary | null> {
+export function createSnapshot(reason: SnapshotReason = "manual"): Promise<SnapshotSummary | null> {
   return trackSnapshotOperation(() => createSnapshotInternal(reason));
 }
 
 function scheduleAutoSnapshot(): void {
-  if (snapshotTimer) {
-    clearTimeout(snapshotTimer);
-  }
-
+  if (snapshotTimer) clearTimeout(snapshotTimer);
   const elapsed = Math.max(0, Date.now() - lastSnapshotAt);
   const delay = lastSnapshotAt === 0
     ? AUTO_SNAPSHOT_DEBOUNCE_MS
@@ -390,83 +104,34 @@ function scheduleAutoSnapshot(): void {
 
   snapshotTimer = setTimeout(() => {
     snapshotTimer = null;
-    const now = Date.now();
-    if (now - lastSnapshotAt < AUTO_SNAPSHOT_INTERVAL_MS) {
+    if (Date.now() - lastSnapshotAt < AUTO_SNAPSHOT_INTERVAL_MS) {
       scheduleAutoSnapshot();
       return;
     }
-
     runBackgroundJob({
       kind: "snapshot",
       source: "auto-snapshot",
       timeoutMs: 180_000,
       run: () => createSnapshot("auto"),
-    })
-      .catch((error) => {
-        if (isBackgroundRuntimeDeferredError(error)) {
-          log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
-          return;
-        }
-        log.error(
-          `[snapshots] auto snapshot failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      })
-      .finally(() => {
-        if (snapshotManagerStarted && !snapshotResetInProgress) {
-          scheduleAutoSnapshot();
-        }
-      });
+    }).catch((error) => {
+      if (isBackgroundRuntimeDeferredError(error)) {
+        log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
+        return;
+      }
+      log.error(`[snapshots] auto snapshot failed: ${error instanceof Error ? error.message : String(error)}`);
+    }).finally(() => {
+      if (snapshotManagerStarted && !snapshotResetInProgress) scheduleAutoSnapshot();
+    });
   }, delay);
 }
 
 async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
-  if (isSqliteLibraryActive()) {
-    const snapshots = await listSnapshots();
-    const snapshot = snapshots.find((entry) => entry.id === snapshotId);
-    if (!snapshot) throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
-    await restoreSqliteLibraryBackup(snapshotId);
-    await reloadSqliteLibraryState();
-    notifySnapshotListeners();
-    log.info(`[snapshots] restored SQLite backup ...${snapshotId.slice(-8)}`);
-    return snapshot;
-  }
-  const expectedRevision = (await getCommittedDoc()).revision;
-  if (!canUseNativeSnapshotStorage()) {
-    const snapshot = readBrowserSnapshotState().snapshots.find((entry) => entry.summary.id === snapshotId);
-    if (!snapshot) {
-      throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
-    }
-
-    await replaceLocalDoc(
-      base64ToUint8Array(snapshot.binaryBase64),
-      expectedRevision,
-    );
-    writeContactSyncStateJson(snapshot.contactsRaw);
-    log.info(`[snapshots] restored snapshot ...${snapshotId.slice(-8)}`);
-    notifySnapshotListeners();
-    return snapshot.summary;
-  }
-
-  const root = await ensureSnapshotDir();
-  const snapshots = await listSnapshots();
-  const snapshot = snapshots.find((entry) => entry.id === snapshotId);
-  if (!snapshot) {
-    throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
-  }
-
-  const [binary, contactsRaw] = await Promise.all([
-    readFile(snapshotBinaryPath(root, snapshotId)),
-    (await exists(snapshotContactsPath(root, snapshotId)))
-      ? readTextFile(snapshotContactsPath(root, snapshotId))
-      : Promise.resolve(null),
-  ]);
-
-  await replaceLocalDoc(binary, expectedRevision);
-  writeContactSyncStateJson(contactsRaw);
-  log.info(`[snapshots] restored snapshot ...${snapshotId.slice(-8)}`);
+  const snapshot = (await listSnapshots()).find((entry) => entry.id === snapshotId);
+  if (!snapshot) throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
+  await restoreSqliteLibraryBackup(snapshotId);
+  await reloadSqliteLibraryState();
   notifySnapshotListeners();
+  log.info(`[snapshots] restored SQLite backup ...${snapshotId.slice(-8)}`);
   return snapshot;
 }
 
@@ -482,21 +147,7 @@ export async function clearSnapshots(): Promise<void> {
       "Snapshot operations",
       FACTORY_RESET_DRAIN_TIMEOUT_MS,
     );
-    if (isSqliteLibraryActive()) {
-      await clearSqliteLibraryBackups();
-    } else if (!canUseNativeSnapshotStorage()) {
-      window.localStorage.removeItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
-    } else {
-      const root = await ensureSnapshotDir();
-      const files = await readDir(root);
-
-      await Promise.all(
-        files
-          .map((entry) => entry.name)
-          .filter((name): name is string => Boolean(name))
-          .map((name) => remove(joinPath(root, name))),
-      );
-    }
+    await clearSqliteLibraryBackups();
     lastSnapshotAt = 0;
   } finally {
     snapshotResetInProgress = false;
@@ -510,23 +161,11 @@ export function subscribeToSnapshots(listener: () => void): () => void {
 }
 
 export async function startSnapshotManager(): Promise<void> {
-  if (!isTauri()) {
-    return;
-  }
-  if (snapshotManagerStarted) {
-    return;
-  }
-
+  if (!isTauri() || snapshotManagerStarted || !isSqliteLibraryActive()) return;
   const existing = await listSnapshots();
   lastSnapshotAt = existing[0]?.createdAt ?? 0;
-
-  if (existing.length === 0 && (isSqliteLibraryActive() || getDocState())) {
-    await createSnapshot("auto");
-  }
-
-  snapshotUnsubscribe = subscribe(() => {
-    scheduleAutoSnapshot();
-  });
+  if (existing.length === 0) await createSnapshot("auto");
+  snapshotUnsubscribe = subscribe(scheduleAutoSnapshot);
   snapshotManagerStarted = true;
   scheduleAutoSnapshot();
 }
@@ -536,7 +175,6 @@ export function stopSnapshotManager(): void {
     clearTimeout(snapshotTimer);
     snapshotTimer = null;
   }
-
   snapshotUnsubscribe?.();
   snapshotUnsubscribe = null;
   snapshotManagerStarted = false;

@@ -37,7 +37,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent: vi.fn() }));
-vi.mock("./automerge", () => ({ docBatchRefreshFeeds: mocks.docBatchRefreshFeeds }));
+vi.mock("./library-client", () => ({ docBatchRefreshFeeds: mocks.docBatchRefreshFeeds }));
 vi.mock("./fb-capture", () => ({ captureFbFeed: vi.fn() }));
 vi.mock("./instagram-capture", () => ({ captureIgFeed: vi.fn() }));
 vi.mock("./li-capture", () => ({ captureLiFeed: vi.fn() }));

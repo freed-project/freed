@@ -8,6 +8,19 @@ the work exists, what evidence is real, and the safest delivery order.
 
 ## Current implementation boundary
 
+The current cutover candidate retires the active compatibility runtime instead
+of preserving a bridge. Desktop and PWA production entry points no longer load
+an Automerge worker, package, WASM asset, mutable cloud document, LAN relay, or
+legacy snapshot. Freed Desktop reads and writes native SQLite directly, keeps
+large media outside the row store, publishes immutable Library Core objects,
+and retains 24 closed SQLite backups. The PWA uses IndexedDB through bounded
+logical pages, intents, results, and search state. Exact-head validation, the
+dev release, installation, and runtime evidence remain before this candidate
+becomes the verified shipped boundary. Further corpus fault injection, media
+transport, retired-writer review, restore coverage, source cleanup, cursor
+optimization, and bundle splitting are recorded in issues #1446 through #1453
+instead of delaying the first manually testable SQLite build.
+
 Freed Desktop now has a direct local SQLite cutover candidate. It imports the
 retained legacy Automerge library once into schema v2, verifies the complete
 item count and database integrity, and then uses SQLite for ordinary startup,

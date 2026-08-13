@@ -118,7 +118,7 @@ async function loadContentFetcherModule(options: {
   vi.doMock("./content-cache.js", () => ({
     contentCache: { set: mockCacheSet },
   }));
-  vi.doMock("./automerge.js", () => ({
+  vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
     subscribe: mockSubscribe,
   }));
@@ -256,7 +256,7 @@ async function loadContentFetcherModuleWithAi({
   vi.doMock("./content-cache.js", () => ({
     contentCache: { set: mockCacheSet },
   }));
-  vi.doMock("./automerge.js", () => ({
+  vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
     subscribe: mockSubscribe,
   }));

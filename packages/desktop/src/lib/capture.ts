@@ -51,7 +51,7 @@ import {
   runFactoryResetSensitiveDesktopOperation,
 } from "./factory-reset-guard";
 import { cacheRssEssayBodies } from "./rss-essay-cache";
-import type { RssFeedRefreshUpdate } from "./automerge-types";
+import type { RssFeedRefreshUpdate } from "./library-types";
 import { scanLibraryCoreItems } from "./library-core-item-detail-runtime";
 import {
   isSqliteLibraryActive,

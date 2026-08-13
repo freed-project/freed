@@ -42,13 +42,14 @@ describe("desktop hot-path contract", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps cloud uploads behind the side-effect scheduler", () => {
+  it("keeps cloud publication on the immutable SQLite path", () => {
     const syncSource = readFileSync(join(LIB_DIR, "sync.ts"), "utf8");
-    expect(syncSource).toContain("scheduleSideEffect");
-    expect(syncSource).toContain('queue: "sync"');
+    expect(syncSource).toContain("publishCurrentSqliteLibraryToGoogleDrive");
+    expect(syncSource).not.toContain("MERGE_DOC");
+    expect(syncSource).not.toContain("freed.automerge");
   });
 
-  it("keeps outbox drains wired to Automerge change metadata", () => {
+  it("keeps provider outbox drains wired to Library mutation metadata", () => {
     const storeSource = readFileSync(join(LIB_DIR, "store.ts"), "utf8");
     const outboxSource = readFileSync(join(LIB_DIR, "outbox.ts"), "utf8");
     expect(storeSource).toContain("subscribe((_state, event) => cb(event))");

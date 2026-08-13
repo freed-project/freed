@@ -1,9 +1,5 @@
 /**
  * SQLite-only Freed Desktop Library runtime.
- *
- * Automerge is allowed to appear exactly once: the migration caller supplies
- * one already-hydrated legacy snapshot. After activation every operation in
- * this module talks directly to native SQLite.
  */
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -17,13 +13,7 @@ import {
 } from "@freed/shared";
 import { decodeJson, encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
-import type {
-  CommittedDocSnapshot,
-  DocChangeEvent,
-  DocState,
-  WorkerRequest,
-} from "./automerge-types";
-import { recordRuntimeHealthEvent } from "./runtime-health-events";
+import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
 export interface SqliteStatus {
@@ -178,51 +168,6 @@ export interface SqliteLibraryBackupChunk {
 
 let sqliteActive = false;
 
-const LEGACY_IMPORT_MAX_BATCH_ITEMS = 128;
-const LEGACY_IMPORT_MAX_BATCH_BYTES = 512 * 1_024;
-
-interface EncodedImportItem {
-  readonly globalId: string;
-  readonly json: string;
-  readonly sourceIndex: number;
-  readonly utf8Bytes: number;
-}
-
-function replaceUnpairedSurrogates(value: string): string {
-  let normalized = "";
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        normalized += value[index] + value[index + 1];
-        index += 1;
-      } else {
-        normalized += "\ufffd";
-      }
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      normalized += "\ufffd";
-    } else {
-      normalized += value[index];
-    }
-  }
-  return normalized;
-}
-
-function normalizeLegacyUnicode(value: unknown): unknown {
-  if (typeof value === "string") return replaceUnpairedSurrogates(value);
-  if (Array.isArray(value)) return value.map(normalizeLegacyUnicode);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [
-        replaceUnpairedSurrogates(key),
-        normalizeLegacyUnicode(entry),
-      ]),
-    );
-  }
-  return value;
-}
-
 function encodeUtf8Base64(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
@@ -230,73 +175,6 @@ function encodeUtf8Base64(value: string): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
   }
   return btoa(binary);
-}
-
-function* legacyImportBatches(
-  items: readonly FeedItem[],
-): Generator<EncodedImportItem[]> {
-  let batch: EncodedImportItem[] = [];
-  let batchBytes = 0;
-  const encoder = new TextEncoder();
-
-  for (let sourceIndex = 0; sourceIndex < items.length; sourceIndex += 1) {
-    const item = items[sourceIndex];
-    if (!item) continue;
-    // Old provider captures can contain isolated UTF-16 surrogate halves.
-    // JavaScript permits them, but Rust strings and SQLite's UTF-8 boundary do
-    // not. Preserve the record and replace only those invalid scalar values.
-    const json = encodeJson(normalizeLegacyUnicode(item));
-    const encoded: EncodedImportItem = {
-      globalId: item.globalId,
-      json,
-      sourceIndex,
-      utf8Bytes: encoder.encode(json).byteLength,
-    };
-    if (
-      batch.length > 0 &&
-      (batch.length >= LEGACY_IMPORT_MAX_BATCH_ITEMS ||
-        batchBytes + encoded.utf8Bytes > LEGACY_IMPORT_MAX_BATCH_BYTES)
-    ) {
-      yield batch;
-      batch = [];
-      batchBytes = 0;
-    }
-    batch.push(encoded);
-    batchBytes += encoded.utf8Bytes;
-  }
-  if (batch.length > 0) yield batch;
-}
-
-async function appendLegacyImportBatch(
-  batch: readonly EncodedImportItem[],
-  updatedAtMs: number,
-): Promise<void> {
-  try {
-    await invoke("append_sqlite_library_import", {
-      request: {
-        // Keep the nested JSON bytes opaque across Tauri's own JSON command
-        // envelope. This preserves non-BMP text exactly between WebKit and Rust.
-        itemsBase64: batch.map((item) => encodeUtf8Base64(item.json)),
-        updatedAtMs,
-      },
-    });
-  } catch (error) {
-    // Tauri transports one JSON request through WebKit. If a platform rejects
-    // a multi-record request despite the byte bound, split it without losing
-    // import progress. A single-record failure reports the exact source item.
-    if (batch.length > 1) {
-      const midpoint = Math.ceil(batch.length / 2);
-      await appendLegacyImportBatch(batch.slice(0, midpoint), updatedAtMs);
-      await appendLegacyImportBatch(batch.slice(midpoint), updatedAtMs);
-      return;
-    }
-    const item = batch[0];
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `SQLite Library import rejected item ${item?.globalId ?? "unknown"} at source index ${item?.sourceIndex.toLocaleString() ?? "unknown"} (${item?.utf8Bytes.toLocaleString() ?? "unknown"} bytes): ${message}`,
-      { cause: error },
-    );
-  }
 }
 
 export function isSqliteLibraryActive(): boolean {
@@ -355,11 +233,6 @@ function stateFromShell(result: SqliteShell, items: FeedItem[] = []): DocState {
     totalArchivableCount: result.archivableCount,
     docItemCount: result.itemCount,
   };
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
@@ -557,43 +430,6 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
   return stateFromShell(result);
 }
 
-/** Import one exact legacy snapshot in bounded item batches, then activate it. */
-export async function importLegacyLibraryIntoSqlite(
-  state: DocState,
-  source: CommittedDocSnapshot,
-): Promise<DocState> {
-  const sourceDigest = await sha256Hex(source.binary);
-  await invoke("begin_sqlite_library_import", {
-    request: {
-      sourceGeneration: source.revision.generation,
-      sourceRevision: source.revision.saveRevision,
-      sourceDigest,
-      expectedItemCount: state.items.length,
-      shellJson: encodeJson(shellFromState(state)),
-      startedAtMs: Date.now(),
-    },
-  });
-
-  try {
-    for (const batch of legacyImportBatches(state.items)) {
-      await appendLegacyImportBatch(batch, Date.now());
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    recordRuntimeHealthEvent({
-      event: "sqlite_library_migration_failed",
-      itemCount: state.items.length,
-      message: message.slice(0, 1_024),
-      sourceGeneration: source.revision.generation,
-      sourceRevision: source.revision.saveRevision,
-    });
-    throw error;
-  }
-  await invoke("finalize_sqlite_library_import", { activatedAtMs: Date.now() });
-  sqliteActive = true;
-  return loadSqliteLibraryState();
-}
-
 async function replaceShell(state: DocState): Promise<void> {
   await invoke("replace_sqlite_library_shell", {
     request: { shellJson: encodeJson(shellFromState(state)) },
@@ -655,6 +491,7 @@ export async function querySqliteItems(options: {
   saved?: boolean;
   archived?: boolean;
   showHidden?: boolean;
+  sortMode?: "date_saved" | "date_published" | "recommended" | "shortest_read";
   offset?: number;
   limit?: number;
 } = {}): Promise<{ items: FeedItem[]; nextOffset: number | null; totalCount: number }> {
@@ -667,6 +504,7 @@ export async function querySqliteItems(options: {
       saved: options.saved ?? null,
       archived: options.archived ?? null,
       showHidden: options.showHidden ?? false,
+      sortMode: options.sortMode ?? null,
       offset: options.offset ?? 0,
       limit: options.limit ?? 64,
     },
@@ -1038,7 +876,6 @@ export async function dispatchSqliteMutation(
       break;
     case "DEDUPLICATE_ITEMS":
     case "BACKFILL_CONTENT_SIGNALS":
-    case "UPDATE_RELAY_CLIENT_COUNT":
       break;
     default:
       throw new Error(`SQLite Library does not implement ${message.type}`);

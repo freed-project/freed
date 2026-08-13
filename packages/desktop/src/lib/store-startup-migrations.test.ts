@@ -42,9 +42,9 @@ const {
   mockUnsubscribe: vi.fn(),
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   initDoc: mockInitDoc,
-  quiesceDesktopAutomergeForFactoryReset: vi.fn(() => Promise.resolve()),
+  quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
   subscribe: mockSubscribe,
   getDocState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),
@@ -670,14 +670,6 @@ describe("store startup migrations", () => {
     expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
     expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
 
-    const restored = createDocState();
-    restored.persons = { [person.id]: person };
-    restored.accounts = { [account.id]: account };
-    subscriber?.(restored, { mutation: "MERGE_DOC" });
-
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
-
     const accountRemoved = createDocState();
     accountRemoved.persons = { [person.id]: person };
     subscriber?.(accountRemoved, { mutation: "REMOVE_ACCOUNT" });
@@ -687,12 +679,5 @@ describe("store startup migrations", () => {
     subscriber?.(createDocState(), { mutation: "REMOVE_PERSON" });
     expect(getDevicePersonGraphLayout(person.id)).toBeNull();
 
-    setDevicePersonGraphPosition(person.id, 50, 60, 300);
-    setDeviceAccountGraphPosition(account.id, 70, 80, 400);
-    subscriber?.(restored, { mutation: "MERGE_DOC" });
-    subscriber?.(createDocState(), { mutation: "REPLACE_DOC" });
-
-    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
   });
 });

@@ -357,7 +357,7 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.evaluate(async ({ feedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddRssFeed: (feed: unknown) => Promise<void>;
       docAddFeedItem: (item: unknown) => Promise<void>;
     };
@@ -2618,7 +2618,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
 
   await page.evaluate(async ({ failingFeedUrl, healthyFeedUrl }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddRssFeed: (feed: unknown) => Promise<void>;
     };
 

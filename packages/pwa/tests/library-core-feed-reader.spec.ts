@@ -252,19 +252,6 @@ test("dormant IndexedDB feed reader preserves bounded session and generation sem
       deletion.onblocked = () =>
         reject(new Error("test database deletion was blocked"));
     });
-    const automergeClientPath = "/src/lib/automerge.ts";
-    const automergeClient = await import(automergeClientPath);
-    const workerBridgeInactive =
-      await automergeClient.readLibraryCoreFeedPage(
-        request("worker-bridge", "worker-bridge-cancel", null, 1),
-      );
-    const workerBridgeCancellation =
-      await automergeClient.cancelLibraryCoreFeedReader(
-        "worker-bridge",
-        "worker-bridge-cancel",
-      );
-    await automergeClient.quiescePwaAutomergeForFactoryReset();
-
     return {
       inactive,
       parallelStagingRejected,
@@ -284,8 +271,6 @@ test("dormant IndexedDB feed reader preserves bounded session and generation sem
       postSelection,
       stale,
       afterReopen,
-      workerBridgeInactive,
-      workerBridgeCancellation,
     };
   });
 
@@ -349,11 +334,6 @@ test("dormant IndexedDB feed reader preserves bounded session and generation sem
       rows: [{ globalId: "item-new" }],
     },
   });
-  expect(result.workerBridgeInactive).toMatchObject({
-    ok: false,
-    code: "RUNTIME_INACTIVE",
-  });
-  expect(result.workerBridgeCancellation).toBe(false);
 });
 
 test("dormant browse projection upgrades v1 and persists exact recommendation order", async ({
@@ -541,130 +521,5 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       ["source-second", "source-first"],
     ],
     uniqueOrderKeys: 4,
-  });
-});
-
-test("committed Automerge heads materialize one resumable bounded feed generation", async ({
-  page,
-}) => {
-  await page.goto("/favicon.svg");
-
-  const result = await page.evaluate(async () => {
-    const client = await import("/src/lib/automerge.ts");
-    const item = (
-      globalId: string,
-      publishedAt: number,
-      userState: Record<string, unknown> = {},
-    ) => ({
-      author: {
-        avatarUrl: "https://example.test/avatar.jpg",
-        displayName: "Reader",
-        handle: "reader",
-        id: "x:reader",
-      },
-      capturedAt: publishedAt + 1,
-      content: {
-        linkPreview: { title: "Example" },
-        mediaTypes: ["image"],
-        mediaUrls: ["https://example.test/media.jpg"],
-        text: `content ${globalId}`,
-      },
-      contentSignals: { tags: ["article"] },
-      contentType: "post",
-      engagement: { comments: 2, likes: 3 },
-      eventCandidate: { confidence: 0.9, startsAt: publishedAt + 2 },
-      globalId,
-      location: { name: "Here" },
-      platform: "x",
-      preservedContent: { readingTime: 4 },
-      publishedAt,
-      sourceUrl: `https://example.test/${globalId}`,
-      topics: [],
-      userState: {
-        archived: false,
-        hidden: false,
-        liked: false,
-        saved: false,
-        tags: [],
-        ...userState,
-      },
-    });
-    await client.initDoc();
-    await client.docAddFeedItems([
-      item("x:older", 100),
-      item("x:hidden", 400, { hidden: true }),
-      item("x:newer", 300, { saved: true }),
-      item("x:archived", 500, { archived: true }),
-    ]);
-    const first = await client.materializeLibraryCoreFeedGeneration();
-    const replay = await client.materializeLibraryCoreFeedGeneration();
-    const browse = await client.materializeLibraryCoreFeedBrowseGeneration(
-      { savedOnly: true },
-      1_000,
-    );
-    const pageResult = await client.readLibraryCoreFeedPage({
-      cancellationId: "materializer-cancellation",
-      cursor: null,
-      limit: 10,
-      queryId: "feed_page_v1",
-      readerSessionId: "materializer-reader",
-      schemaVersion: 1,
-    });
-    const browsePageResult = await client.readLibraryCoreFeedBrowsePage({
-      cancellationId: "browse-materializer-cancellation",
-      cursor: null,
-      filter: browse.filter,
-      limit: 10,
-      queryId: "feed_browse_page_v1",
-      rankingClockMs: browse.rankingClockMs,
-      readerSessionId: "browse-materializer-reader",
-      recommendationOrderSchemaVersion: 1,
-      schemaVersion: 1,
-    });
-    await client.quiescePwaAutomergeForFactoryReset();
-    await client.clearLocalDocAfterPwaQuiesce();
-    await new Promise<void>((resolve, reject) => {
-      const deletion = indexedDB.deleteDatabase(
-        "freed-library-core-feed-v1",
-      );
-      deletion.onsuccess = () => resolve();
-      deletion.onerror = () => reject(deletion.error);
-      deletion.onblocked = () =>
-        reject(new Error("test database deletion was blocked"));
-    });
-    return { browse, browsePageResult, first, pageResult, replay };
-  });
-
-  expect(result.first).toStrictEqual(result.replay);
-  expect(result.browse).toMatchObject({
-    filter: { savedOnly: true, schemaVersion: 1 },
-    rankingClockMs: 1_000,
-    totalCount: 1,
-  });
-  expect(result.browse.source.generationId).not.toBe(
-    result.first.source.generationId,
-  );
-  expect(result.browsePageResult).toMatchObject({
-    ok: true,
-    value: {
-      filter: { savedOnly: true, schemaVersion: 1 },
-      rankingClockMs: 1_000,
-      rows: [{ globalId: "x:newer" }],
-      totalCount: 1,
-    },
-  });
-  expect(result.first).toMatchObject({ totalCount: 2 });
-  expect(result.first.source.generationId).toMatch(/^[0-9a-f]{64}$/);
-  expect(result.first.source.projectionRevision).toBeGreaterThan(0);
-  expect(result.first.source.transitionSequence).toBeGreaterThanOrEqual(0);
-  expect(result.pageResult).toMatchObject({
-    ok: true,
-    value: {
-      rows: [
-        { globalId: "x:newer" },
-        { globalId: "x:older" },
-      ],
-      totalCount: 2,
-    },
   });
 });

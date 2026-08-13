@@ -71,35 +71,7 @@ var tauriMockAliases = process.env.VITE_TEST_TAURI
 var tauriMockExclude = process.env.VITE_TEST_TAURI
     ? Object.keys(tauriMockAliases)
     : [];
-// Product code imports the SQLite-only Library client. Browser and unit tests
-// retain the historical in-memory harness so UI coverage does not need a native
-// process. These aliases do not exist in production builds.
-var libraryClientTestAliases = process.env.VITE_TEST_TAURI || process.env.VITEST
-    ? {
-        "./library-client": rootFile("src/lib/automerge.ts"),
-        "./lib/library-client": rootFile("src/lib/automerge.ts"),
-    }
-    : {};
-var isProductionLibraryBuild = !process.env.VITE_TEST_TAURI && !process.env.VITEST;
-// Vite normalizes relative imports against their importer before its alias
-// table sees them. Resolve these two historical entry points at enforce:pre so
-// a production bundle cannot retain the mutable-document cloud worker merely
-// because sync.ts still exposes compatibility-shaped functions.
-var retiredProductionResolver = {
-    name: "resolve-retired-desktop-library-runtime",
-    enforce: "pre",
-    resolveId: function (source) {
-        if (!isProductionLibraryBuild)
-            return null;
-        if (source === "./legacy-cloud-sync-entry") {
-            return rootFile("src/lib/retired-legacy-cloud-sync.ts");
-        }
-        if (source === "./cloud-merge") {
-            return rootFile("src/lib/retired-legacy-cloud-merge.ts");
-        }
-        return null;
-    },
-};
+var libraryClientTestAliases = {};
 var rejectRetiredDesktopLibraryAssets = {
     name: "reject-retired-desktop-library-assets",
     generateBundle: function (_options, bundle) {
@@ -127,19 +99,16 @@ export default defineConfig({
     resolve: {
         alias: __assign(__assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, libraryClientTestAliases), tauriMockAliases),
     },
-    // Test builds retain the historical Automerge harness. Production imports
-    // the SQLite-only client and rejects any retired worker or WASM artifact.
+    // Production bundles reject retired document workers and WASM artifacts.
     worker: {
         format: "es",
         plugins: function () { return [
-            retiredProductionResolver,
             rejectRetiredDesktopLibraryAssets,
             wasm(),
             topLevelAwait(),
         ]; },
     },
     plugins: [
-        retiredProductionResolver,
         rejectRetiredDesktopLibraryAssets,
         wasm(),
         topLevelAwait(),
