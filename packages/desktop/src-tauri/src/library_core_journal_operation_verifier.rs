@@ -50,6 +50,7 @@ const ENVELOPE_KEYS: [&str; 26] = [
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
 const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
+const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -77,6 +78,7 @@ struct ParsedEnvelope {
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
+    removed_at_ms: Option<i64>,
     previous_actor_chain_digest: String,
     actor_chain_digest: String,
     transaction_digest: String,
@@ -253,6 +255,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "feed_item_saved_assignment"
             | "feed_item_archive_assignment"
             | "feed_item_like_assignment"
+            | "feed_item_remove"
     ) {
         return Err(invalid(index, "operation_type"));
     }
@@ -307,11 +310,12 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let (read_at_ms, assigned, assigned_at_ms) = match operation_type.as_str() {
+    let (read_at_ms, assigned, assigned_at_ms, removed_at_ms) = match operation_type.as_str() {
         "feed_item_read_assignment" => {
             let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
             (
                 Some(safe_integer(payload_object, "read_at_ms", index)?),
+                None,
                 None,
                 None,
             )
@@ -328,6 +332,16 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 Some(assigned),
                 Some(safe_integer(payload_object, "assigned_at_ms", index)?),
+                None,
+            )
+        }
+        "feed_item_remove" => {
+            let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
+            (
+                None,
+                None,
+                None,
+                Some(safe_integer(payload_object, "removed_at_ms", index)?),
             )
         }
         _ => unreachable!("validated operation type"),
@@ -398,6 +412,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         read_at_ms,
         assigned,
         assigned_at_ms,
+        removed_at_ms,
         previous_actor_chain_digest,
         actor_chain_digest,
         transaction_digest,
@@ -549,6 +564,7 @@ where
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
+            removed_at_ms: member.removed_at_ms,
             canonical_envelope_json: member.canonical_json.clone(),
             causal_tips: member.causal_tips.clone(),
         });
@@ -597,6 +613,7 @@ mod tests {
             None,
             &enrollment.actor_chain_genesis,
             &entities,
+            "feed_item_read_assignment",
         )
     }
 
@@ -608,16 +625,21 @@ mod tests {
         previous_operation_id: Option<&str>,
         previous_chain_digest: &str,
         entities: &[(&str, i64)],
+        operation_type: &str,
     ) -> Vec<Vec<u8>> {
         let mut member_bodies = Vec::new();
         let mut member_digests = Vec::new();
-        for (index, (entity_id, read_at_ms)) in entities.iter().enumerate() {
-            let payload = json!({ "read_at_ms": read_at_ms });
+        for (index, (entity_id, timestamp_ms)) in entities.iter().enumerate() {
+            let payload = match operation_type {
+                "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
+                "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
+                _ => panic!("unsupported fixture operation type"),
+            };
             let payload_digest = digest_hex(
                 "operation-payload",
                 &json!({
                     "schema_version": 1,
-                    "operation_type": "feed_item_read_assignment",
+                    "operation_type": operation_type,
                     "payload": payload,
                 }),
                 index,
@@ -644,7 +666,7 @@ mod tests {
                 "transaction_id": transaction_id,
                 "transaction_member_index": index as i64,
                 "transaction_member_count": entities.len() as i64,
-                "operation_type": "feed_item_read_assignment",
+                "operation_type": operation_type,
                 "entity_type": "FeedItem",
                 "entity_id": entity_id,
                 "payload": payload,
@@ -782,6 +804,47 @@ mod tests {
     }
 
     #[test]
+    fn verifies_signed_feed_item_remove_before_journal_admission() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[8_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:remove:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:remove", 1_234)],
+            "feed_item_remove",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("verify and commit removal");
+        let committed: (String, String) = journal
+            .connection
+            .query_row(
+                "SELECT operationType, entityId FROM library_core_operations;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read verified operation");
+        assert_eq!(
+            committed,
+            ("feed_item_remove".to_owned(), "rss:item:remove".to_owned())
+        );
+    }
+
+    #[test]
     fn verified_stale_fork_fails_at_the_atomic_actor_tip_check() {
         let key_pair = Ed25519KeyPair::from_seed_unchecked(&[10_u8; 32]).expect("key pair");
         let enrollment = enrollment(&key_pair);
@@ -794,6 +857,7 @@ mod tests {
             None,
             &enrollment.actor_chain_genesis,
             &[("rss:item:stale-fork", 902)],
+            "feed_item_read_assignment",
         );
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         journal

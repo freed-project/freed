@@ -306,6 +306,26 @@ export class PwaLibraryCoreSearchIndex {
     await transactionDone(write);
   }
 
+  async removeItems(
+    corpusVersion: number,
+    globalIds: readonly string[],
+  ): Promise<void> {
+    if (globalIds.length === 0 || !this.#databasePromise) return;
+    const database = await this.#databasePromise;
+    const read = database.transaction(META_STORE, "readonly");
+    const active = (await requestResult(
+      read.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
+    )) as ActiveIndexRecord | undefined;
+    await transactionDone(read);
+    if (active?.corpusVersion !== corpusVersion) return;
+    const write = database.transaction(DOCUMENTS_STORE, "readwrite");
+    const documents = write.objectStore(DOCUMENTS_STORE);
+    for (const globalId of new Set(globalIds)) {
+      documents.delete([corpusVersion, globalId]);
+    }
+    await transactionDone(write);
+  }
+
   async #rebuild(corpusVersion: number, scanItems: ScanLibraryItems): Promise<void> {
     const database = await this.#database();
     const clear = database.transaction([DOCUMENTS_STORE, META_STORE], "readwrite");

@@ -323,6 +323,7 @@ struct VerifiedOperation {
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
+    removed_at_ms: Option<i64>,
     canonical_envelope_json: String,
     causal_tips: Vec<VerifiedCausalTip>,
 }
@@ -590,6 +591,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                     .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "read_at_ms",
@@ -604,9 +606,23 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                     || member
                         .assigned_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                    || member.removed_at_ms.is_some()
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "user_state_assignment",
+                    });
+                }
+            }
+            "feed_item_remove" => {
+                if member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member
+                        .removed_at_ms
+                        .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "removed_at_ms",
                     });
                 }
             }
@@ -1698,6 +1714,13 @@ impl LibraryCoreJournal {
                        AND (readAt IS NULL OR ?1 < readAt);",
                     params![read_at_ms, committed_at_ms, member.entity_id],
                 )?
+            } else if let Some(removed_at_ms) = member.removed_at_ms {
+                transaction.execute(
+                    "UPDATE library_core_feed_items
+                     SET deletedAt = ?1, updatedAtMs = ?2
+                     WHERE globalId = ?3 AND deletedAt IS NULL;",
+                    params![removed_at_ms, committed_at_ms, member.entity_id],
+                )?
             } else {
                 let assigned = i64::from(member.assigned.expect("validated assignment"));
                 let assigned_at_ms = member.assigned_at_ms.expect("validated assignment time");
@@ -2328,6 +2351,7 @@ mod tests {
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,
+                removed_at_ms: None,
                 canonical_envelope_json,
                 causal_tips: Vec::new(),
             });
@@ -2378,6 +2402,28 @@ mod tests {
         member.read_at_ms = None;
         member.assigned = Some(assigned);
         member.assigned_at_ms = Some(assigned_at_ms);
+        verified
+    }
+
+    fn removal_transaction(
+        transaction_id: &str,
+        actor_sequence: i64,
+        previous_operation_id: Option<&str>,
+        previous_chain_digest: &str,
+        entity_id: &str,
+        removed_at_ms: i64,
+    ) -> VerifiedOperationTransaction {
+        let mut verified = transaction(
+            transaction_id,
+            actor_sequence,
+            previous_operation_id,
+            previous_chain_digest,
+            &[(entity_id, removed_at_ms)],
+        );
+        let member = &mut verified.members[0];
+        member.operation_type = "feed_item_remove".to_string();
+        member.read_at_ms = None;
+        member.removed_at_ms = Some(removed_at_ms);
         verified
     }
 
@@ -3089,6 +3135,67 @@ mod tests {
                 .expect("read accepted result")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn feed_item_remove_commits_tombstone_receipt_and_outbox_atomically() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 4, 1, 1, '{}', 1, 1, '{{}}', 1, 1);
+                 INSERT INTO library_core_feed_items (
+                   globalId, saved, archived, liked, payloadJson, updatedAtMs
+                 ) VALUES (
+                   'rss:item:remove', 0, 0, 0,
+                   '{{"globalId":"rss:item:remove","userState":{{}}}}', 1
+                 );"#,
+                digest("b")
+            ))
+            .expect("install product fixture");
+
+        let verified = removal_transaction(
+            "tx:remove:item",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            "rss:item:remove",
+            1_500,
+        );
+        journal
+            .commit_read_transaction(&verified, 1_600)
+            .expect("commit removal");
+
+        let state: (i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT deletedAt, updatedAtMs,
+                        (SELECT revision FROM library_core_desktop_state WHERE singletonId = 1),
+                        (SELECT COUNT(*) FROM library_core_replication_outbox)
+                 FROM library_core_feed_items WHERE globalId = 'rss:item:remove';",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("read tombstone state");
+        assert_eq!(state, (1_500, 1_600, 5, 1));
+        assert_eq!(
+            journal
+                .connection
+                .query_row(
+                    "SELECT status FROM library_core_intent_result_outbox;",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("read acceptance receipt"),
+            "accepted"
         );
     }
 

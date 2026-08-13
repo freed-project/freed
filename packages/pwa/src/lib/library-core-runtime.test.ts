@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
+  enqueueFeedItemRemove: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./library-core-portable-checkpoint-store", () => ({
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
+    enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -27,6 +29,7 @@ import {
   isPwaLibraryCoreEnabled,
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
+  enqueuePwaLibraryCoreFeedItemRemove,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
@@ -47,6 +50,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.readSelectedMaterializedRow.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
+    mocks.enqueueFeedItemRemove.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -119,6 +123,18 @@ describe("PWA Library Core bounded scanner", () => {
         field: "liked",
       },
     ]);
+  });
+
+  it("queues FeedItem removal through the signed IndexedDB intent path", async () => {
+    mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
+
+    await enqueuePwaLibraryCoreFeedItemRemove("item-9");
+
+    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
+    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
+      entityId: "item-9",
+      removedAtMs: expect.any(Number),
+    });
   });
 
   it("marks the complete selected platform read in bounded intent batches", async () => {

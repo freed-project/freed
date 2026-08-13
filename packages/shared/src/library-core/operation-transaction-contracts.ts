@@ -9,6 +9,7 @@ import {
 } from "./protocol-scalars.js";
 import type {
   FeedItemReadAssignmentTransactionMemberBodyV1,
+  FeedItemRemoveTransactionMemberBodyV1,
   FeedItemUserStateAssignmentTransactionMemberBodyV1,
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
@@ -38,9 +39,16 @@ export interface FeedItemUserStateAssignmentSigningBodyV1 extends FeedItemUserSt
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface FeedItemRemoveSigningBodyV1 extends FeedItemRemoveTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemReadAssignmentSigningBodyV1
-  | FeedItemUserStateAssignmentSigningBodyV1;
+  | FeedItemUserStateAssignmentSigningBodyV1
+  | FeedItemRemoveSigningBodyV1;
 
 export interface LibraryCoreSigningMemberV1 {
   readonly member_digest: LibraryCoreLowercaseHex64;

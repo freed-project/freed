@@ -70,9 +70,13 @@ import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
+  FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
-import { FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import {
+  FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
+} from "./operation-payload-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
@@ -224,6 +228,11 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     touchedFieldRegistryKeys:
       FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  feed_item_remove: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
+    transactionMemberSchema: FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `toggleLiked`, which writes the three like leaves together.
   feed_item_like_assignment: {
