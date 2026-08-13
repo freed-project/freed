@@ -17,6 +17,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
@@ -437,7 +439,11 @@ export async function verifyLibraryCoreOperationTransactionV1(
                             : envelope.operation_type ===
                                 "person_remove_and_accounts"
                               ? PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA
-                              : null;
+                              : envelope.operation_type === "account_upsert"
+                                ? ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA
+                                : envelope.operation_type === "account_remove"
+                                  ? ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA
+                                  : null;
     if (schema === null) {
       throw new TypeError(
         "operation envelope has an unsupported operation_type",

@@ -5,13 +5,37 @@ import {
 } from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 import { stripDeviceLocalPreferenceUpdates } from "../preferences.js";
-import { sanitizePersonWrite } from "../sync-write-policy.js";
-import type { Person, UserPreferences } from "../types.js";
+import {
+  sanitizeAccountWrite,
+  sanitizePersonWrite,
+} from "../sync-write-policy.js";
+import type { Account, Person, UserPreferences } from "../types.js";
 
 const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
 const PERSON_UPSERT_MAXIMUM_BYTES = 262_144;
+const ACCOUNT_UPSERT_MAXIMUM_BYTES = 262_144;
+const ACCOUNT_PROVIDERS = Object.freeze([
+  "x",
+  "rss",
+  "youtube",
+  "reddit",
+  "mastodon",
+  "github",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "substack",
+  "medium",
+  "saved",
+  "google_contacts",
+  "manual_contact",
+  "macos_contacts",
+  "ios_contacts",
+  "android_contacts",
+  "web_contact",
+] as const);
 
 export interface FeedItemCaptureUpsertPayloadV1 {
   readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
@@ -42,6 +66,14 @@ export interface PersonUpsertPayloadV1 {
 }
 
 export interface PersonRemovePayloadV1 {
+  readonly removed_at_ms: number;
+}
+
+export interface AccountUpsertPayloadV1 {
+  readonly account: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface AccountRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
 
@@ -96,6 +128,8 @@ const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const PERSON_UPSERT_KEYS = ["person"] as const;
 const PERSON_REMOVE_KEYS = ["removed_at_ms"] as const;
+const ACCOUNT_UPSERT_KEYS = ["account"] as const;
+const ACCOUNT_REMOVE_KEYS = ["removed_at_ms"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -621,6 +655,174 @@ function validatePersonRemovePayload(
   return { ok: true, value: Object.freeze({ removed_at_ms: removedAtMs }) };
 }
 
+function validateAccountUpsertPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<AccountUpsertPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== ACCOUNT_UPSERT_KEYS[0]) {
+    return invalid("payload must contain only account");
+  }
+  const candidate = (value as { account?: unknown }).account;
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    return invalid("account must be a plain canonical object");
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      candidate as LibraryCoreCanonicalValue,
+      { maximumBytes: ACCOUNT_UPSERT_MAXIMUM_BYTES },
+    );
+    const decoded = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: ACCOUNT_UPSERT_MAXIMUM_BYTES,
+    });
+    if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+      return invalid("account must be a plain canonical object");
+    }
+    const account = decoded as Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >;
+    const boundedString = (field: LibraryCoreCanonicalValue | undefined) =>
+      field === undefined ||
+      (typeof field === "string" && field.length <= ACCOUNT_UPSERT_MAXIMUM_BYTES);
+    if (
+      typeof account.id !== "string" ||
+      account.id.length === 0 ||
+      account.id.length > 4_096 ||
+      (account.kind !== "social" && account.kind !== "contact") ||
+      typeof account.provider !== "string" ||
+      !ACCOUNT_PROVIDERS.includes(
+        account.provider as (typeof ACCOUNT_PROVIDERS)[number],
+      ) ||
+      typeof account.externalId !== "string" ||
+      account.externalId.length === 0 ||
+      account.externalId.length > 16_384 ||
+      !["captured_item", "story_author", "contact_import", "manual_entry", "follow_roster"].includes(
+        account.discoveredFrom as string,
+      ) ||
+      !Number.isSafeInteger(account.firstSeenAt) ||
+      (account.firstSeenAt as number) < 0 ||
+      !Number.isSafeInteger(account.lastSeenAt) ||
+      (account.lastSeenAt as number) < 0 ||
+      !Number.isSafeInteger(account.createdAt) ||
+      (account.createdAt as number) < 0 ||
+      !Number.isSafeInteger(account.updatedAt) ||
+      (account.updatedAt as number) < 0
+    ) {
+      return invalid("account has invalid required fields");
+    }
+    for (const key of [
+      "personId",
+      "handle",
+      "displayName",
+      "avatarUrl",
+      "profileUrl",
+      "email",
+      "phone",
+      "address",
+    ] as const) {
+      if (!boundedString(account[key])) {
+        return invalid(`account.${key} must be a bounded string`);
+      }
+    }
+    for (const key of ["importedAt", "followRosterSyncedAt"] as const) {
+      const field = account[key];
+      if (
+        field !== undefined &&
+        (!Number.isSafeInteger(field) || (field as number) < 0)
+      ) {
+        return invalid(`account.${key} must be nonnegative`);
+      }
+    }
+    if (
+      account.followRosterActive !== undefined &&
+      typeof account.followRosterActive !== "boolean"
+    ) {
+      return invalid("account.followRosterActive must be boolean");
+    }
+    if (
+      account.followRosterRoles !== undefined &&
+      (!Array.isArray(account.followRosterRoles) ||
+        account.followRosterRoles.length > 3 ||
+        account.followRosterRoles.some(
+          (role) =>
+            role !== "follower" &&
+            role !== "following" &&
+            role !== "subscription",
+        ))
+    ) {
+      return invalid("account.followRosterRoles is invalid");
+    }
+    if (account.sampleDataFingerprint !== undefined) {
+      const fingerprint = account.sampleDataFingerprint;
+      if (
+        typeof fingerprint !== "object" ||
+        fingerprint === null ||
+        Array.isArray(fingerprint)
+      ) {
+        return invalid("account.sampleDataFingerprint is invalid");
+      }
+      const fields = fingerprint as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      if (
+        Object.keys(fields).length !== 4 ||
+        !["marker", "batchId", "generatedAt", "generatorVersion"].every((key) =>
+          Object.prototype.hasOwnProperty.call(fields, key),
+        ) ||
+        fields.marker !== "freed.sample-data.v1" ||
+        typeof fields.batchId !== "string" ||
+        !Number.isSafeInteger(fields.generatedAt) ||
+        (fields.generatedAt as number) < 0 ||
+        !Number.isSafeInteger(fields.generatorVersion) ||
+        (fields.generatorVersion as number) < 0
+      ) {
+        return invalid("account.sampleDataFingerprint is invalid");
+      }
+    }
+    const sanitized = sanitizeAccountWrite(
+      account as unknown as Partial<Account>,
+    );
+    const sanitizedBytes = encodeLibraryCoreCanonicalValue(
+      sanitized as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: ACCOUNT_UPSERT_MAXIMUM_BYTES },
+    );
+    if (
+      sanitizedBytes.byteLength !== encoded.byteLength ||
+      sanitizedBytes.some((byte, index) => byte !== encoded[index])
+    ) {
+      return invalid("account contains device-local or unsupported fields");
+    }
+    return { ok: true, value: Object.freeze({ account }) };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "account is not canonical",
+    );
+  }
+}
+
+function validateAccountRemovePayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<AccountRemovePayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== ACCOUNT_REMOVE_KEYS[0]) {
+    return invalid("payload must contain only removed_at_ms");
+  }
+  const removedAtMs = (value as { removed_at_ms?: unknown }).removed_at_ms;
+  if (!isLibraryCoreNonnegativeSafeInteger(removedAtMs)) {
+    return invalid("removed_at_ms must be a nonnegative safe integer");
+  }
+  return { ok: true, value: Object.freeze({ removed_at_ms: removedAtMs }) };
+}
+
 function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
@@ -778,6 +980,28 @@ function userStateAssignmentPayloadSchema(
     validate: validateFeedItemUserStateAssignmentPayload,
   });
 }
+
+export const ACCOUNT_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "account_upsert_payload_v1",
+  schemaVersion: 1,
+  operationType: "account_upsert",
+  canonicalKeys: ACCOUNT_UPSERT_KEYS,
+  validate: validateAccountUpsertPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "account_upsert",
+  AccountUpsertPayloadV1
+>;
+
+export const ACCOUNT_REMOVE_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "account_remove_payload_v1",
+  schemaVersion: 1,
+  operationType: "account_remove",
+  canonicalKeys: ACCOUNT_REMOVE_KEYS,
+  validate: validateAccountRemovePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "account_remove",
+  AccountRemovePayloadV1
+>;
 
 export const FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA =
   userStateAssignmentPayloadSchema("feed_item_saved_assignment");

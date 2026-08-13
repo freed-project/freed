@@ -121,6 +121,9 @@ import {
   enqueuePwaLibraryCorePersonUpsert,
   enqueuePwaLibraryCorePersonUpserts,
   enqueuePwaLibraryCorePersonRemove,
+  enqueuePwaLibraryCoreAccountUpsert,
+  enqueuePwaLibraryCoreAccountUpserts,
+  enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
@@ -305,7 +308,11 @@ async function pruneConnectionPersonIfNeeded(
   ) {
     return;
   }
-  await docRemovePerson(personId!);
+  if (isPwaLibraryCoreEnabled()) {
+    await enqueuePwaLibraryCorePersonRemove(personId!);
+  } else {
+    await docRemovePerson(personId!);
+  }
 }
 
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
@@ -898,7 +905,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:linkAccountToPerson",
       (state) => projectUpdateAccount(state, accountId, updates),
-      () => docUpdateAccount(accountId, updates),
+      () => {
+        if (!isPwaLibraryCoreEnabled()) {
+          return docUpdateAccount(accountId, updates);
+        }
+        const current = get().accounts[accountId];
+        if (!current) throw new Error("Account is unavailable");
+        return enqueuePwaLibraryCoreAccountUpsert(current);
+      },
+      { allowLibraryCoreIntent: true },
     );
     await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
   },
@@ -919,9 +934,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
     }
     if (get().persons[person.id]) {
-      await docUpdatePerson(person.id, person);
+      await get().updatePerson(person.id, person);
     } else {
-      await docAddPerson(person);
+      await get().addPerson(person);
     }
     for (const accountId of accountIds) {
       await get().linkAccountToPerson(accountId, person.id);
@@ -931,16 +946,29 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createConnectionPersonsFromCandidates: async (candidates) => {
     if (candidates.length === 0) return 0;
-    await docUpsertConnectionPersons(candidates);
+    if (!isPwaLibraryCoreEnabled()) {
+      await docUpsertConnectionPersons(candidates);
+      return candidates.length;
+    }
+    for (const { person, accountIds } of candidates) {
+      if (get().persons[person.id]) {
+        await get().updatePerson(person.id, person);
+      } else {
+        await get().addPerson(person);
+      }
+      for (const accountId of accountIds) {
+        await get().linkAccountToPerson(accountId, person.id);
+      }
+    }
     return candidates.length;
   },
 
   // Deprecated friend aliases
   addFriend: async (friend: Friend) => {
-    await docAddPerson(personFromLegacyFriend(friend));
+    await get().addPerson(personFromLegacyFriend(friend));
     const accounts = accountsFromLegacyFriend(friend);
     if (accounts.length > 0) {
-      await docAddAccounts(accounts);
+      await get().addAccounts(accounts);
     }
   },
 
@@ -948,12 +976,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const persons = friends.map((friend) =>
       personFromLegacyFriend(friend as Friend),
     );
-    await docAddPersons(persons);
+    await get().addPersons(persons);
     const accounts = friends.flatMap((friend) =>
       accountsFromLegacyFriend(friend as Friend),
     );
     if (accounts.length > 0) {
-      await docAddAccounts(accounts);
+      await get().addAccounts(accounts);
     }
   },
 
@@ -961,7 +989,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     assertPwaStoreWritable();
     const current = get().friends[id];
     if (!current) {
-      await docUpdatePerson(id, updates);
+      await get().updatePerson(id, updates);
       return;
     }
     const nextFriend = {
@@ -976,7 +1004,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? (updates as Partial<Friend>).contact
           : current.contact,
     } as Friend;
-    await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
+    await get().updatePerson(id, personFromLegacyFriend(nextFriend));
     const existingAccounts = Object.values(get().accounts).filter(
       (account) => account.personId === id,
     );
@@ -985,11 +1013,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     const graphLayoutBeforeReplacement = getDeviceGraphLayout();
     await Promise.all(
-      existingAccounts.map((account) => docRemoveAccount(account.id)),
+      existingAccounts.map((account) =>
+        isPwaLibraryCoreEnabled()
+          ? enqueuePwaLibraryCoreAccountRemove(account.id)
+          : docRemoveAccount(account.id),
+      ),
     );
     const nextAccounts = accountsFromLegacyFriend(nextFriend);
     if (nextAccounts.length > 0) {
-      await docAddAccounts(nextAccounts);
+      await get().addAccounts(nextAccounts);
       assertPwaStoreWritable();
       restoreReplacedDeviceAccountGraphPositions(
         nextAccounts
@@ -1001,15 +1033,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeFriend: async (id: string) => {
-    await docRemovePerson(id);
+    await get().removePerson(id);
   },
 
   addAccount: async (account: Account) => {
-    await docAddAccount(account);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreAccountUpsert(account);
+    } else {
+      await docAddAccount(account);
+    }
   },
 
   addAccounts: async (accounts: Account[]) => {
-    await docAddAccounts(accounts);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreAccountUpserts(accounts);
+    } else {
+      await docAddAccounts(accounts);
+    }
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
@@ -1030,13 +1070,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:updateAccount",
       (state) => projectUpdateAccount(state, id, syncedUpdates),
-      () => docUpdateAccount(id, syncedUpdates),
+      () => {
+        if (!isPwaLibraryCoreEnabled()) {
+          return docUpdateAccount(id, syncedUpdates);
+        }
+        const current = get().accounts[id];
+        if (!current) throw new Error("Account is unavailable");
+        return enqueuePwaLibraryCoreAccountUpsert(current);
+      },
+      { allowLibraryCoreIntent: true },
     );
   },
 
   removeAccount: async (id: string) => {
     const previousPersonId = get().accounts[id]?.personId ?? null;
-    await docRemoveAccount(id);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreAccountRemove(id);
+    } else {
+      await docRemoveAccount(id);
+    }
     await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 

@@ -17,6 +17,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
@@ -49,6 +51,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
@@ -299,15 +303,20 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   account_remove: localUserOperation({
     entityType: "Account",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
+    transactionMemberSchema: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["removeAccount", "updateFriend"],
     legacyWorkerRequests: ["REMOVE_ACCOUNT"],
-    additionalBlockers: ["legacy_friend_account_replacement_unresolved"],
   }),
   account_restore: localUserOperation({
     entityType: "Account",
   }),
   account_upsert: localUserOperation({
     entityType: "Account",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
+    transactionMemberSchema: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys: ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: [
       "addAccount",
@@ -323,7 +332,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       "UPDATE_ACCOUNT",
       "UPSERT_CONNECTION_PERSONS",
     ],
-    additionalBlockers: ["legacy_friend_account_replacement_unresolved"],
   }),
   feed_item_archive_assignment: localUserOperation({
     entityType: "FeedItem",
@@ -538,7 +546,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       "UPDATE_PERSON",
       "UPSERT_CONNECTION_PERSONS",
     ],
-    additionalBlockers: ["legacy_friend_account_replacement_unresolved"],
   }),
   preferences_leaf_assignment: localUserOperation({
     entityType: "UserPreferences",

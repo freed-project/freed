@@ -56,6 +56,7 @@ const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
+const ACCOUNT_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["account"];
 const RSS_FEED_KEYS: [&str; 10] = [
     "enabled",
     "folder",
@@ -83,10 +84,35 @@ const PERSON_KEYS: [&str; 13] = [
     "tags",
     "updatedAt",
 ];
+const ACCOUNT_KEYS: [&str; 22] = [
+    "address",
+    "avatarUrl",
+    "createdAt",
+    "discoveredFrom",
+    "displayName",
+    "email",
+    "externalId",
+    "firstSeenAt",
+    "followRosterActive",
+    "followRosterRoles",
+    "followRosterSyncedAt",
+    "handle",
+    "id",
+    "importedAt",
+    "kind",
+    "lastSeenAt",
+    "personId",
+    "phone",
+    "profileUrl",
+    "provider",
+    "sampleDataFingerprint",
+    "updatedAt",
+];
 const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
 const MAX_RSS_FEED_BYTES: usize = 65_536;
 const MAX_PREFERENCES_PATCH_BYTES: usize = 262_144;
 const MAX_PERSON_BYTES: usize = 262_144;
+const MAX_ACCOUNT_BYTES: usize = 262_144;
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -116,6 +142,7 @@ struct ParsedEnvelope {
     rss_feed_json: Option<String>,
     preferences_patch_json: Option<String>,
     person_json: Option<String>,
+    account_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -291,6 +318,141 @@ fn validate_person(
         })
     {
         return Err(invalid(index, "person"));
+    }
+    Ok(())
+}
+
+fn validate_account(
+    account: &Map<String, Value>,
+    entity_id: &str,
+    index: usize,
+) -> JournalResult<()> {
+    if account
+        .keys()
+        .any(|key| !ACCOUNT_KEYS.contains(&key.as_str()))
+    {
+        return Err(invalid(index, "account"));
+    }
+    let id = account
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "account"))?;
+    let kind = account
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "account"))?;
+    let provider = account
+        .get("provider")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "account"))?;
+    let external_id = account
+        .get("externalId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "account"))?;
+    let discovered_from = account
+        .get("discoveredFrom")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "account"))?;
+    if id != entity_id
+        || id.is_empty()
+        || id.len() > MAX_ENTITY_ID_BYTES
+        || !matches!(kind, "social" | "contact")
+        || !matches!(
+            provider,
+            "x" | "rss"
+                | "youtube"
+                | "reddit"
+                | "mastodon"
+                | "github"
+                | "facebook"
+                | "instagram"
+                | "linkedin"
+                | "substack"
+                | "medium"
+                | "saved"
+                | "google_contacts"
+                | "manual_contact"
+                | "macos_contacts"
+                | "ios_contacts"
+                | "android_contacts"
+                | "web_contact"
+        )
+        || external_id.is_empty()
+        || external_id.len() > 16_384
+        || !matches!(
+            discovered_from,
+            "captured_item" | "story_author" | "contact_import" | "manual_entry" | "follow_roster"
+        )
+    {
+        return Err(invalid(index, "account_identity"));
+    }
+    for key in ["firstSeenAt", "lastSeenAt", "createdAt", "updatedAt"] {
+        let value = account
+            .get(key)
+            .and_then(Value::as_i64)
+            .ok_or_else(|| invalid(index, "account"))?;
+        if !(0..=MAX_SAFE_INTEGER).contains(&value) {
+            return Err(invalid(index, "account"));
+        }
+    }
+    for key in [
+        "personId",
+        "handle",
+        "displayName",
+        "avatarUrl",
+        "profileUrl",
+        "email",
+        "phone",
+        "address",
+    ] {
+        if account.get(key).is_some_and(|value| {
+            value
+                .as_str()
+                .is_none_or(|text| text.len() > MAX_ACCOUNT_BYTES)
+        }) {
+            return Err(invalid(index, "account"));
+        }
+    }
+    for key in ["importedAt", "followRosterSyncedAt"] {
+        if account.get(key).is_some_and(|value| {
+            value
+                .as_i64()
+                .is_none_or(|number| !(0..=MAX_SAFE_INTEGER).contains(&number))
+        }) {
+            return Err(invalid(index, "account"));
+        }
+    }
+    if account
+        .get("followRosterActive")
+        .is_some_and(|value| value.as_bool().is_none())
+        || account.get("followRosterRoles").is_some_and(|value| {
+            value.as_array().is_none_or(|roles| {
+                roles.len() > 3
+                    || roles.iter().any(|role| {
+                        role.as_str().is_none_or(|role| {
+                            !matches!(role, "follower" | "following" | "subscription")
+                        })
+                    })
+            })
+        })
+        || account.get("sampleDataFingerprint").is_some_and(|value| {
+            value.as_object().is_none_or(|fingerprint| {
+                fingerprint.len() != 4
+                    || fingerprint.get("marker").and_then(Value::as_str)
+                        != Some("freed.sample-data.v1")
+                    || fingerprint.get("batchId").and_then(Value::as_str).is_none()
+                    || fingerprint
+                        .get("generatedAt")
+                        .and_then(Value::as_i64)
+                        .is_none_or(|generated_at| !(0..=MAX_SAFE_INTEGER).contains(&generated_at))
+                    || fingerprint
+                        .get("generatorVersion")
+                        .and_then(Value::as_i64)
+                        .is_none_or(|version| !(0..=MAX_SAFE_INTEGER).contains(&version))
+            })
+        })
+    {
+        return Err(invalid(index, "account"));
     }
     Ok(())
 }
@@ -536,6 +698,8 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "preferences_leaf_assignment"
             | "person_upsert"
             | "person_remove_and_accounts"
+            | "account_upsert"
+            | "account_remove"
     ) {
         return Err(invalid(index, "operation_type"));
     }
@@ -545,6 +709,8 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "UserPreferences"
     } else if operation_type == "person_upsert" || operation_type == "person_remove_and_accounts" {
         "Person"
+    } else if operation_type == "account_upsert" || operation_type == "account_remove" {
+        "Account"
     } else {
         "FeedItem"
     };
@@ -604,6 +770,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         rss_feed_json,
         preferences_patch_json,
         person_json,
+        account_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -633,11 +800,13 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "feed_item_read_assignment" => {
             let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -662,14 +831,16 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
                 Some(assigned),
                 Some(safe_integer(payload_object, "assigned_at_ms", index)?),
                 None,
             )
         }
-        "feed_item_remove" | "person_remove_and_accounts" => {
+        "feed_item_remove" | "person_remove_and_accounts" | "account_remove" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -694,6 +865,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             (
                 None,
                 Some(String::from_utf8(canonical_feed).expect("canonical encoder emits UTF-8")),
+                None,
                 None,
                 None,
                 None,
@@ -727,6 +899,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "person_upsert" => {
@@ -749,11 +922,36 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
+            )
+        }
+        "account_upsert" => {
+            let payload_object =
+                exact_object(payload, &ACCOUNT_UPSERT_PAYLOAD_KEYS, index, "payload")?;
+            let account = payload_object
+                .get("account")
+                .and_then(Value::as_object)
+                .ok_or_else(|| invalid(index, "account"))?;
+            validate_account(account, &entity_id, index)?;
+            let canonical =
+                encode_canonical_value(&Value::Object(account.clone()), MAX_ACCOUNT_BYTES)
+                    .map_err(|_| invalid(index, "account"))?;
+            (
+                None,
+                None,
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
             )
         }
         "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -834,6 +1032,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         rss_feed_json,
         preferences_patch_json,
         person_json,
+        account_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -991,6 +1190,7 @@ where
             rss_feed_json: member.rss_feed_json.clone(),
             preferences_patch_json: member.preferences_patch_json.clone(),
             person_json: member.person_json.clone(),
+            account_json: member.account_json.clone(),
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
@@ -1101,6 +1301,21 @@ mod tests {
                 "person_remove_and_accounts" => {
                     json!({ "removed_at_ms": timestamp_ms })
                 }
+                "account_upsert" => json!({
+                    "account": {
+                        "id": entity_id,
+                        "personId": "person:verified",
+                        "kind": "social",
+                        "provider": "instagram",
+                        "externalId": "verified",
+                        "discoveredFrom": "manual_entry",
+                        "firstSeenAt": timestamp_ms,
+                        "lastSeenAt": timestamp_ms,
+                        "createdAt": timestamp_ms,
+                        "updatedAt": timestamp_ms
+                    }
+                }),
+                "account_remove" => json!({ "removed_at_ms": timestamp_ms }),
                 _ => panic!("unsupported fixture operation type"),
             };
             let entity_type = if operation_type.starts_with("rss_feed_") {
@@ -1111,6 +1326,8 @@ mod tests {
                 || operation_type == "person_remove_and_accounts"
             {
                 "Person"
+            } else if operation_type == "account_upsert" || operation_type == "account_remove" {
+                "Account"
             } else {
                 "FeedItem"
             };
@@ -1692,6 +1909,97 @@ mod tests {
             shell["accounts"]["account:other"]["personId"],
             "person:other"
         );
+    }
+
+    #[test]
+    fn verifies_and_materializes_signed_account_lifecycle() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[17_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let account_id = "account:verified";
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(account_id, 1_234)],
+            "account_upsert",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0,
+                   '{{"accounts":{{}}}}', 1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+
+        journal
+            .verify_and_commit_read_transaction(&upsert, 1_500)
+            .expect("commit Account upsert");
+        let operation_id: String = journal
+            .connection
+            .query_row(
+                "SELECT previousOperationId FROM library_core_actors WHERE actorId = ?1;",
+                rusqlite::params![enrollment.actor_id],
+                |row| row.get(0),
+            )
+            .expect("read Account actor tip");
+        let chain_digest: String = journal
+            .connection
+            .query_row(
+                "SELECT previousChainDigest FROM library_core_actors WHERE actorId = ?1;",
+                rusqlite::params![enrollment.actor_id],
+                |row| row.get(0),
+            )
+            .expect("read Account chain tip");
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account-remove:native-verified",
+            2,
+            Some(&operation_id),
+            &chain_digest,
+            &[(account_id, 1_235)],
+            "account_remove",
+        );
+        journal
+            .verify_and_commit_read_transaction(&remove, 1_600)
+            .expect("commit Account removal");
+
+        let shell: String = journal
+            .connection
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read shell");
+        let shell: Value = serde_json::from_str(&shell).expect("parse shell");
+        assert!(shell["accounts"].get(account_id).is_none());
+        let accepted_results: i64 = journal
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_intent_result_outbox;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count acceptance receipts");
+        assert_eq!(accepted_results, 2);
     }
 
     #[test]

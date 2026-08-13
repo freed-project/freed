@@ -77,6 +77,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
@@ -88,6 +90,8 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
+  ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
@@ -253,7 +257,16 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   },
   // Traced from `addAccount` / `updateAccount`.
   account_upsert: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys: ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema: ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  },
+  // Traced from `removeAccount` and legacy Friend account replacement.
+  account_remove: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
+    transactionMemberSchema: ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `logReachOut`, which appends one sanitized entry and writes
   // nothing else on the person.

@@ -7,6 +7,7 @@ import {
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
@@ -175,5 +176,40 @@ describe("Library Core operation payload contracts", () => {
         person: { ...person, graphX: 12 },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("accepts a synchronized Account and rejects unknown providers and graph fields", () => {
+    const account = {
+      id: "account:one",
+      personId: "person:one",
+      kind: "social",
+      provider: "instagram",
+      externalId: "one",
+      discoveredFrom: "manual_entry",
+      firstSeenAt: 1,
+      lastSeenAt: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    expect(ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate({ account })).toMatchObject({
+      ok: true,
+    });
+    for (const invalid of [
+      { ...account, provider: "made_up" },
+      { ...account, graphX: 12 },
+      {
+        ...account,
+        sampleDataFingerprint: {
+          marker: "freed.sample-data.v1",
+          batchId: "batch",
+          generatedAt: -1,
+          generatorVersion: 1,
+        },
+      },
+    ]) {
+      expect(
+        ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate({ account: invalid }),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 });
