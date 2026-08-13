@@ -9,12 +9,14 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+  PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
   type RssFeedUpsertPayloadV1,
   type PreferencesLeafAssignmentPayloadV1,
   type PersonUpsertPayloadV1,
+  type PersonRemovePayloadV1,
 } from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
@@ -67,6 +69,8 @@ export type RssFeedRemoveTransactionMemberInputV1 =
 export type PreferencesLeafAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type PersonUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type PersonRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -273,6 +277,31 @@ export interface PersonUpsertTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface PersonRemoveTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "person_remove_and_accounts";
+  readonly entity_type: "Person";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: PersonRemovePayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
@@ -281,7 +310,8 @@ export type LibraryCoreTransactionMemberBodyV1 =
   | RssFeedUpsertTransactionMemberBodyV1
   | RssFeedRemoveTransactionMemberBodyV1
   | PreferencesLeafAssignmentTransactionMemberBodyV1
-  | PersonUpsertTransactionMemberBodyV1;
+  | PersonUpsertTransactionMemberBodyV1
+  | PersonRemoveTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -610,6 +640,11 @@ function constructEntityTransactionMember(
         readonly operationType: "person_upsert";
         readonly validatePayload: typeof PERSON_UPSERT_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
+      }
+    | {
+        readonly operationType: "person_remove_and_accounts";
+        readonly validatePayload: typeof PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "Person";
       },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
@@ -871,6 +906,17 @@ function constructPersonUpsertTransactionMember(
   return construction;
 }
 
+function constructPersonRemoveTransactionMember(
+  input: PersonRemoveTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "person_remove_and_accounts",
+    validatePayload: PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate,
+    entityType: "Person",
+  }) as LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1>;
+}
+
 /**
  * Closed construction schema for the first dormant Library Core operation.
  *
@@ -1007,3 +1053,16 @@ export const PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   PersonUpsertTransactionMemberInputV1,
   PersonUpsertTransactionMemberBodyV1
 >;
+
+export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "person_remove_and_accounts_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "person_remove_and_accounts",
+    entityType: "Person",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructPersonRemoveTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    PersonRemoveTransactionMemberInputV1,
+    PersonRemoveTransactionMemberBodyV1
+  >;

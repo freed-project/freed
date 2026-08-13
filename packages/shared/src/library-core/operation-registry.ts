@@ -15,6 +15,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
+  PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
@@ -46,6 +47,7 @@ import {
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
@@ -497,10 +499,13 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   person_remove_and_accounts: localUserOperation({
     entityType: "Person",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
     relationshipEffects: ["delete_accounts_linked_to_person"],
     candidateStoreSurfaces: ["removeFriend", "removePerson"],
     legacyWorkerRequests: ["REMOVE_PERSON"],
-    additionalBlockers: frozenBulkBlocker,
   }),
   person_remove_detach_accounts: localUserOperation({
     entityType: "Person",
