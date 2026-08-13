@@ -69,8 +69,10 @@ const automerge = vi.hoisted(() => {
 const libraryCore = vi.hoisted(() => ({
   enqueuePwaLibraryCoreArchiveAllReadUnsaved: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreDeleteAllArchived: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreReadAssignments: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreUnarchiveSavedItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreUserStateToggle: vi.fn(() => Promise.resolve()),
 }));
 
@@ -186,6 +188,16 @@ describe("PWA store startup maintenance", () => {
     expect(
       libraryCore.enqueuePwaLibraryCoreUserStateToggle,
     ).toHaveBeenCalledWith("saved-intent", "saved");
+    await useAppStore.getState().unarchiveSavedItems();
+    expect(
+      libraryCore.enqueuePwaLibraryCoreUnarchiveSavedItems,
+    ).toHaveBeenCalledOnce();
+    await useAppStore.getState().deleteAllArchived();
+    expect(
+      libraryCore.enqueuePwaLibraryCoreDeleteAllArchived,
+    ).toHaveBeenCalledOnce();
+    expect(automerge.docUnarchiveSavedItems).not.toHaveBeenCalled();
+    expect(automerge.docDeleteAllArchived).not.toHaveBeenCalled();
     await expect(
       useAppStore.getState().updateItem("unsupported-item", { priority: 1 }),
     ).rejects.toThrow("read-only until its PWA intent outbox is active");
