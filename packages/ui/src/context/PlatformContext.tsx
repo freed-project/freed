@@ -460,6 +460,12 @@ export interface PlatformConfig {
    */
   startWindowDrag?: () => Promise<void>;
 
+  /**
+   * Rebuild the native main WebView after leaving the geographic map so WebKit
+   * releases MapLibre's high-water GPU and tile allocations. Desktop only.
+   */
+  releaseMapRendererMemory?: () => Promise<void>;
+
   // -- Layout slot components (null = not rendered) --
 
   /** Rendered inline per source button for status indicators (e.g. X auth dot) */

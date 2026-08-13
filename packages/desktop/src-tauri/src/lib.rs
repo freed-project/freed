@@ -85,7 +85,10 @@ use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex as StdMutex, RwLock as StdRwLock,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem};
@@ -731,10 +734,12 @@ enum WindowDestroyedReason {
     LoginFlow,
     JobComplete,
     StartupRecovery,
+    MapRendererRelease,
 }
 
 static WINDOW_CREATED_AT: std::sync::LazyLock<StdMutex<HashMap<String, Instant>>> =
     std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
+static MAP_RENDERER_RELEASE_PENDING: AtomicBool = AtomicBool::new(false);
 
 /// Record when a tracked webview window was (re)created so kill records can
 /// report the victim's age. Insert-if-absent: ensure-window paths call this
@@ -13311,6 +13316,43 @@ fn recover_main_window(
     )
 }
 
+#[tauri::command]
+fn release_main_renderer_memory(app: tauri::AppHandle) -> Result<(), String> {
+    if MAP_RENDERER_RELEASE_PENDING.swap(true, Ordering::AcqRel) {
+        return Ok(());
+    }
+
+    append_runtime_health(
+        &app,
+        serde_json::json!({
+            "event": "map_renderer_memory_release_requested",
+        }),
+    );
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let outcome = recover_main_window(
+            &app,
+            WindowDestroyedReason::MapRendererRelease,
+            "geographic map renderer memory release",
+        );
+        MAP_RENDERER_RELEASE_PENDING.store(false, Ordering::Release);
+
+        if let Err(error) = outcome {
+            warn!("[map] failed to release native renderer memory: {}", error);
+            append_runtime_health(
+                &app,
+                serde_json::json!({
+                    "event": "map_renderer_memory_release_failed",
+                    "error": error,
+                }),
+            );
+        }
+    });
+
+    Ok(())
+}
+
 fn recover_main_window_hidden(
     app: &tauri::AppHandle,
     reason_enum: WindowDestroyedReason,
@@ -14790,6 +14832,7 @@ pub fn run() {
             cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
+            release_main_renderer_memory,
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_runtime_health_history,

@@ -1315,6 +1315,10 @@ function App() {
         import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
           ? () => getCurrentWindow().startDragging()
           : undefined,
+      releaseMapRendererMemory:
+        import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
+          ? () => invoke("release_main_renderer_memory")
+          : undefined,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
