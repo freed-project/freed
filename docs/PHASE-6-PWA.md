@@ -266,6 +266,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, or WASM asset, and stale rollback state cannot reactivate the retired engine
 - [x] Full-library search keeps its normalized term projection in IndexedDB, streams scored matches in 32-row pages, and retains at most 100 result cards in React instead of rebuilding a corpus-wide MiniSearch heap
+- [x] Runtime state, counts, full-library scans, and item detail resolve from the current IndexedDB materialization after local intents instead of rereading the immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section

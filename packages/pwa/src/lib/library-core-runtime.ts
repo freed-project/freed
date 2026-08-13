@@ -116,12 +116,25 @@ function emptyState(): DocState {
 function stateFromShell(
   shell: Readonly<Record<string, LibraryCoreCanonicalValue>>,
   items: FeedItem[],
+  counts: Pick<
+    DocState,
+    | "archivableCountByPlatform"
+    | "archivableFeedCounts"
+    | "feedTotalCounts"
+    | "feedUnreadCounts"
+    | "itemCountByPlatform"
+    | "totalArchivableCount"
+    | "totalItemCount"
+    | "totalUnreadCount"
+    | "unreadCountByPlatform"
+  >,
 ): DocState {
   const base = { ...emptyState(), ...shell } as DocState;
   const persons = base.persons as Record<string, Person>;
   const accounts = base.accounts as Record<string, Account>;
   return {
     ...base,
+    ...counts,
     items,
     friends: Object.fromEntries(
       Object.values(persons).map((person) => [
@@ -130,24 +143,6 @@ function stateFromShell(
       ]),
     ),
   };
-}
-
-function materializedEntry(
-  value: LibraryCoreCanonicalValue,
-): { readonly registryKey: string; readonly row: unknown } | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
-  if (
-    typeof record.registry_key !== "string" ||
-    typeof record.row !== "object" ||
-    record.row === null ||
-    Array.isArray(record.row)
-  ) {
-    return null;
-  }
-  return { registryKey: record.registry_key, row: record.row };
 }
 
 async function readSelectedState(): Promise<DocState | null> {
@@ -159,24 +154,57 @@ async function readSelectedState(): Promise<DocState | null> {
   if (!shell) return null;
 
   const items: FeedItem[] = [];
-  let afterOrdinal: number | null = null;
+  const feedUnreadCounts: Record<string, number> = {};
+  const feedTotalCounts: Record<string, number> = {};
+  const unreadCountByPlatform: Record<string, number> = {};
+  const itemCountByPlatform: Record<string, number> = {};
+  const archivableCountByPlatform: Record<string, number> = {};
+  const archivableFeedCounts: Record<string, number> = {};
+  let totalUnreadCount = 0;
+  let totalItemCount = 0;
+  let totalArchivableCount = 0;
+  const bump = (record: Record<string, number>, key: string) => {
+    record[key] = (record[key] ?? 0) + 1;
+  };
+  let cursor: string | null = null;
   do {
-    const page = await store.readSelectedCollectionPage({
-      afterOrdinal,
-      collection: "materialized_rows",
+    const page = await store.readSelectedMaterializedPage({
+      cursor,
       limit: COLLECTION_PAGE_LIMIT,
     });
     for (const entry of page.entries) {
-      const materialized = materializedEntry(entry.value);
-      if (materialized?.registryKey === "10_feed_items") {
-        items.push(materialized.row as FeedItem);
-        if (items.length >= MAXIMUM_INITIAL_FEED_ITEMS) break;
+      if (entry.registryKey === "10_feed_items") {
+        const item = entry.row as unknown as FeedItem;
+        if (items.length < MAXIMUM_INITIAL_FEED_ITEMS) items.push(item);
+        if (item.userState.hidden || item.userState.archived) continue;
+        totalItemCount += 1;
+        bump(itemCountByPlatform, item.platform);
+        if (item.rssSource) bump(feedTotalCounts, item.rssSource.feedUrl);
+        if (!item.userState.readAt) {
+          totalUnreadCount += 1;
+          bump(unreadCountByPlatform, item.platform);
+          if (item.rssSource) bump(feedUnreadCounts, item.rssSource.feedUrl);
+        } else if (!item.userState.saved) {
+          totalArchivableCount += 1;
+          bump(archivableCountByPlatform, item.platform);
+          if (item.rssSource) bump(archivableFeedCounts, item.rssSource.feedUrl);
+        }
       }
     }
-    afterOrdinal = page.nextOrdinal;
-  } while (afterOrdinal !== null && items.length < MAXIMUM_INITIAL_FEED_ITEMS);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
 
-  return stateFromShell(shell, items);
+  return stateFromShell(shell, items, {
+    archivableCountByPlatform,
+    archivableFeedCounts,
+    feedTotalCounts,
+    feedUnreadCounts,
+    itemCountByPlatform,
+    totalArchivableCount,
+    totalItemCount,
+    totalUnreadCount,
+    unreadCountByPlatform,
+  });
 }
 
 function publishState(state: DocState): void {
@@ -200,6 +228,13 @@ export async function initializePwaLibraryCoreState(): Promise<DocState> {
   const state = (await readSelectedState()) ?? emptyState();
   publishState(state);
   return state;
+}
+
+/** Establish the isolated signed Library used only by local feature previews. */
+export async function ensurePwaLibraryCoreFeaturePreviewState(): Promise<void> {
+  await getPortableStore().bootstrapFeaturePreviewAuthority();
+  const state = await readSelectedState();
+  if (state) publishState(state);
 }
 
 /** Queue a signed, durable PWA read-state intent without touching Automerge. */
@@ -658,25 +693,23 @@ async function refreshPersistentSearchItems(
  */
 export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
   const store = getPortableStore();
-  let afterOrdinal: number | null = null;
+  let cursor: string | null = null;
   do {
-    const page = await store.readSelectedCollectionPage({
-      afterOrdinal,
-      collection: "materialized_rows",
+    const page = await store.readSelectedMaterializedPage({
+      cursor,
       limit: LIBRARY_SCAN_PAGE_LIMIT,
     });
     const items: FeedItem[] = [];
     for (const entry of page.entries) {
-      const materialized = materializedEntry(entry.value);
-      if (materialized?.registryKey === "10_feed_items") {
-        items.push(materialized.row as FeedItem);
+      if (entry.registryKey === "10_feed_items") {
+        items.push(entry.row as unknown as FeedItem);
       }
     }
     if (items.length > 0 && (await visit(Object.freeze(items))) === "stop") {
       return;
     }
-    afterOrdinal = page.nextOrdinal;
-  } while (afterOrdinal !== null);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
 };
 
 /** Search the selected Library through a persistent IndexedDB projection. */

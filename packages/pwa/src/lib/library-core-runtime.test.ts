@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   enqueueAccountRemove: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
+  readSelectedMaterializedPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
 }));
 
@@ -33,7 +34,7 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     enqueueAccountUpserts: mocks.enqueueAccountUpserts,
     enqueueAccountRemove: mocks.enqueueAccountRemove,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
-    readSelectedCollectionPage: mocks.readSelectedCollectionPage,
+    readSelectedMaterializedPage: mocks.readSelectedMaterializedPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
   }),
 }));
@@ -67,10 +68,9 @@ import {
 
 function entry(registryKey: string, globalId: string) {
   return {
-    value: {
-      registry_key: registryKey,
-      row: { globalId },
-    },
+    primaryKey: JSON.stringify(globalId),
+    registryKey,
+    row: { globalId },
   };
 }
 
@@ -78,6 +78,29 @@ describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.readSelectedCollectionPage.mockReset();
+    mocks.readSelectedMaterializedPage.mockReset();
+    mocks.readSelectedMaterializedPage.mockImplementation(
+      async ({ cursor, limit }) => {
+        const page = await mocks.readSelectedCollectionPage({
+          afterOrdinal: cursor === null ? null : Number(cursor),
+          collection: "materialized_rows",
+          limit,
+        });
+        return {
+          entries: page.entries.map(
+            ({ value }: { value: { registry_key: string; row: unknown } }) => ({
+              primaryKey: JSON.stringify(
+                (value.row as { globalId?: string }).globalId ?? "shell",
+              ),
+              registryKey: value.registry_key,
+              row: value.row,
+            }),
+          ),
+          nextCursor:
+            page.nextOrdinal === null ? null : String(page.nextOrdinal),
+        };
+      },
+    );
     mocks.readSelectedMaterializedRow.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
@@ -99,18 +122,18 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {
-    mocks.readSelectedCollectionPage
+    mocks.readSelectedMaterializedPage
       .mockResolvedValueOnce({
         entries: [entry("10_feed_items", "item-1")],
-        nextOrdinal: 31,
+        nextCursor: "cursor-1",
       })
       .mockResolvedValueOnce({
         entries: [entry("00_library_shell", "shell")],
-        nextOrdinal: 63,
+        nextCursor: "cursor-2",
       })
       .mockResolvedValueOnce({
         entries: [entry("10_feed_items", "item-2")],
-        nextOrdinal: 95,
+        nextCursor: "cursor-3",
       });
     const visited: string[][] = [];
 
@@ -120,11 +143,11 @@ describe("PWA Library Core bounded scanner", () => {
     });
 
     expect(visited).toEqual([["item-1"], ["item-2"]]);
-    expect(mocks.readSelectedCollectionPage).toHaveBeenCalledTimes(3);
-    expect(mocks.readSelectedCollectionPage.mock.calls).toEqual([
-      [{ afterOrdinal: null, collection: "materialized_rows", limit: 32 }],
-      [{ afterOrdinal: 31, collection: "materialized_rows", limit: 32 }],
-      [{ afterOrdinal: 63, collection: "materialized_rows", limit: 32 }],
+    expect(mocks.readSelectedMaterializedPage).toHaveBeenCalledTimes(3);
+    expect(mocks.readSelectedMaterializedPage.mock.calls).toEqual([
+      [{ cursor: null, limit: 32 }],
+      [{ cursor: "cursor-1", limit: 32 }],
+      [{ cursor: "cursor-2", limit: 32 }],
     ]);
   });
 

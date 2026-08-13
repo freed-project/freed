@@ -11,6 +11,7 @@ export * from "./feed-browse-page-contracts.js";
 export * from "./feed-page-contracts.js";
 export * from "./feed-recommendation-order-contract.js";
 export * from "./field-registry.js";
+export * from "./fractional-number-codec.js";
 export * from "./immutable-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
 export * from "./result-segment-contracts.js";
