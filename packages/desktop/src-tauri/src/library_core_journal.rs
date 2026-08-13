@@ -11,6 +11,7 @@ use rusqlite::{
     params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Transaction,
     TransactionBehavior,
 };
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::path::Path;
@@ -319,8 +320,10 @@ struct VerifiedOperation {
     signing_body_digest: String,
     envelope_digest: String,
     entity_id: String,
+    entity_type: String,
     operation_type: String,
     item_json: Option<String>,
+    rss_feed_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -587,7 +590,9 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
         }
         match member.operation_type.as_str() {
             "feed_item_capture_upsert" => {
-                if member.item_json.is_none()
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_none()
+                    || member.rss_feed_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -597,7 +602,9 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 }
             }
             "feed_item_read_assignment" => {
-                if member.item_json.is_some()
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
                     || member
                         .read_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
@@ -613,7 +620,9 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
             "feed_item_saved_assignment"
             | "feed_item_archive_assignment"
             | "feed_item_like_assignment" => {
-                if member.item_json.is_some()
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_none()
                     || member
@@ -627,7 +636,9 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 }
             }
             "feed_item_remove" => {
-                if member.item_json.is_some()
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -637,6 +648,36 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "removed_at_ms",
+                    });
+                }
+            }
+            "rss_feed_upsert" => {
+                if member.entity_type != "RssFeed"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_none()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "rss_feed_json",
+                    });
+                }
+            }
+            "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                if member.entity_type != "RssFeed"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member
+                        .removed_at_ms
+                        .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "rss_feed_remove",
                     });
                 }
             }
@@ -1605,7 +1646,7 @@ impl LibraryCoreJournal {
                  ) VALUES (
                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
                    ?13, ?14, ?15, ?16, ?17, ?18,
-                   'FeedItem', ?19, ?20, ?21
+                   ?19, ?20, ?21, ?22
                  );",
                 params![
                     member.operation_id,
@@ -1626,6 +1667,7 @@ impl LibraryCoreJournal {
                     member.signing_body_digest,
                     member.envelope_digest,
                     member.operation_type,
+                    member.entity_type,
                     member.entity_id,
                     member.canonical_envelope_json,
                     committed_at_ms,
@@ -1718,7 +1760,9 @@ impl LibraryCoreJournal {
                     committed_at_ms,
                 ],
             )?;
-            product_rows_updated += if let Some(item_json) = member.item_json.as_deref() {
+            product_rows_updated += if member.entity_type == "RssFeed" {
+                Self::materialize_rss_feed(&transaction, member, committed_at_ms)?
+            } else if let Some(item_json) = member.item_json.as_deref() {
                 let deleted_at = transaction
                     .query_row(
                         "SELECT deletedAt FROM library_core_feed_items WHERE globalId = ?1;",
@@ -1898,6 +1942,92 @@ impl LibraryCoreJournal {
         };
         transaction.commit()?;
         Ok(receipt)
+    }
+
+    fn materialize_rss_feed(
+        transaction: &Transaction<'_>,
+        member: &VerifiedOperation,
+        committed_at_ms: i64,
+    ) -> JournalResult<usize> {
+        let shell_json = transaction
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_state",
+            })?;
+        let mut shell: Value =
+            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let shell_object = shell
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let feeds = shell_object
+            .entry("feeds")
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_feeds",
+            })?;
+
+        let shell_changed = match member.operation_type.as_str() {
+            "rss_feed_upsert" => {
+                let feed: Value = serde_json::from_str(
+                    member
+                        .rss_feed_json
+                        .as_deref()
+                        .expect("validated RSS feed payload"),
+                )
+                .map_err(|_| JournalError::InvalidVerifiedInput {
+                    field: "rss_feed_json",
+                })?;
+                if feeds.get(&member.entity_id) == Some(&feed) {
+                    false
+                } else {
+                    feeds.insert(member.entity_id.clone(), feed);
+                    true
+                }
+            }
+            "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                feeds.remove(&member.entity_id).is_some()
+            }
+            _ => unreachable!("validated RSS feed operation"),
+        };
+
+        if shell_changed {
+            let updated_shell =
+                serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+                    field: "desktop_library_shell",
+                })?;
+            transaction.execute(
+                "UPDATE library_core_desktop_state SET shellJson = ?1
+                 WHERE singletonId = 1 AND active = 1;",
+                params![updated_shell],
+            )?;
+        }
+
+        let removed_items = if member.operation_type == "rss_feed_remove_with_items" {
+            transaction.execute(
+                "UPDATE library_core_feed_items
+                 SET deletedAt = ?1, updatedAtMs = ?2
+                 WHERE feedUrl = ?3 AND deletedAt IS NULL;",
+                params![
+                    member.removed_at_ms.expect("validated RSS removal time"),
+                    committed_at_ms,
+                    member.entity_id,
+                ],
+            )?
+        } else {
+            0
+        };
+        Ok(usize::from(shell_changed) + removed_items)
     }
 
     fn intent_results_for_transaction(
@@ -2380,8 +2510,10 @@ mod tests {
                 signing_body_digest: format!("{:064x}", first_sequence + index as i64 + 175),
                 envelope_digest: format!("{:064x}", first_sequence + index as i64 + 200),
                 entity_id: (*entity_id).to_string(),
+                entity_type: "FeedItem".to_string(),
                 operation_type: "feed_item_read_assignment".to_string(),
                 item_json: None,
+                rss_feed_json: None,
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,

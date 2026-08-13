@@ -16,6 +16,9 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
   isLibraryCoreFinalizedTransactionV1,
@@ -60,6 +63,8 @@ import {
   type FeedItemRemoveTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
+  type RssFeedRemoveTransactionMemberInputV1,
+  type RssFeedUpsertTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -76,7 +81,7 @@ import {
   type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreResultSegmentHeaderV1,
 } from "@freed/shared/library-core";
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, RssFeed } from "@freed/shared";
 import type {
   LibraryCoreOperationSegmentImportReceiptV1,
   LibraryCoreOperationSegmentImportWriterV1,
@@ -173,6 +178,15 @@ interface PortableMaterializedRowRecord {
   readonly row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
+function canonicalObject(
+  value: LibraryCoreCanonicalValue | undefined,
+): Readonly<Record<string, LibraryCoreCanonicalValue>> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
 interface PortableActorTipRecord {
   readonly acceptedChainDigest: LibraryCoreLowercaseHex64;
   readonly acceptedOperationId: LibraryCoreOperationInstanceId | null;
@@ -217,6 +231,15 @@ interface PortableFeedReaderSession {
     cursor: string | null;
     limit: number;
   }> | null;
+}
+
+interface PortableActiveIntentContext {
+  readonly actorTip: PortableActorTipRecord;
+  readonly authority: LibraryCoreAcceptedAuthorityStateV1;
+  readonly generation: PortableGenerationRecord;
+  readonly identity: PortablePwaActorIdentityRecord;
+  readonly intentActor: PortableIntentActorRecord | undefined;
+  readonly selected: SelectedPortableGenerationRecord;
 }
 
 type PortableFeedSessionAdmission =
@@ -1011,6 +1034,85 @@ class PwaLibraryCorePortableCheckpointStore
       return null;
     }
     return generation.header.accepted_authority;
+  }
+
+  async #activeIntentContext(): Promise<PortableActiveIntentContext> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        PWA_ACTOR_IDENTITIES_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const identity = generation
+      ? ((await requestResult(
+          transaction
+            .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+            .get(generation.libraryId),
+        )) as PortablePwaActorIdentityRecord | undefined)
+      : undefined;
+    const actorTip =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
+    const enrollment =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorEnrollmentRecord | undefined)
+        : undefined;
+    const authority =
+      generation?.header?.anchor_kind === "accepted_authority"
+        ? generation.header.accepted_authority
+        : null;
+    const intentActor =
+      generation && identity && authority
+        ? ((await requestResult(
+            transaction
+              .objectStore(INTENT_ACTORS_STORE)
+              .get([
+                generation.libraryId,
+                authority.epoch_id,
+                identity.actorId,
+              ]),
+          )) as PortableIntentActorRecord | undefined)
+        : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      !authority ||
+      !identity ||
+      !actorTip ||
+      actorTip.retired ||
+      !enrollment ||
+      enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("PWA intent requires an active enrolled actor");
+    }
+    return { actorTip, authority, generation, identity, intentActor, selected };
   }
 
   /**
@@ -2360,7 +2462,9 @@ class PwaLibraryCorePortableCheckpointStore
             incoming,
           );
           if (projected) feedRows.put(projected);
-        } else if (member.envelope.operation_type === "feed_item_read_assignment") {
+        } else if (
+          member.envelope.operation_type === "feed_item_read_assignment"
+        ) {
           const existingReadState = (await requestResult(
             readStates.get([generation.generationId, entityId]),
           )) as PortableReadStateRecord | undefined;
@@ -2427,12 +2531,97 @@ class PwaLibraryCorePortableCheckpointStore
               feedRows.delete([generation.generationId, projected.orderKey]);
             }
           }
-        } else if (storedRow) {
+        } else if (member.envelope.operation_type === "rss_feed_upsert") {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated RSS upsert has no materialized Library shell",
+            );
+          }
+          const feeds = canonicalObject(shell.row.feeds) ?? {};
+          materializedRows.put({
+            ...shell,
+            row: {
+              ...shell.row,
+              feeds: {
+                ...feeds,
+                [entityId]: member.envelope.payload
+                  .feed as LibraryCoreCanonicalValue,
+              },
+            },
+          } satisfies PortableMaterializedRowRecord);
+        } else if (
+          member.envelope.operation_type === "rss_feed_remove_keep_items" ||
+          member.envelope.operation_type === "rss_feed_remove_with_items"
+        ) {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated RSS removal has no materialized Library shell",
+            );
+          }
+          const feeds = canonicalObject(shell.row.feeds) ?? {};
+          const nextFeeds = { ...feeds };
+          delete nextFeeds[entityId];
+          materializedRows.put({
+            ...shell,
+            row: { ...shell.row, feeds: nextFeeds },
+          } satisfies PortableMaterializedRowRecord);
+
+          if (member.envelope.operation_type === "rss_feed_remove_with_items") {
+            let cursor = await requestResult(materializedRows.openCursor());
+            while (cursor) {
+              const row = cursor.value as PortableMaterializedRowRecord;
+              const rssSource = canonicalObject(row.row.rssSource);
+              if (
+                row.generationId === generation.generationId &&
+                row.registryKey === "10_feed_items" &&
+                rssSource?.feedUrl === entityId
+              ) {
+                const projected = projectPortableFeedRow(
+                  generation.generationId,
+                  row,
+                );
+                cursor.delete();
+                if (projected) {
+                  feedRows.delete([
+                    generation.generationId,
+                    projected.orderKey,
+                  ]);
+                }
+              }
+              cursor.continue();
+              cursor = await requestResult(cursor.request);
+            }
+          }
+        } else if (
+          storedRow &&
+          (member.envelope.operation_type === "feed_item_saved_assignment" ||
+            member.envelope.operation_type === "feed_item_archive_assignment" ||
+            member.envelope.operation_type === "feed_item_like_assignment")
+        ) {
           const updatedRow = assignedPortableFeedRow(
             storedRow,
             member.envelope.operation_type === "feed_item_saved_assignment"
               ? "saved"
-              : member.envelope.operation_type === "feed_item_archive_assignment"
+              : member.envelope.operation_type ===
+                  "feed_item_archive_assignment"
                 ? "archived"
                 : "liked",
             member.envelope.payload.assigned,
@@ -2720,6 +2909,238 @@ class PwaLibraryCorePortableCheckpointStore
    * enrolled actor identity. The actor's nonextractable private key never
    * leaves IndexedDB.
    */
+  async enqueueRssFeedUpsert(
+    feed: RssFeed,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    if (!feed.url) throw new TypeError("RSS feed URL is required");
+    const context = await this.#activeIntentContext();
+    const actorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const createdAtMs = this.#now();
+    const transactionId =
+      `pwa-rss-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const member = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: createdAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: feed.url,
+        payload: {
+          feed: feed as unknown as Record<string, LibraryCoreCanonicalValue>,
+        },
+        created_at_ms: createdAtMs,
+      } satisfies RssFeedUpsertTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedRssFeedUpsert(feed);
+    return receipt;
+  }
+
+  async enqueueRssFeedRemove(input: {
+    readonly includeItems: boolean;
+    readonly removedAtMs: number;
+    readonly url: string;
+  }): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    if (!input.url) throw new TypeError("RSS feed URL is required");
+    if (!Number.isSafeInteger(input.removedAtMs) || input.removedAtMs < 0) {
+      throw new TypeError(
+        "RSS feed removal time must be a nonnegative integer",
+      );
+    }
+    const context = await this.#activeIntentContext();
+    const actorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const transactionId =
+      `pwa-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const schema = input.includeItems
+      ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
+      : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
+    const member = schema.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: input.removedAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: input.url,
+        payload: { removed_at_ms: input.removedAtMs },
+        created_at_ms: input.removedAtMs,
+      } satisfies RssFeedRemoveTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedRssFeedRemove(input.url, input.includeItems);
+    return receipt;
+  }
+
+  async #applySelectedRssFeedUpsert(feed: RssFeed): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA RSS intent has no selected Library generation");
+    }
+    const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const key = [
+      selected.generationId,
+      "00_library_shell",
+      canonicalStringKey("shell"),
+    ];
+    const stored = (await requestResult(rows.get(key))) as
+      PortableMaterializedRowRecord | undefined;
+    if (!stored) {
+      transaction.abort();
+      throw new Error("PWA RSS intent has no materialized Library shell");
+    }
+    const currentFeeds = canonicalObject(stored.row.feeds) ?? {};
+    rows.put({
+      ...stored,
+      row: {
+        ...stored.row,
+        feeds: {
+          ...currentFeeds,
+          [feed.url]: feed as unknown as LibraryCoreCanonicalValue,
+        },
+      },
+    } satisfies PortableMaterializedRowRecord);
+    await transactionDone(transaction);
+  }
+
+  async #applySelectedRssFeedRemove(
+    url: string,
+    includeItems: boolean,
+  ): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE, FEED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA RSS intent has no selected Library generation");
+    }
+    const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const shellKey = [
+      selected.generationId,
+      "00_library_shell",
+      canonicalStringKey("shell"),
+    ];
+    const shell = (await requestResult(rows.get(shellKey))) as
+      PortableMaterializedRowRecord | undefined;
+    if (!shell) {
+      transaction.abort();
+      throw new Error("PWA RSS intent has no materialized Library shell");
+    }
+    const currentFeeds = canonicalObject(shell.row.feeds) ?? {};
+    const nextFeeds = { ...currentFeeds };
+    delete nextFeeds[url];
+    rows.put({
+      ...shell,
+      row: { ...shell.row, feeds: nextFeeds },
+    } satisfies PortableMaterializedRowRecord);
+
+    if (includeItems) {
+      const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+      let cursor = await requestResult(rows.openCursor());
+      while (cursor) {
+        const stored = cursor.value as PortableMaterializedRowRecord;
+        const rssSource = canonicalObject(stored.row.rssSource);
+        if (
+          stored.generationId === selected.generationId &&
+          stored.registryKey === "10_feed_items" &&
+          rssSource?.feedUrl === url
+        ) {
+          const projected = projectPortableFeedRow(
+            selected.generationId,
+            stored,
+          );
+          cursor.delete();
+          if (projected) {
+            feedRows.delete([selected.generationId, projected.orderKey]);
+          }
+        }
+        cursor.continue();
+        cursor = await requestResult(cursor.request);
+      }
+    }
+    await transactionDone(transaction);
+    this.#feedSessions.clear();
+  }
+
   async enqueueReadAssignments(input: {
     readonly entityIds: readonly string[];
     readonly readAtMs: number;
@@ -2904,11 +3325,11 @@ class PwaLibraryCorePortableCheckpointStore
         Record<string, LibraryCoreCanonicalValue>
       > =
         typeof stored.row.userState === "object" &&
-          stored.row.userState !== null &&
-          !Array.isArray(stored.row.userState)
-          ? stored.row.userState as Readonly<
+        stored.row.userState !== null &&
+        !Array.isArray(stored.row.userState)
+          ? (stored.row.userState as Readonly<
               Record<string, LibraryCoreCanonicalValue>
-            >
+            >)
           : {};
       const existingReadAt = currentUserState.readAt;
       if (
@@ -2929,10 +3350,7 @@ class PwaLibraryCorePortableCheckpointStore
         },
       } satisfies PortableMaterializedRowRecord;
       materializedRows.put(updated);
-      const projected = projectPortableFeedRow(
-        selected.generationId,
-        updated,
-      );
+      const projected = projectPortableFeedRow(selected.generationId, updated);
       if (projected) feedRows.put(projected);
     }
     await transactionDone(transaction);
@@ -2977,7 +3395,9 @@ class PwaLibraryCorePortableCheckpointStore
       }
       const identity = `${assignment.field}\u0000${assignment.entityId}`;
       if (identities.has(identity)) {
-        throw new TypeError("assignment batch contains a duplicate field and entity");
+        throw new TypeError(
+          "assignment batch contains a duplicate field and entity",
+        );
       }
       identities.add(identity);
     }
@@ -3052,15 +3472,15 @@ class PwaLibraryCorePortableCheckpointStore
       !enrollment ||
       enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
     ) {
-      throw new Error("PWA assignment intent requires an active enrolled actor");
+      throw new Error(
+        "PWA assignment intent requires an active enrolled actor",
+      );
     }
 
     const authority = generation.header.accepted_authority;
     const firstActorSequence =
       intentActor?.nextIntentSequence ?? actorTip.acceptedSequence + 1;
-    if (
-      !Number.isSafeInteger(firstActorSequence + assignments.length - 1)
-    ) {
+    if (!Number.isSafeInteger(firstActorSequence + assignments.length - 1)) {
       throw new RangeError("intent actor sequence is exhausted");
     }
     const previousOperationId =
@@ -3141,7 +3561,9 @@ class PwaLibraryCorePortableCheckpointStore
     )) as SelectedPortableGenerationRecord | undefined;
     if (!selected) {
       transaction.abort();
-      throw new Error("PWA assignment intent has no selected Library generation");
+      throw new Error(
+        "PWA assignment intent has no selected Library generation",
+      );
     }
     const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
     const feedRows = transaction.objectStore(FEED_ROWS_STORE);
@@ -3159,7 +3581,9 @@ class PwaLibraryCorePortableCheckpointStore
       }
       if (!stored) {
         transaction.abort();
-        throw new Error("PWA assignment intent targets an unavailable FeedItem");
+        throw new Error(
+          "PWA assignment intent targets an unavailable FeedItem",
+        );
       }
       const updated = assignedPortableFeedRow(
         stored,
@@ -3180,7 +3604,8 @@ class PwaLibraryCorePortableCheckpointStore
     item: FeedItem,
   ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
     this.#requireAvailable();
-    if (!item.globalId) throw new TypeError("capture item global ID is required");
+    if (!item.globalId)
+      throw new TypeError("capture item global ID is required");
     const database = await this.#database();
     const transaction = database.transaction(
       [
@@ -3203,39 +3628,40 @@ class PwaLibraryCorePortableCheckpointStore
       : undefined;
     const identity = generation
       ? ((await requestResult(
-          transaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).get(generation.libraryId),
+          transaction
+            .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+            .get(generation.libraryId),
         )) as PortablePwaActorIdentityRecord | undefined)
       : undefined;
-    const actorTip = selected && identity
-      ? ((await requestResult(
-          transaction.objectStore(ACTOR_TIPS_STORE).get([
-            selected.generationId,
-            identity.actorId,
-          ]),
-        )) as PortableActorTipRecord | undefined)
-      : undefined;
-    const enrollment = selected && identity
-      ? ((await requestResult(
-          transaction.objectStore(ACTOR_ENROLLMENTS_STORE).get([
-            selected.generationId,
-            identity.actorId,
-          ]),
-        )) as PortableActorEnrollmentRecord | undefined)
-      : undefined;
+    const actorTip =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorTipRecord | undefined)
+        : undefined;
+    const enrollment =
+      selected && identity
+        ? ((await requestResult(
+            transaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([selected.generationId, identity.actorId]),
+          )) as PortableActorEnrollmentRecord | undefined)
+        : undefined;
     const activeEpochId =
       generation?.header?.anchor_kind === "accepted_authority" &&
       generation.header.accepted_authority !== null
         ? generation.header.accepted_authority.epoch_id
         : null;
-    const intentActor = generation && identity && activeEpochId
-      ? ((await requestResult(
-          transaction.objectStore(INTENT_ACTORS_STORE).get([
-            generation.libraryId,
-            activeEpochId,
-            identity.actorId,
-          ]),
-        )) as PortableIntentActorRecord | undefined)
-      : undefined;
+    const intentActor =
+      generation && identity && activeEpochId
+        ? ((await requestResult(
+            transaction
+              .objectStore(INTENT_ACTORS_STORE)
+              .get([generation.libraryId, activeEpochId, identity.actorId]),
+          )) as PortableIntentActorRecord | undefined)
+        : undefined;
     await transactionDone(transaction);
     if (
       !selected ||
@@ -3278,7 +3704,9 @@ class PwaLibraryCorePortableCheckpointStore
         transaction_member_index: 0,
         transaction_member_count: 1,
         entity_id: item.globalId,
-        payload: { item: item as unknown as Record<string, LibraryCoreCanonicalValue> },
+        payload: {
+          item: item as unknown as Record<string, LibraryCoreCanonicalValue>,
+        },
         created_at_ms: createdAtMs,
       } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
       { digest: libraryCoreDigest },
@@ -3321,7 +3749,9 @@ class PwaLibraryCorePortableCheckpointStore
       generationId: selected.generationId,
       registryKey: "10_feed_items",
       primaryKey: canonicalStringKey(item.globalId),
-      row: item as unknown as Readonly<Record<string, LibraryCoreCanonicalValue>>,
+      row: item as unknown as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >,
     };
     transaction.objectStore(MATERIALIZED_ROWS_STORE).put(stored);
     const projected = projectPortableFeedRow(selected.generationId, stored);

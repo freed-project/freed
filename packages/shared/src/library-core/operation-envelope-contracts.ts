@@ -5,8 +5,12 @@ import {
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
+  RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
+  type RssFeedUpsertPayloadV1,
 } from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
@@ -51,6 +55,10 @@ export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
 export type FeedItemCaptureUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemRemoveTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type RssFeedUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type RssFeedRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -156,11 +164,64 @@ export interface FeedItemRemoveTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface RssFeedUpsertTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "rss_feed_upsert";
+  readonly entity_type: "RssFeed";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: RssFeedUpsertPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface RssFeedRemoveTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type:
+    "rss_feed_remove_keep_items" | "rss_feed_remove_with_items";
+  readonly entity_type: "RssFeed";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: Readonly<{ removed_at_ms: number }>;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
   | FeedItemUserStateAssignmentTransactionMemberBodyV1
-  | FeedItemRemoveTransactionMemberBodyV1;
+  | FeedItemRemoveTransactionMemberBodyV1
+  | RssFeedUpsertTransactionMemberBodyV1
+  | RssFeedRemoveTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -445,25 +506,40 @@ export function snapshotLibraryCoreCausalFrontier(
   return Object.freeze(snapshot);
 }
 
-function constructFeedItemTransactionMember(
+function constructEntityTransactionMember(
   input: FeedItemReadAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
   spec:
     | {
         readonly operationType: "feed_item_capture_upsert";
         readonly validatePayload: typeof FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
       }
     | {
         readonly operationType: "feed_item_read_assignment";
         readonly validatePayload: typeof FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
       }
     | {
         readonly operationType: FeedItemUserStateAssignmentOperationTypeV1;
         readonly validatePayload: typeof FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
       }
     | {
         readonly operationType: "feed_item_remove";
         readonly validatePayload: typeof FEED_ITEM_REMOVE_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
+        readonly operationType: "rss_feed_upsert";
+        readonly validatePayload: typeof RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "RssFeed";
+      }
+    | {
+        readonly operationType:
+          "rss_feed_remove_keep_items" | "rss_feed_remove_with_items";
+        readonly validatePayload: typeof RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "RssFeed";
       },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
@@ -592,7 +668,7 @@ function constructFeedItemTransactionMember(
     transaction_member_index: memberIndex,
     transaction_member_count: memberCount,
     operation_type: spec.operationType,
-    entity_type: "FeedItem",
+    entity_type: spec.entityType,
     entity_id: entityCandidate,
     payload: payloadResult.value,
     payload_digest: payloadDigest,
@@ -619,9 +695,10 @@ function constructFeedItemReadAssignmentTransactionMember(
   input: FeedItemReadAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreTransactionMemberConstruction<FeedItemReadAssignmentTransactionMemberBodyV1> {
-  return constructFeedItemTransactionMember(input, dependencies, {
+  return constructEntityTransactionMember(input, dependencies, {
     operationType: "feed_item_read_assignment",
     validatePayload: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
   }) as LibraryCoreTransactionMemberConstruction<FeedItemReadAssignmentTransactionMemberBodyV1>;
 }
 
@@ -629,9 +706,10 @@ function constructFeedItemCaptureUpsertTransactionMember(
   input: FeedItemCaptureUpsertTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreTransactionMemberConstruction<FeedItemCaptureUpsertTransactionMemberBodyV1> {
-  const construction = constructFeedItemTransactionMember(input, dependencies, {
+  const construction = constructEntityTransactionMember(input, dependencies, {
     operationType: "feed_item_capture_upsert",
     validatePayload: FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
   }) as LibraryCoreTransactionMemberConstruction<FeedItemCaptureUpsertTransactionMemberBodyV1>;
   if (construction.body.payload.item.globalId !== construction.body.entity_id) {
     throw new TypeError("capture item identity must equal entity_id");
@@ -644,7 +722,7 @@ function constructFeedItemUserStateAssignmentTransactionMember(
   dependencies: LibraryCoreOperationDigestDependencies,
   operationType: FeedItemUserStateAssignmentOperationTypeV1,
 ): LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1> {
-  return constructFeedItemTransactionMember(input, dependencies, {
+  return constructEntityTransactionMember(input, dependencies, {
     operationType,
     validatePayload:
       operationType === "feed_item_saved_assignment"
@@ -652,6 +730,7 @@ function constructFeedItemUserStateAssignmentTransactionMember(
         : operationType === "feed_item_archive_assignment"
           ? FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate
           : FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
   }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1>;
 }
 
@@ -659,10 +738,41 @@ function constructFeedItemRemoveTransactionMember(
   input: FeedItemRemoveTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreTransactionMemberConstruction<FeedItemRemoveTransactionMemberBodyV1> {
-  return constructFeedItemTransactionMember(input, dependencies, {
+  return constructEntityTransactionMember(input, dependencies, {
     operationType: "feed_item_remove",
     validatePayload: FEED_ITEM_REMOVE_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
   }) as LibraryCoreTransactionMemberConstruction<FeedItemRemoveTransactionMemberBodyV1>;
+}
+
+function constructRssFeedUpsertTransactionMember(
+  input: RssFeedUpsertTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<RssFeedUpsertTransactionMemberBodyV1> {
+  const construction = constructEntityTransactionMember(input, dependencies, {
+    operationType: "rss_feed_upsert",
+    validatePayload: RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate,
+    entityType: "RssFeed",
+  }) as LibraryCoreTransactionMemberConstruction<RssFeedUpsertTransactionMemberBodyV1>;
+  if (construction.body.payload.feed.url !== construction.body.entity_id) {
+    throw new TypeError("RSS feed URL must equal entity_id");
+  }
+  return construction;
+}
+
+function constructRssFeedRemoveTransactionMember(
+  input: RssFeedRemoveTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+  operationType: "rss_feed_remove_keep_items" | "rss_feed_remove_with_items",
+): LibraryCoreTransactionMemberConstruction<RssFeedRemoveTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType,
+    validatePayload:
+      operationType === "rss_feed_remove_keep_items"
+        ? RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA.validate
+        : RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA.validate,
+    entityType: "RssFeed",
+  }) as LibraryCoreTransactionMemberConstruction<RssFeedRemoveTransactionMemberBodyV1>;
 }
 
 /**
@@ -685,14 +795,16 @@ export const FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
     FeedItemReadAssignmentTransactionMemberBodyV1
   >;
 
-export const FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
-  schemaId: "feed_item_capture_upsert_transaction_member_v1",
-  schemaVersion: 1,
-  operationType: "feed_item_capture_upsert",
-  entityType: "FeedItem",
-  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
-  construct: constructFeedItemCaptureUpsertTransactionMember,
-}) satisfies LibraryCoreTransactionMemberSchema<
+export const FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze(
+  {
+    schemaId: "feed_item_capture_upsert_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "feed_item_capture_upsert",
+    entityType: "FeedItem",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructFeedItemCaptureUpsertTransactionMember,
+  },
+) satisfies LibraryCoreTransactionMemberSchema<
   FeedItemCaptureUpsertTransactionMemberInputV1,
   FeedItemCaptureUpsertTransactionMemberBodyV1
 >;
@@ -736,3 +848,41 @@ export const FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   FeedItemRemoveTransactionMemberInputV1,
   FeedItemRemoveTransactionMemberBodyV1
 >;
+
+export const RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
+  schemaId: "rss_feed_upsert_transaction_member_v1",
+  schemaVersion: 1,
+  operationType: "rss_feed_upsert",
+  entityType: "RssFeed",
+  maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  construct: constructRssFeedUpsertTransactionMember,
+}) satisfies LibraryCoreTransactionMemberSchema<
+  RssFeedUpsertTransactionMemberInputV1,
+  RssFeedUpsertTransactionMemberBodyV1
+>;
+
+function rssFeedRemoveTransactionMemberSchema(
+  operationType: "rss_feed_remove_keep_items" | "rss_feed_remove_with_items",
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_transaction_member_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    entityType: "RssFeed" as const,
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: RssFeedRemoveTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructRssFeedRemoveTransactionMember(
+        input,
+        dependencies,
+        operationType,
+      ),
+  });
+}
+
+export const RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA =
+  rssFeedRemoveTransactionMemberSchema("rss_feed_remove_keep_items");
+export const RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA =
+  rssFeedRemoveTransactionMemberSchema("rss_feed_remove_with_items");

@@ -53,7 +53,21 @@ const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
 const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
+const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
+const RSS_FEED_KEYS: [&str; 10] = [
+    "enabled",
+    "folder",
+    "imageUrl",
+    "lastFetched",
+    "pollInterval",
+    "sampleDataFingerprint",
+    "siteUrl",
+    "title",
+    "trackUnread",
+    "url",
+];
 const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
+const MAX_RSS_FEED_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -77,8 +91,10 @@ struct ParsedEnvelope {
     transaction_member_index: i64,
     transaction_member_count: i64,
     entity_id: String,
+    entity_type: String,
     operation_type: String,
     item_json: Option<String>,
+    rss_feed_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -93,6 +109,54 @@ struct ParsedEnvelope {
 
 fn invalid(index: usize, field: &'static str) -> JournalError {
     JournalError::OperationVerification { index, field }
+}
+
+fn validate_rss_feed(
+    feed: &Map<String, Value>,
+    entity_id: &str,
+    index: usize,
+) -> JournalResult<()> {
+    if feed
+        .keys()
+        .any(|key| !RSS_FEED_KEYS.contains(&key.as_str()))
+    {
+        return Err(invalid(index, "feed"));
+    }
+    let url = feed
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "feed"))?;
+    if url != entity_id || url.is_empty() || url.len() > MAX_ENTITY_ID_BYTES {
+        return Err(invalid(index, "feed_identity"));
+    }
+    let title = feed
+        .get("title")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(index, "feed"))?;
+    if title.len() > MAX_ENTITY_ID_BYTES
+        || feed.get("enabled").and_then(Value::as_bool).is_none()
+        || feed.get("trackUnread").and_then(Value::as_bool).is_none()
+    {
+        return Err(invalid(index, "feed"));
+    }
+    for key in ["siteUrl", "imageUrl", "folder"] {
+        if feed.get(key).is_some_and(|value| {
+            value
+                .as_str()
+                .is_none_or(|text| text.len() > MAX_ENTITY_ID_BYTES)
+        }) {
+            return Err(invalid(index, "feed"));
+        }
+    }
+    for key in ["lastFetched", "pollInterval"] {
+        if feed
+            .get(key)
+            .is_some_and(|value| value.as_i64().is_none_or(|number| number < 0))
+        {
+            return Err(invalid(index, "feed"));
+        }
+    }
+    Ok(())
 }
 
 fn exact_object<'a>(
@@ -261,10 +325,18 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             | "feed_item_archive_assignment"
             | "feed_item_like_assignment"
             | "feed_item_remove"
+            | "rss_feed_upsert"
+            | "rss_feed_remove_keep_items"
+            | "rss_feed_remove_with_items"
     ) {
         return Err(invalid(index, "operation_type"));
     }
-    require_literal(object, "entity_type", "FeedItem", index)?;
+    let entity_type = if operation_type.starts_with("rss_feed_") {
+        "RssFeed"
+    } else {
+        "FeedItem"
+    };
+    require_literal(object, "entity_type", entity_type, index)?;
     require_literal(object, "signature_algorithm", "ed25519", index)?;
     if object
         .get("blob_references")
@@ -315,72 +387,106 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let (item_json, read_at_ms, assigned, assigned_at_ms, removed_at_ms) = match operation_type
-        .as_str()
-    {
-        "feed_item_capture_upsert" => {
-            let payload_object = exact_object(payload, &CAPTURE_PAYLOAD_KEYS, index, "payload")?;
-            let item = payload_object
-                .get("item")
-                .and_then(Value::as_object)
-                .ok_or_else(|| invalid(index, "item"))?;
-            if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
-                return Err(invalid(index, "item_identity"));
+    let (item_json, rss_feed_json, read_at_ms, assigned, assigned_at_ms, removed_at_ms) =
+        match operation_type.as_str() {
+            "feed_item_capture_upsert" => {
+                let payload_object =
+                    exact_object(payload, &CAPTURE_PAYLOAD_KEYS, index, "payload")?;
+                let item = payload_object
+                    .get("item")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| invalid(index, "item"))?;
+                if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
+                    return Err(invalid(index, "item_identity"));
+                }
+                let canonical_item =
+                    encode_canonical_value(&Value::Object(item.clone()), MAX_CAPTURE_ITEM_BYTES)
+                        .map_err(|_| invalid(index, "item"))?;
+                (
+                    Some(
+                        String::from_utf8(canonical_item)
+                            .expect("canonical encoder always emits UTF-8"),
+                    ),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
             }
-            let canonical_item = encode_canonical_value(
-                &Value::Object(item.clone()),
-                MAX_CAPTURE_ITEM_BYTES,
-            )
-            .map_err(|_| invalid(index, "item"))?;
-            (
-                Some(
-                    String::from_utf8(canonical_item)
-                        .expect("canonical encoder always emits UTF-8"),
-                ),
-                None,
-                None,
-                None,
-                None,
-            )
-        }
-        "feed_item_read_assignment" => {
-            let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
-            (
-                None,
-                Some(safe_integer(payload_object, "read_at_ms", index)?),
-                None,
-                None,
-                None,
-            )
-        }
-        "feed_item_saved_assignment"
-        | "feed_item_archive_assignment"
-        | "feed_item_like_assignment" => {
-            let payload_object = exact_object(payload, &ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
-            let assigned = payload_object
-                .get("assigned")
-                .and_then(Value::as_bool)
-                .ok_or_else(|| invalid(index, "assigned"))?;
-            (
-                None,
-                None,
-                Some(assigned),
-                Some(safe_integer(payload_object, "assigned_at_ms", index)?),
-                None,
-            )
-        }
-        "feed_item_remove" => {
-            let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
-            (
-                None,
-                None,
-                None,
-                None,
-                Some(safe_integer(payload_object, "removed_at_ms", index)?),
-            )
-        }
-        _ => unreachable!("validated operation type"),
-    };
+            "feed_item_read_assignment" => {
+                let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
+                (
+                    None,
+                    None,
+                    Some(safe_integer(payload_object, "read_at_ms", index)?),
+                    None,
+                    None,
+                    None,
+                )
+            }
+            "feed_item_saved_assignment"
+            | "feed_item_archive_assignment"
+            | "feed_item_like_assignment" => {
+                let payload_object =
+                    exact_object(payload, &ASSIGNMENT_PAYLOAD_KEYS, index, "payload")?;
+                let assigned = payload_object
+                    .get("assigned")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| invalid(index, "assigned"))?;
+                (
+                    None,
+                    None,
+                    None,
+                    Some(assigned),
+                    Some(safe_integer(payload_object, "assigned_at_ms", index)?),
+                    None,
+                )
+            }
+            "feed_item_remove" => {
+                let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
+                (
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(safe_integer(payload_object, "removed_at_ms", index)?),
+                )
+            }
+            "rss_feed_upsert" => {
+                let payload_object =
+                    exact_object(payload, &RSS_FEED_UPSERT_PAYLOAD_KEYS, index, "payload")?;
+                let feed = payload_object
+                    .get("feed")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| invalid(index, "feed"))?;
+                validate_rss_feed(feed, &entity_id, index)?;
+                let canonical_feed =
+                    encode_canonical_value(&Value::Object(feed.clone()), MAX_RSS_FEED_BYTES)
+                        .map_err(|_| invalid(index, "feed"))?;
+                (
+                    None,
+                    Some(String::from_utf8(canonical_feed).expect("canonical encoder emits UTF-8")),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
+                (
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(safe_integer(payload_object, "removed_at_ms", index)?),
+                )
+            }
+            _ => unreachable!("validated operation type"),
+        };
     let payload_digest = required_string(object, "payload_digest", index)?;
     let expected_payload_digest = digest_hex(
         "operation-payload",
@@ -443,8 +549,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         transaction_member_index,
         transaction_member_count,
         entity_id,
+        entity_type: entity_type.to_owned(),
         operation_type,
         item_json,
+        rss_feed_json,
         read_at_ms,
         assigned,
         assigned_at_ms,
@@ -596,8 +704,10 @@ where
             signing_body_digest,
             envelope_digest,
             entity_id: member.entity_id.clone(),
+            entity_type: member.entity_type.clone(),
             operation_type: member.operation_type.clone(),
             item_json: member.item_json.clone(),
+            rss_feed_json: member.rss_feed_json.clone(),
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
@@ -677,7 +787,23 @@ mod tests {
                 }),
                 "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
                 "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
+                "rss_feed_upsert" => json!({
+                    "feed": {
+                        "url": entity_id,
+                        "title": "Verified feed",
+                        "enabled": true,
+                        "trackUnread": true
+                    }
+                }),
+                "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                    json!({ "removed_at_ms": timestamp_ms })
+                }
                 _ => panic!("unsupported fixture operation type"),
+            };
+            let entity_type = if operation_type.starts_with("rss_feed_") {
+                "RssFeed"
+            } else {
+                "FeedItem"
             };
             let payload_digest = digest_hex(
                 "operation-payload",
@@ -711,7 +837,7 @@ mod tests {
                 "transaction_member_index": index as i64,
                 "transaction_member_count": entities.len() as i64,
                 "operation_type": operation_type,
-                "entity_type": "FeedItem",
+                "entity_type": entity_type,
                 "entity_id": entity_id,
                 "payload": payload,
                 "payload_digest": payload_digest,
@@ -799,6 +925,36 @@ mod tests {
             actor_chain_genesis: "5".repeat(64),
             enrolled_at_ms: 1_000,
         }
+    }
+
+    #[test]
+    fn rejects_device_local_or_incomplete_rss_feed_payloads() {
+        let entity_id = "https://example.com/feed.xml";
+        let valid = json!({
+            "url": entity_id,
+            "title": "Example",
+            "enabled": true,
+            "trackUnread": true
+        });
+        assert!(validate_rss_feed(valid.as_object().expect("object"), entity_id, 0).is_ok());
+
+        let device_local = json!({
+            "url": entity_id,
+            "title": "Example",
+            "enabled": true,
+            "trackUnread": true,
+            "consecutiveFailures": 2
+        });
+        assert!(matches!(
+            validate_rss_feed(device_local.as_object().expect("object"), entity_id, 0),
+            Err(JournalError::OperationVerification { field: "feed", .. })
+        ));
+
+        let incomplete = json!({ "url": entity_id, "title": "Example" });
+        assert!(matches!(
+            validate_rss_feed(incomplete.as_object().expect("object"), entity_id, 0),
+            Err(JournalError::OperationVerification { field: "feed", .. })
+        ));
     }
 
     #[test]
@@ -944,6 +1100,120 @@ mod tests {
             )
             .expect("capture rows");
         assert_eq!(rows, (1, 1, 1, 1));
+    }
+
+    #[test]
+    fn verifies_and_materializes_signed_rss_feed_upsert() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[12_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let feed_url = "https://example.com/feed.xml";
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss-upsert:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(feed_url, 1_234)],
+            "rss_feed_upsert",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0, '{{"feeds":{{}}}}', 1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit RSS upsert");
+        let shell: String = journal
+            .connection
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read shell");
+        let shell: Value = serde_json::from_str(&shell).expect("parse shell");
+        assert_eq!(shell["feeds"][feed_url]["title"], "Verified feed");
+    }
+
+    #[test]
+    fn signed_rss_feed_removal_can_tombstone_its_items_atomically() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[13_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let feed_url = "https://example.com/feed.xml";
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss-remove:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(feed_url, 1_234)],
+            "rss_feed_remove_with_items",
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 1, 1,
+                   '{{"feeds":{{"{feed_url}":{{"url":"{feed_url}","title":"Example","enabled":true,"trackUnread":true}}}}}}',
+                   1, 1);
+                 INSERT INTO library_core_feed_items (
+                   globalId, feedUrl, deletedAt, payloadJson, updatedAtMs
+                 ) VALUES (
+                   'rss:item:from-feed', '{feed_url}', NULL,
+                   '{{"globalId":"rss:item:from-feed","rssSource":{{"feedUrl":"{feed_url}"}}}}',
+                   1
+                 );"#,
+                "b".repeat(64)
+            ))
+            .expect("install feed and item");
+
+        journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit RSS removal");
+        let state: (i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   json_array_length(json_extract(shellJson, '$.feeds')),
+                   (SELECT COUNT(*) FROM library_core_feed_items
+                    WHERE globalId = 'rss:item:from-feed' AND deletedAt = 1234)
+                 FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read removed state");
+        assert_eq!(state, (0, 1));
     }
 
     #[test]
