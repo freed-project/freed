@@ -324,6 +324,7 @@ struct VerifiedOperation {
     operation_type: String,
     item_json: Option<String>,
     rss_feed_json: Option<String>,
+    preferences_patch_json: Option<String>,
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
@@ -593,6 +594,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_none()
                     || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -605,6 +607,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
                     || member
                         .read_at_ms
                         .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
@@ -623,6 +626,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_none()
                     || member
@@ -639,6 +643,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "FeedItem"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -655,6 +660,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "RssFeed"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_none()
+                    || member.preferences_patch_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -669,6 +675,7 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 if member.entity_type != "RssFeed"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
                     || member.read_at_ms.is_some()
                     || member.assigned.is_some()
                     || member.assigned_at_ms.is_some()
@@ -678,6 +685,22 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "rss_feed_remove",
+                    });
+                }
+            }
+            "preferences_leaf_assignment" => {
+                if member.entity_type != "UserPreferences"
+                    || member.entity_id != "preferences"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_none()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "preferences_patch_json",
                     });
                 }
             }
@@ -1762,6 +1785,8 @@ impl LibraryCoreJournal {
             )?;
             product_rows_updated += if member.entity_type == "RssFeed" {
                 Self::materialize_rss_feed(&transaction, member, committed_at_ms)?
+            } else if member.entity_type == "UserPreferences" {
+                Self::materialize_preferences(&transaction, member)?
             } else if let Some(item_json) = member.item_json.as_deref() {
                 let deleted_at = transaction
                     .query_row(
@@ -2028,6 +2053,74 @@ impl LibraryCoreJournal {
             0
         };
         Ok(usize::from(shell_changed) + removed_items)
+    }
+
+    fn materialize_preferences(
+        transaction: &Transaction<'_>,
+        member: &VerifiedOperation,
+    ) -> JournalResult<usize> {
+        fn merge(target: &mut Value, patch: &Value) {
+            match (target, patch) {
+                (Value::Object(target), Value::Object(patch)) => {
+                    for (key, value) in patch {
+                        match target.get_mut(key) {
+                            Some(current) => merge(current, value),
+                            None => {
+                                target.insert(key.clone(), value.clone());
+                            }
+                        }
+                    }
+                }
+                (target, patch) => *target = patch.clone(),
+            }
+        }
+
+        let shell_json = transaction
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_state",
+            })?;
+        let mut shell: Value =
+            serde_json::from_str(&shell_json).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        let patch: Value = serde_json::from_str(
+            member
+                .preferences_patch_json
+                .as_deref()
+                .expect("validated preferences patch"),
+        )
+        .map_err(|_| JournalError::InvalidVerifiedInput {
+            field: "preferences_patch_json",
+        })?;
+        let preferences = shell
+            .as_object_mut()
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?
+            .entry("preferences")
+            .or_insert_with(|| Value::Object(Default::default()));
+        let previous = preferences.clone();
+        merge(preferences, &patch);
+        if *preferences == previous {
+            return Ok(0);
+        }
+        let updated_shell =
+            serde_json::to_string(&shell).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "desktop_library_shell",
+            })?;
+        transaction.execute(
+            "UPDATE library_core_desktop_state SET shellJson = ?1
+             WHERE singletonId = 1 AND active = 1;",
+            params![updated_shell],
+        )?;
+        Ok(1)
     }
 
     fn intent_results_for_transaction(
@@ -2514,6 +2607,7 @@ mod tests {
                 operation_type: "feed_item_read_assignment".to_string(),
                 item_json: None,
                 rss_feed_json: None,
+                preferences_patch_json: None,
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,

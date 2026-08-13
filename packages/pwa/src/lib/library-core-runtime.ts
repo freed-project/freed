@@ -6,6 +6,7 @@ import {
   type FeedItem,
   type Person,
   type RssFeed,
+  type UserPreferences,
 } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
@@ -430,6 +431,15 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
     removedAtMs: Date.now(),
     url,
   });
+  const state = await readSelectedState();
+  if (state) publishState(state);
+}
+
+/** Queue one synchronized preference patch and update the selected shell. */
+export async function enqueuePwaLibraryCorePreferencesPatch(
+  updates: Partial<UserPreferences>,
+): Promise<void> {
+  await getPortableStore().enqueuePreferencesLeafAssignment(updates);
   const state = await readSelectedState();
   if (state) publishState(state);
 }

@@ -4,9 +4,12 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
+import { stripDeviceLocalPreferenceUpdates } from "../preferences.js";
+import type { UserPreferences } from "../types.js";
 
 const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
+const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
 
 export interface FeedItemCaptureUpsertPayloadV1 {
   readonly item: Readonly<Record<string, LibraryCoreCanonicalValue>>;
@@ -26,6 +29,10 @@ export interface RssFeedUpsertPayloadV1 {
 
 export interface RssFeedRemovePayloadV1 {
   readonly removed_at_ms: number;
+}
+
+export interface PreferencesLeafAssignmentPayloadV1 {
+  readonly updates: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
 export const FEED_ITEM_USER_STATE_ASSIGNMENT_FIELDS = Object.freeze([
@@ -76,6 +83,7 @@ const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
+const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -346,6 +354,78 @@ function validateRssFeedRemovePayload(
   return { ok: true, value: Object.freeze({ removed_at_ms: removedAt.value }) };
 }
 
+function validatePreferencesLeafAssignmentPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== 1 ||
+    keys[0] !== PREFERENCES_LEAF_ASSIGNMENT_KEYS[0]
+  ) {
+    return invalid("payload must contain only updates");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, "updates");
+  if (
+    descriptor === undefined ||
+    !descriptor.enumerable ||
+    !("value" in descriptor) ||
+    typeof descriptor.value !== "object" ||
+    descriptor.value === null ||
+    Array.isArray(descriptor.value)
+  ) {
+    return invalid("updates must be a plain canonical object");
+  }
+  try {
+    const encoded = encodeLibraryCoreCanonicalValue(
+      descriptor.value as LibraryCoreCanonicalValue,
+      { maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES },
+    );
+    const updates = decodeLibraryCoreCanonicalValue(encoded, {
+      maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES,
+    });
+    if (typeof updates !== "object" || updates === null || Array.isArray(updates)) {
+      return invalid("updates must be a plain canonical object");
+    }
+    if (Object.keys(updates).length === 0) {
+      return invalid("updates must not be empty");
+    }
+    const synchronized = stripDeviceLocalPreferenceUpdates(
+      updates as Partial<UserPreferences>,
+    ) as unknown as LibraryCoreCanonicalValue;
+    const synchronizedBytes = encodeLibraryCoreCanonicalValue(synchronized, {
+      maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES,
+    });
+    if (
+      synchronizedBytes.byteLength !== encoded.byteLength ||
+      synchronizedBytes.some((byte, index) => byte !== encoded[index])
+    ) {
+      return invalid("updates contain device-local or compatibility fields");
+    }
+    return {
+      ok: true,
+      value: Object.freeze({
+        updates: updates as Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >,
+      }),
+    };
+  } catch (error) {
+    return invalid(
+      error instanceof Error ? error.message : "updates are not canonical",
+    );
+  }
+}
+
 function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
@@ -457,6 +537,17 @@ export const RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA =
   rssFeedRemovePayloadSchema("rss_feed_remove_keep_items");
 export const RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA =
   rssFeedRemovePayloadSchema("rss_feed_remove_with_items");
+
+export const PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "preferences_leaf_assignment_payload_v1",
+  schemaVersion: 1,
+  operationType: "preferences_leaf_assignment",
+  canonicalKeys: PREFERENCES_LEAF_ASSIGNMENT_KEYS,
+  validate: validatePreferencesLeafAssignmentPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "preferences_leaf_assignment",
+  PreferencesLeafAssignmentPayloadV1
+>;
 
 /** Closed payload for idempotent local PWA user-state assignments. */
 function userStateAssignmentPayloadSchema(

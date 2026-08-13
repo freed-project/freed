@@ -19,6 +19,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
   isLibraryCoreFinalizedTransactionV1,
@@ -65,6 +66,7 @@ import {
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type RssFeedRemoveTransactionMemberInputV1,
   type RssFeedUpsertTransactionMemberInputV1,
+  type PreferencesLeafAssignmentTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -81,7 +83,7 @@ import {
   type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreResultSegmentHeaderV1,
 } from "@freed/shared/library-core";
-import type { FeedItem, RssFeed } from "@freed/shared";
+import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
 import type {
   LibraryCoreOperationSegmentImportReceiptV1,
   LibraryCoreOperationSegmentImportWriterV1,
@@ -185,6 +187,22 @@ function canonicalObject(
     return null;
   }
   return value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+function mergeCanonicalPatch(
+  target: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+  patch: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+): Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  const next: Record<string, LibraryCoreCanonicalValue> = { ...target };
+  for (const [key, value] of Object.entries(patch)) {
+    const nestedPatch = canonicalObject(value);
+    const nestedTarget = canonicalObject(next[key]);
+    next[key] =
+      nestedPatch && nestedTarget
+        ? mergeCanonicalPatch(nestedTarget, nestedPatch)
+        : value;
+  }
+  return next;
 }
 
 interface PortableActorTipRecord {
@@ -2611,6 +2629,34 @@ class PwaLibraryCorePortableCheckpointStore
             }
           }
         } else if (
+          member.envelope.operation_type === "preferences_leaf_assignment"
+        ) {
+          const shellKey = [
+            generation.generationId,
+            "00_library_shell",
+            canonicalStringKey("shell"),
+          ];
+          const shell = (await requestResult(
+            materializedRows.get(shellKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (!shell) {
+            transaction.abort();
+            throw new Error(
+              "authenticated preferences patch has no materialized Library shell",
+            );
+          }
+          const preferences = canonicalObject(shell.row.preferences) ?? {};
+          materializedRows.put({
+            ...shell,
+            row: {
+              ...shell.row,
+              preferences: mergeCanonicalPatch(
+                preferences,
+                member.envelope.payload.updates,
+              ),
+            },
+          } satisfies PortableMaterializedRowRecord);
+        } else if (
           storedRow &&
           (member.envelope.operation_type === "feed_item_saved_assignment" ||
             member.envelope.operation_type === "feed_item_archive_assignment" ||
@@ -3036,6 +3082,111 @@ class PwaLibraryCorePortableCheckpointStore
     const receipt = await this.enqueueIntentTransaction(finalized);
     await this.#applySelectedRssFeedRemove(input.url, input.includeItems);
     return receipt;
+  }
+
+  async enqueuePreferencesLeafAssignment(
+    updates: Partial<UserPreferences>,
+  ): Promise<PwaLibraryCoreIntentEnqueueReceiptV1> {
+    const context = await this.#activeIntentContext();
+    const actorSequence =
+      context.intentActor?.nextIntentSequence ??
+      context.actorTip.acceptedSequence + 1;
+    const previousOperationId =
+      context.intentActor?.latestOperationId ??
+      context.actorTip.acceptedOperationId;
+    const previousChainDigest =
+      context.intentActor?.latestActorChainDigest ??
+      context.actorTip.acceptedChainDigest;
+    const createdAtMs = this.#now();
+    const transactionId =
+      `pwa-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const member = PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:0`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.identity.actorId,
+        actor_sequence: actorSequence,
+        previous_actor_operation_id: previousOperationId,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: createdAtMs,
+        hlc_counter: 0,
+        transaction_id: transactionId,
+        transaction_member_index: 0,
+        transaction_member_count: 1,
+        entity_id: "preferences",
+        payload: {
+          updates: updates as unknown as Record<
+            string,
+            LibraryCoreCanonicalValue
+          >,
+        },
+        created_at_ms: createdAtMs,
+      } satisfies PreferencesLeafAssignmentTransactionMemberInputV1,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([member], previousChainDigest, {
+        digest: libraryCoreDigest,
+      }),
+      {
+        digest: libraryCoreDigest,
+        signOperation: async (message) =>
+          lowerHex(
+            await this.#subtle.sign(
+              { name: "Ed25519" },
+              context.identity.actorPrivateKey,
+              exactArrayBuffer(message),
+            ),
+          ) as LibraryCoreEd25519SignatureHex,
+      },
+    );
+    const receipt = await this.enqueueIntentTransaction(finalized);
+    await this.#applySelectedPreferencesPatch(
+      updates as unknown as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >,
+    );
+    return receipt;
+  }
+
+  async #applySelectedPreferencesPatch(
+    updates: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+  ): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    if (!selected) {
+      transaction.abort();
+      throw new Error("PWA preferences intent has no selected Library generation");
+    }
+    const rows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const key = [
+      selected.generationId,
+      "00_library_shell",
+      canonicalStringKey("shell"),
+    ];
+    const stored = (await requestResult(rows.get(key))) as
+      PortableMaterializedRowRecord | undefined;
+    if (!stored) {
+      transaction.abort();
+      throw new Error("PWA preferences intent has no materialized Library shell");
+    }
+    const preferences = canonicalObject(stored.row.preferences) ?? {};
+    rows.put({
+      ...stored,
+      row: {
+        ...stored.row,
+        preferences: mergeCanonicalPatch(preferences, updates),
+      },
+    } satisfies PortableMaterializedRowRecord);
+    await transactionDone(transaction);
   }
 
   async #applySelectedRssFeedUpsert(feed: RssFeed): Promise<void> {

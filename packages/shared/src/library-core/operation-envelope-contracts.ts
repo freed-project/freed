@@ -8,9 +8,11 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
   type RssFeedUpsertPayloadV1,
+  type PreferencesLeafAssignmentPayloadV1,
 } from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
@@ -59,6 +61,8 @@ export type FeedItemRemoveTransactionMemberInputV1 =
 export type RssFeedUpsertTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type RssFeedRemoveTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type PreferencesLeafAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
@@ -215,13 +219,39 @@ export interface RssFeedRemoveTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface PreferencesLeafAssignmentTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: "preferences_leaf_assignment";
+  readonly entity_type: "UserPreferences";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: PreferencesLeafAssignmentPayloadV1;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
 export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
   | FeedItemUserStateAssignmentTransactionMemberBodyV1
   | FeedItemRemoveTransactionMemberBodyV1
   | RssFeedUpsertTransactionMemberBodyV1
-  | RssFeedRemoveTransactionMemberBodyV1;
+  | RssFeedRemoveTransactionMemberBodyV1
+  | PreferencesLeafAssignmentTransactionMemberBodyV1;
 
 export interface LibraryCoreTransactionMemberConstruction<
   Body = LibraryCoreTransactionMemberBodyV1,
@@ -540,6 +570,11 @@ function constructEntityTransactionMember(
           "rss_feed_remove_keep_items" | "rss_feed_remove_with_items";
         readonly validatePayload: typeof RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA.validate;
         readonly entityType: "RssFeed";
+      }
+    | {
+        readonly operationType: "preferences_leaf_assignment";
+        readonly validatePayload: typeof PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "UserPreferences";
       },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
@@ -775,6 +810,17 @@ function constructRssFeedRemoveTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<RssFeedRemoveTransactionMemberBodyV1>;
 }
 
+function constructPreferencesLeafAssignmentTransactionMember(
+  input: PreferencesLeafAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<PreferencesLeafAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "preferences_leaf_assignment",
+    validatePayload: PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+    entityType: "UserPreferences",
+  }) as LibraryCoreTransactionMemberConstruction<PreferencesLeafAssignmentTransactionMemberBodyV1>;
+}
+
 /**
  * Closed construction schema for the first dormant Library Core operation.
  *
@@ -886,3 +932,16 @@ export const RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA =
   rssFeedRemoveTransactionMemberSchema("rss_feed_remove_keep_items");
 export const RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA =
   rssFeedRemoveTransactionMemberSchema("rss_feed_remove_with_items");
+
+export const PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "preferences_leaf_assignment_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "preferences_leaf_assignment",
+    entityType: "UserPreferences",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: constructPreferencesLeafAssignmentTransactionMember,
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    PreferencesLeafAssignmentTransactionMemberInputV1,
+    PreferencesLeafAssignmentTransactionMemberBodyV1
+  >;

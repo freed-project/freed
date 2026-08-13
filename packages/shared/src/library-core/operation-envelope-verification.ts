@@ -14,6 +14,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
@@ -426,6 +427,9 @@ export async function verifyLibraryCoreOperationTransactionV1(
                       ? RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA
                       : envelope.operation_type === "rss_feed_remove_with_items"
                         ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
+                        : envelope.operation_type ===
+                            "preferences_leaf_assignment"
+                          ? PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
                         : null;
     if (schema === null) {
       throw new TypeError(

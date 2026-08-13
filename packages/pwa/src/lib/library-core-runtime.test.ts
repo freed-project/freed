@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
   enqueueFeedItemRemove: vi.fn(),
   enqueueRssFeedRemove: vi.fn(),
   enqueueRssFeedUpsert: vi.fn(),
+  enqueuePreferencesLeafAssignment: vi.fn(),
   enqueueUserStateAssignments: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
     enqueueRssFeedRemove: mocks.enqueueRssFeedRemove,
     enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
+    enqueuePreferencesLeafAssignment: mocks.enqueuePreferencesLeafAssignment,
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedCollectionPage: mocks.readSelectedCollectionPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
@@ -37,6 +40,7 @@ import {
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
+  enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -61,6 +65,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueFeedItemRemove.mockReset();
     mocks.enqueueRssFeedRemove.mockReset();
     mocks.enqueueRssFeedUpsert.mockReset();
+    mocks.enqueuePreferencesLeafAssignment.mockReset();
   });
 
   it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
@@ -329,5 +334,22 @@ describe("PWA Library Core bounded scanner", () => {
       removedAtMs: expect.any(Number),
       url: feed.url,
     });
+  });
+
+  it("routes synchronized preferences through a signed Library Core patch", async () => {
+    mocks.enqueuePreferencesLeafAssignment.mockResolvedValue({
+      operationId: "op:preferences",
+    });
+    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
+    const update = {
+      display: {
+        ...createDefaultPreferences().display,
+        archivePruneDays: 14,
+      },
+    };
+
+    await enqueuePwaLibraryCorePreferencesPatch(update);
+
+    expect(mocks.enqueuePreferencesLeafAssignment).toHaveBeenCalledWith(update);
   });
 });

@@ -76,6 +76,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
@@ -84,6 +85,7 @@ import {
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
@@ -200,8 +202,11 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // and so may write any synchronized preference leaf. No entityIdCodec:
   // preferences are a singleton root with no per-entity key.
   preferences_leaf_assignment: {
+    payloadSchema: PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema:
+      PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `renameFeed`, which sends only `{ title }`. No entityIdCodec:
   // feeds are keyed by url, not by the globalId space the codec was justified

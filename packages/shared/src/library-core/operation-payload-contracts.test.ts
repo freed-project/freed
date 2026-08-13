@@ -5,6 +5,7 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
@@ -128,5 +129,28 @@ describe("Library Core operation payload contracts", () => {
         include_items: true,
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("accepts synchronized preference patches and rejects device-local leaves", () => {
+    const accepted = PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          display: { archivePruneDays: 14 },
+          ai: { autoSummarize: true },
+        },
+      });
+    expect(accepted, accepted.ok ? undefined : accepted.reason).toMatchObject({ ok: true });
+    for (const updates of [
+      {},
+      { sync: { autoBackup: true } },
+      { display: { themeId: "dark-star" } },
+      { display: { reading: { dualColumnMode: true } } },
+      { ai: { ollamaUrl: "http://localhost:11434" } },
+      { fbCapture: { knownGroups: {} } },
+      { storyWall: { publishTarget: { lastError: "nope" } } },
+    ]) {
+      expect(
+        PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({ updates }),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 });

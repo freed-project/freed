@@ -14,6 +14,7 @@ import type {
   FeedItemUserStateAssignmentTransactionMemberBodyV1,
   RssFeedRemoveTransactionMemberBodyV1,
   RssFeedUpsertTransactionMemberBodyV1,
+  PreferencesLeafAssignmentTransactionMemberBodyV1,
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
@@ -66,13 +67,20 @@ export interface RssFeedRemoveSigningBodyV1 extends RssFeedRemoveTransactionMemb
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface PreferencesLeafAssignmentSigningBodyV1 extends PreferencesLeafAssignmentTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemCaptureUpsertSigningBodyV1
   | FeedItemReadAssignmentSigningBodyV1
   | FeedItemUserStateAssignmentSigningBodyV1
   | FeedItemRemoveSigningBodyV1
   | RssFeedUpsertSigningBodyV1
-  | RssFeedRemoveSigningBodyV1;
+  | RssFeedRemoveSigningBodyV1
+  | PreferencesLeafAssignmentSigningBodyV1;
 
 export interface LibraryCoreSigningMemberV1 {
   readonly member_digest: LibraryCoreLowercaseHex64;

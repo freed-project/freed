@@ -421,6 +421,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.134 | Signed PWA FeedItem removal intent with immediate IndexedDB and search eviction, native verification, atomic SQLite tombstone, acceptance receipt, and replication outbox | ✓ | High |
 | 4.135 | Signed PWA saved-link capture with immediate IndexedDB and search materialization, native whole-item verification, atomic SQLite upsert, acceptance receipt, and replication outbox | ✓ | High |
 | 4.136 | Signed PWA RSS add, rename, and removal intents with immediate IndexedDB shell materialization, native canonical verification, atomic SQLite shell update, optional item tombstones, acceptance receipt, and replication outbox | ✓ | High |
+| 4.137 | Signed PWA synchronized preference patches with device-local field rejection, immediate IndexedDB shell merge, authenticated replay, and atomic native SQLite shell, journal, acceptance receipt, and replication outbox commit | ✓ | High |
 
 ---
 
@@ -564,6 +565,7 @@ not mean those internal stages remain unreachable.
 - [x] PWA save-link capture now builds one complete saved FeedItem locally without foreground fetching, signs the canonical item into an epoch-scoped capture intent, and immediately exposes it from IndexedDB and local search. Freed Desktop verifies the whole canonical item and identity before atomically upserting SQLite, advancing the journal and actor tip, and recording both replication and Accepted-result outboxes. A prior explicit tombstone cannot be silently resurrected. This adds no social-provider request.
 - [x] PWA archive maintenance no longer wakes Automerge. Repairing saved-and-archived items scans the complete selected IndexedDB generation in bounded pages and emits explicit unarchive assignments. Deleting archived items emits signed removals only for unsaved archived rows, updates the selected IndexedDB materialization and local search, and refreshes the bounded renderer window after the operation completes. Both commands reuse the existing epoch-scoped intent journal and add no social-provider request.
 - [x] PWA RSS feed add, rename, and removal use canonical signed Library Core intents. IndexedDB updates the selected shell immediately, imported operation segments replay the same effect, and Freed Desktop commits the SQLite shell change, optional matching-item tombstones, acceptance receipt, and replication outbox in one transaction. Device-local RSS scheduler fields are rejected from synchronized payloads.
+- [x] PWA synchronized preference changes use one canonical signed patch operation. Device-local and compatibility fields are rejected, IndexedDB applies the recursive patch immediately and on authenticated replay, and Freed Desktop commits the same recursive merge with the journal, acceptance receipt, and replication outbox in one SQLite transaction.
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules
