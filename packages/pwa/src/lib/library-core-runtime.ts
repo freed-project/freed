@@ -1,6 +1,7 @@
 import {
   createDefaultPreferences,
   friendFromPerson,
+  sanitizeFeedItemWrite,
   sanitizeRssFeedWrite,
   type Account,
   type FeedItem,
@@ -42,6 +43,7 @@ import type { DocState } from "./automerge-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
   createPwaLibraryCorePortableCheckpointStore,
+  PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
   PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
 } from "./library-core-portable-checkpoint-store";
@@ -408,10 +410,37 @@ export async function enqueuePwaLibraryCoreFeedItemRemove(
 export async function enqueuePwaLibraryCoreFeedItemCapture(
   item: FeedItem,
 ): Promise<void> {
-  await getPortableStore().enqueueFeedItemCapture(item);
-  if (searchIndex && lastState) {
-    await searchIndex.updateItems(lastState.searchCorpusVersion, [item]);
+  await enqueuePwaLibraryCoreFeedItemCaptures([item]);
+}
+
+/** Queue bounded signed FeedItem captures and expose them from IndexedDB. */
+export async function enqueuePwaLibraryCoreFeedItemCaptures(
+  items: readonly FeedItem[],
+): Promise<void> {
+  if (items.length === 0) return;
+  let batch: FeedItem[] = [];
+  let identities = new Set<string>();
+  const flush = async () => {
+    if (batch.length === 0) return;
+    await getPortableStore().enqueueFeedItemCaptures(batch);
+    if (searchIndex && lastState) {
+      await searchIndex.updateItems(lastState.searchCorpusVersion, batch);
+    }
+    batch = [];
+    identities = new Set<string>();
+  };
+  for (const input of items) {
+    const item = sanitizeFeedItemWrite(input) as FeedItem;
+    if (
+      batch.length === PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT ||
+      identities.has(item.globalId)
+    ) {
+      await flush();
+    }
+    batch.push(item);
+    identities.add(item.globalId);
   }
+  await flush();
   const state = await readSelectedState();
   if (state) publishState(state);
 }

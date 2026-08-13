@@ -114,6 +114,8 @@ import {
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
+  enqueuePwaLibraryCoreFeedItemCapture,
+  enqueuePwaLibraryCoreFeedItemCaptures,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
@@ -546,7 +548,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions — errors propagate to callers so UI can surface them
   addItems: async (items) => {
-    await docAddFeedItems(items);
+    if (isPwaLibraryCoreEnabled()) {
+      await enqueuePwaLibraryCoreFeedItemCaptures(items);
+    } else {
+      await docAddFeedItems(items);
+    }
   },
 
   updateItem: async (id, update) => {
@@ -555,7 +561,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:updateItem",
       (state) => projectUpdateItem(state, id, update),
-      () => docUpdateFeedItem(id, update),
+      () => {
+        if (!isPwaLibraryCoreEnabled()) return docUpdateFeedItem(id, update);
+        const item = get().items.find((candidate) => candidate.globalId === id);
+        if (!item) throw new Error("Feed item is unavailable");
+        return enqueuePwaLibraryCoreFeedItemCapture(item);
+      },
+      { allowLibraryCoreIntent: true },
     );
   },
 

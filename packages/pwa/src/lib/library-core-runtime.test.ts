@@ -3,6 +3,7 @@ import { createDefaultPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
+  enqueueFeedItemCaptures: vi.fn(),
   enqueueFeedItemRemove: vi.fn(),
   enqueueRssFeedRemove: vi.fn(),
   enqueueRssFeedUpsert: vi.fn(),
@@ -18,9 +19,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
   PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT: 128,
+  PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT: 128,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT: 128,
   createPwaLibraryCorePortableCheckpointStore: () => ({
     enqueueReadAssignments: mocks.enqueueReadAssignments,
+    enqueueFeedItemCaptures: mocks.enqueueFeedItemCaptures,
     enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
     enqueueRssFeedRemove: mocks.enqueueRssFeedRemove,
     enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
@@ -47,6 +50,7 @@ import {
   isPwaLibraryCoreEnabled,
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
+  enqueuePwaLibraryCoreFeedItemCaptures,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedUpsert,
@@ -76,6 +80,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.readSelectedMaterializedRow.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
+    mocks.enqueueFeedItemCaptures.mockReset();
     mocks.enqueueFeedItemRemove.mockReset();
     mocks.enqueueRssFeedRemove.mockReset();
     mocks.enqueueRssFeedUpsert.mockReset();
@@ -170,6 +175,48 @@ describe("PWA Library Core bounded scanner", () => {
       entityId: "item-9",
       removedAtMs: expect.any(Number),
     });
+  });
+
+  it("batches sanitized FeedItem captures through the signed IndexedDB intent path", async () => {
+    mocks.enqueueFeedItemCaptures.mockResolvedValue({
+      operationId: "op:capture",
+    });
+    const items = Array.from({ length: 129 }, (_, index) => ({
+      globalId: `item-${index}`,
+      platform: "rss" as const,
+      contentType: "article" as const,
+      capturedAt: index + 1,
+      publishedAt: index + 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Text", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: false, archived: false, tags: [] },
+      topics: [],
+      priority: 99,
+      priorityComputedAt: 123,
+    }));
+
+    await enqueuePwaLibraryCoreFeedItemCaptures(items);
+
+    expect(mocks.enqueueFeedItemCaptures).toHaveBeenCalledTimes(2);
+    expect(mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]).toHaveLength(128);
+    expect(mocks.enqueueFeedItemCaptures.mock.calls[1]?.[0]).toHaveLength(1);
+    expect(
+      mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]?.[0],
+    ).not.toHaveProperty("priority");
+    expect(
+      mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]?.[0],
+    ).not.toHaveProperty("priorityComputedAt");
+
+    await enqueuePwaLibraryCoreFeedItemCaptures([
+      items[0]!,
+      {
+        ...items[0]!,
+        content: { text: "Later", mediaUrls: [], mediaTypes: [] },
+      },
+    ]);
+    expect(mocks.enqueueFeedItemCaptures).toHaveBeenCalledTimes(4);
+    expect(mocks.enqueueFeedItemCaptures.mock.calls[2]?.[0]).toHaveLength(1);
+    expect(mocks.enqueueFeedItemCaptures.mock.calls[3]?.[0]).toHaveLength(1);
   });
 
   it("repairs saved archived items without waking Automerge", async () => {

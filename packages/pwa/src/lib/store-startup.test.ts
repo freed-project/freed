@@ -3,6 +3,7 @@ import {
   createDefaultPreferences,
   type Account,
   type ContentSignalBackfillSummary,
+  type FeedItem,
   type Person,
   type SampleLibraryData,
 } from "@freed/shared";
@@ -70,6 +71,8 @@ const libraryCore = vi.hoisted(() => ({
   enqueuePwaLibraryCoreArchiveAllReadUnsaved: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreArchiveItems: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreDeleteAllArchived: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreFeedItemCapture: vi.fn(() => Promise.resolve()),
+  enqueuePwaLibraryCoreFeedItemCaptures: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCoreMarkAllAsRead: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCorePersonUpsert: vi.fn(() => Promise.resolve()),
   enqueuePwaLibraryCorePersonRemove: vi.fn(() => Promise.resolve()),
@@ -161,6 +164,37 @@ describe("PWA store startup maintenance", () => {
   it("routes ordinary PWA bulk actions through SQLite intents", async () => {
     localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
 
+    const item: FeedItem = {
+      globalId: "item-capture-intent",
+      platform: "rss",
+      contentType: "article",
+      capturedAt: 1,
+      publishedAt: 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Before", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: false, archived: false, tags: [] },
+      topics: [],
+    };
+    await useAppStore.getState().addItems([item]);
+    expect(
+      libraryCore.enqueuePwaLibraryCoreFeedItemCaptures,
+    ).toHaveBeenCalledWith([item]);
+    expect(automerge.docAddFeedItems).not.toHaveBeenCalled();
+
+    useAppStore.setState({ items: [item] });
+    await useAppStore.getState().updateItem(item.globalId, {
+      content: { text: "After", mediaUrls: [], mediaTypes: [] },
+    });
+    expect(
+      libraryCore.enqueuePwaLibraryCoreFeedItemCapture,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        globalId: item.globalId,
+        content: { text: "After", mediaUrls: [], mediaTypes: [] },
+      }),
+    );
+    expect(automerge.docUpdateFeedItem).not.toHaveBeenCalled();
+
     await useAppStore.getState().markAsRead("item-read-intent");
     await useAppStore
       .getState()
@@ -200,9 +234,6 @@ describe("PWA store startup maintenance", () => {
     ).toHaveBeenCalledOnce();
     expect(automerge.docUnarchiveSavedItems).not.toHaveBeenCalled();
     expect(automerge.docDeleteAllArchived).not.toHaveBeenCalled();
-    await expect(
-      useAppStore.getState().updateItem("unsupported-item", { priority: 1 }),
-    ).rejects.toThrow("read-only until its PWA intent outbox is active");
   });
 
   it("keeps graph placement local to this PWA", async () => {
