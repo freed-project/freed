@@ -64,13 +64,27 @@ const libraryClientTestAliases: Record<string, string> =
         "./lib/library-client": rootFile("src/lib/automerge.ts"),
       }
     : {};
-const retiredProductionAliases: Record<string, string> =
-  process.env.VITE_TEST_TAURI || process.env.VITEST
-    ? {}
-    : {
-        "./legacy-cloud-sync-entry": rootFile("src/lib/retired-legacy-cloud-sync.ts"),
-        "./cloud-merge": rootFile("src/lib/retired-legacy-cloud-merge.ts"),
-      };
+const isProductionLibraryBuild =
+  !process.env.VITE_TEST_TAURI && !process.env.VITEST;
+
+// Vite normalizes relative imports against their importer before its alias
+// table sees them. Resolve these two historical entry points at enforce:pre so
+// a production bundle cannot retain the mutable-document cloud worker merely
+// because sync.ts still exposes compatibility-shaped functions.
+const retiredProductionResolver = {
+  name: "resolve-retired-desktop-library-runtime",
+  enforce: "pre" as const,
+  resolveId(source: string) {
+    if (!isProductionLibraryBuild) return null;
+    if (source === "./legacy-cloud-sync-entry") {
+      return rootFile("src/lib/retired-legacy-cloud-sync.ts");
+    }
+    if (source === "./cloud-merge") {
+      return rootFile("src/lib/retired-legacy-cloud-merge.ts");
+    }
+    return null;
+  },
+};
 
 const rejectRetiredDesktopLibraryAssets = {
   name: "reject-retired-desktop-library-assets",
@@ -114,7 +128,6 @@ export default defineConfig({
       '@freed/capture-instagram': src('capture-instagram'),
       '@freed/capture-linkedin': src('capture-linkedin'),
       ...libraryClientTestAliases,
-      ...retiredProductionAliases,
       ...tauriMockAliases,
     },
   },
@@ -122,9 +135,20 @@ export default defineConfig({
   // the SQLite-only client and rejects any retired worker or WASM artifact.
   worker: {
     format: "es",
-    plugins: () => [wasm(), topLevelAwait()],
+    plugins: () => [
+      retiredProductionResolver,
+      rejectRetiredDesktopLibraryAssets,
+      wasm(),
+      topLevelAwait(),
+    ],
   },
-  plugins: [rejectRetiredDesktopLibraryAssets, wasm(), topLevelAwait(), react()],
+  plugins: [
+    retiredProductionResolver,
+    rejectRetiredDesktopLibraryAssets,
+    wasm(),
+    topLevelAwait(),
+    react(),
+  ],
   optimizeDeps: {
     exclude: [
       ...tauriMockExclude,

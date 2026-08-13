@@ -71,6 +71,49 @@ var tauriMockAliases = process.env.VITE_TEST_TAURI
 var tauriMockExclude = process.env.VITE_TEST_TAURI
     ? Object.keys(tauriMockAliases)
     : [];
+// Product code imports the SQLite-only Library client. Browser and unit tests
+// retain the historical in-memory harness so UI coverage does not need a native
+// process. These aliases do not exist in production builds.
+var libraryClientTestAliases = process.env.VITE_TEST_TAURI || process.env.VITEST
+    ? {
+        "./library-client": rootFile("src/lib/automerge.ts"),
+        "./lib/library-client": rootFile("src/lib/automerge.ts"),
+    }
+    : {};
+var isProductionLibraryBuild = !process.env.VITE_TEST_TAURI && !process.env.VITEST;
+// Vite normalizes relative imports against their importer before its alias
+// table sees them. Resolve these two historical entry points at enforce:pre so
+// a production bundle cannot retain the mutable-document cloud worker merely
+// because sync.ts still exposes compatibility-shaped functions.
+var retiredProductionResolver = {
+    name: "resolve-retired-desktop-library-runtime",
+    enforce: "pre",
+    resolveId: function (source) {
+        if (!isProductionLibraryBuild)
+            return null;
+        if (source === "./legacy-cloud-sync-entry") {
+            return rootFile("src/lib/retired-legacy-cloud-sync.ts");
+        }
+        if (source === "./cloud-merge") {
+            return rootFile("src/lib/retired-legacy-cloud-merge.ts");
+        }
+        return null;
+    },
+};
+var rejectRetiredDesktopLibraryAssets = {
+    name: "reject-retired-desktop-library-assets",
+    generateBundle: function (_options, bundle) {
+        var retiredAssets = Object.keys(bundle).filter(function (fileName) {
+            var normalized = fileName.toLowerCase();
+            return (normalized.includes("automerge") ||
+                normalized.includes("cloud-merge") ||
+                normalized.endsWith(".wasm"));
+        });
+        if (retiredAssets.length > 0) {
+            throw new Error("The retired Desktop document runtime leaked into the production bundle: ".concat(retiredAssets.join(", ")));
+        }
+    },
+};
 var buildMetadata = getBuildMetadata(pkg.version);
 export default defineConfig({
     define: {
@@ -82,16 +125,26 @@ export default defineConfig({
         __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
     },
     resolve: {
-        alias: __assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, tauriMockAliases),
+        alias: __assign(__assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, libraryClientTestAliases), tauriMockAliases),
     },
-    // vite-plugin-wasm must also be applied to the worker sub-bundle.
-    // Without this, Vite 7's worker pipeline processes automerge.worker.ts
-    // without WASM support and fails on the automerge_wasm_bg.wasm import.
+    // Test builds retain the historical Automerge harness. Production imports
+    // the SQLite-only client and rejects any retired worker or WASM artifact.
     worker: {
         format: "es",
-        plugins: function () { return [wasm(), topLevelAwait()]; },
+        plugins: function () { return [
+            retiredProductionResolver,
+            rejectRetiredDesktopLibraryAssets,
+            wasm(),
+            topLevelAwait(),
+        ]; },
     },
-    plugins: [wasm(), topLevelAwait(), react()],
+    plugins: [
+        retiredProductionResolver,
+        rejectRetiredDesktopLibraryAssets,
+        wasm(),
+        topLevelAwait(),
+        react(),
+    ],
     optimizeDeps: {
         exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
             "maplibre-gl/dist/maplibre-gl-worker.mjs",
