@@ -27408,13 +27408,28 @@ function leaseAtomicArchiveSpecificationMatches(
   specification,
   snapshot,
 ) {
-  return (
+  const archiveDirectory = path.dirname(archivePath);
+  const currentDigest = leaseCleanupGenerationDigest(
+    specification.temporaryPath,
+    snapshot,
+  );
+  if (
     path.join(
-      path.dirname(archivePath),
-      `${specification.selectionPrefix}.${leaseCleanupGenerationDigest(
-        specification.temporaryPath,
-        snapshot,
-      )}.json`,
+      archiveDirectory,
+      `${specification.selectionPrefix}.${currentDigest}.json`,
+    ) === archivePath
+  ) {
+    return true;
+  }
+  const legacyDigest = legacyLeaseCleanupGenerationDigest(
+    specification.temporaryPath,
+    snapshot,
+  );
+  return (
+    legacyDigest !== null &&
+    path.join(
+      archiveDirectory,
+      `${specification.selectionPrefix}.${legacyDigest}.json`,
     ) === archivePath
   );
 }
@@ -31021,6 +31036,347 @@ export function acquireLease(options) {
     );
   }
   return acquireLeaseAuthorized(leaseOptions);
+}
+
+function retireDriftedControlEventPredecessorForLeaseRecovery(
+  paths,
+  transaction,
+  beforeRemove,
+) {
+  const current = readAutomationAuthorityFileSnapshot(paths.events, {
+    allowEmpty: true,
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Control event history",
+    invalidCode: "authority_generation_conflict",
+  });
+  if (current.missing) return false;
+  const directory = openPinnedLeaseArchiveDirectory(
+    path.dirname(paths.events),
+    "Control event recovery authority parent directory",
+  );
+  try {
+    requireAutomationAuthorityDirectoryGeneration(
+      directory,
+      current.directoryIdentity,
+      "Control event recovery authority parent directory",
+    );
+    const helper = openPinnedLeaseArchiveHelper();
+    const stages = listAutomationAuthorityStages(
+      paths.events,
+      helper,
+      directory,
+    );
+    if (stages.length === 0) return false;
+    if (stages.length !== 1 || stages[0].kind !== "ready") {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Expired lease recovery requires at most one complete control event predecessor witness.",
+      );
+    }
+    if (
+      stages[0].successorStableDigest ===
+      automationAuthorityStableGenerationDigest(current)
+    ) {
+      return false;
+    }
+    const stagePath = path.join(path.dirname(paths.events), stages[0].entry);
+    const stage = readAutomationAuthorityStage(stagePath, {
+      privateRoot: paths.controlRoot,
+      maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Control event recovery predecessor witness",
+    });
+    requireAutomationAuthoritySnapshotDirectory(
+      stage,
+      directory,
+      "Control event recovery predecessor witness",
+    );
+    if (stage.missing) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor witness disappeared.",
+      );
+    }
+    const semantic = requireControlEventSemanticSuccessor(
+      paths,
+      stage,
+      current,
+    );
+    if (
+      semantic.operationId !== `control-event:${transaction.event.eventId}` ||
+      !canonicalValuesEqual(semantic.event, transaction.event)
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor does not lead to the pending lease event.",
+      );
+    }
+    beforeRemove();
+    removeAutomationAuthorityFile({
+      filePath: stagePath,
+      snapshot: stage,
+      operationId: `expired-lease-recovery:${transaction.operationId}`,
+      privateRoot: paths.controlRoot,
+      maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Control event recovery predecessor witness",
+      beforeRemove,
+      retirementBasename: path.basename(paths.events),
+      rawSource: true,
+    });
+    if (listAutomationAuthorityStages(paths.events, helper, directory).length) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor survived exact retirement.",
+      );
+    }
+    return true;
+  } finally {
+    closeSync(directory.descriptor);
+  }
+}
+
+function normalizeLegacyLeaseAtomicArchivesForRecovery(
+  paths,
+  transaction,
+  beforeMove,
+) {
+  const files = leaseTransactionFiles(
+    paths,
+    transaction.name,
+    transaction.operationId,
+    transaction.operation,
+  );
+  const archiveDirectory = leaseCleanupQuarantineDirectory(files.transaction);
+  const specifications = leaseAtomicArchiveSpecifications(
+    paths,
+    transaction,
+    "transaction",
+  );
+  const entries = readLeaseCleanupArchiveEntries(
+    paths,
+    archiveDirectory,
+    specifications.map((specification) => specification.selectionPrefix),
+  );
+  let normalized = 0;
+  for (const entry of entries) {
+    if (
+      specifications.some((specification) =>
+        leaseAtomicArchiveSpecificationMatches(
+          entry.quarantinePath,
+          specification,
+          entry.snapshot,
+        ),
+      )
+    ) {
+      continue;
+    }
+    const matchingSpecifications = specifications.filter((specification) => {
+      const prefix = `${specification.selectionPrefix}.`;
+      return (
+        entry.entry.startsWith(prefix) &&
+        /^[0-9a-f]{64}\.json$/.test(entry.entry.slice(prefix.length))
+      );
+    });
+    if (
+      matchingSpecifications.length !== 1 ||
+      matchingSpecifications[0].target !== "wal"
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_conflict",
+        `Lease cleanup archive ${entry.entry} does not identify one exact recoverable WAL namespace.`,
+      );
+    }
+    parseRetiredLeaseTransactionSnapshot(paths, transaction, entry.snapshot);
+    const [specification] = matchingSpecifications;
+    const canonicalPath = path.join(
+      archiveDirectory,
+      `${specification.selectionPrefix}.${leaseCleanupGenerationDigest(
+        specification.temporaryPath,
+        entry.snapshot,
+      )}.json`,
+    );
+    beforeMove();
+    moveLeaseFileGenerationDurable(
+      paths,
+      entry.quarantinePath,
+      canonicalPath,
+      entry.snapshot,
+      "Expired lease recovery atomic archive",
+    );
+    normalized += 1;
+  }
+  return normalized;
+}
+
+export function recoverExpiredGeneralActorLeaseAcquire({
+  stateRoot,
+  name,
+  owner,
+  operationId,
+  ownerConfirmationFile,
+  ownerTaskId,
+  ownerIntentDigest,
+}) {
+  const paths = automationControlPaths(stateRoot);
+  const normalizedOperationId = requireLeaseOperationId(operationId);
+  requireIdentifier(name, "lease name");
+  requireNonemptyString(owner, "owner");
+  requireIdentifier(ownerTaskId, "ownerTaskId");
+  const policy = actorPolicy(owner);
+  if (!isGeneralAutomationActor(owner) || policy.leaseName !== name) {
+    throw new AutomationControlError(
+      "lease_policy_mismatch",
+      `Expired acquisition recovery requires the canonical lease for one general automation actor.`,
+      { owner, expectedLeaseName: policy.leaseName, name },
+    );
+  }
+  const recoveryIntent = {
+    schemaVersion: OWNER_CAPABILITY_SCHEMA_VERSION,
+    action: "lease.recover-expired-acquire",
+    taskId: ownerTaskId,
+    parameters: {
+      owner,
+      name,
+      operationId: normalizedOperationId,
+    },
+  };
+  const expectedIntentDigest = ownerGovernanceIntentDigest(recoveryIntent);
+  if (ownerIntentDigest !== expectedIntentDigest) {
+    throw new AutomationControlError(
+      "owner_capability_intent_mismatch",
+      "The owner governance intent does not match this exact expired lease acquisition recovery.",
+      { ownerTaskId, expectedIntentDigest, ownerIntentDigest },
+    );
+  }
+  const validateRecoveryConfirmation = () =>
+    validateCurrentTaskOwnerConfirmation({
+      confirmationFile: ownerConfirmationFile,
+      taskId: ownerTaskId,
+      intentDigest: ownerIntentDigest,
+    });
+  validateRecoveryConfirmation();
+  let retiredControlEventStage = false;
+  let normalizedLegacyAtomicArchives = 0;
+  const recovery = withFilesystemGuard(paths, `lease-${name}`, () => {
+    validateRecoveryConfirmation();
+    const activePath = path.join(
+      leaseTransactionDirectories(paths).transactions,
+      `${name}.json`,
+    );
+    if (!pathEntryExists(activePath)) {
+      throw new AutomationControlError(
+        "lease_transaction_not_found",
+        `Lease ${name} has no pending transaction to recover.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    const transaction = readLeaseTransactionFile(activePath, paths, name);
+    if (
+      transaction.operation !== "acquire" ||
+      transaction.operationId !== normalizedOperationId ||
+      !["state-committed", "event-appended", "complete"].includes(
+        transaction.phase,
+      ) ||
+      transaction.request.owner !== owner ||
+      transaction.request.name !== name ||
+      transaction.request.operation !== "acquire" ||
+      transaction.request.operationId !== normalizedOperationId ||
+      transaction.request.launcherChannelProtocol !==
+        ACTOR_LAUNCHER_CHANNEL_PROTOCOL ||
+      typeof transaction.request.launcherSha256 !== "string" ||
+      typeof transaction.request.actorRuntimeDigest !== "string" ||
+      transaction.staging.afterPath === null
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_recovery_forbidden",
+        `Lease ${name} does not have the exact committed trusted-launcher acquisition authorized for recovery.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    const afterSnapshot = readLeaseAtomicSnapshot(
+      paths,
+      transaction.staging.afterPath,
+      "Expired lease acquisition after staging",
+    );
+    const record = parseLeaseRecordBytes(afterSnapshot.bytes, name);
+    validateLeaseRecord(record, name);
+    if (
+      record.owner !== owner ||
+      record.credentialKind !== "trusted-launcher-channel" ||
+      record.launcherSha256 !== transaction.request.launcherSha256 ||
+      record.actorRuntimeDigest !== transaction.request.actorRuntimeDigest ||
+      record.launcherChannelProtocol !==
+        transaction.request.launcherChannelProtocol ||
+      secretDigest(record.token) !== transaction.tokenDigest ||
+      secretDigest(record.token) !== transaction.request.tokenDigest
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_conflict",
+        `Lease ${name} retained staging does not match its trusted-launcher acquisition.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    if (!isLeaseExpired(record, Date.now())) {
+      throw new AutomationControlError(
+        "lease_recovery_not_expired",
+        `Lease ${name} acquisition is still live and cannot use owner recovery.`,
+        { name, expiresAt: record.expiresAt },
+      );
+    }
+    retiredControlEventStage = withFilesystemGuard(paths, "events", () =>
+      retireDriftedControlEventPredecessorForLeaseRecovery(
+        paths,
+        transaction,
+        validateRecoveryConfirmation,
+      ),
+    );
+    normalizedLegacyAtomicArchives =
+      normalizeLegacyLeaseAtomicArchivesForRecovery(
+        paths,
+        transaction,
+        validateRecoveryConfirmation,
+      );
+    return {
+      stateRoot: paths.stateRoot,
+      name,
+      owner,
+      operationId: normalizedOperationId,
+      ttlMs: transaction.request.ttlMs,
+      observerAuthority: transaction.request.observerAuthority,
+      providerAuthority: transaction.request.providerAuthority,
+      token: record.token,
+      trustedLauncherAuthorization: {
+        marker: TRUSTED_LAUNCHER_AUTHORIZATION,
+        launcherSha256: transaction.request.launcherSha256,
+        actorRuntimeDigest: transaction.request.actorRuntimeDigest,
+        launcherChannelProtocol: transaction.request.launcherChannelProtocol,
+        launcherAttestationSha256: record.launcherAttestationSha256,
+        launcherSessionId: record.launcherSessionId,
+        leaseOperationId: normalizedOperationId,
+        leaseTokenSha256: transaction.tokenDigest,
+      },
+    };
+  });
+  validateRecoveryConfirmation();
+  const result = acquireLeaseAuthorized(recovery);
+  const { token: _retainedToken, ...publicRecoveredLease } = result.lease;
+  const confirmation = validateRecoveryConfirmation();
+  return {
+    ...result,
+    lease: publicRecoveredLease,
+    recoveryAuthorization: {
+      kind: "owner-confirmation",
+      confirmationId: confirmation.confirmation.confirmationId,
+      confirmationDigest: confirmation.digest,
+      taskId: ownerTaskId,
+      intentDigest: ownerIntentDigest,
+      retiredControlEventStage,
+      normalizedLegacyAtomicArchives,
+    },
+  };
 }
 
 export function acquireGeneralActorLeaseFromTrustedLauncher(options) {

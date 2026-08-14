@@ -123,8 +123,7 @@ CryptoKit and has no Security framework or Keychain API dependency. The second
 program links Security only for one bounded migration from the installed schema
 1 contract. Provisioning validates the real root-owned legacy binding, deletes
 the fixed `freed-automation-actor` Keychain item with interaction disabled,
-removes the matching owner digest record when present, and then installs schema
-4. Migration tolerates all four item and digest-record presence combinations,
+removes the matching owner digest record when present, and then installs schema 4. Migration tolerates all four item and digest-record presence combinations,
 so an exact retry completes safely after response loss. Fresh installs and
 schema 4 replacements never invoke the migration program. Provision and rotate
 are rejected by the migration program.
@@ -591,6 +590,46 @@ earlier acquisition failed. Acquisition and inspection reject it with
 `lease_repair_required` before reading an external credential. It requires a
 separate explicit owner-governed repair. Do not delete a lease directory to
 make a second runner fit.
+
+If a trusted launcher exits after an acquisition reaches `state-committed` or
+`event-appended`, the pending transaction blocks every later lease operation.
+The original launcher normally retries with its retained operation ID and
+token. If that process is gone and the committed lease has expired, the owner
+may approve one exact recovery in the current task. The recovery command reads
+the retained token only from validated private staging, verifies its digest and
+trusted-launcher provenance, finishes the existing transaction, and omits the
+token from its result. It cannot recover a live lease, a prepared transaction,
+another operation type, another operation ID, or a mismatched actor and lease.
+
+Create a private current-task owner confirmation whose canonical intent is:
+
+```json
+{
+  "schemaVersion": 1,
+  "action": "lease.recover-expired-acquire",
+  "taskId": "recover-expired-nightly-writer",
+  "parameters": {
+    "owner": "freed-nightly-runner",
+    "name": "nightly-writer",
+    "operationId": "<pending-operation-id>"
+  }
+}
+```
+
+Then run the exact recovery from the trusted source checkout:
+
+```bash
+node scripts/automation-control.mjs lease recover-expired-acquire \
+  --name nightly-writer \
+  --owner freed-nightly-runner \
+  --pending-operation-id <pending-operation-id> \
+  --owner-confirmation-file /absolute/path/to/confirmation.json \
+  --owner-task-id recover-expired-nightly-writer \
+  --owner-intent-digest <intent-digest>
+```
+
+Retain the private confirmation as the recovery authorization record. A normal
+trusted-launcher acquisition can then take over the completed expired lease.
 
 Read-only observers do not need a lease merely to read or ingest evidence. The
 runtime observer must acquire its canonical lease before it appends a control

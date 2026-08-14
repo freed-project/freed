@@ -71,6 +71,7 @@ import {
   readBoundedLeaseDirectoryEntriesForTest,
   readTask,
   readTaskManifest,
+  recoverExpiredGeneralActorLeaseAcquire,
   releaseLease as releaseLeaseMutation,
   resolveAutomationStateRoot,
   transitionTask,
@@ -17317,6 +17318,162 @@ test("only the exact caller plan may recover a pending lease transaction", () =>
   const recovered = acquireLeaseLive(options);
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.lease.token, token);
+});
+
+test("owner recovery completes only an expired committed trusted-launcher acquisition", () => {
+  const stateRoot = temporaryStateRoot();
+  const acquiredAtMs = Date.parse("2026-08-13T08:00:00Z");
+  const paths = automationControlPaths(stateRoot);
+  writeFileSync(
+    paths.events,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      eventId: "expired-launcher-recovery-predecessor",
+      type: "authority_stage_probe",
+      ts: new Date(acquiredAtMs - 1_000).toISOString(),
+      actor: "freed-stability-controller",
+      data: {},
+    })}\n`,
+    { mode: 0o600 },
+  );
+  const actor = "freed-nightly-runner";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const operationId = nextLeaseOperationId("expired-launcher-acquire");
+  const token = `expired-launcher-acquire-${"x".repeat(40)}`;
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        stateRoot,
+        name,
+        owner: actor,
+        operationId,
+        ttlMs: 1_000,
+        nowMs: acquiredAtMs,
+        token,
+        checkpoint: throwAtLeaseCheckpoint("lease-event-appended"),
+      }),
+    /lease checkpoint lease-event-appended/,
+  );
+  const eventsPath = automationControlPaths(stateRoot).events;
+  utimesSync(
+    eventsPath,
+    new Date(acquiredAtMs + 100),
+    new Date(acquiredAtMs + 100),
+  );
+  const transactionPaths = leaseTransactionPaths(
+    stateRoot,
+    name,
+    "acquire",
+    operationId,
+  );
+  const transaction = JSON.parse(readFileSync(transactionPaths.active, "utf8"));
+  const atomicTargetDigest = createHash("sha256")
+    .update(path.basename(transactionPaths.active))
+    .digest("hex");
+  const atomicNamespace = createHash("sha256")
+    .update(
+      JSON.stringify(
+        canonicalTestValue({
+          purpose: "lease-atomic-publication-v2",
+          filePath: transactionPaths.active,
+          name,
+          operation: "acquire",
+          operationId,
+          requestDigest: transaction.requestDigest,
+          tokenDigest: transaction.tokenDigest,
+          predecessor: transaction.before,
+        }),
+      ),
+    )
+    .digest("hex");
+  const atomicTemporaryPath = path.join(
+    path.dirname(transactionPaths.active),
+    `.lease-atomic.${atomicTargetDigest}.${operationId}.${atomicNamespace}.tmp`,
+  );
+  const retirementNamespace = createHash("sha256")
+    .update(
+      JSON.stringify(
+        canonicalTestValue({
+          purpose: "lease-atomic-generation-retirement",
+          operationId,
+          filePath: atomicTemporaryPath,
+          kind: "WAL",
+        }),
+      ),
+    )
+    .digest("hex");
+  const cleanupDirectory = leaseCleanupQuarantineDirectory(
+    transactionPaths.active,
+  );
+  const atomicArchivePrefix = `${operationId}.${retirementNamespace}.`;
+  const atomicArchive = readdirSync(cleanupDirectory).find((entry) =>
+    entry.startsWith(atomicArchivePrefix),
+  );
+  assert.ok(atomicArchive);
+  renameSync(
+    path.join(cleanupDirectory, atomicArchive),
+    path.join(
+      cleanupDirectory,
+      `${atomicArchivePrefix}${"0".repeat(64)}.json`,
+    ),
+  );
+
+  const ownerTaskId = "recover-expired-nightly-writer";
+  const intent = {
+    schemaVersion: 1,
+    action: "lease.recover-expired-acquire",
+    taskId: ownerTaskId,
+    parameters: { owner: actor, name, operationId },
+  };
+  const { confirmationPath, intentDigest } = writeOwnerConfirmation(
+    stateRoot,
+    ownerTaskId,
+    intent,
+    { nowMs: acquiredAtMs + 100 },
+  );
+  const recoveryOptions = {
+    stateRoot,
+    name,
+    owner: actor,
+    operationId,
+    ownerConfirmationFile: confirmationPath,
+    ownerTaskId,
+    ownerIntentDigest: intentDigest,
+  };
+  assert.throws(
+    () =>
+      withTestDateNow(acquiredAtMs + 500, () =>
+        recoverExpiredGeneralActorLeaseAcquire(recoveryOptions),
+      ),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "lease_recovery_not_expired",
+  );
+
+  const recovered = withTestDateNow(acquiredAtMs + 2_000, () =>
+    recoverExpiredGeneralActorLeaseAcquire(recoveryOptions),
+  );
+  assert.equal(recovered.recovered, true);
+  assert.equal(Object.hasOwn(recovered.lease, "token"), false);
+  assert.equal(recovered.recoveryAuthorization.retiredControlEventStage, true);
+  assert.equal(
+    recovered.recoveryAuthorization.normalizedLegacyAtomicArchives,
+    1,
+  );
+  assert.equal(
+    recovered.recoveryAuthorization.confirmationId,
+    JSON.parse(readFileSync(confirmationPath, "utf8")).confirmationId,
+  );
+  assert.equal(
+    readControlEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${operationId}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    inspectLease({ stateRoot, name, nowMs: acquiredAtMs + 2_000 }).status,
+    "expired",
+  );
 });
 
 test("recordless lease authority requires explicit repair regardless of age", () => {
