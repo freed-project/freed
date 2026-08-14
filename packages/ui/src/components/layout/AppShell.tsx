@@ -165,7 +165,6 @@ export function AppShell({ children }: AppShellProps) {
   const contentFrameRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const [mapViewportInsets, setMapViewportInsets] = useState<CanvasViewportInsets>(EMPTY_CANVAS_VIEWPORT_INSETS);
-  const usesFullCanvasFrame = activeView === "friends";
   const contentFrameSpacingClass =
     "px-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
@@ -611,7 +610,6 @@ export function AppShell({ children }: AppShellProps) {
               desktopMode={desktopSidebarMode}
               onDesktopModeChange={persistDesktopSidebarMode}
               onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
-              desktopGapWidthPx={usesFullCanvasFrame ? 0 : undefined}
             />
           </div>
           <main
