@@ -1951,7 +1951,7 @@ export function Sidebar({
       {!isMobileDevice ? (
       <div
         data-testid="app-sidebar-shell"
-        className="flex flex-none overflow-visible"
+        className="relative flex flex-none overflow-visible"
         style={{
           width: desktopShellWidth,
           paddingTop: desktopShellTopPadding,
@@ -1973,15 +1973,15 @@ export function Sidebar({
               {sidebarBody}
             </aside>
           ) : null}
-          {resizeHandleVisible ? (
-            <div
-              data-testid="app-sidebar-resize-handle"
-              className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
-              style={{ left: px(sidebarHandleLeftPx) }}
-              onMouseDown={handleDragStart}
-            />
-          ) : null}
         </div>
+        {resizeHandleVisible ? (
+          <div
+            data-testid="app-sidebar-resize-handle"
+            className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
+            style={{ left: px(sidebarHandleLeftPx) }}
+            onMouseDown={handleDragStart}
+          />
+        ) : null}
       </div>
       ) : null}
 

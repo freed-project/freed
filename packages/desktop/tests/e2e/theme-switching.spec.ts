@@ -583,6 +583,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       );
       const controls = document.querySelector('[data-testid="friend-graph-controls"]');
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+      const navigationHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]');
       const friendsSidebar = document.querySelector('[data-testid="friends-sidebar"]');
       const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
       const header = document.querySelector("header");
@@ -590,6 +591,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       if (!(fitAll instanceof HTMLElement)) return null;
       if (!(controls instanceof HTMLElement)) return null;
       if (!(sidebar instanceof HTMLElement)) return null;
+      if (!(navigationHandle instanceof HTMLElement)) return null;
       if (!(friendsSidebar instanceof HTMLElement)) return null;
       if (!(handle instanceof HTMLElement)) return null;
       if (!(header instanceof HTMLElement)) return null;
@@ -598,6 +600,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       const fitAllRect = fitAll.getBoundingClientRect();
       const controlsRect = controls.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
+      const navigationHandleRect = navigationHandle.getBoundingClientRect();
       const friendsSidebarRect = friendsSidebar.getBoundingClientRect();
       const handleRect = handle.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
@@ -610,6 +613,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
         controlsRightGapPx: Math.round(graphRect.right - controlsRect.right),
         friendsSidebarTopGapPx: Math.round(friendsSidebarRect.top - headerRect.bottom),
         sidebarTopDeltaPx: Math.round(friendsSidebarRect.top - sidebarRect.top),
+        navigationHandleTopDeltaPx: Math.round(navigationHandleRect.top - handleRect.top),
+        navigationHandleBottomDeltaPx: Math.round(navigationHandleRect.bottom - handleRect.bottom),
       };
     });
   }).toEqual({
@@ -623,6 +628,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     controlsRightGapPx: 16,
     friendsSidebarTopGapPx: 8,
     sidebarTopDeltaPx: 0,
+    navigationHandleTopDeltaPx: 0,
+    navigationHandleBottomDeltaPx: 0,
   });
 
   const controlBackgrounds = await page
