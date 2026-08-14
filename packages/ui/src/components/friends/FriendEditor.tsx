@@ -9,8 +9,15 @@
  *   4. Tags and notes
  */
 
-import { useState, useMemo } from "react";
-import type { Friend, FriendSource, DeviceContact, Platform } from "@freed/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  FeedItem,
+  Friend,
+  FriendSource,
+  DeviceContact,
+  Platform,
+} from "@freed/shared";
+import { compareUtf8Binary } from "@freed/shared";
 import { usePlatform, useAppStore } from "../../context/PlatformContext.js";
 import {
   FacebookIcon,
@@ -28,6 +35,8 @@ import {
 import type { ReactNode } from "react";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
+import type { FriendSourceActivityEvidence } from "../../lib/friends-library-read-model.js";
 
 // ---------------------------------------------------------------------------
 // Platform icon map
@@ -71,7 +80,11 @@ interface FriendEditorProps {
   existing?: Friend | null;
   /** Optional seed values for a new friend flow. */
   draft?: Partial<Friend> | null;
-  onSave: (data: EditorFriend, id?: string) => void;
+  onSave: (
+    data: EditorFriend,
+    id?: string,
+    sourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
+  ) => void;
   onDelete?: (id: string) => void;
   onCancel: () => void;
 }
@@ -88,48 +101,402 @@ interface AuthorCandidate {
   avatarUrl?: string;
 }
 
+interface SelectedAuthorActivityAccumulator extends FriendSourceActivityEvidence {
+  discoveryItemId: string;
+}
+
+const FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT = 50;
+const FRIEND_EDITOR_SCAN_PAGE_LIMIT = 64;
+const FRIEND_EDITOR_SEARCH_DEBOUNCE_MS = 150;
+const FRIEND_EDITOR_AUTHOR_ID_BYTE_LIMIT = 4_096;
+const FRIEND_EDITOR_AUTHOR_TEXT_BYTE_LIMIT = 4_096;
+const FRIEND_EDITOR_AVATAR_URL_BYTE_LIMIT = 16_384;
+const FRIEND_EDITOR_READER_DISABLED_KEY =
+  "freed.libraryCore.friendEditorReaderV1.disabled";
+const UTF8_ENCODER = new TextEncoder();
+
+interface VersionedAuthorCandidates {
+  candidates: AuthorCandidate[];
+  linked: ReadonlySet<string>;
+  query: string;
+  sourceVersion: number;
+}
+
+interface VersionedAuthorCandidateFailure {
+  linked: ReadonlySet<string>;
+  query: string;
+  sourceVersion: number;
+}
+
 function safeText(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function authorCandidateKey(
+  candidate: Pick<AuthorCandidate, "authorId" | "platform">,
+): string {
+  return `${candidate.platform}:${candidate.authorId}`;
+}
+
+function compareAuthorCandidates(
+  left: AuthorCandidate,
+  right: AuthorCandidate,
+): number {
+  return (
+    safeText(left.displayName).localeCompare(safeText(right.displayName)) ||
+    safeText(left.handle).localeCompare(safeText(right.handle)) ||
+    left.platform.localeCompare(right.platform) ||
+    left.authorId.localeCompare(right.authorId)
+  );
+}
+
+function authorCandidateMatches(
+  candidate: AuthorCandidate,
+  normalizedQuery: string,
+): boolean {
+  return (
+    !normalizedQuery ||
+    candidate.displayName.toLowerCase().includes(normalizedQuery) ||
+    candidate.handle.toLowerCase().includes(normalizedQuery) ||
+    candidate.platform.includes(normalizedQuery)
+  );
+}
+
+function authorCandidateFromItem(item: FeedItem): AuthorCandidate {
+  return {
+    platform: item.platform,
+    authorId: item.author.id,
+    handle: item.author.handle,
+    displayName: item.author.displayName,
+    avatarUrl: item.author.avatarUrl,
+  };
+}
+
+function assertCompactNativeAuthorCandidate(item: FeedItem): void {
+  if (
+    UTF8_ENCODER.encode(item.author.id).length >
+      FRIEND_EDITOR_AUTHOR_ID_BYTE_LIMIT ||
+    UTF8_ENCODER.encode(item.author.handle).length >
+      FRIEND_EDITOR_AUTHOR_TEXT_BYTE_LIMIT ||
+    UTF8_ENCODER.encode(item.author.displayName).length >
+      FRIEND_EDITOR_AUTHOR_TEXT_BYTE_LIMIT ||
+    (item.author.avatarUrl !== undefined &&
+      UTF8_ENCODER.encode(item.author.avatarUrl).length >
+        FRIEND_EDITOR_AVATAR_URL_BYTE_LIMIT)
+  ) {
+    throw new Error("Friend author candidate exceeds its compact byte bound");
+  }
+}
+
+function mergeSelectedAuthorActivity(
+  current: SelectedAuthorActivityAccumulator | undefined,
+  item: FeedItem,
+): SelectedAuthorActivityAccumulator {
+  if (!current) {
+    return {
+      firstSeenAt: item.publishedAt,
+      lastSeenAt: item.publishedAt,
+      discoveredFrom:
+        item.contentType === "story" ? "story_author" : "captured_item",
+      discoveryItemId: item.globalId,
+    };
+  }
+  const replacesDiscovery =
+    item.publishedAt < current.firstSeenAt ||
+    (item.publishedAt === current.firstSeenAt &&
+      compareUtf8Binary(item.globalId, current.discoveryItemId) < 0);
+  return {
+    firstSeenAt: Math.min(current.firstSeenAt, item.publishedAt),
+    lastSeenAt: Math.max(current.lastSeenAt, item.publishedAt),
+    discoveredFrom: replacesDiscovery
+      ? item.contentType === "story"
+        ? "story_author"
+        : "captured_item"
+      : current.discoveredFrom,
+    discoveryItemId: replacesDiscovery
+      ? item.globalId
+      : current.discoveryItemId,
+  };
+}
+
+function selectedAuthorActivityEvidence(
+  activity: ReadonlyMap<string, SelectedAuthorActivityAccumulator>,
+  selectedKeys: ReadonlySet<string>,
+): ReadonlyMap<string, FriendSourceActivityEvidence> {
+  for (const key of selectedKeys) {
+    if (!activity.has(key)) {
+      throw new Error(
+        "Selected Friend author is absent from the current source",
+      );
+    }
+  }
+  return new Map(
+    Array.from(activity, ([key, value]) => [
+      key,
+      {
+        firstSeenAt: value.firstSeenAt,
+        lastSeenAt: value.lastSeenAt,
+        discoveredFrom: value.discoveredFrom,
+      },
+    ]),
+  );
+}
+
+function collectLegacyAuthorCandidates(
+  items: readonly FeedItem[],
+  linked: ReadonlySet<string>,
+): AuthorCandidate[] {
+  const seen = new Map<string, AuthorCandidate>();
+  for (const item of items) {
+    const candidate = authorCandidateFromItem(item);
+    const key = authorCandidateKey(candidate);
+    if (linked.has(key) || seen.has(key)) continue;
+    seen.set(key, candidate);
+  }
+  return Array.from(seen.values()).sort((left, right) =>
+    safeText(left.displayName).localeCompare(safeText(right.displayName)),
+  );
+}
+
+async function readBoundedAuthorCandidates(
+  scanItems: NonNullable<ReturnType<typeof usePlatform>["scanLibraryItems"]>,
+  linked: ReadonlySet<string>,
+  normalizedQuery: string,
+  signal: AbortSignal,
+): Promise<AuthorCandidate[]> {
+  const candidates: AuthorCandidate[] = [];
+  const assertActive = (): void => {
+    if (signal.aborted) {
+      throw new Error("Friend author candidate scan was cancelled");
+    }
+  };
+
+  assertActive();
+  await scanItems((page) => {
+    assertActive();
+    if (page.length > FRIEND_EDITOR_SCAN_PAGE_LIMIT) {
+      throw new Error("Friend author candidate page exceeds 64 rows");
+    }
+    for (const item of page) {
+      assertActive();
+      if (item.userState.hidden) continue;
+      assertCompactNativeAuthorCandidate(item);
+      const candidate = authorCandidateFromItem(item);
+      const key = authorCandidateKey(candidate);
+      const currentIndex = candidates.findIndex(
+        (current) => authorCandidateKey(current) === key,
+      );
+      if (currentIndex >= 0) continue;
+      if (
+        linked.has(key) ||
+        !authorCandidateMatches(candidate, normalizedQuery)
+      ) {
+        continue;
+      }
+      candidates.push(candidate);
+      candidates.sort(compareAuthorCandidates);
+      if (candidates.length > FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT) {
+        candidates.pop();
+      }
+    }
+    return "continue";
+  });
+  assertActive();
+  return candidates;
+}
+
+async function readSelectedAuthorActivity(
+  scanItems: NonNullable<ReturnType<typeof usePlatform>["scanLibraryItems"]>,
+  selectedKeys: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, FriendSourceActivityEvidence>> {
+  const activity = new Map<string, SelectedAuthorActivityAccumulator>();
+  const assertActive = (): void => {
+    if (signal.aborted) {
+      throw new Error("Friend author activity scan was cancelled");
+    }
+  };
+
+  assertActive();
+  await scanItems((page) => {
+    assertActive();
+    if (page.length > FRIEND_EDITOR_SCAN_PAGE_LIMIT) {
+      throw new Error("Friend author activity page exceeds 64 rows");
+    }
+    for (const item of page) {
+      assertActive();
+      if (item.userState.hidden) continue;
+      const key = `${item.platform}:${item.author.id}`;
+      if (!selectedKeys.has(key)) continue;
+      activity.set(key, mergeSelectedAuthorActivity(activity.get(key), item));
+    }
+    return "continue";
+  });
+  assertActive();
+  return selectedAuthorActivityEvidence(activity, selectedKeys);
+}
+
+async function readLegacySelectedAuthorActivity(
+  items: readonly FeedItem[],
+  selectedKeys: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, FriendSourceActivityEvidence>> {
+  // Yield before the compatibility-only O(n) pass. Normal Freed Desktop uses
+  // the asynchronous source-fenced SQLite scanner above.
+  await Promise.resolve();
+  const activity = new Map<string, SelectedAuthorActivityAccumulator>();
+  for (const item of items) {
+    if (signal.aborted) {
+      throw new Error("Friend author activity scan was cancelled");
+    }
+    const key = `${item.platform}:${item.author.id}`;
+    if (!selectedKeys.has(key)) continue;
+    activity.set(key, mergeSelectedAuthorActivity(activity.get(key), item));
+  }
+  return selectedAuthorActivityEvidence(activity, selectedKeys);
+}
+
+function friendEditorReaderDisabled(): boolean {
+  return (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(FRIEND_EDITOR_READER_DISABLED_KEY) === "1"
+  );
+}
+
 function useAuthorCandidates(
   existingSources: FriendSource[],
-  allFriends: Record<string, Friend>
-): AuthorCandidate[] {
+  allFriends: Record<string, Friend>,
+  sourceSearch: string,
+): {
+  candidates: AuthorCandidate[];
+  failed: boolean;
+  ready: boolean;
+  resolveSelectedActivity: (
+    selectedKeys: ReadonlySet<string>,
+    signal: AbortSignal,
+  ) => Promise<ReadonlyMap<string, FriendSourceActivityEvidence>>;
+} {
+  const { acquireLegacyLibraryItems, scanLibraryItems } = usePlatform();
   const items = useAppStore((s) => s.items);
+  const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
+  const usingBoundedReader = Boolean(
+    acquireLegacyLibraryItems &&
+    scanLibraryItems &&
+    !friendEditorReaderDisabled(),
+  );
+  const legacyItemsReady = useLegacyLibraryItems(!usingBoundedReader);
+  const normalizedQuery = sourceSearch.toLowerCase();
 
-  return useMemo(() => {
-    const seen = new Map<string, AuthorCandidate>();
-
-    // Build a set of already-linked (platform, authorId) keys across all friends
-    const linked = new Set<string>();
-    for (const f of Object.values(allFriends)) {
-      for (const src of f.sources) {
-        linked.add(`${src.platform}:${src.authorId}`);
+  const linked = useMemo(() => {
+    const next = new Set<string>();
+    for (const friend of Object.values(allFriends)) {
+      for (const source of friend.sources) {
+        next.add(authorCandidateKey(source));
       }
     }
-    // Current friend's own sources shouldn't count as "taken"
-    for (const src of existingSources) {
-      linked.delete(`${src.platform}:${src.authorId}`);
+    for (const source of existingSources) {
+      next.delete(authorCandidateKey(source));
+    }
+    return next;
+  }, [allFriends, existingSources]);
+
+  const legacyCandidates = useMemo(
+    () =>
+      usingBoundedReader ? [] : collectLegacyAuthorCandidates(items, linked),
+    [items, linked, usingBoundedReader],
+  );
+  const [versionedCandidates, setVersionedCandidates] =
+    useState<VersionedAuthorCandidates | null>(null);
+  const [failedAttempt, setFailedAttempt] =
+    useState<VersionedAuthorCandidateFailure | null>(null);
+
+  useEffect(() => {
+    if (!usingBoundedReader || !scanLibraryItems) {
+      setVersionedCandidates(null);
+      setFailedAttempt(null);
+      return;
     }
 
-    for (const item of items) {
-      const key = `${item.platform}:${item.author.id}`;
-      if (!seen.has(key) && !linked.has(key)) {
-        seen.set(key, {
-          platform: item.platform,
-          authorId: item.author.id,
-          handle: item.author.handle,
-          displayName: item.author.displayName,
-          avatarUrl: item.author.avatarUrl,
+    const controller = new AbortController();
+    setFailedAttempt(null);
+    const startRead = (): void => {
+      void readBoundedAuthorCandidates(
+        scanLibraryItems,
+        linked,
+        normalizedQuery,
+        controller.signal,
+      )
+        .then((candidates) => {
+          if (!controller.signal.aborted) {
+            setVersionedCandidates({
+              candidates,
+              linked,
+              query: normalizedQuery,
+              sourceVersion,
+            });
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setFailedAttempt({
+              linked,
+              query: normalizedQuery,
+              sourceVersion,
+            });
+          }
         });
-      }
+    };
+    const debounceId = normalizedQuery
+      ? setTimeout(startRead, FRIEND_EDITOR_SEARCH_DEBOUNCE_MS)
+      : null;
+    if (debounceId === null) {
+      startRead();
     }
+    return () => {
+      if (debounceId !== null) clearTimeout(debounceId);
+      controller.abort();
+    };
+  }, [
+    linked,
+    normalizedQuery,
+    scanLibraryItems,
+    sourceVersion,
+    usingBoundedReader,
+  ]);
 
-    return Array.from(seen.values()).sort((a, b) =>
-      safeText(a.displayName).localeCompare(safeText(b.displayName))
-    );
-  }, [items, existingSources, allFriends]);
+  const currentRead =
+    versionedCandidates?.linked === linked &&
+    versionedCandidates.query === normalizedQuery &&
+    versionedCandidates.sourceVersion === sourceVersion
+      ? versionedCandidates
+      : null;
+  const failed =
+    failedAttempt?.linked === linked &&
+    failedAttempt.query === normalizedQuery &&
+    failedAttempt.sourceVersion === sourceVersion;
+  const resolveSelectedActivity = (
+    selectedKeys: ReadonlySet<string>,
+    signal: AbortSignal,
+  ): Promise<ReadonlyMap<string, FriendSourceActivityEvidence>> =>
+    usingBoundedReader && scanLibraryItems
+      ? readSelectedAuthorActivity(scanLibraryItems, selectedKeys, signal)
+      : readLegacySelectedAuthorActivity(items, selectedKeys, signal);
+
+  if (!usingBoundedReader) {
+    return {
+      candidates: legacyCandidates,
+      failed: false,
+      ready: legacyItemsReady,
+      resolveSelectedActivity,
+    };
+  }
+
+  return {
+    candidates: currentRead?.candidates ?? [],
+    failed,
+    ready: currentRead !== null || failed,
+    resolveSelectedActivity,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,16 +519,14 @@ export function FriendEditor({
   const [avatarUrl, setAvatarUrl] = useState(seed?.avatarUrl ?? "");
   const [bio, setBio] = useState(seed?.bio ?? "");
   const [careLevel, setCareLevel] = useState<1 | 2 | 3 | 4 | 5>(
-    seed?.careLevel ?? 3
+    seed?.careLevel ?? 3,
   );
   const [reachOutDays, setReachOutDays] = useState(
-    seed?.reachOutIntervalDays?.toString() ?? ""
+    seed?.reachOutIntervalDays?.toString() ?? "",
   );
-  const [sources, setSources] = useState<FriendSource[]>(
-    seed?.sources ?? []
-  );
+  const [sources, setSources] = useState<FriendSource[]>(seed?.sources ?? []);
   const [contact, setContact] = useState<DeviceContact | undefined>(
-    seed?.contact
+    seed?.contact,
   );
   const [showContactForm, setShowContactForm] = useState(false);
   const [contactPhone, setContactPhone] = useState(contact?.phone ?? "");
@@ -170,10 +535,31 @@ export function FriendEditor({
   const [tags, setTags] = useState(seed?.tags?.join(", ") ?? "");
   const [notes, setNotes] = useState(seed?.notes ?? "");
   const [sourceSearch, setSourceSearch] = useState("");
+  const [selectedCandidateKeys, setSelectedCandidateKeys] = useState(
+    () => new Set<string>(),
+  );
+  const [sourceActivitySaving, setSourceActivitySaving] = useState(false);
+  const [sourceActivityError, setSourceActivityError] = useState(false);
+  const sourceActivityRead = useRef<AbortController | null>(null);
   const [contactImporting, setContactImporting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const candidates = useAuthorCandidates(sources, allFriends);
+  useEffect(
+    () => () => {
+      sourceActivityRead.current?.abort();
+    },
+    [],
+  );
+
+  const authorCandidates = useAuthorCandidates(
+    sources,
+    allFriends,
+    sourceSearch,
+  );
+  const candidates = authorCandidates.candidates;
+  const selectedProfilesReady =
+    selectedCandidateKeys.size === 0 ||
+    (authorCandidates.ready && !authorCandidates.failed);
   const filteredCandidates = candidates.filter((c) => {
     const q = sourceSearch.toLowerCase();
     return (
@@ -188,12 +574,18 @@ export function FriendEditor({
     sources.some((s) => s.platform === c.platform && s.authorId === c.authorId);
 
   const toggleSource = (c: AuthorCandidate) => {
+    setSourceActivityError(false);
     if (isSourceLinked(c)) {
       setSources((prev) =>
         prev.filter(
-          (s) => !(s.platform === c.platform && s.authorId === c.authorId)
-        )
+          (s) => !(s.platform === c.platform && s.authorId === c.authorId),
+        ),
       );
+      setSelectedCandidateKeys((current) => {
+        const next = new Set(current);
+        next.delete(authorCandidateKey(c));
+        return next;
+      });
     } else {
       setSources((prev) => [
         ...prev,
@@ -205,6 +597,11 @@ export function FriendEditor({
           avatarUrl: c.avatarUrl,
         },
       ]);
+      setSelectedCandidateKeys((current) => {
+        const next = new Set(current);
+        next.add(authorCandidateKey(c));
+        return next;
+      });
     }
   };
 
@@ -252,8 +649,8 @@ export function FriendEditor({
     setShowContactForm(false);
   };
 
-  const handleSave = () => {
-    if (!name.trim()) return;
+  const handleSave = async () => {
+    if (!name.trim() || !selectedProfilesReady || sourceActivitySaving) return;
 
     const parsedDays = parseInt(reachOutDays, 10);
     const parsedTags = tags
@@ -274,7 +671,34 @@ export function FriendEditor({
       notes: notes.trim() || undefined,
     };
 
-    onSave(data, existing?.id);
+    if (selectedCandidateKeys.size === 0) {
+      onSave(data, existing?.id);
+      return;
+    }
+
+    const controller = new AbortController();
+    sourceActivityRead.current?.abort();
+    sourceActivityRead.current = controller;
+    setSourceActivityError(false);
+    setSourceActivitySaving(true);
+    let sourceActivity: ReadonlyMap<string, FriendSourceActivityEvidence>;
+    try {
+      sourceActivity = await authorCandidates.resolveSelectedActivity(
+        selectedCandidateKeys,
+        controller.signal,
+      );
+    } catch {
+      if (!controller.signal.aborted) {
+        sourceActivityRead.current = null;
+        setSourceActivityError(true);
+        setSourceActivitySaving(false);
+      }
+      return;
+    }
+    if (controller.signal.aborted) return;
+    sourceActivityRead.current = null;
+    setSourceActivitySaving(false);
+    onSave(data, existing?.id, sourceActivity);
   };
 
   return (
@@ -293,14 +717,25 @@ export function FriendEditor({
             className="text-text-secondary hover:text-text-primary transition-colors"
             aria-label="Close"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-5 h-5" aria-hidden>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              className="w-5 h-5"
+              aria-hidden
+            >
               <path d="M15 5L5 15M5 5l10 10" />
             </svg>
           </button>
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+        <fieldset
+          disabled={sourceActivitySaving}
+          className="m-0 min-w-0 flex-1 space-y-5 overflow-y-auto border-0 px-5 py-4"
+        >
           {/* Section 1: Basic info */}
           <section>
             <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
@@ -332,7 +767,9 @@ export function FriendEditor({
                 />
               </div>
               <div>
-                <label className="text-xs text-text-secondary mb-1 block">Bio</label>
+                <label className="text-xs text-text-secondary mb-1 block">
+                  Bio
+                </label>
                 <input
                   type="text"
                   value={bio}
@@ -355,9 +792,7 @@ export function FriendEditor({
                   key={level}
                   onClick={() => setCareLevel(level)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
-                    careLevel === level
-                      ? "theme-chip-active"
-                      : "theme-chip"
+                    careLevel === level ? "theme-chip-active" : "theme-chip"
                   }`}
                 >
                   <div className="flex gap-0.5">
@@ -463,8 +898,19 @@ export function FriendEditor({
                 {contactImporting ? (
                   <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-6-3a3 3 0 11-6 0 3 3 0 016 0zM2 17a6 6 0 0112 0" />
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="w-3.5 h-3.5"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-6-3a3 3 0 11-6 0 3 3 0 016 0zM2 17a6 6 0 0112 0"
+                    />
                   </svg>
                 )}
                 {platform.pickContact
@@ -494,7 +940,9 @@ export function FriendEditor({
                     </span>
                     <button
                       className="flex h-4 w-4 items-center justify-center rounded-full text-[color:var(--theme-text-secondary)] transition-colors hover:bg-[color:var(--theme-bg-card)] hover:text-[color:var(--theme-text-primary)]"
-                      onClick={() => toggleSource({ ...src } as AuthorCandidate)}
+                      onClick={() =>
+                        toggleSource({ ...src } as AuthorCandidate)
+                      }
                       aria-label={`Unlink ${src.handle}`}
                     >
                       ×
@@ -516,51 +964,70 @@ export function FriendEditor({
 
             {filteredCandidates.length === 0 && (
               <p className="text-xs text-text-tertiary py-2">
-                {candidates.length === 0
-                  ? "No unlinked profiles in your feed yet."
-                  : "No matches."}
+                {authorCandidates.failed
+                  ? "Captured profiles are temporarily unavailable."
+                  : !authorCandidates.ready
+                    ? "Loading captured profiles..."
+                    : sourceSearch || candidates.length > 0
+                      ? "No matches."
+                      : "No unlinked profiles in your feed yet."}
               </p>
             )}
 
             <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-              {filteredCandidates.slice(0, 50).map((c) => (
-                <button
-                  key={`${c.platform}-${c.authorId}`}
-                  onClick={() => toggleSource(c)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-left"
-                >
-                  <ChannelAvatar
-                    name={c.displayName}
-                    avatarUrl={c.avatarUrl}
-                    size={24}
-                    className="text-xs"
-                  />
-                  <span className="flex-1 min-w-0">
-                    <span className="text-xs text-text-primary truncate block">
-                      {c.displayName}
-                    </span>
-                    <span className="text-xs text-text-tertiary truncate block">
-                      {platformIcons[c.platform]}{" "}
-                      {c.handle}
-                    </span>
-                  </span>
-                  <span
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                      isSourceLinked(c)
-                        ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-accent-secondary)] text-white"
-                        : "border-[color:var(--theme-border-subtle)]"
-                    }`}
-                    aria-hidden
+              {filteredCandidates
+                .slice(0, FRIEND_EDITOR_AUTHOR_CANDIDATE_LIMIT)
+                .map((c) => (
+                  <button
+                    key={`${c.platform}-${c.authorId}`}
+                    data-testid="friend-author-candidate"
+                    onClick={() => toggleSource(c)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-left"
                   >
-                    {isSourceLinked(c) && (
-                      <svg viewBox="0 0 10 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-2.5 h-2.5" aria-hidden>
-                        <path d="M1 4l3 3 5-6" />
-                      </svg>
-                    )}
-                  </span>
-                </button>
-              ))}
+                    <ChannelAvatar
+                      name={c.displayName}
+                      avatarUrl={c.avatarUrl}
+                      size={24}
+                      className="text-xs"
+                    />
+                    <span className="flex-1 min-w-0">
+                      <span className="text-xs text-text-primary truncate block">
+                        {c.displayName}
+                      </span>
+                      <span className="text-xs text-text-tertiary truncate block">
+                        {platformIcons[c.platform]} {c.handle}
+                      </span>
+                    </span>
+                    <span
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                        isSourceLinked(c)
+                          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-accent-secondary)] text-white"
+                          : "border-[color:var(--theme-border-subtle)]"
+                      }`}
+                      aria-hidden
+                    >
+                      {isSourceLinked(c) && (
+                        <svg
+                          viewBox="0 0 10 8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          className="w-2.5 h-2.5"
+                          aria-hidden
+                        >
+                          <path d="M1 4l3 3 5-6" />
+                        </svg>
+                      )}
+                    </span>
+                  </button>
+                ))}
             </div>
+            {sourceActivityError && (
+              <p className="mt-2 text-xs text-red-400" role="alert">
+                Profile history could not be verified. Try saving again.
+              </p>
+            )}
           </section>
 
           {/* Section 5: Tags & notes */}
@@ -582,7 +1049,9 @@ export function FriendEditor({
                 />
               </div>
               <div>
-                <label className="text-xs text-text-secondary mb-1 block">Notes</label>
+                <label className="text-xs text-text-secondary mb-1 block">
+                  Notes
+                </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -625,7 +1094,7 @@ export function FriendEditor({
               )}
             </section>
           )}
-        </div>
+        </fieldset>
 
         {/* Footer */}
         <div className="flex items-center gap-2 px-5 py-4 border-t border-white/10 shrink-0">
@@ -637,10 +1106,16 @@ export function FriendEditor({
           </button>
           <button
             onClick={handleSave}
-            disabled={!name.trim()}
+            disabled={
+              !name.trim() || !selectedProfilesReady || sourceActivitySaving
+            }
             className="btn-primary flex-1 rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {existing ? "Save changes" : "Add friend"}
+            {sourceActivitySaving
+              ? "Verifying profiles..."
+              : existing
+                ? "Save changes"
+                : "Add friend"}
           </button>
         </div>
       </div>

@@ -21,6 +21,12 @@ import {
   beginFactoryResetBoundary,
   resetFactoryResetStateForTests,
 } from "@freed/ui/lib/factory-reset";
+import {
+  getStoredThemeId,
+  migrateLegacyThemePreference,
+  resetThemePreferenceForTests,
+  setThemePreference,
+} from "@freed/ui/lib/theme";
 
 describe("device-local preferences", () => {
   beforeEach(() => {
@@ -28,6 +34,7 @@ describe("device-local preferences", () => {
     window.localStorage.clear();
     resetDeviceDisplayPreferencesForTests();
     resetDeviceAIPreferencesForTests();
+    resetThemePreferenceForTests();
   });
 
   afterEach(() => {
@@ -84,6 +91,15 @@ describe("device-local preferences", () => {
       sidebarMode: "closed",
       mapMode: "friends",
     });
+  });
+
+  it("imports the legacy Automerge theme once and keeps later choices device-local", () => {
+    expect(migrateLegacyThemePreference("ember")).toBe(true);
+    expect(getStoredThemeId()).toBe("ember");
+
+    expect(setThemePreference("dark-star")).toBe(true);
+    expect(migrateLegacyThemePreference("midas")).toBe(false);
+    expect(getStoredThemeId()).toBe("dark-star");
   });
 
   it("persists partial display changes without disturbing other local controls", () => {

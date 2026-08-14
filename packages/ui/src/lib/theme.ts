@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   DEFAULT_THEME_ID,
   THEME_DEFINITIONS,
@@ -22,6 +29,7 @@ export {
 };
 
 export const THEME_STORAGE_KEY = "freed-theme";
+const THEME_LEGACY_MIGRATION_KEY = "freed-theme-legacy-migration-v1";
 const THEME_TRANSITION_BLUR_OUT_MS = 90;
 const THEME_TRANSITION_BLUR_IN_MS = 210;
 const THEME_TRANSITION_CLEANUP_BUFFER_MS = 40;
@@ -55,6 +63,17 @@ const themeTransitionState: ThemeTransitionState = {
   switchTimer: null,
   token: 0,
 };
+type ThemePreferenceListener = () => void;
+type AppliedThemeListener = () => void;
+
+// Theme is installation-local. The Automerge field is legacy migration input,
+// never live authority, so a synchronized snapshot cannot repaint this device.
+const themePreferenceListeners = new Set<ThemePreferenceListener>();
+const appliedThemeListeners = new Set<AppliedThemeListener>();
+let currentThemeId = DEFAULT_THEME_ID;
+let currentAppliedThemeId = DEFAULT_THEME_ID;
+let themePreferenceHydrated = false;
+let themeStorageListenerInstalled = false;
 
 function getDocumentRoot(): HTMLElement | null {
   if (typeof document === "undefined") {
@@ -111,13 +130,43 @@ function clearThemeTransitionStyles(): void {
   root.style.removeProperty("--theme-transition-saturate");
 }
 
+function emitThemePreferenceChange(): void {
+  for (const listener of themePreferenceListeners) listener();
+}
+
+function emitAppliedThemeChange(): void {
+  for (const listener of appliedThemeListeners) listener();
+}
+
+function installThemeStorageListener(): void {
+  if (themeStorageListenerInstalled || typeof window === "undefined") return;
+  themeStorageListenerInstalled = true;
+  window.addEventListener("storage", (event) => {
+    if (event.key !== THEME_STORAGE_KEY) return;
+    const nextThemeId = resolveThemeId(event.newValue);
+    themePreferenceHydrated = true;
+    if (nextThemeId === currentThemeId) return;
+    currentThemeId = nextThemeId;
+    applyThemeToDocument(nextThemeId);
+    emitThemePreferenceChange();
+  });
+}
+
 export function getStoredThemeId(): ThemeId {
-  if (typeof window === "undefined") return DEFAULT_THEME_ID;
-  return resolveThemeId(window.localStorage.getItem(THEME_STORAGE_KEY));
+  if (!themePreferenceHydrated) {
+    currentThemeId = typeof window === "undefined"
+      ? DEFAULT_THEME_ID
+      : resolveThemeId(window.localStorage.getItem(THEME_STORAGE_KEY));
+    themePreferenceHydrated = true;
+  }
+  installThemeStorageListener();
+  return currentThemeId;
 }
 
 export function applyThemeToDocument(themeId: ThemeId): void {
   if (typeof document === "undefined") return;
+  const appliedThemeChanged = currentAppliedThemeId !== themeId;
+  currentAppliedThemeId = themeId;
   const root = document.documentElement;
   root.dataset.theme = themeId;
   root.style.colorScheme = getThemeDefinition(themeId).surface;
@@ -138,6 +187,8 @@ export function applyThemeToDocument(themeId: ThemeId): void {
       themeColorMeta.content = browserThemeColor;
     }
   }
+
+  if (appliedThemeChanged) emitAppliedThemeChange();
 }
 
 function transitionThemeOnDocument(themeId: ThemeId): void {
@@ -211,15 +262,78 @@ function transitionThemeOnDocument(themeId: ThemeId): void {
   }, THEME_TRANSITION_BLUR_OUT_MS);
 }
 
-export function persistTheme(themeId: ThemeId): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
+export function setThemePreference(themeId: ThemeId): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
+  } catch {
+    return false;
+  }
+  const changed = currentThemeId !== themeId || !themePreferenceHydrated;
+  currentThemeId = themeId;
+  themePreferenceHydrated = true;
+  installThemeStorageListener();
+  if (changed) emitThemePreferenceChange();
+  return true;
+}
+
+export function migrateLegacyThemePreference(themeId: ThemeId): boolean {
+  if (typeof window === "undefined") return false;
+  if (
+    window.localStorage.getItem(THEME_STORAGE_KEY) !== null
+    || window.localStorage.getItem(THEME_LEGACY_MIGRATION_KEY) === "complete"
+  ) return false;
+  const migratedThemeId = resolveThemeId(themeId);
+  if (!setThemePreference(migratedThemeId)) return false;
+  window.localStorage.setItem(THEME_LEGACY_MIGRATION_KEY, "complete");
+  applyThemeToDocument(migratedThemeId);
+  return true;
+}
+
+function subscribeToThemePreference(listener: ThemePreferenceListener): () => void {
+  themePreferenceListeners.add(listener);
+  installThemeStorageListener();
+  return () => themePreferenceListeners.delete(listener);
+}
+
+function subscribeToAppliedTheme(listener: AppliedThemeListener): () => void {
+  appliedThemeListeners.add(listener);
+  return () => appliedThemeListeners.delete(listener);
+}
+
+export function useThemePreference(): readonly [ThemeId, (themeId: ThemeId) => boolean] {
+  const themeId = useSyncExternalStore(
+    subscribeToThemePreference,
+    getStoredThemeId,
+    () => DEFAULT_THEME_ID,
+  );
+  return [themeId, setThemePreference] as const;
+}
+
+/** The theme currently painted on the document, including a transient preview. */
+export function useAppliedThemeId(): ThemeId {
+  return useSyncExternalStore(
+    subscribeToAppliedTheme,
+    () => currentAppliedThemeId,
+    () => DEFAULT_THEME_ID,
+  );
 }
 
 /** Remove this device's theme choice during a destructive local reset. */
 export function resetThemePreference(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(THEME_STORAGE_KEY);
+  // A reset must not let the obsolete synchronized value resurrect on restart.
+  window.localStorage.setItem(THEME_LEGACY_MIGRATION_KEY, "complete");
+  currentThemeId = DEFAULT_THEME_ID;
+  themePreferenceHydrated = true;
+  emitThemePreferenceChange();
+}
+
+export function resetThemePreferenceForTests(): void {
+  currentThemeId = DEFAULT_THEME_ID;
+  currentAppliedThemeId = DEFAULT_THEME_ID;
+  themePreferenceHydrated = false;
 }
 
 export function bootstrapDocumentTheme(): ThemeId {
@@ -233,9 +347,11 @@ export function useThemePreviewController({
   onCommitTheme,
 }: ThemePreviewControllerOptions): ThemePreviewController {
   const [previewThemeId, setPreviewThemeId] = useState<ThemeId | null>(null);
+  const previewThemeIdRef = useRef<ThemeId | null>(null);
 
   useEffect(() => {
     if (previewThemeId === committedThemeId) {
+      previewThemeIdRef.current = null;
       setPreviewThemeId(null);
     }
   }, [committedThemeId, previewThemeId]);
@@ -247,29 +363,28 @@ export function useThemePreviewController({
       return;
     }
 
-    setPreviewThemeId(themeId === committedThemeId ? null : themeId);
+    const nextPreviewThemeId = themeId === committedThemeId ? null : themeId;
+    previewThemeIdRef.current = nextPreviewThemeId;
+    setPreviewThemeId(nextPreviewThemeId);
     transitionThemeOnDocument(themeId);
   }, [activeThemeId, committedThemeId]);
 
   const revertPreview = useCallback(() => {
-    setPreviewThemeId((currentPreviewThemeId) => {
-      if (currentPreviewThemeId === null) {
-        return currentPreviewThemeId;
-      }
+    if (previewThemeIdRef.current === null) {
+      return;
+    }
 
-      transitionThemeOnDocument(committedThemeId);
-      return null;
-    });
+    previewThemeIdRef.current = null;
+    setPreviewThemeId(null);
+    transitionThemeOnDocument(committedThemeId);
   }, [committedThemeId]);
 
   const commitTheme = useCallback((themeId: ThemeId) => {
-    if (themeId !== activeThemeId) {
-      transitionThemeOnDocument(themeId);
-    }
-
+    previewThemeIdRef.current = null;
     setPreviewThemeId(null);
+    transitionThemeOnDocument(themeId);
     onCommitTheme(themeId);
-  }, [activeThemeId, onCommitTheme]);
+  }, [onCommitTheme]);
 
   return useMemo(() => ({
     activeThemeId,

@@ -8,12 +8,12 @@ const PLATFORM_PATTERNS = [
   {
     platform: "darwin-aarch64",
     aliases: ["darwin-aarch64-app"],
-    pattern: /^Freed_aarch64\.app\.tar\.gz$/,
+    pattern: /^Freed_(?:[^/]+_)?aarch64\.app\.tar\.gz$/,
   },
   {
     platform: "darwin-x86_64",
     aliases: ["darwin-x86_64-app"],
-    pattern: /^Freed_x64\.app\.tar\.gz$/,
+    pattern: /^Freed_(?:[^/]+_)?x64\.app\.tar\.gz$/,
   },
   {
     platform: "windows-x86_64-msi",
@@ -30,6 +30,14 @@ const PLATFORM_PATTERNS = [
     aliases: ["linux-x86_64-appimage"],
     pattern: /^Freed_[^/]+_amd64\.AppImage$/,
   },
+];
+
+const REQUIRED_UPDATER_PLATFORMS = [
+  "darwin-aarch64",
+  "darwin-x86_64",
+  "windows-x86_64-msi",
+  "windows-x86_64-nsis",
+  "linux-x86_64",
 ];
 
 function parseArgs(argv) {
@@ -177,8 +185,13 @@ export function generateLatestManifest({
     platforms["windows-x86_64"] = platforms["windows-x86_64-nsis"];
   }
 
-  if (Object.keys(platforms).length === 0) {
-    throw new Error("No updater artifacts were found in the release assets.");
+  const missingPlatforms = REQUIRED_UPDATER_PLATFORMS.filter(
+    (platform) => !platforms[platform],
+  );
+  if (missingPlatforms.length > 0) {
+    throw new Error(
+      `Missing required updater platforms: ${missingPlatforms.join(", ")}.`,
+    );
   }
 
   return {

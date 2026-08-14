@@ -1,0 +1,64 @@
+{
+  "tag": "v26.8.1100-dev",
+  "version": "26.8.1100-dev",
+  "channel": "dev",
+  "dayKey": "26.8.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-11T20:46:12.825Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1004-dev",
+    "previousPublishedDayTag": "v26.8.1004-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "d00f3e0b932e00cb72c9f739e602b072a461466d",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1004-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "34becd54fb12bb0c9165e1d74ca07fab5c10bcd0",
+        "toInclusiveProductCommitSha": "d00f3e0b932e00cb72c9f739e602b072a461466d"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:9ade44373b198fa02b88da3022e1e1e6c5aee0002c0e28a9d6c5a817732bb70f",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1100-dev"
+    ],
+    "prNumbers": [
+      1395
+    ],
+    "commitSubjects": [
+      "fix: preserve Unicode during SQLite import (#1395)"
+    ]
+  },
+  "release": {
+    "deck": "Every saved character reaches the new local database",
+    "features": [],
+    "fixes": [
+      "SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1100-dev\n\nEvery saved character reaches the new local database\n\n### Fixes\n\n- SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

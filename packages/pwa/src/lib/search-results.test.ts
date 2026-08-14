@@ -3,6 +3,10 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Account, FeedItem } from "@freed/shared";
+import {
+  PlatformProvider,
+  type PlatformConfig,
+} from "../../../ui/src/context/PlatformContext";
 import { useSearchResults } from "../../../ui/src/hooks/useSearchResults";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,8 +58,17 @@ function renderProbe(items: FeedItem[], accounts: Record<string, Account>, query
     return createElement("div", null, result.filteredItems.map((item) => item.globalId).join(","));
   }
 
+  const platform = {
+    store: () => undefined,
+  } as unknown as PlatformConfig;
+
   act(() => {
-    root.render(createElement(Probe));
+    root.render(
+      createElement(PlatformProvider, {
+        value: platform,
+        children: createElement(Probe),
+      }),
+    );
   });
   cleanups.push(() => {
     act(() => root.unmount());

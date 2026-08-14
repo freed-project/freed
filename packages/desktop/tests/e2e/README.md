@@ -26,7 +26,18 @@ Keep a Playwright test when it protects one of these surfaces:
   proved with a unit test.
 - Reader hydration, navigation history, read state, social memory, Friends, Map,
   and graph behavior that crosses multiple components.
-- A performance budget that must block every dev build.
+- A deterministic performance contract for bounded work, allocation, residency,
+  rebuilds, or output that must block every dev build.
+
+Raw elapsed time, animation-frame rate, LongTask entries, heap demand, and GPU
+timing from virtualized browsers are telemetry. Browser and graphics backend
+upgrades can change those readings without changing Freed. Collect them in the
+nightly lane with exact browser, renderer, and hardware context. Never treat
+unsupported instrumentation as zero work.
+
+`npm run test:e2e:perf:friends` runs the blocking Friends work contract.
+`npm run test:e2e:perf:friends:telemetry` runs the same interaction and records
+nonblocking timing telemetry.
 
 ## Temporary Agent Tests
 

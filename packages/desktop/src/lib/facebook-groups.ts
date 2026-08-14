@@ -37,7 +37,9 @@ function isUsableFacebookGroupName(name: string, id: string): boolean {
   return true;
 }
 
-export function isMissingFacebookGroupName(group: Pick<FbGroupInfo, "id" | "name">): boolean {
+export function isMissingFacebookGroupName(
+  group: Pick<FbGroupInfo, "id" | "name">,
+): boolean {
   return !isUsableFacebookGroupName(group.name, group.id);
 }
 
@@ -119,7 +121,9 @@ export function mergeFacebookGroupRecords(
   };
 }
 
-export function facebookGroupsFromFeedItems(items: readonly FeedItem[]): FbGroupInfo[] {
+export function facebookGroupsFromFeedItems(
+  items: readonly FeedItem[],
+): FbGroupInfo[] {
   const groups: FbGroupInfo[] = [];
   const seen = new Set<string>();
 
@@ -136,4 +140,22 @@ export function facebookGroupsFromFeedItems(items: readonly FeedItem[]): FbGroup
   }
 
   return groups;
+}
+
+/**
+ * Keep captured-item repair strictly fill-only.
+ *
+ * Group discovery can learn a current name from an authenticated group scrape.
+ * A later background Library scan walks stable item IDs rather than capture
+ * recency, so it must never replace that usable name with arbitrary history.
+ */
+export function facebookGroupNameRepairItems(
+  knownGroups: Readonly<Record<string, FbGroupInfo>>,
+  items: readonly FeedItem[],
+): FeedItem[] {
+  return items.filter((item) => {
+    if (item.platform !== "facebook" || !item.fbGroup) return false;
+    const known = knownGroups[item.fbGroup.id];
+    return !known || isMissingFacebookGroupName(known);
+  });
 }

@@ -36,6 +36,37 @@ export interface StorageAdapter {
 }
 
 /**
+ * Exact durable version of one revision-fenced binary value.
+ *
+ * `generation` changes only when the value is cleared. `saveRevision`
+ * advances for every successful save within that generation.
+ */
+export interface StorageRevision {
+  generation: number;
+  saveRevision: number;
+}
+
+/**
+ * One binary value and the exact revision that must authorize its next write.
+ */
+export interface RevisionedStorageValue {
+  data: Uint8Array | null;
+  revision: StorageRevision;
+}
+
+/**
+ * Binary storage that rejects stale writers with one atomic compare-and-swap.
+ */
+export interface RevisionedStorageAdapter {
+  load(): Promise<RevisionedStorageValue>;
+  save(
+    data: Uint8Array,
+    expectedRevision: StorageRevision,
+  ): Promise<StorageRevision>;
+  clear(expectedRevision: StorageRevision): Promise<StorageRevision>;
+}
+
+/**
  * Listener function type
  */
 export type SyncStatusListener = (status: SyncStatus) => void;

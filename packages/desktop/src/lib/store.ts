@@ -1,16 +1,28 @@
 /**
  * Global app state management with Zustand
  *
- * State is synced with Automerge CRDT for persistence and multi-device sync.
- *
- * After the Web Worker migration (Phase 4), all CRDT and hydration work runs
- * in automerge.worker.ts. The subscriber here receives a pre-hydrated DocState
- * and calls set() directly - zero hydrateFromDoc cost on the main thread.
+ * Native SQLite owns persistence and emits bounded materialized state updates.
+ * The subscriber here applies them directly, with no document decode or
+ * corpus-sized hydration on the main thread.
  */
 
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
-import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, SampleLibraryData, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FilterOptions,
+  Friend,
+  Person,
+  ReachOutLog,
+  RemoveFeedOptions,
+  RssFeed,
+  SampleDataClearSummary,
+  SampleLibraryData,
+  SavedFeedPresentationPatch,
+  SavedFeedPresentationUserStatePatch,
+  UserPreferences,
+} from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
@@ -31,6 +43,7 @@ import {
   migrateLegacyDeviceDisplayPreferences,
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
+import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import {
   applyDeviceAccountGraphPositionUpdate,
   applyDevicePersonGraphPositionUpdate,
@@ -95,14 +108,17 @@ import {
   docToggleLiked,
   docConfirmLikedSynced,
   docConfirmSeenSynced,
-  quiesceDesktopAutomergeForFactoryReset,
+  quiesceDesktopLibraryForFactoryReset,
+  type DocChangeEvent,
   type DocState,
-} from "./automerge";
+} from "./library-client";
 import { buildPlatformActionsRegistry } from "./platform-actions";
+import { startOutboxProcessor, stopAndDrainOutboxProcessor } from "./outbox";
 import {
-  startOutboxProcessor,
-  stopAndDrainOutboxProcessor,
-} from "./outbox";
+  readLibraryCoreItemDetail,
+  scanLibraryCoreItems,
+} from "./library-core-item-detail-runtime";
+import { isSqliteLibraryActive } from "./sqlite-library";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -123,6 +139,11 @@ import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
 import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
+import {
+  captureShellMemoryBaseline,
+  recordDocumentHydrated,
+  recordDocumentHydrationStarted,
+} from "./memory-monitor";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
@@ -139,6 +160,120 @@ let documentSubscriptionTeardown: (() => void) | null = null;
 let storeAcceptingResetSensitiveWork = true;
 const activeResetSensitiveStoreOperations = new Set<Promise<unknown>>();
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
+const SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "MARK_AS_READ",
+  "MARK_ITEMS_AS_READ",
+  "MARK_ALL_AS_READ",
+  "TOGGLE_LIKED",
+  "CONFIRM_LIKED_SYNCED",
+  "CONFIRM_SEEN_SYNCED",
+]);
+const SAVED_FEED_READ_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "MARK_AS_READ",
+  "MARK_ITEMS_AS_READ",
+]);
+const SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "TOGGLE_LIKED",
+  "CONFIRM_LIKED_SYNCED",
+  "CONFIRM_SEEN_SYNCED",
+]);
+const MAX_SAVED_FEED_PRESENTATION_IDENTITIES = 512;
+
+function optionalTimestamp(value: number | undefined): number | null {
+  return value ?? null;
+}
+
+function compactSavedFeedUserState(
+  item: FeedItem,
+): SavedFeedPresentationUserStatePatch {
+  return {
+    globalId: item.globalId,
+    liked: item.userState.liked === true,
+    likedAt: optionalTimestamp(item.userState.likedAt),
+    likedSyncedAt: optionalTimestamp(item.userState.likedSyncedAt),
+    seenSyncedAt: optionalTimestamp(item.userState.seenSyncedAt),
+  };
+}
+
+function mergeSavedFeedPresentationPatch(
+  previous: SavedFeedPresentationPatch | null,
+  sourceVersion: number,
+  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+): SavedFeedPresentationPatch {
+  const current =
+    previous?.sourceVersion === sourceVersion ? previous : null;
+  const readItemIds = new Set(current?.readItemIds ?? []);
+  const readPlatforms = new Set(current?.readPlatforms ?? []);
+  const userStates = new Map(
+    (current?.userStates ?? []).map((state) => [state.globalId, state]),
+  );
+  let readAt = current?.readAt ?? 0;
+
+  if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    for (const globalId of event.changedItemIds) readItemIds.add(globalId);
+  } else if (event.mutation === "MARK_ALL_AS_READ") {
+    for (const item of event.changedItems) readPlatforms.add(item.platform);
+  }
+
+  if (
+    SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "") ||
+    event.mutation === "MARK_ALL_AS_READ"
+  ) {
+    for (const item of event.changedItems) {
+      const candidate = item.userState.readAt;
+      if (candidate && Number.isFinite(candidate) && candidate > readAt) {
+        readAt = candidate;
+      }
+    }
+  }
+
+  if (
+    SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")
+  ) {
+    for (const item of event.changedItems) {
+      userStates.set(item.globalId, compactSavedFeedUserState(item));
+    }
+  }
+
+  return {
+    revision: (current?.revision ?? 0) + 1,
+    sourceVersion,
+    readAt,
+    readItemIds: [...readItemIds],
+    readPlatforms: [...readPlatforms].sort(),
+    userStates: [...userStates.values()],
+  };
+}
+
+function savedFeedPresentationPatchExceedsLimit(
+  previous: SavedFeedPresentationPatch | null,
+  sourceVersion: number,
+  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+): boolean {
+  const current = previous?.sourceVersion === sourceVersion ? previous : null;
+  if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    const readItemIds = new Set(current?.readItemIds ?? []);
+    for (const globalId of event.changedItemIds) {
+      readItemIds.add(globalId);
+      if (readItemIds.size > MAX_SAVED_FEED_PRESENTATION_IDENTITIES) {
+        return true;
+      }
+    }
+  }
+
+  if (SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    const userStateIds = new Set(
+      (current?.userStates ?? []).map((state) => state.globalId),
+    );
+    for (const item of event.changedItems) {
+      userStateIds.add(item.globalId);
+      if (userStateIds.size > MAX_SAVED_FEED_PRESENTATION_IDENTITIES) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 function trackResetSensitiveStoreOperation<T>(operation: Promise<T>): Promise<T> {
   let tracked: Promise<T>;
@@ -185,6 +320,9 @@ interface AppState {
   // Data (received pre-hydrated from Automerge worker as DocState)
   items: FeedItem[];
   searchCorpusVersion: number;
+  libraryItemVersion: number;
+  savedFeedVersion: number;
+  savedFeedPresentationPatch: SavedFeedPresentationPatch | null;
   feeds: Record<string, RssFeed>;
   persons: Record<string, Person>;
   accounts: Record<string, Account>;
@@ -234,6 +372,10 @@ interface AppState {
 
   // Initialization
   initialize: () => Promise<void>;
+  acknowledgeSavedFeedPresentationPatch: (
+    sourceVersion: number,
+    revision: number,
+  ) => void;
 
   // Item actions (persisted to Automerge)
   addItems: (items: FeedItem[]) => Promise<void>;
@@ -464,30 +606,23 @@ async function pruneConnectionPersonIfNeeded(
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
-  try {
-    await docHealUntitledFeedTitles();
-  } catch { /* non-fatal */ }
-  if (!storeAcceptingResetSensitiveWork) return;
-  try {
-    await docDeduplicateFeedItems();
-  } catch { /* non-fatal */ }
+  if (!isSqliteLibraryActive()) {
+    try {
+      await docHealUntitledFeedTitles();
+    } catch { /* non-fatal */ }
+    if (!storeAcceptingResetSensitiveWork) return;
+    try {
+      await docDeduplicateFeedItems();
+    } catch { /* non-fatal */ }
+  }
   if (!storeAcceptingResetSensitiveWork) return;
   try {
     if (archivePruneDays > 0) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
-  scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
-}
-
-function hasStoredCloudSyncCredentials(): boolean {
-  try {
-    return (
-      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
-      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
-    );
-  } catch {
-    return false;
+  if (!isSqliteLibraryActive()) {
+    scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
   }
 }
 
@@ -641,6 +776,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
   searchCorpusVersion: 0,
+  libraryItemVersion: 0,
+  savedFeedVersion: 0,
+  savedFeedPresentationPatch: null,
   feeds: {},
   persons: {},
   accounts: {},
@@ -679,8 +817,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
+  acknowledgeSavedFeedPresentationPatch: (sourceVersion, revision) => {
+    set((state) =>
+      state.savedFeedPresentationPatch?.sourceVersion === sourceVersion &&
+      state.savedFeedPresentationPatch.revision === revision
+        ? { savedFeedPresentationPatch: null }
+        : state,
+    );
+  },
 
-  // Initialize from Automerge worker
+  // Initialize from the native SQLite Library.
   initialize: () => {
     assertDesktopStoreWritable();
     if (get().isInitialized) return Promise.resolve();
@@ -690,32 +836,88 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         set({ isLoading: true });
 
-        // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
+        // Prime the empty-shell probe before the SQLite shell is loaded.
+        // This is intentionally fire-and-forget: telemetry must never delay
+        // startup. The hydration-start marker below rejects a late result.
+        void captureShellMemoryBaseline();
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
+
+        recordDocumentHydrationStarted();
         assertDesktopStoreWritable();
         const docState = await initDoc(desktopClientRegistration);
+        // Closes the shell-baseline window. Any memory sample after this point
+        // includes the materialized Library shell, so it cannot be a baseline.
+        recordDocumentHydrated();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
+        migrateLegacyThemePreference(docState.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);
         migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
 
-        // Subscribe to future state updates from the worker. Each update is already
-        // hydrated - no hydrateFromDoc(), no sort, no rank on the main thread.
-        // Preserve object identity on count maps to avoid spurious selector re-renders.
+        // Subscribe to bounded SQLite state updates. Preserve object identity on
+        // count maps to avoid spurious selector re-renders.
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribe((state: DocState, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
           if (
-            event.mutation === "MERGE_DOC"
-            || event.mutation === "REPLACE_DOC"
-            || event.mutation === "REMOVE_PERSON"
+            event.mutation === "REMOVE_PERSON"
             || event.mutation === "REMOVE_ACCOUNT"
           ) {
             pruneDeviceGraphLayout(state.persons, state.accounts);
           }
           const prev = get();
-          let next: Partial<AppState> = { ...state };
+          const libraryItemVersion =
+            event.source === "item_patch" ||
+            (event.source === "state_update" &&
+              event.mutation !== "SET_RENDERER_ITEM_HYDRATION")
+              ? prev.libraryItemVersion + 1
+              : prev.libraryItemVersion;
+          const savedFeedPresentationPatchOverflow =
+            event.source === "item_patch" &&
+            savedFeedPresentationPatchExceedsLimit(
+              prev.savedFeedPresentationPatch,
+              prev.savedFeedVersion,
+              event,
+            );
+          // Preference patches preserve every untouched nested object. A new
+          // weights identity therefore means the native recommended order is
+          // stale, while display, capture, and other preference noise can stay
+          // on the current bounded Saved generation.
+          const savedFeedRankingWeightsChanged =
+            event.source === "preferences_patch" &&
+            state.preferences.weights !== prev.preferences.weights;
+          const savedFeedVersion =
+            (event.source === "state_update" &&
+              event.mutation !== "SET_RENDERER_ITEM_HYDRATION") ||
+            savedFeedRankingWeightsChanged ||
+            (event.source === "item_patch" &&
+              (!SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
+                event.mutation ?? "",
+              ) ||
+                savedFeedPresentationPatchOverflow))
+              ? prev.savedFeedVersion + 1
+              : prev.savedFeedVersion;
+          const savedFeedPresentationPatch =
+            event.source === "item_patch" &&
+            !savedFeedPresentationPatchOverflow &&
+            SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
+              event.mutation ?? "",
+            )
+              ? mergeSavedFeedPresentationPatch(
+                  prev.savedFeedPresentationPatch,
+                  savedFeedVersion,
+                  event,
+                )
+              : savedFeedVersion !== prev.savedFeedVersion
+                ? null
+                : prev.savedFeedPresentationPatch;
+          let next: Partial<AppState> = {
+            ...state,
+            libraryItemVersion,
+            savedFeedPresentationPatch,
+            savedFeedVersion,
+          };
 
           if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
             next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
@@ -766,6 +968,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           substackAuth,
           mediumAuth,
           ytAuth,
+          savedFeedPresentationPatch: null,
           isInitialized: true,
           isLoading: false,
         });
@@ -785,15 +988,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           platformActionsRegistry,
           async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
           async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
+          scanLibraryCoreItems,
         );
 
-        // Do not mutate the local doc before cloud sync has reconciled it.
-        if (!hasStoredCloudSyncCredentials()) {
-          // Run cleanup migrations later. On large local libraries, immediate
-          // maintenance can force another full Automerge load while the renderer is
-          // still recovering from initial hydration.
-          scheduleStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
-        }
+        // Schedule bounded local SQLite maintenance after initial hydration.
+        const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
+        scheduleStartupMigrations(archivePruneDays);
       } catch (error) {
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
         recordBugReportEvent("desktop:initialize", "error", "Initialization failed");
@@ -811,9 +1011,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions
   addItems: async (items) => {
-    const before = get().items.length;
+    const before = get().docItemCount;
     await docAddFeedItems(items);
-    const after = get().items.length;
+    const after = get().docItemCount;
     log.info(
       `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
     );
@@ -884,8 +1084,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
-    const item = get().items.find((candidate) => candidate.globalId === id);
-    const shouldPin = !!item && !item.userState.saved;
+    let item = get().items.find((candidate) => candidate.globalId === id);
+    if (!item) {
+      item =
+        (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
+    }
+    const itemToPin = item && !item.userState.saved ? item : null;
     await runOptimisticMutation(
       get,
       set,
@@ -893,8 +1097,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       (state) => projectToggleSaved(state, id),
       () => docToggleSaved(id),
     );
-    if (shouldPin) {
-      void pinReaderItem(item).catch((error) => {
+    if (itemToPin) {
+      void pinReaderItem(itemToPin).catch((error) => {
         recordRuntimeError({
           source: "desktop:pinReaderItem",
           error: error instanceof Error ? error : new Error(String(error)),
@@ -1318,7 +1522,7 @@ export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   readMarkBatchWaiters = [];
   readWaiters.forEach((resolve) => resolve());
 
-  await quiesceDesktopAutomergeForFactoryReset();
+  await quiesceDesktopLibraryForFactoryReset();
 
   const results = await Promise.allSettled([
     stopAndDrainOutboxProcessor(),

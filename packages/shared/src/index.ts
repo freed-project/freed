@@ -7,7 +7,7 @@
 // Re-export all types
 export * from "./types";
 
-// Re-export ranking algorithm (browser-safe, no Automerge)
+// Re-export ranking algorithm.
 export * from "./ranking";
 
 // Re-export local content signal inference (browser-safe, no deps)
@@ -18,7 +18,7 @@ export * from "./sync-write-policy";
 export * from "./device-local-graph";
 export * from "./local-ai";
 
-// Re-export OPML utilities (browser-safe, no Automerge)
+// Re-export OPML utilities.
 export * from "./opml";
 
 // Re-export focus text utilities (browser-safe, no deps)
@@ -53,7 +53,3 @@ export * from "./bug-report";
 export * from "./redact-sensitive";
 export * from "./story-wall";
 export * from "./youtube";
-
-// Note: schema.js is NOT re-exported here because it imports Automerge
-// which uses WebAssembly and requires special bundler configuration.
-// For schema operations, import directly from '@freed/shared/schema' in Node.js/Tauri.

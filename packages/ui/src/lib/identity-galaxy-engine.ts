@@ -244,7 +244,7 @@ function makeGalaxyStarGeometry(): THREE.InstancedBufferGeometry {
   return geometry;
 }
 
-function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMaterial {
+function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -253,11 +253,9 @@ function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMat
     uniforms: {
       resolution: { value: new THREE.Vector2(1, 1) },
       lightSurface: { value: 0 },
-      ambientTime,
     },
     vertexShader: `
       uniform vec2 resolution;
-      uniform float ambientTime;
       attribute vec2 starUv;
       attribute vec3 instancePosition;
       attribute vec3 instanceColor;
@@ -268,7 +266,6 @@ function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMat
       varying vec3 vStarColor;
       varying float vProminence;
       varying float vHighlight;
-      varying float vTwinkle;
 
       void main() {
         vec4 viewCenter = modelViewMatrix * vec4(instancePosition, 1.0);
@@ -281,17 +278,6 @@ function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMat
         vStarColor = instanceColor;
         vProminence = instanceProminence;
         vHighlight = instanceHighlight;
-        if (ambientTime >= 0.0) {
-          float phase = instancePosition.x * 0.017 + instancePosition.y * 0.011 +
-            instancePosition.z * 0.007;
-          float sparkleSeed = fract(sin(phase * 5.731) * 43758.5453);
-          float sparkleMask = smoothstep(0.18, 1.0, sparkleSeed);
-          float rate = 0.52 + sparkleSeed * 1.1;
-          float strength = (0.025 + sparkleSeed * 0.075) * (1.0 - instanceHighlight * 0.6);
-          vTwinkle = 1.0 + sin(ambientTime * rate + phase) * strength * sparkleMask;
-        } else {
-          vTwinkle = 1.0;
-        }
       }
     `,
     fragmentShader: `
@@ -299,7 +285,6 @@ function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMat
       varying vec3 vStarColor;
       varying float vProminence;
       varying float vHighlight;
-      varying float vTwinkle;
       uniform float lightSurface;
 
       void main() {
@@ -314,7 +299,7 @@ function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMat
         float rays = rayShape * (1.0 - smoothstep(0.08, 0.94, radius)) * vProminence * 0.2;
         float outerRing = smoothstep(0.6, 0.68, radius) - smoothstep(0.74, 0.82, radius);
         float selectionRing = outerRing * vHighlight * 0.82;
-        float alpha = clamp((core + corona + rays) * vTwinkle + selectionRing, 0.0, 1.0);
+        float alpha = clamp(core + corona + rays + selectionRing, 0.0, 1.0);
         vec3 hotColor = mix(vec3(1.0), vStarColor * 0.5, lightSurface);
         vec3 color = mix(vStarColor, hotColor, hotCore * 0.76 + rays * 0.22);
         color = mix(color, vec3(1.0), selectionRing * 0.5);
@@ -1024,7 +1009,7 @@ class StarfieldGraphRenderer {
   private readonly regionGroup = new THREE.Group();
   private readonly labelGroup = new THREE.Group();
   private readonly nodeGeometry = makeGalaxyStarGeometry();
-  private readonly nodeMaterial = makeGalaxyStarMaterial(this.ambientTimeUniform);
+  private readonly nodeMaterial = makeGalaxyStarMaterial();
   private readonly nodeStars: THREE.Mesh;
   private readonly edgeGeometry = makeGalaxyEdgeGeometry();
   private readonly edgeMaterial = makeGalaxyEdgeMaterial();
@@ -1044,6 +1029,9 @@ class StarfieldGraphRenderer {
   private readonly projectedNode = new THREE.Vector3();
   private labelLayoutDirty = false;
   private labelLayoutCountValue = 0;
+  private lastLabelCameraX = Number.NaN;
+  private lastLabelCameraY = Number.NaN;
+  private lastLabelCameraScale = Number.NaN;
   private width = 1;
   private height = 1;
   private starCount = 0;
@@ -1108,6 +1096,7 @@ class StarfieldGraphRenderer {
     this.edgeMaterial.uniforms.resolution.value.set(this.width, this.height);
     this.labelMaterial.uniforms.resolution.value.set(this.width, this.height);
     this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
+    this.labelLayoutDirty = true;
   }
 
   syncScene(
@@ -1166,6 +1155,15 @@ class StarfieldGraphRenderer {
     this.syncNodes(galaxyScene, palette);
   }
 
+  syncPresentation(
+    atlas: IdentityGraphAtlas,
+    galaxyScene: IdentityGalaxyScene,
+    palette: GraphPalette,
+  ): void {
+    if (this.disposed) return;
+    this.syncLabels(atlas, galaxyScene, palette, "settled");
+  }
+
   render(
     transform: ViewTransform,
     timeMs: number,
@@ -1178,7 +1176,7 @@ class StarfieldGraphRenderer {
       ambientMotionEnabled,
       cameraInMotion,
     );
-    this.applyCamera(transform, cameraInMotion);
+    this.applyCamera(transform);
     this.starMaterial.uniforms.decorativeScale.value =
       friendsGalaxyDecorativeStarScale(transform.scale);
     if (this.starPoints) {
@@ -1260,11 +1258,18 @@ class StarfieldGraphRenderer {
     this.renderer.dispose();
   }
 
-  private applyCamera(transform: ViewTransform, cameraInMotion: boolean): void {
+  private applyCamera(transform: ViewTransform): void {
     const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
     this.camera.position.set(pose.x, pose.y, pose.z);
     this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
-    if (this.labelLayoutDirty && !cameraInMotion) {
+    const cameraChanged =
+      transform.x !== this.lastLabelCameraX ||
+      transform.y !== this.lastLabelCameraY ||
+      transform.scale !== this.lastLabelCameraScale;
+    this.lastLabelCameraX = transform.x;
+    this.lastLabelCameraY = transform.y;
+    this.lastLabelCameraScale = transform.scale;
+    if (this.labelLayoutDirty || cameraChanged) {
       this.layoutLabels();
       this.labelLayoutDirty = false;
     }
@@ -1570,6 +1575,9 @@ export class IdentityGalaxyEngine {
   private fallbackLabelLayoutCount = 0;
   private fallbackLabelLayoutDirty = true;
   private fallbackResidentLabelIds: ReadonlySet<string> = new Set();
+  private fallbackLabelTransformX = Number.NaN;
+  private fallbackLabelTransformY = Number.NaN;
+  private fallbackLabelTransformScale = Number.NaN;
   private ambientMotionEnabled = false;
   private cameraInMotion = false;
 
@@ -1635,6 +1643,19 @@ export class IdentityGalaxyEngine {
     this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
   }
 
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    this.atlas = atlas;
+    if (this.renderer && this.scene && this.palette) {
+      this.renderer.syncPresentation(atlas, this.scene, this.palette);
+      return;
+    }
+    this.fallbackLabelCount = Math.min(
+      atlas.labels.length,
+      this.canvas.clientWidth < 720 ? 24 : 72,
+    );
+    this.fallbackLabelLayoutDirty = true;
+  }
+
   updateInteraction(
     scene: IdentityGalaxyScene,
     selectedPersonId: string | null | undefined,
@@ -1659,6 +1680,13 @@ export class IdentityGalaxyEngine {
       return;
     }
     if (!this.atlas || !this.scene || !this.palette) return;
+    const transformChanged =
+      transform.x !== this.fallbackLabelTransformX ||
+      transform.y !== this.fallbackLabelTransformY ||
+      transform.scale !== this.fallbackLabelTransformScale;
+    this.fallbackLabelTransformX = transform.x;
+    this.fallbackLabelTransformY = transform.y;
+    this.fallbackLabelTransformScale = transform.scale;
     const nextResidentLabelIds = drawFallbackStarfield(
       this.canvas,
       this.atlas,
@@ -1668,7 +1696,7 @@ export class IdentityGalaxyEngine {
       this.selectedPersonId,
       this.selectedAccountId,
       this.variation,
-      this.fallbackLabelLayoutDirty && !this.cameraInMotion
+      this.fallbackLabelLayoutDirty || transformChanged
         ? null
         : this.fallbackResidentLabelIds,
     );
@@ -1700,6 +1728,9 @@ export class IdentityGalaxyEngine {
     this.fallbackLabelLayoutCount = 0;
     this.fallbackLabelLayoutDirty = true;
     this.fallbackResidentLabelIds = new Set();
+    this.fallbackLabelTransformX = Number.NaN;
+    this.fallbackLabelTransformY = Number.NaN;
+    this.fallbackLabelTransformScale = Number.NaN;
     this.ambientMotionEnabled = false;
     this.cameraInMotion = false;
     fallbackStarfieldBackgrounds.delete(this.canvas);

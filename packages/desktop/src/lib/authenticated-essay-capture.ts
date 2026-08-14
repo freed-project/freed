@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Account, FeedItem } from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docReconcileFollowRosterCapture } from "./automerge";
+import { docReconcileFollowRosterCapture } from "./library-client";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   formatScrapeMemoryPressureDetails,
@@ -444,7 +444,10 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
           return result;
         }
 
-        const beforeItemCount = store.items.length;
+        const beforeItemCount = typeof store.docItemCount === "number"
+          ? store.docItemCount
+          : null;
+        const existingItemIds = new Set(store.items.map((item) => item.globalId));
         const beforeAccountCount = Object.keys(store.accounts).length;
         assertFactoryResetEpoch(resetEpoch);
         await docReconcileFollowRosterCapture(result.accounts, result.items, {
@@ -453,10 +456,10 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
         });
         assertFactoryResetEpoch(resetEpoch);
         const reconciledState = useAppStore.getState();
-        result.diag.itemsAdded = Math.max(
-          0,
-          reconciledState.items.length - beforeItemCount,
-        );
+        result.diag.itemsAdded = beforeItemCount !== null
+          && typeof reconciledState.docItemCount === "number"
+          ? Math.max(0, reconciledState.docItemCount - beforeItemCount)
+          : result.items.filter((item) => !existingItemIds.has(item.globalId)).length;
         result.diag.accountsAdded = Math.max(
           0,
           Object.keys(reconciledState.accounts).length - beforeAccountCount,

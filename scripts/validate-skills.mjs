@@ -101,7 +101,6 @@ export function validateSkills({
   const skillDirs = readdirSync(skillsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(skillsDir, entry.name))
-    .filter((directory) => existsSync(path.join(directory, "SKILL.md")))
     .sort();
   if (skillDirs.length === 0)
     throw new Error(`No skills found in ${skillsDir}.`);

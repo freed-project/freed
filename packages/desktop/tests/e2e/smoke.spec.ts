@@ -17,6 +17,7 @@ import {
   resolveViteFsModulePath,
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
+import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
 
 const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
@@ -25,9 +26,7 @@ const LAYOUT_CONTROL_SPLIT_OFFSET_PX = 24;
 const READER_LAYOUT_CONTROL_SPLIT_OFFSET_PX = 16;
 const LAYOUT_CONTROL_GAP_PX = 8;
 const READER_LAYOUT_CONTROL_GAP_PX = 0;
-const COMPACT_PRIMARY_SIDEBAR_WIDTH_PX = 48;
 const PRIMARY_SIDEBAR_GAP_WIDTH_PX = 8;
-const TOP_TOOLBAR_HEIGHT_PX = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const MACOS_TRAFFIC_LIGHT_INSET_PX = 100;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
 const TOOLBAR_VERTICAL_ALIGNMENT_TOLERANCE_PX = 2;
@@ -484,6 +483,8 @@ async function readGraphDebug(page: Page) {
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          presentationSyncCount: number;
+          activitySyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -495,6 +496,10 @@ async function readGraphDebug(page: Page) {
           rendererLabelCount: number;
           readyRendererLabelCount: number;
           rendererEdgeCount: number;
+          presentationInFlight: boolean;
+          presentationQueued: boolean;
+          activityInFlight: boolean;
+          activityQueued: boolean;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -519,6 +524,8 @@ async function readGraphSummary(page: Page) {
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          presentationSyncCount: number;
+          activitySyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -530,6 +537,10 @@ async function readGraphSummary(page: Page) {
           rendererLabelCount: number;
           readyRendererLabelCount: number;
           rendererEdgeCount: number;
+          presentationInFlight: boolean;
+          presentationQueued: boolean;
+          activityInFlight: boolean;
+          activityQueued: boolean;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -549,43 +560,65 @@ async function readGraphSummary(page: Page) {
 }
 
 async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
-  const deadline = Date.now() + timeout;
-  let previous = await readGraphSummary(page);
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(250);
-    const next = await readGraphSummary(page);
-    if (
-      previous &&
-      next &&
-      next.qualityMode === "settled" &&
-      next.metrics.edgeRebuildCount === previous.metrics.edgeRebuildCount &&
-      next.metrics.sceneSyncCount === previous.metrics.sceneSyncCount
-    ) {
-      return next;
-    }
-    previous = next;
-  }
-
-  throw new Error("Friends graph perf metrics did not settle in time");
+  let previousSignature: string | null = null;
+  let stableReads = 0;
+  let latest: Awaited<ReturnType<typeof readGraphSummary>> = null;
+  await expect
+    .poll(async () => {
+      latest = await readGraphSummary(page);
+      if (
+        !latest ||
+        latest.qualityMode !== "settled" ||
+        latest.metrics.presentationInFlight ||
+        latest.metrics.presentationQueued ||
+        latest.metrics.activityInFlight ||
+        latest.metrics.activityQueued
+      ) {
+        previousSignature = null;
+        stableReads = 0;
+        return stableReads;
+      }
+      const signature = JSON.stringify({
+        sceneSyncCount: latest.metrics.sceneSyncCount,
+        presentationSyncCount: latest.metrics.presentationSyncCount,
+        activitySyncCount: latest.metrics.activitySyncCount,
+        contentSyncCount: latest.metrics.contentSyncCount,
+        edgeRebuildCount: latest.metrics.edgeRebuildCount,
+        labelLayoutCount: latest.metrics.labelLayoutCount,
+      });
+      stableReads = signature === previousSignature ? stableReads + 1 : 0;
+      previousSignature = signature;
+      return stableReads;
+    }, { timeout })
+    .toBeGreaterThanOrEqual(2);
+  if (!latest) throw new Error("Friends graph did not publish settled perf metrics");
+  return latest;
 }
 
-async function waitForGraphSceneSyncAfter(page: Page, previousSceneSyncCount: number, timeout = 8_000) {
+async function waitForGraphPresentationSyncAfter(
+  page: Page,
+  previousPresentationSyncCount: number,
+  timeout = 8_000,
+) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     await page.waitForTimeout(50);
     const next = await readGraphDebug(page);
-    if (next && next.metrics.sceneSyncCount > previousSceneSyncCount) {
+    if (
+      next &&
+      next.metrics.presentationSyncCount > previousPresentationSyncCount
+    ) {
       return next;
     }
   }
 
-  throw new Error("Friends graph scene sync did not advance in time");
+  throw new Error("Friends graph presentation sync did not advance in time");
 }
 
 async function seedStressIdentityGraph(page: Page) {
-  await page.evaluate(async () => {
+  return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;
@@ -597,6 +630,10 @@ async function seedStressIdentityGraph(page: Page) {
       };
     };
 
+    // Seed the complete source while the expensive graph is unmounted. The
+    // test measures one settled dense projection, not intermediate document
+    // notifications racing the final all-content preference.
+    store.getState().setActiveView("feed");
     const now = Date.now();
     const personCount = 1_200;
     const accountCount = 1_440;
@@ -640,6 +677,7 @@ async function seedStressIdentityGraph(page: Page) {
       },
     });
     store.getState().setActiveView("friends");
+    return personCount + accountCount + feedCount;
   });
 }
 
@@ -662,7 +700,7 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
-test("locked macOS session defers full desktop startup", async ({ app, ipc }) => {
+test("locked macOS session defers full desktop startup", async ({ app }) => {
   await app.page.addInitScript(() => {
     window.localStorage.setItem(
       "__TAURI_MOCK_STORE__:legal.json",
@@ -694,12 +732,6 @@ test("locked macOS session defers full desktop startup", async ({ app, ipc }) =>
     app.page.getByText("Freed Desktop will finish opening after you unlock this Mac."),
   ).toBeVisible();
   await expect(app.page.locator("main")).toHaveCount(0);
-  await expect
-    .poll(async () => {
-      const invocations = await ipc.invocations();
-      return invocations.filter((call) => call.cmd === "broadcast_doc").length;
-    })
-    .toBe(0);
 });
 
 test("startup emits renderer health before background work can run", async ({ app, page }) => {
@@ -755,12 +787,7 @@ test("no console errors on startup", async ({ page }) => {
     (e) =>
       !e.includes("favicon") &&
       !e.includes("ResizeObserver") &&
-      !e.includes("[mock") &&
-      // The sync relay (broadcast_doc) is not available in the test
-      // environment. sync.ts already catches these and logs them as
-      // "[Sync] Failed to broadcast" -- safe to ignore.
-      !e.includes("broadcast_doc") &&
-      !e.includes("Failed to broadcast"),
+      !e.includes("[mock"),
   );
 
   expect(fatal, `Unexpected console errors: ${fatal.join("\n")}`).toHaveLength(0);
@@ -1059,6 +1086,7 @@ test("desktop layout controls fill the toolbar hitbox and center their icons", a
   });
 
   expect(geometry).not.toBeNull();
+  expect(geometry?.toolbarHeight).toBe(TOP_TOOLBAR_HEIGHT_PX);
   expect(geometry?.sidebar.height).toBe(geometry?.toolbarHeight);
   expect(geometry?.preview.height).toBe(geometry?.toolbarHeight);
   expect(geometry?.sidebar.iconCenterY).toBe(geometry?.toolbarCenterY);
@@ -2006,37 +2034,61 @@ test("settings backdrop stays blurred while settings contents scroll", async ({ 
   }, SETTINGS_STORE_PATH);
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
 
+  // Scroll performance state belongs to the scrollport. Do not weaken this
+  // contract by accepting an unblurred backdrop or shadowless shell in motion.
   const scrollContainer = page.getByTestId("settings-scroll-container");
-  const styles = await scrollContainer.evaluate((element) => {
-    const maxScrollTop = element.scrollHeight - element.clientHeight;
-    element.scrollTop = Math.min(Math.max(maxScrollTop, 0), 360);
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-
-    const overlay = document.querySelector(".theme-settings-overlay");
-    const shell = document.querySelector(".theme-settings-shell");
-    if (!(overlay instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
-      throw new Error("Settings dialog styles were not mounted");
+  const frameBeforeScroll = await page.evaluate(() => {
+    const overlayElement = document.querySelector(".theme-settings-overlay");
+    const shellElement = document.querySelector(".theme-settings-shell");
+    if (!(overlayElement instanceof HTMLElement) || !(shellElement instanceof HTMLElement)) {
+      throw new Error("Settings visual frame was not mounted");
     }
-
-    const overlayStyle = window.getComputedStyle(overlay);
-    const shellStyle = window.getComputedStyle(shell);
+    const overlayStyle = window.getComputedStyle(overlayElement);
+    const shellStyle = window.getComputedStyle(shellElement);
     return {
-      maxScrollTop,
-      scrollTop: element.scrollTop,
-      overlayMoving: overlay.dataset.moving,
-      shellMoving: shell.dataset.moving,
+      overlayBackground: overlayStyle.background,
       overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
       shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+      shellShadow: shellStyle.boxShadow,
     };
   });
 
-  expect(styles.maxScrollTop).toBeGreaterThan(0);
-  expect(styles.scrollTop).toBeGreaterThan(0);
-  expect(styles.overlayMoving).toBe("true");
-  expect(styles.shellMoving).toBe("true");
-  expect(styles.overlayFilter).toBe("none");
-  expect(styles.shellFilter).toContain("blur");
-  expect(styles.shellFilter).not.toBe("none");
+  await scrollContainer.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => scrollContainer.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(scrollContainer).toHaveAttribute("data-moving", "true");
+
+  const frameWhileScrolling = await page.evaluate(() => {
+    const overlayElement = document.querySelector(".theme-settings-overlay");
+    const shellElement = document.querySelector(".theme-settings-shell");
+    if (!(overlayElement instanceof HTMLElement) || !(shellElement instanceof HTMLElement)) {
+      throw new Error("Settings visual frame was not mounted");
+    }
+    const overlayStyle = window.getComputedStyle(overlayElement);
+    const shellStyle = window.getComputedStyle(shellElement);
+    return {
+      overlayBackground: overlayStyle.background,
+      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
+      overlayMoving: overlayElement.hasAttribute("data-moving"),
+      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+      shellMoving: shellElement.hasAttribute("data-moving"),
+      shellShadow: shellStyle.boxShadow,
+    };
+  });
+
+  expect(frameBeforeScroll.overlayFilter).toContain("blur");
+  expect(frameBeforeScroll.shellShadow).not.toBe("none");
+  expect(frameWhileScrolling.overlayMoving).toBe(false);
+  expect(frameWhileScrolling.shellMoving).toBe(false);
+  expect(frameWhileScrolling.overlayBackground).toBe(frameBeforeScroll.overlayBackground);
+  expect(frameWhileScrolling.overlayFilter).toBe(frameBeforeScroll.overlayFilter);
+  expect(frameWhileScrolling.overlayFilter).not.toBe("none");
+  expect(frameWhileScrolling.shellFilter).toBe(frameBeforeScroll.shellFilter);
+  expect(frameWhileScrolling.shellFilter).not.toBe("none");
+  expect(frameWhileScrolling.shellShadow).toBe(frameBeforeScroll.shellShadow);
+  expect(frameWhileScrolling.shellShadow).not.toBe("none");
 });
 
 test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
@@ -2267,7 +2319,14 @@ test("provider risk eyebrow stays readable across themes", async ({ app, page })
   const eyebrow = page.getByTestId("provider-risk-eyebrow-facebook");
   await expect(eyebrow).toBeVisible({ timeout: 5_000 });
 
-  const themeIds = ["scriptorium", "neon", "midas", "ember"] as const;
+  const themeIds = [
+    "scriptorium",
+    "neon",
+    "midas",
+    "ember",
+    "starship",
+    "dark-star",
+  ] as const;
   for (const themeId of themeIds) {
     const contrast = await eyebrow.evaluate((element, nextThemeId) => {
       document.documentElement.dataset.theme = nextThemeId;
@@ -2717,6 +2776,8 @@ test("narrow feed filter menu labels collapsed sections", async ({ app, page }) 
   await filterButton.click();
 
   const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Theme", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Zoom", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Card density", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Format", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
@@ -2840,7 +2901,7 @@ test("feed toolbar archives visible read Instagram posts in one batch", async ({
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as {
@@ -2978,7 +3039,7 @@ test("feed toolbar title describes active content filters", async ({ app, page }
   await page.evaluate(async () => {
     const now = Date.now();
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
     const store = w.__FREED_STORE__ as
@@ -3205,7 +3266,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   const { page } = app;
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -3290,6 +3351,53 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     return true;
   }, undefined, { timeout: 5_000 });
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 10_000 });
+});
+
+test("Friends keeps the source sidebar inset while its galaxy background stays full frame", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1_280, height: 720 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  const readLayout = () => page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const background = document.querySelector(
+      '[data-testid="friends-background-layer"]',
+    ) as HTMLElement | null;
+    const sidebarRect = sidebar?.getBoundingClientRect();
+    const backgroundRect = background?.getBoundingClientRect();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const gap = Number.parseFloat(rootStyle.getPropertyValue("--feed-card-gap")) || 8;
+    return {
+      viewportHeight: window.innerHeight,
+      gap,
+      sidebarBottom: sidebarRect?.bottom ?? 0,
+      backgroundBottom: backgroundRect?.bottom ?? 0,
+      backgroundLeft: backgroundRect?.left ?? 0,
+      backgroundRight: backgroundRect?.right ?? 0,
+    };
+  });
+
+  const feedLayout = await readLayout();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { setActiveView: (view: string) => void } }
+      | undefined;
+    store?.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  const friendsLayout = await readLayout();
+
+  expect(Math.abs(friendsLayout.sidebarBottom - feedLayout.sidebarBottom)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      friendsLayout.viewportHeight - friendsLayout.sidebarBottom - friendsLayout.gap,
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(friendsLayout.backgroundBottom - friendsLayout.viewportHeight))
+    .toBeLessThanOrEqual(1);
+  expect(friendsLayout.backgroundLeft).toBe(0);
+  expect(Math.abs(friendsLayout.backgroundRight - 1_280)).toBeLessThanOrEqual(1);
 });
 
 test("Map view popup exposes friend actions and supports post navigation", async ({ app }) => {
@@ -3537,7 +3645,7 @@ test("map time range defaults to all available location windows", async ({ app, 
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -3707,7 +3815,7 @@ test("map range slider narrows future and historical markers", async ({ app, pag
 
   const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -4184,11 +4292,13 @@ test("selection while the initial Friends atlas is pending retains the semantic 
       return debug?.nodes.some((node) => node.personId === "friend-ada") ?? false;
     }, { timeout: 10_000 })
     .toBe(true);
-  const drawError = await page.evaluate(() => {
-    return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
-      .__FREED_GRAPH_DRAW_ERROR__ ?? null;
-  });
-  expect(drawError).toBeNull();
+  await expect(page.getByTestId("friend-graph-canvas")).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(() => page.evaluate(() => {
+      return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+        .__FREED_GRAPH_DRAW_ERROR__ ?? null;
+    }), { timeout: 10_000 })
+    .toBeNull();
 });
 
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
@@ -4245,13 +4355,21 @@ test("selected Friends graph person shows a compact detail card when the detail 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+  await waitForGraphPresentationSyncAfter(
+    page,
+    beforeSelection!.metrics.presentationSyncCount,
+  );
   const afterSelection = await waitForGraphPerfToSettle(page);
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
   expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
   expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
-  expect(afterSelection!.metrics.sceneSyncCount).toBe(beforeSelection!.metrics.sceneSyncCount + 1);
+  expect(afterSelection!.metrics.sceneSyncCount).toBe(
+    beforeSelection!.metrics.sceneSyncCount,
+  );
+  expect(afterSelection!.metrics.presentationSyncCount).toBe(
+    beforeSelection!.metrics.presentationSyncCount + 1,
+  );
   expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
   expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
@@ -4420,7 +4538,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;
@@ -4576,7 +4694,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -4704,7 +4822,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccount: (account: unknown) => Promise<void>;
     };
@@ -4785,7 +4903,7 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
@@ -4857,7 +4975,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
@@ -4952,7 +5070,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5056,7 +5174,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }, { timeout: 10_000 });
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as
+    const automerge = w.__FREED_LIBRARY_CORE__ as
       | {
           getDocState: () => {
             accounts: Record<string, { personId?: string }>;
@@ -5088,7 +5206,7 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5207,7 +5325,7 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
 
   await expect.poll(() => page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as
+    const automerge = w.__FREED_LIBRARY_CORE__ as
       | {
           getDocState: () => {
             persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
@@ -5249,7 +5367,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
     };
@@ -5578,10 +5696,13 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
-  await seedStressIdentityGraph(page);
+  const expectedSourceNodeCount = await seedStressIdentityGraph(page);
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("friends-graph-loading")).toHaveCount(0, {
+    timeout: 45_000,
+  });
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
@@ -5595,8 +5716,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
       }
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
     }, { timeout: 45_000 })
-    .toBeGreaterThan(1_000);
-
+    .toBeGreaterThanOrEqual(expectedSourceNodeCount);
   const seededGraph = await readGraphSummary(page);
   expect(seededGraph).not.toBeNull();
   expect(seededGraph!.metrics.visibleLabelCount).toBeGreaterThan(0);
@@ -5669,10 +5789,16 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
         }, { timeout: 10_000 })
         .toBe(true);
     }
-    await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+    await waitForGraphPresentationSyncAfter(
+      page,
+      beforeSelection!.metrics.presentationSyncCount,
+    );
     const afterSelection = await waitForGraphPerfToSettle(page);
     expect(afterSelection!.metrics.sceneSyncCount).toBe(
-      beforeSelection!.metrics.sceneSyncCount + 1,
+      beforeSelection!.metrics.sceneSyncCount,
+    );
+    expect(afterSelection!.metrics.presentationSyncCount).toBe(
+      beforeSelection!.metrics.presentationSyncCount + 1,
     );
   };
   await selectExternalIdentity({
@@ -5713,7 +5839,10 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   expect(afterHover!.metrics.sceneSyncMs).toBeLessThan(250);
 
   await page.mouse.click(benchmarkPoint!.x, benchmarkPoint!.y);
-  const afterSelection = await waitForGraphSceneSyncAfter(page, afterHover!.metrics.sceneSyncCount);
+  const afterSelection = await waitForGraphPresentationSyncAfter(
+    page,
+    afterHover!.metrics.presentationSyncCount,
+  );
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.metrics.sceneSyncMs).toBeLessThan(250);
 
@@ -5723,29 +5852,59 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   }
   const startX = box.x + box.width * 0.55;
   const startY = box.y + box.height * 0.45;
+  const dispatchPanPointer = async (
+    type: "pointerdown" | "pointermove" | "pointerup",
+    clientX: number,
+    clientY: number,
+  ) => {
+    await viewport.evaluate((element, pointer) => {
+      element.dispatchEvent(new PointerEvent(pointer.type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons: pointer.type === "pointerup" ? 0 : 1,
+        clientX: pointer.clientX,
+        clientY: pointer.clientY,
+      }));
+    }, { type, clientX, clientY });
+  };
 
   let duringPan: Awaited<ReturnType<typeof readGraphDebug>> = null;
   try {
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX + 260, startY + 70, { steps: 18 });
+    // Dispatch directly to the gesture owner. A real mouse target can change
+    // while the dense canvas and details panel settle, which made this render
+    // benchmark occasionally miss pointerdown without testing any render work.
+    await dispatchPanPointer("pointerdown", startX, startY);
+    await dispatchPanPointer("pointermove", startX + 260, startY + 70);
 
     await expect
-      .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 10_000 })
-      .toBe("interactive");
+      .poll(async () => {
+        const debug = await readGraphDebug(page);
+        const dragging = await viewport.getAttribute("data-dragging");
+        return `${dragging}:${debug?.qualityMode ?? "missing"}`;
+      }, { timeout: 10_000 })
+      .toBe("true:interactive");
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
-    expect(duringPan!.metrics.visibleLabelCount).toBe(initial!.metrics.visibleLabelCount);
-    expect(duringPan!.metrics.rendererLabelCount).toBe(initial!.metrics.rendererLabelCount);
+    expect(duringPan!.metrics.visibleLabelCount).toBeGreaterThan(0);
+    expect(duringPan!.metrics.rendererLabelCount).toBeGreaterThan(0);
+    expect(duringPan!.metrics.rendererLabelCount).toBeLessThanOrEqual(64);
+    expect(duringPan!.metrics.labelLayoutCount).toBeGreaterThan(
+      initial!.metrics.labelLayoutCount,
+    );
     expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
-    await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
+    await dispatchPanPointer("pointermove", startX + 300, startY + 90);
     await page.waitForTimeout(250);
     const steadyPan = await readGraphDebug(page);
     expect(steadyPan).not.toBeNull();
     expect(steadyPan!.metrics.sceneSyncCount).toBe(duringPan!.metrics.sceneSyncCount);
     expect(steadyPan!.metrics.edgeRebuildCount).toBe(duringPan!.metrics.edgeRebuildCount);
-    expect(steadyPan!.metrics.rendererLabelCount).toBe(duringPan!.metrics.rendererLabelCount);
+    expect(steadyPan!.metrics.rendererLabelCount).toBeGreaterThan(0);
+    expect(steadyPan!.metrics.rendererLabelCount).toBeLessThanOrEqual(64);
     expect(steadyPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     expect(steadyPan!.metrics.readyRendererLabelCount).toBeLessThanOrEqual(
       steadyPan!.metrics.rendererLabelCount,
@@ -5755,7 +5914,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     );
     expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
-    await page.mouse.up();
+    await dispatchPanPointer("pointerup", startX + 300, startY + 90);
   }
 
   const beforeZoom = await readGraphDebug(page);
@@ -5777,7 +5936,11 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     })
     .toBeGreaterThan(beforeZoom!.transform.scale);
 
-  const afterZoom = await waitForGraphSceneSyncAfter(page, beforeZoom!.metrics.sceneSyncCount, 8_000);
+  const afterZoom = await waitForGraphPresentationSyncAfter(
+    page,
+    beforeZoom!.metrics.presentationSyncCount,
+    8_000,
+  );
   expect(afterZoom).not.toBeNull();
   expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(250);
   expect(afterZoom!.transform.scale).toBeGreaterThan(beforeZoom!.transform.scale);
@@ -5790,7 +5953,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;

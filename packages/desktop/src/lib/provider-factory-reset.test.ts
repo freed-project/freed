@@ -11,7 +11,7 @@ vi.mock("./user-agent", () => ({
   clearPlatformUA,
   selectPlatformUA: vi.fn(),
 }));
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   getSavedYouTubeVideoUrls: vi.fn(async () => []),
 }));
 vi.mock("./runtime-health-events", () => ({ recordRuntimeHealthEvent: vi.fn() }));

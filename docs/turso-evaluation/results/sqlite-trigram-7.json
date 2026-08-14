@@ -1,0 +1,207 @@
+{
+  "engine": "sqlite",
+  "variant": "trigram",
+  "scale": 7,
+  "rows": 110922,
+  "insertMs": 1070,
+  "corpusTextMB": 160,
+  "baseFootprintMB": 223.2,
+  "indexBuildMs": 17036,
+  "indexBuildRssBeforeMB": 300.2,
+  "indexBuildPeakRssMB": 305.2,
+  "indexBuildRssDeltaMB": 5,
+  "rssSamples": 1480,
+  "afterFootprintMB": 645.1,
+  "indexSizeMB": 421.9,
+  "indexOverheadPctOfText": 263.8,
+  "files": [
+    "db.db 644.3MB",
+    "db.db-shm 0.8MB",
+    "db.db-wal 0MB"
+  ],
+  "queries": [
+    {
+      "label": "single-veryhigh-freq",
+      "query": "that",
+      "hits": 54334,
+      "countP50ms": 5.3,
+      "countMinMs": 4.86,
+      "countMaxMs": 6.17,
+      "topP50ms": 44.65,
+      "topMinMs": 42.97,
+      "topIds": [
+        "x:2048825454262710515|-0.083",
+        "c1:x:2048825454262710515|-0.083",
+        "c2:x:2048825454262710515|-0.083",
+        "c3:x:2048825454262710515|-0.083",
+        "c4:x:2048825454262710515|-0.083"
+      ]
+    },
+    {
+      "label": "single-common",
+      "query": "climate",
+      "hits": 672,
+      "countP50ms": 1.28,
+      "countMinMs": 1.19,
+      "countMaxMs": 1.69,
+      "topP50ms": 4.92,
+      "topMinMs": 4.59,
+      "topIds": [
+        "rss:https://thedailybell.com/?p=42437|-9.252",
+        "c1:rss:https://thedailybell.com/?p=42437|-9.252",
+        "c2:rss:https://thedailybell.com/?p=42437|-9.252",
+        "c3:rss:https://thedailybell.com/?p=42437|-9.252",
+        "c4:rss:https://thedailybell.com/?p=42437|-9.252"
+      ]
+    },
+    {
+      "label": "single-rare",
+      "query": "tantivy",
+      "hits": 0,
+      "countP50ms": 0.52,
+      "countMinMs": 0.5,
+      "countMaxMs": 1.29,
+      "topP50ms": 0.55,
+      "topMinMs": 0.53,
+      "topIds": []
+    },
+    {
+      "label": "multi-term-default",
+      "query": "climate change",
+      "hits": 371,
+      "countP50ms": 2.84,
+      "countMinMs": 2.54,
+      "countMaxMs": 3.23,
+      "topP50ms": 11.92,
+      "topMinMs": 11.36,
+      "topIds": [
+        "x:2059327973224845418|-12.327",
+        "c1:x:2059327973224845418|-12.327",
+        "c2:x:2059327973224845418|-12.327",
+        "c3:x:2059327973224845418|-12.327",
+        "c4:x:2059327973224845418|-12.327"
+      ]
+    },
+    {
+      "label": "multi-term-AND",
+      "query": "climate AND change",
+      "hits": 371,
+      "countP50ms": 3.03,
+      "countMinMs": 2.73,
+      "countMaxMs": 3.3,
+      "topP50ms": 12.17,
+      "topMinMs": 11.4,
+      "topIds": [
+        "x:2059327973224845418|-12.327",
+        "c1:x:2059327973224845418|-12.327",
+        "c2:x:2059327973224845418|-12.327",
+        "c3:x:2059327973224845418|-12.327",
+        "c4:x:2059327973224845418|-12.327"
+      ]
+    },
+    {
+      "label": "phrase",
+      "query": "\"climate change\"",
+      "hits": 273,
+      "countP50ms": 4.25,
+      "countMinMs": 3.82,
+      "countMaxMs": 4.87,
+      "topP50ms": 12.33,
+      "topMinMs": 11.53,
+      "topIds": [
+        "x:2059327973224845418|-10.029",
+        "c1:x:2059327973224845418|-10.029",
+        "c2:x:2059327973224845418|-10.029",
+        "c3:x:2059327973224845418|-10.029",
+        "c4:x:2059327973224845418|-10.029"
+      ]
+    },
+    {
+      "label": "prefix",
+      "query": "democr*",
+      "hits": 1379,
+      "countP50ms": 0.41,
+      "countMinMs": 0.39,
+      "countMaxMs": 0.73,
+      "topP50ms": 2.06,
+      "topMinMs": 1.85,
+      "topIds": [
+        "rss:https://blog.ted.com/?p=118819|-8.612",
+        "c1:rss:https://blog.ted.com/?p=118819|-8.612",
+        "c2:rss:https://blog.ted.com/?p=118819|-8.612",
+        "c3:rss:https://blog.ted.com/?p=118819|-8.612",
+        "c4:rss:https://blog.ted.com/?p=118819|-8.612"
+      ]
+    },
+    {
+      "label": "typo-missing-letter",
+      "query": "climat",
+      "hits": 714,
+      "countP50ms": 0.77,
+      "countMinMs": 0.72,
+      "countMaxMs": 1.06,
+      "topP50ms": 3.03,
+      "topMinMs": 2.71,
+      "topIds": [
+        "rss:https://thedailybell.com/?p=42437|-9.141",
+        "c1:rss:https://thedailybell.com/?p=42437|-9.141",
+        "c2:rss:https://thedailybell.com/?p=42437|-9.141",
+        "c3:rss:https://thedailybell.com/?p=42437|-9.141",
+        "c4:rss:https://thedailybell.com/?p=42437|-9.141"
+      ]
+    },
+    {
+      "label": "typo-transposed",
+      "query": "cimate",
+      "hits": 21,
+      "countP50ms": 0.48,
+      "countMinMs": 0.46,
+      "countMaxMs": 0.79,
+      "topP50ms": 1.5,
+      "topMinMs": 1.45,
+      "topIds": [
+        "x:2051342246981595566|-12.540",
+        "c1:x:2051342246981595566|-12.540",
+        "c2:x:2051342246981595566|-12.540",
+        "c3:x:2051342246981595566|-12.540",
+        "c4:x:2051342246981595566|-12.540"
+      ]
+    },
+    {
+      "label": "stem-run",
+      "query": "run",
+      "hits": 15281,
+      "countP50ms": 0.23,
+      "countMinMs": 0.22,
+      "countMaxMs": 0.32,
+      "topP50ms": 7.51,
+      "topMinMs": 6.73,
+      "topIds": [
+        "rss:tag:www.producthunt.com,2005:Post/1150115|-3.738",
+        "c1:rss:tag:www.producthunt.com,2005:Post/1150115|-3.738",
+        "c2:rss:tag:www.producthunt.com,2005:Post/1150115|-3.738",
+        "c3:rss:tag:www.producthunt.com,2005:Post/1150115|-3.738",
+        "c4:rss:tag:www.producthunt.com,2005:Post/1150115|-3.738"
+      ]
+    },
+    {
+      "label": "three-term",
+      "query": "climate change policy",
+      "hits": 42,
+      "countP50ms": 2.96,
+      "countMinMs": 2.72,
+      "countMaxMs": 3.9,
+      "topP50ms": 13.5,
+      "topMinMs": 12.87,
+      "topIds": [
+        "rss:https://www.schiffsovereign.com/?p=155189|-13.766",
+        "c1:rss:https://www.schiffsovereign.com/?p=155189|-13.766",
+        "c2:rss:https://www.schiffsovereign.com/?p=155189|-13.766",
+        "c3:rss:https://www.schiffsovereign.com/?p=155189|-13.766",
+        "c4:rss:https://www.schiffsovereign.com/?p=155189|-13.766"
+      ]
+    }
+  ],
+  "likeScanP50ms": 140.94,
+  "likeScanHits": 672
+}

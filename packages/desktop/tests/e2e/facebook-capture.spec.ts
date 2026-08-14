@@ -332,18 +332,18 @@ test("Facebook sync excludes posts from filtered groups", async ({
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => { items: Array<{ globalId: string }> };
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+      items: Record<string, { __deleted?: boolean }>;
     };
-    return store.getState().items.some((item) => item.globalId === "fb:feed-post-2");
+    return Boolean(sqlite.items["fb:feed-post-2"] && !sqlite.items["fb:feed-post-2"].__deleted);
   });
 
   const itemIds = await page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => { items: Array<{ globalId: string }> };
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as {
+      items: Record<string, { globalId: string; __deleted?: boolean }>;
     };
-    return store.getState().items.map((item) => item.globalId);
+    return Object.values(sqlite.items).filter((item) => !item.__deleted).map((item) => item.globalId);
   });
 
   expect(itemIds).toContain("fb:feed-post-2");

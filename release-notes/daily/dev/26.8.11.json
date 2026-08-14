@@ -1,0 +1,14 @@
+{
+  "channel": "dev",
+  "dayKey": "26.8.11",
+  "date": "2026-08-11",
+  "preferredDeck": "Search the whole Library without loading it into browser memory",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "updatedAt": "2026-08-12T03:48:42.834Z"
+}
