@@ -102,16 +102,17 @@ describe("createMarkerElement", () => {
     expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
   });
 
-  it("labels decorative marker layers so map movement can suppress paint-heavy chrome", () => {
+  it("keeps hover-scaled marker paint unclipped while labeling decorative layers", () => {
     const element = createMarkerElement(marker({ groupCount: 1234 }), palette);
 
     expect(element.querySelector(".freed-map-marker-body")).toBeInstanceOf(HTMLDivElement);
-    expect(element.style.contain).toBe("layout paint style");
+    expect(element.style.contain).toBe("layout style");
     expect(element.querySelector(".freed-map-marker-glow")).toBeInstanceOf(HTMLDivElement);
     expect(element.querySelector(".freed-map-marker-image")).toBeInstanceOf(HTMLImageElement);
     expect(element.querySelector(".freed-map-marker-tint")).toBeInstanceOf(HTMLDivElement);
     expect(element.querySelector(".freed-map-marker-halo")).toBeInstanceOf(HTMLDivElement);
     expect(element.querySelector(".freed-map-marker-badge")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-badge")?.parentElement).toBe(element);
   });
 
   it("can simplify dense marker chrome", () => {

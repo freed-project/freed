@@ -3402,6 +3402,7 @@ test("Friends keeps the source sidebar inset while its galaxy background stays f
 
 test("Map view popup exposes friend actions and supports post navigation", async ({ app }) => {
   test.setTimeout(60_000);
+  await app.page.setViewportSize({ width: 1_440, height: 900 });
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -3417,6 +3418,72 @@ test("Map view popup exposes friend actions and supports post navigation", async
     store?.getState().setActiveView("map");
   });
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
+  const popup = page.locator("[data-map-floating-panel]");
+  const marker = page.locator('.freed-map-marker[aria-label="Ada Lovelace"]:visible').first();
+  const popupArrow = popup.locator("[data-map-popup-arrow]");
+  const popupBox = await popup.boundingBox();
+  const markerBox = await marker.boundingBox();
+  const popupArrowBox = await popupArrow.boundingBox();
+  const popupPlacement = await popup.getAttribute("data-placement");
+  const timelineBox = await page.getByTestId("map-time-range-slider").boundingBox();
+  const addControlBox = await page.getByTestId("map-add-floating-control").boundingBox();
+  const fitAllControlBox = await page.getByTestId("map-fit-all-control").boundingBox();
+  expect(popupBox).not.toBeNull();
+  expect(markerBox).not.toBeNull();
+  expect(popupArrowBox).not.toBeNull();
+  expect(popupPlacement).toMatch(/^(top|right|bottom|left)$/);
+  expect(timelineBox).not.toBeNull();
+  expect(addControlBox).not.toBeNull();
+  expect(fitAllControlBox).not.toBeNull();
+  expect(boxesOverlap(popupBox!, timelineBox!)).toBe(false);
+  expect(boxesOverlap(popupBox!, addControlBox!)).toBe(false);
+  expect(boxesOverlap(popupBox!, fitAllControlBox!)).toBe(false);
+  expect(boxesOverlap(popupBox!, markerBox!)).toBe(false);
+  expect(boxesOverlap(popupBox!, popupArrowBox!)).toBe(true);
+  const popupArrowCenter = {
+    x: popupArrowBox!.x + popupArrowBox!.width / 2,
+    y: popupArrowBox!.y + popupArrowBox!.height / 2,
+  };
+  const markerCenter = {
+    x: markerBox!.x + markerBox!.width / 2,
+    y: markerBox!.y + markerBox!.height / 2,
+  };
+  const arrowAlignmentError = popupPlacement === "top" || popupPlacement === "bottom"
+    ? Math.abs(popupArrowCenter.x - markerCenter.x)
+    : Math.abs(popupArrowCenter.y - markerCenter.y);
+  expect(arrowAlignmentError).toBeLessThanOrEqual(TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX);
+  await page.getByRole("button", { name: "Fit all" }).click();
+  await expect(page.locator("[data-map-floating-panel]")).toHaveCount(0);
+
+  const occludedMarkerBox = await marker.boundingBox();
+  expect(occludedMarkerBox).not.toBeNull();
+  await page.evaluate((box) => {
+    const occluder = document.createElement("div");
+    occluder.dataset.mapFloatingControl = "marker-occluder";
+    occluder.dataset.testid = "map-marker-occluder";
+    occluder.style.cssText = [
+      "position:fixed",
+      `left:${box.x}px`,
+      `top:${box.y}px`,
+      `width:${box.width}px`,
+      `height:${box.height}px`,
+      "pointer-events:none",
+    ].join(";");
+    document.body.appendChild(occluder);
+  }, occludedMarkerBox!);
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
+  await expect(popup).toHaveAttribute("data-map-popup-tail", "hidden");
+  await expect(popupArrow).toBeHidden();
+  const occludedPopupBox = await popup.boundingBox();
+  const occluderBox = await page.getByTestId("map-marker-occluder").boundingBox();
+  expect(occludedPopupBox).not.toBeNull();
+  expect(occluderBox).not.toBeNull();
+  expect(boxesOverlap(occludedPopupBox!, occluderBox!)).toBe(false);
+  await page.getByTestId("map-marker-occluder").evaluate((element) => element.remove());
+  await page.getByRole("button", { name: "Fit all" }).click();
+  await expect(page.locator("[data-map-floating-panel]")).toHaveCount(0);
 
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
   await clickMapPopupAction(page, "Open Friend");

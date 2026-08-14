@@ -73,7 +73,8 @@ export function createMarkerElement(
   }
   el.style.cssText = [
     "position:absolute",
-    "contain:layout paint style",
+    // Paint containment clips the body's hover scale to this wrapper's original square bounds.
+    "contain:layout style",
     "transform-origin:center center",
   ].join(";");
 
@@ -185,7 +186,9 @@ export function createMarkerElement(
       `border:1px solid ${avatarPalette.borderSoft}`,
       "box-shadow:var(--theme-marker-badge-shadow)",
     ].join(";");
-    body.appendChild(badge);
+    // Keep the count outside the circular image crop. Appending it to `body`
+    // makes the badge exist in the DOM while `overflow:hidden` erases it.
+    el.appendChild(badge);
   }
 
   return el;

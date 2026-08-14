@@ -70,6 +70,7 @@ import type {
   IdentityGraphAtlasNode,
 } from "../../lib/identity-graph-atlas.js";
 import { IdentityGalaxyNodeKindCode } from "../../lib/identity-galaxy-scene.js";
+import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
@@ -205,8 +206,6 @@ const BACKGROUND_STAR_COUNT = 100_000;
 type DecorativeStarMode = "buffered" | "procedural" | "off";
 const DECORATIVE_STAR_MODE: DecorativeStarMode = "procedural";
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
-const CANVAS_CONTROL_BASE =
-  "btn-secondary theme-canvas-control rounded-[var(--card-radius)] px-3 py-1.5 text-xs shadow-sm";
 const MENU_WIDTH = 264;
 const MENU_ESTIMATED_HEIGHT = 376;
 
@@ -1449,7 +1448,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             : undefined
         }
       >
-        <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
+        <button type="button" className={CANVAS_CONTROL_BUTTON_CLASS} onClick={fitAll}>
           Fit all
         </button>
         <span

@@ -291,6 +291,12 @@ test("map view repaints across all themes without using the old canvas filter", 
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
 
+  await page.evaluate(async (themeModulePath) => {
+    const mod = await import(themeModulePath);
+    mod.applyThemeToDocument("scriptorium");
+    mod.setThemePreference("scriptorium");
+  }, THEME_MODULE_PATH);
+
   await page.getByRole("button", { name: /^Map/ }).click();
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 
@@ -440,7 +446,15 @@ test("map view repaints across all themes without using the old canvas filter", 
     webkitMaskImage: "none",
   });
 
-  const themeIds = ["ember", "neon", "midas", "scriptorium"] as const;
+  const baselineMarkerCount = await page.locator(".freed-map-marker").count();
+  expect(baselineMarkerCount).toBeGreaterThan(0);
+
+  await expect(page.getByTestId("map-surface")).toHaveScreenshot("map-theme-scriptorium.png", {
+    animations: "disabled",
+    maxDiffPixelRatio: 0.02,
+  });
+
+  const themeIds = ["ember", "neon", "midas"] as const;
 
   for (const themeId of themeIds) {
     await page.evaluate(async ({ nextThemeId, themeModulePath }) => {
@@ -454,7 +468,9 @@ test("map view repaints across all themes without using the old canvas filter", 
     }).toBe(themeId);
 
     await expect(page.getByTestId("map-surface")).toHaveAttribute("data-map-theme", themeId);
-    await expect(page.locator(".freed-map-marker")).toBeVisible({ timeout: 20_000 });
+    await expect.poll(async () => page.locator(".freed-map-marker").count(), {
+      timeout: 20_000,
+    }).toBe(baselineMarkerCount);
 
     await expect.poll(async () => {
       return page.evaluate(() => {
@@ -477,6 +493,17 @@ test("map view repaints across all themes without using the old canvas filter", 
       maxDiffPixelRatio: 0.02,
     });
   }
+
+  await page.evaluate(async ({ nextThemeId, themeModulePath }) => {
+    const mod = await import(themeModulePath);
+    mod.applyThemeToDocument(nextThemeId);
+    mod.setThemePreference(nextThemeId);
+  }, { nextThemeId: "ember", themeModulePath: THEME_MODULE_PATH });
+
+  await expect(page.getByTestId("map-surface")).toHaveAttribute("data-map-theme", "ember");
+  await expect.poll(async () => page.locator(".freed-map-marker").count(), {
+    timeout: 20_000,
+  }).toBe(baselineMarkerCount);
 });
 
 test("top toolbar uses a single bottom border", async ({ app, page }) => {
