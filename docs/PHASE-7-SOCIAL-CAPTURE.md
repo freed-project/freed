@@ -1,13 +1,13 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair, ID-tail fallback labels, and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, post-login sync startup that closes login prompts only after scrape health is confirmed, a local permanent media vault for a user's own Meta media, and a local social scrape optimization loop that ranks safe next actions and post-block memory recovery from runtime logs without adding provider-visible behavior
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, one durable device-local scheduler for X, Facebook, Instagram, LinkedIn, YouTube, Substack, and Medium across sleep and renderer restarts, an independent RSS-only fixed scheduler, Facebook group controls with stored-name repair, ID-tail fallback labels, and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, post-login sync startup that closes login prompts only after scrape health is confirmed, a local permanent media vault for a user's own Meta media, and a local social scrape optimization loop that ranks safe next actions and post-block memory recovery from runtime logs without adding provider-visible behavior
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
 
 ## Overview
 
-DOM scraping for Facebook and Instagram feeds using Tauri's native WebView (WKWebView on macOS). Instead of Playwright, posts are captured by injecting extraction scripts into the same WebView that handles authentication, making the traffic indistinguishable from normal browsing.
+DOM scraping for Facebook and Instagram feeds uses Tauri's native WebView (WKWebView on macOS). Instead of Playwright, posts are captured by injecting extraction scripts into the same WebView that handles authentication. The scheduler does not claim this traffic is indistinguishable from a person.
 
 **Note:** DOM scraping is inherently fragile. These platforms actively fight scrapers and frequently change their DOM structure. This is lower priority than X + RSS.
 
@@ -120,6 +120,12 @@ Startup memory attribution now primes a nonblocking native sample before documen
 
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
+Scheduled X, Facebook, Instagram, LinkedIn, YouTube, Substack, and Medium capture now uses one device-local provider scheduler instead of running inside the RSS job. Each provider owns an independent versioned ledger, generated bounds, regime, yield factor, deadline, retry state, pause switch, and migration activation. Claims persist attempt ownership and the next deadline before contact. Sleep debt coalesces into one opportunity, overdue providers compete by normalized due age, and only one automatic social operation can run. Local memory, writer, coordinator, sleep, and recovery deferrals retain due state without consuming an interval or provider failure. Contacted failures only lengthen work, explicit rate limits honor their reset, auth failures block until reconnect, and native operations retain ownership after caller timeout until true settlement. After a renderer restart, the scheduler reads the native active-operation owner before reconciling a persisted attempt. Active native work renews the durable lease, while confirmed native idleness abandons the orphaned attempt into a safe future deadline instead of immediate catch-up. Manual and post-login runs resample the next automatic deadline after settlement. Existing provider navigation, request, and extraction behavior stays unchanged. Instagram pages that contain real article text or media but report zero layout height are treated as hidden-layout feeds and passed to extraction without adding another navigation.
+
+Generated provider defaults use independent cryptographic randomness with no installation or account seed. Normal opportunities use bounded lognormal delay, independent long-lived pace regimes, and yield feedback without moving an already persisted deadline. Existing installs activate each provider independently across 24 hours and never move an existing Meta deadline earlier. Settings expose generated or custom bounds, the next opportunity, pace factor, reset, per-provider pause, a global automatic-sync kill switch, and a high-frequency warning below 15 minutes. Manual Sync Now remains available. A deterministic injected-clock and injected-RNG simulator covers at least 100,000 installations across install, migration, wake, offline, restart, memory, failure, yield, custom-bound, and upgrade scenarios. It checks arrival peaks, periodicity, autocorrelation, cross-provider dependence, endpoint density, fairness, wake bursts, and legacy opportunity rate without claiming human indistinguishability.
+
+RSS now owns one independent fixed interval, 3 hours by default and configurable from 5 minutes to 24 hours. Its persisted deadline coalesces wake debt and refreshes only stale, retry-eligible feeds. RSS never calls a social adapter, and the social scheduler never owns RSS extraction.
+
 Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
 
 `npm run social:scrape-loop` reads local runtime health, diagnostics, and provider-health logs, ranks safe local-only next actions, and reports provider-visible decisions that remain blocked pending approval. The loop watches WebKit RSS peaks, renderer recovery attempts, preflights, scrape plans, blocked preflights, cooldowns, extractor failure stages, missing provider coverage, providers that preflight without recording a plan, the lowest later WebKit RSS sample after a provider block, providers that recovered under budget but never recorded a later scrape plan, the latest post-block runtime state, stale provider-health memory errors after recovery, provider-health zero-post attempts, and the provider-health pause plus latest attempt state so stale memory pauses and empty-feed failures are visible without opening provider pages.
@@ -153,13 +159,13 @@ The first publisher target is GitHub Pages. The desktop publisher creates or reu
 ```typescript
 const RATE_LIMITS = {
   facebook: {
-    minInterval: 20 * 60 * 1000,  // 20 minutes between scrapes
+    minInterval: 20 * 60 * 1000, // 20 minutes between scrapes
     maxPostsPerScrape: 50,
   },
   instagram: {
-    minInterval: 20 * 60 * 1000,  // 20 minutes between scrapes
+    minInterval: 20 * 60 * 1000, // 20 minutes between scrapes
     maxPostsPerScrape: 50,
-    cooldownOnError: 60 * 60 * 1000,  // 1 hour cooldown if blocked
+    cooldownOnError: 60 * 60 * 1000, // 1 hour cooldown if blocked
   },
 };
 ```
@@ -168,33 +174,34 @@ const RATE_LIMITS = {
 
 ## Tasks
 
-| Task | Description                                 | Status      |
-| ---- | ------------------------------------------- | ----------- |
-| 7.1  | `@freed/capture-facebook` package scaffold  | ✓ Complete  |
-| 7.2  | `@freed/capture-instagram` package scaffold | ✓ Complete  |
-| 7.3  | Facebook DOM selectors                      | ✓ Complete  |
-| 7.4  | Instagram DOM selectors                     | ✓ Complete  |
-| 7.5  | Facebook feed scraping (WebView)            | ✓ Complete  |
-| 7.6  | Instagram feed scraping (WebView)           | ✓ Complete  |
-| 7.7  | WebView-based authentication                | ✓ Complete  |
-| 7.8  | Rate limiting to avoid bans                 | ✓ Complete  |
-| 7.9  | Selector versioning strategy                | ✓ Complete  |
-| 7.10 | Location extraction (for Phase 8)           | ✓ Complete  |
-| 7.11 | Stories capture (IG + FB, with map-ready location metadata) | 🚧 In Progress |
-| 7.12 | Social engagement write-back (like, seen)   | ✓ Complete  |
-| 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
-| 7.14 | Comment links (open on platform)            | ✓ Complete  |
-| 7.15 | Cross-platform dedup (IG/FB cross-posts)    | ✓ Complete  |
-| 7.16 | Permanent local media vault                 | ✓ Complete  |
-| 7.17 | Meta export import for own media            | ✓ Complete  |
-| 7.18 | Own-profile backfill crawler                | 🚧 In Progress |
-| 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
-| 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts | ✓ Complete |
-| 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
-| 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
-| 7.23 | Local social scrape optimization loop       | ✓ Complete  |
-| 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete |
-| 7.25 | Process-matched startup memory attribution  | ✓ Complete  |
+| Task | Description                                                              | Status         |
+| ---- | ------------------------------------------------------------------------ | -------------- |
+| 7.1  | `@freed/capture-facebook` package scaffold                               | ✓ Complete     |
+| 7.2  | `@freed/capture-instagram` package scaffold                              | ✓ Complete     |
+| 7.3  | Facebook DOM selectors                                                   | ✓ Complete     |
+| 7.4  | Instagram DOM selectors                                                  | ✓ Complete     |
+| 7.5  | Facebook feed scraping (WebView)                                         | ✓ Complete     |
+| 7.6  | Instagram feed scraping (WebView)                                        | ✓ Complete     |
+| 7.7  | WebView-based authentication                                             | ✓ Complete     |
+| 7.8  | Rate limiting to avoid bans                                              | ✓ Complete     |
+| 7.9  | Selector versioning strategy                                             | ✓ Complete     |
+| 7.10 | Location extraction (for Phase 8)                                        | ✓ Complete     |
+| 7.11 | Stories capture (IG + FB, with map-ready location metadata)              | 🚧 In Progress |
+| 7.12 | Social engagement write-back (like, seen)                                | ✓ Complete     |
+| 7.13 | Outbox processor for cross-device sync                                   | ✓ Complete     |
+| 7.14 | Comment links (open on platform)                                         | ✓ Complete     |
+| 7.15 | Cross-platform dedup (IG/FB cross-posts)                                 | ✓ Complete     |
+| 7.16 | Permanent local media vault                                              | ✓ Complete     |
+| 7.17 | Meta export import for own media                                         | ✓ Complete     |
+| 7.18 | Own-profile backfill crawler                                             | 🚧 In Progress |
+| 7.19 | Reader reply hydration for X posts                                       | ✓ Complete     |
+| 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts   | ✓ Complete     |
+| 7.21 | Shared social memory-preflight backoff                                   | ✓ Complete     |
+| 7.22 | Story Wall grouped settings section and GitHub Pages publisher           | 🚧 In Progress |
+| 7.23 | Local social scrape optimization loop                                    | ✓ Complete     |
+| 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete     |
+| 7.25 | Process-matched startup memory attribution                               | ✓ Complete     |
+| 7.26 | Durable provider scheduler, independent cadence controls, and RSS split   | ✓ Complete     |
 
 ---
 
@@ -207,7 +214,8 @@ const RATE_LIMITS = {
 - [x] Selector versioning strategy implemented (SELECTOR_VERSION constant)
 - [x] Facebook feed integrated into Desktop via Tauri WebView scraping
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
-- [x] Both platforms integrated into Desktop refreshAllFeeds()
+- [x] X, Facebook, Instagram, LinkedIn, YouTube, Substack, and Medium use one device-local scheduler with isolated provider state, coalesced wake debt, one automatic social operation, durable timeout ownership, and no RSS parent job
+- [x] RSS uses one independent persisted fixed interval, refreshes only stale and retry-eligible feeds, coalesces wake debt, and never calls a social provider
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts while sync starts, then close only after scrape startup health is confirmed
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
@@ -227,6 +235,9 @@ const RATE_LIMITS = {
 - [x] Social memory preflight blocks fan-out across providers when Freed Desktop memory remains high after cleanup
 - [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
+- [x] Scheduled social attempts persist due, in-flight, contacted, settled, backoff, and blocked state independently per provider; preserve later migration deadlines; rank overdue work fairly; reconcile renderer-restart leases against native operation ownership; retain timeout ownership until native settlement; and treat content-bearing zero-height Instagram articles as hidden-layout feed content
+- [x] Social settings share generated or custom cadence bounds, next opportunity and pace state, randomized reset, per-provider pause, a global automatic-sync kill switch, and a warning below 15 minutes while preserving manual Sync Now
+- [x] Deterministic injected-clock and injected-RNG simulation covers at least 100,000 installations and rejects bound violations, wake bursts, concurrent automatic work, release waves, shared provider state, starvation, and a default opportunity p95 above the legacy scheduler
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
 - [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-hydration comparisons
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
@@ -270,12 +281,12 @@ const RATE_LIMITS = {
 
 ## Risks
 
-| Risk                   | Mitigation                                                    |
-| ---------------------- | ------------------------------------------------------------- |
-| DOM changes frequently | Version selectors, monitor for breakage, quick update process |
-| Account bans           | Conservative rate limiting, human-like scrolling with jitter  |
+| Risk                   | Mitigation                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| DOM changes frequently | Version selectors, monitor for breakage, quick update process                                                          |
+| Account bans           | Conservative rate limiting, human-like scrolling with jitter                                                           |
 | Anti-bot detection     | Native WebView, per-session OS-aware UA, Gaussian timing, webkit-mask init script, rquest Chrome TLS fingerprint for X |
-| Legal concerns         | User captures their own data, no central server               |
+| Legal concerns         | User captures their own data, no central server                                                                        |
 
 ---
 
@@ -422,6 +433,7 @@ that requires its own Gate 1 review.
 Instead of Rust HTTP + rquest, inject GraphQL `fetch()` calls into the authenticated X login WebView. Since the WebView is already on the `twitter.com` domain after login, these are same-origin requests - the browser attaches cookies automatically, uses the real browser TLS stack (no BoringSSL compile dependency), and sends headers in the browser's native order.
 
 This requires:
+
 - Keeping the X login WebView alive after login (as a hidden window, like the FB/IG pattern)
 - Injecting JS that calls `fetch()` against the GraphQL endpoint and returns results via Tauri event IPC
 - Significant refactor of the X capture flow

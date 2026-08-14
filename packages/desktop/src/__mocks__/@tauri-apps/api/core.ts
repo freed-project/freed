@@ -578,6 +578,10 @@ const handlers: Record<string, Handler> = {
       screenLocked: false,
       error: null,
     },
+  get_background_runtime_active_operation: () => ({
+    operation: null,
+    ageMs: null,
+  }),
   get_runtime_memory_stats: () => ({
     totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,

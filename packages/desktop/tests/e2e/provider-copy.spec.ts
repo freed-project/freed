@@ -113,3 +113,27 @@ test("social provider empty states do not inherit a different provider error", a
   await expect(page.getByText("No items to show.")).toBeVisible();
   await expect(page.getByText(LINKEDIN_ERROR)).toHaveCount(0);
 });
+
+test("provider cadence controls pause automatic work without removing manual sync", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+  await app.goto();
+  await app.waitForReady();
+  await authenticateSocialProviders(page);
+  await openSettingsSection(page, "Facebook");
+
+  const section = settingsSection(page, "facebook");
+  await section.getByText("Automatic sync cadence", { exact: true }).click();
+  const globalSwitch = section.getByRole("switch", {
+    name: "Automatic provider sync",
+  });
+  const providerSwitch = section.getByRole("switch", {
+    name: "Automatic facebook sync",
+  });
+  await expect(globalSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(providerSwitch).toBeEnabled();
+  await globalSwitch.click();
+  await expect(providerSwitch).toBeDisabled();
+  await expect(page.getByTestId("provider-sync-action-facebook")).toBeVisible();
+  await expect(section.getByText("Next automatic sync:")).toBeVisible();
+  await expect(section.getByText("Current pace factor:")).toBeVisible();
+});

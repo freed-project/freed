@@ -25,6 +25,7 @@ import {
 } from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
@@ -35,6 +36,7 @@ import {
   registerDesktopProviderAuthQuiesceHandler,
   runDesktopProviderAuthRequest,
 } from "../lib/provider-auth-lifecycle";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 import { desktopXLoginResetController } from "../lib/x-login-reset-controller";
 
 // =============================================================================
@@ -237,13 +239,23 @@ export function XSettingsSection({
   const [formError, setFormError] = useState("");
   const { confirm, dialog } = useProviderRiskGate("x");
 
-  const runSync = async (cookies: Parameters<typeof captureXTimeline>[0]) => {
+  const runSync = async (
+    cookies: Parameters<typeof captureXTimeline>[0],
+    trigger: "manual" | "post_login" = "manual",
+  ) => {
     setLastDiag(null);
     try {
-      const result = await withProviderSyncing("x", () => captureXTimeline(cookies, undefined, "manual"));
+      const result = await withProviderSyncing("x", () =>
+        captureXTimeline(cookies, undefined, trigger),
+      );
       setLastDiag(result.diag);
     } catch (err) {
       console.error("X timeline capture failed:", err);
+    } finally {
+      rescheduleProviderAfterExternalSettlement({
+        provider: "x",
+        unblockAuth: trigger === "post_login",
+      });
     }
   };
 
@@ -256,7 +268,7 @@ export function XSettingsSection({
       if (!cookies) return;
       setXAuth({ isAuthenticated: true, cookies });
       invoke("close_x_login_window").catch(() => {});
-      await runSync(cookies);
+      await runSync(cookies, "post_login");
     },
     [setXAuth, setError],
   );
@@ -307,7 +319,7 @@ export function XSettingsSection({
       setShowManual(false);
       setCt0("");
       setAuthToken("");
-      await runSync(cookies);
+      await runSync(cookies, "post_login");
     });
   };
 
@@ -423,6 +435,7 @@ export function XSettingsSection({
             </p>
           )}
 
+          <ProviderSyncCadenceControl provider="x" />
           <ProviderHealthSectionSummary
             provider="x"
             showMessages={surface === "debug-card" && !syncError && !actionError}

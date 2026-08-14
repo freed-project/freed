@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 7;
+export const STABILITY_METRIC_REGISTRY_VERSION = 9;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
@@ -30,9 +30,7 @@ function recoveryTimestamp(entry) {
 }
 
 function normalizedNativePid(value) {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
     : null;
 }
@@ -84,10 +82,7 @@ function recoveryRecordsShareNativeGeneration(
   return matchedExplicitGeneration || allowLegacyKeylessFallback;
 }
 
-function restartMatchesMainRecoveryReasonAndTime(
-  mainRecovery,
-  restartRequest,
-) {
+function restartMatchesMainRecoveryReasonAndTime(mainRecovery, restartRequest) {
   const mainTs = recoveryTimestamp(mainRecovery);
   const restartTs = recoveryTimestamp(restartRequest);
   if (mainTs === null || restartTs === null) return false;
@@ -549,6 +544,19 @@ export const STABILITY_METRICS = Object.freeze([
     target: null,
     triageBucketId: "auth-zombie",
     alarmNames: Object.freeze(["auth_zombie"]),
+    canaryMetrics: Object.freeze([]),
+  }),
+  Object.freeze({
+    id: "provider-schedule-integrity",
+    soakAssertionId: "provider_schedule_integrity",
+    outcomeMeasurement: Object.freeze({
+      unit: "violations/app-alive-day",
+      direction: "lower",
+      tolerance: 0.01,
+    }),
+    target: Object.freeze({ kind: "max_count", value: 0 }),
+    triageBucketId: "social-scheduler-deferral",
+    alarmNames: Object.freeze(["provider_schedule_integrity"]),
     canaryMetrics: Object.freeze([]),
   }),
   Object.freeze({

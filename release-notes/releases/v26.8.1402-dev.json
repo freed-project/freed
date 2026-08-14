@@ -1,0 +1,134 @@
+{
+  "tag": "v26.8.1402-dev",
+  "version": "26.8.1402-dev",
+  "channel": "dev",
+  "dayKey": "26.8.14",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-14T19:40:39.824Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1303-dev",
+    "previousPublishedDayTag": "v26.8.1303-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "c4c5ba05bf9f14b121230313e0dfacdec0a07ccd",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1303-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "5d03731eab3397c97c18974cc4f190d26d9e43cc",
+        "toInclusiveProductCommitSha": "c4c5ba05bf9f14b121230313e0dfacdec0a07ccd"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94",
+        "currentDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:a0dcc5b81750d3a4fed91ea24a6f3b4648bc177a6c23a0adb8d4f99299eba33b",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1402-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1402-dev"
+    ],
+    "prNumbers": [
+      1463,
+      1464,
+      1466,
+      1468,
+      1471,
+      1473,
+      1474,
+      1475,
+      1478,
+      1480,
+      1482,
+      1484,
+      1489,
+      1491,
+      1492,
+      1493,
+      1494,
+      1495,
+      1496,
+      1498,
+      1500,
+      1502,
+      1503,
+      1504,
+      1505,
+      1506,
+      1509
+    ],
+    "commitSubjects": [
+      "fix: make provider sync scheduling durable (#1509)",
+      "fix: stabilize map panels and markers (#1503)",
+      "fix: restore release integration contracts (#1506)",
+      "fix: restore SQLite Google Drive sync (#1505)",
+      "feat: add tappable zoom step controls (#1504)",
+      "fix: show unlinked provider identity labels (#1502)",
+      "fix: remove Friends dust test control (#1500)",
+      "perf: streamline Friends Galaxy rendering (#1498)",
+      "perf: streamline Friends Galaxy rendering (#1495)",
+      "fix: standardize sidebar search and nav menus (#1496)",
+      "docs: keep local previews in app (#1499)",
+      "fix: clarify empty provider states (#1494)",
+      "fix: match Friends fit control radius (#1493)",
+      "feat: add task-scoped factory claims (#1491)",
+      "fix: retry release tag readback (#1492)",
+      "chore: reverse integrate v26.8.1400 (#1489)",
+      "fix: scope production release identity checks (#1484)",
+      "fix: build Tauri frontend context before release clippy (#1482)",
+      "fix: skip dev-only Vitest contract on production main (#1480)",
+      "perf: eliminate SQLite full-corpus UI scans (#1478)",
+      "fix: preview live theme tokens everywhere (#1475)",
+      "fix: preview theme colors on map hover (#1474)",
+      "fix: align Friends graph controls (#1473)",
+      "fix: isolate production validation from website (#1471)",
+      "fix: align Friends rail and wheel boundaries (#1468)",
+      "fix: decouple production website validation (#1466)",
+      "fix: align Friends panel and camera bounds (#1464)",
+      "fix: wrap settings theme selector responsively (#1463)"
+    ]
+  },
+  "release": {
+    "deck": "Durable background sync, safer wake recovery, and faster Friends and Map views",
+    "features": [
+      "Independent automatic sync schedules for every social provider",
+      "Provider cadence controls, automatic sync pause switches, and local schedule diagnostics",
+      "Tappable zoom controls and task-scoped factory claims"
+    ],
+    "fixes": [
+      "Recover Facebook and Instagram sync ownership after sleep, wake, and renderer restarts",
+      "Accept ready Instagram articles before their first layout height is measured",
+      "Prevent automatic provider work from colliding or bursting after wake",
+      "Restore SQLite Google Drive sync",
+      "Stabilize map panels and markers",
+      "Show unlinked provider identity labels",
+      "Standardize sidebar search and navigation menus",
+      "Clarify empty provider states",
+      "Streamline Friends Galaxy rendering",
+      "Keep theme previews accurate on map hover"
+    ],
+    "followUps": [
+      "Measure Facebook and Instagram reliability over a multi-day installed soak",
+      "Compare provider cadence and wake behavior with the previous release",
+      "Continue profiling Friends and Map performance on large libraries"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1402-dev\n\nDurable background sync, safer wake recovery, and faster Friends and Map views\n\n### Features\n\n- Independent automatic sync schedules for every social provider\n- Provider cadence controls, automatic sync pause switches, and local schedule diagnostics\n- Tappable zoom controls and task-scoped factory claims\n\n### Fixes\n\n- Recover Facebook and Instagram sync ownership after sleep, wake, and renderer restarts\n- Accept ready Instagram articles before their first layout height is measured\n- Prevent automatic provider work from colliding or bursting after wake\n- Restore SQLite Google Drive sync\n- Stabilize map panels and markers\n- Show unlinked provider identity labels\n- Standardize sidebar search and navigation menus\n- Clarify empty provider states\n- Streamline Friends Galaxy rendering\n- Keep theme previews accurate on map hover\n\n### Follow-ups\n\n- Measure Facebook and Instagram reliability over a multi-day installed soak\n- Compare provider cadence and wake behavior with the previous release\n- Continue profiling Friends and Map performance on large libraries\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

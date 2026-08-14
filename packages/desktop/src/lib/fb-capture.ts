@@ -37,7 +37,10 @@ import {
   formatScrapeMemoryPressureDetails,
   prepareSocialScrapeMemory,
 } from "./memory-monitor";
-import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
+import {
+  archiveRecentProviderMedia,
+  upsertMediaVaultRosterFromItems,
+} from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import { log } from "./logger";
@@ -113,29 +116,25 @@ export interface FbSyncDiag {
   };
   lastExtractionStrategy: string | null;
   lastCandidateCount: number | null;
-  lastRejected:
-    | {
-        suggestedOrSponsored?: number;
-        missingAuthor?: number;
-        missingContent?: number;
-      }
-    | null;
+  lastRejected: {
+    suggestedOrSponsored?: number;
+    missingAuthor?: number;
+    missingContent?: number;
+  } | null;
   lastScrollY: number | null;
   maxScrollY: number | null;
   feedContainerFound: boolean | null;
   scrapeRunId: string | null;
-  lastPageState:
-    | {
-        state?: string;
-        loggedInCookie?: boolean;
-        feedLike?: boolean;
-        feedUnitCount?: number;
-        loginChrome?: boolean;
-        scrollHeight?: number;
-        url?: string;
-        title?: string;
-      }
-    | null;
+  lastPageState: {
+    state?: string;
+    loggedInCookie?: boolean;
+    feedLike?: boolean;
+    feedUnitCount?: number;
+    loginChrome?: boolean;
+    scrollHeight?: number;
+    url?: string;
+    title?: string;
+  } | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -229,10 +228,12 @@ function summarizeFacebookNormalizationRejections(
     let reason: "missingId" | "invalidAuthor" | null = null;
     if (!post.id && !post.url) {
       reason = "missingId";
-    } else if (!isValidFacebookAuthorIdentity({
-      displayName: post.authorName,
-      profileUrl: post.authorProfileUrl,
-    })) {
+    } else if (
+      !isValidFacebookAuthorIdentity({
+        displayName: post.authorName,
+        profileUrl: post.authorProfileUrl,
+      })
+    ) {
       reason = "invalidAuthor";
     }
 
@@ -258,7 +259,9 @@ function formatFacebookNormalizationSummary(
     `missingId=${summary.missingId.toLocaleString()}, ` +
     `invalidAuthor=${summary.invalidAuthor.toLocaleString()}, ` +
     `unexpected=${summary.unexpected.toLocaleString()}` +
-    (summary.firstRejectedSample ? `, firstRejected=${summary.firstRejectedSample}` : "")
+    (summary.firstRejectedSample
+      ? `, firstRejected=${summary.firstRejectedSample}`
+      : "")
   );
 }
 
@@ -287,7 +290,9 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
     details.push(`scrollY ${diag.lastScrollY.toLocaleString()}`);
   }
   if (typeof diag.feedContainerFound === "boolean") {
-    details.push(`feed container ${diag.feedContainerFound ? "found" : "not found"}`);
+    details.push(
+      `feed container ${diag.feedContainerFound ? "found" : "not found"}`,
+    );
   }
   if (scrollAppearsStuck) {
     details.push("scroll appears stuck near the top");
@@ -314,10 +319,14 @@ function formatFacebookParseFailureMessage(diag: FbSyncDiag): string {
   ];
 
   if (rejected.suggestedOrSponsored > 0) {
-    details.push(`${rejected.suggestedOrSponsored.toLocaleString()} suggested or sponsored`);
+    details.push(
+      `${rejected.suggestedOrSponsored.toLocaleString()} suggested or sponsored`,
+    );
   }
   if (diag.extractionPasses > 0) {
-    details.push(`${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`);
+    details.push(
+      `${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`,
+    );
   }
   if (typeof diag.maxScrollY === "number") {
     details.push(`max scrollY ${diag.maxScrollY.toLocaleString()}`);
@@ -338,7 +347,9 @@ function formatFacebookNoNewItemsMessage(diag: FbSyncDiag): string {
     details.push(`${diag.excludedItems.toLocaleString()} excluded`);
   }
   if (diag.candidateItems > 0) {
-    details.push(`${diag.candidateItems.toLocaleString()} write candidate${diag.candidateItems === 1 ? "" : "s"}`);
+    details.push(
+      `${diag.candidateItems.toLocaleString()} write candidate${diag.candidateItems === 1 ? "" : "s"}`,
+    );
   }
 
   return details.length > 0
@@ -400,11 +411,16 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export function fetchFbFeed(): Promise<FbSyncResult> {
-  return runFactoryResetSensitiveDesktopOperation(fetchFbFeedInternal);
+export function fetchFbFeed(onProviderContact?: () => void): Promise<FbSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchFbFeedInternal(resetEpoch, onProviderContact),
+  );
 }
 
-async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
+async function fetchFbFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<FbSyncResult> {
   const diag = createEmptyFbSyncDiag();
 
   const cookieState = await loadSocialProviderCookieState("facebook");
@@ -469,83 +485,96 @@ async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
       feedContainerFound?: boolean;
       scrapeRunId?: string | null;
       pageState?: FbSyncDiag["lastPageState"];
-    }>(
-      "fb-feed-data",
-      (event) => {
-        const {
-          posts,
-          error,
-          strategy,
-          candidateCount,
-          rejected,
-          scrollY,
-          feedContainerFound,
-          scrapeRunId,
-          pageState,
-        } = event.payload;
-        diag.extractionPasses++;
-        diag.lastExtractionStrategy = strategy ?? null;
-        diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : null;
-        diag.lastRejected = rejected ?? null;
-        diag.lastScrollY = typeof scrollY === "number" ? scrollY : null;
-        diag.maxScrollY =
-          typeof scrollY === "number"
-            ? Math.max(diag.maxScrollY ?? scrollY, scrollY)
-            : diag.maxScrollY;
-        diag.feedContainerFound = typeof feedContainerFound === "boolean" ? feedContainerFound : null;
-        diag.scrapeRunId = typeof scrapeRunId === "string" ? scrapeRunId : diag.scrapeRunId;
-        diag.lastPageState = pageState ?? diag.lastPageState;
-        diag.totalCandidateCount += typeof candidateCount === "number" ? candidateCount : 0;
-        if (rejected) {
-          diag.totalRejected.suggestedOrSponsored += rejected.suggestedOrSponsored ?? 0;
-          diag.totalRejected.missingAuthor += rejected.missingAuthor ?? 0;
-          diag.totalRejected.missingContent += rejected.missingContent ?? 0;
-        }
+    }>("fb-feed-data", (event) => {
+      const {
+        posts,
+        error,
+        strategy,
+        candidateCount,
+        rejected,
+        scrollY,
+        feedContainerFound,
+        scrapeRunId,
+        pageState,
+      } = event.payload;
+      diag.extractionPasses++;
+      diag.lastExtractionStrategy = strategy ?? null;
+      diag.lastCandidateCount =
+        typeof candidateCount === "number" ? candidateCount : null;
+      diag.lastRejected = rejected ?? null;
+      diag.lastScrollY = typeof scrollY === "number" ? scrollY : null;
+      diag.maxScrollY =
+        typeof scrollY === "number"
+          ? Math.max(diag.maxScrollY ?? scrollY, scrollY)
+          : diag.maxScrollY;
+      diag.feedContainerFound =
+        typeof feedContainerFound === "boolean" ? feedContainerFound : null;
+      diag.scrapeRunId =
+        typeof scrapeRunId === "string" ? scrapeRunId : diag.scrapeRunId;
+      diag.lastPageState = pageState ?? diag.lastPageState;
+      diag.totalCandidateCount +=
+        typeof candidateCount === "number" ? candidateCount : 0;
+      if (rejected) {
+        diag.totalRejected.suggestedOrSponsored +=
+          rejected.suggestedOrSponsored ?? 0;
+        diag.totalRejected.missingAuthor += rejected.missingAuthor ?? 0;
+        diag.totalRejected.missingContent += rejected.missingContent ?? 0;
+      }
 
-        const rejectionSummary = rejected
-          ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
+      const rejectionSummary = rejected
+        ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
+        : "";
+      const scrollSummary =
+        typeof scrollY === "number"
+          ? `, scrollY=${scrollY.toLocaleString()}`
           : "";
-        const scrollSummary =
-          typeof scrollY === "number" ? `, scrollY=${scrollY.toLocaleString()}` : "";
-        const feedSummary =
-          typeof feedContainerFound === "boolean"
-            ? `, feedContainer=${feedContainerFound ? "y" : "n"}`
-            : "";
-        addDebugEvent(
-          "change",
-          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount?.toLocaleString() ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}${scrollSummary}${feedSummary}`,
-        );
+      const feedSummary =
+        typeof feedContainerFound === "boolean"
+          ? `, feedContainer=${feedContainerFound ? "y" : "n"}`
+          : "";
+      addDebugEvent(
+        "change",
+        `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount?.toLocaleString() ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}${scrollSummary}${feedSummary}`,
+      );
 
-        if (error) {
-          addDebugEvent("error", `[FB] extraction error: ${error}`);
-          diag.errorStage =
-            strategy === "not_authenticated"
-              ? "auth"
-              : strategy === "short_non_feed"
-                ? "provider_page"
-                : "extract";
-          diag.errorMessage = error;
-          return;
-        }
+      if (error) {
+        addDebugEvent("error", `[FB] extraction error: ${error}`);
+        diag.errorStage =
+          strategy === "not_authenticated"
+            ? "auth"
+            : strategy === "short_non_feed"
+              ? "provider_page"
+              : "extract";
+        diag.errorMessage = error;
+        return;
+      }
 
-        for (const post of posts) {
-          const key = post.id ?? post.url ?? `${post.authorName}:${(post.text ?? "").slice(0, 80)}`;
-          if (key && !seenIds.has(key)) {
-            seenIds.add(key);
-            allRawPosts.push(post);
-          }
+      for (const post of posts) {
+        const key =
+          post.id ??
+          post.url ??
+          `${post.authorName}:${(post.text ?? "").slice(0, 80)}`;
+        if (key && !seenIds.has(key)) {
+          seenIds.add(key);
+          allRawPosts.push(post);
         }
-      },
-    );
+      }
+    });
 
     assertFactoryResetEpoch(resetEpoch);
     await runBackgroundJob({
       kind: "social-scrape",
       source: "facebook:feed",
       timeoutMs: 600_000,
+      retainUntilSettledAfterTimeout: true,
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
-      run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
+      run: () => {
+        onProviderContact?.();
+        return invoke("fb_scrape_feed", {
+          windowMode: getFbScraperWindowMode(),
+        });
+      },
     });
     assertFactoryResetEpoch(resetEpoch);
     await waitForSocialScrapeEvents();
@@ -596,15 +625,23 @@ async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
   try {
     const normalized = fbPostsToFeedItems(allRawPosts);
     diag.itemsNormalized = normalized.length;
-    const normalizationSummary = summarizeFacebookNormalizationRejections(allRawPosts);
-    normalizationSummary.unexpected = Math.max(0, normalizationSummary.accepted - normalized.length);
+    const normalizationSummary =
+      summarizeFacebookNormalizationRejections(allRawPosts);
+    normalizationSummary.unexpected = Math.max(
+      0,
+      normalizationSummary.accepted - normalized.length,
+    );
     if (normalized.length === 0) {
-      const summaryText = formatFacebookNormalizationSummary(normalizationSummary);
+      const summaryText =
+        formatFacebookNormalizationSummary(normalizationSummary);
       diag.errorStage = "normalize";
       diag.errorMessage =
         `Extracted ${allRawPosts.length.toLocaleString()} Facebook post` +
         `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization. ${summaryText}`;
-      addDebugEvent("error", `[FB] normalization rejected all raw posts: ${summaryText}`);
+      addDebugEvent(
+        "error",
+        `[FB] normalization rejected all raw posts: ${summaryText}`,
+      );
       return { items: [], diag };
     }
 
@@ -631,7 +668,7 @@ export function captureFbGroups(
   options: CaptureFbGroupsOptions = {},
 ): Promise<FbGroupInfo[]> {
   return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
-    captureFbGroupsInternal(options, resetEpoch)
+    captureFbGroupsInternal(options, resetEpoch),
   );
 }
 
@@ -640,7 +677,10 @@ async function captureFbGroupsInternal(
   resetEpoch: number,
 ): Promise<FbGroupInfo[]> {
   addDebugEvent("change", "[FB] group refresh started");
-  const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
+  const memoryPrep = await prepareSocialScrapeMemory(
+    "facebook",
+    "groups scrape",
+  );
   assertFactoryResetEpoch(resetEpoch);
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
@@ -674,20 +714,26 @@ async function checkFacebookGroupMembership(
   resetEpoch: number,
 ): Promise<FbGroupMembershipCheck> {
   const groupUrl =
-    group.url.trim() || `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
+    group.url.trim() ||
+    `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
   assertFactoryResetEpoch(resetEpoch);
-  const result = await invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
-    groupId: group.id,
-    groupUrl,
-    windowMode: getFbScraperWindowMode(),
-  });
+  const result = await invoke<FbGroupMembershipCheck>(
+    "fb_check_group_membership",
+    {
+      groupId: group.id,
+      groupUrl,
+      windowMode: getFbScraperWindowMode(),
+    },
+  );
   assertFactoryResetEpoch(resetEpoch);
   return result;
 }
 
 async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
   const store = useAppStore.getState();
-  const excludedGroupIds = { ...(store.preferences.fbCapture?.excludedGroupIds ?? {}) };
+  const excludedGroupIds = {
+    ...(store.preferences.fbCapture?.excludedGroupIds ?? {}),
+  };
   const discoveryRemoval = removeFacebookGroupDiscovery(groupId);
   if (!discoveryRemoval.persisted) {
     addDebugEvent(
@@ -746,13 +792,16 @@ async function hydrateMissingFacebookGroupNames(
         continue;
       }
 
-      const merge = await updateKnownFacebookGroups([
-        {
-          id: group.id,
-          name: check.name,
-          url: check.url || group.url,
-        },
-      ], "membership_check");
+      const merge = await updateKnownFacebookGroups(
+        [
+          {
+            id: group.id,
+            name: check.name,
+            url: check.url || group.url,
+          },
+        ],
+        "membership_check",
+      );
       assertFactoryResetEpoch(resetEpoch);
       if (merge.persisted) repairedNameCount += merge.repairedNameCount;
     } catch (err) {
@@ -777,7 +826,7 @@ export function verifyFacebookGroupLeave(
   group: FbGroupInfo,
 ): Promise<FbGroupLeaveVerification> {
   return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
-    verifyFacebookGroupLeaveInternal(group, resetEpoch)
+    verifyFacebookGroupLeaveInternal(group, resetEpoch),
   );
 }
 
@@ -789,13 +838,16 @@ async function verifyFacebookGroupLeaveInternal(
   let repairedNameCount = 0;
   if (check.name && check.stillJoined !== false) {
     assertFactoryResetEpoch(resetEpoch);
-    const merge = await updateKnownFacebookGroups([
-      {
-        id: group.id,
-        name: check.name,
-        url: check.url || group.url,
-      },
-    ], "membership_check");
+    const merge = await updateKnownFacebookGroups(
+      [
+        {
+          id: group.id,
+          name: check.name,
+          url: check.url || group.url,
+        },
+      ],
+      "membership_check",
+    );
     assertFactoryResetEpoch(resetEpoch);
     repairedNameCount = merge.persisted ? merge.repairedNameCount : 0;
   }
@@ -830,11 +882,12 @@ async function verifyFacebookGroupLeaveInternal(
  */
 export function captureFbFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<FbSyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const scrapeStartedAt = Date.now();
     try {
-      const result = await captureFbFeedInternal(resetEpoch);
+      const result = await captureFbFeedInternal(resetEpoch, onProviderContact);
       assertFactoryResetEpoch(resetEpoch);
       recordScrapeOutcome({
         provider: "facebook",
@@ -861,12 +914,18 @@ export function captureFbFeed(
   });
 }
 
-async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
+async function captureFbFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<FbSyncResult> {
   assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {
-    addDebugEvent("change", `[FB] paused until ${formatClockTime(providerPause.pausedUntil)}`);
+    addDebugEvent(
+      "change",
+      `[FB] paused until ${formatClockTime(providerPause.pausedUntil)}`,
+    );
     return {
       items: [],
       diag: createEmptyFbSyncDiag({
@@ -908,7 +967,7 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
   try {
     addDebugEvent("change", "[FB] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchFbFeed();
+    const result = await fetchFbFeed(onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
@@ -930,8 +989,11 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
         const errState = {
           ...useAppStore.getState().fbAuth,
           isAuthenticated:
-            result.diag.errorStage === "auth" ? false : useAppStore.getState().fbAuth.isAuthenticated,
-          lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+            result.diag.errorStage === "auth"
+              ? false
+              : useAppStore.getState().fbAuth.isAuthenticated,
+          lastCaptureError:
+            result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
         };
         store.setFbAuth(errState);
         storeFbAuthState(errState);
@@ -941,7 +1003,8 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
         provider: "facebook",
         outcome: "error",
         stage: result.diag.errorStage,
-        reason: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        reason:
+          result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
         startedAt,
         finishedAt: Date.now(),
         itemsSeen: result.diag.postsExtracted,
@@ -957,12 +1020,16 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
       assertFactoryResetEpoch(resetEpoch);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
-      const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      const filteredItems = filterExcludedGroups(
+        result.items,
+        excludedGroupIds,
+      );
       result.diag.candidateItems = filteredItems.length;
       result.diag.excludedItems = result.items.length - filteredItems.length;
       const beforeState = useAppStore.getState();
-      const before = beforeState.itemCountByPlatform?.facebook
-        ?? beforeState.items.filter((item) => item.platform === "facebook").length;
+      const before =
+        beforeState.itemCountByPlatform?.facebook ??
+        beforeState.items.filter((item) => item.platform === "facebook").length;
       addDebugEvent(
         "change",
         `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${result.diag.excludedItems.toLocaleString()} excluded)`,
@@ -972,8 +1039,9 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
       assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const afterState = useAppStore.getState();
-      const after = afterState.itemCountByPlatform?.facebook
-        ?? afterState.items.filter((item) => item.platform === "facebook").length;
+      const after =
+        afterState.itemCountByPlatform?.facebook ??
+        afterState.items.filter((item) => item.platform === "facebook").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       result.diag.existingItems = Math.max(
         0,
@@ -1030,7 +1098,11 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
     }
 
     // Persist success timestamp so the sync dropdown shows "Synced X ago"
-    const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
+    const successState = {
+      ...useAppStore.getState().fbAuth,
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
+    };
     store.setFbAuth(successState);
     storeFbAuthState(successState);
     assertFactoryResetEpoch(resetEpoch);
@@ -1054,10 +1126,15 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
   } catch (error) {
     if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
-      error instanceof Error ? error.message : "Failed to capture Facebook feed";
+      error instanceof Error
+        ? error.message
+        : "Failed to capture Facebook feed";
     store.setError(message);
     addDebugEvent("error", `[FB] captureFbFeed threw: ${message}`);
-    const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: message };
+    const errState = {
+      ...useAppStore.getState().fbAuth,
+      lastCaptureError: message,
+    };
     store.setFbAuth(errState);
     storeFbAuthState(errState);
     await recordProviderHealthEvent({

@@ -37,7 +37,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent: vi.fn() }));
-vi.mock("./library-client", () => ({ docBatchRefreshFeeds: mocks.docBatchRefreshFeeds }));
+vi.mock("./library-client", () => ({
+  docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
+}));
 vi.mock("./fb-capture", () => ({ captureFbFeed: vi.fn() }));
 vi.mock("./instagram-capture", () => ({ captureIgFeed: vi.fn() }));
 vi.mock("./li-capture", () => ({ captureLiFeed: vi.fn() }));
@@ -52,7 +54,8 @@ vi.mock("./runtime-health-events", () => ({
 }));
 vi.mock("./store", () => ({
   useAppStore: { getState: () => mocks.state },
-  withProviderSyncing: async (_provider: string, run: () => Promise<unknown>) => run(),
+  withProviderSyncing: async (_provider: string, run: () => Promise<unknown>) =>
+    run(),
 }));
 
 const FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -80,11 +83,12 @@ describe("RSS request surface counters", () => {
   });
 
   it("counts subscription, manual, and scheduled pulls without feed identifiers", async () => {
-    const { addRssFeed, refreshAllFeeds, refreshRssFeeds } = await import("./capture");
+    const { addRssFeed, refreshScheduledRssFeeds, refreshRssFeeds } =
+      await import("./capture");
 
     await addRssFeed("https://new.example/feed.xml");
     await refreshRssFeeds();
-    await refreshAllFeeds();
+    await refreshScheduledRssFeeds();
 
     expect(mocks.recordRssPullAttempt.mock.calls).toEqual([
       [{ trigger: "subscription" }],

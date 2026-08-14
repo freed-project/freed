@@ -33,6 +33,11 @@ type MediumSyncResult = AuthenticatedEssaySyncResult;
 
 export function captureMediumFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<MediumSyncResult> {
-  return captureAuthenticatedEssayProvider(MEDIUM_CAPTURE_CONFIG, trigger);
+  return captureAuthenticatedEssayProvider(
+    MEDIUM_CAPTURE_CONFIG,
+    trigger,
+    onProviderContact,
+  );
 }

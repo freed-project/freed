@@ -1,6 +1,6 @@
 import type { RssFeed } from "@freed/shared";
 
-export const SCHEDULED_RSS_STALE_AFTER_MS = 2 * 60 * 60 * 1000;
+export const SCHEDULED_RSS_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 export const SCHEDULED_RSS_MAX_FEEDS = 80;
 
 export interface RssRefreshPlanOptions {
