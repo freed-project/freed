@@ -123,7 +123,18 @@ describe("Friends Galaxy product worker", () => {
     const source = sourceRequest();
     const sourceResponse = service.handle(source);
     if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const targetNodeId = "account:product-account-498";
+    const targetNodeIndex = sourceResponse.rendererScene.scene.nodeIds.indexOf(targetNodeId);
+    if (targetNodeIndex < 0) throw new Error("Expected an unlinked account in the resident scene.");
+    const scale = 1.2;
     const request = presentationRequest();
+    request.viewport.transform = {
+      x: request.viewport.width / 2 -
+        sourceResponse.rendererScene.scene.positions[targetNodeIndex * 3]! * scale,
+      y: request.viewport.height / 2 +
+        sourceResponse.rendererScene.scene.positions[targetNodeIndex * 3 + 1]! * scale,
+      scale,
+    };
     const response = service.handle(request);
     if (response.kind !== "presentation-ready") {
       throw new Error("Expected a presentation response.");
@@ -158,8 +169,8 @@ describe("Friends Galaxy product worker", () => {
           priority: metadata.priority,
         };
       },
-      true,
-      "middle",
+      false,
+      "close",
       null,
       {
         viewProjection: matrix,
@@ -171,6 +182,10 @@ describe("Friends Galaxy product worker", () => {
     expect(resolvedNodeIds.length).toBeGreaterThan(0);
     expect(labels.every(
       (label) => label.provider || metadataByNodeId.has(label.nodeId),
+    )).toBe(true);
+    expect(labels.some(
+      (label) => label.nodeId.startsWith("account:") &&
+        label.nodeId !== "account:product-account-499",
     )).toBe(true);
   });
 
