@@ -311,18 +311,18 @@ export function MapView({ viewportInsets }: MapViewProps) {
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
       <div
-        className="pointer-events-none absolute bottom-4 z-20 flex justify-start"
+        className="pointer-events-none absolute z-20 flex justify-start"
         style={{
-          left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
-          maxWidth: "calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem)",
+          bottom: "var(--feed-card-gap, 8px)",
+          left: "var(--freed-canvas-viewport-inset-left, 0px)",
+          maxWidth: "calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px))",
         }}
       >
         <div
-          className="pointer-events-auto theme-floating-panel w-[min(32rem,calc(100vw-2rem))] px-4 py-3"
+          className="pointer-events-auto theme-floating-panel w-[min(32rem,100%)] px-2 py-2"
           data-testid="map-time-range-slider"
         >
-          <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
-            <span>Time</span>
+          <div className="flex items-center justify-end text-[10px] font-medium text-[color:var(--theme-text-muted)]">
             <div className="flex flex-wrap items-center justify-end gap-1 text-right">
               {timePresets.map((preset) => {
                 const active = activePreset === preset.value;
@@ -333,7 +333,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
                     data-testid={preset.testId}
                     aria-pressed={active}
                     disabled={!timeBounds}
-                    className={`rounded-full border px-2 py-1 text-[10px] font-medium transition-colors ${
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
                       active
                         ? "border-[color:rgb(var(--theme-accent-secondary-rgb)/0.28)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-soft)] hover:text-[color:var(--theme-text-secondary)]"
@@ -346,7 +346,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
               })}
             </div>
           </div>
-          <div className="relative mt-3 h-11">
+          <div className="relative mt-2 h-10">
             <div className="absolute left-0 right-0 top-3.5 h-1 -translate-y-1/2 rounded-full bg-[color:var(--theme-border-subtle)]" />
             <div
               className="absolute top-3.5 h-1 -translate-y-1/2 rounded-full bg-[color:var(--theme-accent-secondary)]"
@@ -380,14 +380,14 @@ export function MapView({ viewportInsets }: MapViewProps) {
               onChange={(event) => handleRangeEndChange(Number.parseInt(event.currentTarget.value, 10))}
             />
             <span
-              className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              className="absolute top-7 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-start-label"
               style={labelPositionStyle(rangeStartPercent, "start", labelsAreClose)}
             >
               {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.startAt) : "Start"}
             </span>
             <span
-              className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              className="absolute top-7 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-end-label"
               style={labelPositionStyle(rangeEndPercent, "end", labelsAreClose)}
             >
