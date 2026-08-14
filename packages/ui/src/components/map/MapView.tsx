@@ -12,7 +12,7 @@ import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { useLibrarySurfaceItems } from "../../hooks/useLibrarySurfaceItems.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
-import { useThemePreference } from "../../lib/theme.js";
+import { useAppliedThemeId } from "../../lib/theme.js";
 import { MapSurface } from "./MapSurface.js";
 
 const timeRangeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -158,7 +158,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const [deviceDisplay] = useDeviceDisplayPreferences();
-  const [themeId] = useThemePreference();
+  const themeId = useAppliedThemeId();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const readFallbackLocationItems = useCallback(

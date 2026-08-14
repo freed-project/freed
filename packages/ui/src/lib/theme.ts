@@ -64,11 +64,14 @@ const themeTransitionState: ThemeTransitionState = {
   token: 0,
 };
 type ThemePreferenceListener = () => void;
+type AppliedThemeListener = () => void;
 
 // Theme is installation-local. The Automerge field is legacy migration input,
 // never live authority, so a synchronized snapshot cannot repaint this device.
 const themePreferenceListeners = new Set<ThemePreferenceListener>();
+const appliedThemeListeners = new Set<AppliedThemeListener>();
 let currentThemeId = DEFAULT_THEME_ID;
+let currentAppliedThemeId = DEFAULT_THEME_ID;
 let themePreferenceHydrated = false;
 let themeStorageListenerInstalled = false;
 
@@ -131,6 +134,10 @@ function emitThemePreferenceChange(): void {
   for (const listener of themePreferenceListeners) listener();
 }
 
+function emitAppliedThemeChange(): void {
+  for (const listener of appliedThemeListeners) listener();
+}
+
 function installThemeStorageListener(): void {
   if (themeStorageListenerInstalled || typeof window === "undefined") return;
   themeStorageListenerInstalled = true;
@@ -158,6 +165,8 @@ export function getStoredThemeId(): ThemeId {
 
 export function applyThemeToDocument(themeId: ThemeId): void {
   if (typeof document === "undefined") return;
+  const appliedThemeChanged = currentAppliedThemeId !== themeId;
+  currentAppliedThemeId = themeId;
   const root = document.documentElement;
   root.dataset.theme = themeId;
   root.style.colorScheme = getThemeDefinition(themeId).surface;
@@ -178,6 +187,8 @@ export function applyThemeToDocument(themeId: ThemeId): void {
       themeColorMeta.content = browserThemeColor;
     }
   }
+
+  if (appliedThemeChanged) emitAppliedThemeChange();
 }
 
 function transitionThemeOnDocument(themeId: ThemeId): void {
@@ -285,6 +296,11 @@ function subscribeToThemePreference(listener: ThemePreferenceListener): () => vo
   return () => themePreferenceListeners.delete(listener);
 }
 
+function subscribeToAppliedTheme(listener: AppliedThemeListener): () => void {
+  appliedThemeListeners.add(listener);
+  return () => appliedThemeListeners.delete(listener);
+}
+
 export function useThemePreference(): readonly [ThemeId, (themeId: ThemeId) => boolean] {
   const themeId = useSyncExternalStore(
     subscribeToThemePreference,
@@ -292,6 +308,15 @@ export function useThemePreference(): readonly [ThemeId, (themeId: ThemeId) => b
     () => DEFAULT_THEME_ID,
   );
   return [themeId, setThemePreference] as const;
+}
+
+/** The theme currently painted on the document, including a transient preview. */
+export function useAppliedThemeId(): ThemeId {
+  return useSyncExternalStore(
+    subscribeToAppliedTheme,
+    () => currentAppliedThemeId,
+    () => DEFAULT_THEME_ID,
+  );
 }
 
 /** Remove this device's theme choice during a destructive local reset. */
@@ -307,6 +332,7 @@ export function resetThemePreference(): void {
 
 export function resetThemePreferenceForTests(): void {
   currentThemeId = DEFAULT_THEME_ID;
+  currentAppliedThemeId = DEFAULT_THEME_ID;
   themePreferenceHydrated = false;
 }
 
