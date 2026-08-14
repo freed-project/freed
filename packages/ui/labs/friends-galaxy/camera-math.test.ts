@@ -74,7 +74,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const limits = friendsGalaxyCameraScaleLimits(844, -224, 220);
     const envelope = friendsGalaxyOutwardZoomEnvelope(0.2, limits);
 
-    expect(envelope.target).toBeCloseTo(0.196, 12);
+    expect(envelope.target).toBe(0.2);
     expect(envelope.resistance).toBeCloseTo(0.36, 12);
     expect(envelope.target).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
@@ -175,7 +175,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     expect(transform.scale).toBe(frame.fittedScale);
     expect(projectedCenter.x).toBeCloseTo(720, 4);
     expect(projectedCenter.y).toBeCloseTo(412, 4);
-    expect(frame.outwardZoomEnvelope.target).toBeLessThanOrEqual(frame.fittedScale);
+    expect(frame.outwardZoomEnvelope.target).toBe(frame.fittedScale);
   });
 
   it("uses the compact exploration floor only for initial framing", () => {

@@ -2235,7 +2235,7 @@ export function FriendsView({
         ) : showDesktopSidebar ? (
           <div
             data-testid="friends-sidebar-shell"
-            className="flex shrink-0 overflow-hidden pt-[var(--feed-card-gap,8px)]"
+            className="flex shrink-0 overflow-hidden py-[var(--feed-card-gap,8px)]"
             style={{ width: `${sidebarWidth}px` }}
           >
             <aside

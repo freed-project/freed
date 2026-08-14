@@ -50,6 +50,9 @@ describe("Friends Galaxy navigation controller", () => {
       navigation.frame.fittedScale,
       12,
     );
+    expect(navigation.frame.outwardZoomEnvelope.target).toBe(
+      navigation.transform.scale,
+    );
   });
 
   it("focuses positive-depth identities at the bounded usable center", () => {
