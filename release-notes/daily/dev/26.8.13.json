@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.13",
   "date": "2026-08-13",
-  "preferredDeck": null,
+  "preferredDeck": "Run the Freed Library on SQLite and bounded IndexedDB without the legacy Automerge runtime, with substantially lower geographic Map memory",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
