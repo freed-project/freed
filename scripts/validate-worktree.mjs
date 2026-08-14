@@ -873,7 +873,13 @@ export function buildValidationPlan(mode, changedFiles) {
   if (normalizedMode === "production") {
     const plan = [
       ...buildValidationPlan("dev", changedFiles).filter(
-        (item) => item.label !== "root build" && item.label !== "website tests",
+        (item) =>
+          ![
+            "root build",
+            "root typecheck",
+            "root lint",
+            "website tests",
+          ].includes(item.label),
       ),
       nodeCommand("release notes shared tests", [
         "--test",
@@ -882,8 +888,8 @@ export function buildValidationPlan(mode, changedFiles) {
       // The website is a separate lane. It ships from `www` through the
       // publish-website job against the reviewed marketing branch, so building
       // it here proved nothing about the Desktop release and coupled two lanes
-      // that AGENTS.md keeps apart. The root build fanout also includes the
-      // website, so production validation inherits the already-green dev
+      // that AGENTS.md keeps apart. The root build, typecheck, and lint fanouts
+      // also include the website, so production validation inherits the green dev
       // product build and reruns only the release-critical product checks.
       //
       // The desktop production build is also gone: the release matrix runs the
