@@ -136,6 +136,8 @@ interface FeedListProps {
   onOpenCommentUrl?: (url: string) => void;
   /** True when a search query is active — changes the empty state message */
   isSearching?: boolean;
+  /** True while the active bounded Library reader is resolving its first page. */
+  loading?: boolean;
   /** The active search query text — used in the empty state message */
   searchQuery?: string;
   /** Request the next bounded row page when the virtual window nears its tail. */
@@ -324,6 +326,7 @@ export function FeedList({
   onItemLike,
   onOpenCommentUrl,
   isSearching = false,
+  loading = false,
   searchQuery = "",
   onLoadMore,
   hasMore = false,
@@ -349,7 +352,7 @@ export function FeedList({
     ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
   const { FeedEmptyState } = usePlatform();
-  const isLoading = useAppStore((s) => s.isLoading);
+  const isLoading = useAppStore((s) => s.isLoading) || loading;
   const activeFilter = useAppStore((s) => s.activeFilter);
 
   // Reset scroll position when the user switches sources/filters in the sidebar.

@@ -13910,6 +13910,8 @@ pub fn run() {
             library_core_desktop_runtime::append_sqlite_library_import,
             library_core_desktop_runtime::finalize_sqlite_library_import,
             library_core_desktop_runtime::read_sqlite_library_shell,
+            library_core_desktop_runtime::read_sqlite_library_counts,
+            library_core_desktop_runtime::read_sqlite_library_facet_summary,
             library_core_desktop_runtime::read_sqlite_library_sync_descriptor,
             library_core_desktop_runtime::bootstrap_sqlite_library_authority,
             library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,

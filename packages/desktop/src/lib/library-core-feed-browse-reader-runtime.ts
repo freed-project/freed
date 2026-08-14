@@ -2,12 +2,13 @@
 
 import {
   compileFriendAuthorIndex,
+  FEED_SIGNAL_FILTER_PRESETS,
   type FeedItem,
+  type FeedSignalMode,
   type SavedContentSortMode,
 } from "@freed/shared";
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
-  matchesLibraryCoreFeedBrowseFilterV1,
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowseDirectionV3,
@@ -49,7 +50,7 @@ function decodeCursor(cursor: string | null): number {
 
 async function openSqliteFeedReader(
   filterInput: LibraryCoreFeedBrowseFilterInputV1,
-  include: (item: FeedItem) => boolean = () => true,
+  authorKeys?: readonly Readonly<{ platform: string; authorId: string }>[],
   sortMode?: SavedContentSortMode,
 ): Promise<BoundedDesktopFeedReader> {
   const parsed = parseLibraryCoreFeedBrowseFilterV1(
@@ -60,54 +61,37 @@ async function openSqliteFeedReader(
   let nextOffset: number | null = 0;
   let closed = false;
 
-  const accepts = (item: FeedItem): boolean =>
-    matchesLibraryCoreFeedBrowseFilterV1(item, filter) && include(item);
+  const queryPage = (offset: number, includeTotalCount: boolean) => querySqliteItems({
+    platform: filter.platform ?? undefined,
+    authorId: filter.authorId ?? undefined,
+    feedUrl: filter.feedUrl ?? undefined,
+    contentType:
+      filter.socialContentFilter === "stories" ? "story" : undefined,
+    excludeContentType:
+      filter.socialContentFilter === "posts" ? "story" : undefined,
+    tags: filter.tags,
+    signals: filter.signals,
+    authorKeys,
+    saved: filter.savedOnly ? true : undefined,
+    archived: filter.archivedOnly ? true : false,
+    showHidden: filter.showHidden,
+    sortMode,
+    offset,
+    limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+    includeTotalCount,
+  });
 
   const readFiltered = async (startOffset: number) => {
-    const items: FeedItem[] = [];
-    let offset: number | null = startOffset;
-    while (offset !== null && items.length < LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT) {
-      const page = await querySqliteItems({
-        platform: filter.platform ?? undefined,
-        authorId: filter.authorId ?? undefined,
-        feedUrl: filter.feedUrl ?? undefined,
-        saved: filter.savedOnly ? true : undefined,
-        archived: filter.archivedOnly ? true : false,
-        showHidden: filter.showHidden,
-        sortMode,
-        offset,
-        limit: 128,
-      });
-      let consumed = 0;
-      for (const item of page.items) {
-        consumed += 1;
-        if (accepts(item)) items.push(item);
-        if (items.length === LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT) break;
-      }
-      const rawNext: number = offset + consumed;
-      offset = rawNext < page.totalCount ? rawNext : null;
-    }
-    return { items, nextOffset: offset };
+    const page = await queryPage(startOffset, false);
+    return { items: page.items, nextOffset: page.nextOffset };
   };
 
-  let filteredTotalCount = 0;
-  let countOffset: number | null = 0;
-  while (countOffset !== null) {
-    const page = await querySqliteItems({
-      platform: filter.platform ?? undefined,
-      authorId: filter.authorId ?? undefined,
-      feedUrl: filter.feedUrl ?? undefined,
-      saved: filter.savedOnly ? true : undefined,
-      archived: filter.archivedOnly ? true : false,
-      showHidden: filter.showHidden,
-      sortMode,
-      offset: countOffset,
-      limit: 128,
-    });
-    filteredTotalCount += page.items.filter(accepts).length;
-    countOffset = page.nextOffset;
-  }
-  const initial = await readFiltered(0);
+  const exactInitialPage = await queryPage(0, true);
+  const initial = {
+    items: exactInitialPage.items,
+    nextOffset: exactInitialPage.nextOffset,
+  };
+  const filteredTotalCount = exactInitialPage.totalCount;
   return {
     totalCount: filteredTotalCount,
     async readNext() {
@@ -153,7 +137,7 @@ export async function openSortedSqliteFeedReader(
   filter: LibraryCoreFeedBrowseFilterInputV1,
   sortMode: SavedContentSortMode,
 ): Promise<BoundedDesktopFeedReader> {
-  return openSqliteFeedReader(filter, () => true, sortMode);
+  return openSqliteFeedReader(filter, undefined, sortMode);
 }
 
 export async function openBoundedDesktopFriendsFeedReader(
@@ -168,13 +152,38 @@ export async function openBoundedDesktopFriendsFeedReader(
     state?.accounts ?? {},
     state?.friends ?? {},
   );
-  const reader = await openSqliteFeedReader(
-    filter,
-    (item) => friends.has(item.platform, item.author.id),
-  );
+  const reader = await openSqliteFeedReader(filter, friends.entries());
   return {
     totalCount: reader.totalCount,
     readNext: reader.readNext,
     close: reader.close,
   };
+}
+
+export async function readDesktopFeedSignalCounts(
+  filterInput: LibraryCoreFeedBrowseFilterInputV1,
+): Promise<Readonly<Record<FeedSignalMode, number>>> {
+  const parsed = parseLibraryCoreFeedBrowseFilterV1(
+    normalizeLibraryCoreFeedBrowseFilterV1(filterInput),
+  );
+  if (!parsed.ok) throw new Error(parsed.error);
+  const filter = parsed.value;
+  const entries = await Promise.all(FEED_SIGNAL_FILTER_PRESETS.map(async (preset) => {
+    const page = await querySqliteItems({
+      platform: filter.platform ?? undefined,
+      authorId: filter.authorId ?? undefined,
+      feedUrl: filter.feedUrl ?? undefined,
+      contentType: filter.socialContentFilter === "stories" ? "story" : undefined,
+      excludeContentType: filter.socialContentFilter === "posts" ? "story" : undefined,
+      tags: filter.tags,
+      signals: preset.mode === "all" ? undefined : preset.signals,
+      saved: filter.savedOnly ? true : undefined,
+      archived: filter.archivedOnly ? true : false,
+      showHidden: filter.showHidden,
+      limit: 1,
+      includeTotalCount: true,
+    });
+    return [preset.mode, page.totalCount] as const;
+  }));
+  return Object.fromEntries(entries) as Readonly<Record<FeedSignalMode, number>>;
 }

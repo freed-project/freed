@@ -9,7 +9,11 @@ import {
   LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT,
 } from "@freed/shared/library-core";
-import { querySqliteItems, readSqliteItems } from "./sqlite-library";
+import {
+  querySqliteItems,
+  readSqliteItems,
+  readSqliteLibraryFacetSummary,
+} from "./sqlite-library";
 
 const ITEM_SCAN_PAGE_LIMIT = 64;
 const MAXIMUM_FRIEND_GRAPH_KEYS = 5_000;
@@ -175,17 +179,21 @@ function assertFriendsRequest(request: LibraryFriendsGraphRequest): void {
 
 async function scanSqlitePages(
   query: Parameters<typeof querySqliteItems>[0],
-  visit: (item: FeedItem) => void | Promise<void>,
-): Promise<number> {
+  visit: (item: FeedItem) => void | "stop" | Promise<void | "stop">,
+): Promise<void> {
   let offset: number | null = 0;
-  let totalCount = 0;
   while (offset !== null) {
-    const page = await querySqliteItems({ ...query, offset, limit: 128 });
-    totalCount = page.totalCount;
-    for (const item of page.items) await visit(item);
+    const page = await querySqliteItems({
+      ...query,
+      offset,
+      limit: 128,
+      includeTotalCount: false,
+    });
+    for (const item of page.items) {
+      if (await visit(item) === "stop") return;
+    }
     offset = page.nextOffset;
   }
-  return totalCount;
 }
 
 function incrementCount(counts: Map<string, number>, label: string): void {
@@ -205,108 +213,157 @@ export async function readLibraryCoreItemDetail(globalId: string): Promise<FeedI
 }
 
 export async function readLibraryCoreFacetSummary(): Promise<LibraryCoreFacetSummary> {
-  let archivedCount = 0;
-  let sampleItemCount = 0;
-  let savedArchivedCount = 0;
-  let savedCount = 0;
-  const savedPlatforms = new Set<string>();
-  const tags = new Set<string>();
-  const totalCount = await scanSqlitePages({ showHidden: true }, (item) => {
-    if (item.userState.archived) archivedCount += 1;
-    if (item.sampleDataFingerprint) sampleItemCount += 1;
-    if (item.userState.saved) {
-      savedCount += 1;
-      savedPlatforms.add(item.platform);
-      if (item.userState.archived) savedArchivedCount += 1;
-    }
-    for (const tag of item.userState.tags ?? []) tags.add(tag);
-  });
-  return {
-    archivedCount,
-    sampleItemCount,
-    savedArchivedCount,
-    savedCount,
-    savedPlatformCount: savedPlatforms.size,
-    tags: [...tags].sort((left, right) => left.localeCompare(right)),
-    totalCount,
-  };
+  return readSqliteLibraryFacetSummary();
 }
 
 export async function readLibraryCoreFriendsGraph(
   request: LibraryFriendsGraphRequest,
 ): Promise<LibraryFriendsGraph> {
   assertFriendsRequest(request);
-  const social: LibraryFriendsGraphSocialActivity[] = [];
+  interface SocialAccumulator {
+    itemCount: number;
+    latestActivityAt: number;
+    recentCount: number;
+    avatarUrl: string | null;
+    avatarGlobalId: string | null;
+    avatarPublishedAt: number | null;
+    sampleItems: LibraryFriendsGraphSampleItem[];
+    locationCandidates: LibraryFriendsGraphLocationCandidate[];
+    signalCounts: Map<ContentSignal, number>;
+  }
+  const socialKey = (platform: string, authorId: string) => JSON.stringify([platform, authorId]);
+  const socialAccumulators = new Map<string, SocialAccumulator>();
   for (const source of request.sources) {
-    let itemCount = 0;
-    let latestActivityAt = 0;
-    let recentCount = 0;
-    let avatarUrl: string | null = null;
-    let avatarGlobalId: string | null = null;
-    let avatarPublishedAt: number | null = null;
-    const sampleItems: LibraryFriendsGraphSampleItem[] = [];
-    const locationCandidates: LibraryFriendsGraphLocationCandidate[] = [];
-    const signalCounts = new Map<ContentSignal, number>();
+    socialAccumulators.set(socialKey(source.platform, source.authorId), {
+      itemCount: 0,
+      latestActivityAt: 0,
+      recentCount: 0,
+      avatarUrl: null,
+      avatarGlobalId: null,
+      avatarPublishedAt: null,
+      sampleItems: [],
+      locationCandidates: [],
+      signalCounts: new Map(),
+    });
+  }
+  if (request.sources.length > 0) {
     await scanSqlitePages(
-      { platform: source.platform, authorId: source.authorId, showHidden: true },
+      { authorKeys: request.sources, showHidden: true, includeTotalCount: false },
       (item) => {
         if (item.userState.hidden) return;
-        itemCount += 1;
-        latestActivityAt = Math.max(latestActivityAt, item.publishedAt);
-        if (item.publishedAt >= request.recentWindow.startMs && item.publishedAt < request.recentWindow.endMs) recentCount += 1;
-        if (sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
-        if (item.author.avatarUrl && (avatarPublishedAt === null || item.publishedAt > avatarPublishedAt)) {
-          avatarUrl = item.author.avatarUrl;
-          avatarGlobalId = item.globalId;
-          avatarPublishedAt = item.publishedAt;
+        const accumulator = socialAccumulators.get(socialKey(item.platform, item.author.id));
+        if (!accumulator) return;
+        accumulator.itemCount += 1;
+        accumulator.latestActivityAt = Math.max(accumulator.latestActivityAt, item.publishedAt);
+        if (item.publishedAt >= request.recentWindow.startMs && item.publishedAt < request.recentWindow.endMs) {
+          accumulator.recentCount += 1;
         }
-        if (extractLocationFromItem(item) && locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
-          locationCandidates.push({ effectiveAt: item.timeRange?.startsAt ?? item.publishedAt, globalId: item.globalId, publishedAt: item.publishedAt });
+        if (accumulator.sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
+          accumulator.sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
         }
-        for (const signal of item.contentSignals?.tags ?? []) signalCounts.set(signal, (signalCounts.get(signal) ?? 0) + 1);
+        if (item.author.avatarUrl &&
+            (accumulator.avatarPublishedAt === null || item.publishedAt > accumulator.avatarPublishedAt)) {
+          accumulator.avatarUrl = item.author.avatarUrl;
+          accumulator.avatarGlobalId = item.globalId;
+          accumulator.avatarPublishedAt = item.publishedAt;
+        }
+        if (extractLocationFromItem(item) &&
+            accumulator.locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+          accumulator.locationCandidates.push({
+            effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
+            globalId: item.globalId,
+            publishedAt: item.publishedAt,
+          });
+        }
+        for (const signal of item.contentSignals?.tags ?? []) {
+          accumulator.signalCounts.set(signal, (accumulator.signalCounts.get(signal) ?? 0) + 1);
+        }
       },
     );
-    social.push({
+  }
+  const social = request.sources.map((source): LibraryFriendsGraphSocialActivity => {
+    const accumulator = socialAccumulators.get(socialKey(source.platform, source.authorId))!;
+    return {
       ...source,
-      itemCount,
-      latestActivityAt,
-      hasLocation: locationCandidates.length > 0,
-      locationCandidateCount: locationCandidates.length,
-      locationCandidates,
-      avatarGlobalId,
-      avatarPublishedAt,
-      avatarUrl,
-      sampleItems,
-      recentCount,
-      signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({ label, count: signalCounts.get(label) ?? 0 })),
-    });
-  }
+      itemCount: accumulator.itemCount,
+      latestActivityAt: accumulator.latestActivityAt,
+      hasLocation: accumulator.locationCandidates.length > 0,
+      locationCandidateCount: accumulator.locationCandidates.length,
+      locationCandidates: accumulator.locationCandidates,
+      avatarGlobalId: accumulator.avatarGlobalId,
+      avatarPublishedAt: accumulator.avatarPublishedAt,
+      avatarUrl: accumulator.avatarUrl,
+      sampleItems: accumulator.sampleItems,
+      recentCount: accumulator.recentCount,
+      signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
+        label,
+        count: accumulator.signalCounts.get(label) ?? 0,
+      })),
+    };
+  });
 
-  const rss: LibraryFriendsGraphRssActivity[] = [];
-  for (const feedUrl of request.rssFeedUrls) {
-    let itemCount = 0;
-    let latestActivityAt = 0;
-    let avatarUrl: string | null = null;
-    let avatarGlobalId: string | null = null;
-    let avatarPublishedAt: number | null = null;
-    const sampleItems: LibraryFriendsGraphSampleItem[] = [];
-    const locationCandidates: LibraryFriendsGraphLocationCandidate[] = [];
-    await scanSqlitePages({ platform: "rss", feedUrl, showHidden: true }, (item) => {
-      if (item.userState.hidden) return;
-      itemCount += 1;
-      latestActivityAt = Math.max(latestActivityAt, item.publishedAt);
-      if (sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
-      if (item.author.avatarUrl && (avatarPublishedAt === null || item.publishedAt > avatarPublishedAt)) {
-        avatarUrl = item.author.avatarUrl;
-        avatarGlobalId = item.globalId;
-        avatarPublishedAt = item.publishedAt;
+  interface RssAccumulator {
+    itemCount: number;
+    latestActivityAt: number;
+    avatarUrl: string | null;
+    avatarGlobalId: string | null;
+    avatarPublishedAt: number | null;
+    sampleItems: LibraryFriendsGraphSampleItem[];
+    locationCandidates: LibraryFriendsGraphLocationCandidate[];
+  }
+  const rssAccumulators = new Map<string, RssAccumulator>(request.rssFeedUrls.map((feedUrl) => [
+    feedUrl,
+    {
+      itemCount: 0,
+      latestActivityAt: 0,
+      avatarUrl: null,
+      avatarGlobalId: null,
+      avatarPublishedAt: null,
+      sampleItems: [],
+      locationCandidates: [],
+    },
+  ]));
+  if (rssAccumulators.size > 0) {
+    await scanSqlitePages({ platform: "rss", showHidden: true }, (item) => {
+      const feedUrl = item.rssSource?.feedUrl;
+      const accumulator = feedUrl ? rssAccumulators.get(feedUrl) : undefined;
+      if (!accumulator || item.userState.hidden) return;
+      accumulator.itemCount += 1;
+      accumulator.latestActivityAt = Math.max(accumulator.latestActivityAt, item.publishedAt);
+      if (accumulator.sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
+        accumulator.sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
       }
-      if (extractLocationFromItem(item) && locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
-        locationCandidates.push({ effectiveAt: item.timeRange?.startsAt ?? item.publishedAt, globalId: item.globalId, publishedAt: item.publishedAt });
+      if (item.author.avatarUrl &&
+          (accumulator.avatarPublishedAt === null || item.publishedAt > accumulator.avatarPublishedAt)) {
+        accumulator.avatarUrl = item.author.avatarUrl;
+        accumulator.avatarGlobalId = item.globalId;
+        accumulator.avatarPublishedAt = item.publishedAt;
+      }
+      if (extractLocationFromItem(item) &&
+          accumulator.locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+        accumulator.locationCandidates.push({
+          effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
+          globalId: item.globalId,
+          publishedAt: item.publishedAt,
+        });
       }
     });
-    rss.push({ feedUrl, itemCount, latestActivityAt, hasLocation: locationCandidates.length > 0, locationCandidateCount: locationCandidates.length, locationCandidates, avatarGlobalId, avatarPublishedAt, avatarUrl, sampleItems });
   }
+  const rss = request.rssFeedUrls.map((feedUrl): LibraryFriendsGraphRssActivity => {
+    const accumulator = rssAccumulators.get(feedUrl)!;
+    return {
+      feedUrl,
+      itemCount: accumulator.itemCount,
+      latestActivityAt: accumulator.latestActivityAt,
+      hasLocation: accumulator.locationCandidates.length > 0,
+      locationCandidateCount: accumulator.locationCandidates.length,
+      locationCandidates: accumulator.locationCandidates,
+      avatarGlobalId: accumulator.avatarGlobalId,
+      avatarPublishedAt: accumulator.avatarPublishedAt,
+      avatarUrl: accumulator.avatarUrl,
+      sampleItems: accumulator.sampleItems,
+    };
+  });
 
   const totalItemCount = (await querySqliteItems({ showHidden: true, limit: 1 })).totalCount;
   return { sourceToken: "sqlite", totalItemCount, social, rss };
@@ -339,29 +396,17 @@ export async function readLibraryCorePersonTimeline(
   }
   const rawOffset = request.cursor?.startsWith("sqlite:") ? Number.parseInt(request.cursor.slice(7), 10) : 0;
   const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
-  const rows: FeedItem[] = [];
-  let totalCount = 0;
-  for (const source of request.sources) {
-    const required = offset + limit;
-    let sourceOffset = 0;
-    let sourceTotal = 0;
-    while (sourceOffset < required) {
-      const page = await querySqliteItems({
-        platform: source.platform,
-        authorId: source.authorId,
-        showHidden: false,
-        offset: sourceOffset,
-        limit: Math.min(128, required - sourceOffset),
-      });
-      sourceTotal = page.totalCount;
-      rows.push(...page.items);
-      if (page.nextOffset === null) break;
-      sourceOffset = page.nextOffset;
-    }
-    totalCount += sourceTotal;
-  }
-  rows.sort((left, right) => right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId));
-  const items = rows.slice(offset, offset + limit);
+  const onlySource = request.sources.length === 1 ? request.sources[0] : undefined;
+  const page = await querySqliteItems({
+    platform: onlySource?.platform,
+    authorId: onlySource?.authorId,
+    authorKeys: onlySource ? undefined : request.sources,
+    showHidden: false,
+    offset,
+    limit,
+  });
+  const items = page.items;
+  const totalCount = page.totalCount;
   const next = offset + items.length;
   return { items, totalCount, nextCursor: next < totalCount ? `sqlite:${next}` : null };
 }
@@ -402,12 +447,17 @@ export async function readLibraryCoreSavedAnalytics(
 
 export async function readLibraryCoreSurfaceItems(surface: LibraryCoreSurface): Promise<readonly FeedItem[]> {
   const rows: FeedItem[] = [];
-  await scanSqlitePages({ showHidden: false }, (item) => {
-    if (rows.length >= SURFACE_LIMITS[surface]) return;
+  await scanSqlitePages({
+    showHidden: false,
+    includeTotalCount: false,
+    ...(surface === "map" ? { locationCandidate: true } : { hasMedia: true }),
+  }, (item) => {
+    if (rows.length >= SURFACE_LIMITS[surface]) return "stop";
     const matches = surface === "map"
       ? extractLocationFromItem(item) !== null
       : !item.userState.archived && (item.content.mediaUrls?.length ?? 0) > 0;
     if (matches) rows.push(item);
+    return rows.length >= SURFACE_LIMITS[surface] ? "stop" : undefined;
   });
   return rows;
 }
@@ -419,7 +469,12 @@ export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemS
     async nextPage(): Promise<LibraryCoreItemScanPage> {
       if (closed) throw new Error("Library Core item scan session is closed");
       if (offset === null) return { items: [], done: true };
-      const page = await querySqliteItems({ offset, limit: ITEM_SCAN_PAGE_LIMIT, showHidden: true });
+      const page = await querySqliteItems({
+        offset,
+        limit: ITEM_SCAN_PAGE_LIMIT,
+        showHidden: true,
+        includeTotalCount: false,
+      });
       offset = page.nextOffset;
       return { items: page.items, done: offset === null };
     },
@@ -427,28 +482,40 @@ export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemS
   };
 }
 
+export interface LibraryCoreItemScanFilter {
+  readonly hasLinkPreview?: boolean;
+  readonly missingPreservedText?: boolean;
+}
+
 async function scanLibraryCoreItemsExclusive(
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  filter: LibraryCoreItemScanFilter,
 ): Promise<void> {
-  const session = await openLibraryCoreItemScanSession();
+  let offset: number | null = 0;
   try {
     for (;;) {
-      const page = await session.nextPage();
+      const page = await querySqliteItems({
+        ...filter,
+        offset: offset ?? 0,
+        limit: ITEM_SCAN_PAGE_LIMIT,
+        showHidden: true,
+        includeTotalCount: false,
+      });
       await visitPage(page.items);
-      if (page.done) return;
+      offset = page.nextOffset;
+      if (offset === null) return;
     }
-  } finally {
-    await session.close();
-  }
+  } finally { /* The native query owns no persistent cursor. */ }
 }
 
 export async function scanLibraryCoreItems(
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  filter: LibraryCoreItemScanFilter = {},
 ): Promise<void> {
   while (activeItemScan !== null) {
     try { await activeItemScan; } catch { /* A failed consumer cannot block the next scan. */ }
   }
-  const current = scanLibraryCoreItemsExclusive(visitPage);
+  const current = scanLibraryCoreItemsExclusive(visitPage, filter);
   activeItemScan = current;
   try { await current; } finally { if (activeItemScan === current) activeItemScan = null; }
 }

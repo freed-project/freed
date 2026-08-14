@@ -90,16 +90,20 @@ function prepareFacetSummary(
 export function useLibraryFacetSummary(
   fallbackItems: FeedItem[],
   sourceVersion: number,
+  enabled = true,
+  allowLegacyFallback = true,
 ): LibraryFacetSummary {
   const { readLibraryFacetSummary } = usePlatform();
   const [versionedSummary, setVersionedSummary] = useState<VersionedFacetSummary | null>(() => {
-    if (!readLibraryFacetSummary) return null;
+    if (!enabled || !readLibraryFacetSummary) return null;
     const result = prepareFacetSummary(readLibraryFacetSummary, sourceVersion).result;
     return result ? { sourceVersion, summary: result } : null;
   });
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
   const shouldFallback =
-    !readLibraryFacetSummary || failedVersion === sourceVersion;
+    enabled &&
+    allowLegacyFallback &&
+    (!readLibraryFacetSummary || failedVersion === sourceVersion);
   useLegacyLibraryItems(shouldFallback);
   const fallback = useMemo(
     () => (shouldFallback ? summarizeItems(fallbackItems) : null),
@@ -108,7 +112,7 @@ export function useLibraryFacetSummary(
 
   useEffect(() => {
     let cancelled = false;
-    if (!readLibraryFacetSummary) {
+    if (!enabled || !readLibraryFacetSummary) {
       setVersionedSummary(null);
       setFailedVersion(null);
       return () => {
@@ -132,8 +136,9 @@ export function useLibraryFacetSummary(
     return () => {
       cancelled = true;
     };
-  }, [readLibraryFacetSummary, sourceVersion]);
+  }, [enabled, readLibraryFacetSummary, sourceVersion]);
 
+  if (!enabled) return EMPTY_FACET_SUMMARY;
   if (fallback) return fallback;
   return versionedSummary?.sourceVersion === sourceVersion
     ? versionedSummary.summary

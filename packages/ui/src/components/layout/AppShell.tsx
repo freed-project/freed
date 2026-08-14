@@ -106,7 +106,6 @@ export function AppShell({ children }: AppShellProps) {
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
-  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
   const previousActiveViewRef = useRef(activeView);
   const accounts = useAppStore((s) => s.accounts);
@@ -172,7 +171,6 @@ export function AppShell({ children }: AppShellProps) {
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
-  const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
   const provisionalPersonScanRef = useRef("");
   const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
@@ -427,55 +425,15 @@ export function AppShell({ children }: AppShellProps) {
   }, [accounts, isInitialized, removeAccount]);
 
   useEffect(() => {
-    if (!isInitialized) return;
-    const itemCount = scanLibraryItems ? searchCorpusVersion : items.length;
-    const accountCount = Object.keys(accounts).length;
-    const previous = discoveredAccountScanRef.current;
-    if (itemCount === previous.itemCount && accountCount === previous.accountCount) {
-      return;
-    }
-    discoveredAccountScanRef.current = { itemCount, accountCount };
-    if (!scanLibraryItems) {
-      const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
-      if (missingAccounts.length > 0) void addAccounts(missingAccounts);
-      return;
-    }
-    const discovered = { ...accounts };
-    void scanLibraryItems((page) => {
-      for (const account of buildDiscoveredAccountsFromItems(
-        [...page],
-        discovered,
-      )) {
-        discovered[account.id] = account;
-      }
-      return "continue";
-    })
-      .then(() => {
-        const missingAccounts = Object.values(discovered).filter(
-          (account) => !accounts[account.id],
-        );
-        if (missingAccounts.length > 0) return addAccounts(missingAccounts);
-      })
-      .catch((error) => {
-        addDebugEvent(
-          "error",
-          `[Identity] bounded account discovery failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        const fallbackAccounts = buildDiscoveredAccountsFromItems(
-          items,
-          accounts,
-        );
-        if (fallbackAccounts.length > 0) return addAccounts(fallbackAccounts);
-      });
+    if (!isInitialized || scanLibraryItems) return;
+    const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
+    if (missingAccounts.length > 0) void addAccounts(missingAccounts);
   }, [
     accounts,
     addAccounts,
     isInitialized,
     items,
     scanLibraryItems,
-    searchCorpusVersion,
   ]);
 
   useEffect(() => {

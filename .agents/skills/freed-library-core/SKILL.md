@@ -759,6 +759,18 @@ Blocking Library Core proofs are:
 - bounded query enforcement and full semantics beyond the legacy 2,500-item cap
   on every supported adapter.
 
+Before the first production release of a new read engine, profile the cold
+first result on the owner's largest available corpus. Exercise startup, the
+default feed, each common filter transition, search, map, friends, saved, and
+one single-row mutation. A bounded page API must return its first bounded page
+without scanning or decoding the full corpus first. Audit always-mounted
+aggregates, subscriptions, and mutation refreshes for hidden O(n) work and
+record the bytes crossing the native-to-renderer boundary. While a row query is
+pending, the UI must render that query's loading state. It must never infer an
+empty result from stale or absent rows. Long stress matrices remain Tier 4, but
+this cold-path admission is part of the feature slice because it proves the
+architecture actually serves the product workload it was built for.
+
 For a read cutover, typecheck is also a consumer inventory: removing the
 full-corpus state field must expose every remaining reader. Preserve existing
 search semantics with parity fixtures or deliberately version the query after

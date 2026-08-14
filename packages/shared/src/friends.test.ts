@@ -143,6 +143,12 @@ describe("compiled Friends author index", () => {
     expect(index.has("x", "legacy-missing")).toBe(true);
     expect(index.has("x", "legacy-only")).toBe(true);
     expect(index.has("x", "unknown")).toBe(false);
+    expect(index.entries()).toEqual([
+      { platform: "x", authorId: "friend-author" },
+      { platform: "x", authorId: "legacy-missing" },
+      { platform: "x", authorId: "legacy-only" },
+      { platform: "x", authorId: "legacy-unlinked" },
+    ]);
   });
 
   it("lets the first duplicate social Account own the decision", () => {

@@ -96,14 +96,21 @@ async function loadContentFetcherModule(options: {
         await visitPage(latestItems);
       }),
   );
-  const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
+  const mockSubscribe = vi.fn<(cb: (
+    state: { items: FeedItem[]; docItemCount: number },
+    event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
+  ) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
       latestItems = state.items;
-      cb(state);
+      cb(state, {
+        source: "state_update",
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
     };
     return () => {
       subscriberRef.current = null;
@@ -228,14 +235,21 @@ async function loadContentFetcherModuleWithAi({
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
-  const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
+  const mockSubscribe = vi.fn<(cb: (
+    state: { items: FeedItem[]; docItemCount: number },
+    event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
+  ) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
       latestItems = state.items;
-      cb(state);
+      cb(state, {
+        source: "state_update",
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
     };
     return () => {
       subscriberRef.current = null;
@@ -352,6 +366,10 @@ describe("content fetcher", () => {
     mod.stop();
 
     expect(mockScanLibraryCoreItems).toHaveBeenCalledTimes(1);
+    expect(mockScanLibraryCoreItems).toHaveBeenCalledWith(
+      expect.any(Function),
+      { hasLinkPreview: true, missingPreservedText: true },
+    );
     expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
       url: SAMPLE_URL,
       maxBytes: 2 * 1024 * 1024,

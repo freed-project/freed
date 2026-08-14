@@ -25,6 +25,7 @@ import {
   getFeedArchiveCounts,
 } from "../lib/feed-action-scope.js";
 import { collectAllTags } from "../lib/tag-navigation.js";
+import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
 import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 export const LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY =
@@ -81,7 +82,6 @@ const MAXIMUM_PALETTE_TAGS = 4_096;
 const MAXIMUM_PALETTE_TAG_BYTES = 1_024;
 const MAXIMUM_PALETTE_TAG_SET_BYTES = 8 * 1_048_576;
 const TAG_ENCODER = new TextEncoder();
-
 function emptyPaletteScan(
   status: PaletteScanState["status"],
   sourceVersion: number,
@@ -221,6 +221,7 @@ export function useLibraryCommandPaletteReader({
 }: UseLibraryCommandPaletteReaderOptions): LibraryCommandPaletteReaderResult {
   const platform = usePlatform();
   const {
+    readLibraryFacetSummary,
     readLibraryItemDetail,
     scanLibraryItems,
     store,
@@ -263,6 +264,12 @@ export function useLibraryCommandPaletteReader({
   const nativeReaderAvailable = Boolean(
     scanLibraryItems && !nativeReaderDisabled,
   );
+  const libraryFacets = useLibraryFacetSummary(
+    fallbackItems,
+    sourceVersion,
+    nativeReaderAvailable,
+    Boolean(readLibraryFacetSummary) || !nativeReaderAvailable,
+  );
   const inputHasQuery = inputValue.trim().length > 0;
   const committedSearchHasQuery = searchQuery.trim().length > 0;
   const queryIsCommitted = inputValue.trim() === searchQuery.trim();
@@ -277,10 +284,12 @@ export function useLibraryCommandPaletteReader({
   ]);
   const latestQueryFenceKey = useRef(queryFenceKey);
   latestQueryFenceKey.current = queryFenceKey;
-  const scanNeeded = enabled && nativeReaderAvailable;
   const scanComplexScope = Boolean(
     activeView === "feed" && !inputHasQuery && compactCounts === null,
   );
+  const scanNeedsFacets = !readLibraryFacetSummary;
+  const scanNeeded =
+    enabled && nativeReaderAvailable && (scanComplexScope || scanNeedsFacets);
   const [paletteScan, setPaletteScan] = useState<PaletteScanState>(() =>
     emptyPaletteScan("idle", sourceVersion),
   );
@@ -301,7 +310,6 @@ export function useLibraryCommandPaletteReader({
     }
 
     let cancelled = false;
-    let invalid = false;
     let unreadCount = 0;
     let archivableCount = 0;
     let archivedUnsavedCount = 0;
@@ -312,26 +320,27 @@ export function useLibraryCommandPaletteReader({
     setPaletteScan(emptyPaletteScan("loading", sourceVersion));
     void (async () => {
       await scanLibraryItems((page) => {
-        if (cancelled || invalid) return "stop";
+        if (cancelled) return "stop";
         for (const item of page) {
-          for (const tag of item.userState.tags ?? []) {
-            if (!tags.has(tag)) {
-              const encodedBytes = TAG_ENCODER.encode(tag).byteLength;
-              if (
-                tags.size >= MAXIMUM_PALETTE_TAGS ||
-                encodedBytes > MAXIMUM_PALETTE_TAG_BYTES ||
-                tagBytes + encodedBytes > MAXIMUM_PALETTE_TAG_SET_BYTES
-              ) {
-                invalid = true;
-                return "stop";
+          if (scanNeedsFacets) {
+            for (const tag of item.userState.tags ?? []) {
+              if (!tags.has(tag)) {
+                const encodedBytes = TAG_ENCODER.encode(tag).byteLength;
+                if (
+                  tags.size >= MAXIMUM_PALETTE_TAGS ||
+                  encodedBytes > MAXIMUM_PALETTE_TAG_BYTES ||
+                  tagBytes + encodedBytes > MAXIMUM_PALETTE_TAG_SET_BYTES
+                ) {
+                  throw new Error("SearchJump tag set exceeds its bounded contract");
+                }
+                tagBytes += encodedBytes;
               }
-              tagBytes += encodedBytes;
+              tags.add(tag);
             }
-            tags.add(tag);
-          }
-          if (item.userState.archived) {
-            if (item.userState.saved) savedArchivedCount += 1;
-            else archivedUnsavedCount += 1;
+            if (item.userState.archived) {
+              if (item.userState.saved) savedArchivedCount += 1;
+              else archivedUnsavedCount += 1;
+            }
           }
           if (
             item.userState.hidden ||
@@ -353,9 +362,6 @@ export function useLibraryCommandPaletteReader({
         }
         return "continue";
       });
-      if (invalid) {
-        throw new Error("SearchJump tag set exceeds the bounded reader contract");
-      }
       if (!cancelled) {
         setScanFallbackLatched(false);
         setPaletteScan({
@@ -383,6 +389,7 @@ export function useLibraryCommandPaletteReader({
     normalizedFilter,
     scanLibraryItems,
     scanComplexScope,
+    scanNeedsFacets,
     scanNeeded,
     sourceVersion,
     store,
@@ -567,22 +574,22 @@ export function useLibraryCommandPaletteReader({
     archivableScopeCount: scopeCounts.archivableCount,
     archivedUnsavedCount: fallbackActive
       ? fallbackArchiveCounts.archivedCount
-      : paletteScanReady
+      : scanNeedsFacets && paletteScanReady
         ? paletteScan.archivedUnsavedCount
-        : 0,
+        : Math.max(0, libraryFacets.archivedCount - libraryFacets.savedArchivedCount),
     archiveScopeRead: () => runScopeAction("archive"),
     markScopeRead: () => runScopeAction("read"),
     savedArchivedCount: fallbackActive
       ? fallbackArchiveCounts.savedArchivedCount
-      : paletteScanReady
+      : scanNeedsFacets && paletteScanReady
         ? paletteScan.savedArchivedCount
-        : 0,
+        : libraryFacets.savedArchivedCount,
     selectedItem,
     tags: fallbackActive
       ? fallbackTags
-      : paletteScanReady
+      : scanNeedsFacets && paletteScanReady
         ? paletteScan.tags
-        : [],
+        : libraryFacets.tags,
     unreadScopeCount: scopeCounts.unreadCount,
   };
 }

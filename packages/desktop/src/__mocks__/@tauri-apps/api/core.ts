@@ -220,6 +220,68 @@ function sqliteShellResult() {
   };
 }
 
+function sqliteCountsResult() {
+  const state = sqliteLibrary();
+  const shell = sqliteShellResult();
+  const archivableByPlatform: Record<string, number> = {};
+  const feedCounts: Record<string, number> = {};
+  const unreadFeedCounts: Record<string, number> = {};
+  const archivableFeedCounts: Record<string, number> = {};
+  for (const item of Object.values(state.items).filter((entry) => !entry.__deleted)) {
+    const user = sqliteItemUserState(item);
+    const platform = item.platform ?? "unknown";
+    const archivable = user.readAt != null && !user.saved;
+    if (archivable) {
+      archivableByPlatform[platform] = (archivableByPlatform[platform] ?? 0) + 1;
+    }
+    const feedUrl = item.rssSource?.feedUrl;
+    if (!feedUrl) continue;
+    feedCounts[feedUrl] = (feedCounts[feedUrl] ?? 0) + 1;
+    if (user.readAt == null) {
+      unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] ?? 0) + 1;
+    }
+    if (archivable) {
+      archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] ?? 0) + 1;
+    }
+  }
+  return {
+    revision: shell.revision,
+    itemCount: shell.itemCount,
+    unreadCount: shell.unreadCount,
+    archivableCount: shell.archivableCount,
+    countsByPlatform: shell.countsByPlatform,
+    unreadByPlatform: shell.unreadByPlatform,
+    archivableByPlatform,
+    feedCounts,
+    unreadFeedCounts,
+    archivableFeedCounts,
+  };
+}
+
+function sqliteFacetSummary() {
+  const items = Object.values(sqliteLibrary().items).filter((item) => !item.__deleted);
+  const tags = new Set<string>();
+  for (const item of items) {
+    for (const tag of (sqliteItemUserState(item).tags as string[] | undefined) ?? []) {
+      tags.add(tag);
+    }
+  }
+  return {
+    archivedCount: items.filter((item) => Boolean(sqliteItemUserState(item).archived)).length,
+    sampleItemCount: items.filter((item) => Boolean(item.sampleData)).length,
+    savedArchivedCount: items.filter((item) => {
+      const user = sqliteItemUserState(item);
+      return Boolean(user.saved) && Boolean(user.archived);
+    }).length,
+    savedCount: items.filter((item) => Boolean(sqliteItemUserState(item).saved)).length,
+    savedPlatformCount: new Set(items.filter((item) =>
+      Boolean(sqliteItemUserState(item).saved)
+    ).map((item) => item.platform)).size,
+    tags: [...tags].sort(),
+    totalCount: items.length,
+  };
+}
+
 function sqliteUpsertItems(args: Record<string, unknown>): null {
   const state = sqliteLibrary();
   const request = (args.request ?? {}) as { itemsBase64?: string[] };
@@ -285,6 +347,8 @@ const handlers: Record<string, Handler> = {
     };
   },
   read_sqlite_library_shell: sqliteShellResult,
+  read_sqlite_library_counts: sqliteCountsResult,
+  read_sqlite_library_facet_summary: sqliteFacetSummary,
   replace_sqlite_library_shell: (args: Record<string, unknown>) => {
     const state = sqliteLibrary();
     const request = args.request as { shellJson: string };
@@ -305,7 +369,12 @@ const handlers: Record<string, Handler> = {
       query?: string | null;
       platform?: string | null;
       authorId?: string | null;
+      authorKeys?: Array<{ platform: string; authorId: string }> | null;
       feedUrl?: string | null;
+      contentType?: string | null;
+      excludeContentType?: string | null;
+      tags?: string[] | null;
+      signals?: string[] | null;
       saved?: boolean | null;
       archived?: boolean | null;
       showHidden?: boolean;
@@ -316,13 +385,26 @@ const handlers: Record<string, Handler> = {
     const items = Object.values(sqliteLibrary().items)
       .filter((item) => {
         const user = sqliteItemUserState(item);
+        const itemSignals = ((item.contentSignals as { tags?: string[] } | undefined)?.tags ?? []);
+        const authorKeys = request.authorKeys ?? [];
         return !item.__deleted
           && (!request.platform || item.platform === request.platform)
+          && (!request.contentType || item.contentType === request.contentType)
+          && (!request.excludeContentType || item.contentType !== request.excludeContentType)
           && (request.saved == null || Boolean(user.saved) === request.saved)
           && (request.archived == null || Boolean(user.archived) === request.archived)
           && (request.showHidden || !user.hidden)
           && (!request.authorId || item.author?.id === request.authorId)
           && (!request.feedUrl || item.rssSource?.feedUrl === request.feedUrl)
+          && (authorKeys.length === 0 || authorKeys.some((key) =>
+            key.platform === item.platform && key.authorId === item.author?.id
+          ))
+          && (!request.tags?.length || request.tags.some((tag) =>
+            ((user.tags as string[] | undefined) ?? []).includes(tag)
+          ))
+          && (!request.signals?.length || request.signals.some((signal) =>
+            itemSignals.includes(signal)
+          ))
           && (!query || JSON.stringify(item).toLowerCase().includes(query));
       })
       .sort((left, right) => {
