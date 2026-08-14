@@ -49,6 +49,10 @@ const MAX_DRIVE_ERROR_BYTES = 4_096;
 
 export type GoogleDriveFetch = typeof fetch;
 
+function defaultGoogleDriveFetch(): GoogleDriveFetch {
+  return globalThis.fetch.bind(globalThis);
+}
+
 /**
  * Ordinary Library Core wire objects remain below 5 MB so Google Drive can
  * publish them in one multipart request. Large media uses a separate resumable
@@ -626,7 +630,7 @@ export async function discoverGoogleDriveLibraryCoreControlV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   assertLibraryId(input.libraryId);
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const expectedProperties = controlAppProperties(
     await libraryIdentityDigest(input.libraryId),
   );
@@ -663,7 +667,7 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     "Google Drive access token",
     MAX_ACCESS_TOKEN_BYTES,
   );
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
     properties: Object.freeze({
@@ -716,7 +720,7 @@ async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
   if (!isLibraryCoreOperationInstanceId(input.epochId)) {
     throw new TypeError("epochId must be a bounded Library Core identifier");
   }
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const libraryDigest = await libraryIdentityDigest(input.libraryId);
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
@@ -826,7 +830,7 @@ export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
   assertLibraryId(input.libraryId);
   assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const libraryDigest = await libraryIdentityDigest(input.libraryId);
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
@@ -935,7 +939,7 @@ export async function discoverGoogleDriveLibraryCoreResultSegmentsV1(input: {
   assertLibraryId(input.libraryId);
   assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const libraryDigest = await libraryIdentityDigest(input.libraryId);
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
@@ -1025,7 +1029,7 @@ export async function provisionGoogleDriveLibraryCoreControlV1(input: {
     return Object.freeze({ ...existing, created: false });
   }
 
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const bytes = textEncoder.encode("{}");
   const boundary = `freed-control-${await libraryIdentityDigest(input.libraryId)}`;
   const response = await googleFetch(
@@ -1086,7 +1090,7 @@ export async function discoverGoogleDriveLibraryCoreIntentHeadV1(input: {
   assertLibraryId(input.libraryId);
   assertLibraryId(input.epochId);
   assertLibraryId(input.actorId);
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const expectedProperties = intentHeadAppProperties(
     await libraryIdentityDigest(input.libraryId),
     await libraryIdentityDigest(input.epochId),
@@ -1140,7 +1144,7 @@ export async function provisionGoogleDriveLibraryCoreIntentHeadV1(input: {
     return Object.freeze({ ...existing, created: false });
   }
 
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const bytes = encodeIntentHead(head);
   const actorDigest = await actorIdentityDigest(head.actor_id);
   const boundary = `freed-intent-head-${actorDigest.slice(0, 32)}`;
@@ -1206,7 +1210,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
     "Google Drive intent-head file id",
     MAX_DRIVE_FILE_ID_BYTES,
   );
-  const googleFetch = options.googleFetch ?? fetch;
+  const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
   const immutableAdapter = createGoogleDriveLibraryCoreAdapterV1(options);
   const expectedPropertiesPromise = Promise.all([
     libraryIdentityDigest(options.libraryId),
@@ -1332,7 +1336,7 @@ export async function discoverGoogleDriveLibraryCoreResultHeadV1(input: {
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
     properties: expectedProperties,
-    googleFetch: input.googleFetch ?? fetch,
+    googleFetch: input.googleFetch ?? defaultGoogleDriveFetch(),
     signal: input.signal,
     maxFiles: 1,
   });
@@ -1360,7 +1364,7 @@ export async function provisionGoogleDriveLibraryCoreResultHeadV1(input: {
   };
   const existing = await discoverGoogleDriveLibraryCoreResultHeadV1(discovery);
   if (existing) return Object.freeze({ ...existing, created: false });
-  const googleFetch = input.googleFetch ?? fetch;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
   const actorDigest = await actorIdentityDigest(head.actor_id);
   const bytes = encodeResultHead(head);
   const boundary = `freed-result-head-${actorDigest.slice(0, 32)}`;
@@ -1399,7 +1403,7 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
   assertLibraryId(options.epochId);
   assertLibraryId(options.actorId);
   assertBoundedText(options.resultHeadFileId, "Google Drive result-head file id", MAX_DRIVE_FILE_ID_BYTES);
-  const googleFetch = options.googleFetch ?? fetch;
+  const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
   const immutableAdapter = createGoogleDriveLibraryCoreAdapterV1(options);
   const expectedPropertiesPromise = Promise.all([
     libraryIdentityDigest(options.libraryId),
@@ -1488,7 +1492,7 @@ export function createGoogleDriveLibraryCoreAdapterV1(
     "Google Drive control file id",
     MAX_DRIVE_FILE_ID_BYTES,
   );
-  const googleFetch = options.googleFetch ?? fetch;
+  const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
   const libraryDigestPromise = libraryIdentityDigest(options.libraryId);
 
   async function readDescriptorAtFile(
