@@ -4190,6 +4190,22 @@ test("task-scoped factory claims survive retries, fence custody, and release exa
       error instanceof AutomationControlError &&
       error.code === "claim_epoch_mismatch",
   );
+  assert.throws(
+    () =>
+      heartbeatFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: {
+          ...heartbeatRequest,
+          custodyEpoch: 2,
+          heartbeatAt: new Date(nowMs + 12).toISOString(),
+        },
+        nowMs: nowMs + 12,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "control_event_conflict",
+  );
   const [shownAfterTransfer] = listFactoryExecutionClaims({ stateRoot }).claims;
   assert.ok(shownAfterTransfer);
   assert.equal(shownAfterTransfer.claim.hostId, "mac-one");
@@ -4255,6 +4271,11 @@ test("task-scoped factory claims survive retries, fence custody, and release exa
     manifest,
   );
   assert.equal(history.healthy, true, history.issues.join("\n"));
+  for (const event of readEvents(stateRoot).filter((candidate) =>
+    candidate.type.startsWith("task_claim_"),
+  )) {
+    assert.equal(event.eventId, event.data.operation.operationId);
+  }
 });
 
 test("direct control, outcome, and repair audit paths reject lease clock boundaries byte-stably", () => {

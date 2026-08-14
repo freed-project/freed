@@ -7908,6 +7908,7 @@ function canonicalFactoryClaimEvent(
     event.type !== expectedType ||
     !canonicalTaskEventEnvelope(event, event.type) ||
     !isCanonicalUuidV4(event.eventId) ||
+    event.eventId !== data?.operation?.operationId ||
     event.actor !== FACTORY_CLAIM_ACTOR ||
     !exactObjectKeys(data, [
       "activeClaim",
@@ -11170,6 +11171,7 @@ function runFactoryClaimMutation({
           manifest,
           task: prepared.task,
           actor,
+          eventId: request.operationId,
           eventType: `task_${action.replaceAll("-", "_")}`,
           eventData: {
             activeClaim:

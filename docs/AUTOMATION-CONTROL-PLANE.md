@@ -310,7 +310,9 @@ task claim-release
 Mutations accept one exact versioned request through `--request-json`. A
 caller-owned UUID and canonical request digest make the latest operation for a
 task replay-safe after response loss. Reusing the UUID for changed bytes is an
-`operation_replay_conflict`. Heartbeats move `claimed` to `running`. Transfers
+`operation_replay_conflict`. The UUID is also the immutable control-event ID,
+so it remains globally one-use after the latest receipt advances. Heartbeats
+move `claimed` to `running`. Transfers
 advance exactly one custody epoch and bind a checkpoint digest. A stale epoch,
 task revision, heartbeat, or release cannot take custody from the current
 owner. While a claim is active, normal task transitions and authority updates
