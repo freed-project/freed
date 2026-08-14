@@ -438,9 +438,9 @@
   border-left: 2px solid var(--theme-heading-accent);
   color: var(--theme-text-secondary);
   line-height: 1.7;
-  margin: 2rem 0 0 clamp(1rem, 5vw, 4.5rem);
-  max-width: 58rem;
+  margin: 2rem auto 0;
   padding-left: 1.25rem;
+  width: min(52rem, calc(100% - clamp(2rem, 12vw, 10rem)));
 }
 
 .modelNote > strong {
