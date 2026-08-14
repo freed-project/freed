@@ -17,7 +17,6 @@
   padding-right: clamp(1.5rem, 4vw, 3rem);
 }
 
-.eyebrow,
 .cardLabel,
 .pathStage,
 .scenarioGrid article > p:first-child,
@@ -31,14 +30,14 @@
 }
 
 .hero {
-  min-height: calc(100svh - 6rem);
-  padding: clamp(5rem, 10vw, 9rem) 0 clamp(4rem, 8vw, 7rem);
+  border-bottom: 1px solid var(--theme-border-subtle);
+  padding: clamp(4rem, 7vw, 6rem) 0;
 }
 
 /* The opening is deliberately tighter than the rest of the page, which stays
    at the shared 76rem frame. Scoped to the hero so no other section moves. */
 .hero .frame {
-  max-width: 64rem;
+  max-width: 58rem;
 }
 
 .heroGrid {
@@ -64,10 +63,6 @@
   font-size: clamp(2.75rem, 6.25vw, 6.5rem);
   line-height: 0.88;
   margin-bottom: 0;
-  /* Sized so the headline fills its grid column and ends level with the body
-     copy beside it. max-width is in ch, so it tracks the font size: shrink one
-     without the other and the headline leaves a hole across the middle. */
-  max-width: 10ch;
   /* Nudge the headline down so its cap height lines up with the first line of
      body copy beside it. Measured against real glyph ink, not line boxes: the
      two fonts sit differently inside their line boxes, so aligning the boxes
@@ -131,7 +126,9 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(2, 1fr);
-  margin-top: clamp(2.5rem, 5vw, 4rem);
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: clamp(2rem, 2.5vw, 2.5rem);
   padding: 1.25rem 0;
 }
 
@@ -201,7 +198,7 @@
   display: grid;
   gap: clamp(3rem, 8vw, 8rem);
   grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
-  margin-top: 2.5rem;
+  margin-top: 0;
 }
 
 .proposition h2,
@@ -348,28 +345,10 @@
 .supportLoop li {
   min-height: 8rem;
   padding: 1.35rem 1.25rem;
-  position: relative;
 }
 
 .supportLoop li + li {
   border-left: 1px solid var(--theme-border-subtle);
-}
-
-.supportLoop li:not(:last-child)::after {
-  align-items: center;
-  background: var(--theme-bg-base);
-  border: 1px solid var(--theme-border-subtle);
-  border-radius: 999px;
-  color: var(--theme-heading-accent);
-  content: "→";
-  display: flex;
-  height: 1.75rem;
-  justify-content: center;
-  position: absolute;
-  right: -0.9rem;
-  top: 1.15rem;
-  width: 1.75rem;
-  z-index: 1;
 }
 
 .supportLoop strong,
@@ -459,7 +438,7 @@
   border-left: 2px solid var(--theme-heading-accent);
   color: var(--theme-text-secondary);
   line-height: 1.7;
-  margin: 2rem 0 0;
+  margin: 2rem 0 0 clamp(1rem, 5vw, 4.5rem);
   max-width: 58rem;
   padding-left: 1.25rem;
 }
@@ -603,7 +582,7 @@
 }
 
 .governanceGrid {
-  align-items: start;
+  align-items: center;
 }
 
 .governanceGrid ul {
@@ -620,11 +599,11 @@
   margin-top: 0;
 }
 
-.disclaimer {
+.page .disclaimer {
   color: var(--theme-text-muted);
   font-size: 0.75rem;
   line-height: 1.7;
-  margin: clamp(4rem, 8vw, 7rem) 0 0;
+  margin: clamp(6rem, 12vw, 10rem) 0 0;
 }
 
 @media (max-width: 1023px) {
@@ -682,21 +661,11 @@
     border-top: 1px solid var(--theme-border-subtle);
   }
 
-  .supportLoop li:nth-child(2)::after {
-    content: "↓";
-    right: 1.15rem;
-    top: auto;
-    bottom: -0.9rem;
-  }
 }
 
 @media (max-width: 639px) {
   .page {
     padding-top: 4.5rem;
-  }
-
-  .hero {
-    min-height: auto;
   }
 
   .hero h1 {
@@ -751,14 +720,6 @@
   .supportLoop li:nth-child(3) {
     border-left: 0;
     border-top: 1px solid var(--theme-border-subtle);
-  }
-
-  .supportLoop li:not(:last-child)::after,
-  .supportLoop li:nth-child(2)::after {
-    bottom: -0.9rem;
-    content: "↓";
-    right: 1.15rem;
-    top: auto;
   }
 
   .sources ul {

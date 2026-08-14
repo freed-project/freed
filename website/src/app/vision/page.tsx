@@ -81,7 +81,7 @@ export default function VisionPage() {
               </p>
               <p>
                 Freed curates the feed with your algos, not theirs. We&rsquo;re
-                restoring digital sovereignty at scale.
+                restoring digital sovereignty, at planetary scale
               </p>
             </div>
           </div>
@@ -90,8 +90,14 @@ export default function VisionPage() {
             <div>
               <strong>Working software</strong>
               <span>
-                Open source.{" "}
-                <Link href="/changelog">Active development</Link>.
+                <a
+                  href="https://github.com/freed-project/freed"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open
+                </a>{" "}
+                source. <Link href="/updates">Active</Link> development.
               </span>
             </div>
             <div>
@@ -104,7 +110,6 @@ export default function VisionPage() {
 
       <section className={styles.proposition} aria-labelledby="mechanism-title">
         <VisionReveal className={styles.frame}>
-          <p className={styles.eyebrow}>The cultural mechanism</p>
           <div className={styles.propositionGrid}>
             <h2 id="mechanism-title">Change the environment that shapes a mind.</h2>
             <div className={styles.propositionCopy}>
@@ -148,9 +153,8 @@ export default function VisionPage() {
 
       <section className={styles.capital} id="support" aria-labelledby="support-title">
         <VisionReveal className={styles.frame}>
-          <p className={styles.eyebrow}>Material support</p>
           <div className={styles.sectionHeading}>
-            <h2 id="support-title">Two groups can make Freed endure.</h2>
+            <h2 id="support-title">I need your help to scale this vision.</h2>
             <p>
               I need angels who can fund real engineering now, and I need users
               whose support proves the thesis those angels are betting on. Every
@@ -224,21 +228,23 @@ export default function VisionPage() {
 
       <section className={styles.governance} aria-labelledby="capital-title">
         <VisionReveal className={styles.frame}>
-          <p className={styles.eyebrow}>What capital must protect</p>
           <div className={styles.governanceGrid}>
-            <h2 id="capital-title">Freed's financing must preserve its reason to exist.</h2>
+            <h2 id="capital-title">Trust is the business model.</h2>
             <div>
               <p>
-                The core remains MIT licensed. Private feed data, relationships,
-                reading history, and attention are never the product. Capital
-                receives no control over an individual's ranking. Investors back
-                trust, distribution, adaptation, and execution.
+                Freed only works if people trust it not to become the thing it
+                was built to resist. The core remains MIT licensed. Private feed
+                data, relationships, reading history, and attention are never
+                the product. Investors receive no control over an individual's
+                ranking.
               </p>
               <p>
-                Some platforms may fight Freed. They can change technical
-                controls, suspend accounts, and bring legal claims. The company
-                must budget for that conflict, build beyond any one provider,
-                and avoid promises of uninterrupted access.
+                Investors back privacy, user control, open-source accountability,
+                distribution, and the execution needed to survive hostile
+                platforms. Freed must budget for changing technical controls,
+                account suspensions, and legal pressure while building beyond
+                any one provider. Financing that weakens this covenant destroys
+                the asset it bought.
               </p>
             </div>
           </div>
@@ -247,7 +253,6 @@ export default function VisionPage() {
 
       <section className={styles.invitation} aria-labelledby="invitation-title">
         <VisionReveal className={styles.frame}>
-          <p className={styles.eyebrow}>The next step</p>
           <div className={styles.invitationGrid}>
             <div>
               <h2 id="invitation-title">Give the next generation a mind of its own.</h2>

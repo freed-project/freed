@@ -55,6 +55,9 @@ export default function Footer() {
                 <li>
                   <FooterLink href="/changelog">Updates</FooterLink>
                 </li>
+                <li>
+                  <FooterLink href="/get">Get Freed</FooterLink>
+                </li>
               </ul>
             </div>
 
