@@ -21,14 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
 
@@ -37,6 +38,8 @@ jobs:
 
       - name: Validate protected release source and identity
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           EXPECTED_BRANCH="main"
@@ -63,12 +66,12 @@ jobs:
       release_matrix: ${{ steps.gen.outputs.release_matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
 
@@ -160,33 +163,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
         run: npm ci
 
       - name: Install Rust toolchain
+        if: needs.notes.outputs.release_channel != 'dev'
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           components: clippy
 
       - name: Cache Rust build artifacts
+        if: needs.notes.outputs.release_channel != 'dev'
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: packages/desktop/src-tauri -> target
 
       - name: Install native Linux dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -201,6 +209,7 @@ jobs:
             libxdo-dev
 
       - name: Install Playwright browsers
+        if: needs.notes.outputs.release_channel != 'dev'
         run: |
           sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
           npx playwright install --with-deps chromium
@@ -210,12 +219,17 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ needs.notes.outputs.release_channel }}" == "dev" ]]; then
-            npm run validate:dev
+            node scripts/validate-dev-integration-receipt.mjs \
+              --repo="${{ github.repository }}" \
+              --sha="$GITHUB_SHA" \
+              --branch=dev \
+              --workflow=ci.yml
           else
             npm run validate:production
           fi
         env:
           CI: "true"
+          GITHUB_TOKEN: ${{ github.token }}
 
   create-release:
     needs: [notes, validation]
@@ -278,12 +292,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -312,26 +326,6 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
-
-      - name: Force Automerge base64 WASM entry
-        shell: bash
-        run: |
-          node -e "
-            const fs = require('fs');
-            const p = 'node_modules/@automerge/automerge/package.json';
-            const pkg = JSON.parse(fs.readFileSync(p, 'utf-8'));
-            let n = 0;
-            for (const [, e] of Object.entries(pkg.exports || {})) {
-              if (typeof e !== 'object' || !e.browser) continue;
-              const b = e.browser;
-              if (typeof b === 'object' && typeof b.import === 'string' && b.import.includes('bundler')) {
-                b.import = b.import.replace(/fullfat_bundler/g, 'fullfat_base64');
-                n++;
-              }
-            }
-            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            console.log('Forced ' + n + ' Automerge export(s) to fullfat_base64');
-          "
 
       - name: Build workspace dependencies
         shell: bash
@@ -383,7 +377,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
 
       - name: Build and release
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -409,7 +403,14 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
-          includeUpdaterJson: false
+          # tauri-action v1 renamed includeUpdaterJson to uploadUpdaterJson, and
+          # the new name defaults to true. Actions silently ignores unknown
+          # inputs, so leaving the old name here would not error, it would just
+          # let the action publish its own per-matrix latest.json that the
+          # updater-manifest job below then has to clobber. Keep it off: that job
+          # owns latest.json, built from the .sig files this action uploads
+          # (uploadUpdaterSignatures defaults to true, which is what we want).
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
       # Upload a stable-named copy for /releases/latest/download/ links
@@ -457,10 +458,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
 
@@ -471,22 +472,45 @@ jobs:
           RELEASE_BODY: ${{ needs.notes.outputs.release_body }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          RELEASE_ID="${{ needs.create-release.outputs.release_id }}"
           printf '%s' "$RELEASE_BODY" > release-body.md
-          gh api "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" > release.json
+          gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}" > release-api.json
+          jq --arg tag "$TAG" '.tag_name = $tag' release-api.json > release.json
           rm -rf updater-signatures
           mkdir -p updater-signatures
-          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "*.sig" --dir updater-signatures
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api \
+              -H "Accept: application/octet-stream" \
+              "repos/${{ github.repository }}/releases/assets/${asset_id}" \
+              > "updater-signatures/${asset_name}"
+          done < <(
+            jq -r '.assets[] | select(.name | endswith(".sig")) | [.id, .name] | @tsv' release-api.json
+          )
           node scripts/generate-tauri-latest-from-release.mjs \
             --release-json release.json \
             --signature-dir updater-signatures \
             --notes-file release-body.md \
             --output latest.json \
             --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
+          existing_latest_id=$(jq -r '.assets[] | select(.name == "latest.json") | .id' release-api.json | head -n 1)
+          if [[ -n "$existing_latest_id" ]]; then
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${existing_latest_id}"
+          fi
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data-binary @latest.json \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=latest.json" \
+            >/dev/null
 
   # After all platform builds succeed, promote the draft to a published release
   publish:
-    needs: updater-manifest
+    needs: [updater-manifest, create-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -494,7 +518,16 @@ jobs:
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
+        run: |
+          jq -n \
+            --arg tag_name "${{ github.ref_name }}" \
+            --argjson draft false \
+            '{tag_name: $tag_name, draft: $draft}' \
+            > release-publish.json
+          gh api \
+            -X PATCH \
+            "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" \
+            --input release-publish.json >/dev/null
 
   # Redeploy the public marketing site after any GitHub release is public so
   # the checked-in changelog snapshot is rebuilt against the newly published
@@ -510,13 +543,13 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           ref: www
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -574,10 +607,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -596,9 +629,8 @@ jobs:
           fi
           ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"
 
-  # Stability W2-02: a red release pipeline becomes a triage-readable issue
-  # (label automation-triage) that scripts/triage.mjs ranks against alarms,
-  # soak verdicts, and canary regressions.
+  # A red release pipeline stays an automation-triage incident. Durable debt
+  # gets a separate issue carrying `debt`.
   triage-on-failure:
     needs:
       [
@@ -628,7 +660,7 @@ jobs:
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Ref: ${GITHUB_REF_NAME} (${GITHUB_SHA})
 
-          One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. Auto-filed for scripts/triage.mjs; close after the follow-up release ships."
+          One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. This is an incident, not the debt backlog. Close it after the follow-up release ships."
           existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"

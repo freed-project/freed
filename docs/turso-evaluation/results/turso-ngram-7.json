@@ -1,0 +1,288 @@
+{
+  "engine": "turso",
+  "variant": "ngram",
+  "scale": 7,
+  "rows": 110922,
+  "insertMs": 1087,
+  "corpusTextMB": 160,
+  "baseFootprintMB": 222.8,
+  "indexBuildMs": 28785,
+  "indexBuildRssBeforeMB": 773.9,
+  "indexBuildPeakRssMB": 1255.1,
+  "indexBuildRssDeltaMB": 481.2,
+  "rssSamples": 2490,
+  "afterFootprintMB": 549.3,
+  "indexSizeMB": 326.5,
+  "indexOverheadPctOfText": 204.1,
+  "files": [
+    "db.db 549.3MB",
+    "db.db-wal 0MB"
+  ],
+  "queries": [
+    {
+      "label": "single-veryhigh-freq",
+      "query": "that",
+      "hits": 54144,
+      "countP50ms": 513.71,
+      "countMinMs": 475.65,
+      "countMaxMs": 949.08,
+      "topP50ms": 499.73,
+      "topMinMs": 484.51,
+      "topIds": [
+        "x:2048825454262710515|",
+        "c4:x:2048825454262710515|",
+        "c6:x:2048825454262710515|",
+        "c2:x:2048825454262710515|",
+        "c5:x:2048825454262710515|"
+      ],
+      "topLiteralScoreP50ms": 501.83,
+      "topLiteralScoreIds": [
+        "x:2048825454262710515|3.991",
+        "c4:x:2048825454262710515|3.991",
+        "c6:x:2048825454262710515|3.991",
+        "c2:x:2048825454262710515|3.991",
+        "c5:x:2048825454262710515|3.991"
+      ]
+    },
+    {
+      "label": "single-common",
+      "query": "climate",
+      "hits": 1330,
+      "countP50ms": 491.37,
+      "countMinMs": 460.06,
+      "countMaxMs": 535.51,
+      "topP50ms": 477.34,
+      "topMinMs": 452.49,
+      "topIds": [
+        "c5:x:2052092991884685564|",
+        "c2:x:2052092991884685564|",
+        "x:2052092991884685564|",
+        "c4:x:2052092991884685564|",
+        "c6:x:2052092991884685564|"
+      ],
+      "topLiteralScoreP50ms": 472.67,
+      "topLiteralScoreIds": [
+        "c5:x:2052092991884685564|19.524",
+        "c2:x:2052092991884685564|19.524",
+        "x:2052092991884685564|19.524",
+        "c4:x:2052092991884685564|19.524",
+        "c6:x:2052092991884685564|19.524"
+      ]
+    },
+    {
+      "label": "single-rare",
+      "query": "tantivy",
+      "hits": 7,
+      "countP50ms": 479.78,
+      "countMinMs": 471.01,
+      "countMaxMs": 509.71,
+      "topP50ms": 500.83,
+      "topMinMs": 481.09,
+      "topIds": [
+        "c5:x:2049705418436600244|",
+        "x:2049705418436600244|",
+        "c3:x:2049705418436600244|",
+        "c6:x:2049705418436600244|",
+        "c2:x:2049705418436600244|"
+      ],
+      "topLiteralScoreP50ms": 530.1,
+      "topLiteralScoreIds": [
+        "c5:x:2049705418436600244|9.137",
+        "x:2049705418436600244|9.137",
+        "c3:x:2049705418436600244|9.137",
+        "c6:x:2049705418436600244|9.137",
+        "c2:x:2049705418436600244|9.137"
+      ]
+    },
+    {
+      "label": "multi-term-default",
+      "query": "climate change",
+      "hits": 15270,
+      "countP50ms": 498.3,
+      "countMinMs": 484.5,
+      "countMaxMs": 557.97,
+      "topP50ms": 502.11,
+      "topMinMs": 480.44,
+      "topIds": [
+        "c3:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c1:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 516.31,
+      "topLiteralScoreIds": [
+        "c3:x:2059327973224845418|30.824",
+        "c6:x:2059327973224845418|30.824",
+        "x:2059327973224845418|30.824",
+        "c2:x:2059327973224845418|30.824",
+        "c1:x:2059327973224845418|30.824"
+      ]
+    },
+    {
+      "label": "multi-term-AND",
+      "query": "climate AND change",
+      "hits": 574,
+      "countP50ms": 486.09,
+      "countMinMs": 474.12,
+      "countMaxMs": 571.24,
+      "topP50ms": 490.17,
+      "topMinMs": 477.57,
+      "topIds": [
+        "c3:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c1:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 514.07,
+      "topLiteralScoreIds": [
+        "c3:x:2059327973224845418|30.824",
+        "c6:x:2059327973224845418|30.824",
+        "x:2059327973224845418|30.824",
+        "c2:x:2059327973224845418|30.824",
+        "c1:x:2059327973224845418|30.824"
+      ]
+    },
+    {
+      "label": "phrase",
+      "query": "\"climate change\"",
+      "hits": 518,
+      "countP50ms": 531.23,
+      "countMinMs": 503.44,
+      "countMaxMs": 575.19,
+      "topP50ms": 550.8,
+      "topMinMs": 516.15,
+      "topIds": [
+        "c3:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c1:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 618.37,
+      "topLiteralScoreIds": [
+        "c3:x:2059327973224845418|34.589",
+        "c6:x:2059327973224845418|34.589",
+        "x:2059327973224845418|34.589",
+        "c2:x:2059327973224845418|34.589",
+        "c1:x:2059327973224845418|34.589"
+      ]
+    },
+    {
+      "label": "prefix",
+      "query": "democr*",
+      "hits": 0,
+      "countP50ms": 595.34,
+      "countMinMs": 510.35,
+      "countMaxMs": 696.22,
+      "topP50ms": 501.7,
+      "topMinMs": 439.13,
+      "topIds": [],
+      "topLiteralScoreP50ms": 456.49,
+      "topLiteralScoreIds": []
+    },
+    {
+      "label": "typo-missing-letter",
+      "query": "climat",
+      "hits": 1358,
+      "countP50ms": 432.93,
+      "countMinMs": 416.97,
+      "countMaxMs": 451.93,
+      "topP50ms": 725.53,
+      "topMinMs": 420.89,
+      "topIds": [
+        "c5:x:2052092991884685564|",
+        "c2:x:2052092991884685564|",
+        "x:2052092991884685564|",
+        "c4:x:2052092991884685564|",
+        "c6:x:2052092991884685564|"
+      ],
+      "topLiteralScoreP50ms": 766.01,
+      "topLiteralScoreIds": [
+        "c5:x:2052092991884685564|17.967",
+        "c2:x:2052092991884685564|17.967",
+        "x:2052092991884685564|17.967",
+        "c4:x:2052092991884685564|17.967",
+        "c6:x:2052092991884685564|17.967"
+      ]
+    },
+    {
+      "label": "typo-transposed",
+      "query": "cimate",
+      "hits": 105,
+      "countP50ms": 630.56,
+      "countMinMs": 528.11,
+      "countMaxMs": 1339.71,
+      "topP50ms": 539.43,
+      "topMinMs": 513.63,
+      "topIds": [
+        "c4:x:2051342246981595566|",
+        "c5:x:2051342246981595566|",
+        "c2:x:2051342246981595566|",
+        "c6:x:2051342246981595566|",
+        "c3:x:2051342246981595566|"
+      ],
+      "topLiteralScoreP50ms": 561.63,
+      "topLiteralScoreIds": [
+        "c4:x:2051342246981595566|17.632",
+        "c5:x:2051342246981595566|17.632",
+        "c2:x:2051342246981595566|17.632",
+        "c6:x:2051342246981595566|17.632",
+        "c3:x:2051342246981595566|17.632"
+      ]
+    },
+    {
+      "label": "stem-run",
+      "query": "run",
+      "hits": 14406,
+      "countP50ms": 520.01,
+      "countMinMs": 481.14,
+      "countMaxMs": 847.01,
+      "topP50ms": 793.8,
+      "topMinMs": 765.56,
+      "topIds": [
+        "c3:rss:tag:www.producthunt.com,2005:Post/1150115|",
+        "c4:rss:tag:www.producthunt.com,2005:Post/1150115|",
+        "rss:tag:www.producthunt.com,2005:Post/1150115|",
+        "c6:rss:tag:www.producthunt.com,2005:Post/1150115|",
+        "c2:rss:tag:www.producthunt.com,2005:Post/1150115|"
+      ],
+      "topLiteralScoreP50ms": 877.65,
+      "topLiteralScoreIds": [
+        "c3:rss:tag:www.producthunt.com,2005:Post/1150115|7.130",
+        "c4:rss:tag:www.producthunt.com,2005:Post/1150115|7.130",
+        "rss:tag:www.producthunt.com,2005:Post/1150115|7.130",
+        "c6:rss:tag:www.producthunt.com,2005:Post/1150115|7.130",
+        "c2:rss:tag:www.producthunt.com,2005:Post/1150115|7.130"
+      ]
+    },
+    {
+      "label": "three-term",
+      "query": "climate change policy",
+      "hits": 17289,
+      "countP50ms": 599,
+      "countMinMs": 555.24,
+      "countMaxMs": 1346.12,
+      "topP50ms": 575.58,
+      "topMinMs": 521.68,
+      "topIds": [
+        "c1:rss:https://thedailybell.com/?p=42437|",
+        "rss:https://thedailybell.com/?p=42437|",
+        "c3:rss:https://thedailybell.com/?p=42437|",
+        "c6:rss:https://thedailybell.com/?p=42437|",
+        "c4:rss:https://thedailybell.com/?p=42437|"
+      ],
+      "topLiteralScoreP50ms": 539.9,
+      "topLiteralScoreIds": [
+        "c1:rss:https://thedailybell.com/?p=42437|40.532",
+        "rss:https://thedailybell.com/?p=42437|40.532",
+        "c3:rss:https://thedailybell.com/?p=42437|40.532",
+        "c6:rss:https://thedailybell.com/?p=42437|40.532",
+        "c4:rss:https://thedailybell.com/?p=42437|40.532"
+      ]
+    }
+  ],
+  "likeScanP50ms": 489.41,
+  "likeScanHits": 672
+}

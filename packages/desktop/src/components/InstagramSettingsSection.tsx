@@ -37,7 +37,10 @@ import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
-import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import {
+  clearProviderPause,
+  resetProviderPauseState,
+} from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
@@ -57,7 +60,9 @@ interface DiagRowProps {
 function DiagRow({ label, value, warn }: DiagRowProps) {
   return (
     <div className="flex justify-between gap-4">
-      <span className={warn ? "text-amber-400" : "text-[#52525b]"}>{label}</span>
+      <span className={warn ? "text-amber-400" : "text-[#52525b]"}>
+        {label}
+      </span>
       <span className={warn ? "text-amber-400 font-medium" : "text-[#71717a]"}>
         {value}
       </span>
@@ -119,9 +124,10 @@ export function InstagramSettingsSection({
   const igAuth = useAppStore((s) => s.igAuth);
   const setIgAuth = useAppStore((s) => s.setIgAuth);
   const isLoading = useAppStore((s) => s.isLoading);
-  const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.instagram ?? 0) > 0);
-  const healthSnapshot = useDebugStore((s) => s.health?.providers.instagram ?? null);
+  const healthSnapshot = useDebugStore(
+    (s) => s.health?.providers.instagram ?? null,
+  );
 
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
@@ -130,15 +136,20 @@ export function InstagramSettingsSection({
   const copy = socialProviderCopy("instagram");
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
-  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
-    setLastDiag(null);
-    try {
-      const result = await withProviderSyncing("instagram", () => captureIgFeed(trigger));
-      setLastDiag(result.diag);
-    } catch (err) {
-      console.error("Instagram feed capture failed:", err);
-    }
-  }, []);
+  const runSync = useCallback(
+    async (trigger: "manual" | "post_login" = "manual") => {
+      setLastDiag(null);
+      try {
+        const result = await withProviderSyncing("instagram", () =>
+          captureIgFeed(trigger),
+        );
+        setLastDiag(result.diag);
+      } catch (err) {
+        console.error("Instagram feed capture failed:", err);
+      }
+    },
+    [],
+  );
 
   const handleAuthResult = useCallback(
     (loggedIn: boolean) => {
@@ -175,7 +186,9 @@ export function InstagramSettingsSection({
         await showIgLogin();
       } catch (err) {
         if (!isDesktopProviderAuthAllowed()) return;
-        setActionError(err instanceof Error ? err.message : "Failed to open login window");
+        setActionError(
+          err instanceof Error ? err.message : "Failed to open login window",
+        );
       }
     });
   }, [confirm]);
@@ -187,16 +200,23 @@ export function InstagramSettingsSection({
       try {
         const loggedIn = await checkIgAuth();
         if (!isDesktopProviderAuthAllowed()) return;
-        const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
+        const newState = {
+          isAuthenticated: loggedIn,
+          lastCheckedAt: Date.now(),
+        };
         setIgAuth(newState);
         storeIgAuthState(newState);
 
         if (!loggedIn) {
-          setActionError("Not logged in. Please log in through the Instagram window first.");
+          setActionError(
+            "Not logged in. Please log in through the Instagram window first.",
+          );
         }
       } catch (err) {
         if (!isDesktopProviderAuthAllowed()) return;
-        setActionError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(
+          err instanceof Error ? err.message : "Auth check failed",
+        );
       } finally {
         if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
@@ -215,7 +235,9 @@ export function InstagramSettingsSection({
     setActionError(null);
   }, [setIgAuth]);
 
-  const syncError = igAuth.isAuthenticated ? igAuth.lastCaptureError ?? null : null;
+  const syncError = igAuth.isAuthenticated
+    ? (igAuth.lastCaptureError ?? null)
+    : null;
   const authError = igAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
@@ -228,7 +250,8 @@ export function InstagramSettingsSection({
     authError,
     snapshot: healthSnapshot,
   });
-  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
+  const isPaused =
+    !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
   if (igAuth.isAuthenticated) {
@@ -237,9 +260,7 @@ export function InstagramSettingsSection({
       if (lastDiag.errorStage) return null;
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
-          <p className="text-xs text-[#52525b]">
-            {copy.feedReturnedEmpty}
-          </p>
+          <p className="text-xs text-[#52525b]">{copy.feedReturnedEmpty}</p>
         );
       }
       if (lastDiag.itemsAdded === 0) {
@@ -255,117 +276,128 @@ export function InstagramSettingsSection({
 
     return (
       <>
-      <SyncProviderSectionSurface surface={surface} title="Instagram">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-            <ProviderStatusIndicator
-              tone={statusTone}
-              syncing={syncing}
-              label={statusLabel}
-              testId="provider-status-instagram"
-              size="sm"
-            />
-            <span className="text-sm text-[#a1a1aa]">
-              {statusLabel}
-            </span>
-          </div>
-
-          {postLoginSync.message && (
-            <p className="text-xs text-[#a1a1aa] leading-relaxed">
-              {postLoginSync.message}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <ProviderSyncActionButton
-              onClick={() => {
-                if (needsReconnect) {
-                  void handleLogin();
-                  return;
-                }
-                void confirm(async () => {
-                  postLoginSync.cancel();
-                  if (isPaused) {
-                    await clearProviderPause("instagram");
-                  }
-                  await runSync();
-                });
-              }}
-              busy={syncing}
-              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
-              disabled={
-                (!needsReconnect && (syncing || isLoading)) ||
-                (needsReconnect && isLoading)
-              }
-              testId="provider-sync-action-instagram"
-            >
-              {needsReconnect ? "Reconnect Instagram" : isPaused ? "Resume Now" : "Sync Now"}
-            </ProviderSyncActionButton>
-            <button
-              onClick={handleDisconnect}
-              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-            >
-              Disconnect
-            </button>
-          </div>
-
-          {needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage(copy.label, authError)}
-            </p>
-          )}
-
-          {actionError && !needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
-          )}
-
-          {syncError && !needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">
-              {syncError.includes("timeout")
-                ? copy.timeout
-                : syncError}
-            </p>
-          )}
-
-          <ProviderHealthSectionSummary
-            provider="instagram"
-            showMessages={surface === "debug-card" && !syncError && !actionError}
-          />
-
-          {statusLine}
-
-          {lastDiag && <IgDiagPanel diag={lastDiag} />}
-
-          <MediaVaultSettingsCard
-            provider="instagram"
-            providerLabel="Instagram"
-            items={items}
-            authenticated={igAuth.isAuthenticated}
-          />
-
-          <details className="group">
-            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-              Advanced
-            </summary>
-            <div className="mt-3 pl-3 border-l border-white/10">
-              <ScraperWindowModeControl
-                sourceLabel="Instagram"
-                mode={windowMode}
-                onChange={(nextMode) => {
-                  setWindowMode(nextMode);
-                  setIgScraperWindowMode(nextMode);
-                }}
+        <SyncProviderSectionSurface surface={surface} title="Instagram">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+              <ProviderStatusIndicator
+                tone={statusTone}
+                syncing={syncing}
+                label={statusLabel}
+                testId="provider-status-instagram"
+                size="sm"
               />
+              <span className="text-sm text-[#a1a1aa]">{statusLabel}</span>
             </div>
-          </details>
 
-          <p className="text-xs text-[#52525b] leading-relaxed">
-            {copy.connectedInfo}
-          </p>
-        </div>
-      </SyncProviderSectionSurface>
-      {dialog}
+            {postLoginSync.message && (
+              <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                {postLoginSync.message}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <ProviderSyncActionButton
+                onClick={() => {
+                  if (needsReconnect) {
+                    void handleLogin();
+                    return;
+                  }
+                  void confirm(async () => {
+                    postLoginSync.cancel();
+                    if (isPaused) {
+                      await clearProviderPause("instagram");
+                    }
+                    await runSync();
+                  });
+                }}
+                busy={syncing}
+                busyLabel={
+                  needsReconnect
+                    ? "Reconnecting..."
+                    : isPaused
+                      ? "Resuming..."
+                      : "Syncing"
+                }
+                disabled={
+                  (!needsReconnect && (syncing || isLoading)) ||
+                  (needsReconnect && isLoading)
+                }
+                testId="provider-sync-action-instagram"
+              >
+                {needsReconnect
+                  ? "Reconnect Instagram"
+                  : isPaused
+                    ? "Resume Now"
+                    : "Sync Now"}
+              </ProviderSyncActionButton>
+              <button
+                onClick={handleDisconnect}
+                className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
+
+            {needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {formatProviderReconnectMessage(copy.label, authError)}
+              </p>
+            )}
+
+            {actionError && !needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {actionError}
+              </p>
+            )}
+
+            {syncError && !needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {syncError.includes("timeout") ? copy.timeout : syncError}
+              </p>
+            )}
+
+            <ProviderHealthSectionSummary
+              provider="instagram"
+              showMessages={
+                surface === "debug-card" && !syncError && !actionError
+              }
+            />
+
+            {statusLine}
+
+            {lastDiag && <IgDiagPanel diag={lastDiag} />}
+
+            <MediaVaultSettingsCard
+              provider="instagram"
+              providerLabel="Instagram"
+              authenticated={igAuth.isAuthenticated}
+            />
+
+            <details className="group">
+              <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+                <span className="group-open:rotate-90 transition-transform inline-block">
+                  ›
+                </span>
+                Advanced
+              </summary>
+              <div className="mt-3 pl-3 border-l border-white/10">
+                <ScraperWindowModeControl
+                  sourceLabel="Instagram"
+                  mode={windowMode}
+                  onChange={(nextMode) => {
+                    setWindowMode(nextMode);
+                    setIgScraperWindowMode(nextMode);
+                  }}
+                />
+              </div>
+            </details>
+
+            <p className="text-xs text-[#52525b] leading-relaxed">
+              {copy.connectedInfo}
+            </p>
+          </div>
+        </SyncProviderSectionSurface>
+        {dialog}
       </>
     );
   }
@@ -374,43 +406,45 @@ export function InstagramSettingsSection({
 
   return (
     <>
-    <SyncProviderSectionSurface surface={surface} title="Instagram">
-      <div className="space-y-4">
-        <p className="text-sm text-[#71717a] leading-relaxed">
-          {needsReconnect
-            ? "Your Instagram session is no longer valid. Sign in again to restore sync."
-            : copy.disconnectedSettings}
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={handleLogin}
-            className="text-sm px-4 py-2 rounded-xl bg-[#E1306C]/15 text-[#E1306C] hover:bg-[#E1306C]/25 transition-colors"
-          >
-            {needsReconnect ? "Reconnect Instagram" : "Log in with Instagram"}
-          </button>
-          <button
-            onClick={handleCheckAuth}
-            disabled={checking}
-            className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
-          >
-            {checking ? "Checking..." : "Check Connection"}
-          </button>
-        </div>
-        {needsReconnect && authError && (
-          <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage(copy.label, authError)}
+      <SyncProviderSectionSurface surface={surface} title="Instagram">
+        <div className="space-y-4">
+          <p className="text-sm text-[#71717a] leading-relaxed">
+            {needsReconnect
+              ? "Your Instagram session is no longer valid. Sign in again to restore sync."
+              : copy.disconnectedSettings}
           </p>
-        )}
-        {actionError && !needsReconnect && (
-          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
-        )}
-        <ProviderHealthSectionSummary
-          provider="instagram"
-          showMessages={surface === "debug-card" && !actionError}
-        />
-      </div>
-    </SyncProviderSectionSurface>
-    {dialog}
+          <div className="flex gap-2">
+            <button
+              onClick={handleLogin}
+              className="text-sm px-4 py-2 rounded-xl bg-[#E1306C]/15 text-[#E1306C] hover:bg-[#E1306C]/25 transition-colors"
+            >
+              {needsReconnect ? "Reconnect Instagram" : "Log in with Instagram"}
+            </button>
+            <button
+              onClick={handleCheckAuth}
+              disabled={checking}
+              className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
+            >
+              {checking ? "Checking..." : "Check Connection"}
+            </button>
+          </div>
+          {needsReconnect && authError && (
+            <p className="text-xs text-amber-400 leading-relaxed">
+              {formatProviderReconnectMessage(copy.label, authError)}
+            </p>
+          )}
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {actionError}
+            </p>
+          )}
+          <ProviderHealthSectionSummary
+            provider="instagram"
+            showMessages={surface === "debug-card" && !actionError}
+          />
+        </div>
+      </SyncProviderSectionSurface>
+      {dialog}
     </>
   );
 }

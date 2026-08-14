@@ -16,8 +16,13 @@ vi.mock("@tauri-apps/plugin-fs", async () => {
   return actual;
 });
 
-import { __readMemfs, __resetMemfs } from "../__mocks__/@tauri-apps/plugin-fs/index";
 import {
+  __readMemfs,
+  __resetMemfs,
+  readDir,
+} from "../__mocks__/@tauri-apps/plugin-fs/index";
+import {
+  archiveLibraryCoreProviderMedia,
   archiveMediaVaultCandidate,
   archiveRecentProviderMedia,
   getMediaVaultProviderDir,
@@ -32,9 +37,9 @@ function bytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-function ownInstagramItem(mediaUrl: string): FeedItem {
+function ownInstagramItem(mediaUrl: string, id = "post-1"): FeedItem {
   return {
-    globalId: "instagram:post-1",
+    globalId: `instagram:${id}`,
     platform: "instagram",
     contentType: "post",
     capturedAt: 1_710_000_000_000,
@@ -51,8 +56,14 @@ function ownInstagramItem(mediaUrl: string): FeedItem {
     },
     userState: { hidden: false, saved: false, archived: false, tags: [] },
     topics: [],
-    sourceUrl: "https://www.instagram.com/p/post-1/",
+    sourceUrl: `https://www.instagram.com/p/${id}/`,
   };
+}
+
+async function expectNoProviderScanStagingFiles(): Promise<void> {
+  await expect(
+    readDir("/mock/app-data/media-vault/provider-scan-staging"),
+  ).resolves.toEqual([]);
 }
 
 describe("media vault", () => {
@@ -62,14 +73,18 @@ describe("media vault", () => {
   });
 
   it("keeps filenames local filesystem safe", () => {
-    expect(safeMediaVaultFilename(' ../bad:name*with?slashes/and spaces ')).toBe(
-      ".._bad_name_with_slashes_and_spaces",
-    );
+    expect(
+      safeMediaVaultFilename(" ../bad:name*with?slashes/and spaces "),
+    ).toBe(".._bad_name_with_slashes_and_spaces");
   });
 
   it("hashes content consistently for dedupe", async () => {
-    await expect(hashMediaBytes(bytes("same"))).resolves.toBe(await hashMediaBytes(bytes("same")));
-    await expect(hashMediaBytes(bytes("same"))).resolves.not.toBe(await hashMediaBytes(bytes("different")));
+    await expect(hashMediaBytes(bytes("same"))).resolves.toBe(
+      await hashMediaBytes(bytes("same")),
+    );
+    await expect(hashMediaBytes(bytes("same"))).resolves.not.toBe(
+      await hashMediaBytes(bytes("different")),
+    );
   });
 
   it("writes media and manifest only to the local vault", async () => {
@@ -199,6 +214,102 @@ describe("media vault", () => {
     expect(count).toBe(1);
     expect(summary.fileCount).toBe(2);
     expect(summary.byteSize).toBeGreaterThan(0);
+  });
+
+  it("does no provider work and removes staging when the source scan fails", async () => {
+    await setMediaVaultEnabled("instagram", true);
+    await archiveMediaVaultCandidate({
+      provider: "instagram",
+      bytes: bytes("seed"),
+      importSource: "meta_export",
+      ownerHandle: "ada",
+      originalPath: "instagram/posts/seed.jpg",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("unexpected", { status: 200 }));
+
+    await expect(
+      archiveLibraryCoreProviderMedia(
+        "instagram",
+        "continuous",
+        async (_provider, visitPage) => {
+          await visitPage([
+            ownInstagramItem("https://cdn.example.com/never-fetch.jpg"),
+          ]);
+          throw new Error("Library source changed during scan");
+        },
+      ),
+    ).rejects.toThrow("Library source changed during scan");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await expectNoProviderScanStagingFiles();
+  });
+
+  it("archives staged pages in order only after the source scan completes", async () => {
+    await setMediaVaultEnabled("instagram", true);
+    await archiveMediaVaultCandidate({
+      provider: "instagram",
+      bytes: bytes("seed"),
+      importSource: "meta_export",
+      ownerHandle: "ada",
+      originalPath: "instagram/posts/seed.jpg",
+    });
+    const events: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      events.push(`fetch:${String(input)}`);
+      return new Response("media", { status: 200 });
+    });
+
+    const count = await archiveLibraryCoreProviderMedia(
+      "instagram",
+      "continuous",
+      async (_provider, visitPage) => {
+        events.push("scan:start");
+        await visitPage([
+          ownInstagramItem("https://cdn.example.com/one.jpg", "post-1"),
+        ]);
+        events.push("scan:page-1");
+        await visitPage([
+          ownInstagramItem("https://cdn.example.com/two.jpg", "post-2"),
+        ]);
+        events.push("scan:complete");
+      },
+    );
+
+    expect(count).toBe(2);
+    expect(events).toEqual([
+      "scan:start",
+      "scan:page-1",
+      "scan:complete",
+      "fetch:https://cdn.example.com/one.jpg",
+      "fetch:https://cdn.example.com/two.jpg",
+    ]);
+    await expectNoProviderScanStagingFiles();
+  });
+
+  it("rejects malformed provider staging before any provider work", async () => {
+    await setMediaVaultEnabled("instagram", true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("unexpected", { status: 200 }));
+    const malformed = {
+      ...ownInstagramItem("https://cdn.example.com/never-fetch.jpg"),
+      platform: "facebook",
+    } as FeedItem;
+
+    await expect(
+      archiveLibraryCoreProviderMedia(
+        "instagram",
+        "continuous",
+        async (_provider, visitPage) => {
+          await visitPage([malformed]);
+        },
+      ),
+    ).rejects.toThrow("staging item is invalid");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await expectNoProviderScanStagingFiles();
   });
 
   it("creates provider folders before opening them", async () => {

@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped, safe optimistic user mutations shipped, document-init-gated Google Drive sync shipped, local-change Google Drive uploads shipped, manual Google Drive sync diagnostics shipped)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped, IndexedDB Library Core reader shipped, persistent bounded-memory search shipped, signed user intent outbox shipped, immutable Google Drive checkpoint sync shipped, manual Google Drive sync diagnostics shipped, and the PWA Automerge runtime retired)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -19,11 +19,15 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
 - **Desktop handoff in source settings:** PWA Settings exposes Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as sync status dashboards with clear Freed Desktop management handoff states
 - **Mobile settings scope:** PWA Settings hides AI controls and source connection controls that only Freed Desktop can run
-- **Cloud sync diagnostics:** PWA Settings shows local item count, local document size, Drive stage, last download, last merge, last upload, remote bytes, the last cloud error, why upload is waiting, recent Drive activity, and a manual `Sync now` action. Cloud-only PWA sessions now wait for the local document to initialize, then subscribe to local document changes and upload them without needing a LAN relay.
+- **Cloud sync diagnostics:** PWA Settings shows local item count, Drive stage, last download, last import, last intent upload, remote bytes, the last cloud error, why synchronization is waiting, recent Drive activity, and a manual `Sync now` action. The PWA imports immutable Desktop checkpoints into IndexedDB and publishes signed user intents without downloading or synchronizing a live SQLite file.
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
-- **Safe optimistic user mutations:** Feed actions, read marks, item edits, feed renames, person edits, account edits, and synced preference changes update visible UI state immediately before Automerge worker reconciliation. Device display controls and Friends graph pins persist locally without an Automerge round trip. Concurrent startup effects share one initialization and one permanent worker subscription.
-- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
+- **Safe optimistic user mutations:** Read, saved, archived, and liked changes update the selected IndexedDB row immediately and enter the signed epoch-scoped intent outbox. They remain Pending until Freed Desktop publishes canonical acceptance, and provider-visible success requires a separate real provider result receipt. Device display controls and Friends graph pins remain local.
+- **People mutations:** Person and Account add, bounded batch add, synchronized profile and relationship updates, connection-person promotion, bounded reach-out history, and atomic removal enter the signed epoch-scoped intent outbox and update the selected IndexedDB Library shell immediately. Device-local graph coordinates stay outside canonical payloads, Account removal cannot prune a Person during legacy Friend replacement, and reach-out history retains its 20-entry cap without waking Automerge.
+- **FeedItem capture mutations:** New and updated FeedItems enter the signed epoch-scoped intent outbox in ordered transactions of at most 128 unique items. IndexedDB and local search update after each durable batch, repeated identities retain input order across transaction boundaries, and device-local ranking fields never enter canonical payloads.
+- **Library maintenance mutations:** Sample seeding, fingerprinted sample clearing, and bulk feed removal use the same signed Library Core operations as normal writes. Sample clearing scans the complete IndexedDB corpus and unlinks real accounts before removing sample people.
+- **SQLite-only PWA:** IndexedDB Library Core is the only PWA product store. Production builds reject any Automerge asset, the rollback flag cannot reactivate the retired worker, and legacy Automerge cloud-file merging fails closed.
+- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
 
@@ -34,7 +38,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 1. **Timeline by default, unread tracking opt-in** — Ephemeral content flows by; important sources can track unread
 2. **Unified content types** — RSS, videos, podcasts, social in one view
 3. **Clean, minimal chrome** — Content-first design
-4. **Seamless sync** — Automerge CRDT for cross-device
+4. **Seamless sync** — Immutable Library Core checkpoints, operation segments, and PWA intents through Google Drive
 
 **Key Features:**
 
@@ -240,7 +244,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Merges to `dev` redeploy `dev-app.freed.wtf`
 - [x] PWA can switch locally between the production and dev release channels, redirecting between `app.freed.wtf` and `dev-app.freed.wtf`
 - [x] Dev snapshots keep the last release version visible and add build provenance in Settings
-- [x] Feed displays items from Automerge document
+- [x] Feed displays bounded pages from the authenticated IndexedDB Library Core generation
 - [x] Per-source unread tracking works for opted-in feeds
 - [x] Virtual scrolling handles 1000+ items smoothly
 - [x] Reading enhancements work correctly (focus mode, font, reader view)
@@ -249,14 +253,20 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status. Only the last successful refresh syncs. Retry timing and failures remain local to the polling device. Deprecated synchronized HTTP validators are ignored because the current Desktop transport does not persist them.
 - [x] First launch is blocked behind a local-only legal clickwrap gate
-- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
+- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, and both local Library Core IndexedDB databases. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
 - [x] Private reports can send a redacted description and selected stack traces to the repository's private GitHub vulnerability inbox after an explicit click, with no automatic retry and no diagnostic zip upload
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
-- [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser downloaded, merged, uploaded, hit an error, is waiting for local changes, or needs a manual `Sync now` pass, while local PWA edits schedule Drive uploads even when no LAN relay is connected
-- [x] PWA Google Drive resume, manual sync, OAuth callback sync, and LAN relay resume wait until the Automerge worker has initialized the local document before merging remote Drive data
+- [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser imported an immutable checkpoint, published signed intents, reconciled results, hit an error, or needs a manual `Sync now` pass
+- [x] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated immutable Library Core generation, publish signed epoch-scoped intents, and never synchronize a SQLite database, WAL, or SHM file
+- [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
+- [x] FeedItem capture and whole-record updates use bounded signed Library Core intents, update IndexedDB and search without waking Automerge, preserve repeated-identity order, and exclude device-local ranking fields
+- [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
+- [x] Production PWA bundles contain no Automerge JavaScript, worker, or WASM asset, and stale rollback state cannot reactivate the retired engine
+- [x] Full-library search keeps its normalized term projection in IndexedDB, streams scored matches in 32-row pages, and retains at most 100 result cards in React instead of rebuilding a corpus-wide MiniSearch heap
+- [x] Runtime state, counts, full-library scans, and item detail resolve from the current IndexedDB materialization after local intents instead of rereading the immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section

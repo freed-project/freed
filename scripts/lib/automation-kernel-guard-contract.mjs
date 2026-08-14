@@ -111,7 +111,10 @@ const LOCAL_FILESYSTEM_TYPES = Object.freeze([
 ]);
 const FILESYSTEM_TYPE_NAMES = Object.freeze({
   darwin: Object.freeze({
-    // APFS is the only supported macOS host filesystem for this contract.
+    // Darwin exposes a VFS registration slot here, not a stable filesystem
+    // magic number. APFS is slot 0x19 on the supported macOS 26 GitHub image
+    // and slot 0x1a on macOS 27. No other macOS filesystem is admitted.
+    0x00000019: "apfs",
     0x0000001a: "apfs",
   }),
   linux: Object.freeze({

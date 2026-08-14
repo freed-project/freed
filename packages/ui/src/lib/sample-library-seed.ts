@@ -18,9 +18,12 @@ interface SampleClearState {
   accounts: BaseAppState["accounts"];
 }
 
-export function summarizeSampleData(state: SampleClearState): SampleDataClearSummary {
+export function summarizeSampleData(
+  state: SampleClearState,
+  itemCountOverride?: number,
+): SampleDataClearSummary {
   const feeds = Object.values(state.feeds).filter(hasSampleDataFingerprint).length;
-  const items = state.items.filter(hasSampleDataFingerprint).length;
+  const items = itemCountOverride ?? state.items.filter(hasSampleDataFingerprint).length;
   const persons = Object.values(state.persons).filter(hasSampleDataFingerprint).length;
   const accounts = Object.values(state.accounts).filter(hasSampleDataFingerprint).length;
   return {

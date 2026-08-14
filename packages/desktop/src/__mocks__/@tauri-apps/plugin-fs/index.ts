@@ -2,8 +2,8 @@
  * Mock for @tauri-apps/plugin-fs
  *
  * content-cache.ts and local model tests use exists(), readFile(), writeFile(),
- * readTextFile(), writeTextFile(), mkdir(), remove(), rename(), open(), size(),
- * and readDir().
+ * readTextFile(), readTextFileLines(), writeTextFile(), mkdir(), remove(),
+ * rename(), open(), size(), and readDir().
  * In test mode all FS operations are backed by an in-memory map.
  */
 
@@ -20,7 +20,10 @@ export function __readMemfs(path: string): Uint8Array | undefined {
 
 export async function exists(path: string): Promise<boolean> {
   const prefix = path.endsWith("/") ? path : `${path}/`;
-  return memfs.has(path) || Array.from(memfs.keys()).some((key) => key.startsWith(prefix));
+  return (
+    memfs.has(path) ||
+    Array.from(memfs.keys()).some((key) => key.startsWith(prefix))
+  );
 }
 
 export async function readFile(path: string): Promise<Uint8Array> {
@@ -34,6 +37,17 @@ export async function readTextFile(path: string): Promise<string> {
   return new TextDecoder().decode(data);
 }
 
+export async function readTextFileLines(
+  path: string,
+): Promise<AsyncIterableIterator<string>> {
+  const text = await readTextFile(path);
+  const lines = text.split(/\r?\n/u);
+  if (lines.at(-1) === "") lines.pop();
+  return (async function* iterateLines() {
+    for (const line of lines) yield line;
+  })();
+}
+
 export async function writeFile(
   path: string,
   contents: Uint8Array | string,
@@ -45,7 +59,10 @@ export async function writeFile(
   memfs.set(path, bytes);
 }
 
-export async function writeTextFile(path: string, contents: string): Promise<void> {
+export async function writeTextFile(
+  path: string,
+  contents: string,
+): Promise<void> {
   await writeFile(path, contents);
 }
 
@@ -54,7 +71,10 @@ export async function mkdir(
   _opts?: { recursive?: boolean },
 ): Promise<void> {}
 
-export async function remove(path: string, opts?: { recursive?: boolean }): Promise<void> {
+export async function remove(
+  path: string,
+  opts?: { recursive?: boolean },
+): Promise<void> {
   memfs.delete(path);
   if (opts?.recursive) {
     const prefix = path.endsWith("/") ? path : `${path}/`;
@@ -86,12 +106,21 @@ export async function size(path: string): Promise<number> {
 
 export async function open(
   path: string,
-  opts: { append?: boolean; truncate?: boolean; create?: boolean } = {},
+  opts: {
+    append?: boolean;
+    truncate?: boolean;
+    create?: boolean;
+    createNew?: boolean;
+    write?: boolean;
+  } = {},
 ): Promise<{
   write(data: Uint8Array): Promise<number>;
   close(): Promise<void>;
 }> {
-  if (!opts.create && !memfs.has(path)) throw new Error(`ENOENT: ${path}`);
+  if (opts.createNew && memfs.has(path)) throw new Error(`EEXIST: ${path}`);
+  if (!opts.create && !opts.createNew && !memfs.has(path)) {
+    throw new Error(`ENOENT: ${path}`);
+  }
   let chunks: Uint8Array[] = [];
   if (opts.append && memfs.has(path)) {
     chunks = [memfs.get(path)!];

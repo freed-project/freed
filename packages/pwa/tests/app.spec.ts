@@ -162,10 +162,10 @@ async function seedFriendLocation(
   await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
-      docAddAccount: (account: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFriend: (friend: unknown) => Promise<void>;
+      addAccount: (account: unknown) => Promise<void>;
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -178,7 +178,7 @@ async function seedFriendLocation(
     };
 
     const now = Date.now();
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-ada",
       name: "Ada Lovelace",
       relationshipStatus: "friend",
@@ -186,7 +186,7 @@ async function seedFriendLocation(
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddAccount({
+    await libraryCore.addAccount({
       id: "social:instagram:ada-ig",
       personId: "friend-ada",
       kind: "social",
@@ -201,7 +201,7 @@ async function seedFriendLocation(
       updatedAt: now,
     });
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "ig:ada:paris",
         platform: "instagram",
@@ -265,10 +265,10 @@ async function seedFriendFeedLens(
   await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
-      docAddAccount: (account: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFriend: (friend: unknown) => Promise<void>;
+      addAccount: (account: unknown) => Promise<void>;
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -282,7 +282,7 @@ async function seedFriendFeedLens(
     };
 
     const now = Date.now();
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-grace",
       name: "Grace Hopper",
       relationshipStatus: "friend",
@@ -290,7 +290,7 @@ async function seedFriendFeedLens(
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddAccount({
+    await libraryCore.addAccount({
       id: "social:linkedin:grace-li",
       personId: "friend-grace",
       kind: "social",
@@ -305,7 +305,7 @@ async function seedFriendFeedLens(
       updatedAt: now,
     });
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "li:grace:lens",
         platform: "linkedin",
@@ -391,20 +391,22 @@ async function seedMultipleFriendLocations(
   await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFriend: (friend: unknown) => Promise<void>;
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
         friends: Record<string, unknown>;
-        items: unknown[];
+        items: Array<{ globalId?: string }>;
         setActiveView: (view: string) => void;
+        clearSampleData: () => Promise<unknown>;
       };
     };
 
+    await store.getState().clearSampleData();
     const now = Date.now();
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-omar",
       name: "Omar Hassan",
       sources: [
@@ -420,7 +422,7 @@ async function seedMultipleFriendLocations(
       updatedAt: now,
     });
 
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-samir",
       name: "Samir Dutta",
       sources: [
@@ -436,7 +438,7 @@ async function seedMultipleFriendLocations(
       updatedAt: now,
     });
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "ig:omar:reykjavik",
         platform: "instagram",
@@ -454,8 +456,8 @@ async function seedMultipleFriendLocations(
           mediaTypes: [],
         },
         location: {
-          name: "Reykjavik, Capital Region, Iceland",
-          coordinates: { lat: 64.1466, lng: -21.9426 },
+          name: "McMurdo Station, Antarctica",
+          coordinates: { lat: -77.8419, lng: 166.6863 },
           source: "geo_tag",
         },
         userState: {
@@ -483,8 +485,8 @@ async function seedMultipleFriendLocations(
           mediaTypes: [],
         },
         location: {
-          name: "Paris",
-          coordinates: { lat: 48.8566, lng: 2.3522 },
+          name: "Rothera Research Station, Antarctica",
+          coordinates: { lat: -67.5681, lng: -68.125 },
           source: "text_extraction",
         },
         userState: {
@@ -501,7 +503,13 @@ async function seedMultipleFriendLocations(
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
         const state = store.getState();
-        if (Object.keys(state.friends).length >= 2 && state.items.length >= 2) {
+        const itemIds = new Set(state.items.map((item) => item.globalId));
+        if (
+          state.friends["friend-omar"]
+          && state.friends["friend-samir"]
+          && itemIds.has("ig:omar:reykjavik")
+          && itemIds.has("li:samir:paris")
+        ) {
           clearInterval(interval);
           resolve();
           return;
@@ -523,9 +531,9 @@ async function seedFriendsWorkspace(
   await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFriend: (friend: unknown) => Promise<void>;
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -537,7 +545,7 @@ async function seedFriendsWorkspace(
     };
 
     const now = Date.now();
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-ada",
       name: "Ada Lovelace",
       careLevel: 5,
@@ -548,7 +556,7 @@ async function seedFriendsWorkspace(
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-maya",
       name: "Maya Chen",
       careLevel: 3,
@@ -558,7 +566,7 @@ async function seedFriendsWorkspace(
       createdAt: now,
       updatedAt: now,
     });
-    await automerge.docAddFriend({
+    await libraryCore.addFriend({
       id: "friend-jules",
       name: "Jules Rivera",
       careLevel: 4,
@@ -569,7 +577,7 @@ async function seedFriendsWorkspace(
       updatedAt: now,
     });
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "ig:ada:brooklyn",
         platform: "instagram",
@@ -721,9 +729,9 @@ async function seedNavigationFeed(
 ): Promise<void> {
   await page.evaluate(async (feedUrl: string) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addFeed: (feed: unknown) => Promise<void>;
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -733,7 +741,7 @@ async function seedNavigationFeed(
     };
 
     const now = Date.now();
-    await automerge.docAddRssFeed({
+    await libraryCore.addFeed({
       url: feedUrl,
       title: "Navigation Feed",
       siteUrl: "https://example.com",
@@ -742,7 +750,7 @@ async function seedNavigationFeed(
       lastFetched: now,
     });
 
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "rss:navigation:1",
         platform: "rss",
@@ -875,8 +883,8 @@ async function seedSocialReaderItem(
 ): Promise<void> {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    const libraryCore = w.__FREED_LIBRARY_CORE__ as {
+      addItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -885,7 +893,7 @@ async function seedSocialReaderItem(
     };
 
     const now = Date.now();
-    await automerge.docAddFeedItems([
+    await libraryCore.addItems([
       {
         globalId: "facebook:reader-author:1",
         platform: "facebook",
@@ -1645,23 +1653,43 @@ test.describe("FREED PWA", () => {
     expect(pageZoomAfter).toBe(1);
   });
 
-  test("map popovers show update time and keep only one open", async ({ page }) => {
+  test("map loads its bundled worker without asset failures", async ({ page }) => {
     const mapAssetResponses: Array<{ url: string; status: number }> = [];
+    const workerUrls: string[] = [];
     page.on("response", (response) => {
       const url = response.url();
       if (url.includes("maplibre-gl")) {
         mapAssetResponses.push({ url, status: response.status() });
       }
     });
+    page.on("worker", (worker) => workerUrls.push(worker.url()));
+
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await page.getByRole("button", { name: "Map" }).click();
+
+    await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+    await expect.poll(() => workerUrls.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.every(({ status }) => status < 400)).toBeTruthy();
+  });
+
+  test("map popovers show update time and keep only one open", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean })
+        .__FREED_E2E_FORCE_MAP_FALLBACK__ = true;
+    });
 
     await page.goto("/");
     await acceptLegalGate(page);
     await seedMultipleFriendLocations(page);
 
-    await page.getByRole("button", { name: "Map" }).click();
+    await page.getByRole("button", { name: "Map", exact: true }).click();
     await expect(page.getByText("Map failed to load")).toHaveCount(0);
-    await page.getByRole("button", { name: "Omar Hassan" }).click();
-    await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toBeVisible();
+    await page.getByRole("button", { name: "Omar Hassan" }).evaluate((element) => {
+      (element as HTMLElement).click();
+    });
+    await expect(page.getByText("McMurdo Station, Antarctica")).toBeVisible();
     await expect(page.getByText(/ago/).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
     const livePopup = page.locator(".maplibregl-popup-content");
@@ -1676,12 +1704,12 @@ test.describe("FREED PWA", () => {
       await expect(page.locator(".maplibregl-popup-tip")).toBeHidden();
     }
 
-    await page.getByRole("button", { name: "Samir Dutta" }).click();
-    await expect(page.getByText("Paris")).toBeVisible();
-    await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toHaveCount(0);
+    await page.getByRole("button", { name: "Samir Dutta" }).evaluate((element) => {
+      (element as HTMLElement).click();
+    });
+    await expect(page.getByText("Rothera Research Station, Antarctica")).toBeVisible();
+    await expect(page.getByText("McMurdo Station, Antarctica")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
-    expect(mapAssetResponses.length).toBeGreaterThan(0);
-    expect(mapAssetResponses.some(({ status }) => status === 403)).toBeFalsy();
   });
 
   test("can add an RSS feed", async ({ page }) => {

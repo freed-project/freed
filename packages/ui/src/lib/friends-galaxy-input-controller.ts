@@ -3,6 +3,7 @@ import { shouldContinueFriendsGalaxyFrame } from "./friends-galaxy-frame-loop.js
 import {
   friendsGalaxyGestureScaleRatio,
   friendsGalaxyWheelDeltaPixels,
+  friendsGalaxyWheelIntent,
   friendsGalaxyWheelScaleRatio,
 } from "./friends-galaxy-gesture.js";
 import {
@@ -41,6 +42,7 @@ const TRACKPAD_ZOOM_RELEASE_DELAY_MS = 72;
 const TRACKPAD_ZOOM_MAX_RELEASE_LATENCY_MS = 120;
 const INERTIAL_ZOOM_STALL_LOG_DELTA = 0.000002;
 const SETTLE_DELAY_MS = 140;
+const MOTION_PRESENTATION_INTERVAL_MS = 72;
 
 interface SafariGestureEvent extends Event {
   scale?: number;
@@ -70,7 +72,7 @@ export interface FriendsGalaxyInputControllerSnapshot {
   settlePending: boolean;
   renderResizePending: boolean;
   touchInputMode: "Native Touch Events" | "Pointer Events";
-  wheelInputMode: "Ready" | "pinch-zoom" | "two-finger-pan";
+  wheelInputMode: "Ready" | "pinch-zoom" | "wheel-zoom" | "two-finger-pan";
   inertialPanActive: boolean;
   inertialZoomActive: boolean;
   inertialZoomPending: boolean;
@@ -149,6 +151,7 @@ export class FriendsGalaxyInputController {
   private hoveredNodeId: string | null = null;
   private workerSelection: FriendsGalaxyProductWorkerSelection = {};
   private presentationRevision = 0;
+  private nextMotionPresentationAt = 0;
   private gestureMoved = false;
   private gestureInterruptedInertia = false;
   private pendingHover = false;
@@ -394,6 +397,7 @@ export class FriendsGalaxyInputController {
   private setCameraInMotion(active: boolean): void {
     if (active === this.cameraInMotion) return;
     this.cameraInMotion = active;
+    this.nextMotionPresentationAt = 0;
     this.engine.setCameraMotion(active);
     this.renderResizePending = true;
     this.notifyStateChange();
@@ -604,6 +608,21 @@ export class FriendsGalaxyInputController {
     this.markDirty();
   }
 
+  private requestMotionPresentation(timeMs: number): void {
+    if (
+      !this.cameraInMotion ||
+      !this.engine.sourceReady ||
+      timeMs < this.nextMotionPresentationAt
+    ) return;
+    this.presentationRevision += 1;
+    const requestId = this.engine.requestCameraPresentation(
+      this.presentationRevision,
+      this.workerSelection,
+    );
+    this.nextMotionPresentationAt = timeMs +
+      (requestId === null ? 16 : MOTION_PRESENTATION_INTERVAL_MS);
+  }
+
   private markDirty(): void {
     this.dirty = true;
     this.notifyStateChange();
@@ -690,6 +709,7 @@ export class FriendsGalaxyInputController {
     const settledGeneration = this.settleScheduler.takeDue(timeMs);
     if (settledGeneration !== null) this.settleNow();
     if (this.renderResizePending) this.resizeEngine();
+    if (this.dirty) this.requestMotionPresentation(timeMs);
     this.engine.pollHealth();
 
     const metrics = this.engine.metrics();
@@ -1035,9 +1055,27 @@ export class FriendsGalaxyInputController {
     if (isGestureUiTarget(event.target) || this.safariGestureActive) return;
     event.preventDefault();
     const point = this.canvasPoint(event.clientX, event.clientY);
-    if (event.ctrlKey || event.shiftKey) {
-      this.wheelInputMode = "pinch-zoom";
+    const wheelIntent = friendsGalaxyWheelIntent(
+      event.deltaX,
+      event.deltaY,
+      event.deltaMode,
+      event.ctrlKey,
+      event.shiftKey,
+    );
+    if (wheelIntent !== "two-finger-pan") {
+      this.wheelInputMode = wheelIntent;
       this.viewport.dataset.wheelInputMode = this.wheelInputMode;
+      const speed = event.shiftKey && !event.ctrlKey ? 0.0035 : 0.012;
+      const scaleRatio = friendsGalaxyWheelScaleRatio(event.deltaY, speed);
+      if (wheelIntent === "wheel-zoom") {
+        this.cancelCameraInertia();
+        this.settleScheduler.cancel();
+        this.setCameraInMotion(true);
+        this.engine.zoomCameraAt(point.x, point.y, scaleRatio);
+        this.markDirty();
+        this.scheduleSettle();
+        return;
+      }
       const sampleTime = this.now();
       const continuing = this.wheelZoomReleaseAt > 0 &&
         sampleTime <= this.wheelZoomReleaseAt && !this.inertialZoom.isActive;
@@ -1046,8 +1084,6 @@ export class FriendsGalaxyInputController {
       } else {
         this.beginZoomSample(sampleTime, point.x, point.y);
       }
-      const speed = event.shiftKey && !event.ctrlKey ? 0.0035 : 0.012;
-      const scaleRatio = friendsGalaxyWheelScaleRatio(event.deltaY, speed);
       this.sampleZoom(scaleRatio, sampleTime, point.x, point.y);
       this.wheelZoomReleaseAt = sampleTime + TRACKPAD_ZOOM_RELEASE_DELAY_MS;
       this.viewport.dataset.inertialZoom = "false";

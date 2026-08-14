@@ -21,6 +21,8 @@ import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-sc
 import {
   friendsGalaxyGestureScaleRatio,
   friendsGalaxyWheelDeltaPixels,
+  friendsGalaxyWheelIntent,
+  friendsGalaxyWheelScaleRatio,
 } from "../../src/lib/friends-galaxy-gesture.js";
 import {
   FriendsGalaxyActivityScenePatchEncoder,
@@ -97,7 +99,7 @@ const INERTIAL_ZOOM_STALL_LOG_DELTA = 0.000002;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
-type GalaxyLabWheelInputMode = "idle" | "two-finger-pan" | "pinch-zoom";
+type GalaxyLabWheelInputMode = "idle" | "two-finger-pan" | "pinch-zoom" | "wheel-zoom";
 const labParameters = new URLSearchParams(window.location.search);
 const ambientMotionProbeDisabled = labParameters.get("motion") === "0" ||
   labParameters.get("animate") === "0";
@@ -993,7 +995,9 @@ function updateMetrics(): void {
       ? "Two-finger pan"
       : wheelInputMode === "pinch-zoom"
         ? "Pinch zoom"
-        : "Ready",
+        : wheelInputMode === "wheel-zoom"
+          ? "Mouse wheel zoom"
+          : "Ready",
   );
   addMetric("Inertial pan", inertialPan.isActive ? "Active" : "Idle");
   addMetric(
@@ -1643,10 +1647,29 @@ viewport.addEventListener("wheel", (event) => {
   if (safariGestureActive) return;
   if (!cameraInMotion) refreshViewportOrigin();
   else ensureViewportOrigin();
-  if (event.ctrlKey) {
-    wheelInputMode = "pinch-zoom";
+  const wheelIntent = friendsGalaxyWheelIntent(
+    event.deltaX,
+    event.deltaY,
+    event.deltaMode,
+    event.ctrlKey,
+    event.shiftKey,
+  );
+  if (wheelIntent !== "two-finger-pan") {
+    wheelInputMode = wheelIntent;
     viewport.dataset.wheelInputMode = wheelInputMode;
     const point = canvasPoint(event.clientX, event.clientY);
+    const speed = event.shiftKey && !event.ctrlKey ? 0.0035 : 0.012;
+    const scaleRatio = friendsGalaxyWheelScaleRatio(event.deltaY, speed);
+    if (wheelIntent === "wheel-zoom") {
+      cancelCameraInertia();
+      settleScheduler.cancel();
+      setCameraInMotion(true);
+      navigation.zoomAt(point.x, point.y, scaleRatio);
+      userMovedCamera = true;
+      markGalaxyDirty();
+      scheduleSettledViewDetail();
+      return;
+    }
     const sampleTimeMs = performance.now();
     const continuingWheelPinch = wheelZoomReleaseAt > 0 &&
       sampleTimeMs <= wheelZoomReleaseAt && !inertialZoom.isActive;
@@ -1656,10 +1679,6 @@ viewport.addEventListener("wheel", (event) => {
       avatarAdmissionGeneration += 1;
       beginInertialZoomSample(sampleTimeMs, point.x, point.y);
     }
-    const scaleRatio = Math.exp(Math.max(
-      -64,
-      Math.min(64, -event.deltaY * 0.012),
-    ));
     sampleInertialZoom(scaleRatio, sampleTimeMs, point.x, point.y);
     wheelZoomReleaseAt = sampleTimeMs + TRACKPAD_ZOOM_RELEASE_DELAY_MS;
     viewport.dataset.inertialZoom = "false";

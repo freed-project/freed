@@ -502,19 +502,6 @@ function DocumentTab() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadBinary = async () => {
-    const binary = await window.__freed?.getDocBinary?.();
-    if (!binary) return;
-    // Ensure we have a plain ArrayBuffer to satisfy Blob's type constraint
-    const blob = new Blob([binary.buffer instanceof ArrayBuffer ? binary.buffer : new Uint8Array(binary).buffer], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `freed-doc-${Date.now()}.automerge`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   if (!docSnapshot) {
     return (
       <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">
@@ -557,12 +544,6 @@ function DocumentTab() {
           className="btn-primary w-full py-2.5 text-sm"
         >
           {copied ? "Copied!" : "Copy Doc as JSON"}
-        </button>
-        <button
-          onClick={downloadBinary}
-          className="btn-secondary w-full py-2.5 text-sm"
-        >
-          Download .automerge Binary
         </button>
       </div>
 

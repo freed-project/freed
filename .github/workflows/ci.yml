@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [dev, main]
 
+# Superseded dev pushes cancel too. Only the latest dev tree carries the
+# integration proof that release admission inherits, so validating an
+# intermediate commit that a newer push already replaced is wasted runner time.
 concurrency:
   group: validation-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,25 +20,96 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  tooling-smoke-shards:
-    name: Tooling smoke shard (${{ matrix.suite }} ${{ matrix.shard }}/8)
+  # Cheap by design: the planner imports only Node builtins, so this job needs
+  # no dependency install and settles in well under a minute.
+  tooling-smoke-plan:
+    name: Tooling smoke plan
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - general
-          - automation-control
-          - kernel-guard-cutover
-          - outcome-ledger-repair
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      applicable: ${{ steps.plan.outputs.applicable }}
+      job-count: ${{ steps.plan.outputs.job-count }}
+      native: ${{ steps.plan.outputs.native }}
+      reason: ${{ steps.plan.outputs.reason }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      # Dev keeps the full application integration job below. Tooling smoke is
+      # scoped to the merged delta because exhaustive tooling coverage belongs
+      # to the nightly lane. A missing push base fails closed to the full lane.
+      - name: Resolve tooling smoke plan
+        id: plan
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if [ -n "$BEFORE_SHA" ] \
+              && ! [[ "$BEFORE_SHA" =~ ^0+$ ]] \
+              && git cat-file -e "${BEFORE_SHA}^{commit}"; then
+              node scripts/plan-tooling-smoke.mjs \
+                --base-ref "$BEFORE_SHA" \
+                --github-output
+            else
+              node scripts/plan-tooling-smoke.mjs --all --github-output
+            fi
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            node scripts/plan-tooling-smoke.mjs \
+              --base-ref "origin/${{ github.base_ref }}" \
+              --github-output
+          fi
+
+      - name: Summarize the plan
+        run: |
+          {
+            echo "### Tooling smoke plan"
+            echo ""
+            echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 16, was a fixed 32)"
+            echo "- reason: ${{ steps.plan.outputs.reason }}"
+            echo "- native acceptance lane: ${{ steps.plan.outputs.native }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tooling-smoke-shards:
+    name: Tooling smoke shard (${{ matrix.name }})
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.applicable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # 90 minutes, matching the pre-planner lane, NOT a shorter budget.
+    #
+    # Fewer shards means each one does more work. The old lane ran 32 shards at
+    # 90 minutes; a cap of 12 still concentrates the work, so halving the
+    # timeout was exactly backwards. A first attempt at 45 minutes killed
+    # kernel-guard-cutover mid-run at 45:54 with every test passing, which reads
+    # as a test failure and is not one.
+    #
+    # The cap was 8, then 12. At 8 the
+    # allocator could not fit the measured suites under this timeout at all, so
+    # every PR touching package-lock.json was structurally red. See
+    # DEFAULT_MAX_JOBS in scripts/lib/tooling-smoke-plan.mjs.
+    #
+    # This is a ceiling for the full lane, not a target. Ordinary PRs select
+    # zero or one suite and finish in minutes. Only a change that invalidates
+    # the planner itself pays the whole cost. Suite runtimes are tracked
+    # separately as debt.
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.tooling-smoke-plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -44,22 +118,141 @@ jobs:
         run: npm ci
 
       - name: Run tooling smoke shard
-        run: >-
-          node scripts/run-tooling-smoke-shard.mjs
-          --suite=${{ matrix.suite }}
-          --shard-index=${{ matrix.shard }}
-          --shard-count=8
+        run: |
+          started=$(date +%s)
+          node scripts/run-tooling-smoke-shard.mjs \
+            --suite=${{ matrix.suite }} \
+            --shard-index=${{ matrix.shard }} \
+            --shard-count=${{ matrix.shardCount }}
+          echo "shard ${{ matrix.name }} took $(( $(date +%s) - started ))s" \
+            >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload tooling smoke unit timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tooling-smoke-timings-${{ matrix.suite }}-${{ matrix.shard }}-of-${{ matrix.shardCount }}
+          path: tooling-smoke-results/*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  # The gate is the branch-visible contract. It fails when the planner fails,
+  # when a scheduled shard fails, and when shards are missing while the planner
+  # said they were required. A not-applicable plan is the only path to a green
+  # gate without shard execution.
+  #
+  # !cancelled() rather than always(), because always() also runs during a
+  # cancelled run. That is what made a superseded or manually cancelled run
+  # report a hard red gate while every shard it managed to finish had passed:
+  # cancellation is the absence of a verdict, not a failing one, and reporting
+  # it as failure taught everyone to read a red gate as noise. A cancelled run
+  # now skips the gate instead, which leaves no verdict rather than a wrong one.
   tooling-smoke:
     name: Tooling smoke
-    if: ${{ always() }}
-    needs: tooling-smoke-shards
+    if: ${{ !cancelled() }}
+    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every tooling smoke shard
+      - name: Require the planned tooling smoke result
         env:
-          TOOLING_SMOKE_RESULT: ${{ needs.tooling-smoke-shards.result }}
-        run: test "$TOOLING_SMOKE_RESULT" = "success"
+          PLAN_RESULT: ${{ needs.tooling-smoke-plan.result }}
+          SHARD_RESULT: ${{ needs.tooling-smoke-shards.result }}
+          NATIVE_RESULT: ${{ needs.native-acceptance.result }}
+          APPLICABLE: ${{ needs.tooling-smoke-plan.outputs.applicable }}
+          NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
+          JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
+        run: |
+          # A cancelled dependency can still reach here when individual jobs were
+          # cancelled without the whole run being cancelled. Name it for what it
+          # is: "result was cancelled" next to a pile of green shards is the most
+          # misread signal in this lane, and no diff change fixes it.
+          #
+          # Two different things produce it, and they want opposite responses, so
+          # do not guess between them here. A superseded run just needs running
+          # again. A shard killed by timeout-minutes also reports cancelled, and
+          # re-running that only burns the same ninety minutes a second time; it
+          # needs more shards or a longer budget. Point at both.
+          if [ "$PLAN_RESULT" = "cancelled" ] || [ "$SHARD_RESULT" = "cancelled" ]; then
+            echo "Tooling smoke was cancelled, not failed. No verdict was produced."
+            echo "  planner: $PLAN_RESULT, shards: $SHARD_RESULT"
+            echo ""
+            echo "Check the shard durations before re-running:"
+            echo "  - Any shard sitting at exactly the job timeout was killed, not"
+            echo "    cancelled by a newer run. Re-running reproduces it. That suite"
+            echo "    needs more shards, which means fixing its entry in"
+            echo "    scripts/tooling-smoke-durations.json or raising the job budget."
+            echo "  - Otherwise a newer run superseded this one and re-running is"
+            echo "    the whole fix. Nothing in the diff needs changing."
+            exit 1
+          fi
+
+          if [ "$PLAN_RESULT" != "success" ]; then
+            echo "Tooling smoke planner did not succeed: $PLAN_RESULT"
+            exit 1
+          fi
+
+          if [ "$APPLICABLE" = "true" ]; then
+            if [ "$SHARD_RESULT" != "success" ]; then
+              echo "Planner scheduled $JOB_COUNT shard(s); result was $SHARD_RESULT"
+              exit 1
+            fi
+            echo "All $JOB_COUNT planned tooling smoke shard(s) passed."
+          else
+            if [ "$SHARD_RESULT" != "skipped" ]; then
+              echo "Plan was not applicable but shards reported $SHARD_RESULT"
+              exit 1
+            fi
+            echo "No changed path reaches the tooling smoke lane."
+          fi
+
+          # Observe-only for now, deliberately.
+          #
+          # These three files gate every test behind a module-level darwin
+          # check, so on Ubuntu they have always skipped and asserted nothing.
+          # This lane is the first time they execute at all, and the first run
+          # hung for the full job timeout. Blocking on a known-hanging test
+          # would stop every provider-visible change while proving nothing, and
+          # non-blocking is still strictly more coverage than the zero we had.
+          #
+          # This becomes blocking once the hang is diagnosed. Tracked as debt.
+          if [ "$NATIVE_REQUIRED" = "true" ]; then
+            if [ "$NATIVE_RESULT" = "success" ]; then
+              echo "Native acceptance passed on macOS."
+            else
+              echo "::warning::Native acceptance reported $NATIVE_RESULT (observe-only, not gating yet)"
+            fi
+          elif [ "$NATIVE_RESULT" != "skipped" ]; then
+            echo "Native acceptance was not required but reported $NATIVE_RESULT"
+            exit 1
+          fi
+
+  # These assertions no-op on Linux. Running them on a real macOS runner is the
+  # only way the launchd, Keychain, and signed-broker paths are actually proven.
+  native-acceptance:
+    name: Native actor acceptance (macOS)
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.native == 'true'
+    runs-on: macos-latest
+    # The runner executes the three fully Darwin-gated files plus the seven
+    # Darwin-gated cases from worktree-publish.test.mjs. The other publication
+    # cases already run in the Linux tooling lane and do not need a second pass
+    # on the scarce macOS runner.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run native acceptance tests
+        run: node scripts/run-native-acceptance.mjs
 
   main-pr-guard:
     name: Main PR guard
@@ -67,12 +260,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
 
@@ -93,16 +286,16 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -165,6 +358,7 @@ jobs:
         run: npm run validate:feature
         env:
           CI: "true"
+          GH_TOKEN: ${{ github.token }}
 
       # Write the comparison to a file instead of piping through `tee`: the
       # pipe swallowed perf-compare's exit(1), so the gate could never fail.
@@ -183,17 +377,13 @@ jobs:
 
       - name: Print perf comparison
         if: always() && hashFiles('perf-comparison.md') != ''
-        run: cat perf-comparison.md
-
-      - name: Comment perf comparison on PR
-        if: always() && hashFiles('perf-comparison.md') != '' && github.event.pull_request.head.repo.full_name == github.repository
-        run: node scripts/post-perf-comment.mjs
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cat perf-comparison.md
+          cat perf-comparison.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload perf results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: perf-results-${{ github.sha }}
           path: packages/desktop/playwright-report/perf-results.json
@@ -202,7 +392,7 @@ jobs:
 
       - name: Upload test artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: packages/desktop/playwright-report/
@@ -210,7 +400,7 @@ jobs:
 
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results
           path: packages/desktop/test-results/
@@ -227,12 +417,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -277,7 +467,7 @@ jobs:
 
       - name: Upload test artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: packages/desktop/playwright-report/
@@ -285,14 +475,14 @@ jobs:
 
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results
           path: packages/desktop/test-results/
           retention-days: 7
 
-      # Stability W2-02: red dev CI becomes a triage-readable issue instead of
-      # a problem the nightly planner rediscovers from scratch.
+      # A red dev build stays an incident issue. If it exposes durable debt,
+      # the stability controller links a separate issue carrying `debt`.
       - name: Open or update the automation-triage issue on failure
         if: failure()
         env:
@@ -305,7 +495,7 @@ jobs:
           Commit: ${GITHUB_SHA}
           Job: dev (validate:dev)
 
-          Auto-filed for scripts/triage.mjs (label: automation-triage). Latest failure comments on the open issue; close it when the fix merges."
+          Auto-filed for scripts/triage.mjs (label: automation-triage). This is an incident, not the debt backlog. Latest failures comment here; close it when the fix merges."
           existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"

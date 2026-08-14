@@ -868,12 +868,24 @@ private func publish(
       body: ["ref": "refs/tags/\(tag)", "sha": tagObjectSHA],
       accepted: [201]
     )
-    let refResponse = try client.request(
+    var refResponse = try client.request(
       method: "GET",
       path: "/repos/\(binding.repo)/git/ref/tags/\(tag)",
       token: context.token,
-      accepted: [200]
+      accepted: [200, 404]
     )
+    for delay in [0.25, 0.5, 1.0, 2.0] where refResponse.status == 404 {
+      Thread.sleep(forTimeInterval: delay)
+      refResponse = try client.request(
+        method: "GET",
+        path: "/repos/\(binding.repo)/git/ref/tags/\(tag)",
+        token: context.token,
+        accepted: [200, 404]
+      )
+    }
+    guard refResponse.status == 200 else {
+      try fail("The created release tag was not readable after GitHub accepted it.")
+    }
     let refObject = try jsonObject(refResponse.data, label: "created release tag ref")
     guard let target = refObject["object"] as? [String: Any],
       target["type"] as? String == "tag",

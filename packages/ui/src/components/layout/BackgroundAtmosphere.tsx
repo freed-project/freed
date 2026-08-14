@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  DEFAULT_THEME_ID,
   getThemeDefinition,
-  resolveThemeId,
-  type ThemeId,
   type ThemeBackgroundRecipe,
   type ThemeBackgroundTextureLayer,
 } from "@freed/shared/themes";
+import { useAppliedThemeId } from "../../lib/theme.js";
 
 const channels = {
   secondary: { rgbVar: "--theme-accent-secondary-rgb", intensity: 1.0 },
@@ -223,7 +221,7 @@ export function BackgroundAtmosphere() {
   const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
   const [viewportHeight, setViewportHeight] = useState(MIN_BACKGROUND_HEIGHT);
   const [documentVisible, setDocumentVisible] = useState(getDocumentVisible);
-  const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
+  const themeId = useAppliedThemeId();
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
     [themeId],
@@ -236,23 +234,8 @@ export function BackgroundAtmosphere() {
   const isLegacyRenderer = rendererMode === "legacy";
 
   useEffect(() => {
-    const initialThemeId = resolveThemeId(
-      document.documentElement.dataset.theme || DEFAULT_THEME_ID,
-    );
     setViewportWidth(window.innerWidth);
     setViewportHeight(window.innerHeight);
-    setThemeId(initialThemeId);
-
-    const observer = new MutationObserver(() => {
-      const nextThemeId = resolveThemeId(
-        document.documentElement.dataset.theme || DEFAULT_THEME_ID,
-      );
-      setThemeId(nextThemeId);
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
 
     let rafId = 0;
     const onResize = () => {
@@ -272,7 +255,6 @@ export function BackgroundAtmosphere() {
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       cancelAnimationFrame(rafId);
-      observer.disconnect();
     };
   }, []);
 

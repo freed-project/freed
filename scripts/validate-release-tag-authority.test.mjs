@@ -17,8 +17,8 @@ test("release tag authority arguments accept only owner and repository", () => {
 
 test("live release tag authority loader resolves the named ruleset", () => {
   const calls = [];
-  const exec = (_file, args) => {
-    calls.push(args);
+  const exec = (file, args) => {
+    calls.push({ file, args });
     if (args[1].includes("?targets=tag")) {
       return JSON.stringify([
         { id: 7, name: "Freed release tag creation" },
@@ -31,18 +31,31 @@ test("live release tag authority loader resolves the named ruleset", () => {
     });
   };
   assert.deepEqual(
-    loadLiveReleaseTagRulesets("freed-project/freed", { exec }).map(
-      (ruleset) => ruleset.id,
-    ),
+    loadLiveReleaseTagRulesets("freed-project/freed", {
+      exec,
+      githubCli: "/opt/homebrew/bin/gh",
+    }).map((ruleset) => ruleset.id),
     [7, 8],
   );
   assert.equal(calls.length, 3);
+  assert.deepEqual(
+    calls.map((call) => call.file),
+    [
+      "/opt/homebrew/bin/gh",
+      "/opt/homebrew/bin/gh",
+      "/opt/homebrew/bin/gh",
+    ],
+  );
 });
 
 test("live release tag authority loader fails when provisioning is absent", () => {
   const exec = () => JSON.stringify([]);
   assert.throws(
-    () => loadLiveReleaseTagRulesets("freed-project/freed", { exec }),
+    () =>
+      loadLiveReleaseTagRulesets("freed-project/freed", {
+        exec,
+        githubCli: "/fixture/gh",
+      }),
     /Release tags are blocked until a dedicated release GitHub App/,
   );
 });

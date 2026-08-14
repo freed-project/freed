@@ -53,7 +53,7 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
   isFactoryResetInProgress: () => mocks.resetActive,
   trackFactoryResetSensitiveOperation: <T,>(operation: Promise<T>) => operation,
 }));
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
 }));
 vi.mock("./fb-capture", () => ({ captureFbFeed: mocks.captureFbFeed }));
@@ -191,9 +191,12 @@ describe("capture factory reset boundary", () => {
       }),
     );
     const pendingFetches: Array<(html: string) => void> = [];
-    mocks.invoke.mockImplementation(
-      () => new Promise<string>((resolve) => pendingFetches.push(resolve)),
-    );
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === "query_sqlite_library_items") {
+        return Promise.resolve({ itemsJson: [], nextOffset: null, totalCount: 0 });
+      }
+      return new Promise<string>((resolve) => pendingFetches.push(resolve));
+    });
 
     const { refreshAllFeeds } = await import("./capture");
     const refreshing = refreshAllFeeds();
@@ -203,7 +206,7 @@ describe("capture factory reset boundary", () => {
     for (const resolve of pendingFetches) resolve(FEED_XML);
     await refreshing;
 
-    expect(mocks.invoke).toHaveBeenCalledTimes(5);
+    expect(mocks.invoke).toHaveBeenCalledTimes(6);
     expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_url", {
       url: "https://example.com/feed-6.xml",
     });

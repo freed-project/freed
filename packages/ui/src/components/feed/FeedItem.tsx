@@ -667,7 +667,7 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-feed-card-density={density}
-          className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+          className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${readVisualClass}`}
           style={{
             ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
             height: fixedHeight,
@@ -899,7 +899,7 @@ export const FeedItem = memo(function FeedItem({
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
         data-feed-card-density={density}
-        className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+        className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${readVisualClass}`}
         style={{
           ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
           padding: fullCardDensity.padding,
