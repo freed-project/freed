@@ -271,13 +271,13 @@ export default function Hero() {
               Get Freed
             </motion.button>
 
-            <Link href="/manifesto" className="w-full sm:w-auto">
+            <Link href="/changelog" className="w-full sm:w-auto">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="btn-secondary text-base px-8 py-3 w-full"
               >
-                Read the Manifesto
+                Latest Updates
               </motion.button>
             </Link>
           </div>
