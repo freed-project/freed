@@ -37,6 +37,7 @@ import {
   conservativeLeaseCleanupArchiveReservation,
   inspectLeaseCleanupArchiveCapacity,
 } from "./lib/automation-control.mjs";
+import { resolveGitHubCli } from "./lib/github-tooling.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -286,7 +287,7 @@ export function evaluateGhCheck({
 }
 
 function checkGh(machineArch, platform) {
-  const ghPath = whichCommand("gh");
+  const ghPath = resolveGitHubCli({ required: false });
   const versionResult = ghPath
     ? tryExec(ghPath, ["--version"])
     : { ok: false, stdout: "", error: "gh is not installed" };
@@ -337,7 +338,7 @@ function checkGitCredentialHelpers() {
   ];
 
   if (broken.length > 0) {
-    const ghPath = whichCommand("gh");
+    const ghPath = resolveGitHubCli({ required: false });
     return check(
       "git-credential-helper",
       "git credential helper",
@@ -515,7 +516,10 @@ function automationKernelGuardCutoverRemediation(stateDir) {
   ].join("\n");
 }
 
-export function checkAutomationStateDir(stateDir) {
+export function checkAutomationStateDir(
+  stateDir,
+  { inspectArchiveCapacity = inspectLeaseCleanupArchiveCapacity } = {},
+) {
   if (existsSync(stateDir)) {
     const currentUid =
       typeof process.getuid === "function" ? process.getuid() : null;
@@ -594,7 +598,7 @@ export function checkAutomationStateDir(stateDir) {
         const reservation = conservativeLeaseCleanupArchiveReservation(
           stateDir,
         );
-        archiveInspection = inspectLeaseCleanupArchiveCapacity(stateDir, {
+        archiveInspection = inspectArchiveCapacity(stateDir, {
           reservation,
         });
         if (!archiveInspection.ready) {

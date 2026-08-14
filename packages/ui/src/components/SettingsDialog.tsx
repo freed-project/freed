@@ -30,6 +30,7 @@ import {
 } from "../context/PlatformContext.js";
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
+import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
   formatSampleDataSummary,
@@ -38,7 +39,7 @@ import {
 } from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
-  persistTheme,
+  useThemePreference,
   useThemePreviewController,
 } from "../lib/theme.js";
 import { animationAwareScrollBehavior } from "../lib/animation-preferences.js";
@@ -503,15 +504,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingThemeIdRef = useRef<ThemeId | null>(null);
-  const pendingThemeSaveSeqRef = useRef(0);
-  const committedThemeIdRef = useRef(preferences.display.themeId);
-  const settingsShellRef = useRef<HTMLDivElement>(null);
-  const settingsOverlayRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
+  const [themeId, setThemePreference] = useThemePreference();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = useMemo(
@@ -607,10 +604,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
   const hasCoarsePointer = useHasTouchOnlyPointer();
 
-  useEffect(() => {
-    committedThemeIdRef.current = preferences.display.themeId;
-  }, [preferences.display.themeId]);
-
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
       setDisplay((prev) => ({ ...prev, ...update }));
@@ -640,38 +633,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setDisplay(preferences.display);
   }, [preferences.display]);
 
-  const flushPendingThemeSelection = useCallback((themeId: ThemeId, saveSeq: number) => {
-    pendingThemeIdRef.current = null;
-    void updatePreferences({ display: { themeId } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingThemeSaveSeqRef.current !== saveSeq) {
-        return;
-      }
-
-      const committedThemeId = committedThemeIdRef.current;
-      applyThemeToDocument(committedThemeId);
-      persistTheme(committedThemeId);
-      setDisplay((prev) => ({ ...prev, themeId: committedThemeId }));
-      toast.error("Could not save settings");
-    });
-  }, [updatePreferences]);
-
-  const flushPendingThemeSelectionNow = useCallback(() => {
-    if (themeSaveTimerRef.current) {
-      clearTimeout(themeSaveTimerRef.current);
-      themeSaveTimerRef.current = null;
-    }
-    const pendingThemeId = pendingThemeIdRef.current;
-    if (!pendingThemeId) {
-      return;
-    }
-    flushPendingThemeSelection(pendingThemeId, pendingThemeSaveSeqRef.current);
-  }, [flushPendingThemeSelection]);
   useEffect(() => {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
-    delete settingsShellRef.current?.dataset.moving;
-    delete settingsOverlayRef.current?.dataset.moving;
+    delete scrollRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
@@ -680,8 +646,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTimeout(scrollOptimizationTimerRef.current);
       scrollOptimizationTimerRef.current = null;
     }
-    flushPendingThemeSelectionNow();
-  }, [flushPendingThemeSelectionNow, open]);
+  }, [open]);
 
   useEffect(() => {
     return () => {
@@ -691,11 +656,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (scrollOptimizationTimerRef.current) {
         clearTimeout(scrollOptimizationTimerRef.current);
       }
-      delete settingsShellRef.current?.dataset.moving;
-      delete settingsOverlayRef.current?.dataset.moving;
-      flushPendingThemeSelectionNow();
+      delete scrollRef.current?.dataset.moving;
     };
-  }, [flushPendingThemeSelectionNow]);
+  }, []);
 
   const activateTouchThemePreview = useCallback(() => {
     if (!hasCoarsePointer) return;
@@ -709,58 +672,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 5000);
   }, [hasCoarsePointer]);
 
-  const suppressSettingsChromeDuringScroll = useCallback(() => {
-    const shell = settingsShellRef.current;
-    if (shell && shell.dataset.moving !== "true") {
-      shell.dataset.moving = "true";
-    }
-    const overlay = settingsOverlayRef.current;
-    if (overlay && overlay.dataset.moving !== "true") {
-      overlay.dataset.moving = "true";
+  const suppressSettingsScrollportDescendantsDuringScroll = useCallback(() => {
+    // The overlay and shell are static visual frames. Keep moving state on the
+    // scrollport so performance CSS cannot drop their blur or shadow again.
+    const scrollport = scrollRef.current;
+    if (scrollport && scrollport.dataset.moving !== "true") {
+      scrollport.dataset.moving = "true";
     }
 
     if (scrollOptimizationTimerRef.current) {
       clearTimeout(scrollOptimizationTimerRef.current);
     }
     scrollOptimizationTimerRef.current = setTimeout(() => {
-      delete settingsShellRef.current?.dataset.moving;
-      delete settingsOverlayRef.current?.dataset.moving;
+      delete scrollRef.current?.dataset.moving;
       scrollOptimizationTimerRef.current = null;
     }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
   }, []);
 
-  const handleThemeCommit = useCallback((themeId: ThemeId) => {
+  const handleThemeCommit = useCallback((nextThemeId: ThemeId) => {
     activateTouchThemePreview();
-    setDisplay((prev) => (
-      prev.themeId === themeId
-        ? prev
-        : { ...prev, themeId }
-    ));
-    persistTheme(themeId);
-
-    pendingThemeSaveSeqRef.current += 1;
-    const saveSeq = pendingThemeSaveSeqRef.current;
-    pendingThemeIdRef.current = themeId;
-
-    if (themeSaveTimerRef.current) {
-      clearTimeout(themeSaveTimerRef.current);
+    if (!setThemePreference(nextThemeId)) {
+      applyThemeToDocument(themeId);
+      toast.error("Could not save the theme on this device");
     }
-    themeSaveTimerRef.current = setTimeout(() => {
-      themeSaveTimerRef.current = null;
-      const pendingThemeId = pendingThemeIdRef.current;
-      if (!pendingThemeId) {
-        return;
-      }
-      flushPendingThemeSelection(pendingThemeId, saveSeq);
-    }, 500);
-  }, [activateTouchThemePreview, flushPendingThemeSelection]);
+  }, [activateTouchThemePreview, setThemePreference, themeId]);
 
   const {
     revertPreview: revertThemePreview,
     previewTheme,
     commitTheme,
   } = useThemePreviewController({
-    committedThemeId: display.themeId,
+    committedThemeId: themeId,
     onCommitTheme: handleThemeCommit,
   });
 
@@ -922,6 +864,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.friends);
   const persons = useAppStore((s) => s.persons);
@@ -931,10 +874,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
   const existingFriendCount = Object.keys(friends).length;
-  const existingItemCount = items.length;
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const existingItemCount = libraryFacets.totalCount;
   const sampleDataSummary = useMemo(
-    () => summarizeSampleData({ items, feeds, persons, accounts }),
-    [accounts, feeds, items, persons],
+    () =>
+      summarizeSampleData(
+        { items, feeds, persons, accounts },
+        libraryFacets.sampleItemCount,
+      ),
+    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
   );
   const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
@@ -1007,7 +955,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const [scrollportHeight, setScrollportHeight] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const activeSectionBreadcrumb = useMemo(() => {
     const section = allSections.find((candidate) => candidate.id === activeSection);
     if (!section) return ["Freed Settings"];
@@ -1269,7 +1216,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
 
     const scheduleActiveSectionUpdate = () => {
-      suppressSettingsChromeDuringScroll();
+      suppressSettingsScrollportDescendantsDuringScroll();
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {
         if (isScrollingProgrammatically.current) {
@@ -1293,7 +1240,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         root.removeEventListener("scrollend", updateActiveSectionFromScroll);
       }
     };
-  }, [isMobile, mobileView, open, searchLower, suppressSettingsChromeDuringScroll, updateScrollAnchorFromPosition]);
+  }, [
+    isMobile,
+    mobileView,
+    open,
+    searchLower,
+    suppressSettingsScrollportDescendantsDuringScroll,
+    updateScrollAnchorFromPosition,
+  ]);
 
   useEffect(() => {
     if (!open || isMobile || searchLower) {
@@ -1494,7 +1448,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Appearance" />
-            <div className="space-y-5">
+            <div data-testid="settings-display-scale-controls" className="space-y-5">
               <div
                 className="theme-card-soft theme-settings-theme-card rounded-2xl p-4 sm:p-5"
                 onMouseEnter={handleThemeCardMouseEnter}
@@ -1504,9 +1458,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
-                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <div className="theme-settings-theme-options">
                     {THEME_DEFINITIONS.map((theme) => {
-                      const isActive = display.themeId === theme.id;
+                      const isActive = themeId === theme.id;
                       return (
                         <Tooltip
                           key={theme.id}
@@ -1528,36 +1482,33 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     })}
                   </div>
                 </div>
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-text-primary">Zoom</p>
+                    <span
+                      data-testid="settings-interface-zoom-value"
+                      className="text-xs font-semibold tabular-nums text-text-muted"
+                    >
+                      {formatInterfaceZoom(interfaceZoom)}
+                    </span>
+                  </div>
+                  <InterfaceZoomSlider
+                    value={interfaceZoom}
+                    onChange={setInterfaceZoom}
+                    fullWidth
+                  />
+                </div>
               </div>
               <div
-                data-testid="settings-display-scale-controls"
                 className="theme-card-soft rounded-2xl p-4 sm:p-5"
               >
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-text-primary">Card density</p>
-                    <FeedCardDensitySlider
-                      value={feedCardDensity}
-                      onChange={setFeedCardDensity}
-                      fullWidth
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-text-primary">Interface zoom</p>
-                      <span
-                        data-testid="settings-interface-zoom-value"
-                        className="text-xs font-semibold tabular-nums text-text-muted"
-                      >
-                        {formatInterfaceZoom(interfaceZoom)}
-                      </span>
-                    </div>
-                    <InterfaceZoomSlider
-                      value={interfaceZoom}
-                      onChange={setInterfaceZoom}
-                      fullWidth
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-text-primary">Card density</p>
+                  <FeedCardDensitySlider
+                    value={feedCardDensity}
+                    onChange={setFeedCardDensity}
+                    fullWidth
+                  />
                 </div>
               </div>
               <SettingsToggle
@@ -2077,14 +2028,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
-        ref={settingsShellRef}
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none

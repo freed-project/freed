@@ -2,7 +2,7 @@
  * Debug store for Freed sync diagnostics
  *
  * Zustand store that tracks sync events, document state snapshots, and
- * panel visibility. Consumed by DebugPanel; written to by automerge.ts
+ * panel visibility. Consumed by DebugPanel; written to by Library clients.
  * and sync.ts in both the PWA and desktop packages.
  *
  * Also exposes window.__freed as a console escape hatch for inspecting
@@ -75,6 +75,7 @@ export interface RuntimeMemorySnapshot {
   webkitLargestRole?: string;
   webkitProcesses?: Array<{
     processId: number;
+    startedAtUnixSeconds?: number;
     residentBytes: number;
     footprintBytes?: number;
     virtualBytes: number;
@@ -84,8 +85,6 @@ export interface RuntimeMemorySnapshot {
   }>;
   webkitTelemetryAvailable?: boolean;
   webkitAttributionPrecise?: boolean;
-  automergeBinaryBytes?: number;
-  automergeItemCount?: number;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
   storageSizesSampled?: boolean;
@@ -106,6 +105,29 @@ export interface RuntimeMemorySnapshot {
   rendererHeapUsedBytes?: number;
   rendererHeapTotalBytes?: number;
   rendererHeapLimitBytes?: number;
+  /**
+   * False on the shipping desktop app: `performance.memory` is a Chrome
+   * extension and WebKit does not implement it, so the three fields above are
+   * always undefined there. Without this flag their absence reads as zero and
+   * invites the conclusion that the JS heap is negligible, which is a claim
+   * nobody has measured.
+   */
+  rendererHeapAvailable?: boolean;
+  /** Main renderer RSS sampled before Automerge hydration, captured once per launch. */
+  shellBaselineMainRendererResidentBytes?: number;
+  /** PID that owns the shell baseline. Later samples are comparable only while this process survives. */
+  shellBaselineMainRendererProcessId?: number;
+  /** Native process start time paired with the PID so PID reuse cannot resurrect an old baseline. */
+  shellBaselineMainRendererStartedAtUnixSeconds?: number;
+  /** Native microsecond process start identity used for exact same-process comparisons. */
+  shellBaselineMainRendererStartedAtUnixMicros?: number;
+  /** Same-process main renderer growth since the shell baseline. This is undefined after renderer replacement. */
+  mainRendererResidentOverShellBaselineBytes?: number;
+  /** Why a same-process comparison is or is not available for this sample. */
+  shellBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
+  shellBaselineAgeMs?: number;
+  /** Whether the document had been hydrated when this sample was taken. A baseline is only valid from a pre-hydration sample. */
+  documentHydrated?: boolean;
   domNodeCount?: number;
   sampleTs: number;
 }
@@ -474,8 +496,8 @@ export function setProviderHealth(state: ProviderHealthDebugState): void {
 // ---------------------------------------------------------------------------
 // window.__freed escape hatch
 //
-// Call registerDocAccessors(getDoc, getDocBinary) from automerge.ts after
-// initDoc() so the console can reach live document state without the panel.
+// Register the active Library accessors after initialization so the console
+// can reach live state without opening the panel.
 // ---------------------------------------------------------------------------
 
 declare global {
@@ -492,13 +514,13 @@ declare global {
 export function registerDocAccessors(
   getDoc: () => unknown,
   getDocJson: () => string,
-  getDocBinary: () => Uint8Array | Promise<Uint8Array>,
+  getDocBinary?: () => Uint8Array | Promise<Uint8Array>,
 ): void {
   window.__freed = {
     ...window.__freed,
     getDoc,
     getDocJson,
-    getDocBinary,
+    ...(getDocBinary ? { getDocBinary } : {}),
     debug: () => useDebugStore.getState(),
   };
 }

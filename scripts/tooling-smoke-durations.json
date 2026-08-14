@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "note": "Measured on ubuntu-latest CI, run 30140909175 / 30143xxxxx (2026-07-25), with outcome-ledger-repair re-measured from run 30166138958 where all 8 of its shards completed. Seconds are per-suite totals summed across that run's shards, so they include per-shard job overhead and read slightly high at low shard counts, which is the safe direction. The former general suite had shards of 41s, 406s, 1,323s, and 4,909s. The 4,909s shard contained only nightly-self-improve.test.mjs, so its observed duration is now assigned to that independently sharded suite and the remaining three shard durations stay with general. Refresh with: node scripts/measure-tooling-smoke.mjs --write, or from CI shard durations.",
+  "suites": {
+    "general": {
+      "seconds": 1770,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shards 41+406+1323 after nightly-self-improve extraction"
+    },
+    "automation-control": {
+      "seconds": 8689,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shards 3985+4704"
+    },
+    "kernel-guard-cutover": {
+      "seconds": 4800,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shard 4800 (single shard, 80 min, observed 2026-07-25). Replaces 3648s, which was a third low and left this suite one shard away from the 90 minute cap."
+    },
+    "nightly-self-improve": {
+      "seconds": 4909,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "former general shard 4/4, which contained only scripts/nightly-self-improve.test.mjs"
+    },
+    "outcome-ledger-repair": {
+      "seconds": 17266,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shards 1957+1732+3115+1752+2637+1427+2341+2305 (run 30166138958, all 8 completed). Replaces the 5415s floor from a killed shard, which understated the suite by 3.2x and kept the planner under-sharding it. The suite is still ~4.8 hours of work; that cost is issue #1147, not this number."
+    }
+  }
+}

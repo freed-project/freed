@@ -35,6 +35,7 @@ let receiptDigest;
 let apiBase;
 let server;
 let tagCreated = false;
+let postCreateReadMissesRemaining = 1;
 let revokedTokens = 0;
 const requests = [];
 
@@ -338,6 +339,10 @@ before(async () => {
       request.method === "GET" &&
       url.pathname === `/repos/freed-project/freed/git/ref/tags/${tag}`
     ) {
+      if (tagCreated && postCreateReadMissesRemaining > 0) {
+        postCreateReadMissesRemaining -= 1;
+        return json(response, 404, { message: "Not Found" });
+      }
       return tagCreated
         ? json(response, 200, { object: { type: "tag", sha: tagObjectSha } })
         : json(response, 404, { message: "Not Found" });

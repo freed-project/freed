@@ -9,6 +9,15 @@ var __assign = (this && this.__assign) || function () {
     };
     return __assign.apply(this, arguments);
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
@@ -62,6 +71,21 @@ var tauriMockAliases = process.env.VITE_TEST_TAURI
 var tauriMockExclude = process.env.VITE_TEST_TAURI
     ? Object.keys(tauriMockAliases)
     : [];
+var libraryClientTestAliases = {};
+var rejectRetiredDesktopLibraryAssets = {
+    name: "reject-retired-desktop-library-assets",
+    generateBundle: function (_options, bundle) {
+        var retiredAssets = Object.keys(bundle).filter(function (fileName) {
+            var normalized = fileName.toLowerCase();
+            return (normalized.includes("automerge") ||
+                normalized.includes("cloud-merge") ||
+                normalized.endsWith(".wasm"));
+        });
+        if (retiredAssets.length > 0) {
+            throw new Error("The retired Desktop document runtime leaked into the production bundle: ".concat(retiredAssets.join(", ")));
+        }
+    },
+};
 var buildMetadata = getBuildMetadata(pkg.version);
 export default defineConfig({
     define: {
@@ -73,18 +97,27 @@ export default defineConfig({
         __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
     },
     resolve: {
-        alias: __assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, tauriMockAliases),
+        alias: __assign(__assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, libraryClientTestAliases), tauriMockAliases),
     },
-    // vite-plugin-wasm must also be applied to the worker sub-bundle.
-    // Without this, Vite 7's worker pipeline processes automerge.worker.ts
-    // without WASM support and fails on the automerge_wasm_bg.wasm import.
+    // Production bundles reject retired document workers and WASM artifacts.
     worker: {
         format: "es",
-        plugins: function () { return [wasm(), topLevelAwait()]; },
+        plugins: function () { return [
+            rejectRetiredDesktopLibraryAssets,
+            wasm(),
+            topLevelAwait(),
+        ]; },
     },
-    plugins: [wasm(), topLevelAwait(), react()],
+    plugins: [
+        rejectRetiredDesktopLibraryAssets,
+        wasm(),
+        topLevelAwait(),
+        react(),
+    ],
     optimizeDeps: {
-        exclude: tauriMockExclude,
+        exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
+            "maplibre-gl/dist/maplibre-gl-worker.mjs",
+        ], false),
     },
     // Tauri development server.
     // strictPort is only enforced when running with the real Tauri binary (tauri:dev),

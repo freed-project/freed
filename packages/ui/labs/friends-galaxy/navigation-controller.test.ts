@@ -50,6 +50,12 @@ describe("Friends Galaxy navigation controller", () => {
       navigation.frame.fittedScale,
       12,
     );
+    expect(navigation.frame.outwardZoomEnvelope.target).toBe(
+      navigation.transform.scale,
+    );
+    expect(navigation.frame.outwardZoomEnvelope.resistance).toBe(
+      navigation.frame.fittedScale,
+    );
   });
 
   it("focuses positive-depth identities at the bounded usable center", () => {
@@ -155,6 +161,45 @@ describe("Friends Galaxy navigation controller", () => {
       .toBeCloseTo(275, 10);
     expect(movingWorldY * navigation.transform.scale + navigation.transform.y)
       .toBeCloseTo(365, 10);
+  });
+
+  it("makes Fit All a no-op after outward input reaches the frame boundary", () => {
+    const navigation = new FriendsGalaxyNavigationController(
+      rendererScene(),
+      1_280,
+      720,
+      { top: 0, right: 356, bottom: 0, left: 292 },
+    );
+    navigation.fit();
+    const fittedTransform = { ...navigation.transform };
+    navigation.focusNode("person:product-person-2", 1.2);
+
+    for (let index = 0; index < 96; index += 1) {
+      navigation.zoomAt(360, 180, 0.92);
+    }
+
+    expect(navigation.transform).toEqual(fittedTransform);
+    navigation.fit();
+    expect(navigation.transform).toEqual(fittedTransform);
+  });
+
+  it("makes Fit All a no-op after pinch reaches the frame boundary", () => {
+    const navigation = new FriendsGalaxyNavigationController(
+      rendererScene(),
+      390,
+      844,
+    );
+    navigation.fit();
+    const fittedTransform = { ...navigation.transform };
+    navigation.focusNode("person:product-person-2", 1.2);
+
+    for (let index = 0; index < 96; index += 1) {
+      navigation.pinch(80, 180, 310, 180, 120, 210, 270, 210);
+    }
+
+    expect(navigation.transform).toEqual(fittedTransform);
+    navigation.fit();
+    expect(navigation.transform).toEqual(fittedTransform);
   });
 
   it("preserves the previous pinch midpoint world point at the moving midpoint", () => {

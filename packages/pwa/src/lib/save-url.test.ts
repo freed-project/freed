@@ -1,13 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const mockDocAddStubItem = vi.fn(async () => undefined);
-
-vi.mock("./automerge", () => ({
-  docAddStubItem: mockDocAddStubItem,
-}));
+const mockEnqueueCapture = vi.fn(async () => undefined);
 
 vi.mock("@freed/capture-save/normalize", () => ({
-  hashSavedUrl: (url: string) => url === "https://example.com/article" ? "abc123" : "stub123",
+  buildSavedFeedItem: (metadata: { url: string }, _content: null, options: { tags?: string[] }) => ({
+    globalId: "saved:abc123",
+    platform: "saved",
+    capturedAt: 100,
+    userState: { saved: true, tags: options.tags ?? [] },
+    sourceUrl: metadata.url,
+  }),
+  hashSavedUrl: (url: string) =>
+    url === "https://example.com/article" ? "abc123" : "stub123",
+}));
+
+vi.mock("./library-core-runtime", () => ({
+  enqueuePwaLibraryCoreFeedItemCapture: mockEnqueueCapture,
 }));
 
 describe("saveUrlInPwa", () => {
@@ -15,15 +23,21 @@ describe("saveUrlInPwa", () => {
     vi.clearAllMocks();
   });
 
-  it("writes a saved stub without foreground article fetching", async () => {
+  it("writes a signed local capture without fetching", async () => {
     vi.stubGlobal("fetch", vi.fn());
     const { saveUrlInPwa } = await import("./save-url");
 
-    const result = await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
-
+    await expect(saveUrlInPwa("https://example.com/article", {
+      tags: ["research"],
+    })).resolves.toEqual({ globalId: "saved:abc123" });
+    expect(mockEnqueueCapture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        globalId: "saved:abc123",
+        sourceUrl: "https://example.com/article",
+        userState: expect.objectContaining({ tags: ["research"] }),
+      }),
+    );
     expect(fetch).not.toHaveBeenCalled();
-    expect(mockDocAddStubItem).toHaveBeenCalledWith("https://example.com/article", ["research"]);
-    expect(result).toEqual({ globalId: "saved:abc123" });
     vi.unstubAllGlobals();
   });
 
@@ -31,7 +45,6 @@ describe("saveUrlInPwa", () => {
     const { saveUrlInPwa } = await import("./save-url");
 
     await expect(saveUrlInPwa("notaurl")).rejects.toThrow("Invalid URL");
-    expect(mockDocAddStubItem).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported protocols with a specific error", async () => {
@@ -40,15 +53,14 @@ describe("saveUrlInPwa", () => {
     await expect(saveUrlInPwa("ftp://example.com/article")).rejects.toThrow(
       "Only http and https URLs are supported",
     );
-    expect(mockDocAddStubItem).not.toHaveBeenCalled();
   });
 
-  it("propagates Automerge persistence failures", async () => {
-    mockDocAddStubItem.mockRejectedValueOnce(new Error("Automerge unavailable"));
+  it("propagates Library Core persistence failures", async () => {
+    mockEnqueueCapture.mockRejectedValueOnce(new Error("IndexedDB unavailable"));
     const { saveUrlInPwa } = await import("./save-url");
 
     await expect(saveUrlInPwa("https://example.com/article")).rejects.toThrow(
-      "Automerge unavailable",
+      "IndexedDB unavailable",
     );
   });
 });

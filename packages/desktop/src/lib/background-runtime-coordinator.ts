@@ -11,6 +11,7 @@ export type BackgroundJobKind =
   | "cloud-sync"
   | "content-fetch"
   | "content-signal-backfill"
+  | "library-projection"
   | "outbox"
   | "rss-poll"
   | "semantic-classifier"

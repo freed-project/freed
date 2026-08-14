@@ -1,0 +1,101 @@
+{
+  "tag": "v26.8.1103-dev",
+  "version": "26.8.1103-dev",
+  "channel": "dev",
+  "dayKey": "26.8.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-12T03:48:42.833Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1102-dev",
+    "previousPublishedDayTag": "v26.8.1004-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "6450f55c67c4bfc7e19d23e5aaf5500d6a76c4ea",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1102-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "7b56fa09a19ed7c1f46917433a42cfa43ac3e8ce",
+        "toInclusiveProductCommitSha": "6450f55c67c4bfc7e19d23e5aaf5500d6a76c4ea"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:72970351acebd766cba565ed84e1679326c3dc332a680d2562e8df7981fd770d",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev",
+      "v26.8.1102-dev",
+      "v26.8.1103-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev",
+      "v26.8.1102-dev",
+      "v26.8.1103-dev"
+    ],
+    "prNumbers": [
+      1395,
+      1396,
+      1397,
+      1398,
+      1400,
+      1401,
+      1402,
+      1403,
+      1405
+    ],
+    "commitSubjects": [
+      "fix: preserve malformed legacy text during SQLite migration (#1405)",
+      "release: v26.8.1102-dev (#1404)",
+      "fix: restore Desktop cloud merge type import (#1403)",
+      "perf: keep Automerge dormant in the PWA (#1402)",
+      "fix: reject unsafe entity map keys (#1401)",
+      "perf: index map location candidates (#1400)",
+      "release: v26.8.1101-dev (#1399)",
+      "perf: move Desktop library search into SQLite (#1398)",
+      "perf: move PWA library search into IndexedDB (#1397)",
+      "chore: prepare v26.8.1100-dev (#1396)",
+      "fix: preserve Unicode during SQLite import (#1395)"
+    ]
+  },
+  "release": {
+    "deck": "Search the whole Library without loading it into browser memory",
+    "features": [
+      "Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit",
+      "The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory",
+      "The normal PWA startup no longer loads the legacy Automerge worker or its WebAssembly runtime"
+    ],
+    "fixes": [
+      "Preserve malformed legacy text during SQLite migration",
+      "Desktop cloud merge type import restored",
+      "Reject unsafe entity map keys",
+      "SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge"
+    ],
+    "followUps": [
+      "Keep Automerge dormant in the PWA",
+      "Index map location candidates",
+      "Prepare v26.8.1100-dev",
+      "Every saved character reaches the new local database",
+      "SQLite keeps the full Library out of browser memory"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1103-dev\n\nSearch the whole Library without loading it into browser memory\n\n### Features\n\n- Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit\n- The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory\n- The normal PWA startup no longer loads the legacy Automerge worker or its WebAssembly runtime\n\n### Fixes\n\n- Preserve malformed legacy text during SQLite migration\n- Desktop cloud merge type import restored\n- Reject unsafe entity map keys\n- SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge\n\n### Follow-ups\n\n- Keep Automerge dormant in the PWA\n- Index map location candidates\n- Prepare v26.8.1100-dev\n- Every saved character reaches the new local database\n- SQLite keeps the full Library out of browser memory\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

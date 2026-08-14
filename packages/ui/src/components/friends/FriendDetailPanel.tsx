@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { Friend, FeedItem, ReachOutLog } from "@freed/shared";
-import { feedItemsForFriend, lastPostAt, lastReachOutAt } from "@freed/shared";
+import { lastReachOutAt } from "@freed/shared";
 import {
   FacebookIcon,
   InstagramIcon,
@@ -93,7 +93,9 @@ function TimelineItem({
   onClick?: () => void;
 }) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
-  const icon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
+  const icon = platformIcons[item.platform] ?? (
+    <span className="text-xs">📄</span>
+  );
 
   return (
     <button
@@ -143,15 +145,15 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
 
   return (
     <div className="glass-card mx-4 mb-4 rounded-xl px-4 py-3">
-      <p className="text-sm font-medium text-text-primary mb-3">Log a reach-out</p>
+      <p className="text-sm font-medium text-text-primary mb-3">
+        Log a reach-out
+      </p>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CHANNELS.map((c) => (
           <button
             key={c.id}
             className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              channel === c.id
-                ? "theme-chip-active"
-                : "theme-chip"
+              channel === c.id ? "theme-chip-active" : "theme-chip"
             }`}
             onClick={() => setChannel(c.id)}
           >
@@ -196,7 +198,18 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
 
 interface FriendDetailPanelProps {
   friend: Friend;
-  feedItems: Record<string, FeedItem>;
+  feedItems: readonly FeedItem[];
+  locationItems: readonly FeedItem[];
+  activityAvatarUrls: readonly (string | null | undefined)[];
+  latestPostAt: number | null;
+  activityLoading: boolean;
+  timelineLoading: boolean;
+  timelineLoadingMore: boolean;
+  timelineHasMore: boolean;
+  timelineAwayFromNewest: boolean;
+  timelineTotalCount: number;
+  onLoadMoreTimeline: () => void;
+  onShowNewestTimeline: () => void;
   onLogReachOut: (entry: ReachOutLog) => void;
   onOpenMap: () => void;
 }
@@ -204,21 +217,27 @@ interface FriendDetailPanelProps {
 export function FriendDetailPanel({
   friend,
   feedItems,
+  locationItems,
+  activityAvatarUrls,
+  latestPostAt,
+  activityLoading,
+  timelineLoading,
+  timelineLoadingMore,
+  timelineHasMore,
+  timelineAwayFromNewest,
+  timelineTotalCount,
+  onLoadMoreTimeline,
+  onShowNewestTimeline,
   onLogReachOut,
   onOpenMap,
 }: FriendDetailPanelProps) {
   const [showReachOut, setShowReachOut] = useState(false);
-
-  const items = feedItemsForFriend(feedItems, friend).sort(
-    (a, b) => b.publishedAt - a.publishedAt
-  );
-
-  const lastPost = lastPostAt(feedItems, friend);
+  const items = [...feedItems];
   const lastContact = lastReachOutAt(friend);
-  const avatarUrl = resolveFriendAvatarUrl(
-    friend,
-    items.map((item) => item.author.avatarUrl)
-  );
+  const avatarUrl = resolveFriendAvatarUrl(friend, [
+    ...activityAvatarUrls,
+    ...items.map((item) => item.author.avatarUrl),
+  ]);
 
   const handleLogReachOut = (entry: ReachOutLog) => {
     onLogReachOut(entry);
@@ -303,9 +322,11 @@ export function FriendDetailPanel({
         <div className="mt-3 flex items-center gap-4 text-xs text-text-secondary">
           <span>
             <span className="text-text-tertiary">Last post</span>{" "}
-            {lastPost
-              ? formatDistanceToNow(lastPost, { addSuffix: true })
-              : "never"}
+            {latestPostAt
+              ? formatDistanceToNow(latestPostAt, { addSuffix: true })
+              : activityLoading
+                ? "loading..."
+                : "never"}
           </span>
           <span>
             <span className="text-text-tertiary">Last contact</span>{" "}
@@ -317,7 +338,7 @@ export function FriendDetailPanel({
 
         <MiniFriendMapCard
           friend={friend}
-          feedItems={items}
+          feedItems={[...locationItems]}
           onOpenMap={onOpenMap}
         />
       </div>
@@ -342,15 +363,65 @@ export function FriendDetailPanel({
 
       {/* Timeline */}
       <div className="flex-1 overflow-y-auto">
-        {items.length === 0 ? (
+        {timelineLoading ? (
+          <div className="flex h-full items-center justify-center px-6 py-12 text-center">
+            <p className="text-sm text-text-secondary">
+              Loading recent activity...
+            </p>
+          </div>
+        ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
-            <p className="text-text-secondary text-sm">No captured posts yet.</p>
+            <p className="text-text-secondary text-sm">
+              No captured posts yet.
+            </p>
             <p className="text-text-tertiary text-xs mt-1">
               Link social profiles in "Edit" to see their timeline here.
             </p>
+            {timelineAwayFromNewest ? (
+              <button
+                type="button"
+                className="btn-secondary mt-4 w-full rounded-lg px-3 py-2 text-sm"
+                disabled={timelineLoadingMore}
+                onClick={onShowNewestTimeline}
+              >
+                Back to newest
+              </button>
+            ) : null}
           </div>
         ) : (
-          items.map((item) => <TimelineItem key={item.globalId} item={item} />)
+          <>
+            <div className="px-4 py-2 text-xs text-text-secondary">
+              {timelineTotalCount.toLocaleString()} captured post
+              {timelineTotalCount === 1 ? "" : "s"}
+            </div>
+            {items.map((item) => (
+              <TimelineItem key={item.globalId} item={item} />
+            ))}
+            {timelineHasMore || timelineAwayFromNewest ? (
+              <div className="flex gap-2 px-4 py-3">
+                {timelineAwayFromNewest ? (
+                  <button
+                    type="button"
+                    className="btn-secondary w-full rounded-lg px-3 py-2 text-sm"
+                    disabled={timelineLoadingMore}
+                    onClick={onShowNewestTimeline}
+                  >
+                    Back to newest
+                  </button>
+                ) : null}
+                {timelineHasMore ? (
+                  <button
+                    type="button"
+                    className="btn-secondary w-full rounded-lg px-3 py-2 text-sm"
+                    disabled={timelineLoadingMore}
+                    onClick={onLoadMoreTimeline}
+                  >
+                    {timelineLoadingMore ? "Loading..." : "Older posts"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>

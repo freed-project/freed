@@ -1,3 +1,4 @@
+import { compareUtf8Binary } from "@freed/shared";
 import type {
   IdentityGraphActivitySummaries,
   IdentityGraphActivitySummary,
@@ -100,7 +101,7 @@ export function diffFriendsGalaxyIdentityActivitySummaries(
       ...Object.keys(previousSummaries),
       ...Object.keys(nextSummaries),
     ]);
-    for (const key of [...keys].sort((left, right) => left.localeCompare(right))) {
+    for (const key of [...keys].sort(compareUtf8Binary)) {
       if (identitySummaryEqual(previousSummaries[key], nextSummaries[key])) continue;
       patches.push(identitySummaryPatch(namespace, key, nextSummaries[key]));
     }
@@ -128,7 +129,10 @@ const MAX_SAMPLE_ITEM_IDS = 3;
 const MAX_AVATAR_URL_CANDIDATES = 3;
 
 function compareRankedCandidate(left: RankedCandidate, right: RankedCandidate): number {
-  return right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId);
+  return (
+    right.publishedAt - left.publishedAt ||
+    compareUtf8Binary(left.globalId, right.globalId)
+  );
 }
 
 function cloneSummary(summary: FriendsGalaxyActivitySummary): FriendsGalaxyActivitySummary {

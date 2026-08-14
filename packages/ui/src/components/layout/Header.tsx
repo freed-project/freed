@@ -13,7 +13,6 @@ import { flushSync } from "react-dom";
 import {
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
-  filterFeedItems,
   type FeedSignalMode,
   type MapMode,
   type SavedContentSortMode,
@@ -21,9 +20,11 @@ import {
   type SocialContentFilter,
   resolveMapMode,
 } from "@freed/shared";
+import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
+import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
   CloseIcon,
@@ -36,10 +37,17 @@ import {
   SortIcon,
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
+import {
+  applyThemeToDocument,
+  useThemePreference,
+  useThemePreviewController,
+} from "../../lib/theme.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -69,8 +77,8 @@ import {
   noDragRegionStyle as noDrag,
 } from "../../lib/native-drag-region.js";
 import {
-  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  TOP_TOOLBAR_HEIGHT_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
 } from "./layoutConstants.js";
@@ -98,8 +106,6 @@ interface ToolbarOverflowAction {
 }
 
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
-const TOP_TOOLBAR_HEIGHT_PX =
-  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
@@ -357,6 +363,11 @@ export function Header({
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const isLibraryInitialized = useAppStore((s) => s.isInitialized);
+  const libraryItemVersion = useAppStore(
+    (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
+  );
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
@@ -370,6 +381,7 @@ export function Header({
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const [themeId, setThemePreference] = useThemePreference();
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -386,6 +398,7 @@ export function Header({
     persons,
     accounts,
     friends,
+    libraryItemVersion,
   );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
@@ -408,10 +421,7 @@ export function Header({
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],
   );
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
+  const savedArchivedCount = libraryFacets.savedArchivedCount;
   const effectiveMapMode = resolveMapMode(
     deviceDisplay.mapMode,
     mappedFriendCount,
@@ -455,21 +465,9 @@ export function Header({
     !selectedItem &&
     !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
-  const showCollapsedFeedControlMenu =
-    showFeedSignalFilter ||
-    showSavedSortControl ||
-    showFeedCardDensityControl;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions &&
-    !selectedItem &&
-    (
-      showCollapsedFeedControlMenu ||
-      (collapseToolbarViewControls && (
-        showWorkspaceIdentityControls ||
-        showSocialContentControls ||
-        showSavedSortControl
-      ))
-    );
+    !selectedItem;
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
     showFeedSignalFilter &&
@@ -478,6 +476,14 @@ export function Header({
     showSavedSortControl && !showCollapsedToolbarFilterMenu;
   const showFilterMenuFeedCardDensityControl =
     showFeedCardDensityControl;
+  const showFilterMenuContextControls =
+    showFilterMenuFeedCardDensityControl ||
+    (collapseToolbarViewControls && (
+      showSocialContentControls ||
+      showWorkspaceIdentityControls
+    )) ||
+    showSavedSortControl ||
+    showFeedSignalFilter;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
@@ -700,23 +706,15 @@ export function Header({
     delete nextFilter.signals;
     return nextFilter;
   }, [activeFilter]);
-  const feedSignalCounts = useMemo(() => {
-    const counts: Record<FeedSignalMode, number> = {
-      all: filterFeedItems(items, feedSignalCountBaseFilter).length,
-      inspiring: 0,
-      events: 0,
-      personal: 0,
-      conversation: 0,
-      news: 0,
-    };
-    for (const preset of selectableFeedSignalPresets) {
-      counts[preset.mode] = filterFeedItems(items, {
-        ...feedSignalCountBaseFilter,
-        signals: [...preset.signals],
-      }).length;
-    }
-    return counts;
-  }, [feedSignalCountBaseFilter, items, selectableFeedSignalPresets]);
+  // Counted through bounded pages. The renderer evicts the full item
+  // projection on the healthy Desktop path, so counting the store array here
+  // reported zero for every chip.
+  const feedSignalCounts = useFeedSignalCounts(
+    items,
+    feedSignalCountBaseFilter,
+    searchCorpusVersion,
+    isLibraryInitialized,
+  );
 
   const handleFeedSignalModeChange = useCallback((mode: FeedSignalMode) => {
     const nextModes = (() => {
@@ -808,6 +806,26 @@ export function Header({
       toast.error("Freed could not save the sort order on this device.");
     }
   }, [setDeviceDisplay]);
+
+  const handleThemeCommit = useCallback((nextThemeId: ThemeId) => {
+    if (nextThemeId === themeId) {
+      return;
+    }
+
+    if (!setThemePreference(nextThemeId)) {
+      applyThemeToDocument(themeId);
+      toast.error("Freed could not save the theme on this device.");
+    }
+  }, [setThemePreference, themeId]);
+
+  const {
+    commitTheme,
+    previewTheme,
+    revertPreview: revertThemePreview,
+  } = useThemePreviewController({
+    committedThemeId: themeId,
+    onCommitTheme: handleThemeCommit,
+  });
 
   const handleCloseReader = useCallback(() => {
     if (deviceDisplay.dualColumnMode && !isMobile && selectedItemId) {
@@ -1390,8 +1408,9 @@ export function Header({
   useEffect(() => {
     if (!signalFilterMenuOpen) {
       setSignalFilterMenuZoomDrag(null);
+      revertThemePreview();
     }
-  }, [signalFilterMenuOpen]);
+  }, [revertThemePreview, signalFilterMenuOpen]);
 
   useEffect(() => {
     if (activeFilter.archivedOnly) {
@@ -2026,7 +2045,7 @@ export function Header({
         </div>
       ) : null}
 
-      {signalFilterMenuOpen && (showFeedSignalFilter || showCollapsedToolbarFilterMenu) ? (
+      {signalFilterMenuOpen && showCollapsedToolbarFilterMenu ? (
         <div
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
@@ -2034,6 +2053,75 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
           style={signalFilterMenuStyle}
         >
+          <div
+            data-testid="view-menu-appearance-section"
+            className={`${showFilterMenuContextControls && !showFilterMenuFeedCardDensityControl ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}
+          >
+            <div data-testid="feed-filter-theme-section">
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Theme
+              </p>
+              <div
+                data-testid="feed-filter-theme-row"
+                className="theme-filter-menu-theme-row"
+                role="group"
+                aria-label="Theme"
+                onMouseLeave={revertThemePreview}
+                onBlurCapture={(event) => {
+                  if (
+                    event.relatedTarget
+                    && event.currentTarget.contains(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+                  revertThemePreview();
+                }}
+              >
+                {THEME_DEFINITIONS.map((theme) => (
+                  <Tooltip
+                    key={theme.id}
+                    side="top"
+                    label={theme.name}
+                    description={theme.description}
+                    className="theme-filter-menu-theme-trigger"
+                  >
+                    <ThemePreviewButton
+                      theme={theme}
+                      active={themeId === theme.id}
+                      variant="compact"
+                      onMouseEnter={() => previewTheme(theme.id)}
+                      onFocus={() => previewTheme(theme.id)}
+                      onClick={() => commitTheme(theme.id)}
+                      className="theme-filter-menu-theme-button"
+                    />
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Zoom
+                </p>
+                <span
+                  data-testid="interface-zoom-value"
+                  className="text-[0.68rem] font-semibold tabular-nums text-[var(--theme-text-soft)]"
+                >
+                  {interfaceZoom.toLocaleString()}%
+                </span>
+              </div>
+              <InterfaceZoomSlider
+                value={interfaceZoom}
+                onChange={setInterfaceZoom}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+                dragStabilization="parent"
+                onDragStart={handleSignalFilterZoomDragStart}
+                onDragEnd={handleSignalFilterZoomDragEnd}
+              />
+            </div>
+          </div>
+
           {showFilterMenuFeedCardDensityControl ? (
             <div
               data-testid="feed-filter-density-section"
@@ -2048,28 +2136,6 @@ export function Header({
                 fullWidth
                 style={headerDragRegion ? toolbarControlStyle : undefined}
               />
-              <div className="mt-3">
-                <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                    Interface zoom
-                  </p>
-                  <span
-                    data-testid="interface-zoom-value"
-                    className="text-[0.68rem] font-semibold tabular-nums text-[var(--theme-text-soft)]"
-                  >
-                    {interfaceZoom.toLocaleString()}%
-                  </span>
-                </div>
-                <InterfaceZoomSlider
-                  value={interfaceZoom}
-                  onChange={setInterfaceZoom}
-                  fullWidth
-                  style={headerDragRegion ? toolbarControlStyle : undefined}
-                  dragStabilization="parent"
-                  onDragStart={handleSignalFilterZoomDragStart}
-                  onDragEnd={handleSignalFilterZoomDragEnd}
-                />
-              </div>
             </div>
           ) : null}
 

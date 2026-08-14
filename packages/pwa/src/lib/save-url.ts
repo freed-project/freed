@@ -1,5 +1,9 @@
-import { hashSavedUrl } from "@freed/capture-save/normalize";
-import { docAddStubItem } from "./automerge";
+import {
+  buildSavedFeedItem,
+} from "@freed/capture-save/normalize";
+import {
+  enqueuePwaLibraryCoreFeedItemCapture,
+} from "./library-core-runtime";
 
 export interface SaveUrlOptions {
   tags?: string[];
@@ -25,6 +29,15 @@ export async function saveUrlInPwa(
   }
 
   const stableUrl = parsed.toString();
-  await docAddStubItem(stableUrl, options.tags);
-  return { globalId: `saved:${hashSavedUrl(stableUrl)}` };
+  const item = buildSavedFeedItem(
+    { title: stableUrl, url: stableUrl },
+    null,
+    {
+      includeSourceUrl: true,
+      tags: options.tags,
+    },
+  );
+  const canonicalItem = JSON.parse(JSON.stringify(item)) as typeof item;
+  await enqueuePwaLibraryCoreFeedItemCapture(canonicalItem);
+  return { globalId: item.globalId };
 }

@@ -22,6 +22,8 @@ import {
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { useAppStore } from "./store";
+import { readLibraryCoreFacetSummary } from "./library-core-item-detail-runtime";
+import { isSqliteLibraryActive } from "./sqlite-library";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
@@ -105,10 +107,10 @@ function sanitizeLogLines(lines: string[], tier: ReportPrivacyTier): string[] {
   return filtered.map((line) => redactSensitiveText(line));
 }
 
-function createStateSummary() {
+async function createStateSummary() {
   const state = useAppStore.getState();
   const cloudProviders = useDebugStore.getState().cloudProviders;
-  return summarizeStateForReport({
+  const summary = summarizeStateForReport({
     state,
     platformAuth: {
       x: state.xAuth.isAuthenticated,
@@ -126,6 +128,13 @@ function createStateSummary() {
         }
       : undefined,
   });
+  if (!isSqliteLibraryActive()) return summary;
+  const facets = await readLibraryCoreFacetSummary();
+  return {
+    ...summary,
+    totalArchived: facets.archivedCount,
+    totalItems: facets.totalCount,
+  };
 }
 
 function addJson(zip: JSZip, path: string, data: unknown) {
@@ -164,15 +173,22 @@ async function buildDesktopBundle(input: {
       ? (await getSnapshotNames()).map((name) => redactSensitiveText(name))
       : [];
   const debugState = useDebugStore.getState();
-  const reportEvents = collectPublicEvents(getRecentBugReportEvents(), input.privacyTier);
-  const debugEvents = debugState.events.slice(0, input.privacyTier === "private" ? 80 : 40).map((event) => ({
-    id: event.id,
-    kind: event.kind,
-    detail: event.detail ? redactSensitiveText(event.detail) : undefined,
-    bytes: event.bytes,
-    ts: event.ts,
-  }));
-  const stateSummary = createStateSummary();
+  const reportEvents = collectPublicEvents(
+    getRecentBugReportEvents(),
+    input.privacyTier,
+  );
+  const debugEvents = debugState.events
+    .slice(0, input.privacyTier === "private" ? 80 : 40)
+    .map((event) => ({
+      id: event.id,
+      kind: event.kind,
+      detail: event.detail ? redactSensitiveText(event.detail) : undefined,
+      bytes: event.bytes,
+      ts: event.ts,
+    }));
+  const stateSummary = includedArtifacts.includes("state-summary")
+    ? await createStateSummary()
+    : null;
   const manifest = buildBugReportManifest({
     appName: APP_NAME,
     appSlug: "freed-desktop",

@@ -23,6 +23,29 @@ export interface BuildFriendCandidateSuggestionsInput {
   limit?: number;
 }
 
+/**
+ * Compact activity evidence for one social account. The native Friends reader
+ * produces this directly from SQLite so suggestion scoring does not need a
+ * retained renderer copy of the Library corpus.
+ */
+export interface FriendCandidateActivityAggregate {
+  itemCount: number;
+  latestActivityAt: number;
+  recentCount: number;
+  sampleItemIds: string[];
+  signalCounts: Partial<Record<ContentSignal, number>>;
+}
+
+export interface BuildFriendCandidateSuggestionsFromActivityInput {
+  persons: Person[] | Record<string, Person>;
+  accounts: Record<string, Account>;
+  activityBySourceKey: Readonly<Record<string, FriendCandidateActivityAggregate>>;
+  contactSuggestions?: IdentitySuggestion[];
+  preferences?: FriendSuggestionPreferences | null;
+  dismissedSuggestionIds?: readonly string[];
+  limit?: number;
+}
+
 const MIN_VISIBLE_SCORE = 60;
 const HIGH_CONFIDENCE_SCORE = 80;
 const MAX_SAMPLE_ITEMS = 5;
@@ -84,6 +107,26 @@ const ORGANIZATION_WORDS = [
   "updates",
 ];
 
+const UTF8_ENCODER = new TextEncoder();
+
+export function compareUtf8Binary(left: string, right: string): number {
+  const leftBytes = UTF8_ENCODER.encode(left);
+  const rightBytes = UTF8_ENCODER.encode(right);
+  const length = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+export function friendCandidateActivitySourceKey(
+  platform: string,
+  authorId: string,
+): string {
+  return JSON.stringify([platform, authorId]);
+}
+
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -98,10 +141,6 @@ function toFeedItemList(feedItems: FeedItem[] | Record<string, FeedItem>): FeedI
 
 function accountLabel(account: Account): string {
   return account.displayName?.trim() || account.handle?.trim() || account.externalId;
-}
-
-function socialKey(provider: string, externalId: string): string {
-  return `${provider}:${externalId}`;
 }
 
 function normalizeName(value: string): string {
@@ -153,6 +192,57 @@ function countSignals(items: FeedItem[]): Partial<Record<ContentSignal, number>>
   return counts;
 }
 
+function activityFromItems(
+  items: FeedItem[],
+  now: number,
+): FriendCandidateActivityAggregate {
+  return {
+    itemCount: items.length,
+    latestActivityAt: Math.max(0, ...items.map((item) => item.publishedAt)),
+    recentCount: items.filter(
+      (item) => item.publishedAt <= now && now - item.publishedAt <= RECENT_WINDOW_MS,
+    ).length,
+    sampleItemIds: items.slice(0, MAX_SAMPLE_ITEMS).map((item) => item.globalId),
+    signalCounts: countSignals(items),
+  };
+}
+
+function combinedAccountActivity(
+  accounts: readonly Account[],
+  activityBySourceKey: Readonly<Record<string, FriendCandidateActivityAggregate>>,
+): FriendCandidateActivityAggregate {
+  const combined: FriendCandidateActivityAggregate = {
+    itemCount: 0,
+    latestActivityAt: 0,
+    recentCount: 0,
+    sampleItemIds: [],
+    signalCounts: {},
+  };
+  for (const account of accounts) {
+    const activity = activityBySourceKey[
+      friendCandidateActivitySourceKey(account.provider, account.externalId)
+    ];
+    if (!activity) continue;
+    combined.itemCount += activity.itemCount;
+    combined.latestActivityAt = Math.max(
+      combined.latestActivityAt,
+      activity.latestActivityAt,
+    );
+    combined.recentCount += activity.recentCount;
+    for (const itemId of activity.sampleItemIds) {
+      if (combined.sampleItemIds.length >= MAX_SAMPLE_ITEMS) break;
+      combined.sampleItemIds.push(itemId);
+    }
+    for (const [signal, count] of Object.entries(activity.signalCounts) as Array<
+      [ContentSignal, number]
+    >) {
+      combined.signalCounts[signal] =
+        (combined.signalCounts[signal] ?? 0) + count;
+    }
+  }
+  return combined;
+}
+
 function signalCount(counts: Partial<Record<ContentSignal, number>>, signals: ContentSignal[]): number {
   return signals.reduce((total, signal) => total + (counts[signal] ?? 0), 0);
 }
@@ -193,7 +283,7 @@ function suggestionId(
 function buildItemIndex(feedItems: FeedItem[]): Map<string, FeedItem[]> {
   const byAccountKey = new Map<string, FeedItem[]>();
   for (const item of feedItems) {
-    const key = socialKey(item.platform, item.author.id);
+    const key = friendCandidateActivitySourceKey(item.platform, item.author.id);
     const existing = byAccountKey.get(key);
     if (existing) {
       existing.push(item);
@@ -202,7 +292,11 @@ function buildItemIndex(feedItems: FeedItem[]): Map<string, FeedItem[]> {
     }
   }
   for (const items of byAccountKey.values()) {
-    items.sort((left, right) => right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId));
+    items.sort(
+      (left, right) =>
+        right.publishedAt - left.publishedAt ||
+        compareUtf8Binary(left.globalId, right.globalId),
+    );
   }
   return byAccountKey;
 }
@@ -213,27 +307,25 @@ function scoreCandidate({
   displayName,
   accountIds,
   accounts,
-  items,
+  activity,
   contactOverlap,
-  now,
 }: {
   kind: FriendCandidateSuggestionKind;
   targetId: string;
   displayName: string;
   accountIds: string[];
   accounts: Account[];
-  items: FeedItem[];
+  activity: FriendCandidateActivityAggregate;
   contactOverlap: boolean;
-  now: number;
 }): FriendCandidateSuggestion | null {
   if (accountIds.length === 0) return null;
 
-  const signalCounts = countSignals(items);
+  const signalCounts = activity.signalCounts;
   const reasons: FriendCandidateReason[] = [];
-  const lastActivityAt = Math.max(0, ...items.map((item) => item.publishedAt), ...accounts.map((account) => account.lastSeenAt));
-  const recentCount = items.filter(
-    (item) => item.publishedAt <= now && now - item.publishedAt <= RECENT_WINDOW_MS,
-  ).length;
+  const lastActivityAt = Math.max(
+    activity.latestActivityAt,
+    ...accounts.map((account) => account.lastSeenAt),
+  );
   const humanConfidence = humanNameConfidence(displayName);
   const rssOnly = accounts.length > 0 && accounts.every((account) => account.provider === RSS_PROVIDER);
   const organizationLike = hasOrganizationName(displayName);
@@ -273,8 +365,12 @@ function scoreCandidate({
     addReason(reasons, "multi_channel_identity", 18);
   }
 
-  if (recentCount > 0 || items.length >= 3) {
-    const reasonScore = Math.min(18, (recentCount > 0 ? 10 : 0) + Math.min(8, Math.floor(items.length / 2) * 4));
+  if (activity.recentCount > 0 || activity.itemCount >= 3) {
+    const reasonScore = Math.min(
+      18,
+      (activity.recentCount > 0 ? 10 : 0) +
+        Math.min(8, Math.floor(activity.itemCount / 2) * 4),
+    );
     score += reasonScore;
     addReason(reasons, "recent_activity", reasonScore);
   }
@@ -309,7 +405,7 @@ function scoreCandidate({
   const finalScore = clampScore(score);
   if (finalScore < MIN_VISIBLE_SCORE || reasons.length === 0) return null;
 
-  const sampleItemIds = items.slice(0, MAX_SAMPLE_ITEMS).map((item) => item.globalId);
+  const sampleItemIds = activity.sampleItemIds.slice(0, MAX_SAMPLE_ITEMS);
   return {
     id: suggestionId(kind, targetId, accountIds, sampleItemIds, signalCounts),
     kind,
@@ -325,19 +421,28 @@ function scoreCandidate({
   };
 }
 
-export function buildFriendCandidateSuggestions({
+interface BuildFriendCandidateSuggestionsCoreInput {
+  persons: Person[] | Record<string, Person>;
+  accounts: Record<string, Account>;
+  contactSuggestions: IdentitySuggestion[];
+  preferences: FriendSuggestionPreferences | null;
+  dismissedSuggestionIds: readonly string[];
+  limit: number;
+  activityForAccounts: (
+    candidateAccounts: readonly Account[],
+  ) => FriendCandidateActivityAggregate;
+}
+
+function buildFriendCandidateSuggestionsCore({
   persons,
   accounts,
-  feedItems,
-  contactSuggestions = [],
-  preferences = null,
-  dismissedSuggestionIds = [],
-  now = Date.now(),
-  limit = 12,
-}: BuildFriendCandidateSuggestionsInput): FriendCandidateSuggestion[] {
+  contactSuggestions,
+  preferences,
+  dismissedSuggestionIds,
+  limit,
+  activityForAccounts,
+}: BuildFriendCandidateSuggestionsCoreInput): FriendCandidateSuggestion[] {
   const personList = toPersonList(persons);
-  const feedItemList = toFeedItemList(feedItems);
-  const itemIndex = buildItemIndex(feedItemList);
   const dismissed = new Set([
     ...(preferences?.dismissedSuggestionIds ?? []),
     ...dismissedSuggestionIds,
@@ -370,16 +475,14 @@ export function buildFriendCandidateSuggestions({
     if (person.relationshipStatus !== "connection") continue;
     const personAccounts = (accountsByPerson.get(person.id) ?? []).filter((account) => SOCIAL_PROVIDERS.has(account.provider));
     if (personAccounts.length === 0) continue;
-    const personItems = personAccounts.flatMap((account) => itemIndex.get(socialKey(account.provider, account.externalId)) ?? []);
     const suggestion = scoreCandidate({
       kind: "connection_person",
       targetId: person.id,
       displayName: person.name,
       accountIds: personAccounts.map((account) => account.id),
       accounts: personAccounts,
-      items: personItems,
+      activity: activityForAccounts(personAccounts),
       contactOverlap: contactPersonIds.has(person.id) || personAccounts.some((account) => contactAccountIds.has(account.id)),
-      now,
     });
     if (suggestion && !dismissed.has(suggestion.id)) {
       candidates.push(suggestion);
@@ -389,16 +492,14 @@ export function buildFriendCandidateSuggestions({
   for (const account of socialAccounts) {
     if (account.personId || !SOCIAL_PROVIDERS.has(account.provider)) continue;
     const displayName = accountLabel(account);
-    const accountItems = itemIndex.get(socialKey(account.provider, account.externalId)) ?? [];
     const suggestion = scoreCandidate({
       kind: "unlinked_account",
       targetId: account.id,
       displayName,
       accountIds: [account.id],
       accounts: [account],
-      items: accountItems,
+      activity: activityForAccounts([account]),
       contactOverlap: contactAccountIds.has(account.id),
-      now,
     });
     if (suggestion && !dismissed.has(suggestion.id)) {
       candidates.push(suggestion);
@@ -413,4 +514,59 @@ export function buildFriendCandidateSuggestions({
       left.id.localeCompare(right.id),
     )
     .slice(0, limit);
+}
+
+export function buildFriendCandidateSuggestions({
+  persons,
+  accounts,
+  feedItems,
+  contactSuggestions = [],
+  preferences = null,
+  dismissedSuggestionIds = [],
+  now = Date.now(),
+  limit = 12,
+}: BuildFriendCandidateSuggestionsInput): FriendCandidateSuggestion[] {
+  const itemIndex = buildItemIndex(toFeedItemList(feedItems));
+  return buildFriendCandidateSuggestionsCore({
+    persons,
+    accounts,
+    contactSuggestions,
+    preferences,
+    dismissedSuggestionIds,
+    limit,
+    activityForAccounts: (candidateAccounts) => {
+      const candidateItems = candidateAccounts.flatMap(
+        (account) =>
+          itemIndex.get(
+            friendCandidateActivitySourceKey(
+              account.provider,
+              account.externalId,
+            ),
+          ) ?? [],
+      );
+      return activityFromItems(candidateItems, now);
+    },
+  });
+}
+
+/** Score the existing Friends suggestions from compact row-store evidence. */
+export function buildFriendCandidateSuggestionsFromActivity({
+  persons,
+  accounts,
+  activityBySourceKey,
+  contactSuggestions = [],
+  preferences = null,
+  dismissedSuggestionIds = [],
+  limit = 12,
+}: BuildFriendCandidateSuggestionsFromActivityInput): FriendCandidateSuggestion[] {
+  return buildFriendCandidateSuggestionsCore({
+    persons,
+    accounts,
+    contactSuggestions,
+    preferences,
+    dismissedSuggestionIds,
+    limit,
+    activityForAccounts: (candidateAccounts) =>
+      combinedAccountActivity(candidateAccounts, activityBySourceKey),
+  });
 }

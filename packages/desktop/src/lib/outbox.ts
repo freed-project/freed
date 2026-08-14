@@ -23,7 +23,7 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
-import type { DocChangeEvent } from "./automerge-types";
+import type { DocChangeEvent } from "./library-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -33,6 +33,7 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import { recordSocialOutboxAttempt } from "./runtime-health-events";
+import { log } from "./logger";
 import {
   beginSocialOutboxAttempt,
   completeSocialOutboxIntent,
@@ -42,6 +43,8 @@ import {
   type SocialOutboxAction,
   type SocialOutboxIntent,
 } from "./social-outbox-state";
+import { isSqliteLibraryActive } from "./sqlite-library";
+import { sqliteLibraryCloudWriterAdmissionStatus } from "./sqlite-library";
 
 // =============================================================================
 // Constants
@@ -112,6 +115,9 @@ export function startOutboxProcessor(
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
+  scanItems?: (
+    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  ) => Promise<void>,
 ): () => void {
   if (factoryResetDrainInProgress) return () => {};
   activeOutboxRuntime?.stop();
@@ -173,7 +179,7 @@ export function startOutboxProcessor(
     intent: SocialOutboxIntent;
   }
 
-  async function collectPendingQueues(items: FeedItem[]) {
+  async function collectPendingQueues(items: readonly FeedItem[]) {
     const likeQueue: PendingAction[] = [];
     const seenQueue: PendingAction[] = [];
 
@@ -298,27 +304,52 @@ export function startOutboxProcessor(
     isDraining = true;
     drainRequested = false;
 
-    let items: FeedItem[];
-    if (fullScanRequested) {
-      const currentItems = getItems();
-      if (!currentItems) {
+    if (isSqliteLibraryActive()) {
+      const admission = await sqliteLibraryCloudWriterAdmissionStatus();
+      if (!admission.allowed) {
+        addDebugEvent(
+          "change",
+          "[Outbox] provider actions paused because another Freed Desktop owns Library writes",
+        );
         isDraining = false;
         return;
       }
+    }
+
+    let likeQueue: PendingAction[] = [];
+    let seenQueue: PendingAction[] = [];
+    if (fullScanRequested) {
+      if (scanItems) {
+        try {
+          await scanItems(async (page) => {
+            const pending = await collectPendingQueues(page);
+            likeQueue.push(...pending.likeQueue);
+            seenQueue.push(...pending.seenQueue);
+          });
+        } catch (error) {
+          log.error(
+            `[Outbox] bounded SQLite scan unavailable; provider actions remain paused: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          isDraining = false;
+          return;
+        }
+      } else {
+        const currentItems = getItems();
+        if (!currentItems) {
+          isDraining = false;
+          return;
+        }
+        ({ likeQueue, seenQueue } = await collectPendingQueues(currentItems));
+      }
       fullScanRequested = false;
       pendingChangedItems.clear();
-      items = currentItems;
     } else {
-      items = Array.from(pendingChangedItems.values());
+      const items = Array.from(pendingChangedItems.values());
       pendingChangedItems.clear();
+      ({ likeQueue, seenQueue } = await collectPendingQueues(items));
     }
-
-    if (items.length === 0) {
-      isDraining = false;
-      return;
-    }
-
-    const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
       addDebugEvent("change", `[Outbox] draining ${likeQueue.length.toLocaleString()} pending like(s)`);

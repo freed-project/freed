@@ -1,10 +1,19 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { Account, FeedItem, FriendCandidateSuggestion, Person } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FriendCandidateSuggestion,
+  Person,
+} from "@freed/shared";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
-import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
+import {
+  accountSubtitle,
+  accountTitle,
+  providerLabel,
+} from "../../lib/account-labels.js";
 
 interface AccountDetailPanelProps {
   account: Account;
@@ -12,7 +21,9 @@ interface AccountDetailPanelProps {
   suggestions: AccountLinkSuggestion[];
   friendSuggestion?: FriendCandidateSuggestion | null;
   persons: Person[];
-  feedItems: FeedItem[];
+  feedItems: readonly FeedItem[];
+  timelineLoading: boolean;
+  timelineTotalCount: number;
   onBack: () => void;
   onPromoteToFriend: () => void;
   onPromoteToFam: () => void;
@@ -39,7 +50,10 @@ function signalCountLabel(suggestion: FriendCandidateSuggestion): string {
     .slice(0, 4);
   if (entries.length === 0) return "No classified signals yet";
   return entries
-    .map(([signal, count]) => `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`)
+    .map(
+      ([signal, count]) =>
+        `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`,
+    )
     .join(", ");
 }
 
@@ -58,6 +72,8 @@ export function AccountDetailPanel({
   friendSuggestion = null,
   persons,
   feedItems,
+  timelineLoading,
+  timelineTotalCount,
   onBack,
   onPromoteToFriend,
   onPromoteToFam,
@@ -66,10 +82,12 @@ export function AccountDetailPanel({
   onOpenPerson,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const confirmedLinkedPerson = linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
-  const provisionalLinkedPerson = linkedPerson && linkedPerson.relationshipStatus !== "friend"
-    ? linkedPerson
-    : null;
+  const confirmedLinkedPerson =
+    linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
+  const provisionalLinkedPerson =
+    linkedPerson && linkedPerson.relationshipStatus !== "friend"
+      ? linkedPerson
+      : null;
 
   const suggestionIds = useMemo(
     () => new Set(suggestions.map((suggestion) => suggestion.personId)),
@@ -77,7 +95,9 @@ export function AccountDetailPanel({
   );
   const filteredPersons = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
-    const next = persons.filter((person) => person.relationshipStatus === "friend");
+    const next = persons.filter(
+      (person) => person.relationshipStatus === "friend",
+    );
     if (!normalized) return next;
     return next.filter((person) => {
       return (
@@ -98,8 +118,19 @@ export function AccountDetailPanel({
             className="btn-secondary rounded-lg p-1.5"
             aria-label="Back to all friends"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
-              <path d="M12.5 4.5L7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              className="h-4 w-4"
+              aria-hidden
+            >
+              <path
+                d="M12.5 4.5L7 10l5.5 5.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           <div className="min-w-0">
@@ -165,7 +196,8 @@ export function AccountDetailPanel({
               </p>
             ) : provisionalLinkedPerson ? (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                Linked to provisional identity {personName(provisionalLinkedPerson)}
+                Linked to provisional identity{" "}
+                {personName(provisionalLinkedPerson)}
               </p>
             ) : (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -177,33 +209,45 @@ export function AccountDetailPanel({
 
         <div className="mt-3 flex flex-wrap gap-3 text-xs text-[color:var(--theme-text-muted)]">
           <span>
-            First seen {formatDistanceToNow(account.firstSeenAt, { addSuffix: true })}
+            First seen{" "}
+            {formatDistanceToNow(account.firstSeenAt, { addSuffix: true })}
           </span>
           <span>
-            Last seen {formatDistanceToNow(account.lastSeenAt, { addSuffix: true })}
+            Last seen{" "}
+            {formatDistanceToNow(account.lastSeenAt, { addSuffix: true })}
           </span>
-          <span>{feedItems.length.toLocaleString()} captured post{feedItems.length === 1 ? "" : "s"}</span>
+          <span>
+            {timelineLoading
+              ? "Loading captured posts..."
+              : `${timelineTotalCount.toLocaleString()} captured post${timelineTotalCount === 1 ? "" : "s"}`}
+          </span>
         </div>
       </div>
 
       {!confirmedLinkedPerson ? (
         <>
           {friendSuggestion ? (
-            <div className="theme-dialog-divider border-b px-4 py-4" data-testid="friend-candidate-detail">
+            <div
+              className="theme-dialog-divider border-b px-4 py-4"
+              data-testid="friend-candidate-detail"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                     Suggested friend
                   </p>
                   <p className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
-                    Score {friendSuggestion.score.toLocaleString()}, {friendSuggestion.confidence} confidence
+                    Score {friendSuggestion.score.toLocaleString()},{" "}
+                    {friendSuggestion.confidence} confidence
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                   {onDismissFriendSuggestion ? (
                     <button
                       type="button"
-                      onClick={() => onDismissFriendSuggestion(friendSuggestion.id)}
+                      onClick={() =>
+                        onDismissFriendSuggestion(friendSuggestion.id)
+                      }
                       className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
                     >
                       Dismiss
@@ -240,7 +284,10 @@ export function AccountDetailPanel({
               </p>
               {friendSuggestion.sampleItemIds.length > 0 ? (
                 <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                  Evidence {friendSuggestion.sampleItemIds.map(evidenceIdLabel).join(", ")}
+                  Evidence{" "}
+                  {friendSuggestion.sampleItemIds
+                    .map(evidenceIdLabel)
+                    .join(", ")}
                 </p>
               ) : null}
             </div>
@@ -261,7 +308,9 @@ export function AccountDetailPanel({
 
               <div className="mt-3 space-y-2">
                 {suggestions.map((suggestion) => {
-                  const person = persons.find((candidate) => candidate.id === suggestion.personId);
+                  const person = persons.find(
+                    (candidate) => candidate.id === suggestion.personId,
+                  );
                   if (!person) return null;
                   return (
                     <button
@@ -279,11 +328,13 @@ export function AccountDetailPanel({
                             {suggestion.reason}
                           </p>
                         </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                          suggestion.confidence === "high"
-                            ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
-                            : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
-                        }`}>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                            suggestion.confidence === "high"
+                              ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
+                              : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
+                          }`}
+                        >
                           {suggestion.confidence}
                         </span>
                       </div>
@@ -349,7 +400,13 @@ export function AccountDetailPanel({
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           Recent activity
         </p>
-        {feedItems.length === 0 ? (
+        {timelineLoading ? (
+          <div className="theme-panel-muted mt-3 rounded-xl px-4 py-6 text-center">
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+              Loading recent activity...
+            </p>
+          </div>
+        ) : feedItems.length === 0 ? (
           <div className="theme-panel-muted mt-3 rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               No captured posts for this account yet

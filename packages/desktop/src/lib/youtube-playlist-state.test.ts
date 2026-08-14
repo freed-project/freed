@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   getSavedYouTubeVideoUrls: vi.fn(async () => []),
 }));
 

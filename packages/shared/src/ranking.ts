@@ -5,8 +5,36 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { Account, ContentSignal, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
-import type { SocialContentFilter } from "./store-types.js";
+import type { Account, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
+import {
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  type LibraryCoreFeedBrowseFilterInputV1,
+} from "./library-core/feed-browse-filter-contract.js";
+import {
+  compareLibraryCoreFeedPriorityV1,
+  sortLibraryCoreFeedRecommendationV1,
+} from "./library-core/feed-recommendation-order-contract.js";
+
+export {
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+} from "./library-core/feed-browse-filter-contract.js";
+export type {
+  LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowseFilterSourceV1,
+  LibraryCoreFeedBrowseFilterV1,
+} from "./library-core/feed-browse-filter-contract.js";
+export {
+  compareLibraryCoreFeedPriorityV1,
+  compareLibraryCoreFeedPublishedAtV1,
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_V1,
+  sortLibraryCoreFeedRecommendationV1,
+} from "./library-core/feed-recommendation-order-contract.js";
+export type {
+  LibraryCoreFeedRecommendationOrderSourceV1,
+} from "./library-core/feed-recommendation-order-contract.js";
 
 /**
  * Default weights for ranking factors
@@ -57,22 +85,85 @@ function relationshipPriorityBoost(
 /**
  * Calculate a priority score (0-100) for a feed item
  */
-export function calculatePriority(
+/** Hours after which the recency term reaches zero and stops changing. */
+export const RECENCY_HORIZON_HOURS = 168;
+
+/**
+ * The recency term, which is the ONLY part of priority that varies with time.
+ *
+ * It decays linearly to zero at RECENCY_HORIZON_HOURS and stays there. On the
+ * owner's corpus roughly 98.5% of items are already past that horizon, so for
+ * almost every row this contributes a constant zero and the whole priority is
+ * time-invariant. That is what makes an indexed feed ordering possible.
+ */
+export function recencyScoreFor(
+  publishedAt: number,
+  now: number,
+): number {
+  const ageHours = (now - publishedAt) / (1000 * 60 * 60);
+  return Math.max(0, 100 - (ageHours / RECENCY_HORIZON_HOURS) * 100);
+}
+
+/** True once an item's priority can no longer change with the passage of time. */
+export function isPriorityTimeInvariant(
+  publishedAt: number,
+  now: number,
+): boolean {
+  return recencyScoreFor(publishedAt, now) === 0;
+}
+
+export interface StaticPriorityComponents {
+  /** Weighted sum of every term EXCEPT recency. */
+  num: number;
+  /** Sum of those terms' weights. */
+  den: number;
+  /** The recency weight, kept alongside so a reader can reconstitute the average. */
+  recencyWeight: number;
+}
+
+/**
+ * The time-invariant part of priority.
+ *
+ * Recomputing this only when its inputs change (preferences, saved state,
+ * topics, engagement, relationship graph) rather than on every read is what
+ * lets feed ordering become an index scan instead of a full-corpus rank and
+ * sort. Combine with `effectivePriority` to get the same number
+ * `calculatePriority` returns.
+ */
+export function calculateStaticPriority(
   item: FeedItem,
   preferences: WeightPreferences,
-  now = Date.now(),
   context?: RelationshipPriorityContext,
-): number {
+): StaticPriorityComponents {
   const scores: number[] = [];
   const weights: number[] = [];
+  collectStaticPriorityTerms(item, preferences, scores, weights, context);
+  return {
+    num: scores.reduce((sum, score, i) => sum + score * weights[i], 0),
+    den: weights.reduce((a, b) => a + b, 0),
+    recencyWeight: preferences.recency || DEFAULT_WEIGHTS.recency,
+  };
+}
 
-  // 1. Recency score (0-100)
-  // Items from last hour get 100, decays over 7 days
-  const ageHours = (now - item.publishedAt) / (1000 * 60 * 60);
-  const recencyScore = Math.max(0, 100 - (ageHours / 168) * 100); // 168 hours = 7 days
-  scores.push(recencyScore);
-  weights.push(preferences.recency || DEFAULT_WEIGHTS.recency);
+/** Reconstitute the full priority from stored static components plus the clock. */
+export function effectivePriority(
+  statics: StaticPriorityComponents,
+  publishedAt: number,
+  now = Date.now(),
+): number {
+  const recencyScore = recencyScoreFor(publishedAt, now);
+  const totalWeight = statics.den + statics.recencyWeight;
+  const weightedSum = statics.num + recencyScore * statics.recencyWeight;
+  return Math.round(weightedSum / totalWeight);
+}
 
+function collectStaticPriorityTerms(
+  item: FeedItem,
+  preferences: WeightPreferences,
+  scores: number[],
+  weights: number[],
+  context?: RelationshipPriorityContext,
+): void {
   // 2. Author boost (0-100)
   const authorWeight = preferences.authors[item.author.id] ?? 50;
   scores.push(authorWeight);
@@ -110,15 +201,27 @@ export function calculatePriority(
     scores.push(100);
     weights.push(10);
   }
+}
 
-  // Calculate weighted average
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  const weightedSum = scores.reduce(
-    (sum, score, i) => sum + score * weights[i],
-    0,
+/**
+ * Full priority for an item at a point in time.
+ *
+ * Kept as the single source of truth for the formula. It is now expressed in
+ * terms of the decomposed parts so the stored static components and this
+ * function can never drift apart, which is the failure mode that would make an
+ * index silently disagree with the UI.
+ */
+export function calculatePriority(
+  item: FeedItem,
+  preferences: WeightPreferences,
+  now = Date.now(),
+  context?: RelationshipPriorityContext,
+): number {
+  return effectivePriority(
+    calculateStaticPriority(item, preferences, context),
+    item.publishedAt,
+    now,
   );
-
-  return Math.round(weightedSum / totalWeight);
 }
 
 /**
@@ -146,7 +249,7 @@ function normalizeEngagement(engagement: {
  * Sort feed items by priority (highest first)
  */
 export function sortByPriority(items: FeedItem[]): FeedItem[] {
-  return [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  return [...items].sort(compareLibraryCoreFeedPriorityV1);
 }
 
 function compareNewestTimestamp(
@@ -196,8 +299,8 @@ export function rankFeedItems(
   items: FeedItem[],
   preferences: WeightPreferences,
   context?: RelationshipPriorityContext,
+  now = Date.now(),
 ): FeedItem[] {
-  const now = Date.now();
   const rankingContext = context
     ? { ...context, personByAuthorKey: context.personByAuthorKey ?? buildPersonByAuthorKey(context) ?? undefined }
     : undefined;
@@ -210,81 +313,38 @@ export function rankFeedItems(
 }
 
 /**
+ * Rank and order one worker hydration with the exact cross-runtime contract.
+ */
+export function rankFeedItemsInRecommendedOrder(
+  items: FeedItem[],
+  preferences: WeightPreferences,
+  context?: RelationshipPriorityContext,
+  now = Date.now(),
+): FeedItem[] {
+  return sortLibraryCoreFeedRecommendationV1(
+    rankFeedItems(items, preferences, context, now),
+  );
+}
+
+/**
  * Filter items based on user state
  */
 export function filterFeedItems(
   items: FeedItem[],
-  options: {
-    showHidden?: boolean;
-    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
-    archivedOnly?: boolean;
-    platform?: string;
-    authorId?: string;
-    feedUrl?: string;
-    socialContentFilter?: SocialContentFilter;
-    tags?: string[];
-    signals?: ContentSignal[];
-    savedOnly?: boolean;
-  } = {},
+  options: LibraryCoreFeedBrowseFilterInputV1 = {},
 ): FeedItem[] {
-  return items.filter((item) => matchesFeedFilter(item, options));
+  const normalized = normalizeLibraryCoreFeedBrowseFilterV1(options);
+  return items.filter((item) =>
+    matchesLibraryCoreFeedBrowseFilterV1(item, normalized)
+  );
 }
 
 export function matchesFeedFilter(
   item: FeedItem,
-  options: {
-    showHidden?: boolean;
-    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
-    archivedOnly?: boolean;
-    platform?: string;
-    authorId?: string;
-    feedUrl?: string;
-    socialContentFilter?: SocialContentFilter;
-    tags?: string[];
-    signals?: ContentSignal[];
-    savedOnly?: boolean;
-  } = {},
+  options: LibraryCoreFeedBrowseFilterInputV1 = {},
 ): boolean {
-  // Filter hidden unless explicitly showing
-  if (!options.showHidden && item.userState.hidden) return false;
-
-  // Archived view shows only archived; normal feed excludes archived
-  if (options.archivedOnly) {
-    if (!item.userState.archived) return false;
-  } else {
-    if (item.userState.archived) return false;
-  }
-
-  // Provider-classified RSS items remain visible in Feeds after identity
-  // reconciliation promotes their platform to a first-class source.
-  if (options.platform) {
-    const matchesPlatform = options.platform === "rss"
-      ? item.platform === "rss" || Boolean(item.rssSource)
-      : item.platform === options.platform;
-    if (!matchesPlatform) return false;
-  }
-  if (options.authorId && item.author.id !== options.authorId) return false;
-  if (options.feedUrl && item.rssSource?.feedUrl !== options.feedUrl) return false;
-
-  if (options.socialContentFilter && options.socialContentFilter !== "all") {
-    if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
-    if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
-  }
-
-  // Filter by saved status
-  if (options.savedOnly && !item.userState.saved) return false;
-
-  // Filter by tags (any match)
-  if (options.tags?.length) {
-    const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
-    if (!hasTag) return false;
-  }
-
-  if (options.signals?.length) {
-    const itemSignals = item.contentSignals?.tags ?? [];
-    const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
-    if (!hasSignal) return false;
-  }
-
-  return true;
+  return matchesLibraryCoreFeedBrowseFilterV1(
+    item,
+    normalizeLibraryCoreFeedBrowseFilterV1(options),
+  );
 }

@@ -25,6 +25,33 @@ export interface RemoveFeedOptions {
 export type SocialContentFilter = "all" | "posts" | "stories";
 
 /**
+ * Compact user-state fields that can change a resident Saved card without
+ * changing Saved membership or ordering. Null means the optional field is
+ * absent in the authoritative document.
+ */
+export interface SavedFeedPresentationUserStatePatch {
+  readonly globalId: string;
+  readonly liked: boolean;
+  readonly likedAt: number | null;
+  readonly likedSyncedAt: number | null;
+  readonly seenSyncedAt: number | null;
+}
+
+/**
+ * One bounded Desktop-only presentation delta for the current Saved source.
+ * The UI acknowledges it after patching resident rows and its one selection
+ * pin, so exact ID lists are not retained as a second corpus.
+ */
+export interface SavedFeedPresentationPatch {
+  readonly revision: number;
+  readonly sourceVersion: number;
+  readonly readAt: number;
+  readonly readItemIds: readonly string[];
+  readonly readPlatforms: readonly string[];
+  readonly userStates: readonly SavedFeedPresentationUserStatePatch[];
+}
+
+/**
  * Filter options for the feed view.
  * Duplicated in both PWA and Desktop stores — canonicalized here.
  */
@@ -53,6 +80,20 @@ export interface BaseAppState {
   items: FeedItem[];
   /** Bumps only when search-relevant corpus content changes. */
   searchCorpusVersion: number;
+  /**
+   * Desktop bumps this after item patches and real full-state changes so
+   * bounded native readers can refresh item and identity fields that do not
+   * affect search. Preference, feed, and synthetic renderer hydration patches
+   * do not advance it.
+   */
+  libraryItemVersion?: number;
+  /**
+   * Desktop advances this only when Saved membership, order, or card content
+   * may have changed. Read and provider-receipt noise does not advance it.
+   */
+  savedFeedVersion?: number;
+  /** Desktop-only resident Saved-card delta; never a second item corpus. */
+  savedFeedPresentationPatch?: SavedFeedPresentationPatch | null;
   feeds: Record<string, RssFeed>;
   /** Canonical same-human identities — keyed by Person.id */
   persons: Record<string, Person>;
@@ -99,6 +140,12 @@ export interface BaseAppState {
 
   // Initialization
   initialize: () => Promise<void>;
+
+  /** Release a consumed Desktop Saved-card delta if it is still current. */
+  acknowledgeSavedFeedPresentationPatch?: (
+    sourceVersion: number,
+    revision: number,
+  ) => void;
 
   // Item actions
   addItems: (items: FeedItem[]) => Promise<void>;

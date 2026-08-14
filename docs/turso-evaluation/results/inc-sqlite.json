@@ -1,0 +1,33 @@
+{
+ "engine": "sqlite",
+ "baseCopies": 6,
+ "batchSize": 500,
+ "baseRows": 95076,
+ "baseIndexBuildMs": 3005,
+ "footprintAfterBaseMB": 251.8,
+ "queryP50BeforeIngestMs": 0.25,
+ "hitsBefore": 552,
+ "batchCount": 32,
+ "ingestTotalMs": 3198,
+ "ingestPerRowMs": 0.2,
+ "batchP50Ms": 79.11,
+ "batchMinMs": 17.1,
+ "batchMaxMs": 241.5,
+ "batchFirst3Ms": [
+  86.6,
+  215.7,
+  207.2
+ ],
+ "batchLast3Ms": [
+  35,
+  30.6,
+  17.1
+ ],
+ "footprintAfterIngestMB": 290.6,
+ "queryP50AfterIngestMs": 0.48,
+ "hitsAfter": 644,
+ "indexStayedInSync": true,
+ "deleteMs": 549,
+ "hitsAfterDelete": 552,
+ "footprintAfterDeleteMB": 290.6
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useAppStore } from "../../context/PlatformContext.js";
 import { personInitialsForName } from "../../lib/friend-avatar.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
+import { useAppliedThemeId } from "../../lib/theme.js";
 
 interface FriendAvatarProps {
   name: string;
@@ -16,7 +16,7 @@ export function FriendAvatar({
   size,
   className = "",
 }: FriendAvatarProps) {
-  const themeId = useAppStore((state) => state.preferences.display.themeId);
+  const themeId = useAppliedThemeId();
   const palette = createFriendAvatarPalette(themeId);
   const initials = personInitialsForName(name);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
