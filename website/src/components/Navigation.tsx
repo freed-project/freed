@@ -42,7 +42,6 @@ const NAV_ITEMS = [
   { path: "/", label: "Home" },
   { path: "/manifesto", label: "Manifesto" },
   { path: "/vision", label: "Vision" },
-  { path: "/changelog", label: "Updates" },
 ];
 
 function isActive(itemPath: string, pathname: string): boolean {
