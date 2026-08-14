@@ -547,7 +547,7 @@ test("map view removes the left frame when the desktop sidebar is closed", async
   });
 });
 
-test("friends graph controls align to the graph lane between sidebars", async ({ app, page }) => {
+test("friends graph controls align and its sidebar menu follows shared nav behavior", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -559,7 +559,14 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     const store = w.__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: {
+              display: {
+                friendsMode: "friends";
+                friendsSidebarOpen: boolean;
+                sidebarMode: "expanded";
+                sidebarWidth: number;
+              };
+            }) => Promise<void>;
             setActiveView: (view: string) => void;
           };
         }
@@ -568,12 +575,51 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       display: {
         friendsMode: "friends",
         friendsSidebarOpen: true,
+        sidebarMode: "expanded",
+        sidebarWidth: 256,
       },
     });
-    store?.getState().setActiveView("friends");
+  });
+
+  const navigationSidebar = page.getByTestId("app-sidebar");
+  const friendsNavigationRow = navigationSidebar.getByTestId("source-row-friends");
+  const friendsMenuTrigger = navigationSidebar.getByTestId("source-menu-trigger-friends");
+
+  await friendsNavigationRow.hover();
+  await expect(friendsMenuTrigger).toHaveClass(/opacity-100/);
+  await friendsMenuTrigger.click();
+  await expect(page.getByTestId("friends-context-menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setActiveView: (view: string) => void };
+    };
+    store.getState().setActiveView("friends");
   });
 
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  const graphViewport = page.getByTestId("friend-graph-viewport");
+
+  await friendsNavigationRow.hover();
+  const triggerInsets = await friendsMenuTrigger.evaluate((trigger) => {
+    const row = trigger.closest('[data-sidebar-row="true"]');
+    if (!(row instanceof HTMLElement)) return null;
+    const rowRect = row.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    return {
+      top: Math.round(triggerRect.top - rowRect.top),
+      right: Math.round(rowRect.right - triggerRect.right),
+    };
+  });
+  expect(triggerInsets).not.toBeNull();
+  expect(Math.abs(triggerInsets!.top - triggerInsets!.right)).toBeLessThanOrEqual(1);
+
+  await friendsMenuTrigger.click();
+  await expect(page.getByTestId("friends-context-menu")).toBeVisible();
+  await graphViewport.click({ position: { x: 24, y: 48 } });
+  await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -683,7 +729,6 @@ test("friends graph controls align to the graph lane between sidebars", async ({
 
   await page.getByRole("button", { name: "Fit all" }).click();
   const fittedCamera = await copyCameraDiagnostics();
-  const graphViewport = page.getByTestId("friend-graph-viewport");
   await graphViewport.hover();
   for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, -120);
   const zoomedInCamera = await copyCameraDiagnostics();
