@@ -128,6 +128,7 @@ export function PwaSyncSettings() {
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<"gdrive" | "dropbox" | null>(null);
   const [manualSyncError, setManualSyncError] = useState<string | null>(null);
+  const [configuredCloudProvider, setConfiguredCloudProvider] = useState(() => getCloudProvider());
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   const lastSyncTime = useMemo(() => {
@@ -137,7 +138,6 @@ export function PwaSyncSettings() {
     return times.length > 0 ? Math.max(...times) : null;
   }, [feeds]);
 
-  const configuredCloudProvider = getCloudProvider();
   const { label, provider } = getProviderInfo(
     syncConnected,
     configuredCloudProvider,
@@ -153,12 +153,16 @@ export function PwaSyncSettings() {
   const diagnosticError = cloudProviderState?.error ?? manualSyncError;
 
   const handleDisconnect = () => {
+    // Capture the configured provider before clearing the connection store.
+    // disconnect() removes the provider marker, so looking it up afterward
+    // leaves the OAuth credentials behind and makes Disconnect appear inert.
+    const cloudProvider = getCloudProvider();
     clearStoredRelayUrl();
     disconnect();
-    const p = getCloudProvider();
-    if (p) {
-      clearCloudSync(p);
+    if (cloudProvider) {
+      clearCloudSync(cloudProvider);
       stopCloudSync();
+      setConfiguredCloudProvider(null);
     }
   };
 

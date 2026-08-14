@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   clearCloudSync: vi.fn(),
   clearStoredRelayUrl: vi.fn(),
   disconnect: vi.fn(),
-  getCloudProvider: vi.fn(() => "gdrive" as const),
+  getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
 }));
@@ -59,6 +59,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
+    mocks.getCloudProvider.mockReturnValue("gdrive");
     useAppStore.setState({
       syncConnected: true,
       isSyncing: false,
@@ -128,6 +129,33 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
 
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("clears the configured cloud provider and immediately shows the reconnect UI", async () => {
+    useAppStore.setState({ syncConnected: false });
+    mocks.clearCloudSync.mockImplementationOnce(() => {
+      mocks.getCloudProvider.mockReturnValue(null);
+    });
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const disconnectButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Disconnect",
+    );
+
+    expect(disconnectButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      disconnectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mocks.clearCloudSync).toHaveBeenCalledWith("gdrive");
+    expect(container.textContent).toContain("Not connected");
+    expect(container.textContent).toContain("Connect");
+    expect(container.textContent).not.toContain("Disconnect");
 
     act(() => {
       root.unmount();
