@@ -4670,6 +4670,8 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("friend-graph-decorative-stars-toggle")).toHaveCount(0);
+  await expect(viewport).toHaveAttribute("data-graph-decorative-star-mode", "procedural");
   await expect.poll(async () => {
     return viewport.evaluate((element) => ({
       nodes: Number((element as HTMLElement).dataset.graphNodeCount ?? "0"),

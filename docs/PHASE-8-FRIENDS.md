@@ -432,6 +432,8 @@ Typed social profile search results now expose the same person workflow from the
 
 Reader author names now route directly into the matching Friends channel detail panel, using the existing captured-account workflow so a post can move from reading to identity review in one click.
 
+The product Friends view now fixes decorative dust to the 100,000-star Raw WebGPU vertex-generated path. The temporary buffered, procedural, and disabled comparison control and its local-storage override have been removed from the shipped interface. Build timing remains visible for diagnostics without exposing renderer experiments as product controls.
+
 ---
 
 ## Tasks
@@ -608,6 +610,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.168 | Add a persisted preview control that compares 100,000 worker-buffered decorative stars, 100,000 Raw WebGPU vertex-generated stars with no per-star source or instance buffer, and no decorative stars while reporting the last worker-to-renderer build time | Medium     | Done        |
 | 8.169 | Keep graph-invalidating fields narrow, coalesce sustained source hydration through one resident latest-wins worker, and replace Raw WebGPU scenes without recreating the canvas, device, or compiled pipelines | High       | Done        |
 | 8.170 | Animate Fit All through simultaneous world-center pan and logarithmic zoom, preserve exact final framing and reduced-motion snapping, and interrupt the transition on direct camera input | Medium     | Done        |
+| 8.171 | Remove the temporary decorative-star comparison control and local-storage override from the product Friends view while retaining 100,000 Raw WebGPU vertex-generated dust stars and build timing diagnostics | Medium     | Done        |
 
 ---
 
@@ -730,7 +733,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Projected picking uses a worker-built transferable sparse world grid, preserves exact depth and prominence selection, tolerates distant pinned outliers, and projects only the locked-camera corridor candidates
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Decorative background stars scale smoothly with camera zoom across Raw WebGPU, Three.js WebGPU, and WebGL2 without changing semantic star sizes or uploading resident buffers
-- [x] A preview-only Friends control can compare 100,000 worker-buffered decorative stars, 100,000 Raw WebGPU vertex-generated stars with no per-star source or instance buffer, and no decorative stars while persisting the choice and reporting comparable build timing
+- [x] The product Friends view uses 100,000 Raw WebGPU vertex-generated decorative stars without per-star source or instance buffers, a shipped preview selector, or a local-storage mode override, while retaining build timing diagnostics
 - [x] Friends Galaxy source churn ignores non-structural metadata, stays bounded during sustained hydration, reuses one worker, and replaces compatible Raw WebGPU scenes on one canvas and device without recompiling pipelines
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
