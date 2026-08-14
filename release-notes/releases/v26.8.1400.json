@@ -3,7 +3,7 @@
   "version": "26.8.1400",
   "channel": "production",
   "dayKey": "26.8.14",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-14T07:39:31.721Z",
   "model": "heuristic",
@@ -513,23 +513,23 @@
     ]
   },
   "release": {
-    "deck": "Adds renderer memory attribution against a pre-hydration shell baseline, capture, login, and scraping platform work, and reader, sidebar, and settings UX work",
+    "deck": "Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use",
     "features": [
-      "Adds renderer memory attribution against a pre-hydration shell baseline",
-      "Defines item locality and deletion semantics with a lossless flat feed projection",
-      "Moves cloud merges off the main thread and replaces JSON number arrays with compact IPC bodies"
+      "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory",
+      "Moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization",
+      "Adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics"
     ],
     "fixes": [
-      "Sync and update reliability fixes",
-      "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Repair SQLite browser regression boundary"
+      "Loads the first 65 feed items from a 20,099-item installed library in under one millisecond in the measured default query, down from about 2.4 seconds for the former full scan",
+      "Shows an honest loading state during feed transitions instead of briefly claiming that every item is read",
+      "Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library",
+      "Strengthens migration rollback, daily backups, corruption checks, release validation, and installed-build identity"
     ],
     "followUps": [
-      "Sync, cloud, and pairing infrastructure",
-      "Release workflow and build-system work",
-      "Pin the destructive merge guard policy and its blind spots"
+      "Continue profiling explicit fuzzy search on unusually broad queries",
+      "Continue hardening cross-device immutable synchronization and recovery",
+      "Reduce the remaining control-plane test runtime outside the product release path"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1400\n\nAdds renderer memory attribution against a pre-hydration shell baseline, capture, login, and scraping platform work, and reader, sidebar, and settings UX work\n\n### Features\n\n- Adds renderer memory attribution against a pre-hydration shell baseline\n- Defines item locality and deletion semantics with a lossless flat feed projection\n- Moves cloud merges off the main thread and replaces JSON number arrays with compact IPC bodies\n\n### Fixes\n\n- Sync and update reliability fixes\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Repair SQLite browser regression boundary\n\n### Follow-ups\n\n- Sync, cloud, and pairing infrastructure\n- Release workflow and build-system work\n- Pin the destructive merge guard policy and its blind spots\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1400\n\nRebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use\n\n### Features\n\n- Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory\n- Moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization\n- Adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics\n\n### Fixes\n\n- Loads the first 65 feed items from a 20,099-item installed library in under one millisecond in the measured default query, down from about 2.4 seconds for the former full scan\n- Shows an honest loading state during feed transitions instead of briefly claiming that every item is read\n- Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library\n- Strengthens migration rollback, daily backups, corruption checks, release validation, and installed-build identity\n\n### Follow-ups\n\n- Continue profiling explicit fuzzy search on unusually broad queries\n- Continue hardening cross-device immutable synchronization and recovery\n- Reduce the remaining control-plane test runtime outside the product release path\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
