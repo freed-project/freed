@@ -2034,49 +2034,61 @@ test("settings backdrop stays blurred while settings contents scroll", async ({ 
   }, SETTINGS_STORE_PATH);
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
 
+  // Scroll performance state belongs to the scrollport. Do not weaken this
+  // contract by accepting an unblurred backdrop or shadowless shell in motion.
   const scrollContainer = page.getByTestId("settings-scroll-container");
-  const styles = await scrollContainer.evaluate((element) => {
-    const overlay = document.querySelector(".theme-settings-overlay");
-    const shell = document.querySelector(".theme-settings-shell");
-    if (!(overlay instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
-      throw new Error("Settings dialog styles were not mounted");
+  const frameBeforeScroll = await page.evaluate(() => {
+    const overlayElement = document.querySelector(".theme-settings-overlay");
+    const shellElement = document.querySelector(".theme-settings-shell");
+    if (!(overlayElement instanceof HTMLElement) || !(shellElement instanceof HTMLElement)) {
+      throw new Error("Settings visual frame was not mounted");
     }
-
-    const overlayStyleBeforeScroll = window.getComputedStyle(overlay);
-    const overlayFilterBeforeScroll =
-      overlayStyleBeforeScroll.backdropFilter || overlayStyleBeforeScroll.webkitBackdropFilter;
-    const overlayBackgroundBeforeScroll = overlayStyleBeforeScroll.background;
-    const maxScrollTop = element.scrollHeight - element.clientHeight;
-    element.scrollTop = Math.min(Math.max(maxScrollTop, 0), 360);
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-
-    const overlayStyleWhileScrolling = window.getComputedStyle(overlay);
-    const shellStyleWhileScrolling = window.getComputedStyle(shell);
+    const overlayStyle = window.getComputedStyle(overlayElement);
+    const shellStyle = window.getComputedStyle(shellElement);
     return {
-      maxScrollTop,
-      scrollTop: element.scrollTop,
-      overlayMoving: overlay.dataset.moving,
-      shellMoving: shell.dataset.moving,
-      overlayFilterBeforeScroll,
-      overlayFilterWhileScrolling:
-        overlayStyleWhileScrolling.backdropFilter || overlayStyleWhileScrolling.webkitBackdropFilter,
-      overlayBackgroundBeforeScroll,
-      overlayBackgroundWhileScrolling: overlayStyleWhileScrolling.background,
-      shellFilterWhileScrolling:
-        shellStyleWhileScrolling.backdropFilter || shellStyleWhileScrolling.webkitBackdropFilter,
+      overlayBackground: overlayStyle.background,
+      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
+      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+      shellShadow: shellStyle.boxShadow,
     };
   });
 
-  expect(styles.maxScrollTop).toBeGreaterThan(0);
-  expect(styles.scrollTop).toBeGreaterThan(0);
-  expect(styles.overlayMoving).toBe("true");
-  expect(styles.shellMoving).toBe("true");
-  expect(styles.overlayFilterBeforeScroll).toContain("blur");
-  expect(styles.overlayFilterWhileScrolling).toBe("none");
-  expect(styles.overlayBackgroundWhileScrolling).not.toBe(styles.overlayBackgroundBeforeScroll);
-  expect(styles.overlayBackgroundWhileScrolling).toMatch(/\/ 0\.92\)/);
-  expect(styles.shellFilterWhileScrolling).toContain("blur");
-  expect(styles.shellFilterWhileScrolling).not.toBe("none");
+  await scrollContainer.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => scrollContainer.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(scrollContainer).toHaveAttribute("data-moving", "true");
+
+  const frameWhileScrolling = await page.evaluate(() => {
+    const overlayElement = document.querySelector(".theme-settings-overlay");
+    const shellElement = document.querySelector(".theme-settings-shell");
+    if (!(overlayElement instanceof HTMLElement) || !(shellElement instanceof HTMLElement)) {
+      throw new Error("Settings visual frame was not mounted");
+    }
+    const overlayStyle = window.getComputedStyle(overlayElement);
+    const shellStyle = window.getComputedStyle(shellElement);
+    return {
+      overlayBackground: overlayStyle.background,
+      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
+      overlayMoving: overlayElement.hasAttribute("data-moving"),
+      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+      shellMoving: shellElement.hasAttribute("data-moving"),
+      shellShadow: shellStyle.boxShadow,
+    };
+  });
+
+  expect(frameBeforeScroll.overlayFilter).toContain("blur");
+  expect(frameBeforeScroll.shellShadow).not.toBe("none");
+  expect(frameWhileScrolling.overlayMoving).toBe(false);
+  expect(frameWhileScrolling.shellMoving).toBe(false);
+  expect(frameWhileScrolling.overlayBackground).toBe(frameBeforeScroll.overlayBackground);
+  expect(frameWhileScrolling.overlayFilter).toBe(frameBeforeScroll.overlayFilter);
+  expect(frameWhileScrolling.overlayFilter).not.toBe("none");
+  expect(frameWhileScrolling.shellFilter).toBe(frameBeforeScroll.shellFilter);
+  expect(frameWhileScrolling.shellFilter).not.toBe("none");
+  expect(frameWhileScrolling.shellShadow).toBe(frameBeforeScroll.shellShadow);
+  expect(frameWhileScrolling.shellShadow).not.toBe("none");
 });
 
 test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
