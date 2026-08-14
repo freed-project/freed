@@ -92,6 +92,47 @@ describe("areLocationMarkerListsRenderEquivalent", () => {
 });
 
 describe("dense map marker prioritization", () => {
+  it("paints coincident locations once with the newest marker and combined update count", () => {
+    const newest = marker({
+      key: "friend:newest",
+      groupCount: 2,
+      seenAt: NOW,
+    });
+    const older = marker({
+      key: "friend:older",
+      groupCount: 3,
+      seenAt: NOW - 60_000,
+    });
+
+    const renderedMarkers = getRenderedMapMarkers([older, newest]);
+
+    expect(renderedMarkers).toEqual([
+      expect.objectContaining({
+        key: "friend:newest",
+        groupCount: 5,
+      }),
+    ]);
+    expect(newest.groupCount).toBe(2);
+    expect(older.groupCount).toBe(3);
+  });
+
+  it("keeps a focused coincident marker as the location representative", () => {
+    const newest = marker({ key: "friend:newest", seenAt: NOW });
+    const focused = marker({ key: "friend:focused", seenAt: NOW - 60_000 });
+
+    const renderedMarkers = getRenderedMapMarkers(
+      [newest, focused],
+      focused.key,
+    );
+
+    expect(renderedMarkers).toEqual([
+      expect.objectContaining({
+        key: focused.key,
+        groupCount: 2,
+      }),
+    ]);
+  });
+
   it("limits paint-active markers while dense maps are moving", () => {
     expect(getMapMovingPriority(23, "friend:23", true, null)).toBe("primary");
     expect(getMapMovingPriority(24, "friend:24", true, null)).toBe("deferred");
@@ -103,6 +144,7 @@ describe("dense map marker prioritization", () => {
       marker({
         key: `friend:${index}`,
         authorKey: `author:instagram:${index}`,
+        lat: 48.8566 + index * 0.001,
         item: {
           ...marker().item,
           globalId: `instagram:${index}`,

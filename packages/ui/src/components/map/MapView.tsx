@@ -321,6 +321,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
         <div
           className="pointer-events-auto theme-floating-panel w-[min(32rem,100%)] px-2 py-2"
           data-testid="map-time-range-slider"
+          data-map-floating-control="timeline"
+          data-map-floating-control-edge="bottom"
         >
           <div className="flex items-center justify-end text-[10px] font-medium text-[color:var(--theme-text-muted)]">
             <div className="flex flex-wrap items-center justify-end gap-1 text-right">
@@ -402,6 +404,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
         focusedMarkerKey={focusedMarker?.key ?? null}
         themeId={themeId}
         viewportInsets={viewportInsets}
+        showFitAllControl
         onOpenFriend={(marker) => {
           openFriendFromMap(marker, {
             setActiveView,

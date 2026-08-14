@@ -2248,11 +2248,16 @@ export function Header({
         <div
           ref={dropdownRef}
           className="fixed bottom-5 right-5 z-[90] sm:bottom-6 sm:right-6"
+          data-testid="map-add-floating-control"
+          data-map-floating-control="add"
+          data-map-floating-control-edge="bottom"
           style={headerDragRegion ? noDrag : undefined}
         >
           {dropdownOpen && (
             <div
               className="theme-floating-panel theme-menu-shell absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col py-1 shadow-2xl shadow-black/40"
+              data-map-floating-control="add-menu"
+              data-map-floating-control-edge="bottom"
               style={newMenuStyle}
             >
               {canAddRss && (
