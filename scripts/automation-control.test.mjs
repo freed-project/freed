@@ -36,6 +36,7 @@ import test from "node:test";
 
 import {
   AutomationControlError,
+  AUTHORITY_WITNESS_REPAIR_ACTION,
   AUTOMATION_ACTOR_POLICIES,
   CONTROL_EVENT_HISTORY_MAX_BYTES,
   CONTROL_EVENT_HISTORY_MAX_RECORDS,
@@ -66,6 +67,7 @@ import {
   normalizeInstalledBuildIdentity,
   outcomeRecordedEventId,
   ownerGovernanceIntentDigest,
+  planTaskManifestAuthorityWitnessRepair,
   partitionPrivateBatchSelectionForTest,
   preauthorizeOutcomeLedgerRepair,
   preflightOutcomeLedgerRepairEvent,
@@ -75,6 +77,7 @@ import {
   readTask,
   readFactoryExecutionClaim,
   readTaskManifest,
+  repairTaskManifestAuthorityWitness,
   recoverExpiredGeneralActorLeaseAcquire,
   releaseLease as releaseLeaseMutation,
   releaseFactoryExecutionClaim,
@@ -10400,6 +10403,7 @@ test("behavioral classification and the installed soak slot are immutable contro
   );
 
   for (const type of [
+    "authority_witness_repair_authorized",
     "lease_acquired",
     "lease_credential_upgraded",
     "lease_heartbeat",
@@ -10430,6 +10434,7 @@ test("behavioral classification and the installed soak slot are immutable contro
     );
   }
   for (const eventId of [
+    `authority-witness-repaired:${"e".repeat(64)}`,
     `lease:${"a".repeat(64)}`,
     `outcome-history-repaired:${"b".repeat(64)}`,
     `outcome-recorded:${"c".repeat(64)}`,
@@ -21445,6 +21450,276 @@ test("production task WAL cleanup preserves a swapped canonical generation", () 
       (candidate) => candidate.eventId === event.eventId,
     ).length,
     1,
+  );
+});
+
+function driftTaskManifestAuthorityGeneration(fixture) {
+  const displacedPath = path.join(
+    fixture.stateRoot,
+    `${fixture.taskId}-manifest-pre-drift.json`,
+  );
+  renameSync(fixture.paths.taskManifest, displacedPath);
+  writeFileSync(fixture.paths.taskManifest, fixture.canonicalBytes, {
+    mode: 0o600,
+  });
+  rmSync(displacedPath);
+  return fixture;
+}
+
+function strandedTaskManifestAuthorityWitnessFixture(
+  label,
+  { drift = true } = {},
+) {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
+  const controller = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs,
+  });
+  const taskId = `stranded-witness-${label}`;
+  createTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    observerAuthority: "plan-only",
+    providerAuthority: "forbidden",
+    details: { behavioral: false },
+    nowMs: nowMs + 1,
+  });
+  transitionTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    toState: "triaged",
+    expectedRevision: 1,
+    nowMs: nowMs + 2,
+  });
+  const paths = automationControlPaths(stateRoot);
+  const prefix = `.${path.basename(paths.taskManifest)}.authority.`;
+  const witnesses = readdirSync(paths.controlRoot).filter((entry) =>
+    entry.startsWith(prefix),
+  );
+  assert.equal(witnesses.length, 1, JSON.stringify(witnesses));
+  const witnessPath = path.join(paths.controlRoot, witnesses[0]);
+  const canonicalBytes = readFileSync(paths.taskManifest);
+  const fixture = {
+    stateRoot,
+    paths,
+    taskId,
+    witnessPath,
+    canonicalBytes,
+  };
+  return drift ? driftTaskManifestAuthorityGeneration(fixture) : fixture;
+}
+
+function acquireAuthorityWitnessRepairOwner(fixture, plan) {
+  ownerIntentsByDigest.set(plan.intentDigest, plan.intent);
+  return actorLease(fixture.stateRoot, "freed-owner", {
+    ownerTaskId: plan.taskId,
+    ownerIntentDigest: plan.intentDigest,
+  });
+}
+
+test("stranded task manifest witness planning is read-only and exact repair is audited", () => {
+  const fixture = strandedTaskManifestAuthorityWitnessFixture("success");
+  const beforePlan = {
+    control: snapshotTaskMutationState(fixture.stateRoot),
+    witness: snapshotFilesystemEntry(fixture.witnessPath),
+  };
+  const plan = planTaskManifestAuthorityWitnessRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: "github-issue-1469",
+  });
+  assert.deepEqual(
+    {
+      control: snapshotTaskMutationState(fixture.stateRoot),
+      witness: snapshotFilesystemEntry(fixture.witnessPath),
+    },
+    beforePlan,
+  );
+  assert.equal(plan.action, AUTHORITY_WITNESS_REPAIR_ACTION);
+  assert.equal(plan.parameters.canonical.revision, 2);
+  assert.equal(plan.parameters.witness.predecessorRevision, 1);
+  assert.equal(plan.parameters.lineage.retired, true);
+  assert.equal(plan.parameters.witness.snapshot.filePath, fixture.witnessPath);
+  assert.deepEqual(
+    Buffer.from(plan.parameters.witness.snapshot.bytesBase64, "base64"),
+    readFileSync(fixture.witnessPath),
+  );
+  const redirectedPlan = structuredClone(plan);
+  redirectedPlan.parameters.witness.entry = path.join(
+    "..",
+    path.basename(plan.parameters.witness.entry),
+  );
+  assert.throws(
+    () =>
+      repairTaskManifestAuthorityWitness({
+        stateRoot: fixture.stateRoot,
+        taskId: plan.taskId,
+        plan: redirectedPlan,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "invalid_argument",
+  );
+
+  const owner = acquireAuthorityWitnessRepairOwner(fixture, plan);
+  assert.throws(
+    () =>
+      repairTaskManifestAuthorityWitness(
+        {
+          stateRoot: fixture.stateRoot,
+          taskId: plan.taskId,
+          plan,
+          ...owner,
+        },
+        {
+          checkpoint: (phase) => {
+            if (phase === "before-audit-event") {
+              throw new Error("audit unavailable");
+            }
+          },
+        },
+      ),
+    /audit unavailable/,
+  );
+  assert.equal(existsSync(fixture.witnessPath), true);
+  assert.equal(
+    readEvents(fixture.stateRoot).filter(
+      (event) => event.eventId === plan.parameters.eventId,
+    ).length,
+    0,
+  );
+  assert.throws(
+    () =>
+      repairTaskManifestAuthorityWitness(
+        {
+          stateRoot: fixture.stateRoot,
+          taskId: plan.taskId,
+          plan,
+          ...owner,
+        },
+        {
+          checkpoint: (phase) => {
+            if (phase === "witness-retired") throw new Error("response lost");
+          },
+        },
+      ),
+    /response lost/,
+  );
+  assert.equal(existsSync(fixture.witnessPath), false);
+  const result = repairTaskManifestAuthorityWitness({
+    stateRoot: fixture.stateRoot,
+    taskId: plan.taskId,
+    plan,
+    ...owner,
+  });
+  assert.equal(result.retired, true);
+  assert.equal(result.recovered, true);
+  assert.equal(existsSync(fixture.witnessPath), false);
+  assert.deepEqual(
+    readFileSync(fixture.paths.taskManifest),
+    fixture.canonicalBytes,
+  );
+  assert.equal(readTaskManifest({ stateRoot: fixture.stateRoot }).revision, 2);
+  const repairEvents = readEvents(fixture.stateRoot).filter(
+    (event) => event.eventId === plan.parameters.eventId,
+  );
+  assert.equal(repairEvents.length, 1);
+  assert.equal(repairEvents[0].type, "authority_witness_repair_authorized");
+  assert.equal(repairEvents[0].data.ownerIntentDigest, plan.intentDigest);
+  assert.equal(
+    readdirSync(
+      path.join(fixture.paths.controlRoot, ".authority-retirements"),
+    ).filter((entry) => entry.startsWith("current-tasks.json.")).length,
+    1,
+  );
+});
+
+test("stranded task manifest witness repair fails closed on changed generations", async (t) => {
+  for (const variant of ["canonical", "witness"]) {
+    await t.test(variant, () => {
+      const fixture = strandedTaskManifestAuthorityWitnessFixture(variant);
+      const plan = planTaskManifestAuthorityWitnessRepair({
+        stateRoot: fixture.stateRoot,
+        taskId: "github-issue-1469",
+      });
+      const owner = acquireAuthorityWitnessRepairOwner(fixture, plan);
+      if (variant === "canonical") {
+        writeFileSync(
+          fixture.paths.taskManifest,
+          Buffer.concat([fixture.canonicalBytes, Buffer.from("\n")]),
+          { mode: 0o600 },
+        );
+      } else if (variant === "witness") {
+        writeFileSync(
+          fixture.witnessPath,
+          Buffer.concat([readFileSync(fixture.witnessPath), Buffer.from("\n")]),
+          { mode: 0o600 },
+        );
+      }
+      assert.throws(
+        () =>
+          repairTaskManifestAuthorityWitness({
+            stateRoot: fixture.stateRoot,
+            taskId: plan.taskId,
+            plan,
+            ...owner,
+          }),
+        (error) =>
+          error instanceof AutomationControlError &&
+          error.code === "authority_generation_conflict",
+      );
+      assert.equal(existsSync(fixture.witnessPath), true);
+      assert.equal(
+        readEvents(fixture.stateRoot).filter(
+          (event) => event.eventId === plan.parameters.eventId,
+        ).length,
+        0,
+      );
+    });
+  }
+});
+
+test("stranded task manifest witness planning rejects a still-owned or nondrifted witness", () => {
+  const fixture = strandedTaskManifestAuthorityWitnessFixture("owned", {
+    drift: false,
+  });
+  assert.throws(
+    () =>
+      planTaskManifestAuthorityWitnessRepair({
+        stateRoot: fixture.stateRoot,
+        taskId: "github-issue-1469",
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict",
+  );
+  driftTaskManifestAuthorityGeneration(fixture);
+  const retirementDirectory = path.join(
+    fixture.paths.taskTransactions,
+    ".authority-retirements",
+  );
+  const retiredEntry = readdirSync(retirementDirectory).find((entry) =>
+    entry.startsWith("000000000002-"),
+  );
+  assert.ok(retiredEntry);
+  const marker = retiredEntry.indexOf(".json.");
+  assert.notEqual(marker, -1);
+  const activeName = retiredEntry.slice(0, marker + ".json".length);
+  writeFileSync(
+    path.join(fixture.paths.taskTransactions, activeName),
+    readFileSync(path.join(retirementDirectory, retiredEntry)),
+    { mode: 0o600 },
+  );
+  assert.throws(
+    () =>
+      planTaskManifestAuthorityWitnessRepair({
+        stateRoot: fixture.stateRoot,
+        taskId: "github-issue-1469",
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict",
   );
 });
 

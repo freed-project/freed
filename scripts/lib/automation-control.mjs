@@ -159,6 +159,11 @@ const ACTIVE_BEHAVIOR_TASK_STATES = new Set([
 ]);
 const OUTCOME_RECORD_ACTION = "outcome.record";
 const OUTCOME_RECORD_POLICY = "freed-outcome-record-v1";
+export const AUTHORITY_WITNESS_REPAIR_ACTION = "authority-witness.repair";
+export const AUTHORITY_WITNESS_REPAIR_POLICY =
+  "freed-stranded-authority-witness-repair-v1";
+const AUTHORITY_WITNESS_REPAIR_EVENT_TYPE =
+  "authority_witness_repair_authorized";
 const LEASE_TRANSACTION_SCHEMA_VERSION = 2;
 const LEASE_TRANSACTION_KIND = "lease-transaction";
 const LEASE_TRANSACTION_MAX_BYTES = 1024 * 1024;
@@ -291,6 +296,7 @@ const OUTCOME_RECORD_PARAMETER_KEYS = Object.freeze(
   ].sort(),
 );
 const RESERVED_CONTROL_EVENT_TYPES = new Set([
+  AUTHORITY_WITNESS_REPAIR_EVENT_TYPE,
   OUTCOME_LEDGER_REPAIR_EVENT_TYPE,
   "lease_acquired",
   "lease_credential_upgraded",
@@ -311,6 +317,7 @@ const RESERVED_CONTROL_EVENT_TYPES = new Set([
   "task_transitioned",
 ]);
 const RESERVED_CONTROL_EVENT_ID_PREFIXES = Object.freeze([
+  "authority-witness-repaired:",
   "lease:",
   "outcome-history-repaired:",
   "outcome-recorded:",
@@ -21388,8 +21395,7 @@ function openPinnedLeaseArchiveHelper() {
         ? {
             entryPath:
               process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME ?? "",
-            trustedRoot:
-              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT ?? "",
+            trustedRoot: process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT ?? "",
             requiredUid: Number(
               process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_UID ?? Number.NaN,
             ),
@@ -21488,9 +21494,9 @@ function runLeaseArchiveHelper(
           ? LEASE_PRIVATE_BATCH_MAX_BUFFER
           : operation === "list-bounded-batch"
             ? LEASE_ARCHIVE_LIST_BATCH_MAX_BUFFER
-          : operation === "list" || operation === "list-bounded"
-            ? LEASE_ARCHIVE_LIST_MAX_BUFFER
-            : 2 * LEASE_TRANSACTION_MAX_BYTES,
+            : operation === "list" || operation === "list-bounded"
+              ? LEASE_ARCHIVE_LIST_MAX_BUFFER
+              : 2 * LEASE_TRANSACTION_MAX_BYTES,
     stdio: [
       "pipe",
       "pipe",
@@ -25831,6 +25837,59 @@ function requireCanonicalStagedControlEvent(event) {
   return event;
 }
 
+function requireCanonicalAuthorityWitnessRepairEvent(paths, event) {
+  const operationId = String(event?.data?.operationId ?? "");
+  if (
+    event?.type !== AUTHORITY_WITNESS_REPAIR_EVENT_TYPE ||
+    event?.eventId !== `authority-witness-repaired:${operationId}` ||
+    event?.actor !== "freed-owner" ||
+    event?.leaseName !== "owner-governance" ||
+    !IDENTIFIER_PATTERN.test(String(event?.taskId ?? "")) ||
+    !exactObjectKeys(event, [
+      "actor",
+      "data",
+      "eventId",
+      "leaseName",
+      "schemaVersion",
+      "taskId",
+      "ts",
+      "type",
+    ]) ||
+    !exactObjectKeys(event.data, [
+      "canonicalDigest",
+      "canonicalPath",
+      "canonicalRevision",
+      "lineageTransactionId",
+      "operationId",
+      "ownerIntentDigest",
+      "policy",
+      "witnessDigest",
+      "witnessInode",
+      "witnessPath",
+    ]) ||
+    event.data.policy !== AUTHORITY_WITNESS_REPAIR_POLICY ||
+    !SHA256_PATTERN.test(operationId) ||
+    !SHA256_PATTERN.test(String(event.data.ownerIntentDigest ?? "")) ||
+    !SHA256_PATTERN.test(String(event.data.canonicalDigest ?? "")) ||
+    !SHA256_PATTERN.test(String(event.data.witnessDigest ?? "")) ||
+    event.data.canonicalPath !== paths.taskManifest ||
+    path.dirname(String(event.data.witnessPath ?? "")) !== paths.controlRoot ||
+    !path
+      .basename(String(event.data.witnessPath ?? ""))
+      .startsWith(`.${path.basename(paths.taskManifest)}.authority.`) ||
+    !Number.isSafeInteger(event.data.canonicalRevision) ||
+    event.data.canonicalRevision < 1 ||
+    !/^\d+$/.test(String(event.data.witnessInode ?? "")) ||
+    !IDENTIFIER_PATTERN.test(String(event.data.lineageTransactionId ?? ""))
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Control event staging does not end in one exact authority witness repair authorization.",
+    );
+  }
+  return event;
+}
+
 function requireControlEventSemanticSuccessor(paths, before, after) {
   const admittedBefore = parseControlEventHistorySnapshot(before);
   const admittedAfter = parseControlEventHistorySnapshot(after);
@@ -25882,14 +25941,18 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
   const outcomeReserved =
     event.type === "outcome_recorded" ||
     event.eventId.startsWith("outcome-recorded:");
-  const repairReserved =
+  const outcomeRepairReserved =
     event.type === OUTCOME_LEDGER_REPAIR_EVENT_TYPE ||
     event.eventId.startsWith("outcome-history-repaired:");
+  const authorityWitnessRepairReserved =
+    event.type === AUTHORITY_WITNESS_REPAIR_EVENT_TYPE ||
+    event.eventId.startsWith("authority-witness-repaired:");
   if (
     !leaseReserved &&
     !taskReserved &&
     !outcomeReserved &&
-    !repairReserved &&
+    !outcomeRepairReserved &&
+    !authorityWitnessRepairReserved &&
     (AUTOMATION_ACTOR_POLICIES[event.actor]?.canAppendEvent !== true ||
       !exactObjectKeys(event, [
         "actor",
@@ -25927,7 +25990,7 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
       );
     }
   }
-  if (outcomeReserved || repairReserved) {
+  if (outcomeReserved || outcomeRepairReserved) {
     const outcomeHistory = inspectExactOutcomeControlHistory(
       admittedAfter.events,
       { ledgerPath: paths.outcomes, stateRoot: paths.stateRoot },
@@ -25941,6 +26004,9 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
         "Control event staging does not end in one exact outcome event.",
       );
     }
+  }
+  if (authorityWitnessRepairReserved) {
+    requireCanonicalAuthorityWitnessRepairEvent(paths, event);
   }
   return Object.freeze({
     operationId: `control-event:${event.eventId}`,
@@ -26355,10 +26421,8 @@ function exactPendingTaskTransactionTailMatches({
       events.slice(0, transactionEventIndex),
       manifest,
     ).healthy &&
-    inspectExactTaskManifestHistoryParity(
-      events,
-      transaction.targetManifest,
-    ).healthy
+    inspectExactTaskManifestHistoryParity(events, transaction.targetManifest)
+      .healthy
   );
 }
 
@@ -26424,8 +26488,10 @@ function requireTaskManifestSemanticSuccessor(
       return false;
     }
     if (eventIndexes.length === 1) {
-      const currentHistoryHealthy =
-        inspectExactTaskManifestHistoryParity(events, afterManifest).healthy;
+      const currentHistoryHealthy = inspectExactTaskManifestHistoryParity(
+        events,
+        afterManifest,
+      ).healthy;
       if (
         !currentHistoryHealthy &&
         !exactPendingTaskTransactionTailMatches({
@@ -26484,6 +26550,718 @@ function admitTaskManifestAuthorityStage(
       }),
     label: "Current task manifest",
   });
+}
+
+function authorityWitnessRepairSnapshotDescriptor(
+  snapshot,
+  { includeBytes = false } = {},
+) {
+  if (snapshot?.missing !== false || snapshot.identity === null) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Authority witness repair requires one present exact file generation.",
+    );
+  }
+  const descriptor = {
+    filePath: snapshot.filePath,
+    privateRoot: snapshot.privateRoot,
+    digest: digestBytes(snapshot.bytes),
+    size: snapshot.bytes.length,
+    identity: structuredClone(snapshot.identity),
+    directoryIdentity: structuredClone(snapshot.directoryIdentity),
+  };
+  if (includeBytes) descriptor.bytesBase64 = snapshot.bytes.toString("base64");
+  return Object.freeze(descriptor);
+}
+
+function requireAuthorityWitnessRepairSnapshotDescriptor(
+  value,
+  label,
+  { includeBytes = false } = {},
+) {
+  const expectedKeys = [
+    "digest",
+    "directoryIdentity",
+    "filePath",
+    "identity",
+    "privateRoot",
+    "size",
+    ...(includeBytes ? ["bytesBase64"] : []),
+  ];
+  if (
+    !exactObjectKeys(value, expectedKeys) ||
+    typeof value.filePath !== "string" ||
+    path.resolve(value.filePath) !== value.filePath ||
+    typeof value.privateRoot !== "string" ||
+    path.resolve(value.privateRoot) !== value.privateRoot ||
+    !SHA256_PATTERN.test(String(value.digest ?? "")) ||
+    !Number.isSafeInteger(value.size) ||
+    value.size < 0 ||
+    value.size > TASK_CONTROL_FILE_MAX_BYTES ||
+    !exactObjectKeys(value.identity, [
+      "ctimeMs",
+      "ctimeNs",
+      "dev",
+      "gid",
+      "ino",
+      "mode",
+      "mtimeMs",
+      "mtimeNs",
+      "nlink",
+      "size",
+      "uid",
+    ]) ||
+    !exactObjectKeys(value.directoryIdentity, ["dev", "ino", "mode", "uid"]) ||
+    !/^\d+$/.test(String(value.identity.dev ?? "")) ||
+    !/^\d+$/.test(String(value.identity.ino ?? "")) ||
+    !/^\d+$/.test(String(value.identity.mtimeNs ?? "")) ||
+    !/^\d+$/.test(String(value.identity.ctimeNs ?? "")) ||
+    Number(value.identity.mode) !== 0o100600 ||
+    Number(value.identity.nlink) !== 1 ||
+    Number(value.identity.size) !== value.size ||
+    !/^\d+$/.test(String(value.directoryIdentity.dev ?? "")) ||
+    !/^\d+$/.test(String(value.directoryIdentity.ino ?? "")) ||
+    Number(value.directoryIdentity.mode) !== 0o40700
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      `${label} is not one exact private authority generation.`,
+    );
+  }
+  if (includeBytes) {
+    if (typeof value.bytesBase64 !== "string") {
+      throw new AutomationControlError(
+        "invalid_argument",
+        `${label} is missing its exact bytes.`,
+      );
+    }
+    const bytes = Buffer.from(value.bytesBase64, "base64");
+    if (
+      bytes.toString("base64") !== value.bytesBase64 ||
+      bytes.length !== value.size ||
+      digestBytes(bytes) !== value.digest
+    ) {
+      throw new AutomationControlError(
+        "invalid_argument",
+        `${label} bytes do not match its immutable descriptor.`,
+      );
+    }
+  }
+  return value;
+}
+
+function authorityWitnessRepairSnapshotMatches(snapshot, descriptor) {
+  return (
+    snapshot?.missing === false &&
+    snapshot.filePath === descriptor.filePath &&
+    snapshot.privateRoot === descriptor.privateRoot &&
+    snapshot.bytes.length === descriptor.size &&
+    digestBytes(snapshot.bytes) === descriptor.digest &&
+    privateFileIdentityMatches(snapshot.identity, descriptor.identity) &&
+    automationAuthorityDirectoryIdentityMatches(
+      snapshot.directoryIdentity,
+      descriptor.directoryIdentity,
+    )
+  );
+}
+
+function authorityWitnessRepairOperationSeed(taskId, parameters) {
+  const {
+    eventId: _eventId,
+    operationId: _operationId,
+    ...stable
+  } = parameters;
+  return {
+    purpose: AUTHORITY_WITNESS_REPAIR_POLICY,
+    taskId,
+    parameters: stable,
+  };
+}
+
+function readStrandedTaskManifestAuthorityWitness(paths) {
+  const current = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+    allowEmpty: false,
+    privateRoot: paths.controlRoot,
+    maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Current task manifest repair canonical generation",
+    invalidCode: "authority_generation_conflict",
+  });
+  const currentManifest = parseTaskManifestAuthoritySnapshot(
+    current,
+    "Current task manifest repair canonical generation",
+  );
+  if (currentManifest === null) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Current task manifest repair requires one canonical manifest.",
+    );
+  }
+
+  const directory = openPinnedLeaseArchiveDirectory(
+    paths.controlRoot,
+    "Current task manifest repair authority parent directory",
+  );
+  let stageEntry;
+  let stage;
+  try {
+    const entries = listAutomationAuthorityStages(
+      paths.taskManifest,
+      openPinnedLeaseArchiveHelper(),
+      directory,
+    );
+    if (entries.length !== 1 || entries[0].kind !== "ready") {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Current task manifest repair requires one complete stranded ready witness.",
+        { witnesses: entries.length },
+      );
+    }
+    [stageEntry] = entries;
+    stage = readAutomationAuthorityStage(
+      path.join(paths.controlRoot, stageEntry.entry),
+      {
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Current task manifest stranded authority witness",
+      },
+    );
+    requireAutomationAuthoritySnapshotDirectory(
+      stage,
+      directory,
+      "Current task manifest stranded authority witness",
+    );
+    if (stage.missing) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Current task manifest stranded authority witness disappeared during planning.",
+      );
+    }
+  } finally {
+    closeSync(directory.descriptor);
+  }
+
+  const predecessorManifest = parseTaskManifestAuthoritySnapshot(
+    stage,
+    "Current task manifest stranded authority witness",
+  );
+  if (
+    predecessorManifest === null ||
+    predecessorManifest.revision + 1 !== currentManifest.revision
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Current task manifest witness is not the exact prior semantic revision.",
+    );
+  }
+  const semantic = requireTaskManifestSemanticSuccessor(paths, stage, current);
+  const currentStableDigest =
+    automationAuthorityStableGenerationDigest(current);
+  if (stageEntry.successorStableDigest === currentStableDigest) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Current task manifest witness is not an exact stranded successor-digest drift.",
+    );
+  }
+  const activeOwners = readTaskManifestLineageTransactions(
+    paths,
+    currentManifest.revision,
+    { includeRetired: false },
+  ).filter(
+    ({ transaction }) =>
+      transaction.transactionId === semantic.transaction.transactionId,
+  );
+  if (activeOwners.length !== 0) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Current task manifest witness still has an active owning transaction.",
+      { activeOwners: activeOwners.length },
+    );
+  }
+  return Object.freeze({
+    current,
+    currentManifest,
+    predecessorManifest,
+    semantic,
+    stage,
+    stageEntry,
+  });
+}
+
+export function planTaskManifestAuthorityWitnessRepair({ stateRoot, taskId }) {
+  requireIdentifier(taskId, "taskId");
+  const paths = automationControlPaths(stateRoot);
+  const cutover = requireAutomationKernelGuardCutover(paths);
+  admitControlEventAuthorityStage(paths);
+  const eventHistory = readControlEventHistorySnapshot(paths.events);
+  const candidate = readStrandedTaskManifestAuthorityWitness(paths);
+  const parity = inspectExactTaskManifestHistoryParity(
+    eventHistory.events,
+    candidate.currentManifest,
+  );
+  if (!parity.healthy) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Current task manifest repair requires healthy exact event-history parity.",
+      { issues: parity.issues },
+    );
+  }
+  const parametersWithoutOperation = {
+    schemaVersion: 1,
+    policy: AUTHORITY_WITNESS_REPAIR_POLICY,
+    stateRoot: paths.stateRoot,
+    filesystemType: cutover.receipt?.filesystemType ?? null,
+    canonical: {
+      revision: candidate.currentManifest.revision,
+      snapshot: authorityWitnessRepairSnapshotDescriptor(candidate.current),
+    },
+    witness: {
+      entry: candidate.stageEntry.entry,
+      namespaceDigest: candidate.stageEntry.namespaceDigest,
+      successorStableDigest: candidate.stageEntry.successorStableDigest,
+      predecessorRevision: candidate.predecessorManifest.revision,
+      snapshot: authorityWitnessRepairSnapshotDescriptor(candidate.stage, {
+        includeBytes: true,
+      }),
+    },
+    eventHistory: {
+      digest: digestBytes(eventHistory.bytes),
+      size: eventHistory.bytes.length,
+      recordCount: eventHistory.recordCount,
+      snapshot: authorityWitnessRepairSnapshotDescriptor(eventHistory),
+    },
+    lineage: {
+      transactionId: candidate.semantic.transaction.transactionId,
+      operationId: candidate.semantic.operationId,
+      eventId: candidate.semantic.transaction.event.eventId,
+      taskId: candidate.semantic.transaction.event.taskId,
+      targetRevision: candidate.semantic.transaction.targetManifest.revision,
+      retired: true,
+    },
+  };
+  const operationId = canonicalLeaseRequestDigest(
+    authorityWitnessRepairOperationSeed(taskId, parametersWithoutOperation),
+  );
+  const parameters = Object.freeze({
+    ...parametersWithoutOperation,
+    operationId,
+    eventId: `authority-witness-repaired:${operationId}`,
+  });
+  const intent = Object.freeze({
+    schemaVersion: OWNER_CAPABILITY_SCHEMA_VERSION,
+    action: AUTHORITY_WITNESS_REPAIR_ACTION,
+    taskId,
+    parameters,
+  });
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+
+  const currentAfter = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+    allowEmpty: false,
+    privateRoot: paths.controlRoot,
+    maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Current task manifest repair canonical generation",
+    invalidCode: "authority_generation_conflict",
+  });
+  const stageAfter = readAutomationAuthorityStage(
+    path.join(paths.controlRoot, candidate.stageEntry.entry),
+    {
+      privateRoot: paths.controlRoot,
+      maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Current task manifest stranded authority witness",
+    },
+  );
+  const eventsAfter = readControlEventHistorySnapshot(paths.events);
+  if (
+    !automationAuthoritySnapshotMatches(currentAfter, candidate.current) ||
+    !automationAuthoritySnapshotMatches(stageAfter, candidate.stage) ||
+    !automationAuthoritySnapshotMatches(eventsAfter, eventHistory)
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Authority witness repair inputs changed during read-only planning.",
+    );
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    action: AUTHORITY_WITNESS_REPAIR_ACTION,
+    taskId,
+    parameters,
+    intent,
+    intentDigest,
+  });
+}
+
+function requireTaskManifestAuthorityWitnessRepairPlan(plan, taskId, paths) {
+  if (
+    !exactObjectKeys(plan, [
+      "action",
+      "intent",
+      "intentDigest",
+      "parameters",
+      "schemaVersion",
+      "taskId",
+    ]) ||
+    plan.schemaVersion !== 1 ||
+    plan.action !== AUTHORITY_WITNESS_REPAIR_ACTION ||
+    plan.taskId !== taskId ||
+    !SHA256_PATTERN.test(String(plan.intentDigest ?? ""))
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Authority witness repair plan has an invalid canonical envelope.",
+    );
+  }
+  const parameters = plan.parameters;
+  if (
+    !exactObjectKeys(parameters, [
+      "canonical",
+      "eventHistory",
+      "eventId",
+      "filesystemType",
+      "lineage",
+      "operationId",
+      "policy",
+      "schemaVersion",
+      "stateRoot",
+      "witness",
+    ]) ||
+    parameters.schemaVersion !== 1 ||
+    parameters.policy !== AUTHORITY_WITNESS_REPAIR_POLICY ||
+    parameters.stateRoot !== paths.stateRoot ||
+    !(
+      parameters.filesystemType === null ||
+      (typeof parameters.filesystemType === "string" &&
+        parameters.filesystemType.length > 0)
+    ) ||
+    !SHA256_PATTERN.test(String(parameters.operationId ?? "")) ||
+    parameters.eventId !==
+      `authority-witness-repaired:${parameters.operationId}` ||
+    !Number.isSafeInteger(parameters.canonical?.revision) ||
+    !Number.isSafeInteger(parameters.witness?.predecessorRevision) ||
+    parameters.witness.predecessorRevision + 1 !==
+      parameters.canonical.revision ||
+    !exactObjectKeys(parameters.canonical, ["revision", "snapshot"]) ||
+    !exactObjectKeys(parameters.witness, [
+      "entry",
+      "namespaceDigest",
+      "predecessorRevision",
+      "snapshot",
+      "successorStableDigest",
+    ]) ||
+    !exactObjectKeys(parameters.eventHistory, [
+      "digest",
+      "recordCount",
+      "size",
+      "snapshot",
+    ]) ||
+    !exactObjectKeys(parameters.lineage, [
+      "eventId",
+      "operationId",
+      "retired",
+      "targetRevision",
+      "taskId",
+      "transactionId",
+    ]) ||
+    parameters.lineage.retired !== true ||
+    parameters.lineage.targetRevision !== parameters.canonical.revision ||
+    !IDENTIFIER_PATTERN.test(String(parameters.lineage.transactionId ?? "")) ||
+    !IDENTIFIER_PATTERN.test(String(parameters.lineage.eventId ?? "")) ||
+    !IDENTIFIER_PATTERN.test(String(parameters.lineage.taskId ?? "")) ||
+    parameters.lineage.operationId !==
+      `task-manifest:${parameters.lineage.transactionId}` ||
+    !SHA256_PATTERN.test(String(parameters.eventHistory.digest ?? "")) ||
+    parameters.eventHistory.size !== parameters.eventHistory.snapshot?.size ||
+    parameters.eventHistory.digest !==
+      parameters.eventHistory.snapshot?.digest ||
+    !Number.isSafeInteger(parameters.eventHistory.recordCount) ||
+    parameters.eventHistory.recordCount < 0 ||
+    parameters.eventHistory.recordCount > CONTROL_EVENT_HISTORY_MAX_RECORDS ||
+    !SHA256_PATTERN.test(String(parameters.witness.namespaceDigest ?? "")) ||
+    !SHA256_PATTERN.test(
+      String(parameters.witness.successorStableDigest ?? ""),
+    ) ||
+    parameters.witness.entry !==
+      `.${path.basename(paths.taskManifest)}.authority.${parameters.witness.namespaceDigest}.${parameters.witness.successorStableDigest}.tmp` ||
+    path.join(paths.controlRoot, parameters.witness.entry) !==
+      parameters.witness.snapshot?.filePath ||
+    parameters.canonical.snapshot?.filePath !== paths.taskManifest ||
+    parameters.eventHistory.snapshot?.filePath !== paths.events
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Authority witness repair plan parameters are not canonical.",
+    );
+  }
+  requireAuthorityWitnessRepairSnapshotDescriptor(
+    parameters.canonical.snapshot,
+    "Authority witness repair canonical snapshot",
+  );
+  requireAuthorityWitnessRepairSnapshotDescriptor(
+    parameters.witness.snapshot,
+    "Authority witness repair witness snapshot",
+    { includeBytes: true },
+  );
+  requireAuthorityWitnessRepairSnapshotDescriptor(
+    parameters.eventHistory.snapshot,
+    "Authority witness repair event-history snapshot",
+  );
+  const expectedOperationId = canonicalLeaseRequestDigest(
+    authorityWitnessRepairOperationSeed(taskId, parameters),
+  );
+  const expectedIntent = {
+    schemaVersion: OWNER_CAPABILITY_SCHEMA_VERSION,
+    action: AUTHORITY_WITNESS_REPAIR_ACTION,
+    taskId,
+    parameters,
+  };
+  if (
+    parameters.operationId !== expectedOperationId ||
+    !canonicalValuesEqual(plan.intent, expectedIntent) ||
+    plan.intentDigest !== ownerGovernanceIntentDigest(expectedIntent)
+  ) {
+    throw new AutomationControlError(
+      "owner_intent_mismatch",
+      "Authority witness repair plan does not match its exact owner intent.",
+    );
+  }
+  return parameters;
+}
+
+function plannedAuthorityWitnessSnapshot(parameters) {
+  const descriptor = parameters.witness.snapshot;
+  return Object.freeze({
+    filePath: descriptor.filePath,
+    privateRoot: descriptor.privateRoot,
+    missing: false,
+    bytes: Buffer.from(descriptor.bytesBase64, "base64"),
+    identity: Object.freeze(structuredClone(descriptor.identity)),
+    directoryIdentity: Object.freeze(
+      structuredClone(descriptor.directoryIdentity),
+    ),
+  });
+}
+
+export function repairTaskManifestAuthorityWitness(
+  { stateRoot, taskId, plan, actor, leaseName, leaseToken },
+  { checkpoint = () => {} } = {},
+) {
+  requireIdentifier(taskId, "taskId");
+  if (typeof checkpoint !== "function") {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Authority witness repair checkpoint must be a function.",
+    );
+  }
+  const paths = automationControlPaths(stateRoot);
+  requireAutomationKernelGuardCutover(paths);
+  const parameters = requireTaskManifestAuthorityWitnessRepairPlan(
+    plan,
+    taskId,
+    paths,
+  );
+  const authority = {
+    stateRoot: paths.stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    taskId,
+    ownerIntentDigest: plan.intentDigest,
+  };
+  return withMutationLeaseAuthority(authority, (authorityContext) =>
+    withFilesystemGuard(paths, "tasks", () => {
+      const authorize = () => authorityContext.reauthorize();
+      authorize();
+      const current = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+        allowEmpty: false,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Current task manifest repair canonical generation",
+        invalidCode: "authority_generation_conflict",
+      });
+      if (
+        !authorityWitnessRepairSnapshotMatches(
+          current,
+          parameters.canonical.snapshot,
+        )
+      ) {
+        throw new AutomationControlError(
+          "authority_generation_conflict",
+          "Current task manifest changed after authority witness planning.",
+        );
+      }
+      const currentManifest = parseTaskManifestAuthoritySnapshot(
+        current,
+        "Current task manifest repair canonical generation",
+      );
+      const events = readControlEventHistorySnapshot(paths.events);
+      if (
+        events.bytes.length < parameters.eventHistory.size ||
+        digestBytes(events.bytes.subarray(0, parameters.eventHistory.size)) !==
+          parameters.eventHistory.digest ||
+        !inspectExactTaskManifestHistoryParity(events.events, currentManifest)
+          .healthy
+      ) {
+        throw new AutomationControlError(
+          "authority_generation_conflict",
+          "Authority witness repair event history changed outside append-only healthy parity.",
+        );
+      }
+
+      const helper = openPinnedLeaseArchiveHelper();
+      const directory = openPinnedLeaseArchiveDirectory(
+        paths.controlRoot,
+        "Current task manifest repair authority parent directory",
+      );
+      let stagePresent = false;
+      try {
+        const entries = listAutomationAuthorityStages(
+          paths.taskManifest,
+          helper,
+          directory,
+        );
+        if (
+          entries.length > 1 ||
+          (entries.length === 1 &&
+            entries[0].entry !== parameters.witness.entry)
+        ) {
+          throw new AutomationControlError(
+            "authority_generation_conflict",
+            "Current task manifest authority witnesses changed after planning.",
+          );
+        }
+        if (entries.length === 1) {
+          const stage = readAutomationAuthorityStage(
+            path.join(paths.controlRoot, entries[0].entry),
+            {
+              privateRoot: paths.controlRoot,
+              maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+              allowedModes: [0o600],
+              label: "Current task manifest stranded authority witness",
+            },
+          );
+          requireAutomationAuthoritySnapshotDirectory(
+            stage,
+            directory,
+            "Current task manifest stranded authority witness",
+          );
+          if (
+            !authorityWitnessRepairSnapshotMatches(
+              stage,
+              parameters.witness.snapshot,
+            )
+          ) {
+            throw new AutomationControlError(
+              "authority_generation_conflict",
+              "Current task manifest authority witness changed after planning.",
+            );
+          }
+          const semantic = requireTaskManifestSemanticSuccessor(
+            paths,
+            stage,
+            current,
+          );
+          if (semantic.operationId !== parameters.lineage.operationId) {
+            throw new AutomationControlError(
+              "authority_generation_conflict",
+              "Current task manifest authority witness changed semantic lineage.",
+            );
+          }
+          const activeOwners = readTaskManifestLineageTransactions(
+            paths,
+            currentManifest.revision,
+            { includeRetired: false },
+          ).filter(
+            ({ transaction }) =>
+              transaction.transactionId === parameters.lineage.transactionId,
+          );
+          if (activeOwners.length !== 0) {
+            throw new AutomationControlError(
+              "authority_generation_conflict",
+              "Current task manifest authority witness regained an active owner.",
+            );
+          }
+          stagePresent = true;
+        }
+      } finally {
+        closeSync(directory.descriptor);
+      }
+
+      const buildAuditEvent = (timestamp) => ({
+        schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+        eventId: parameters.eventId,
+        type: AUTHORITY_WITNESS_REPAIR_EVENT_TYPE,
+        ts: timestamp,
+        actor,
+        taskId,
+        leaseName,
+        data: {
+          policy: AUTHORITY_WITNESS_REPAIR_POLICY,
+          operationId: parameters.operationId,
+          ownerIntentDigest: plan.intentDigest,
+          canonicalPath: parameters.canonical.snapshot.filePath,
+          canonicalDigest: parameters.canonical.snapshot.digest,
+          canonicalRevision: parameters.canonical.revision,
+          witnessPath: parameters.witness.snapshot.filePath,
+          witnessDigest: parameters.witness.snapshot.digest,
+          witnessInode: parameters.witness.snapshot.identity.ino,
+          lineageTransactionId: parameters.lineage.transactionId,
+        },
+      });
+      authorize();
+      checkpoint("before-audit-event");
+      appendDeterministicEventLine(paths, parameters.eventId, buildAuditEvent, {
+        beforeAccess: authorize,
+      });
+      checkpoint("audit-event-appended");
+      authorize();
+      const retirement = removeAutomationAuthorityFile({
+        filePath: parameters.witness.snapshot.filePath,
+        snapshot: plannedAuthorityWitnessSnapshot(parameters),
+        operationId: `authority-witness-repair:${parameters.operationId}`,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Current task manifest stranded authority witness",
+        beforeRemove: () => {
+          authorize();
+          checkpoint("before-witness-retirement");
+        },
+        retirementBasename: path.basename(paths.taskManifest),
+        rawSource: true,
+      });
+      checkpoint("witness-retired");
+      const afterDirectory = openPinnedLeaseArchiveDirectory(
+        paths.controlRoot,
+        "Current task manifest repair authority parent directory",
+      );
+      try {
+        if (
+          listAutomationAuthorityStages(
+            paths.taskManifest,
+            openPinnedLeaseArchiveHelper(),
+            afterDirectory,
+          ).length !== 0
+        ) {
+          throw new AutomationControlError(
+            "authority_generation_conflict",
+            "Current task manifest authority witness survived repair.",
+          );
+        }
+      } finally {
+        closeSync(afterDirectory.descriptor);
+      }
+      return Object.freeze({
+        operationId: parameters.operationId,
+        eventId: parameters.eventId,
+        retired: retirement.removed === true,
+        recovered: retirement.recovered === true || !stagePresent,
+      });
+    }),
+  );
 }
 
 function readAutomationAuthorityRetirementInventory(helper, directory, label) {
@@ -27573,10 +28351,7 @@ export function retireOutcomeLedgerAuthorityStageForRepair({
     label: "Outcome ledger repair canonical source",
     invalidCode: "authority_generation_conflict",
   });
-  if (
-    current.missing ||
-    !current.bytes.equals(replacementBytes)
-  ) {
+  if (current.missing || !current.bytes.equals(replacementBytes)) {
     throw new AutomationControlError(
       "authority_generation_conflict",
       "Outcome ledger repair canonical source changed before authority retirement.",
@@ -27643,8 +28418,8 @@ export function retireOutcomeLedgerAuthorityStageForRepair({
       rawSource: true,
     });
     if (
-      listAutomationAuthorityStages(paths.outcomes, helper, directory).length !==
-      0
+      listAutomationAuthorityStages(paths.outcomes, helper, directory)
+        .length !== 0
     ) {
       throw new AutomationControlError(
         "authority_generation_conflict",
@@ -28434,7 +29209,9 @@ export function inspectLeaseCleanupArchiveCapacity(
       (candidate) => candidate.path === stateArchiveDirectory,
     );
     const stateArchiveNamePattern = /^[0-9a-f]{64}\.[0-9a-f]{64}\.lease$/;
-    const stateEntriesBefore = beforeEntriesByPath.get(stateArchiveBinding.path);
+    const stateEntriesBefore = beforeEntriesByPath.get(
+      stateArchiveBinding.path,
+    );
     for (const entry of stateEntriesBefore) {
       if (!stateArchiveNamePattern.test(entry)) {
         throw new AutomationControlError(
@@ -28460,7 +29237,9 @@ export function inspectLeaseCleanupArchiveCapacity(
       capacityBindings,
     );
     for (const [index, binding] of capacityBindings.entries()) {
-      if (beforeListings[index].join("\0") !== afterListings[index].join("\0")) {
+      if (
+        beforeListings[index].join("\0") !== afterListings[index].join("\0")
+      ) {
         throw new AutomationControlError(
           "lease_archive_capacity_invalid",
           `${binding.label} changed during capacity accounting.`,

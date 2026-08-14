@@ -397,6 +397,47 @@ exact-generation retirement, after which later task mutation can proceed. A
 second stage, a mismatched namespace, or a canonical transaction beside its
 stage fails closed.
 
+### Stranded task-manifest witness repair
+
+A completed task transaction can leave its valid predecessor witness behind
+after the canonical manifest is later republished on a different physical
+inode. The generic reader correctly rejects that witness because its recorded
+successor digest no longer names the physical `current-tasks.json` generation,
+even when the bytes and task history still form one exact semantic successor.
+No reader removes or guesses through that condition.
+
+`node scripts/authority-witness-repair.mjs plan --task-id <id>` is the only
+read-only planner for this exceptional state. It requires one complete ready
+witness, one healthy exact task and event history, one unique retired task
+transaction lineage, no active owning transaction, the permanent local
+filesystem kernel guard, and a canonical manifest exactly one revision after
+the witness. The plan records the canonical and witness paths, devices, inodes,
+modes, link counts, timestamps, byte digests, exact witness bytes, event-history
+prefix, retired transaction, and one content-derived operation and owner-intent
+digest. Planning does not recover a transaction, acquire a lease, write an
+artifact, append an event, or change either generation.
+
+Applying the saved private plan requires a short `freed-owner` lease bound to
+the plan's exact task and intent digest:
+
+```bash
+FREED_AUTOMATION_LEASE_TOKEN=<one-use-token> \
+  node scripts/authority-witness-repair.mjs repair \
+  --task-id <id> \
+  --plan-file <private-plan.json>
+```
+
+Apply rechecks the unchanged canonical manifest, the exact witness generation,
+append-only healthy event history, retired semantic lineage, and absent active
+owner. It first appends one reserved
+`authority_witness_repair_authorized` event, then retires only the planned
+witness through `authority-retire`. It never rewrites `current-tasks.json` and
+never unlinks or overwrites a witness. If the process loses its response after
+the audit append or exact retirement, the same plan recovers the one existing
+event and retirement receipt without duplicating either. A changed manifest,
+witness, history prefix, lineage, plan, lease, or retirement generation fails
+closed.
+
 The generic authority publication path may call only
 `authority-stage-create`, `authority-stage-rewrite`, `authority-exchange`, and
 `authority-retire`. It must not call the helper's legacy `replace-durable` or
