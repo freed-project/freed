@@ -63,6 +63,7 @@
     "react-dom": "^19.2.8"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
     "@freed/shared": "*",
     "@tanstack/react-virtual": "^3.14.8",
     "@types/d3-force": "^3.0.10",

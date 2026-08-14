@@ -8,15 +8,23 @@ import {
   type WheelEvent,
 } from "react";
 import { formatDistanceToNow } from "date-fns";
+import {
+  arrow,
+  computePosition,
+  offset,
+  shift,
+  type Placement,
+} from "@floating-ui/dom";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
-import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
+import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
+import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
 
-type PopupInstance = MapLibrePopup;
+type PopupInstance = HTMLElement;
 type MarkerInstance = MapLibreMarker;
 type MapInstance = MapLibreMap;
 type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
@@ -41,6 +49,7 @@ interface MapSurfaceProps {
   onOpenPost?: (marker: LocationMarkerSummary) => void;
   emptyTitle?: string;
   emptyBody?: string;
+  showFitAllControl?: boolean;
 }
 
 type MapViewportInsets = {
@@ -64,6 +73,9 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_FLOATING_PANEL_GAP_PX = 12;
+const MAP_POPUP_ARROW_ALIGNMENT_TOLERANCE_PX = 1;
+const MAP_FLOATING_CONTROL_SELECTOR = "[data-map-floating-control]";
 const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
@@ -71,6 +83,318 @@ const MAP_CAMERA_PADDING_PX = 72;
 const MAP_CLUSTER_MAX_ZOOM = 7.5;
 const MAP_MAX_PIXEL_RATIO = 1.5;
 const MAP_MAX_TILE_CACHE_SIZE = 24;
+
+type FloatingLayoutRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+function layoutRect(rect: DOMRect): FloatingLayoutRect {
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function floatingRectsIntersect(
+  panel: FloatingLayoutRect,
+  control: FloatingLayoutRect,
+  gap = 0,
+): boolean {
+  return (
+    panel.left < control.right + gap &&
+    panel.right > control.left - gap &&
+    panel.top < control.bottom + gap &&
+    panel.bottom > control.top - gap
+  );
+}
+
+function setupMapFloatingPanelLayout({
+  panel,
+  anchor,
+  shell,
+  map,
+  getViewportInsets,
+}: {
+  panel: HTMLElement;
+  anchor: HTMLElement;
+  shell: HTMLElement;
+  map?: MapInstance;
+  getViewportInsets: () => MapViewportInsets | undefined;
+}): () => void {
+  let frame = 0;
+  let updateGeneration = 0;
+  let disposed = false;
+  const resizeObserver = new ResizeObserver(() => schedule());
+
+  const update = async () => {
+    frame = 0;
+    const generation = updateGeneration + 1;
+    updateGeneration = generation;
+    const shellRect = shell.getBoundingClientRect();
+    const insets = getViewportInsets();
+    const controls = [...document.querySelectorAll<HTMLElement>(MAP_FLOATING_CONTROL_SELECTOR)]
+      .filter((control) => !panel.contains(control))
+      .map((control) => ({ element: control, rect: layoutRect(control.getBoundingClientRect()) }))
+      .filter(({ rect }) => rect.width > 0 && rect.height > 0);
+    for (const { element } of controls) resizeObserver.observe(element);
+
+    const baseBounds = {
+      left: shellRect.left + (insets?.left ?? 0) + MAP_FLOATING_PANEL_GAP_PX,
+      top: shellRect.top + (insets?.top ?? 0) + MAP_FLOATING_PANEL_GAP_PX,
+      right: shellRect.right - (insets?.right ?? 0) - MAP_FLOATING_PANEL_GAP_PX,
+      bottom: shellRect.bottom - (insets?.bottom ?? 0) - MAP_FLOATING_PANEL_GAP_PX,
+    };
+    const topControlBottom = controls
+      .filter(({ element, rect }) =>
+        element.dataset.mapFloatingControlEdge === "top" &&
+        rect.right > baseBounds.left &&
+        rect.left < baseBounds.right,
+      )
+      .reduce(
+        (bottom, { rect }) => Math.max(bottom, rect.bottom + MAP_FLOATING_PANEL_GAP_PX),
+        baseBounds.top,
+      );
+    const bottomControlTop = controls
+      .filter(({ element, rect }) =>
+        element.dataset.mapFloatingControlEdge === "bottom" &&
+        rect.right > baseBounds.left &&
+        rect.left < baseBounds.right,
+      )
+      .reduce((top, { rect }) => Math.min(top, rect.top - MAP_FLOATING_PANEL_GAP_PX), baseBounds.bottom);
+    const bounds = {
+      left: baseBounds.left,
+      top: Math.min(topControlBottom, bottomControlTop - 1),
+      right: baseBounds.right,
+      bottom: Math.max(topControlBottom + 1, bottomControlTop),
+      width: Math.max(1, baseBounds.right - baseBounds.left),
+      height: Math.max(1, bottomControlTop - topControlBottom),
+    };
+    const floatingBoundary = {
+      x: bounds.left,
+      y: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    };
+
+    const content = panel.querySelector<HTMLElement>(".maplibregl-popup-content") ?? panel;
+    const popupArrow = panel.querySelector<HTMLElement>("[data-map-popup-arrow]");
+    if (popupArrow) popupArrow.style.display = "";
+    const maxPanelWidth = Math.max(1, Math.min(MAP_POPUP_MAX_WIDTH, bounds.width));
+    content.style.width = `${maxPanelWidth}px`;
+    content.style.minWidth = `${Math.min(420, maxPanelWidth)}px`;
+    content.style.maxWidth = `${maxPanelWidth}px`;
+    content.style.maxHeight = "none";
+    content.style.overflowY = "auto";
+    panel.style.maxWidth = `${maxPanelWidth}px`;
+    panel.style.position = "fixed";
+    panel.style.visibility = "hidden";
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const naturalWidth = Math.min(maxPanelWidth, Math.max(1, content.scrollWidth));
+    const naturalHeight = Math.max(1, content.scrollHeight);
+    const placements: Placement[] = ["top", "bottom", "right", "left"];
+    const candidates: Array<{
+      placement: Placement;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      maxWidth: number;
+      maxHeight: number;
+      score: number;
+    }> = [];
+
+    for (const [placementIndex, placement] of placements.entries()) {
+      const side = placement.split("-")[0];
+      const availableMain = side === "top"
+        ? anchorRect.top - MAP_FLOATING_PANEL_GAP_PX - bounds.top
+        : side === "bottom"
+          ? bounds.bottom - anchorRect.bottom - MAP_FLOATING_PANEL_GAP_PX
+          : side === "left"
+            ? anchorRect.left - MAP_FLOATING_PANEL_GAP_PX - bounds.left
+            : bounds.right - anchorRect.right - MAP_FLOATING_PANEL_GAP_PX;
+      const candidateMaxWidth = Math.max(
+        1,
+        Math.min(maxPanelWidth, side === "left" || side === "right" ? availableMain : bounds.width),
+      );
+      const candidateMaxHeight = Math.max(
+        1,
+        Math.min(bounds.height, side === "top" || side === "bottom" ? availableMain : bounds.height),
+      );
+      content.style.width = `${candidateMaxWidth}px`;
+      content.style.minWidth = `${Math.min(420, candidateMaxWidth)}px`;
+      content.style.maxWidth = `${candidateMaxWidth}px`;
+      content.style.maxHeight = `${candidateMaxHeight}px`;
+
+      const result = await computePosition(anchor, panel, {
+        strategy: "fixed",
+        placement,
+        middleware: [
+          offset(MAP_FLOATING_PANEL_GAP_PX),
+          shift({ boundary: floatingBoundary, crossAxis: false }),
+        ],
+      });
+      if (disposed || generation !== updateGeneration || !panel.isConnected) return;
+
+      const measuredRect = panel.getBoundingClientRect();
+      const candidateRect: FloatingLayoutRect = {
+        left: result.x,
+        top: result.y,
+        right: result.x + measuredRect.width,
+        bottom: result.y + measuredRect.height,
+        width: measuredRect.width,
+        height: measuredRect.height,
+      };
+      const overflow =
+        Math.max(0, bounds.left - candidateRect.left) +
+        Math.max(0, candidateRect.right - bounds.right) +
+        Math.max(0, bounds.top - candidateRect.top) +
+        Math.max(0, candidateRect.bottom - bounds.bottom);
+      const controlCollision = controls.some(({ rect }) =>
+        floatingRectsIntersect(candidateRect, rect, MAP_FLOATING_PANEL_GAP_PX),
+      );
+      const constraint =
+        Math.max(0, naturalWidth - measuredRect.width) +
+        Math.max(0, naturalHeight - measuredRect.height);
+      const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+      const anchorCenterY = anchorRect.top + anchorRect.height / 2;
+      const arrowInset = 24;
+      const anchorAlignmentError = side === "top" || side === "bottom"
+        ? Math.max(
+            0,
+            candidateRect.left + arrowInset - anchorCenterX,
+            anchorCenterX - (candidateRect.right - arrowInset),
+          )
+        : Math.max(
+            0,
+            candidateRect.top + arrowInset - anchorCenterY,
+            anchorCenterY - (candidateRect.bottom - arrowInset),
+          );
+      candidates.push({
+        placement,
+        x: result.x,
+        y: result.y,
+        width: measuredRect.width,
+        height: measuredRect.height,
+        maxWidth: candidateMaxWidth,
+        maxHeight: candidateMaxHeight,
+        score:
+          overflow * 1_000_000 +
+          (controlCollision ? 100_000_000 : 0) +
+          anchorAlignmentError * 10_000 +
+          constraint * 100 +
+          placementIndex,
+      });
+    }
+
+    const selected = candidates.reduce(
+      (best, candidate) => !best || candidate.score < best.score ? candidate : best,
+      null as (typeof candidates)[number] | null,
+    );
+    if (!selected) return;
+
+    content.style.width = `${selected.maxWidth}px`;
+    content.style.minWidth = `${Math.min(420, selected.maxWidth)}px`;
+    content.style.maxWidth = `${selected.maxWidth}px`;
+    content.style.maxHeight = `${selected.maxHeight}px`;
+    const result = await computePosition(anchor, panel, {
+      strategy: "fixed",
+      placement: selected.placement,
+      middleware: [
+        offset(MAP_FLOATING_PANEL_GAP_PX),
+        shift({ boundary: floatingBoundary, crossAxis: false }),
+        popupArrow ? arrow({ element: popupArrow, padding: 24 }) : null,
+      ],
+    });
+    if (disposed || generation !== updateGeneration || !panel.isConnected) return;
+
+    panel.style.left = `${Math.round(result.x)}px`;
+    panel.style.top = `${Math.round(result.y)}px`;
+    panel.style.visibility = "visible";
+    panel.dataset.placement = result.placement.split("-")[0];
+
+    if (popupArrow) {
+      const arrowData = result.middlewareData.arrow;
+      const side = result.placement.split("-")[0] as "top" | "right" | "bottom" | "left";
+      const staticSide = {
+        top: "bottom",
+        right: "left",
+        bottom: "top",
+        left: "right",
+      }[side];
+      popupArrow.style.left = arrowData?.x == null ? "" : `${Math.round(arrowData.x)}px`;
+      popupArrow.style.top = arrowData?.y == null ? "" : `${Math.round(arrowData.y)}px`;
+      popupArrow.style.right = "";
+      popupArrow.style.bottom = "";
+      popupArrow.style.setProperty(staticSide, "-5px");
+
+      const finalAnchorRect = anchor.getBoundingClientRect();
+      const anchorOccluded = controls.some(({ rect }) =>
+        floatingRectsIntersect(layoutRect(finalAnchorRect), rect),
+      );
+      const anchorOutsideSafeBounds =
+        finalAnchorRect.left < bounds.left ||
+        finalAnchorRect.right > bounds.right ||
+        finalAnchorRect.top < bounds.top ||
+        finalAnchorRect.bottom > bounds.bottom;
+      const arrowCenterX = result.x + (arrowData?.x ?? 0) + popupArrow.offsetWidth / 2;
+      const arrowCenterY = result.y + (arrowData?.y ?? 0) + popupArrow.offsetHeight / 2;
+      const anchorCenterX = finalAnchorRect.left + finalAnchorRect.width / 2;
+      const anchorCenterY = finalAnchorRect.top + finalAnchorRect.height / 2;
+      const arrowAlignmentError = side === "top" || side === "bottom"
+        ? Math.abs(arrowCenterX - anchorCenterX)
+        : Math.abs(arrowCenterY - anchorCenterY);
+      const tailVisible =
+        arrowData != null &&
+        !anchorOccluded &&
+        !anchorOutsideSafeBounds &&
+        arrowAlignmentError <= MAP_POPUP_ARROW_ALIGNMENT_TOLERANCE_PX;
+      popupArrow.style.display = tailVisible ? "" : "none";
+      panel.dataset.mapPopupTail = tailVisible ? "visible" : "hidden";
+    }
+  };
+
+  function schedule() {
+    if (frame !== 0) return;
+    frame = window.requestAnimationFrame(() => {
+      void update();
+    });
+  }
+
+  const mutationObserver = new MutationObserver(schedule);
+  resizeObserver.observe(shell);
+  resizeObserver.observe(panel);
+  mutationObserver.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  map?.on("move", schedule);
+  map?.on("resize", schedule);
+  schedule();
+
+  return () => {
+    disposed = true;
+    updateGeneration += 1;
+    if (frame !== 0) window.cancelAnimationFrame(frame);
+    resizeObserver.disconnect();
+    mutationObserver.disconnect();
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    map?.off("move", schedule);
+    map?.off("resize", schedule);
+    panel.style.left = "";
+    panel.style.top = "";
+    panel.style.visibility = "";
+  };
+}
 
 /**
  * MapLibre removes its DOM and workers, but WebKit can retain the detached
@@ -387,7 +711,13 @@ function mapStyles(interactive: boolean) {
       display: none !important;
     }
 
-    .freed-map-shell .maplibregl-popup-content {
+    .freed-map-popup {
+      z-index: 70;
+      max-width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
+      pointer-events: none;
+    }
+
+    .freed-map-popup .maplibregl-popup-content {
       width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       min-width: min(420px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       max-width: none;
@@ -401,14 +731,39 @@ function mapStyles(interactive: boolean) {
         0 0 0 1px var(--theme-border-subtle);
       backdrop-filter: blur(18px);
       overflow: hidden;
+      pointer-events: auto;
     }
 
-    .freed-map-shell .maplibregl-popup {
-      max-width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px)) !important;
+    .freed-map-popup-arrow {
+      position: absolute;
+      z-index: 0;
+      width: 10px;
+      height: 10px;
+      box-sizing: border-box;
+      background: color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
+      border: 1px solid var(--theme-border-strong);
+      transform: rotate(45deg);
+      pointer-events: none;
     }
 
-    .freed-map-shell .maplibregl-popup-tip {
-      display: none !important;
+    .freed-map-popup[data-placement="top"] .freed-map-popup-arrow {
+      border-top: 0;
+      border-left: 0;
+    }
+
+    .freed-map-popup[data-placement="bottom"] .freed-map-popup-arrow {
+      border-right: 0;
+      border-bottom: 0;
+    }
+
+    .freed-map-popup[data-placement="right"] .freed-map-popup-arrow {
+      border-top: 0;
+      border-right: 0;
+    }
+
+    .freed-map-popup[data-placement="left"] .freed-map-popup-arrow {
+      border-left: 0;
+      border-bottom: 0;
     }
 
     .freed-map-shell .freed-map-marker {
@@ -454,7 +809,13 @@ function mapStyles(interactive: boolean) {
       display: none;
     }
 
-    .freed-map-shell .freed-map-marker:hover .freed-map-marker-body {
+    .freed-map-shell .freed-map-marker:hover,
+    .freed-map-shell .freed-map-marker[data-map-marker-open="true"] {
+      z-index: 1;
+    }
+
+    .freed-map-shell .freed-map-marker:hover .freed-map-marker-body,
+    .freed-map-shell .freed-map-marker[data-map-marker-open="true"] .freed-map-marker-body {
       scale: 1.06;
       filter: brightness(1.06);
       box-shadow:
@@ -502,15 +863,63 @@ export function getRenderedMapMarkers(
   markers: LocationMarkerSummary[],
   focusedMarkerKey?: string | null,
 ): LocationMarkerSummary[] {
-  const baseRenderedMarkers = markers.length <= MAP_DOM_MARKER_LIMIT
-    ? markers
-    : markers.slice(0, MAP_DOM_MARKER_LIMIT);
-  if (markers.length <= MAP_DOM_MARKER_LIMIT) return baseRenderedMarkers;
+  const coincidentGroups = new Map<
+    string,
+    {
+      newest: LocationMarkerSummary;
+      focused: LocationMarkerSummary | null;
+      updateCount: number;
+      markerCount: number;
+    }
+  >();
+
+  for (const marker of markers) {
+    const coordinateKey = `${marker.lat}:${marker.lng}`;
+    const group = coincidentGroups.get(coordinateKey);
+
+    if (!group) {
+      coincidentGroups.set(coordinateKey, {
+        newest: marker,
+        focused: marker.key === focusedMarkerKey ? marker : null,
+        updateCount: marker.groupCount,
+        markerCount: 1,
+      });
+      continue;
+    }
+
+    if (marker.seenAt > group.newest.seenAt) {
+      group.newest = marker;
+    }
+    if (marker.key === focusedMarkerKey) {
+      group.focused = marker;
+    }
+    group.updateCount += marker.groupCount;
+    group.markerCount += 1;
+  }
+
+  const distinctLocationMarkers = Array.from(coincidentGroups.values(), (group) => {
+    const representative = group.focused ?? group.newest;
+    if (group.markerCount === 1) return representative;
+
+    // City-level geocoding often gives many people the same exact coordinate.
+    // Paint that location once instead of stacking dozens of translucent marker
+    // shadows into concentric rings. The badge remains truthful by reporting the
+    // total number of updates represented at this spot.
+    return {
+      ...representative,
+      groupCount: group.updateCount,
+    };
+  });
+
+  const baseRenderedMarkers = distinctLocationMarkers.length <= MAP_DOM_MARKER_LIMIT
+    ? distinctLocationMarkers
+    : distinctLocationMarkers.slice(0, MAP_DOM_MARKER_LIMIT);
+  if (distinctLocationMarkers.length <= MAP_DOM_MARKER_LIMIT) return baseRenderedMarkers;
   if (!focusedMarkerKey || baseRenderedMarkers.some((marker) => marker.key === focusedMarkerKey)) {
     return baseRenderedMarkers;
   }
 
-  const focusedMarker = markers.find((marker) => marker.key === focusedMarkerKey);
+  const focusedMarker = distinctLocationMarkers.find((marker) => marker.key === focusedMarkerKey);
   if (!focusedMarker) return baseRenderedMarkers;
   return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
 }
@@ -708,6 +1117,7 @@ export function MapSurface({
   onOpenPost,
   emptyTitle = "No geo-tagged posts yet.",
   emptyBody = "Posts with location data will show up here.",
+  showFitAllControl = false,
 }: MapSurfaceProps) {
   const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -718,14 +1128,24 @@ export function MapSurface({
   const fallbackMovingTimeoutRef = useRef<number | null>(null);
   const nativeMarkerRestoreTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
+  const mapStyleRequestRef = useRef(0);
+  const desiredMapThemeRef = useRef(resolvedThemeId);
+  const appliedMapThemeRef = useRef<ThemeId | null>(null);
   const useDenseMarkersRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mapGeneration, setMapGeneration] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [fallbackMoving, setFallbackMoving] = useState(false);
   const [surfaceSize, setSurfaceSize] = useState<MapSurfaceSize>({ width: 900, height: 560 });
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
+  const activePopupMarkerElementRef = useRef<HTMLElement | null>(null);
+  const activePopupLayoutCleanupRef = useRef<(() => void) | null>(null);
+  const fallbackPopupRef = useRef<HTMLDivElement | null>(null);
+  const viewportInsetsRef = useRef(viewportInsets);
+  viewportInsetsRef.current = viewportInsets;
+  desiredMapThemeRef.current = resolvedThemeId;
   const actionHandlersRef = useRef({
     onOpenFriend,
     onPromoteAccount,
@@ -764,10 +1184,31 @@ export function MapSurface({
     });
   }, [fallbackMoving, focusedMarkerKey, renderedMarkers, showFallback, useDenseMarkers]);
   const closeActivePopup = useCallback(() => {
+    activePopupLayoutCleanupRef.current?.();
+    activePopupLayoutCleanupRef.current = null;
     activePopupRef.current?.remove();
     activePopupRef.current = null;
     activePopupKeyRef.current = null;
+    activePopupMarkerElementRef.current?.removeAttribute("data-map-marker-open");
+    activePopupMarkerElementRef.current = null;
   }, []);
+
+  useEffect(() => {
+    const panel = fallbackPopupRef.current;
+    const shell = shellRef.current;
+    if (!panel || !shell || !selectedFallbackMarker) return;
+    const anchor = shell.querySelector<HTMLElement>(
+      `[data-map-marker-key="${CSS.escape(selectedFallbackMarker.key)}"]`,
+    );
+    if (!anchor) return;
+
+    return setupMapFloatingPanelLayout({
+      panel,
+      anchor,
+      shell,
+      getViewportInsets: () => viewportInsetsRef.current,
+    });
+  }, [selectedFallbackMarker, viewportInsets]);
   const clearFallbackMovingTimeout = useCallback(() => {
     if (fallbackMovingTimeoutRef.current === null || typeof window === "undefined") return;
     window.clearTimeout(fallbackMovingTimeoutRef.current);
@@ -801,6 +1242,38 @@ export function MapSurface({
       record.marker.remove();
       record.attached = false;
     }
+  }, []);
+  const applyMapThemeStyle = useCallback((nextThemeId: ThemeId) => {
+    const map = mapRef.current;
+    if (!map || appliedMapThemeRef.current === nextThemeId) return;
+
+    const requestId = mapStyleRequestRef.current + 1;
+    mapStyleRequestRef.current = requestId;
+    void buildThemedMapStyle(nextThemeId).then((mapStyle) => {
+      if (
+        mapStyleRequestRef.current !== requestId
+        || mapRef.current !== map
+        || desiredMapThemeRef.current !== nextThemeId
+      ) return;
+
+      try {
+        // Replacing the style preserves the live MapLibre camera and canvas.
+        // Recreating the map here made transient theme hovers reset and refit
+        // the camera, while also churning a WebGL context for a palette change.
+        map.setStyle(mapStyle);
+        appliedMapThemeRef.current = nextThemeId;
+      } catch (error) {
+        console.error("[MapSurface] Failed to apply the themed map style", error);
+      }
+    }).catch((error) => {
+      if (
+        mapStyleRequestRef.current === requestId
+        && mapRef.current === map
+        && desiredMapThemeRef.current === nextThemeId
+      ) {
+        console.error("[MapSurface] Failed to load the themed map style", error);
+      }
+    });
   }, []);
   const setShellMoving = useCallback((moving: boolean) => {
     const shell = shellRef.current;
@@ -902,9 +1375,10 @@ export function MapSurface({
       };
     }
 
+    const initialThemeId = desiredMapThemeRef.current;
     void Promise.all([
       loadMapLibre(),
-      buildThemedMapStyle(resolvedThemeId),
+      buildThemedMapStyle(initialThemeId),
     ]).then(([module, mapStyle]) => {
       if (cancelled || !containerRef.current) return;
 
@@ -927,6 +1401,7 @@ export function MapSurface({
           attributionControl: false,
         });
         mapRef.current = map;
+        appliedMapThemeRef.current = initialThemeId;
         const setMoving = () => {
           clearNativeMarkerRestoreTimeout();
           syncNativeMarkerMotionLayer(true);
@@ -944,8 +1419,12 @@ export function MapSurface({
         map.on("zoomstart", setMoving);
         map.on("moveend", clearMoving);
         map.on("zoomend", clearMoving);
+        setMapGeneration(lifecycleId);
         setMapReady(true);
         setTimeout(() => map.resize(), 0);
+        if (desiredMapThemeRef.current !== initialThemeId) {
+          applyMapThemeStyle(desiredMapThemeRef.current);
+        }
       } catch (error) {
         console.error("[MapSurface] Failed to initialize MapLibre", error);
         if (mapRef.current) disposeMapInstance(mapRef.current);
@@ -960,6 +1439,8 @@ export function MapSurface({
     return () => {
       cancelled = true;
       mapLifecycleRef.current += 1;
+      mapStyleRequestRef.current += 1;
+      appliedMapThemeRef.current = null;
       closeActivePopup();
       clearNativeMarkerRestoreTimeout();
       for (const { marker } of markersRef.current) marker.remove();
@@ -968,10 +1449,19 @@ export function MapSurface({
       mapRef.current = null;
       setShellMoving(false);
     };
-  }, [clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, resolvedThemeId, setShellMoving, syncNativeMarkerMotionLayer]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, setShellMoving, syncNativeMarkerMotionLayer]);
 
   useEffect(() => {
-    if (!mapReady || !mapRef.current || !mapModuleRef.current) return;
+    applyMapThemeStyle(resolvedThemeId);
+  }, [applyMapThemeStyle, resolvedThemeId]);
+
+  useEffect(() => {
+    if (
+      !mapReady
+      || !mapRef.current
+      || !mapModuleRef.current
+      || mapGeneration !== mapLifecycleRef.current
+    ) return;
 
     closeActivePopup();
     clearNativeMarkerRestoreTimeout();
@@ -1014,32 +1504,42 @@ export function MapSurface({
           }
           closeActivePopup();
           const currentHandlers = actionHandlersRef.current;
-          const popup = new maplibre.Popup({
-            closeButton: false,
-            closeOnClick: false,
-            offset: 12,
-            maxWidth: `${MAP_POPUP_MAX_WIDTH}px`,
-            className: "freed-map-popup",
-          })
-            .setLngLat([markerData.lng, markerData.lat])
-            .setDOMContent(buildPopupContent(
-              markerData,
-              currentHandlers.onOpenFriend
-                ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
-                : undefined,
-              currentHandlers.onPromoteAccount
-                ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
-                : undefined,
-              currentHandlers.onLinkAccount
-                ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
-                : undefined,
-              currentHandlers.onOpenPost
-                ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
-                : undefined,
-            ));
-          popup.addTo(map);
-          activePopupRef.current = popup;
+          const popupElement = document.createElement("div");
+          popupElement.className = "freed-map-popup";
+          popupElement.dataset.mapFloatingPanel = "popup";
+          popupElement.setAttribute("data-testid", "map-floating-panel");
+          const popupContent = buildPopupContent(
+            markerData,
+            currentHandlers.onOpenFriend
+              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+              : undefined,
+            currentHandlers.onPromoteAccount
+              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+              : undefined,
+            currentHandlers.onLinkAccount
+              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+              : undefined,
+            currentHandlers.onOpenPost
+              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+              : undefined,
+          );
+          popupContent.classList.add("maplibregl-popup-content");
+          const popupArrow = document.createElement("span");
+          popupArrow.className = "freed-map-popup-arrow";
+          popupArrow.dataset.mapPopupArrow = "true";
+          popupElement.append(popupContent, popupArrow);
+          document.body.appendChild(popupElement);
+          activePopupLayoutCleanupRef.current = setupMapFloatingPanelLayout({
+            panel: popupElement,
+            anchor: element,
+            shell: shellRef.current ?? map.getContainer(),
+            map,
+            getViewportInsets: () => viewportInsetsRef.current,
+          });
+          activePopupRef.current = popupElement;
           activePopupKeyRef.current = markerData.key;
+          activePopupMarkerElementRef.current = element;
+          element.dataset.mapMarkerOpen = "true";
         });
       }
 
@@ -1072,6 +1572,7 @@ export function MapSurface({
     closeActivePopup,
     focusedMarkerKey,
     interactive,
+    mapGeneration,
     mapReady,
     renderedMarkers,
     setShellMoving,
@@ -1080,9 +1581,20 @@ export function MapSurface({
   ]);
 
   useEffect(() => {
-    if (!mapReady || !mapRef.current) return;
+    if (
+      !mapReady
+      || !mapRef.current
+      || mapGeneration !== mapLifecycleRef.current
+    ) return;
     fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
-  }, [focusedMarkerKey, mapReady, stableMarkers, viewportInsets]);
+  }, [focusedMarkerKey, mapGeneration, mapReady, stableMarkers, viewportInsets]);
+
+  const handleFitAll = useCallback(() => {
+    closeActivePopup();
+    setSelectedFallbackMarkerKey(null);
+    if (!mapReady || loadFailed || !mapRef.current) return;
+    fitMapToMarkers(mapRef.current, stableMarkers, null, viewportInsets);
+  }, [closeActivePopup, loadFailed, mapReady, stableMarkers, viewportInsets]);
 
   return (
     <div
@@ -1100,6 +1612,27 @@ export function MapSurface({
       onPointerMove={showFallback ? handleFallbackPointerMove : undefined}
     >
       <style>{mapStyles(interactive)}</style>
+      {showFitAllControl && (
+        <div
+          data-testid="map-fit-all-control"
+          data-map-floating-control="fit-all"
+          data-map-floating-control-edge="top"
+          className="pointer-events-none absolute z-20"
+          style={{
+            top: "max(var(--freed-canvas-viewport-inset-top, 0px), var(--feed-card-gap, 8px))",
+            right: "max(var(--freed-canvas-viewport-inset-right, 0px), var(--feed-card-gap, 8px))",
+          }}
+        >
+          <button
+            type="button"
+            className={`${CANVAS_CONTROL_BUTTON_CLASS} pointer-events-auto`}
+            disabled={stableMarkers.length === 0}
+            onClick={handleFitAll}
+          >
+            Fit all
+          </button>
+        </div>
+      )}
       <div className="absolute inset-0 overflow-hidden">
         <div
           ref={containerRef}
@@ -1153,6 +1686,7 @@ export function MapSurface({
               <button
                 key={marker.key}
                 type="button"
+                data-map-marker-key={marker.key}
                 data-map-moving-priority={getMapMovingPriority(
                   renderedMarkerIndex,
                   marker.key,
@@ -1176,12 +1710,10 @@ export function MapSurface({
 
           {interactive && selectedFallbackMarker && (
             <div
+              ref={fallbackPopupRef}
               data-testid="map-fallback-popup"
-              className="theme-dialog-shell absolute bottom-4 p-5"
-              style={{
-                left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
-                width: "min(560px, calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem))",
-              }}
+              data-map-floating-panel="popup"
+              className="freed-map-popup theme-dialog-shell fixed p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -1277,6 +1809,10 @@ export function MapSurface({
                   </button>
                 )}
               </div>
+              <span
+                className="freed-map-popup-arrow"
+                data-map-popup-arrow="true"
+              />
             </div>
           )}
           </div>
