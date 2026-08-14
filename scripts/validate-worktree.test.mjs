@@ -373,15 +373,6 @@ test("PWA-only provider-visible changes stay in the PWA validation lane", () => 
   );
 
   assert.ok(labels.includes("pwa production build"));
-
-  assert.ok(
-    !labels.includes("root build"),
-    "the production promotion must not fan out into the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("website tests"),
-    "the production promotion must not test the separate website lane",
-  );
   assert.ok(labels.includes("pwa unit tests"));
   assert.ok(!labels.includes("desktop social provider unit tests"));
   assert.ok(!labels.includes("desktop social provider e2e"));
@@ -612,6 +603,23 @@ test("production plan includes dev desktop gates without duplicating shipped bui
 
   // The PWA is not otherwise built by the release workflow, so it stays.
   assert.ok(labels.includes("pwa production build"));
+
+  assert.ok(
+    !labels.includes("root build"),
+    "the production promotion must not build the separate website lane",
+  );
+  assert.ok(
+    !labels.includes("root typecheck"),
+    "the production promotion must not typecheck the separate website lane",
+  );
+  assert.ok(
+    !labels.includes("root lint"),
+    "the production promotion must not lint the separate website lane",
+  );
+  assert.ok(
+    !labels.includes("website tests"),
+    "the production promotion must not test the separate website lane",
+  );
 
   // The release matrix runs the real signed desktop build on all four
   // platforms. Building the frontend once more here made it five builds to
