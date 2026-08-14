@@ -331,8 +331,12 @@ export interface SampleDataOptions {
 export const SAMPLE_SHOWCASE_FEED_COUNT = 15;
 export const SAMPLE_SHOWCASE_FRIEND_COUNT = 250;
 export const SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND = 5;
-export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
+export const SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT =
   SAMPLE_SHOWCASE_FRIEND_COUNT * SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND;
+export const SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT =
+  Math.round(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT * 0.2);
+export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
+  SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT;
 const SAMPLE_LOCATION_WINDOW_ITEM_COUNT = 6;
 export const SAMPLE_SHOWCASE_ITEM_COUNT =
   SAMPLE_SHOWCASE_FEED_COUNT * 8 +
@@ -347,10 +351,14 @@ export const SAMPLE_SHOWCASE_ITEM_COUNT =
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
 export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
-export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
+export const SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_FRIEND_COUNT * SAMPLE_STRESS_IDENTITIES_PER_FRIEND;
+export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
+  Math.round(SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT * 0.2);
+export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
+  SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 1;
+export const SAMPLE_DATA_GENERATOR_VERSION = 2;
 
 interface ResolvedSampleDataOptions {
   batchId: string;
@@ -479,6 +487,20 @@ const GENERATED_LAST_NAMES = [
 ];
 
 const SOURCE_PROVIDERS = ["instagram", "x", "facebook", "linkedin", "rss"] as const;
+type SampleSourceProvider = typeof SOURCE_PROVIDERS[number];
+type SampleUnlinkedAccount = Account & { provider: SampleSourceProvider };
+const UNLINKED_IDENTITY_NAMES = [
+  "Local First Society",
+  "Field Notes Weekly",
+  "Neighborhood Archive",
+  "Open Systems Lab",
+  "Public Interest Studio",
+  "Small Tools Collective",
+  "Signal and Noise",
+  "The Long View",
+  "Transit Map Club",
+  "Useful Machines",
+] as const;
 
 function generatedPersona(index: number): {
   slug: string;
@@ -508,7 +530,7 @@ function generatedPersona(index: number): {
   };
 }
 
-function sourceHandle(name: string, provider: typeof SOURCE_PROVIDERS[number], index: number): string {
+function sourceHandle(name: string, provider: SampleSourceProvider, index: number): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
   if (provider === "linkedin") return `${slug}-${index}`;
   if (provider === "rss") return `${slug}.notes`;
@@ -544,6 +566,42 @@ function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
       avatarUrl,
       ...(persona.notes ? { notes: persona.notes } : {}),
       sources,
+    };
+  });
+}
+
+function unlinkedIdentityCount(options: ResolvedSampleDataOptions): number {
+  const linkedIdentityCount = options.friendCount * options.identitiesPerFriend;
+  return linkedIdentityCount > 0 ? Math.max(1, Math.round(linkedIdentityCount * 0.2)) : 0;
+}
+
+function buildSampleUnlinkedAccounts(options: ResolvedSampleDataOptions): SampleUnlinkedAccount[] {
+  const fingerprint = sampleDataFingerprint(options);
+  const count = unlinkedIdentityCount(options);
+
+  return Array.from({ length: count }, (_, index) => {
+    const provider = SOURCE_PROVIDERS[positiveModulo(options.seed + index, SOURCE_PROVIDERS.length)]!;
+    const baseName = UNLINKED_IDENTITY_NAMES[positiveModulo(options.seed + index, UNLINKED_IDENTITY_NAMES.length)]!;
+    const cycle = Math.floor(index / UNLINKED_IDENTITY_NAMES.length);
+    const displayName = cycle > 0 ? `${baseName} ${cycle + 1}` : baseName;
+    const externalId = namespaceId(options.batchId, `sample-unlinked-${provider}-${index}`);
+    const handle = sourceHandle(displayName, provider, index);
+    const seenAt = options.generatedAt - index * DAY;
+
+    return {
+      id: `social:${provider}:${externalId}`,
+      kind: "social",
+      provider,
+      externalId,
+      handle,
+      displayName: provider === "rss" ? `${displayName} Notes` : displayName,
+      avatarUrl: `https://picsum.photos/seed/unlinked-${options.batchId}-${provider}-${index}/128/128`,
+      sampleDataFingerprint: fingerprint,
+      firstSeenAt: seenAt,
+      lastSeenAt: seenAt,
+      discoveredFrom: "captured_item",
+      createdAt: seenAt,
+      updatedAt: seenAt,
     };
   });
 }
@@ -603,10 +661,34 @@ export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
   }));
 }
 
+export function generateSampleAccounts(options?: SampleDataOptions): Account[] {
+  const resolvedOptions = resolveSampleDataOptions(options);
+  const friends = generateSampleFriends(resolvedOptions);
+  const linkedAccounts: Account[] = friends.flatMap((friend) => friend.sources.map((source) => ({
+    id: `social:${source.platform}:${source.authorId}`,
+    personId: friend.id,
+    kind: "social" as const,
+    provider: source.platform,
+    externalId: source.authorId,
+    handle: source.handle,
+    displayName: source.displayName,
+    avatarUrl: source.avatarUrl,
+    profileUrl: source.profileUrl,
+    sampleDataFingerprint: friend.sampleDataFingerprint,
+    firstSeenAt: friend.createdAt,
+    lastSeenAt: friend.updatedAt,
+    discoveredFrom: "captured_item" as const,
+    createdAt: friend.createdAt,
+    updatedAt: friend.updatedAt,
+  })));
+  return linkedAccounts.concat(buildSampleUnlinkedAccounts(resolvedOptions));
+}
+
 export interface SampleLibraryData {
   feeds: RssFeed[];
   items: FeedItem[];
   friends: Friend[];
+  accounts: Account[];
 }
 
 export function generateSampleLibraryData(options?: SampleDataOptions): SampleLibraryData {
@@ -615,6 +697,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
     feeds: generateSampleFeeds(resolvedOptions),
     items: generateSampleItems(resolvedOptions),
     friends: generateSampleFriends(resolvedOptions),
+    accounts: generateSampleAccounts(resolvedOptions),
   };
 }
 
@@ -638,6 +721,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const now = Date.now();
   const items: FeedItem[] = [];
   const sampleFriendDefs = buildSampleFriendDefs(resolvedOptions);
+  const sampleUnlinkedAccounts = buildSampleUnlinkedAccounts(resolvedOptions);
   const feedDefs = rotateArray(FEED_DEFS, seed % FEED_DEFS.length);
   const rssHeadlines = rotateArray(RSS_HEADLINES, seed % RSS_HEADLINES.length);
   const savedHeadlines = rotateArray(SAVED_HEADLINES, seed % SAVED_HEADLINES.length);
@@ -1228,6 +1312,65 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       });
       graphItemIndex += 1;
     }
+  }
+
+  for (const account of sampleUnlinkedAccounts) {
+    const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
+    const publishedAt = Math.round(now - age);
+    const contentType = account.provider === "rss" ? "article" : "post";
+    const text =
+      account.provider === "linkedin"
+        ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
+        : account.provider === "instagram"
+          ? INSTAGRAM_POSTS[graphItemIndex % INSTAGRAM_POSTS.length]
+          : account.provider === "facebook"
+            ? FACEBOOK_POSTS[graphItemIndex % FACEBOOK_POSTS.length]
+            : account.provider === "rss"
+              ? RSS_HEADLINES[graphItemIndex % RSS_HEADLINES.length]
+              : X_POSTS[graphItemIndex % X_POSTS.length];
+
+    items.push({
+      globalId: namespaceId(batchId, `sample-unlinked-graph:${account.provider}:${graphItemIndex}`),
+      platform: account.provider,
+      contentType,
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author: {
+        id: account.externalId,
+        handle: account.handle ?? account.externalId,
+        displayName: account.displayName ?? account.handle ?? account.externalId,
+        avatarUrl: account.avatarUrl,
+      },
+      content: {
+        text,
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      ...(account.provider === "rss"
+        ? {
+            rssSource: {
+              feedUrl: `${SAMPLE_FEED_URL_PREFIX}${resolvedOptions.batchId}/unlinked/${account.externalId}`,
+              feedTitle: account.displayName ?? account.handle ?? account.externalId,
+              siteUrl: "https://sample.freed.wtf",
+            },
+          }
+        : {}),
+      engagement: account.provider === "rss"
+        ? undefined
+        : {
+            likes: Math.round(rand() * 1_200),
+            comments: Math.round(rand() * 90),
+          },
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        readAt: graphItemIndex % 3 === 0 ? publishedAt + 12_000 : undefined,
+        tags: [],
+      },
+      topics: pickTopics(rand, 160 + graphItemIndex),
+    });
+    graphItemIndex += 1;
   }
 
   return items.map((item) => ({

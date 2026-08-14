@@ -557,9 +557,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const persons = data.friends.map((friend) =>
       personFromLegacyFriend(friend as Friend),
     );
-    const accounts = data.friends.flatMap((friend) =>
-      accountsFromLegacyFriend(friend as Friend),
-    );
+    const accounts = data.accounts;
     for (const feed of data.feeds) {
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }

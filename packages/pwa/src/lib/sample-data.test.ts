@@ -3,10 +3,13 @@ import {
   SAMPLE_SHOWCASE_FEED_COUNT,
   SAMPLE_SHOWCASE_FRIEND_COUNT,
   SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_FRIEND_COUNT,
+  SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
-  accountsFromLegacyFriend,
+  SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT,
   friendForAuthor,
   generateSampleLibraryData,
   hasSampleDataFingerprint,
@@ -59,7 +62,7 @@ describe("sample data batches", () => {
       seed: 5,
     });
     const people = batch.friends.map(personFromLegacyFriend);
-    const accounts = batch.friends.flatMap(accountsFromLegacyFriend);
+    const accounts = batch.accounts;
 
     expect(batch.feeds.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.items.every(hasSampleDataFingerprint)).toBe(true);
@@ -70,7 +73,7 @@ describe("sample data batches", () => {
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
       generatedAt: 123,
-      generatorVersion: 1,
+      generatorVersion: 2,
     });
   });
 
@@ -122,22 +125,34 @@ describe("sample data batches", () => {
       seed: 11,
       scale: "stress",
     });
-    const identityCount = batch.friends.reduce(
+    const linkedIdentityCount = batch.friends.reduce(
       (total, friend) => total + friend.sources.length,
       0,
     );
+    const unlinkedIdentityCount = batch.accounts.filter((account) => !account.personId).length;
 
     expect(batch.friends).toHaveLength(SAMPLE_STRESS_FRIEND_COUNT);
-    expect(identityCount).toBe(SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT);
+    expect(linkedIdentityCount).toBe(SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT);
+    expect(unlinkedIdentityCount).toBe(SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT);
+    expect(batch.accounts).toHaveLength(SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT);
   });
 
-  it("documents the showcase social identity count in generated friends", () => {
+  it("documents the showcase social identity count across linked and unlinked accounts", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-showcase", seed: 13 });
-    const identityCount = batch.friends.reduce(
+    const linkedIdentityCount = batch.friends.reduce(
       (total, friend) => total + friend.sources.length,
       0,
     );
+    const unlinkedAccounts = batch.accounts.filter((account) => !account.personId);
 
-    expect(identityCount).toBe(SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT);
+    expect(linkedIdentityCount).toBe(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT);
+    expect(unlinkedAccounts).toHaveLength(SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT);
+    expect(batch.accounts).toHaveLength(SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT);
+    expect(new Set(unlinkedAccounts.map((account) => account.provider))).toEqual(
+      new Set(["instagram", "x", "facebook", "linkedin", "rss"]),
+    );
+    expect(unlinkedAccounts.every((account) => batch.items.some((item) =>
+      item.platform === account.provider && item.author.id === account.externalId
+    ))).toBe(true);
   });
 });

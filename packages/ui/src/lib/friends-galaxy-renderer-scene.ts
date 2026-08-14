@@ -123,7 +123,7 @@ export function compactFriendsGalaxyPresentationMetadata(
   }
   for (const node of atlas.nodes) {
     if (nodes.length >= safeCap) break;
-    if (!node.personId || acceptedNodeIds.has(node.id)) continue;
+    if ((!node.personId && !node.accountId) || acceptedNodeIds.has(node.id)) continue;
     nodes.push(node);
     acceptedNodeIds.add(node.id);
   }
