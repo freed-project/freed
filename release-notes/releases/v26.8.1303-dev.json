@@ -5,14 +5,14 @@
   "dayKey": "26.8.13",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-14T00:51:55.994Z",
+  "generatedAt": "2026-08-14T01:14:52.457Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.1302-dev",
     "previousPublishedDayTag": "v26.8.1203-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "6f336686a285ff0f587a8227b50a712e44917edf",
+    "productCommitSha": "cf65fb80cd41b8f9fdcf799402c6c7fa528a843e",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.1302-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "461968ce8c37b93f1a64fad79e16d5e4420a4bac",
-        "toInclusiveProductCommitSha": "6f336686a285ff0f587a8227b50a712e44917edf"
+        "toInclusiveProductCommitSha": "cf65fb80cd41b8f9fdcf799402c6c7fa528a843e"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -30,7 +30,7 @@
         "currentDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:f738dfacb4d03469cac9ad7de6f689ec98529b4d62c62a10ab1ab37a6b139029",
+      "inspectionDigest": "sha256:e8dc57abc7b448b5c974190cd74d6fea42890bb1d8fe1cf4ce5e2cf2a3ed1784",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -52,6 +52,7 @@
       "v26.8.1303-dev"
     ],
     "prNumbers": [
+      1408,
       1423,
       1424,
       1425,
@@ -75,9 +76,12 @@
       1444,
       1445,
       1454,
-      1457
+      1457,
+      1458
     ],
     "commitSubjects": [
+      "feat: designate primary automation host (#1408)",
+      "style: tighten map timeline controls (#1458)",
       "fix: recover stranded actor lease acquisitions (#1445)",
       "perf: bound map worker memory (#1457)",
       "release: v26.8.1302-dev (#1455)",
@@ -118,8 +122,8 @@
       "Make Library Core assignments idempotent",
       "Preserve release publication output",
       "Stop Freed Desktop from loading the retired Automerge engine after startup",
-      "Reclaim Freed Desktop WebKit memory after leaving the geographic map",
-      "Bound map renderer memory on large libraries"
+      "Bound map renderer memory on large libraries",
+      "Reclaim Freed Desktop WebKit memory after leaving the geographic map"
     ],
     "followUps": [
       "Exercise the SQLite-only Desktop and PWA clients against real libraries",
@@ -127,5 +131,5 @@
       "Measure SQLite and IndexedDB memory on older low-memory devices"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1303-dev\n\nRun the Freed Library on SQLite and bounded IndexedDB without the legacy Automerge runtime, with substantially lower geographic Map memory\n\n### Features\n\n- Retire PWA Automerge runtime\n- Move PWA Library maintenance to Library Core\n- Write daily SQLite backups without loading the legacy document engine\n\n### Fixes\n\n- Recover stranded actor lease acquisitions\n- Make Library Core assignments idempotent\n- Preserve release publication output\n- Stop Freed Desktop from loading the retired Automerge engine after startup\n- Reclaim Freed Desktop WebKit memory after leaving the geographic map\n- Bound map renderer memory on large libraries\n\n### Follow-ups\n\n- Exercise the SQLite-only Desktop and PWA clients against real libraries\n- Verify restore behavior across the retained daily backup generations\n- Measure SQLite and IndexedDB memory on older low-memory devices\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1303-dev\n\nRun the Freed Library on SQLite and bounded IndexedDB without the legacy Automerge runtime, with substantially lower geographic Map memory\n\n### Features\n\n- Retire PWA Automerge runtime\n- Move PWA Library maintenance to Library Core\n- Write daily SQLite backups without loading the legacy document engine\n\n### Fixes\n\n- Recover stranded actor lease acquisitions\n- Make Library Core assignments idempotent\n- Preserve release publication output\n- Stop Freed Desktop from loading the retired Automerge engine after startup\n- Bound map renderer memory on large libraries\n- Reclaim Freed Desktop WebKit memory after leaving the geographic map\n\n### Follow-ups\n\n- Exercise the SQLite-only Desktop and PWA clients against real libraries\n- Verify restore behavior across the retained daily backup generations\n- Measure SQLite and IndexedDB memory on older low-memory devices\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
