@@ -156,6 +156,12 @@ function loadMapLibre(): Promise<MapLibreModule> {
     import("maplibre-gl/dist/maplibre-gl.css"),
   ]).then(([module]) => {
     module.setWorkerUrl(mapLibreWorkerUrl);
+    // Safari otherwise creates as many as three MapLibre workers. WebKit gives
+    // each worker a large process allocation, which pushed the geographic map
+    // above 2 GB on the 20,000-item Library even though tile caching and marker
+    // counts were already bounded. One worker keeps the same map data and
+    // rendering behavior without multiplying that fixed memory cost.
+    module.setWorkerCount(1);
     return module;
   }).catch((error) => {
     mapLibreLoader = null;
