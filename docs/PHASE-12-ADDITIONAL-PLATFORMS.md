@@ -438,7 +438,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.37 | Atomic follow-roster and activity reconciliation | High | ✓ Done |
 | 12.38 | Beta source UI, consent, health, filtering, and diagnostics | Medium | ✓ Done |
 | 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage | Medium | ✓ Done |
-| 12.40 | Scheduled refresh with restart-safe local cooldowns | High | ✓ Done |
+| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state | High | ✓ Done |
 | 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
 | 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
 | 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
@@ -483,9 +483,9 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - [x] Hidden scraper WebViews can emit only from the matching Substack or
       Medium origin, with no Freed IPC access in visible login windows or on
       third party sign in pages
-- [x] Authenticated Substack and Medium sessions use a dedicated randomized
-      scheduler outside the RSS poll job, while persisted local cooldowns
-      prevent early provider navigation after a restart
+- [x] Authenticated Substack and Medium sessions use independent bounds,
+      regimes, deadlines, yield state, ordering, and cooldowns inside the shared
+      device-local provider scheduler outside the RSS poll job
 - [x] Substack subscriber dashboards and sensitive subscriber metadata stay out
       of capture, Automerge, diagnostics, and bug reports
 - [ ] Installed Substack and Medium beta sessions pass real-account selector and

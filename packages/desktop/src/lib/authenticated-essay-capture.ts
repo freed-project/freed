@@ -339,6 +339,7 @@ async function fetchAuthenticatedEssayData<Entry, Profile>(
 export function captureAuthenticatedEssayProvider<Entry, Profile>(
   config: AuthenticatedEssayCaptureConfig<Entry, Profile>,
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<AuthenticatedEssaySyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     assertFactoryResetEpoch(resetEpoch);
@@ -406,6 +407,7 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
           config,
           () => {
             assertFactoryResetEpoch(resetEpoch);
+            onProviderContact?.();
             if (attemptCooldownUntil === 0) {
               attemptCooldownUntil = markCooldown(config.provider);
             }

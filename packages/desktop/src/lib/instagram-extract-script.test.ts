@@ -89,7 +89,48 @@ describe("Instagram injected extractor", () => {
       shortcode: "abc123",
       authorHandle: "ada.example",
       caption: "A real Instagram feed caption with enough text to be captured.",
-      mediaUrls: ["https://scontent.cdninstagram.com/v/t51.29350-15/example.jpg"],
+      mediaUrls: [
+        "https://scontent.cdninstagram.com/v/t51.29350-15/example.jpg",
+      ],
     });
+  });
+
+  it("extracts a content-bearing article when a hidden WebView reports zero layout height", () => {
+    const event = runInstagramExtractor(`
+      <body>
+        <main>
+          <article>
+            <header>
+              <a href="https://www.instagram.com/hidden.example/">hidden.example</a>
+            </header>
+            <a href="https://www.instagram.com/p/hidden123/">Open post</a>
+            <time datetime="2026-08-14T15:00:00.000Z"></time>
+            <div dir="auto">Visible feed content whose hidden WebView has no layout box.</div>
+            <img
+              src="https://scontent.cdninstagram.com/v/t51.29350-15/hidden.jpg"
+              width="640"
+              height="640"
+            />
+          </article>
+        </main>
+      </body>
+    `);
+
+    expect(event.rejected).toMatchObject({ tinyOrInvisible: 0 });
+    expect(event.posts).toHaveLength(1);
+    expect(event.posts?.[0]).toMatchObject({
+      shortcode: "hidden123",
+      authorHandle: "hidden.example",
+      caption: "Visible feed content whose hidden WebView has no layout box.",
+    });
+  });
+
+  it("still rejects an empty zero-height placeholder article", () => {
+    const event = runInstagramExtractor(`
+      <body><main><article><div></div></article></main></body>
+    `);
+
+    expect(event.posts).toHaveLength(0);
+    expect(event.rejected).toMatchObject({ tinyOrInvisible: 1 });
   });
 });

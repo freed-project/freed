@@ -36,6 +36,11 @@ type SubstackSyncResult = AuthenticatedEssaySyncResult;
 
 export function captureSubstackFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<SubstackSyncResult> {
-  return captureAuthenticatedEssayProvider(SUBSTACK_CAPTURE_CONFIG, trigger);
+  return captureAuthenticatedEssayProvider(
+    SUBSTACK_CAPTURE_CONFIG,
+    trigger,
+    onProviderContact,
+  );
 }

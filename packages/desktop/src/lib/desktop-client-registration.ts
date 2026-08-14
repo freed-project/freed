@@ -29,6 +29,7 @@ type NativeRead = RegistrationRead | { readonly status: "missing" };
 
 let cachedRegistration: DesktopClientRegistration | null = null;
 let registrationPromise: Promise<DesktopClientRegistration> | null = null;
+let registrationCreatedThisLaunch: boolean | null = null;
 
 function parseRegistration(value: unknown, raw?: string): RegistrationRead {
   const recoveryRaw = raw ?? String(value);
@@ -191,6 +192,7 @@ async function loadDesktopClientRegistration(): Promise<DesktopClientRegistratio
     : null;
 
   let selected: LocalDesktopClientRegistration;
+  let createdThisLaunch = false;
   if (nativeRegistration && (
     nativeRegistration.installationWitness === undefined
     || isBoundToInstallation(nativeRegistration, installationWitness)
@@ -204,6 +206,7 @@ async function loadDesktopClientRegistration(): Promise<DesktopClientRegistratio
     selected = fallbackRegistration;
   } else if (nativeRegistration) {
     selected = createRegistration(installationWitness);
+    createdThisLaunch = true;
   } else if (native.status === "corrupt") {
     if (!fallbackRegistration) {
       throw new TypeError("The Freed Desktop registration is corrupt");
@@ -212,6 +215,8 @@ async function loadDesktopClientRegistration(): Promise<DesktopClientRegistratio
       || isBoundToInstallation(fallbackRegistration, installationWitness)
       ? withWitness(fallbackRegistration, installationWitness)
       : createRegistration(installationWitness);
+    createdThisLaunch = fallbackRegistration.installationWitness !== undefined
+      && !isBoundToInstallation(fallbackRegistration, installationWitness);
   } else if (fallbackRegistration && (
     fallbackRegistration.installationWitness === undefined
     || isBoundToInstallation(fallbackRegistration, installationWitness)
@@ -219,8 +224,10 @@ async function loadDesktopClientRegistration(): Promise<DesktopClientRegistratio
     selected = withWitness(fallbackRegistration, installationWitness);
   } else if (fallbackRegistration) {
     selected = createRegistration(installationWitness);
+    createdThisLaunch = true;
   } else if (fallback.status === "missing") {
     selected = createRegistration(installationWitness);
+    createdThisLaunch = true;
   } else {
     throw new Error("Could not verify the backup Freed Desktop registration");
   }
@@ -260,6 +267,8 @@ async function loadDesktopClientRegistration(): Promise<DesktopClientRegistratio
     throw new Error("Could not persist the Freed Desktop registration");
   }
 
+  registrationCreatedThisLaunch = createdThisLaunch;
+
   return toSynchronizedRegistration(selected);
 }
 
@@ -279,8 +288,14 @@ export async function getOrCreateDesktopClientRegistration(): Promise<DesktopCli
   return registrationPromise;
 }
 
+/** Whether this installation identity was first created during the current launch. */
+export function wasDesktopClientRegistrationCreatedThisLaunch(): boolean | null {
+  return registrationCreatedThisLaunch;
+}
+
 /** Test-only reset for the module cache. */
 export function resetDesktopClientRegistrationForTests(): void {
   cachedRegistration = null;
   registrationPromise = null;
+  registrationCreatedThisLaunch = null;
 }

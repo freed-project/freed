@@ -33,7 +33,8 @@ export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   };
 }
 
-export type CloudUploadCause = "subscriber" | "manual" | "poll" | "startup-repair";
+export type CloudUploadCause =
+  "subscriber" | "manual" | "poll" | "startup-repair";
 
 export type SocialScrapeTrigger =
   | "manual"
@@ -116,6 +117,46 @@ export function recordScrapeOutcome(input: {
   recordRuntimeHealthEvent({ event: "scrape_outcome", ...input });
 }
 
+export type ProviderScheduleEventProvider = ScrapeOutcomeProvider;
+
+export interface ProviderScheduleEventBase {
+  provider: ProviderScheduleEventProvider;
+  attemptId: string | null;
+  trigger: SocialScrapeTrigger | "migration" | "wake";
+  scheduledAt: number | null;
+  actualAt: number;
+  dueAgeMs: number | null;
+  lowerBoundMs: number;
+  upperBoundMs: number;
+  multiplierBucket: string;
+  wakeContext: boolean;
+  migrationContext: string;
+}
+
+export function recordProviderScheduleEvent(
+  event:
+    | "provider_schedule_initialized"
+    | "provider_schedule_decision"
+    | "provider_schedule_deferred"
+    | "provider_schedule_regime_changed"
+    | "provider_schedule_claimed"
+    | "provider_contact_issued"
+    | "provider_schedule_settled"
+    | "provider_schedule_backoff"
+    | "provider_schedule_state_blocked",
+  input: ProviderScheduleEventBase & {
+    deferralCategory?: string | null;
+    contactIndex?: number | null;
+    outcome?: string | null;
+    stage?: string | null;
+    itemsSeen?: number | null;
+    itemsAdded?: number | null;
+    durationMs?: number | null;
+  },
+): void {
+  recordRuntimeHealthEvent({ event, ...input });
+}
+
 /**
  * One line immediately before a social outbox provider action runs. The event
  * deliberately excludes item IDs, content, URLs, account identifiers, and
@@ -138,7 +179,10 @@ export function recordFacebookGroupDiscoveryUpdate(input: {
   changedCount: number;
   removedCount: number;
 }): void {
-  recordRuntimeHealthEvent({ event: "facebook_group_discovery_update", ...input });
+  recordRuntimeHealthEvent({
+    event: "facebook_group_discovery_update",
+    ...input,
+  });
 }
 
 /** One privacy-safe event immediately before each RSS HTTP pull. */

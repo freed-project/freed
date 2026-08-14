@@ -124,6 +124,18 @@ const BUCKET_DEFINITIONS = [
     ownerReviewRequired: true,
   },
   {
+    id: "social-scheduler-deferral",
+    taskId: "provider-sync-cadence-v2",
+    title: "Provider scheduling loses ownership or couples social work to RSS",
+    severity: 5,
+    debtIssueNumber: 1080,
+    providerVisible: true,
+    behavioral: true,
+    soakExclusivityKey: "provider-sync-cadence",
+    observerAuthority: "pr-only",
+    ownerReviewRequired: true,
+  },
+  {
     id: "memory-growth",
     taskId: "wave5-memory-demand",
     title: "Idle memory footprint is growing or peaking high",
