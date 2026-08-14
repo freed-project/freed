@@ -34,10 +34,10 @@
   padding: clamp(4rem, 7vw, 6rem) 0;
 }
 
-/* The opening is deliberately tighter than the rest of the page, which stays
-   at the shared 76rem frame. Scoped to the hero so no other section moves. */
+/* Keep the opening on the shared frame. The headline reaches its desktop type
+   size before a narrower frame can accommodate the intended three-line lockup. */
 .hero .frame {
-  max-width: 58rem;
+  max-width: 76rem;
 }
 
 .heroGrid {
@@ -75,12 +75,15 @@
 }
 
 .heroCopy {
+  align-self: stretch;
   border-left: 1px solid var(--theme-border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   padding-left: clamp(1.5rem, 3vw, 3rem);
   /* The copy is much shorter than the headline, so without this the divider
      rule stops partway down and leaves the column looking unfinished. Stretch
-     keeps the rule full height while the text stays top-aligned. */
-  align-self: stretch;
+     keeps the rule full height while flex centers the text within it. */
 }
 
 .heroCopy > p {
@@ -121,10 +124,9 @@
 }
 
 .status {
-  border-bottom: 1px solid var(--theme-border-subtle);
   border-top: 1px solid var(--theme-border-subtle);
   display: grid;
-  gap: 1rem;
+  gap: 0;
   grid-template-columns: repeat(2, 1fr);
   margin-left: auto;
   margin-right: auto;
@@ -133,14 +135,15 @@
 }
 
 .status div {
+  align-items: center;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  text-align: center;
 }
 
 .status div + div {
   border-left: 1px solid var(--theme-border-subtle);
-  padding-left: 1.25rem;
 }
 
 .status strong {
@@ -153,6 +156,18 @@
 .status span {
   color: var(--theme-text-secondary);
   font-size: 0.82rem;
+}
+
+.statusLinks {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.8rem;
+}
+
+.status .statusLinkSeparator {
+  color: var(--theme-text-muted);
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .status a {
@@ -293,6 +308,11 @@
   gap: clamp(1.5rem, 4vw, 4rem);
   grid-template-columns: minmax(8rem, 0.25fr) minmax(0, 1fr) minmax(15rem, 0.55fr);
   padding: clamp(2rem, 4vw, 3.5rem) 0;
+  row-gap: 2rem;
+}
+
+.pathList > article:last-child {
+  border-bottom: 0;
 }
 
 .pathBody h3 {
@@ -322,52 +342,6 @@
   letter-spacing: 0.1em;
   margin-bottom: 0.6rem;
   text-transform: uppercase;
-}
-
-.supportLoop {
-  margin-top: clamp(2.5rem, 5vw, 4rem);
-}
-
-.supportLoop > p {
-  margin-bottom: 1rem;
-}
-
-.supportLoop ol {
-  border-bottom: 1px solid var(--theme-border-subtle);
-  border-top: 1px solid var(--theme-border-subtle);
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.supportLoop li {
-  min-height: 8rem;
-  padding: 1.35rem 1.25rem;
-}
-
-.supportLoop li + li {
-  border-left: 1px solid var(--theme-border-subtle);
-}
-
-.supportLoop strong,
-.supportLoop span {
-  display: block;
-}
-
-.supportLoop strong {
-  font-family: var(--font-space-grotesk), sans-serif;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-
-.supportLoop span {
-  color: var(--theme-text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.55;
-  margin-top: 0.7rem;
 }
 
 .scenarioGrid {
@@ -443,12 +417,14 @@
   width: min(52rem, calc(100% - clamp(2rem, 12vw, 10rem)));
 }
 
-.modelNote > strong {
+.pathList .modelNote > strong {
   color: var(--theme-text-primary);
   display: block;
   font-family: var(--font-space-grotesk), sans-serif;
   font-size: 1.15rem;
+  letter-spacing: normal;
   margin-bottom: 0.75rem;
+  text-transform: none;
 }
 
 .modelNote p {
@@ -457,6 +433,14 @@
 
 .modelNote p + p {
   margin-top: 0.85rem;
+}
+
+.pathList .modelNote {
+  border-left: 2px solid var(--theme-heading-accent);
+  grid-column: 2 / -1;
+  margin: 0;
+  padding-left: 1.25rem;
+  width: 100%;
 }
 
 .riskHeading {
@@ -649,18 +633,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .supportLoop ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .supportLoop li:nth-child(3) {
-    border-left: 0;
-  }
-
-  .supportLoop li:nth-child(n + 3) {
-    border-top: 1px solid var(--theme-border-subtle);
-  }
-
 }
 
 @media (max-width: 639px) {
@@ -668,8 +640,18 @@
     padding-top: 4.5rem;
   }
 
+  .hero {
+    border-bottom: 0;
+  }
+
   .hero h1 {
-    font-size: clamp(3.25rem, 16vw, 5.2rem);
+    font-size: clamp(2.75rem, 13vw, 4.25rem);
+    max-width: 100%;
+  }
+
+  .heroCopy,
+  .status {
+    border-top: 0;
   }
 
   .status,
@@ -682,7 +664,7 @@
 
   .status div + div {
     border-left: 0;
-    border-top: 1px solid var(--theme-border-subtle);
+    border-top: 0;
     padding-left: 0;
     padding-top: 1rem;
   }
@@ -703,23 +685,13 @@
     grid-column: auto;
   }
 
+  .pathList .modelNote {
+    grid-column: auto;
+  }
+
   .primaryAction,
   .secondaryAction {
     width: 100%;
-  }
-
-  .supportLoop ol {
-    grid-template-columns: 1fr;
-  }
-
-  .supportLoop li {
-    min-height: 0;
-  }
-
-  .supportLoop li + li,
-  .supportLoop li:nth-child(3) {
-    border-left: 0;
-    border-top: 1px solid var(--theme-border-subtle);
   }
 
   .sources ul {

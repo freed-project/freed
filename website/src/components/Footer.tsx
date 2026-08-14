@@ -17,7 +17,7 @@ export default function Footer() {
               href="/"
               className="mb-4 hidden items-baseline gap-0.5 sm:inline-flex"
             >
-              <span className="relative text-xl font-bold text-text-primary font-logo">
+              <span className="theme-logo-primary relative text-xl font-bold text-text-primary font-logo">
                 FREED
                 <span
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
@@ -26,12 +26,12 @@ export default function Footer() {
                   }}
                 />
               </span>
-              <span className="text-sm font-bold gradient-text font-logo">
+              <span className="theme-logo-suffix text-sm font-bold gradient-text font-logo">
                 .WTF
               </span>
             </Link>
             <div className="max-w-[18rem] sm:mt-6">
-              <ThemeSelector compact />
+              <ThemeSelector />
             </div>
           </div>
 

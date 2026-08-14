@@ -55,7 +55,7 @@ export default function QrGallery() {
               href="/"
               className="group inline-flex items-baseline gap-1 rounded-full px-4 py-2 transition-all duration-200 hover:scale-[1.04] hover:bg-[rgb(var(--theme-surface-elevated-rgb)/0.5)] focus-visible:scale-[1.04] focus-visible:bg-[rgb(var(--theme-surface-elevated-rgb)/0.5)] focus-visible:outline-none"
             >
-              <span className="relative text-[clamp(2.2rem,4.4vw,3rem)] font-bold text-text-primary font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
+              <span className="theme-logo-primary relative text-[clamp(2.2rem,4.4vw,3rem)] font-bold text-text-primary font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
                 FREED
                 <span
                   className="absolute bottom-0 left-0 right-0 h-1 rounded-full transition-all duration-200 group-hover:h-1.5 group-hover:shadow-[0_0_20px_rgba(255,255,255,0.22)] group-focus-visible:h-1.5 group-focus-visible:shadow-[0_0_20px_rgba(255,255,255,0.22)]"
@@ -64,7 +64,7 @@ export default function QrGallery() {
                   }}
                 />
               </span>
-              <span className="text-[clamp(1.55rem,2.8vw,2rem)] font-bold gradient-text font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
+              <span className="theme-logo-suffix text-[clamp(1.55rem,2.8vw,2rem)] font-bold gradient-text font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
                 .WTF
               </span>
             </Link>
