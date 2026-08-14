@@ -6,6 +6,7 @@ import { motion, useInView } from "framer-motion";
 import type { CSSProperties, MouseEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
+import { PlanProofLink } from "@/components/PlanProofLink";
 import type { ChangelogMode } from "./pagination";
 import { getChangelogPageHref } from "./pagination";
 
@@ -66,7 +67,7 @@ function PaginationNav({
 
   return (
     <nav
-      aria-label="Changelog pagination"
+      aria-label="Updates pagination"
       className={`text-sm text-text-muted ${className}`.trim()}
     >
       <div className="flex flex-wrap items-center justify-center gap-x-0.5 gap-y-2">
@@ -491,14 +492,20 @@ export default function ChangelogContent({
           initial={shouldAnimateHeader ? { opacity: 0, y: 20 } : false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-10 sm:mb-12"
+          className="mb-10 text-center sm:mb-12 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:text-left"
         >
-          <h1 className="theme-display-large text-3xl sm:text-5xl font-bold mb-4">
-            <span className="theme-page-heading-accent">Changelog</span>
-          </h1>
-          <p className="text-text-secondary text-base sm:text-lg">
-            Even death stars have an exhaust vent.
-          </p>
+          <div>
+            <h1 className="theme-display-large mb-4 text-3xl font-bold sm:text-5xl">
+              <span className="theme-page-heading-accent">Updates</span>
+            </h1>
+            <p className="text-base text-text-secondary sm:text-lg">
+              Even death stars have an exhaust vent.
+            </p>
+          </div>
+          <PlanProofLink
+            destination="plan"
+            className="mt-5 sm:mt-0 sm:shrink-0"
+          />
         </motion.header>
 
         {/* Empty state */}

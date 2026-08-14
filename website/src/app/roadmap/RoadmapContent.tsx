@@ -10,6 +10,7 @@ import {
   slowHeroSpeed,
 } from "@/lib/motion";
 import { MarketingPageShell } from "@/components/MarketingPageShell";
+import { PlanProofLink } from "@/components/PlanProofLink";
 
 // Responsive layout hook
 function useIsMobile() {
@@ -932,20 +933,23 @@ export default function RoadmapContent() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-12 sm:mb-16"
+          className="mb-12 text-center sm:mb-16 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:text-left"
         >
-          <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="theme-page-heading-accent">Roadmap</span>
-          </h1>
-          <p className="text-text-secondary text-base sm:text-lg mb-2">
-            Built for humans, not algorithms.
-          </p>
-          {/*<p className="text-text-secondary text-lg sm:text-xl mb-2">*/}
-          {/*  We build in daylight.*/}
-          {/*</p>*/}
-          <p className="text-text-muted text-sm sm:text-base">
-            Every commit, decision, and pivot. Visible.
-          </p>
+          <div>
+            <h1 className="theme-display-large mb-4 text-3xl font-bold sm:mb-6 sm:text-5xl md:text-6xl">
+              <span className="theme-page-heading-accent">Roadmap</span>
+            </h1>
+            <p className="text-base text-text-secondary sm:text-lg">
+              Built for humans, not algorithms.
+            </p>
+            {/*<p className="text-text-secondary text-lg sm:text-xl mb-2">*/}
+            {/*  We build in daylight.*/}
+            {/*</p>*/}
+          </div>
+          <PlanProofLink
+            destination="proof"
+            className="mt-5 sm:mt-0 sm:shrink-0"
+          />
         </motion.header>
 
         {/* Architecture Overview */}

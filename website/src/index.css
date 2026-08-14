@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@freed/ui/index.css";
+@import "./desktop-themes.css";
 
 @theme {
   --color-freed-black: var(--theme-bg-root);

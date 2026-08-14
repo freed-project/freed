@@ -1,245 +1,81 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FocusEvent as ReactFocusEvent,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
-import { createPortal } from "react-dom";
-import type { ThemeId } from "@freed/shared/themes";
+import type { FocusEvent } from "react";
 import { ThemePreviewButton } from "@freed/ui/components/ThemePreviewButton";
 import { Tooltip } from "@freed/ui/components/Tooltip";
 import { THEME_DEFINITIONS, useTheme } from "@/context/ThemeContext";
 
-interface ThemeSelectorProps {
-  compact?: boolean;
+// Light themes on the first row, dark themes on the second. THEME_DEFINITIONS
+// is ordered for other consumers, so the grid carries its own order instead.
+const THEME_DISPLAY_ORDER: readonly string[] = [
+  "ember",
+  "midas",
+  "scriptorium",
+  "starship",
+  "dark-star",
+  "neon",
+];
+
+// Fixed row slots. Hovering a swatch previews the theme and restyles the
+// button, so content-sized rows would let one swatch resize its own row and
+// shove the other row down. Reserving the slot and centring inside it makes
+// that shift impossible regardless of what any hover or active state does.
+const THEME_GRID_CLASS =
+  "grid w-fit grid-cols-[repeat(3,max-content)] [grid-auto-rows:1.5rem] items-center gap-2";
+
+function displayRank(id: string): number {
+  const index = THEME_DISPLAY_ORDER.indexOf(id);
+  // A theme added later but not placed here sorts to the end rather than vanishing.
+  return index === -1 ? THEME_DISPLAY_ORDER.length : index;
 }
 
-interface FloatingRect {
-  left: number;
-  top: number;
-  width: number;
-}
-
-export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
+export default function ThemeSelector() {
   const { themeId, setThemeId, previewTheme, revertPreview } = useTheme();
-  const gapClassName = compact ? "gap-2" : "gap-3";
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const inlineRowRef = useRef<HTMLDivElement | null>(null);
-  const floatingRowRef = useRef<HTMLDivElement | null>(null);
-  const ignoreNextInlineMouseLeaveRef = useRef(false);
-  const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
-  const [stableHeight, setStableHeight] = useState<number | null>(null);
-  const isFloating = compact && floatingRect !== null;
+  const orderedThemes = [...THEME_DEFINITIONS].sort(
+    (a, b) => displayRank(a.id) - displayRank(b.id),
+  );
 
-  useEffect(() => {
-    if (!isFloating) {
+  function handleBlur(event: FocusEvent<HTMLDivElement>) {
+    if (
+      event.relatedTarget
+      && event.currentTarget.contains(event.relatedTarget)
+    ) {
       return;
     }
 
-    function clearFloatingPreview() {
-      setFloatingRect(null);
-      revertPreview();
-    }
-
-    window.addEventListener("resize", clearFloatingPreview);
-    window.addEventListener("scroll", clearFloatingPreview, true);
-    return () => {
-      window.removeEventListener("resize", clearFloatingPreview);
-      window.removeEventListener("scroll", clearFloatingPreview, true);
-    };
-  }, [isFloating, revertPreview]);
-
-  useEffect(() => {
-    if (!wrapperRef.current || typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const recordHeight = () => {
-      if (!wrapperRef.current) {
-        return;
-      }
-
-      const nextHeight = Math.ceil(wrapperRef.current.getBoundingClientRect().height);
-      setStableHeight((currentHeight) => {
-        if (currentHeight !== null && currentHeight >= nextHeight) {
-          return currentHeight;
-        }
-
-        return nextHeight;
-      });
-    };
-
-    recordHeight();
-
-    const observer = new ResizeObserver(() => {
-      recordHeight();
-    });
-    observer.observe(wrapperRef.current);
-    window.addEventListener("resize", recordHeight);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", recordHeight);
-    };
-  }, []);
-
-  function activatePreview(themeId: ThemeId) {
-    if (compact && floatingRect === null) {
-      const rect = wrapperRef.current?.getBoundingClientRect();
-      if (rect) {
-        ignoreNextInlineMouseLeaveRef.current = true;
-        setFloatingRect({
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-        });
-      }
-    }
-
-    previewTheme(themeId);
-  }
-
-  function clearPreview() {
-    ignoreNextInlineMouseLeaveRef.current = false;
-    setFloatingRect(null);
     revertPreview();
   }
 
-  function commitTheme(themeId: ThemeId) {
-    ignoreNextInlineMouseLeaveRef.current = false;
-    setFloatingRect(null);
-    setThemeId(themeId);
-  }
-
-  function shouldKeepPreview(
-    event:
-      | ReactFocusEvent<HTMLDivElement>
-      | ReactMouseEvent<HTMLDivElement>,
-  ) {
-    const nextTarget = event.relatedTarget;
-    if (!(nextTarget instanceof Node)) {
-      return false;
-    }
-
-    if (event.currentTarget.contains(nextTarget)) {
-      return true;
-    }
-
-    return (
-      inlineRowRef.current?.contains(nextTarget)
-      || floatingRowRef.current?.contains(nextTarget)
-      || false
-    );
-  }
-
-  function handleMouseLeave(
-    layer: "inline" | "floating",
-    event: ReactMouseEvent<HTMLDivElement>,
-  ) {
-    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
-      ignoreNextInlineMouseLeaveRef.current = false;
-      return;
-    }
-
-    if (shouldKeepPreview(event)) {
-      return;
-    }
-
-    clearPreview();
-  }
-
-  function handleBlurCapture(event: ReactFocusEvent<HTMLDivElement>) {
-    if (shouldKeepPreview(event)) {
-      return;
-    }
-
-    clearPreview();
-  }
-
-  function handleButtonMouseLeave(
-    layer: "inline" | "floating",
-    event: ReactMouseEvent<HTMLButtonElement>,
-  ) {
-    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
-      ignoreNextInlineMouseLeaveRef.current = false;
-      return;
-    }
-
-    const nextTarget = event.relatedTarget;
-    if (nextTarget instanceof Element && nextTarget.closest(".theme-preview-button")) {
-      return;
-    }
-
-    clearPreview();
-  }
-
-  function renderSelectorContent(layer: "inline" | "floating") {
-    return (
-      <>
-        <h4 className="mb-4 text-text-primary font-semibold">Theme</h4>
-        <div
-          ref={layer === "inline" ? inlineRowRef : floatingRowRef}
-          className={`flex flex-wrap items-center ${gapClassName}`}
-          onMouseLeave={(event) => handleMouseLeave(layer, event)}
-          onBlurCapture={handleBlurCapture}
-        >
-          {THEME_DEFINITIONS.map((theme) => (
-            <div key={theme.id} className="flex items-center">
-              <Tooltip
-                side="top"
-                label={theme.name}
-                description={theme.description}
-              >
-                <ThemePreviewButton
-                  theme={theme}
-                  active={themeId === theme.id}
-                  variant="compact"
-                  onMouseEnter={() => activatePreview(theme.id)}
-                  onMouseLeave={(event) => handleButtonMouseLeave(layer, event)}
-                  onFocus={() => previewTheme(theme.id)}
-                  onClick={() => commitTheme(theme.id)}
-                />
-              </Tooltip>
-            </div>
-          ))}
-        </div>
-      </>
-    );
-  }
-
   return (
-    <div
-      ref={wrapperRef}
-      className="relative"
-      style={stableHeight ? { minHeight: `${stableHeight}px` } : undefined}
-    >
+    <div>
+      <h4 className="mb-4 font-semibold text-text-primary">Theme</h4>
       <div
-        aria-hidden={isFloating || undefined}
-        className="flex flex-col"
-        style={isFloating ? { visibility: "hidden" } : undefined}
+        role="group"
+        aria-label="Theme"
+        className={THEME_GRID_CLASS}
+        onMouseLeave={revertPreview}
+        onBlurCapture={handleBlur}
       >
-        {renderSelectorContent("inline")}
-      </div>
-      {isFloating && typeof document !== "undefined"
-        ? createPortal(
-          <div
-            className="fixed z-[80]"
-            style={{
-              left: `${floatingRect!.left}px`,
-              top: `${floatingRect!.top}px`,
-              width: `${floatingRect!.width}px`,
-            }}
+        {orderedThemes.map((theme) => (
+          <Tooltip
+            key={theme.id}
+            side="top"
+            label={theme.name}
+            description={theme.description}
+            className="items-center"
           >
-            <div className="flex flex-col">
-              {renderSelectorContent("floating")}
-            </div>
-          </div>,
-          document.body,
-        )
-        : null}
+            <ThemePreviewButton
+              theme={theme}
+              active={themeId === theme.id}
+              variant="compact"
+              onMouseEnter={() => previewTheme(theme.id)}
+              onFocus={() => previewTheme(theme.id)}
+              onClick={() => setThemeId(theme.id)}
+              className="website-theme-swatch"
+            />
+          </Tooltip>
+        ))}
+      </div>
     </div>
   );
 }

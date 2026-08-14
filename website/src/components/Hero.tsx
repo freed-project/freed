@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, type FormEvent } from "react";
 import {
   FaArrowRight,
+  FaWaveSquare,
   FaXTwitter,
   FaInstagram,
   FaFacebook,
@@ -266,18 +267,20 @@ export default function Hero() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => openModal()}
-              className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
+              className="btn-primary inline-flex items-center justify-center gap-2 text-base px-8 py-3 w-full sm:w-auto"
             >
               Get Freed
+              <FaArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
             </motion.button>
 
-            <Link href="/manifesto" className="w-full sm:w-auto">
+            <Link href="/changelog" className="w-full sm:w-auto">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="btn-secondary text-base px-8 py-3 w-full"
+                className="btn-secondary inline-flex items-center justify-center gap-2 text-base px-8 py-3 w-full"
               >
-                Read the Manifesto
+                Latest Updates
+                <FaWaveSquare aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
               </motion.button>
             </Link>
           </div>

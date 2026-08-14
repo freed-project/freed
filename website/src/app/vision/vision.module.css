@@ -1,0 +1,729 @@
+.page {
+  color: var(--theme-text-primary);
+  padding-top: 6rem;
+}
+
+.page h1,
+.page h2,
+.page h3,
+.page p {
+  margin-top: 0;
+}
+
+.frame {
+  margin: 0 auto;
+  max-width: 76rem;
+  padding-left: clamp(1.5rem, 4vw, 3rem);
+  padding-right: clamp(1.5rem, 4vw, 3rem);
+}
+
+.cardLabel,
+.pathStage,
+.scenarioGrid article > p:first-child,
+.sources > p {
+  color: var(--theme-heading-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  margin-bottom: 0;
+  text-transform: uppercase;
+}
+
+.hero {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  padding: clamp(4rem, 7vw, 6rem) 0;
+}
+
+/* The opening is deliberately tighter than the rest of the page, which stays
+   at the shared 76rem frame. Scoped to the hero so no other section moves. */
+.hero .frame {
+  max-width: 58rem;
+}
+
+.heroGrid {
+  align-items: start;
+  display: grid;
+  gap: clamp(3rem, 8vw, 8rem);
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+}
+
+.hero h1,
+.proposition h2,
+.sectionHeading h2,
+.risk h2,
+.governance h2,
+.invitation h2 {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+
+.hero h1 {
+  font-size: clamp(2.75rem, 6.25vw, 6.5rem);
+  line-height: 0.88;
+  margin-bottom: 0;
+  /* Nudge the headline down so its cap height lines up with the first line of
+     body copy beside it. Measured against real glyph ink, not line boxes: the
+     two fonts sit differently inside their line boxes, so aligning the boxes
+     leaves the caps visibly off. In em so it tracks the clamped font size. */
+  padding-top: 0.05em;
+}
+
+.hero h1 span {
+  color: var(--theme-heading-accent);
+}
+
+.heroCopy {
+  border-left: 1px solid var(--theme-border-subtle);
+  padding-left: clamp(1.5rem, 3vw, 3rem);
+  /* The copy is much shorter than the headline, so without this the divider
+     rule stops partway down and leaves the column looking unfinished. Stretch
+     keeps the rule full height while the text stays top-aligned. */
+  align-self: stretch;
+}
+
+.heroCopy > p {
+  color: var(--theme-text-secondary);
+  font-size: clamp(1.05rem, 1.45vw, 1.3rem);
+  line-height: 1.7;
+}
+
+.invitationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.primaryAction,
+.secondaryAction {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 0.65rem;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  min-height: 3.15rem;
+  padding: 0.8rem 1.15rem;
+  text-transform: uppercase;
+}
+
+.primaryAction svg {
+  fill: none;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  width: 1rem;
+}
+
+.status {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, 1fr);
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: clamp(2rem, 2.5vw, 2.5rem);
+  padding: 1.25rem 0;
+}
+
+.status div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.status div + div {
+  border-left: 1px solid var(--theme-border-subtle);
+  padding-left: 1.25rem;
+}
+
+.status strong {
+  color: var(--theme-heading-accent);
+  font-size: 0.73rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.status span {
+  color: var(--theme-text-secondary);
+  font-size: 0.82rem;
+}
+
+.status a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--theme-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.status a:hover,
+.status a:focus-visible {
+  color: var(--theme-text-primary);
+}
+
+.proposition,
+.capital,
+.economics,
+.risk,
+.evidence,
+.governance,
+.invitation {
+  padding: clamp(5rem, 11vw, 10rem) 0;
+}
+
+.proposition,
+.economics,
+.evidence,
+.invitation {
+  background: color-mix(in srgb, var(--theme-bg-surface) 56%, transparent);
+}
+
+.capital,
+.risk,
+.governance {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+}
+
+.propositionGrid,
+.sectionHeading,
+.governanceGrid,
+.invitationGrid {
+  display: grid;
+  gap: clamp(3rem, 8vw, 8rem);
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+  margin-top: 0;
+}
+
+.proposition h2,
+.sectionHeading h2,
+.governance h2,
+.invitation h2,
+.risk h2 {
+  font-size: clamp(2.75rem, 5.4vw, 5.7rem);
+  line-height: 0.96;
+  margin-bottom: 0;
+}
+
+.propositionCopy p,
+.sectionHeading > p,
+.governanceGrid > div > p,
+.invitationGrid > div > p,
+.riskHeading > div > p {
+  color: var(--theme-text-secondary);
+  font-size: clamp(1.02rem, 1.4vw, 1.24rem);
+  line-height: 1.75;
+}
+
+.caseGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: clamp(4rem, 8vw, 7rem);
+}
+
+.caseGrid article,
+.scenarioGrid article,
+.mitigationGrid article,
+.evidenceGrid article {
+  background: color-mix(in srgb, var(--theme-bg-surface) 80%, transparent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 1.25rem;
+}
+
+.caseGrid article {
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.caseGrid h3,
+.investorSequence h3 {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: clamp(1.65rem, 2.7vw, 2.55rem);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  margin: 1.1rem 0 1.5rem;
+}
+
+.caseGrid ul,
+.mitigationGrid ul,
+.governanceGrid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.caseGrid li,
+.mitigationGrid li,
+.governanceGrid li {
+  border-top: 1px solid var(--theme-border-subtle);
+  color: var(--theme-text-secondary);
+  padding: 0.8rem 0;
+}
+
+.caseGrid li::before,
+.mitigationGrid li::before,
+.governanceGrid li::before {
+  color: var(--theme-heading-accent);
+  content: "•";
+  margin-right: 0.65rem;
+}
+
+.riskCard {
+  background: color-mix(in srgb, var(--theme-bg-deep) 76%, transparent) !important;
+}
+
+.sectionHeading {
+  align-items: end;
+}
+
+.pathList {
+  border-top: 1px solid var(--theme-border-subtle);
+  margin-top: clamp(3.5rem, 8vw, 7rem);
+}
+
+.pathList > article {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 4rem);
+  grid-template-columns: minmax(8rem, 0.25fr) minmax(0, 1fr) minmax(15rem, 0.55fr);
+  padding: clamp(2rem, 4vw, 3.5rem) 0;
+}
+
+.pathBody h3 {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: clamp(1.7rem, 3vw, 2.8rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
+.pathBody p,
+.pathList aside p {
+  color: var(--theme-text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0;
+}
+
+.pathList aside {
+  border-left: 1px solid var(--theme-border-subtle);
+  padding-left: 1.5rem;
+}
+
+.pathList aside strong {
+  color: var(--theme-text-primary);
+  display: block;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.6rem;
+  text-transform: uppercase;
+}
+
+.supportLoop {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+.supportLoop > p {
+  margin-bottom: 1rem;
+}
+
+.supportLoop ol {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.supportLoop li {
+  min-height: 8rem;
+  padding: 1.35rem 1.25rem;
+}
+
+.supportLoop li + li {
+  border-left: 1px solid var(--theme-border-subtle);
+}
+
+.supportLoop strong,
+.supportLoop span {
+  display: block;
+}
+
+.supportLoop strong {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.supportLoop span {
+  color: var(--theme-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin-top: 0.7rem;
+}
+
+.scenarioGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: clamp(3.5rem, 8vw, 7rem);
+}
+
+.scenarioGrid article {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+}
+
+.scenarioGrid article > strong {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: clamp(2rem, 3.5vw, 3.2rem);
+  letter-spacing: -0.055em;
+  line-height: 1;
+  margin-top: 1.5rem;
+}
+
+.scenarioGrid article > span {
+  color: var(--theme-text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.45rem;
+}
+
+.scenarioGrid dl {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+  margin: 1.5rem 0;
+  padding: 0.8rem 0;
+}
+
+.scenarioGrid dl div {
+  align-items: baseline;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.scenarioGrid dl div + div {
+  margin-top: 0.45rem;
+}
+
+.scenarioGrid dt {
+  color: var(--theme-text-muted);
+  font-size: 0.74rem;
+}
+
+.scenarioGrid dd {
+  color: var(--theme-text-primary);
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.scenarioDescription {
+  color: var(--theme-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.65;
+  margin-bottom: 0;
+}
+
+.modelNote {
+  border-left: 2px solid var(--theme-heading-accent);
+  color: var(--theme-text-secondary);
+  line-height: 1.7;
+  margin: 2rem 0 0 clamp(1rem, 5vw, 4.5rem);
+  max-width: 58rem;
+  padding-left: 1.25rem;
+}
+
+.modelNote > strong {
+  color: var(--theme-text-primary);
+  display: block;
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 1.15rem;
+  margin-bottom: 0.75rem;
+}
+
+.modelNote p {
+  margin-bottom: 0;
+}
+
+.modelNote p + p {
+  margin-top: 0.85rem;
+}
+
+.riskHeading {
+  display: grid;
+  gap: clamp(3rem, 8vw, 8rem);
+  grid-template-columns: minmax(0, 1.2fr) minmax(17rem, 0.8fr);
+  margin-top: 2.5rem;
+}
+
+.riskHeading aside {
+  align-self: end;
+  background: color-mix(in srgb, var(--theme-bg-surface) 76%, transparent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+
+.riskHeading aside strong {
+  color: var(--theme-heading-accent);
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.7rem;
+  text-transform: uppercase;
+}
+
+.riskHeading aside p {
+  color: var(--theme-text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0;
+}
+
+.mitigationGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: clamp(3rem, 7vw, 6rem);
+}
+
+.mitigationGrid article {
+  padding: clamp(1.4rem, 3vw, 2.25rem);
+}
+
+.mitigationGrid h3 {
+  font-family: var(--font-space-grotesk), sans-serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.25rem;
+}
+
+.sources {
+  border-top: 1px solid var(--theme-border-subtle);
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+}
+
+.sources ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.25rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.sources a {
+  color: var(--theme-text-secondary);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-decoration-color: var(--theme-border-strong);
+  text-underline-offset: 0.25em;
+}
+
+.sources a:hover,
+.sources a:focus-visible {
+  color: var(--theme-text-primary);
+}
+
+.evidenceGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: clamp(3.5rem, 8vw, 7rem);
+}
+
+.evidenceGrid article {
+  padding: 1.5rem;
+}
+
+.evidenceGrid h3 {
+  color: var(--theme-heading-accent);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+}
+
+.evidenceGrid p {
+  color: var(--theme-text-secondary);
+  line-height: 1.65;
+  margin-bottom: 0;
+}
+
+.investorSequence {
+  align-items: end;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  border-top: 1px solid var(--theme-border-subtle);
+  display: grid;
+  gap: clamp(2rem, 6vw, 6rem);
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr);
+  margin-top: clamp(3rem, 7vw, 6rem);
+  padding: 2.5rem 0;
+}
+
+.investorSequence h3 {
+  margin-bottom: 0;
+}
+
+.investorSequence > p {
+  color: var(--theme-text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0;
+}
+
+.governanceGrid {
+  align-items: center;
+}
+
+.governanceGrid ul {
+  margin-bottom: 2rem;
+}
+
+.invitationGrid {
+  align-items: end;
+}
+
+.invitationActions {
+  align-items: stretch;
+  flex-direction: column;
+  margin-top: 0;
+}
+
+.page .disclaimer {
+  color: var(--theme-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+  margin: clamp(6rem, 12vw, 10rem) 0 0;
+}
+
+@media (max-width: 1023px) {
+  .heroGrid,
+  .propositionGrid,
+  .sectionHeading,
+  .riskHeading,
+  .governanceGrid,
+  .invitationGrid,
+  .investorSequence {
+    gap: 2.5rem;
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    max-width: 10ch;
+  }
+
+  .heroCopy {
+    border-left: 0;
+    border-top: 1px solid var(--theme-border-subtle);
+    padding-left: 0;
+    padding-top: 2rem;
+  }
+
+  .pathList > article {
+    grid-template-columns: minmax(7rem, 0.28fr) 1fr;
+  }
+
+  .pathList aside {
+    border-left: 0;
+    border-top: 1px solid var(--theme-border-subtle);
+    grid-column: 2;
+    padding-left: 0;
+    padding-top: 1.25rem;
+  }
+
+  .scenarioGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evidenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportLoop ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportLoop li:nth-child(3) {
+    border-left: 0;
+  }
+
+  .supportLoop li:nth-child(n + 3) {
+    border-top: 1px solid var(--theme-border-subtle);
+  }
+
+}
+
+@media (max-width: 639px) {
+  .page {
+    padding-top: 4.5rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(3.25rem, 16vw, 5.2rem);
+  }
+
+  .status,
+  .caseGrid,
+  .scenarioGrid,
+  .mitigationGrid,
+  .evidenceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .status div + div {
+    border-left: 0;
+    border-top: 1px solid var(--theme-border-subtle);
+    padding-left: 0;
+    padding-top: 1rem;
+  }
+
+  .caseGrid article,
+  .scenarioGrid article,
+  .mitigationGrid article,
+  .evidenceGrid article {
+    border-radius: 1rem;
+  }
+
+  .pathList > article {
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+
+  .pathList aside {
+    grid-column: auto;
+  }
+
+  .primaryAction,
+  .secondaryAction {
+    width: 100%;
+  }
+
+  .supportLoop ol {
+    grid-template-columns: 1fr;
+  }
+
+  .supportLoop li {
+    min-height: 0;
+  }
+
+  .supportLoop li + li,
+  .supportLoop li:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--theme-border-subtle);
+  }
+
+  .sources ul {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
