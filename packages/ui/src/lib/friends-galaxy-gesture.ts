@@ -71,6 +71,13 @@ export function friendsGalaxyResistedScaleAtRatio(
       : Number.isFinite(scaleRatio) && scaleRatio > 0
         ? scaleRatio
         : 1;
+  if (resistanceScale <= minimumScale) {
+    return clampScale(
+      boundedInitial * boundedRatio,
+      minimumScale,
+      maximumScale,
+    );
+  }
   if (boundedRatio >= 1) {
     return Math.min(maximumScale, boundedInitial * boundedRatio);
   }
