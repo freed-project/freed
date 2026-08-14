@@ -99,14 +99,31 @@ if [[ "$CHANNEL" == "dev" ]]; then
     --workflow=ci.yml
 fi
 
+TAG_ALREADY_PUBLISHED=false
+LOCAL_TAG_EXISTS=false
+REMOTE_TAG_EXISTS=false
 if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
-  echo "Error: tag ${TAG} already exists. Release tags are immutable." >&2
-  exit 1
+  LOCAL_TAG_EXISTS=true
+fi
+if [[ -n "$(git ls-remote --tags origin "refs/tags/${TAG}")" ]]; then
+  REMOTE_TAG_EXISTS=true
 fi
 
-if [[ -n "$(git ls-remote --tags origin "refs/tags/${TAG}")" ]]; then
-  echo "Error: remote tag ${TAG} already exists. Release tags are immutable." >&2
+if [[ "${LOCAL_TAG_EXISTS}" != "${REMOTE_TAG_EXISTS}" ]]; then
+  echo "Error: local and remote state disagree for immutable tag ${TAG}." >&2
   exit 1
+fi
+if [[ "${LOCAL_TAG_EXISTS}" == true ]]; then
+  if [[ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]]; then
+    echo "Error: existing release tag ${TAG} is not annotated." >&2
+    exit 1
+  fi
+  if [[ "$(git rev-list -n 1 "refs/tags/${TAG}")" != "${LOCAL_RELEASE_SHA}" ]]; then
+    echo "Error: existing release tag ${TAG} identifies the wrong commit." >&2
+    exit 1
+  fi
+  TAG_ALREADY_PUBLISHED=true
+  echo "==> Recovered exact existing immutable tag ${TAG}; publication was already committed."
 fi
 
 RELEASE_FILE_SHA256=$("${NODE_BIN}" -e "
@@ -115,17 +132,34 @@ RELEASE_FILE_SHA256=$("${NODE_BIN}" -e "
   process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
 " "$RELEASE_FILE")
 
-"${NODE_BIN}" scripts/release-tag-publisher.mjs publish \
-  --repo freed-project/freed \
-  --worktree "$(pwd -P)" \
-  --tag "${TAG}" \
-  --channel "${CHANNEL}" \
-  --commit "${LOCAL_RELEASE_SHA}" \
-  --branch "${EXPECTED_BRANCH}" \
-  --release-file "${RELEASE_FILE}" \
-  --release-file-sha256 "${RELEASE_FILE_SHA256}"
+if [[ "${TAG_ALREADY_PUBLISHED}" != true ]]; then
+  "${NODE_BIN}" scripts/release-tag-publisher.mjs publish \
+    --repo freed-project/freed \
+    --worktree "$(pwd -P)" \
+    --tag "${TAG}" \
+    --channel "${CHANNEL}" \
+    --commit "${LOCAL_RELEASE_SHA}" \
+    --branch "${EXPECTED_BRANCH}" \
+    --release-file "${RELEASE_FILE}" \
+    --release-file-sha256 "${RELEASE_FILE_SHA256}"
 
-git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+  TAG_FETCH_MAX_ATTEMPTS=8
+  TAG_FETCHED=false
+  for ((TAG_FETCH_ATTEMPT = 1; TAG_FETCH_ATTEMPT <= TAG_FETCH_MAX_ATTEMPTS; TAG_FETCH_ATTEMPT += 1)); do
+    if git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"; then
+      TAG_FETCHED=true
+      break
+    fi
+    if (( TAG_FETCH_ATTEMPT < TAG_FETCH_MAX_ATTEMPTS )); then
+      echo "Waiting for GitHub to expose newly published tag ${TAG} (${TAG_FETCH_ATTEMPT}/${TAG_FETCH_MAX_ATTEMPTS})..." >&2
+      sleep 2
+    fi
+  done
+  if [[ "${TAG_FETCHED}" != true ]]; then
+    echo "Error: published tag ${TAG} did not become readable after ${TAG_FETCH_MAX_ATTEMPTS} attempts." >&2
+    exit 1
+  fi
+fi
 if [[ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]]; then
   echo "Error: release publisher created a non-annotated tag ${TAG}." >&2
   exit 1

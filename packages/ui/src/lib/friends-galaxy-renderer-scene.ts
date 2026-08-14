@@ -15,6 +15,7 @@ export interface CreateFriendsGalaxyRendererSceneInput {
   accountCount: number;
   linkedAccountCount: number;
   backgroundStarCount: number;
+  proceduralBackgroundStarCount?: number;
   backgroundSeed?: string;
   presentationCandidateSource?: FriendsGalaxyPresentationCandidateSource;
 }
@@ -30,12 +31,16 @@ export function createFriendsGalaxyRendererScene({
   accountCount,
   linkedAccountCount,
   backgroundStarCount,
+  proceduralBackgroundStarCount = 0,
   backgroundSeed,
   presentationCandidateSource = "scene",
 }: CreateFriendsGalaxyRendererSceneInput): FriendsGalaxyRendererScene {
   const safePersonCount = safeSourceCount(personCount);
   const safeAccountCount = safeSourceCount(accountCount);
   const safeBackgroundCount = safeSourceCount(backgroundStarCount);
+  const safeProceduralBackgroundCount = safeSourceCount(
+    proceduralBackgroundStarCount,
+  );
   const safeLinkedAccountCount = Math.min(
     safeAccountCount,
     safeSourceCount(linkedAccountCount),
@@ -65,6 +70,7 @@ export function createFriendsGalaxyRendererScene({
     accountCount: safeAccountCount,
     linkedAccountCount: safeLinkedAccountCount,
     backgroundStarCount: safeBackgroundCount,
+    proceduralBackgroundStarCount: safeProceduralBackgroundCount,
   };
 }
 
@@ -117,7 +123,7 @@ export function compactFriendsGalaxyPresentationMetadata(
   }
   for (const node of atlas.nodes) {
     if (nodes.length >= safeCap) break;
-    if (!node.personId || acceptedNodeIds.has(node.id)) continue;
+    if ((!node.personId && !node.accountId) || acceptedNodeIds.has(node.id)) continue;
     nodes.push(node);
     acceptedNodeIds.add(node.id);
   }

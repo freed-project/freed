@@ -31,6 +31,20 @@ describe("Friends Galaxy worker-packed star instances", () => {
     );
   });
 
+  it("keeps procedural dust out of worker source and instance buffers", () => {
+    const fixture = createGalaxyLabFixture({
+      personCount: 10,
+      accountCount: 50,
+      backgroundStarCount: 0,
+      proceduralBackgroundStarCount: 100_000,
+    });
+
+    expect(fixture.proceduralBackgroundStarCount).toBe(100_000);
+    expect(fixture.backgroundPositions).toHaveLength(0);
+    expect(fixture.backgroundBrightness).toHaveLength(0);
+    expect(fixture.packedStarInstances.background).toHaveLength(0);
+  });
+
   it("encodes provider palette roles without resolved theme colors", () => {
     const fixture = createGalaxyLabFixture({
       personCount: 1,

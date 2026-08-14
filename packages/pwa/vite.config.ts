@@ -79,11 +79,10 @@ export default defineConfig({
     topLevelAwait(),
     react(),
     VitePWA({
-      // prompt: new service workers park in `waiting` and fire onNeedRefresh
-      // so the user sees a toast and chooses when to reload. The app checks
-      // periodically in the background (see pwa-updater.ts) so long-running
-      // sessions are not skipped.
-      registerType: "prompt",
+      // A stale app shell can reference hashed assets that no longer exist.
+      // Activate new workers immediately so an obsolete shell cannot strand
+      // the app before React is able to render an update prompt.
+      registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "icons/*.png"],
       manifest: false,
       workbox: {
@@ -145,20 +144,6 @@ export default defineConfig({
             },
           },
           {
-            // Automerge WASM: cache-first, loaded once at startup.
-            // Not precached because automerge emits a duplicate web/ WASM
-            // via low_level.js that's never actually fetched at runtime.
-            urlPattern: /\.wasm$/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "freed-wasm",
-              expiration: {
-                maxEntries: 5,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-            },
-          },
-          {
             // Catch-all for external resources (CDN, external APIs).
             // Same-origin fetches not matched above bypass the SW natively.
             urlPattern: /^https?:\/\/(?!freed-pwa)/,
@@ -175,6 +160,8 @@ export default defineConfig({
         ],
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
         clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
       },
       devOptions: {
         enabled: false,

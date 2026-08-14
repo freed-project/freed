@@ -348,7 +348,7 @@ function buildFriendsGalaxyLabelSeeds(
       provider,
     };
   };
-  const seedForPersonNode = (nodeIndex: number): FriendsGalaxyLabelSeed => {
+  const seedForIdentityNode = (nodeIndex: number): FriendsGalaxyLabelSeed => {
     const presentation = resolvePresentation(scene, nodeIndex);
     const nodeId = scene.scene.nodeIds[nodeIndex]!;
     const pointSize = Math.max(3.5, scene.scene.pointSizes[nodeIndex]! * 0.34);
@@ -380,7 +380,7 @@ function buildFriendsGalaxyLabelSeeds(
     const ranked: Array<{ nodeIndex: number; rank: number }> = [];
     const screen = new Float32Array(2);
     const considerNode = (nodeIndex: number): void => {
-      if (!scene.scene.personIds[nodeIndex]) return;
+      if (!scene.scene.personIds[nodeIndex] && !scene.scene.accountIds[nodeIndex]) return;
       const offset = nodeIndex * 3;
       if (!projectFriendsGalaxyWorldPoint(
         screen,
@@ -423,7 +423,7 @@ function buildFriendsGalaxyLabelSeeds(
         considerNode(nodeIndex);
       }
     }
-    for (const candidate of ranked) seeds.push(seedForPersonNode(candidate.nodeIndex));
+    for (const candidate of ranked) seeds.push(seedForIdentityNode(candidate.nodeIndex));
   }
 
   if (selectedPersonId && !seeds.some((label) => label.nodeId === selectedPersonId)) {
@@ -432,7 +432,7 @@ function buildFriendsGalaxyLabelSeeds(
       scene.interactionIndex,
       selectedPersonId,
     );
-    if (nodeIndex !== null) seeds.push(seedForPersonNode(nodeIndex));
+    if (nodeIndex !== null) seeds.push(seedForIdentityNode(nodeIndex));
   }
   return selectVisible
     ? selectFriendsGalaxyVisibleLabelSeeds(seeds, compact, detail, projection)

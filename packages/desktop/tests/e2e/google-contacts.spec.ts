@@ -54,7 +54,7 @@ async function mockGoogleContacts(
               nextSyncToken: "sync-token-1",
             },
       );
-      const encodedBody = Array.from(new TextEncoder().encode(body));
+      const bodyB64 = btoa(String.fromCharCode(...new TextEncoder().encode(body)));
       const handlers = (window as Window & {
         __TAURI_MOCK_HANDLERS__?: Record<string, (args: unknown) => unknown>;
       }).__TAURI_MOCK_HANDLERS__;
@@ -62,7 +62,7 @@ async function mockGoogleContacts(
       handlers.google_api_request = () => ({
         status,
         headers: [["content-type", "application/json"]],
-        body: encodedBody,
+        bodyB64,
       });
     },
     { connections, status },
@@ -78,7 +78,7 @@ async function mockSlowGoogleContacts(
       connections,
       nextSyncToken: "sync-token-1",
     });
-    const encodedBody = Array.from(new TextEncoder().encode(body));
+    const bodyB64 = btoa(String.fromCharCode(...new TextEncoder().encode(body)));
     const handlers = (window as Window & {
       __TAURI_MOCK_HANDLERS__?: Record<string, (args: unknown) => unknown>;
       __resolveGoogleContactsSync?: () => void;
@@ -90,7 +90,7 @@ async function mockSlowGoogleContacts(
           resolve({
             status: 200,
             headers: [["content-type", "application/json"]],
-            body: encodedBody,
+            bodyB64,
           });
         };
       });

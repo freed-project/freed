@@ -161,12 +161,12 @@ const SCRIPTORIUM_SHELL_BACKGROUND = `radial-gradient(circle at 16% 13%, rgb(176
 
 const STARSHIP_SHELL_BACKGROUND = `radial-gradient(
       ellipse 120% 90% at 50% 0%,
-      rgb(40 40 192 / 0.08),
+      rgb(41 151 255 / 0.08),
       transparent 55%
     ),
     radial-gradient(
       ellipse 70% 50% at 50% 110%,
-      rgb(40 40 192 / 0.06),
+      rgb(41 151 255 / 0.06),
       transparent 60%
     ),
     #e2e2ee`;
@@ -283,17 +283,17 @@ const SCRIPTORIUM_MAP: ThemeMapPalette = {
 
 const STARSHIP_MAP: ThemeMapPalette = {
   background: "#e2e2ee",
-  water: "#2828c0",
+  water: "#b7d7ef",
   park: "#eeeef6",
   wood: "#4a4a84",
   residential: "#e2e2ee",
   building: "#ccccd8",
   roadsMinor: "#4a4a84",
-  roadsMajor: "#2828c0",
-  boundary: "#2828c0",
+  roadsMajor: "#2997ff",
+  boundary: "#2997ff",
   labelStrong: "#16163a",
   labelSoft: "#4a4a84",
-  labelWater: "#2828c0",
+  labelWater: "#356f9c",
   labelHalo: "#eeeef6",
   overlayVignette:
     "linear-gradient(180deg,rgb(226 226 238 / 0.04),rgb(22 22 58 / 0.12))",
@@ -302,17 +302,17 @@ const STARSHIP_MAP: ThemeMapPalette = {
 
 const DARK_STAR_MAP: ThemeMapPalette = {
   background: "#222222",
-  water: "#2997ff",
+  water: "#30475a",
   park: "#2c2c2e",
   wood: "#c7c7cc",
   residential: "#222222",
   building: "#545458",
   roadsMinor: "#c7c7cc",
   roadsMajor: "#2997ff",
-  boundary: "#2997ff",
+  boundary: "#55748c",
   labelStrong: "#f5f5f7",
   labelSoft: "#c7c7cc",
-  labelWater: "#2997ff",
+  labelWater: "#86b3d3",
   labelHalo: "#2c2c2e",
   overlayVignette:
     "linear-gradient(180deg,rgb(34 34 34 / 0.04),rgb(245 245 247 / 0.12))",

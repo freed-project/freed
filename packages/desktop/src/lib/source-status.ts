@@ -119,31 +119,47 @@ export function getDesktopSourceStatus(
   const authError =
     typeof authState?.lastCaptureError === "string" ? authState.lastCaptureError : undefined;
   const isConnected = authState?.isAuthenticated === true;
-  const tone = getProviderStatusTone({
+  const providerItemCount = isSocialProviderSourceId(sourceId)
+    ? (desktopState.itemCountByPlatform[sourceId] ?? 0)
+    : 0;
+  const syncing = isSocialProviderSourceId(sourceId)
+    ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
+    : false;
+  const healthTone = getProviderStatusTone({
     isConnected,
     authError,
     snapshot,
   });
 
-  if (tone === "idle") {
+  if (!isConnected && healthTone === "idle") {
     return null;
   }
 
+  // A configured provider is not healthy merely because it has credentials.
+  // Keep its status neutral until it has supplied at least one library item,
+  // while preserving actionable warning and critical states.
+  const tone = isConnected && providerItemCount === 0 && healthTone === "healthy" && !syncing
+    ? "idle"
+    : healthTone;
+  const hasConfiguredEmptyLibrary = isConnected && providerItemCount === 0 && tone === "idle";
+
   return {
     tone,
-    label: getProviderStatusLabel({
-      isConnected,
-      authError,
-      snapshot,
-    }),
-    detail: getProviderStatusDetail({
-      isConnected,
-      authError,
-      snapshot,
-    }),
+    label: hasConfiguredEmptyLibrary
+      ? "No items yet"
+      : getProviderStatusLabel({
+          isConnected,
+          authError,
+          snapshot,
+        }),
+    detail: hasConfiguredEmptyLibrary
+      ? "Connected. No items have synced yet."
+      : getProviderStatusDetail({
+          isConnected,
+          authError,
+          snapshot,
+        }),
     paused: snapshot?.status === "paused",
-    syncing: isSocialProviderSourceId(sourceId)
-      ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
-      : false,
+    syncing,
   };
 }

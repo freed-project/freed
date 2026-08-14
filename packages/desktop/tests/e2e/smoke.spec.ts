@@ -4519,7 +4519,7 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(resumedViewport).toHaveAttribute("data-presentation-visible", "true");
   await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
   await expect.poll(async () => (await readGraphDebug(page))?.metrics.contentSyncCount ?? 0)
-    .toBe(beforeDetails!.metrics.contentSyncCount);
+    .toBe(beforeDetails!.metrics.contentSyncCount + 1);
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("friends");
@@ -4670,6 +4670,8 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("friend-graph-decorative-stars-toggle")).toHaveCount(0);
+  await expect(viewport).toHaveAttribute("data-graph-decorative-star-mode", "procedural");
   await expect.poll(async () => {
     return viewport.evaluate((element) => ({
       nodes: Number((element as HTMLElement).dataset.graphNodeCount ?? "0"),

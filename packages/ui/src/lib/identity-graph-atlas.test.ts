@@ -296,6 +296,17 @@ describe("buildIdentityGraphAtlas", () => {
   });
 
   it("distributes unlinked provider accounts through bounded spiral arms", () => {
+    const linkedPerson = {
+      ...person(1),
+      relationshipStatus: "friend",
+    } satisfies Person;
+    const linkedAccount = {
+      ...account(100),
+      id: "linked-provider-account",
+      personId: linkedPerson.id,
+      provider: "instagram",
+      externalId: "linked-provider-author",
+    } satisfies Account;
     const providerAccounts = Array.from({ length: 48 }, (_, index) => ({
       ...account(index),
       id: `provider-account-${index}`,
@@ -304,11 +315,11 @@ describe("buildIdentityGraphAtlas", () => {
       externalId: `provider-author-${index}`,
     } satisfies Account));
     const input = {
-      persons: [],
-      accounts: Object.fromEntries(providerAccounts.map((entry) => [entry.id, entry])),
+      persons: [linkedPerson],
+      accounts: Object.fromEntries([linkedAccount, ...providerAccounts].map((entry) => [entry.id, entry])),
       feeds: {},
       activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
-      mode: "all_content" as const,
+      mode: "friends" as const,
       width: 1_200,
       height: 800,
     };
@@ -330,12 +341,85 @@ describe("buildIdentityGraphAtlas", () => {
     }));
 
     expect(accountNodes).toHaveLength(providerAccounts.length);
+    expect(region).toEqual(expect.objectContaining({
+      count: 49,
+      linkedCount: 1,
+      unlinkedCount: 48,
+    }));
+    const providerAtlas = sliceIdentityGraphAtlas({
+      model,
+      transform: {
+        x: 600 - region.x,
+        y: 400 - region.y,
+        scale: 1,
+      },
+      width: 1_200,
+      height: 800,
+      quality: "settled",
+    });
+    expect(providerAtlas.labels).toContainEqual(expect.objectContaining({
+      nodeId: "provider:instagram",
+      text: "Instagram 48",
+    }));
+    expect(providerAccounts.every((account) => providerAtlas.labels.some((label) =>
+      label.nodeId === `account:${account.id}`
+    ))).toBe(true);
     expect(Math.min(...normalizedRadii)).toBeGreaterThan(0.1);
     expect(Math.max(...normalizedRadii)).toBeLessThan(0.9);
     expect(occupiedSectors.size).toBe(8);
     expect(repeated.nodes.map((entry) => [entry.id, entry.x, entry.y])).toEqual(
       model.nodes.map((entry) => [entry.id, entry.x, entry.y]),
     );
+  });
+
+  it("reserves detail labels for a visible unlinked provider field", () => {
+    const linkedPeople = Array.from({ length: 180 }, (_, index) => ({
+      ...person(index + 1),
+      id: `dense-person-${index}`,
+      relationshipStatus: "friend" as const,
+      careLevel: 5 as const,
+    }));
+    const linkedAccounts = linkedPeople.map((entry, index) => ({
+      ...account(index),
+      id: `dense-linked-account-${index}`,
+      personId: entry.id,
+      provider: "facebook" as const,
+      externalId: `dense-linked-author-${index}`,
+    }));
+    const unlinkedAccounts = Array.from({ length: 48 }, (_, index) => ({
+      ...account(index + linkedAccounts.length),
+      id: `dense-unlinked-account-${index}`,
+      personId: undefined,
+      provider: "facebook" as const,
+      externalId: `dense-unlinked-author-${index}`,
+    }));
+    const model = buildIdentityGraphAtlasModel({
+      persons: linkedPeople,
+      accounts: Object.fromEntries(
+        [...linkedAccounts, ...unlinkedAccounts].map((entry) => [entry.id, entry]),
+      ),
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "friends",
+      width: 1_400,
+      height: 900,
+    });
+    const region = model.regions.find((entry) => entry.provider === "facebook")!;
+    const atlas = sliceIdentityGraphAtlas({
+      model,
+      transform: {
+        x: 700 - region.x,
+        y: 450 - region.y,
+        scale: 1,
+      },
+      width: 1_400,
+      height: 900,
+      quality: "settled",
+    });
+
+    expect(atlas.labels.filter((label) =>
+      label.nodeId.startsWith("account:dense-unlinked-account-")
+    )).toHaveLength(unlinkedAccounts.length);
   });
 
   it("spaces dense friend systems far enough apart for their account fields", () => {

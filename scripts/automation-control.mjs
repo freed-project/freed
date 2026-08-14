@@ -7,18 +7,24 @@ import {
   PROVIDER_AUTHORITIES,
   TASK_STATES,
   acquireLease,
+  acquireFactoryExecutionClaim,
   appendControlEvent,
   bindPublisherLeaseHead,
   createTask,
   heartbeatLease,
+  heartbeatFactoryExecutionClaim,
   inspectLease,
+  listFactoryExecutionClaims,
   ownerGovernanceIntentDigest,
   readTask,
+  readFactoryExecutionClaim,
   readTaskManifest,
   recoverExpiredGeneralActorLeaseAcquire,
   releaseLease,
+  releaseFactoryExecutionClaim,
   resolveAutomationStateRoot,
   transitionTask,
+  transferFactoryExecutionClaim,
   updateTaskAuthorities,
 } from "./lib/automation-control.mjs";
 
@@ -31,6 +37,12 @@ function usage() {
   node scripts/automation-control.mjs task show [options]
   node scripts/automation-control.mjs task transition [options]
   node scripts/automation-control.mjs task authorize [options]
+  node scripts/automation-control.mjs task claim-acquire [options]
+  node scripts/automation-control.mjs task claim-list [options]
+  node scripts/automation-control.mjs task claim-show [options]
+  node scripts/automation-control.mjs task claim-heartbeat [options]
+  node scripts/automation-control.mjs task claim-transfer [options]
+  node scripts/automation-control.mjs task claim-release [options]
   node scripts/automation-control.mjs event append [options]
   node scripts/automation-control.mjs owner intent-digest --intent-json <json>
   node scripts/automation-control.mjs lease acquire [options]
@@ -55,6 +67,7 @@ Task options:
   --approval-reference <text>       Required when provider authority becomes approved.
   --lease-name <name>               Canonical live lease for the actor.
   --lease-token <token>             Short-lived lease token. Defaults to FREED_AUTOMATION_LEASE_TOKEN.
+  --request-json <json>             Exact task-scoped factory claim request.
 
 Event options:
   --type <event-type>               Stable event type.
@@ -254,6 +267,95 @@ export function executeCommand(command, { env = process.env } = {}) {
           ),
         ),
       },
+    };
+  }
+
+  if (
+    resource === "task" &&
+    [
+      "claim-acquire",
+      "claim-heartbeat",
+      "claim-transfer",
+      "claim-release",
+    ].includes(action)
+  ) {
+    assertOnlyOptions(options, [
+      "stateRoot",
+      "actor",
+      "leaseName",
+      "leaseToken",
+      "requestJson",
+    ]);
+    const operation = {
+      "claim-acquire": acquireFactoryExecutionClaim,
+      "claim-heartbeat": heartbeatFactoryExecutionClaim,
+      "claim-transfer": transferFactoryExecutionClaim,
+      "claim-release": releaseFactoryExecutionClaim,
+    }[action];
+    return {
+      action: `task.${action}`,
+      result: operation({
+        stateRoot,
+        actor: required(options, "actor", "--actor"),
+        leaseName: required(options, "leaseName", "--lease-name"),
+        leaseToken: requiredOptionOrEnv(
+          options,
+          "leaseToken",
+          "--lease-token",
+          env,
+          "FREED_AUTOMATION_LEASE_TOKEN",
+        ),
+        request: parseJsonObject(
+          required(options, "requestJson", "--request-json"),
+          "--request-json",
+        ),
+      }),
+    };
+  }
+
+  if (resource === "task" && action === "claim-show") {
+    assertOnlyOptions(options, ["stateRoot", "requestJson"]);
+    const request = parseJsonObject(
+      required(options, "requestJson", "--request-json"),
+      "--request-json",
+    );
+    if (
+      request.schemaVersion !== 1 ||
+      Object.keys(request).sort().join("\n") !==
+        ["schemaVersion", "taskId"].sort().join("\n")
+    ) {
+      throw new AutomationControlError(
+        "invalid_value",
+        "claim-show request has an unsupported shape.",
+      );
+    }
+    return {
+      action: "task.claim-show",
+      result: readFactoryExecutionClaim({
+        stateRoot,
+        taskId: request.taskId,
+      }),
+    };
+  }
+
+  if (resource === "task" && action === "claim-list") {
+    assertOnlyOptions(options, ["stateRoot", "requestJson"]);
+    const request = parseJsonObject(
+      required(options, "requestJson", "--request-json"),
+      "--request-json",
+    );
+    if (
+      request.schemaVersion !== 1 ||
+      Object.keys(request).sort().join("\n") !== "schemaVersion"
+    ) {
+      throw new AutomationControlError(
+        "invalid_value",
+        "claim-list request has an unsupported shape.",
+      );
+    }
+    return {
+      action: "task.claim-list",
+      result: listFactoryExecutionClaims({ stateRoot }),
     };
   }
 
@@ -554,12 +656,7 @@ export function executeCommand(command, { env = process.env } = {}) {
   }
 
   if (resource === "lease" && action === "bind-head") {
-    assertOnlyOptions(options, [
-      "stateRoot",
-      "name",
-      "scopeJson",
-      "headSha",
-    ]);
+    assertOnlyOptions(options, ["stateRoot", "name", "scopeJson", "headSha"]);
     return {
       action: "lease.bind-head",
       stateRoot,

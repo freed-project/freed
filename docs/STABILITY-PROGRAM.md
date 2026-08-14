@@ -49,6 +49,9 @@ The original audit findings and task prompts were migrated to those issues. Git 
 | Canary history | Content-addressed canary records bind exact builds, sessions, time bounds, workloads, cohorts, denominators, and raw evidence. |
 | Roadmap truth | `docs/roadmap-status.json` mirrors phase status from `docs/PHASE-*.md`. It does not authorize implementation or track debt. |
 
+AubTown workers receive task-scoped claims from the trusted nightly
+coordinator, not actor leases. The claims remain inside active task authority.
+
 The stability controller reconciles open debt issues with healthy evidence and active execution state. The nightly runner executes only controller-selected, eligible issues. When the backlog is empty, the controller selects the next package or subsystem from a persisted discovery cursor, inspects only that declared dependency boundary, and files evidence-backed issues. It records the completed boundary and cutoff, then stops. Newly discovered debt cannot be implemented in the same run.
 
 ## Scorecard
@@ -76,10 +79,11 @@ The first baseline was recorded on 2026-07-07 from a 6.05 hour idle soak of v26.
 1. Select an open `debt` issue with healthy, attributable evidence.
 2. Confirm there is no duplicate issue for the same root cause.
 3. Create or reconcile the active execution task with the canonical issue reference.
-4. Apply authority, provider-risk, and one-behavior-slot gates.
-5. Implement through the appropriate governed workflow.
-6. Validate the named counter or test.
-7. Record merge, install, and effect outcomes separately.
-8. Close the GitHub issue only when its completion criteria and required evidence are satisfied.
+4. For factory execution, acquire one exact task-scoped claim inside the same atomic task manifest. The claim binds custody and conflict domains but does not replace task or provider authority.
+5. Apply authority, provider-risk, and one-behavior-slot gates.
+6. Implement through the appropriate governed workflow.
+7. Validate the named counter or test.
+8. Record merge, install, and effect outcomes separately.
+9. Close the GitHub issue only when its completion criteria and required evidence are satisfied.
 
 The canonical soak and trigger contract is [SOAK-AND-TRIGGERS.md](SOAK-AND-TRIGGERS.md). The complete task, lease, outcome, and artifact contract is [AUTOMATION-CONTROL-PLANE.md](AUTOMATION-CONTROL-PLANE.md).

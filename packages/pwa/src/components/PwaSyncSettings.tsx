@@ -27,14 +27,17 @@ import { useCloudSyncActivity } from "./cloudSyncActivity";
 
 type Provider = "gdrive" | "dropbox" | "local";
 
-function getProviderInfo(syncConnected: boolean): {
+function getProviderInfo(
+  syncConnected: boolean,
+  configuredProvider: ReturnType<typeof getCloudProvider>,
+): {
   label: string;
   provider: Provider | null;
 } {
-  if (!syncConnected) return { label: "Not connected", provider: null };
-  const provider = getCloudProvider();
+  const provider = configuredProvider;
   if (provider === "gdrive") return { label: "Google Drive", provider: "gdrive" };
   if (provider === "dropbox") return { label: "Dropbox", provider: "dropbox" };
+  if (!syncConnected) return { label: "Not connected", provider: null };
   return { label: "Local Desktop", provider: "local" };
 }
 
@@ -134,7 +137,11 @@ export function PwaSyncSettings() {
     return times.length > 0 ? Math.max(...times) : null;
   }, [feeds]);
 
-  const { label, provider } = getProviderInfo(syncConnected);
+  const configuredCloudProvider = getCloudProvider();
+  const { label, provider } = getProviderInfo(
+    syncConnected,
+    configuredCloudProvider,
+  );
   const cloudProviderState = provider === "gdrive" || provider === "dropbox"
     ? cloudProviders?.[provider]
     : null;
@@ -169,7 +176,7 @@ export function PwaSyncSettings() {
   }, [activeCloudProvider]);
 
   // Disconnected, show connect UI inline with no intermediate "Connect" button.
-  if (!syncConnected) {
+  if (!syncConnected && configuredCloudProvider === null) {
     return (
       <div className="flex flex-col flex-1">
         <div className="mb-8 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]">
@@ -221,11 +228,14 @@ export function PwaSyncSettings() {
   const statusText = providerError
     ? isMergeBlocked(providerError) ? "Merge blocked" : "Needs attention"
     : cloudActivity ? `${cloudActivity.shortLabel} ${cloudActivity.elapsedLabel}`
-    : isSyncing ? "Syncing now" : "Connected";
+    : isSyncing ? "Syncing now"
+    : syncConnected ? "Connected" : "Not synchronized";
   const dotColor = providerError
     ? "bg-[rgb(var(--theme-feedback-danger-rgb))]"
-    : isSyncing
+    : isSyncing || cloudActivity
       ? "bg-[var(--theme-accent-secondary)] animate-pulse"
+      : !syncConnected
+        ? "bg-[var(--theme-text-soft)]"
       : "bg-[rgb(var(--theme-feedback-success-rgb))]";
 
   return (
@@ -246,6 +256,11 @@ export function PwaSyncSettings() {
           {providerError && (
             <p className="theme-feedback-text-danger mt-2 break-words text-xs">
               {describeProviderError(providerError)}
+            </p>
+          )}
+          {!syncConnected && !providerError && (
+            <p className="mt-2 text-xs text-[var(--theme-text-muted)]">
+              Google Drive is linked, but this device has not completed a Library sync.
             </p>
           )}
         </div>

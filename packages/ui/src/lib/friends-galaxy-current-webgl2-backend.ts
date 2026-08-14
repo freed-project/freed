@@ -75,7 +75,9 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     const compactViewport = width <= 720 || height <= 620;
     if (compactViewport === this.compactViewport) return;
     this.compactViewport = compactViewport;
-    this.decorativeStarCount = compactViewport ? 7_000 : 12_000;
+    this.decorativeStarCount = this.fixture.backgroundStarCount === 0
+      ? 0
+      : compactViewport ? 7_000 : 12_000;
     this.syncScene();
   }
 
@@ -184,6 +186,7 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
       selectedAccountId: this.selectedAccountId,
       variation: "nebula",
       quality: "settled",
+      decorativeStarCount: this.decorativeStarCount,
     });
     this.bufferUploadCount += 1;
   }

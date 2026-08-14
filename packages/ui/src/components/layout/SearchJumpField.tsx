@@ -1091,7 +1091,7 @@ export function SearchJumpField({
           ref={triggerPaletteRef}
           data-testid={usesFloatingTrigger ? "compact-sidebar-search-palette" : "sidebar-search-command-palette"}
           className="theme-dialog-shell theme-menu-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
-          style={palettePosition}
+          style={{ ...palettePosition, scrollbarGutter: "auto" }}
         >
           {renderActionSurface(usesFloatingTrigger)}
         </div>,
