@@ -1,8 +1,13 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-export const AUTOMATION_HOST_PROFILE_ROOT =
-  "/Library/Application Support/Freed";
+export function automationHostProfileRoot(platform = process.platform) {
+  if (platform === "darwin") return "/Library/Application Support/Freed";
+  if (platform === "linux") return "/etc/freed";
+  throw new Error(`Unsupported automation host platform: ${platform}`);
+}
+
+export const AUTOMATION_HOST_PROFILE_ROOT = automationHostProfileRoot();
 export const AUTOMATION_HOST_PROFILE_PATH = path.join(
   AUTOMATION_HOST_PROFILE_ROOT,
   "automation-host.json",

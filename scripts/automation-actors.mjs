@@ -328,10 +328,10 @@ export function assertProvisioningReady({
   repository,
   repoRoot,
 }) {
-  if (platform !== "darwin") {
+  if (!["darwin", "linux"].includes(platform)) {
     fail(
       "unsupported_platform",
-      "Automation actors can be provisioned only on macOS.",
+      "Automation actors can be provisioned only on macOS or Linux.",
     );
   }
   if (!Number.isSafeInteger(uid) || uid <= 0) {
@@ -351,10 +351,10 @@ export function assertProvisioningReady({
 }
 
 function assertOwnerHost(dependencies) {
-  if (dependencies.platform !== "darwin") {
+  if (!["darwin", "linux"].includes(dependencies.platform)) {
     fail(
       "unsupported_platform",
-      "Automation actor host commands require macOS.",
+      "Automation actor host commands require macOS or Linux.",
     );
   }
   if (!Number.isSafeInteger(dependencies.uid) || dependencies.uid <= 0) {
@@ -818,15 +818,26 @@ function defaultPinnedNodeResolver(dependencies) {
     fail("invalid_node_version", ".nvmrc must pin one exact Node version.");
   }
   const normalizedVersion = `v${requestedVersion.replace(/^v/, "")}`;
-  const candidate = path.join(
-    dependencies.homeDir,
-    ".nvm",
-    "versions",
-    "node",
-    normalizedVersion,
-    "bin",
-    "node",
-  );
+  let candidate;
+  if (dependencies.platform === "linux") {
+    candidate = dependencies.env.FREED_PINNED_NODE_EXECUTABLE;
+    if (!candidate || !path.isAbsolute(candidate)) {
+      fail(
+        "missing_pinned_node",
+        "Linux actor provisioning requires FREED_PINNED_NODE_EXECUTABLE to name an absolute, trusted Node executable.",
+      );
+    }
+  } else {
+    candidate = path.join(
+      dependencies.homeDir,
+      ".nvm",
+      "versions",
+      "node",
+      normalizedVersion,
+      "bin",
+      "node",
+    );
+  }
   const nodePath = inspectRegularFile(candidate, { executable: true });
   const actualVersion = runChecked(dependencies, nodePath, ["--version"], {
     cwd: dependencies.repoRoot,
@@ -889,7 +900,16 @@ function sudoInstall(dependencies, args, purpose) {
 function installDirectory(dependencies, directory) {
   sudoInstall(
     dependencies,
-    ["-d", "-o", "root", "-g", "wheel", "-m", "0755", directory],
+    [
+      "-d",
+      "-o",
+      "root",
+      "-g",
+      dependencies.trustedGroup,
+      "-m",
+      "0755",
+      directory,
+    ],
     "Root-owned directory installation",
   );
 }
@@ -897,7 +917,16 @@ function installDirectory(dependencies, directory) {
 function installFile(dependencies, source, destination, mode) {
   sudoInstall(
     dependencies,
-    ["-o", "root", "-g", "wheel", "-m", mode, source, destination],
+    [
+      "-o",
+      "root",
+      "-g",
+      dependencies.trustedGroup,
+      "-m",
+      mode,
+      source,
+      destination,
+    ],
     "Root-owned public material installation",
   );
 }
@@ -2086,6 +2115,7 @@ function dependenciesWithDefaults(overrides = {}) {
     launcherRoot: DEFAULT_LAUNCHER_ROOT,
     runtimeRoot: DEFAULT_RUNTIME_ROOT,
     trustedUid: 0,
+    trustedGroup: process.platform === "linux" ? "root" : "wheel",
     hostBuildPath: path.join(
       REPO_ROOT,
       "scripts",

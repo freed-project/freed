@@ -34,12 +34,12 @@ Local regression coverage does not automatically become a permanent universal re
 
 ## Execution tiers
 
-| Tier | Runs on | Contains |
-| --- | --- | --- |
-| 1. Changed-path | Every pull request | Only suites the changed paths can affect |
-| 2. Full integration | Every push to `dev` | Every suite, unscoped. This is the proof release admission inherits |
-| 3. Release delta | Tag and promotion | Version, notes, identity, build, packaging, artifacts |
-| 4. Exhaustive | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
+| Tier                | Runs on              | Contains                                                                                                       |
+| ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1. Changed-path     | Every pull request   | Only suites the changed paths can affect                                                                       |
+| 2. Full integration | Every push to `dev`  | Every suite, unscoped. This is the proof release admission inherits                                            |
+| 3. Release delta    | Tag and promotion    | Version, notes, identity, build, packaging, artifacts                                                          |
+| 4. Exhaustive       | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
 
 A test may be release-critical through an exact inherited receipt without rerunning inside the release workflow.
 
@@ -67,6 +67,12 @@ Three files gate every test behind a single module-level `process.platform === "
 - `scripts/trusted-publisher-host.test.mjs`
 
 `scripts/worktree-publish.test.mjs` deliberately stays in the Linux lane. It gates 7 of its 35 tests per-test, so the other 28 are real coverage. It also runs on the macOS lane, where its darwin cases execute for the first time.
+
+`scripts/automation-actor-linux.test.mjs` runs its five native launcher tests only
+on Linux. It compiles the reviewed Go source, exercises the real file descriptor
+channel and process boundary, and verifies that the production helper emits
+static tools. macOS records the suite as skipped because the Swift launcher has
+its own native lane.
 
 `run-tooling-smoke-shard.test.mjs` asserts that the sharded suites, the general suite, and the macOS lane together claim every repository test file. Nothing can fall out of the lane silently.
 
@@ -124,12 +130,12 @@ No test stays in a blocking lane merely because it has always been there.
 
 ## Targets
 
-| Lane | Target |
-| --- | --- |
-| Ordinary pull request | Under about 10 minutes |
-| Complex pull request | Under 20 minutes at the 95th percentile |
-| Latest `dev` integration | Under 25 minutes |
-| Release-delta admission | Under 10 minutes |
-| Tag to published artifacts | Under about 40 minutes |
+| Lane                       | Target                                  |
+| -------------------------- | --------------------------------------- |
+| Ordinary pull request      | Under about 10 minutes                  |
+| Complex pull request       | Under 20 minutes at the 95th percentile |
+| Latest `dev` integration   | Under 25 minutes                        |
+| Release-delta admission    | Under 10 minutes                        |
+| Tag to published artifacts | Under about 40 minutes                  |
 
 No UI-only pull request runs control-plane suites.
