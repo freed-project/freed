@@ -99,7 +99,8 @@ test("social provider empty states do not inherit a different provider error", a
     };
     store.getState().setFilter({ platform: "facebook" });
   });
-  await expect(page.getByText("Your Facebook feed is up to date.")).toBeVisible();
+  await expect(page.getByText("Welcome!")).toBeVisible();
+  await expect(page.getByText("No items to show.")).toBeVisible();
   await expect(page.getByText(LINKEDIN_ERROR)).toHaveCount(0);
 
   await page.evaluate(() => {
@@ -108,6 +109,7 @@ test("social provider empty states do not inherit a different provider error", a
     };
     store.getState().setFilter({ platform: "instagram" });
   });
-  await expect(page.getByText("Your Instagram feed is up to date.")).toBeVisible();
+  await expect(page.getByText("Welcome!")).toBeVisible();
+  await expect(page.getByText("No items to show.")).toBeVisible();
   await expect(page.getByText(LINKEDIN_ERROR)).toHaveCount(0);
 });

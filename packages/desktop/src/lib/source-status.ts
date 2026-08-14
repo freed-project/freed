@@ -122,6 +122,9 @@ export function getDesktopSourceStatus(
   const providerItemCount = isSocialProviderSourceId(sourceId)
     ? (desktopState.itemCountByPlatform[sourceId] ?? 0)
     : 0;
+  const syncing = isSocialProviderSourceId(sourceId)
+    ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
+    : false;
   const healthTone = getProviderStatusTone({
     isConnected,
     authError,
@@ -135,7 +138,7 @@ export function getDesktopSourceStatus(
   // A configured provider is not healthy merely because it has credentials.
   // Keep its status neutral until it has supplied at least one library item,
   // while preserving actionable warning and critical states.
-  const tone = isConnected && providerItemCount === 0 && healthTone === "healthy"
+  const tone = isConnected && providerItemCount === 0 && healthTone === "healthy" && !syncing
     ? "idle"
     : healthTone;
   const hasConfiguredEmptyLibrary = isConnected && providerItemCount === 0 && tone === "idle";
@@ -157,8 +160,6 @@ export function getDesktopSourceStatus(
           snapshot,
         }),
     paused: snapshot?.status === "paused",
-    syncing: isSocialProviderSourceId(sourceId)
-      ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
-      : false,
+    syncing,
   };
 }

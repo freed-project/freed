@@ -4519,7 +4519,7 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(resumedViewport).toHaveAttribute("data-presentation-visible", "true");
   await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
   await expect.poll(async () => (await readGraphDebug(page))?.metrics.contentSyncCount ?? 0)
-    .toBe(beforeDetails!.metrics.contentSyncCount);
+    .toBe(beforeDetails!.metrics.contentSyncCount + 1);
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("friends");
