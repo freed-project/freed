@@ -132,6 +132,45 @@ async function refreshGoogleToken(
   return refreshPromise;
 }
 
+function isGoogleAuthenticationFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /\b401\b/.test(message) &&
+    /(?:invalid authentication credentials|unauthenticated|autherror)/i.test(
+      message,
+    )
+  );
+}
+
+async function syncGoogleDriveWithFreshCredentials(
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<void> {
+  try {
+    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+  } catch (error) {
+    if (!isGoogleAuthenticationFailure(error)) throw error;
+
+    const bundle = readCloudTokenBundle("gdrive");
+    if (!bundle?.refreshToken) {
+      throw new Error(
+        "Google Drive authorization expired. Reconnect Google Drive to continue sync.",
+      );
+    }
+
+    const refreshedAccessToken = await refreshGoogleToken(bundle);
+    if (!refreshedAccessToken) {
+      throw new Error(
+        "Google Drive authorization expired. Reconnect Google Drive to continue sync.",
+      );
+    }
+    await syncPwaLibraryCoreFromGoogleDrive({
+      accessToken: refreshedAccessToken,
+      signal,
+    });
+  }
+}
+
 async function syncGoogleDriveOnce(
   generation: number,
   signal: AbortSignal,
@@ -146,7 +185,7 @@ async function syncGoogleDriveOnce(
     error: undefined,
   });
   try {
-    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+    await syncGoogleDriveWithFreshCredentials(accessToken, signal);
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
