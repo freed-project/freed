@@ -53,6 +53,9 @@ describe("Friends Galaxy navigation controller", () => {
     expect(navigation.frame.outwardZoomEnvelope.target).toBe(
       navigation.transform.scale,
     );
+    expect(navigation.frame.outwardZoomEnvelope.resistance).toBe(
+      navigation.frame.fittedScale,
+    );
   });
 
   it("focuses positive-depth identities at the bounded usable center", () => {
@@ -158,6 +161,26 @@ describe("Friends Galaxy navigation controller", () => {
       .toBeCloseTo(275, 10);
     expect(movingWorldY * navigation.transform.scale + navigation.transform.y)
       .toBeCloseTo(365, 10);
+  });
+
+  it("lets repeated outward input reach the same exact scale as Fit All", () => {
+    const navigation = new FriendsGalaxyNavigationController(
+      rendererScene(),
+      1_280,
+      720,
+      { top: 0, right: 356, bottom: 0, left: 292 },
+    );
+    navigation.focusNode("person:product-person-2", 1.2);
+
+    for (let index = 0; index < 24; index += 1) {
+      navigation.zoomAt(646, 360, 0.8);
+    }
+
+    expect(navigation.transform.scale).toBe(navigation.frame.fittedScale);
+    const wheelScale = navigation.transform.scale;
+    navigation.focusNode("person:product-person-2", 1.2);
+    navigation.fit();
+    expect(navigation.transform.scale).toBe(wheelScale);
   });
 
   it("preserves the previous pinch midpoint world point at the moving midpoint", () => {

@@ -648,12 +648,43 @@ test("friends graph controls align to the graph lane between sidebars", async ({
   );
 
   await expect(page.getByRole("button", { name: "Copy diagnostics" })).toHaveCount(0);
-  await page.context().grantPermissions(["clipboard-write"]);
-  await page.getByTestId("source-row-friends").hover();
-  await page.getByTestId("source-menu-trigger-friends").click();
-  await expect(page.getByTestId("friends-context-menu")).toBeVisible();
-  await expect(page.getByTestId("friends-menu-copy-diagnostics")).toHaveText("Copy diagnostics");
-  await page.getByTestId("friends-menu-copy-diagnostics").click();
-  await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const copyCameraDiagnostics = async () => {
+    await page.getByTestId("source-row-friends").hover();
+    await page.getByTestId("source-menu-trigger-friends").click();
+    await expect(page.getByTestId("friends-context-menu")).toBeVisible();
+    await expect(page.getByTestId("friends-menu-copy-diagnostics")).toHaveText("Copy diagnostics");
+    await page.getByTestId("friends-menu-copy-diagnostics").click();
+    await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
+    return page.evaluate(async () => {
+      const snapshot = JSON.parse(await navigator.clipboard.readText()) as {
+        camera: {
+          scale: number;
+          outwardTargetScale: number;
+          resistanceScale: number;
+        };
+      };
+      return snapshot.camera;
+    });
+  };
+
+  await page.getByRole("button", { name: "Fit all" }).click();
+  const fittedCamera = await copyCameraDiagnostics();
+  const graphViewport = page.getByTestId("friend-graph-viewport");
+  await graphViewport.hover();
+  await page.keyboard.down("Control");
+  for (let index = 0; index < 8; index += 1) await page.mouse.wheel(0, -800);
+  await page.keyboard.up("Control");
+  const zoomedInCamera = await copyCameraDiagnostics();
+  await graphViewport.hover();
+  await page.keyboard.down("Control");
+  for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, 800);
+  await page.keyboard.up("Control");
+  const wheelOutCamera = await copyCameraDiagnostics();
+
+  expect(zoomedInCamera.scale).toBeGreaterThan(fittedCamera.scale);
+  expect(wheelOutCamera.scale).toBe(fittedCamera.scale);
+  expect(wheelOutCamera.outwardTargetScale).toBe(fittedCamera.scale);
+  expect(wheelOutCamera.resistanceScale).toBe(fittedCamera.scale);
   await expect(page.getByText("Diagnostics copied", { exact: true })).toBeVisible();
 });

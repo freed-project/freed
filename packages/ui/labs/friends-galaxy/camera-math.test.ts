@@ -70,12 +70,12 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     );
   });
 
-  it("keeps the fitted overview ahead of the clip reserve", () => {
+  it("uses the fitted overview as the exact outward boundary", () => {
     const limits = friendsGalaxyCameraScaleLimits(844, -224, 220);
     const envelope = friendsGalaxyOutwardZoomEnvelope(0.2, limits);
 
     expect(envelope.target).toBe(0.2);
-    expect(envelope.resistance).toBeCloseTo(0.36, 12);
+    expect(envelope.resistance).toBe(envelope.target);
     expect(envelope.target).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
   });
@@ -85,8 +85,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const envelope = friendsGalaxyOutwardZoomEnvelope(0.001, limits);
 
     expect(envelope.target).toBe(limits.fitMinimum);
-    expect(envelope.resistance).toBeGreaterThan(envelope.target);
-    expect(envelope.resistance).toBeLessThanOrEqual(limits.maximum);
+    expect(envelope.resistance).toBe(envelope.target);
   });
 
   it("centers a prominent star inside the usable full-canvas viewport", () => {
@@ -176,6 +175,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     expect(projectedCenter.x).toBeCloseTo(720, 4);
     expect(projectedCenter.y).toBeCloseTo(412, 4);
     expect(frame.outwardZoomEnvelope.target).toBe(frame.fittedScale);
+    expect(frame.outwardZoomEnvelope.resistance).toBe(frame.fittedScale);
   });
 
   it("uses the compact exploration floor only for initial framing", () => {

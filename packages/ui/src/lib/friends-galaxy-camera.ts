@@ -12,7 +12,6 @@ export const FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE = 96;
 
 const ZOOM_RESISTANCE_SCALE_MULTIPLIER = 1.55;
 const FIT_MINIMUM_RESISTANCE_PROGRESS = 0.12;
-const OUTWARD_ZOOM_RESISTANCE_FIT_RATIO = 1.8;
 const ABSOLUTE_MAXIMUM_SCALE = 6;
 
 const EMPTY_VIEWPORT_INSETS: FriendsGalaxyViewportInsets = {
@@ -103,18 +102,10 @@ export function friendsGalaxyOutwardZoomEnvelope(
     limits.fitMinimum,
     Math.min(limits.maximum, fittedScale),
   );
-  const target = boundedFit;
-  const resistance = Math.max(
-    target,
-    Math.min(
-      limits.maximum,
-      Math.max(
-        limits.resistance,
-        boundedFit * OUTWARD_ZOOM_RESISTANCE_FIT_RATIO,
-      ),
-    ),
-  );
-  return { target, resistance };
+  return {
+    target: boundedFit,
+    resistance: boundedFit,
+  };
 }
 
 export function friendsGalaxyFittedCameraScale(

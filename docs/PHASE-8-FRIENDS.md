@@ -602,7 +602,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.164 | Restore the standard workspace sidebar inset on Friends while retaining the full-frame pointer-free Galaxy background beneath it                                                                                                                                 | Medium     | Done        |
 | 8.165 | Extend the shared map and Friends Galaxy palette registry with AubOS Starship and Dark Star                                                                                                                                                                      | Medium     | Done        |
 | 8.166 | Move the Freed Desktop non-Saved Friends-only feed onto versioned `feed_browse_page_v2` SQLite pages when no search is active, while preserving Person-first membership, ordinary browse ordering, ranking invalidation, bounded projection and renderer residency, selected-card continuity, exact Automerge fallback, and the PWA reader | High       | Done        |
-| 8.167 | Match the Friends detail rail's vertical card insets to the primary navigation rail, keep both resize rails full-height, make the per-canvas fitted overview the exact outward interaction ceiling, and move graph diagnostics into the Friends sidebar menu     | Medium     | Done        |
+| 8.167 | Match the Friends detail rail's vertical card insets to the primary navigation rail, keep both resize rails full-height, clamp wheel and pinch zoom at the exact per-canvas Fit All scale, and move graph diagnostics into the Friends sidebar menu              | Medium     | Done        |
 
 ---
 
