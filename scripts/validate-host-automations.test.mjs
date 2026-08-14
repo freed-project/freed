@@ -374,6 +374,11 @@ function audit(value, options = {}) {
     }),
     modelCatalog: modelCatalog(),
     nowMs: NOW_MS,
+    hostAssignmentInspector: () => ({
+      ready: true,
+      reason: "assigned primary automation host",
+      hostId: "b7c5b98e-3f78-435a-b734-8fef4f457549",
+    }),
     ...options,
   });
 }
@@ -432,6 +437,25 @@ test("heartbeat overlays validate cadence and thread target without a cron model
   const value = heartbeatFixture();
   const result = audit(value);
   assert.equal(result.issueCount, 0);
+});
+
+test("an active nightly executor requires the assigned primary host", () => {
+  const value = fixture();
+  writeSavedAutomation(value, { status: "ACTIVE" });
+  writeLauncherRecord(value);
+  const result = audit(value, {
+    hostAssignmentInspector: () => ({
+      ready: false,
+      reason: "host profile is missing",
+    }),
+  });
+
+  assert.equal(
+    result.records[0].issues.some(
+      (entry) => entry.code === "active-on-nonprimary-host",
+    ),
+    true,
+  );
 });
 
 test("heartbeat destination may be omitted when a thread target is present", () => {
