@@ -45,6 +45,7 @@ import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   stopSync,
   restartCloudSync,
+  startAllCloudSyncs,
   stopAllCloudSyncs,
   getActiveProviders,
   getValidCloudToken,
@@ -585,6 +586,16 @@ function App() {
     if (!legalAccepted || lockedStartupState !== "ready") return;
     initialize();
   }, [initialize, legalAccepted, lockedStartupState]);
+
+  useEffect(() => {
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    void startAllCloudSyncs().catch((error) => {
+      log.warn(
+        `[cloud] Failed to resume configured sync: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    return () => stopAllCloudSyncs();
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;

@@ -106,7 +106,7 @@ describe("useCloudProviders", () => {
     expect(mocks.startCloudSync).not.toHaveBeenCalled();
   });
 
-  it("does not clear existing cloud sync errors when a provider is connected", async () => {
+  it("does not call a stored token connected before startup reconciliation", async () => {
     mocks.getCloudToken.mockImplementation((provider: string) =>
       provider === "gdrive" ? "test-access-token" : null,
     );
@@ -115,13 +115,8 @@ describe("useCloudProviders", () => {
       root.render(<Harness />);
     });
 
-    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connected");
-    expect(mocks.updateCloudProvider).toHaveBeenCalledWith("gdrive", { status: "connected" });
-    const gdriveCall = mocks.updateCloudProvider.mock.calls.find(
-      ([provider]) => provider === "gdrive",
-    );
-    expect(gdriveCall?.[1]).toEqual({ status: "connected" });
-    expect(Object.hasOwn(gdriveCall?.[1] ?? {}, "error")).toBe(false);
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connecting");
+    expect(mocks.updateCloudProvider).not.toHaveBeenCalled();
   });
 
   it("stays connecting until the initial cloud reconciliation completes", async () => {

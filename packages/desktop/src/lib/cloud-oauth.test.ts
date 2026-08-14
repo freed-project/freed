@@ -5,6 +5,10 @@ const shellOpenMock = vi.fn();
 let oauthListener: ((event: { payload: { code: string; state: string } }) => void) | null = null;
 let unlistenMock = vi.fn();
 
+function nativeBody(value: string): string {
+  return btoa(value);
+}
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
@@ -79,11 +83,11 @@ describe("desktop Google OAuth", () => {
         return {
           status: 200,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             access_token: "access-token",
             refresh_token: "refresh-token",
             expires_in: 3600,
-          }))),
+          })),
         };
       }
       return null;
@@ -264,10 +268,10 @@ describe("desktop Google OAuth", () => {
         return {
           status: 200,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             access_token: "refreshed-access-token",
             expires_in: 3600,
-          }))),
+          })),
         };
       }
       return null;
@@ -303,10 +307,10 @@ describe("desktop Google OAuth", () => {
         return {
           status: 200,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             access_token: "shared-refreshed-access-token",
             expires_in: 3600,
-          }))),
+          })),
         };
       }
       return null;
@@ -343,10 +347,10 @@ describe("desktop Google OAuth", () => {
         return {
           status: 200,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             access_token: "forced-refreshed-access-token",
             expires_in: 3600,
-          }))),
+          })),
         };
       }
       return null;
@@ -431,9 +435,9 @@ describe("desktop Google OAuth", () => {
         return {
           status: 200,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             access_token: "fallback-expiring-access-token",
-          }))),
+          })),
         };
       }
       return null;
@@ -485,11 +489,11 @@ describe("desktop Google OAuth", () => {
         return {
           status: 400,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             error: "invalid_scope",
             error_description:
               "Contacts API failed for access_token=oauth-secret user@example.com refresh_token=refresh-secret.",
-          }))),
+          })),
         };
       }
       return null;
@@ -521,9 +525,9 @@ describe("desktop Google OAuth", () => {
         return {
           status: 502,
           headers: [["content-type", "text/html"]],
-          body: Array.from(new TextEncoder().encode(
+          bodyB64: nativeBody(
             "<html>bad gateway access_token=oauth-secret user@example.com</html>",
-          )),
+          ),
         };
       }
       return null;
@@ -584,10 +588,10 @@ describe("desktop Google OAuth", () => {
         return {
           status,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             error: errorCode,
             error_description: "access_token=category-secret user@example.com",
-          }))),
+          })),
         };
       }
       return null;
@@ -616,10 +620,10 @@ describe("desktop Google OAuth", () => {
         return {
           status: 400,
           headers: [["content-type", "application/json"]],
-          body: Array.from(new TextEncoder().encode(JSON.stringify({
+          bodyB64: nativeBody(JSON.stringify({
             error: "invalid_request",
             error_description: "client_secret is missing.",
-          }))),
+          })),
         };
       }
       return null;

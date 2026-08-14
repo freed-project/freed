@@ -1,11 +1,10 @@
 /**
  * PWA update detection & application.
  *
- * vite-plugin-pwa's `prompt` mode parks new service workers in the `waiting`
- * state and fires `onNeedRefresh` so the user can choose when to reload.
- * This module bridges that signal to React components via pub/sub,
- * provides an imperative `checkForPwaUpdate()` for the Settings button,
- * and runs a background interval so long-running sessions are not skipped.
+ * Production workers activate immediately so a stale shell cannot keep
+ * requesting deleted hashed assets before React can show an update prompt.
+ * This module retains the manual check and status hooks for diagnostics and
+ * runs a background interval so long-running sessions still check promptly.
  */
 
 import { registerSW } from "virtual:pwa-register";
