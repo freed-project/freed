@@ -3,7 +3,7 @@
   "version": "26.8.1402-dev",
   "channel": "dev",
   "dayKey": "26.8.14",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-14T19:40:39.824Z",
   "model": "heuristic",
@@ -106,19 +106,29 @@
     ]
   },
   "release": {
-    "deck": "Tappable zoom step controls, task-scoped factory claims, and make provider sync scheduling durable",
+    "deck": "Durable background sync, safer wake recovery, and faster Friends and Map views",
     "features": [
-      "Tappable zoom step controls",
-      "Task-scoped factory claims"
+      "Independent automatic sync schedules for every social provider",
+      "Provider cadence controls, automatic sync pause switches, and local schedule diagnostics",
+      "Tappable zoom controls and task-scoped factory claims"
     ],
     "fixes": [
-      "Release build and type-safety cleanup",
-      "SQLite Google Drive sync restored",
-      "Friends dust test control removed"
+      "Recover Facebook and Instagram sync ownership after sleep, wake, and renderer restarts",
+      "Accept ready Instagram articles before their first layout height is measured",
+      "Prevent automatic provider work from colliding or bursting after wake",
+      "Restore SQLite Google Drive sync",
+      "Stabilize map panels and markers",
+      "Show unlinked provider identity labels",
+      "Standardize sidebar search and navigation menus",
+      "Clarify empty provider states",
+      "Streamline Friends Galaxy rendering",
+      "Keep theme previews accurate on map hover"
     ],
     "followUps": [
-      "Streamline Friends Galaxy startup and navigation"
+      "Measure Facebook and Instagram reliability over a multi-day installed soak",
+      "Compare provider cadence and wake behavior with the previous release",
+      "Continue profiling Friends and Map performance on large libraries"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1402-dev\n\nTappable zoom step controls, task-scoped factory claims, and make provider sync scheduling durable\n\n### Features\n\n- Tappable zoom step controls\n- Task-scoped factory claims\n\n### Fixes\n\n- Release build and type-safety cleanup\n- SQLite Google Drive sync restored\n- Friends dust test control removed\n\n### Follow-ups\n\n- Streamline Friends Galaxy startup and navigation\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1402-dev\n\nDurable background sync, safer wake recovery, and faster Friends and Map views\n\n### Features\n\n- Independent automatic sync schedules for every social provider\n- Provider cadence controls, automatic sync pause switches, and local schedule diagnostics\n- Tappable zoom controls and task-scoped factory claims\n\n### Fixes\n\n- Recover Facebook and Instagram sync ownership after sleep, wake, and renderer restarts\n- Accept ready Instagram articles before their first layout height is measured\n- Prevent automatic provider work from colliding or bursting after wake\n- Restore SQLite Google Drive sync\n- Stabilize map panels and markers\n- Show unlinked provider identity labels\n- Standardize sidebar search and navigation menus\n- Clarify empty provider states\n- Streamline Friends Galaxy rendering\n- Keep theme previews accurate on map hover\n\n### Follow-ups\n\n- Measure Facebook and Instagram reliability over a multi-day installed soak\n- Compare provider cadence and wake behavior with the previous release\n- Continue profiling Friends and Map performance on large libraries\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
