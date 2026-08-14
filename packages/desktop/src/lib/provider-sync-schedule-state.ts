@@ -102,6 +102,11 @@ export type ProviderScheduleClaim =
       nextEligibleAt?: number;
     };
 
+export interface ProviderScheduleOwnershipReconciliation {
+  busyProvider: AutomaticSyncProvider | null;
+  abandonedProviders: AutomaticSyncProvider[];
+}
+
 const RECORD_PREFIX = "freed-device-provider-sync-state-v2:";
 const GLOBAL_KEY = "freed-device-provider-sync-global-v1";
 const INITIALIZED_KEY = "freed-device-provider-sync-initialized-v2";
@@ -634,31 +639,87 @@ export function deferProviderScheduleLocally(input: {
   });
 }
 
-function abandonExpiredAttempts(now: number, random: RandomSource): AutomaticSyncProvider | null {
+function abandonAttempt(
+  record: ProviderScheduleRecord,
+  now: number,
+  random: RandomSource,
+): boolean {
+  const regime =
+    record.regime.expiresAt <= now
+      ? sampleProviderRegime(now, random)
+      : record.regime;
+  const safeDelay = sampleProviderDelayMs({
+    bounds: record.bounds,
+    regimeMultiplier: regime.multiplier,
+    yieldFactor: record.yieldFactor,
+    random,
+  });
+  return writeRecord({
+    ...record,
+    phase: "settled",
+    regime,
+    nextDueAt: Math.max(record.nextDueAt, now + safeDelay),
+    attempt: undefined,
+    lastAttemptFinishedAt: now,
+    lastOutcome: "abandoned",
+    lastStage: "stale_lease",
+  });
+}
+
+export function reconcileProviderScheduleOwnership(input: {
+  now?: number;
+  random?: RandomSource;
+  nativeStatusAvailable?: boolean;
+  nativeOperationActive?: boolean;
+  nativeActiveProvider?: AutomaticSyncProvider | null;
+} = {}): ProviderScheduleOwnershipReconciliation {
+  const now = input.now ?? Date.now();
+  const random = input.random ?? createCryptoRandomSource();
+  const abandonedProviders: AutomaticSyncProvider[] = [];
+  const attemptedProviders: AutomaticSyncProvider[] = [];
   for (const provider of AUTOMATIC_SYNC_PROVIDERS) {
     const state = readRecord(provider);
     if (state.status !== "supported" || !state.value.attempt) continue;
-    if (state.value.attempt.leaseUntil > now) return provider;
-    const record = state.value;
-    const regime = record.regime.expiresAt <= now ? sampleProviderRegime(now, random) : record.regime;
-    const safeDelay = sampleProviderDelayMs({
-      bounds: record.bounds,
-      regimeMultiplier: regime.multiplier,
-      yieldFactor: record.yieldFactor,
-      random,
-    });
-    writeRecord({
-      ...record,
-      phase: "settled",
-      regime,
-      nextDueAt: Math.max(record.nextDueAt, now + safeDelay),
-      attempt: undefined,
-      lastAttemptFinishedAt: now,
-      lastOutcome: "abandoned",
-      lastStage: "stale_lease",
-    });
+    attemptedProviders.push(provider);
   }
-  return null;
+
+  if (input.nativeStatusAvailable && input.nativeOperationActive) {
+    const owner =
+      input.nativeActiveProvider ?? attemptedProviders[0] ?? null;
+    if (owner) {
+      const state = readRecord(owner);
+      if (state.status === "supported" && state.value.attempt) {
+        const retained = writeRecord({
+          ...state.value,
+          attempt: {
+            ...state.value.attempt,
+            leaseUntil: Math.max(
+              state.value.attempt.leaseUntil,
+              now + DEFAULT_CLAIM_LEASE_MS,
+            ),
+          },
+        });
+        if (!retained) {
+          return { busyProvider: owner, abandonedProviders };
+        }
+      }
+    }
+    return { busyProvider: owner, abandonedProviders };
+  }
+
+  for (const provider of attemptedProviders) {
+    const state = readRecord(provider);
+    if (state.status !== "supported" || !state.value.attempt) continue;
+    if (!input.nativeStatusAvailable && state.value.attempt.leaseUntil > now) {
+      return { busyProvider: provider, abandonedProviders };
+    }
+    const record = state.value;
+    if (!abandonAttempt(record, now, random)) {
+      return { busyProvider: provider, abandonedProviders };
+    }
+    abandonedProviders.push(provider);
+  }
+  return { busyProvider: null, abandonedProviders };
 }
 
 export function claimProviderSchedule(input: {
@@ -670,8 +731,10 @@ export function claimProviderSchedule(input: {
   const now = input.now ?? Date.now();
   const random = input.random ?? createCryptoRandomSource();
   if (!getAutomaticProviderSyncEnabled()) return { status: "paused" };
-  const busyProvider = abandonExpiredAttempts(now, random);
-  if (busyProvider) return { status: "busy", provider: busyProvider };
+  const ownership = reconcileProviderScheduleOwnership({ now, random });
+  if (ownership.busyProvider) {
+    return { status: "busy", provider: ownership.busyProvider };
+  }
   const state = readRecord(input.provider);
   if (state.status !== "supported") return { status: "storage_blocked" };
   const record = state.value;

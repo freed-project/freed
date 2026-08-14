@@ -1,5 +1,6 @@
 import type { RuntimeMemorySnapshot } from "@freed/ui/lib/debug-store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   BACKGROUND_JOB_LABELS,
   finishBackgroundActivity,
@@ -37,6 +38,12 @@ export interface BackgroundRuntimeStatus {
   activeJob: BackgroundJobKind | null;
   activeSource: string | null;
   activeAgeMs: number | null;
+}
+
+export interface NativeBackgroundRuntimeOperationStatus {
+  available: boolean;
+  operation: string | null;
+  ageMs: number | null;
 }
 
 export interface RendererRecoveryStateEvent {
@@ -273,6 +280,36 @@ export function getBackgroundRuntimeStatus(): BackgroundRuntimeStatus {
     activeSource: activeJob?.source ?? null,
     activeAgeMs,
   };
+}
+
+export async function getNativeBackgroundRuntimeOperationStatus(): Promise<
+  NativeBackgroundRuntimeOperationStatus
+> {
+  if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") {
+    return { available: false, operation: null, ageMs: null };
+  }
+  try {
+    const status = await invoke<{ operation?: unknown; ageMs?: unknown }>(
+      "get_background_runtime_active_operation",
+    );
+    const operation =
+      typeof status?.operation === "string" && status.operation.length > 0
+        ? status.operation.slice(0, 160)
+        : null;
+    const ageMs =
+      typeof status?.ageMs === "number" &&
+      Number.isFinite(status.ageMs) &&
+      status.ageMs >= 0
+        ? status.ageMs
+        : null;
+    return { available: true, operation, ageMs };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(
+      `[background-runtime] native active-operation status unavailable error=${message}`,
+    );
+    return { available: false, operation: null, ageMs: null };
+  }
 }
 
 export function canStartBackgroundJob(

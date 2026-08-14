@@ -2,6 +2,7 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import {
   canStartBackgroundJob,
+  getNativeBackgroundRuntimeOperationStatus,
   isBackgroundRuntimeDeferredError,
 } from "./background-runtime-coordinator";
 import { runScheduledProviderAdapter } from "./provider-sync-adapters";
@@ -17,6 +18,7 @@ import {
   initializeProviderSchedules,
   listDueProviderSchedules,
   markProviderContactIssued,
+  reconcileProviderScheduleOwnership,
   settleProviderSchedule,
   type ProviderScheduleRecord,
 } from "./provider-sync-schedule-state";
@@ -121,10 +123,48 @@ function chooseDueProvider(now: number, random: RandomSource) {
   };
 }
 
+function providerForNativeOperation(
+  operation: string | null,
+): AutomaticSyncProvider | null {
+  if (!operation) return null;
+  if (operation.startsWith("fb_")) return "facebook";
+  if (operation.startsWith("ig_")) return "instagram";
+  if (operation.startsWith("li_")) return "linkedin";
+  if (operation.startsWith("yt_")) return "youtube";
+  if (operation.startsWith("substack_")) return "substack";
+  if (operation.startsWith("medium_")) return "medium";
+  return null;
+}
+
 async function runOne(wakeContext: boolean): Promise<void> {
   if (!acceptingWork || !activeRandom) return;
   const random = activeRandom;
   const decisionAt = nowSource();
+  const nativeOperation = await getNativeBackgroundRuntimeOperationStatus();
+  const ownership = reconcileProviderScheduleOwnership({
+    now: decisionAt,
+    random,
+    nativeStatusAvailable: nativeOperation.available,
+    nativeOperationActive: nativeOperation.operation !== null,
+    nativeActiveProvider: providerForNativeOperation(nativeOperation.operation),
+  });
+  for (const provider of ownership.abandonedProviders) {
+    const snapshot = getProviderScheduleSnapshot(provider);
+    if (snapshot.status !== "supported" || !snapshot.record) continue;
+    recordProviderScheduleEvent(
+      "provider_schedule_settled",
+      {
+        ...eventBase(snapshot.record, {
+          actualAt: decisionAt,
+          wakeContext,
+          trigger: wakeContext ? "wake" : "scheduled",
+        }),
+        outcome: "abandoned",
+        stage: "stale_lease",
+      },
+    );
+  }
+  if (nativeOperation.operation !== null || ownership.busyProvider) return;
   const decision = chooseDueProvider(decisionAt, random);
   const due = decision.selected;
   if (!due) return;

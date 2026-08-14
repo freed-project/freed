@@ -311,8 +311,56 @@ export function simulateProviderCadence(input: {
           random.uniform() * (localCollisionMaximumMs - localCollisionMinimumMs);
         if (retainedDueAt !== dueAt) localDeferralIntervalConsumptionViolations += 1;
       } else if (scenario === "renderer_restart") {
-        const persistedDueAt = dueAt;
-        if (persistedDueAt !== dueAt) rendererRestartDeadlineViolations += 1;
+        const restartAt = dueAt + 30_000;
+        const nativeSettlesAt = restartAt + 5 * 60_000;
+        const persisted = JSON.stringify({
+          provider,
+          nextDueAt: dueAt + firstDelay,
+          attempt: {
+            attemptId: `${provider}:restart`,
+            leaseUntil: restartAt - 1,
+          },
+        });
+        const restored = JSON.parse(persisted) as {
+          provider?: string;
+          nextDueAt?: number;
+          attempt?: { attemptId?: string; leaseUntil?: number };
+        };
+        if (
+          restored.provider !== provider ||
+          restored.nextDueAt !== dueAt + firstDelay ||
+          restored.attempt?.attemptId !== `${provider}:restart`
+        ) {
+          rendererRestartDeadlineViolations += 1;
+        }
+        if (restored.attempt) {
+          restored.attempt.leaseUntil = Math.max(
+            restored.attempt.leaseUntil ?? 0,
+            restartAt + 15 * 60_000,
+          );
+        }
+        if ((restored.attempt?.leaseUntil ?? 0) <= restartAt) {
+          rendererRestartDeadlineViolations += 1;
+        }
+        const restartRandom = seededRandom(
+          `${rootSeed}:${String(installation)}:${provider}:restart`,
+        );
+        const safeFutureDelay = sampleProviderDelayMs({
+          bounds,
+          regimeMultiplier: regime.multiplier,
+          yieldFactor,
+          random: restartRandom,
+        });
+        const rescheduledAt = Math.max(
+          restored.nextDueAt ?? dueAt,
+          nativeSettlesAt + safeFutureDelay,
+        );
+        if (
+          rescheduledAt < (restored.nextDueAt ?? dueAt) ||
+          rescheduledAt <= nativeSettlesAt
+        ) {
+          rendererRestartDeadlineViolations += 1;
+        }
       } else if (scenario === "provider_error") {
         const normalNextDue = dueAt + averageDelay;
         const decorrelatedBackoff =

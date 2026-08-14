@@ -3145,6 +3145,30 @@ impl CaptureState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackgroundRuntimeActiveOperation {
+    operation: Option<String>,
+    age_ms: Option<u64>,
+}
+
+fn background_runtime_active_operation(
+    runtime: &BackgroundRuntimeCoordinator,
+) -> BackgroundRuntimeActiveOperation {
+    let (operation, age_ms) = runtime.active_job_for_health();
+    BackgroundRuntimeActiveOperation {
+        operation: operation.map(str::to_string),
+        age_ms: age_ms.map(|value| u64::try_from(value).unwrap_or(u64::MAX)),
+    }
+}
+
+#[tauri::command]
+fn get_background_runtime_active_operation(
+    capture: tauri::State<'_, CaptureState>,
+) -> BackgroundRuntimeActiveOperation {
+    background_runtime_active_operation(&capture.background_runtime)
+}
+
 struct ActiveScraperSession {
     _guard: tokio::sync::OwnedMutexGuard<()>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
@@ -13890,6 +13914,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_platform,
+            get_background_runtime_active_operation,
             get_desktop_installation_witness,
             get_updater_target,
             retry_startup_after_crash,
@@ -15261,6 +15286,35 @@ mod tests {
         assert!(runtime.begin_job("fb_scrape_feed").is_ok());
         assert!(runtime.begin_job("ig_scrape_feed").is_err());
         assert!(runtime.finish_job("fb_scrape_feed").is_some());
+    }
+
+    #[test]
+    fn background_runtime_reports_native_ownership_across_renderer_restarts() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+
+        assert_eq!(
+            background_runtime_active_operation(&runtime),
+            BackgroundRuntimeActiveOperation {
+                operation: None,
+                age_ms: None,
+            }
+        );
+
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        let active = background_runtime_active_operation(&runtime);
+        assert_eq!(active.operation.as_deref(), Some("fb_scrape_feed"));
+        assert!(active.age_ms.is_some());
+
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+        assert_eq!(
+            background_runtime_active_operation(&runtime),
+            BackgroundRuntimeActiveOperation {
+                operation: None,
+                age_ms: None,
+            }
+        );
     }
 
     #[test]

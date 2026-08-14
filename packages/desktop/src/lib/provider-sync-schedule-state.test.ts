@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RandomSource } from "./provider-sync-cadence";
 import {
   claimProviderSchedule,
@@ -143,6 +143,69 @@ describe("provider sync schedule state", () => {
     expect(settled.nextDueAt).toBeGreaterThanOrEqual(
       claim.attempt.claimedAt + 200 + 6 * 60 * 60_000,
     );
+  });
+
+  it("preserves independent Meta ownership through renderer restart until native settlement", async () => {
+    initializeProviderSchedules({ now: 0, random: random() });
+    const facebookBefore = getProviderScheduleSnapshot("facebook").record!;
+    const instagramBefore = getProviderScheduleSnapshot("instagram").record!;
+    const claim = claimProviderSchedule({
+      provider: "facebook",
+      now: facebookBefore.nextDueAt + 1,
+      random: random(),
+      claimLeaseMs: 1_000,
+    });
+    expect(claim.status).toBe("claimed");
+    if (claim.status !== "claimed") return;
+
+    markProviderContactIssued({
+      provider: "facebook",
+      attemptId: claim.attempt.attemptId,
+      now: claim.attempt.claimedAt + 1,
+    });
+    const persisted = localStorage.getItem(
+      "freed-device-provider-sync-state-v2:facebook",
+    );
+    expect(persisted).toContain(claim.attempt.attemptId);
+
+    vi.resetModules();
+    const restarted = await import("./provider-sync-schedule-state");
+    const activeAt = claim.attempt.leaseUntil + 1;
+    const retained = restarted.reconcileProviderScheduleOwnership({
+      now: activeAt,
+      random: random(),
+      nativeStatusAvailable: true,
+      nativeOperationActive: true,
+      nativeActiveProvider: "facebook",
+    });
+    expect(retained).toEqual({
+      busyProvider: "facebook",
+      abandonedProviders: [],
+    });
+    const retainedFacebook = restarted.getProviderScheduleSnapshot("facebook")
+      .record!;
+    expect(retainedFacebook.phase).toBe("contacted");
+    expect(retainedFacebook.attempt?.leaseUntil).toBeGreaterThan(activeAt);
+    expect(restarted.getProviderScheduleSnapshot("instagram").record).toEqual(
+      instagramBefore,
+    );
+
+    const settledAt = activeAt + 10_000;
+    const abandoned = restarted.reconcileProviderScheduleOwnership({
+      now: settledAt,
+      random: random(),
+      nativeStatusAvailable: true,
+      nativeOperationActive: false,
+      nativeActiveProvider: null,
+    });
+    expect(abandoned).toEqual({
+      busyProvider: null,
+      abandonedProviders: ["facebook"],
+    });
+    const after = restarted.getProviderScheduleSnapshot("facebook").record!;
+    expect(after.attempt).toBeUndefined();
+    expect(after.lastOutcome).toBe("abandoned");
+    expect(after.nextDueAt).toBeGreaterThan(settledAt);
   });
 
   it("restores due state when local deferral happens before contact", () => {

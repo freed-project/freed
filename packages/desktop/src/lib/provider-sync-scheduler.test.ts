@@ -3,12 +3,14 @@ import type { ProviderScheduleRecord } from "./provider-sync-schedule-state";
 
 const runScheduledProviderAdapter = vi.fn();
 const canStartBackgroundJob = vi.fn();
+const getNativeBackgroundRuntimeOperationStatus = vi.fn();
 const initializeProviderSchedules = vi.fn();
 const listDueProviderSchedules = vi.fn();
 const getProviderScheduleSnapshot = vi.fn();
 const claimProviderSchedule = vi.fn();
 const deferProviderScheduleLocally = vi.fn();
 const markProviderContactIssued = vi.fn();
+const reconcileProviderScheduleOwnership = vi.fn();
 const settleProviderSchedule = vi.fn();
 const recordProviderScheduleEvent = vi.fn();
 
@@ -29,6 +31,7 @@ const record: ProviderScheduleRecord = {
 vi.mock("./provider-sync-adapters", () => ({ runScheduledProviderAdapter }));
 vi.mock("./background-runtime-coordinator", () => ({
   canStartBackgroundJob,
+  getNativeBackgroundRuntimeOperationStatus,
   isBackgroundRuntimeDeferredError: () => false,
 }));
 vi.mock("./provider-sync-schedule-state", () => ({
@@ -38,6 +41,7 @@ vi.mock("./provider-sync-schedule-state", () => ({
   claimProviderSchedule,
   deferProviderScheduleLocally,
   markProviderContactIssued,
+  reconcileProviderScheduleOwnership,
   settleProviderSchedule,
 }));
 vi.mock("./runtime-health-events", () => ({ recordProviderScheduleEvent }));
@@ -63,6 +67,15 @@ describe("provider sync scheduler", () => {
     ]);
     getProviderScheduleSnapshot.mockReturnValue({ status: "supported", record });
     canStartBackgroundJob.mockReturnValue({ ok: true });
+    getNativeBackgroundRuntimeOperationStatus.mockResolvedValue({
+      available: true,
+      operation: null,
+      ageMs: null,
+    });
+    reconcileProviderScheduleOwnership.mockReturnValue({
+      busyProvider: null,
+      abandonedProviders: [],
+    });
     claimProviderSchedule.mockReturnValue({
       status: "claimed",
       record: { ...record, phase: "claimed", nextDueAt: 4_000_000 },
@@ -168,4 +181,94 @@ describe("provider sync scheduler", () => {
     expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
     scheduler.stopProviderSyncScheduler();
   });
+
+  it("coalesces repeated wake signals without issuing a second provider contact", async () => {
+    let releaseProvider: (() => void) | null = null;
+    listDueProviderSchedules
+      .mockReturnValueOnce([
+        {
+          provider: "facebook",
+          dueAt: 1_000,
+          dueAgeMs: 9_000,
+          normalizedOverdue: 2,
+        },
+      ])
+      .mockReturnValue([]);
+    runScheduledProviderAdapter.mockImplementation(
+      async (_provider: string, onProviderContact: () => void) => {
+        onProviderContact();
+        await new Promise<void>((resolve) => {
+          releaseProvider = resolve;
+        });
+        return {
+          provider: "facebook",
+          status: "success",
+          postsExtracted: 3,
+          itemsAdded: 2,
+        };
+      },
+    );
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+    expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
+    expect(markProviderContactIssued).toHaveBeenCalledOnce();
+
+    releaseProvider?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(listDueProviderSchedules).toHaveBeenCalledTimes(2);
+    expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
+    expect(markProviderContactIssued).toHaveBeenCalledOnce();
+    scheduler.stopProviderSyncScheduler();
+  });
+
+  it.each([
+    { operation: "fb_scrape_feed", provider: "facebook" },
+    { operation: "ig_scrape_feed", provider: "instagram" },
+  ] as const)(
+    "retains native $provider ownership after renderer restart without issuing another contact",
+    async ({ operation, provider }) => {
+      getNativeBackgroundRuntimeOperationStatus.mockResolvedValue({
+        available: true,
+        operation,
+        ageMs: 620_000,
+      });
+      reconcileProviderScheduleOwnership.mockReturnValue({
+        busyProvider: provider,
+        abandonedProviders: [],
+      });
+      const scheduler = await loadScheduler();
+      scheduler.startProviderSyncScheduler({
+        now: () => 10_000,
+        random: { uniform: () => 0.5, id: () => "attempt" },
+      });
+      await vi.runAllTicks();
+      await Promise.resolve();
+
+      expect(reconcileProviderScheduleOwnership).toHaveBeenCalledWith({
+        now: 10_000,
+        random: expect.any(Object),
+        nativeStatusAvailable: true,
+        nativeOperationActive: true,
+        nativeActiveProvider: provider,
+      });
+      expect(listDueProviderSchedules).not.toHaveBeenCalled();
+      expect(claimProviderSchedule).not.toHaveBeenCalled();
+      expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+      scheduler.stopProviderSyncScheduler();
+    },
+  );
 });
