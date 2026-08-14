@@ -97,29 +97,29 @@ function readPrivatePlan(filePath) {
   const resolved = path.resolve(filePath);
   let descriptor;
   try {
-    const before = lstatSync(resolved, { bigint: true });
-    if (
-      !before.isFile() ||
-      before.isSymbolicLink() ||
-      before.uid !== BigInt(process.getuid()) ||
-      before.nlink !== 1n ||
-      before.size <= 0n ||
-      before.size > BigInt(MAX_PLAN_BYTES) ||
-      ![0o600, 0o640].includes(Number(before.mode & 0o7777n)) ||
-      realpathSync(resolved) !== resolved
-    ) {
-      throw new Error("file is not one private physical bounded generation");
-    }
     descriptor = openSync(
       resolved,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     );
     const held = fstatSync(descriptor, { bigint: true });
     if (
-      held.dev !== before.dev ||
-      held.ino !== before.ino ||
-      held.mode !== before.mode ||
-      held.size !== before.size
+      !held.isFile() ||
+      held.uid !== BigInt(process.getuid()) ||
+      held.nlink !== 1n ||
+      held.size <= 0n ||
+      held.size > BigInt(MAX_PLAN_BYTES) ||
+      ![0o600, 0o640].includes(Number(held.mode & 0o7777n))
+    ) {
+      throw new Error("file is not one private physical bounded generation");
+    }
+    const named = lstatSync(resolved, { bigint: true });
+    if (
+      named.isSymbolicLink() ||
+      held.dev !== named.dev ||
+      held.ino !== named.ino ||
+      held.mode !== named.mode ||
+      held.size !== named.size ||
+      realpathSync(resolved) !== resolved
     ) {
       throw new Error("file changed while it was admitted");
     }
