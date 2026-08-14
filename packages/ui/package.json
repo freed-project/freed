@@ -55,29 +55,30 @@
     "./lib/settings-store": "./src/lib/settings-store.ts",
     "./lib/theme": "./src/lib/theme.ts",
     "./context": "./src/context/index.ts",
+    "./hooks/useLegacyLibraryItems": "./src/hooks/useLegacyLibraryItems.ts",
     "./components/friends": "./src/components/friends/index.ts"
   },
   "peerDependencies": {
     "react": ">=19",
-    "react-dom": ">=19"
+    "react-dom": "^19.2.8"
   },
   "dependencies": {
     "@freed/shared": "*",
-    "@tanstack/react-virtual": "^3.13.6",
+    "@tanstack/react-virtual": "^3.14.8",
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
-    "date-fns": "^4.1.0",
-    "maplibre-gl": "^5.11.0",
+    "date-fns": "^4.4.0",
+    "maplibre-gl": "^6.0.0",
     "minisearch": "^7.2.0",
-    "pixi.js": "^8.18.1",
-    "three": "^0.184.0",
-    "zustand": "^5.0.3"
+    "pixi.js": "^8.19.0",
+    "three": "^0.185.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.69",
-    "@types/three": "^0.184.1",
-    "@types/react": "^19.2.5",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.1",
+    "@webgpu/types": "^0.1.71",
     "typescript": "~5.9.3"
   }
 }

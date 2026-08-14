@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FeedItem } from "@freed/shared";
 import {
   buildIdentityGraphActivitySummaries,
+  buildIdentityGraphActivitySummariesFromCompact,
   socialActivitySummaryKey,
 } from "./identity-graph-activity-summary.js";
 
@@ -76,15 +77,65 @@ describe("buildIdentityGraphActivitySummaries", () => {
       }),
     });
 
-    const social = summaries.social[socialActivitySummaryKey("instagram", "ada")];
+    const social =
+      summaries.social[socialActivitySummaryKey("instagram", "ada")];
     expect(social).toMatchObject({
       itemCount: 2,
       latestActivityAt: 20,
       hasLocation: true,
       avatarUrl: "https://example.com/ada.png",
+      avatarPublishedAt: 10,
+      avatarGlobalId: "ig:1",
     });
     expect(social?.sampleItemIds).toEqual(["ig:2", "ig:1"]);
     expect(summaries.rss["https://example.com/feed.xml"]?.itemCount).toBe(1);
     expect(summaries.itemCount).toBe(3);
+  });
+
+  it("adapts native compact activity without constructing item records", () => {
+    const summaries = buildIdentityGraphActivitySummariesFromCompact({
+      totalItemCount: 17_000,
+      social: [
+        {
+          platform: "instagram",
+          authorId: "ada",
+          itemCount: 12_000,
+          latestActivityAt: 20,
+          sampleItems: [
+            { globalId: "ig:2", publishedAt: 20 },
+            { globalId: "ig:1", publishedAt: 10 },
+          ],
+          hasLocation: true,
+          avatarUrl: "https://example.com/ada.png",
+          avatarPublishedAt: 20,
+          avatarGlobalId: "ig:2",
+        },
+      ],
+      rss: [
+        {
+          feedUrl: "https://example.com/feed.xml",
+          itemCount: 5_000,
+          latestActivityAt: 30,
+          sampleItems: [{ globalId: "rss:1", publishedAt: 30 }],
+          hasLocation: false,
+          avatarUrl: null,
+          avatarPublishedAt: null,
+          avatarGlobalId: null,
+        },
+      ],
+    });
+
+    expect(
+      summaries.social[socialActivitySummaryKey("instagram", "ada")],
+    ).toMatchObject({
+      itemCount: 12_000,
+      sampleItemIds: ["ig:2", "ig:1"],
+      avatarPublishedAt: 20,
+      avatarGlobalId: "ig:2",
+    });
+    expect(summaries.rss["https://example.com/feed.xml"]?.itemCount).toBe(
+      5_000,
+    );
+    expect(summaries.itemCount).toBe(17_000);
   });
 });

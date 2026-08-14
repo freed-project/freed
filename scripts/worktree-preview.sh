@@ -115,6 +115,7 @@ ENV_VARS=()
 RUN_ARGS=()
 RUN_CWD=""
 ROOT_BIN_DIR="$(worktree_root_bin_dir "${WORKTREE_PATH}")"
+WORKTREE_ID="$(worktree_id_for_path "${WORKTREE_PATH}")"
 
 case "${TARGET}" in
   desktop)
@@ -133,8 +134,10 @@ case "${TARGET}" in
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
         "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
       )
-      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
+      NATIVE_PREVIEW_IDENTIFIER="wtf.freed.desktop.preview.p${WORKTREE_ID:0:12}"
+      NATIVE_PREVIEW_CONFIG="{\"identifier\":\"${NATIVE_PREVIEW_IDENTIFIER}\",\"productName\":\"Freed Preview\"}"
+      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev" "--" "--config" "${NATIVE_PREVIEW_CONFIG}")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev -- --config ${NATIVE_PREVIEW_CONFIG}"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"

@@ -18,10 +18,10 @@
   "dependencies": {
     "@freed/shared": "*",
     "rss-parser": "^3.13.0",
-    "fast-xml-parser": "^5.10.0"
+    "fast-xml-parser": "^5.10.1"
   },
   "devDependencies": {
     "typescript": "^5.3.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
   }
 }

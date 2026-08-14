@@ -26,14 +26,32 @@
  * section is small while the memory cost of duplicating that text is not.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MiniSearch from "minisearch";
-import { isFriendAuthoredItem, matchesFeedFilter, sortByPriority } from "@freed/shared";
-import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
+import {
+  isFriendAuthoredItem,
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  sortByPriority,
+} from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FilterOptions,
+  Friend,
+  Person,
+} from "@freed/shared";
+import {
+  usePlatform,
+  type ScanLibraryItems,
+  type SearchLibraryItems,
+} from "../context/PlatformContext.js";
+import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
 const SEARCH_INDEX_CHUNK_SIZE = 100;
 const SEARCH_INDEX_RELEASE_DELAY_MS = 75;
+const MAX_BOUNDED_SEARCH_RESULTS = 100;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */
 interface SearchDoc {
@@ -60,7 +78,9 @@ function searchText(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function buildAccountAliasMap(accounts: Record<string, Account>): Map<string, string> {
+function buildAccountAliasMap(
+  accounts: Record<string, Account>,
+): Map<string, string> {
   const aliases = new Map<string, string>();
   for (const account of Object.values(accounts)) {
     if (account.kind !== "social") continue;
@@ -80,18 +100,25 @@ function buildAccountAliasMap(accounts: Record<string, Account>): Map<string, st
 
 function accountSignature(accounts: Record<string, Account>): string {
   return Object.values(accounts)
-    .filter((account) => account.kind === "social" && searchText(account.externalId))
-    .map((account) => [
-      account.provider,
-      searchText(account.externalId),
-      account.displayName ?? "",
-      account.handle ?? "",
-    ].join(":"))
+    .filter(
+      (account) => account.kind === "social" && searchText(account.externalId),
+    )
+    .map((account) =>
+      [
+        account.provider,
+        searchText(account.externalId),
+        account.displayName ?? "",
+        account.handle ?? "",
+      ].join(":"),
+    )
     .sort()
     .join("|");
 }
 
-function toSearchDoc(item: FeedItem, accountAliases: Map<string, string>): SearchDoc {
+function toSearchDoc(
+  item: FeedItem,
+  accountAliases: Map<string, string>,
+): SearchDoc {
   return {
     id: item.globalId,
     text: item.content.text ?? "",
@@ -100,15 +127,19 @@ function toSearchDoc(item: FeedItem, accountAliases: Map<string, string>): Searc
     authorName: item.author.displayName,
     authorHandle: item.author.handle,
     feedTitle: item.rssSource?.feedTitle ?? "",
-    accountAliases: accountAliases.get(accountKey(item.platform, item.author.id)) ?? "",
-    preservedText: item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
+    accountAliases:
+      accountAliases.get(accountKey(item.platform, item.author.id)) ?? "",
+    preservedText:
+      item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
     topics: [...item.topics, ...(item.contentSignals?.tags ?? [])].join(" "),
     semanticText: [
       item.eventCandidate?.title,
       item.eventCandidate?.locationName,
       item.eventCandidate?.evidence,
       item.location?.name,
-    ].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" "),
     tags: (item.userState.tags ?? []).join(" "),
     highlights: (item.userState.highlights ?? [])
       .map((h) => `${h.text} ${h.note ?? ""}`)
@@ -194,6 +225,31 @@ interface SharedSearchIndexCache {
 }
 
 let sharedSearchIndexCache: SharedSearchIndexCache | null = null;
+interface SharedScannedSearchIndexCache {
+  key: string;
+  scanner: ScanLibraryItems;
+  index: MiniSearch<SearchDoc> | null;
+  promise: Promise<MiniSearch<SearchDoc>>;
+}
+
+let sharedScannedSearchIndexCache: SharedScannedSearchIndexCache | null = null;
+interface SharedScannedSearchResultCache {
+  readonly scanner: ScanLibraryItems;
+  readonly index: MiniSearch<SearchDoc>;
+  readonly resultSourceVersion: number;
+  readonly activeFilterSignature: string;
+  readonly accountIndexSignature: string;
+  readonly trimmedQuery: string;
+  readonly activeFilter: FilterOptions;
+  readonly identityMode: "friends" | "all_content";
+  readonly persons: Record<string, Person>;
+  readonly accounts: Record<string, Account>;
+  readonly friends: Record<string, Friend>;
+  readonly promise: Promise<SearchResults>;
+}
+
+let sharedScannedSearchResultCache: SharedScannedSearchResultCache | null =
+  null;
 let releaseSearchIndexTimer: ReturnType<typeof setTimeout> | null = null;
 const searchItemByIdCache = new WeakMap<FeedItem[], Map<string, FeedItem>>();
 
@@ -209,8 +265,56 @@ export function releaseSearchIndexSoon(): void {
   if (releaseSearchIndexTimer) clearTimeout(releaseSearchIndexTimer);
   releaseSearchIndexTimer = setTimeout(() => {
     sharedSearchIndexCache = null;
+    sharedScannedSearchIndexCache = null;
+    sharedScannedSearchResultCache = null;
     releaseSearchIndexTimer = null;
   }, SEARCH_INDEX_RELEASE_DELAY_MS);
+}
+
+function prepareScannedSearchIndex(
+  scanner: ScanLibraryItems,
+  searchCorpusVersion: number,
+  accounts: Record<string, Account>,
+): Promise<MiniSearch<SearchDoc>> {
+  if (releaseSearchIndexTimer) {
+    clearTimeout(releaseSearchIndexTimer);
+    releaseSearchIndexTimer = null;
+  }
+  const key = `${searchCorpusVersion}:${accountSignature(accounts)}`;
+  if (
+    sharedScannedSearchIndexCache?.key === key &&
+    sharedScannedSearchIndexCache.scanner === scanner
+  ) {
+    return sharedScannedSearchIndexCache.promise;
+  }
+
+  const aliases = buildAccountAliasMap(accounts);
+  const index = createIndex();
+  const promise = scanner(async (items) => {
+    const docs = items.map((item) => toSearchDoc(item, aliases));
+    await index.addAllAsync(docs, { chunkSize: SEARCH_INDEX_CHUNK_SIZE });
+    return "continue" as const;
+  })
+    .then(() => {
+      if (
+        sharedScannedSearchIndexCache?.key === key &&
+        sharedScannedSearchIndexCache.scanner === scanner
+      ) {
+        sharedScannedSearchIndexCache.index = index;
+      }
+      return index;
+    })
+    .catch((error) => {
+      if (
+        sharedScannedSearchIndexCache?.key === key &&
+        sharedScannedSearchIndexCache.scanner === scanner
+      ) {
+        sharedScannedSearchIndexCache = null;
+      }
+      throw error;
+    });
+  sharedScannedSearchIndexCache = { key, scanner, index: null, promise };
+  return promise;
 }
 
 export function prepareSearchIndex(
@@ -224,7 +328,8 @@ export function prepareSearchIndex(
   }
 
   const key = searchIndexKey(items, searchCorpusVersion, accounts);
-  if (sharedSearchIndexCache?.key === key) return sharedSearchIndexCache.promise;
+  if (sharedSearchIndexCache?.key === key)
+    return sharedSearchIndexCache.promise;
 
   const promise = buildIndex(items, accounts)
     .then((index) => {
@@ -250,7 +355,9 @@ function getPreparedSearchIndex(
   accounts: Record<string, Account>,
 ): MiniSearch<SearchDoc> | null {
   const key = searchIndexKey(items, searchCorpusVersion, accounts);
-  return sharedSearchIndexCache?.key === key ? sharedSearchIndexCache.index : null;
+  return sharedSearchIndexCache?.key === key
+    ? sharedSearchIndexCache.index
+    : null;
 }
 
 function getSearchItemById(
@@ -268,7 +375,10 @@ function getSearchItemById(
 }
 
 function searchOptionsForQuery(query: string) {
-  const longestTermLength = Math.max(0, ...query.split(/\s+/).map((term) => term.length));
+  const longestTermLength = Math.max(
+    0,
+    ...query.split(/\s+/).map((term) => term.length),
+  );
   return {
     boost: FIELD_BOOST as Record<string, number>,
     fuzzy: longestTermLength >= 4 ? 0.2 : false,
@@ -291,13 +401,16 @@ function filterBrowseItems(args: {
   let filtered: FeedItem[] | null = null;
   let ordered = true;
   let previousPriority = Number.POSITIVE_INFINITY;
+  const normalizedFilter = normalizeLibraryCoreFeedBrowseFilterV1(
+    args.activeFilter,
+  );
 
   for (let index = 0; index < args.items.length; index += 1) {
     const item = args.items[index];
-    const passesIdentity =
-      args.identityMode !== "friends" ||
-      isFriendAuthoredItem(item, args.persons, args.accounts, args.friends);
-    const passesFilter = passesIdentity && matchesFeedFilter(item, args.activeFilter);
+    const passesFilter = itemPassesBrowseFilter(item, {
+      ...args,
+      normalizedFilter,
+    });
 
     if (!passesFilter) {
       if (!filtered) filtered = args.items.slice(0, index);
@@ -313,6 +426,214 @@ function filterBrowseItems(args: {
 
   const result = filtered ?? args.items;
   return ordered ? result : sortByPriority(result);
+}
+
+function itemPassesBrowseFilter(
+  item: FeedItem,
+  args: {
+    activeFilter: FilterOptions;
+    identityMode: "friends" | "all_content";
+    persons: Record<string, Person>;
+    accounts: Record<string, Account>;
+    friends: Record<string, Friend>;
+    normalizedFilter?: ReturnType<
+      typeof normalizeLibraryCoreFeedBrowseFilterV1
+    >;
+  },
+): boolean {
+  const passesIdentity =
+    args.identityMode !== "friends" ||
+    isFriendAuthoredItem(item, args.persons, args.accounts, args.friends);
+  return (
+    passesIdentity &&
+    matchesLibraryCoreFeedBrowseFilterV1(
+      item,
+      args.normalizedFilter ??
+        normalizeLibraryCoreFeedBrowseFilterV1(args.activeFilter),
+    )
+  );
+}
+
+interface RankedScannedItem {
+  readonly hitRank: number;
+  readonly item: FeedItem;
+}
+
+interface RankedPersistentItem {
+  readonly item: FeedItem;
+  readonly score: number;
+}
+
+function compareScannedSearchItems(
+  left: RankedScannedItem,
+  right: RankedScannedItem,
+): number {
+  return (
+    priorityValue(right.item) - priorityValue(left.item) ||
+    left.hitRank - right.hitRank
+  );
+}
+
+function insertBoundedSearchItem(
+  items: RankedScannedItem[],
+  candidate: RankedScannedItem,
+): void {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    const current = items[middle];
+    if (current && compareScannedSearchItems(current, candidate) <= 0) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  items.splice(low, 0, candidate);
+  if (items.length > MAX_BOUNDED_SEARCH_RESULTS) items.pop();
+}
+
+function comparePersistentSearchItems(
+  left: RankedPersistentItem,
+  right: RankedPersistentItem,
+): number {
+  return (
+    priorityValue(right.item) - priorityValue(left.item) ||
+    right.score - left.score ||
+    left.item.globalId.localeCompare(right.item.globalId)
+  );
+}
+
+function insertBoundedPersistentSearchItem(
+  items: RankedPersistentItem[],
+  candidate: RankedPersistentItem,
+): void {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    const current = items[middle];
+    if (current && comparePersistentSearchItems(current, candidate) <= 0) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  items.splice(low, 0, candidate);
+  if (items.length > MAX_BOUNDED_SEARCH_RESULTS) items.pop();
+}
+
+async function computePersistentSearchResults(args: {
+  searcher: SearchLibraryItems;
+  searchCorpusVersion: number;
+  trimmedQuery: string;
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+}): Promise<SearchResults> {
+  const normalizedFilter = normalizeLibraryCoreFeedBrowseFilterV1(
+    args.activeFilter,
+  );
+  const retained: RankedPersistentItem[] = [];
+  let resultCount = 0;
+  await args.searcher(
+    args.trimmedQuery,
+    args.searchCorpusVersion,
+    (matches) => {
+      for (const match of matches) {
+        if (
+          !itemPassesBrowseFilter(match.item, {
+            ...args,
+            normalizedFilter,
+          })
+        ) {
+          continue;
+        }
+        resultCount += 1;
+        insertBoundedPersistentSearchItem(retained, match);
+      }
+      return "continue";
+    },
+  );
+  return {
+    filteredItems: retained.map(({ item }) => item),
+    isSearching: true,
+    resultCount,
+  };
+}
+
+async function computeScannedSearchResults(args: {
+  scanner: ScanLibraryItems;
+  index: MiniSearch<SearchDoc>;
+  trimmedQuery: string;
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+}): Promise<SearchResults> {
+  const hits = args.index.search(
+    args.trimmedQuery,
+    searchOptionsForQuery(args.trimmedQuery),
+  );
+  const hitRankById = new Map<string, number>();
+  for (let index = 0; index < hits.length; index += 1) {
+    hitRankById.set(hits[index]?.id as string, index);
+  }
+  const normalizedFilter = normalizeLibraryCoreFeedBrowseFilterV1(
+    args.activeFilter,
+  );
+  const retained: RankedScannedItem[] = [];
+  let resultCount = 0;
+  await args.scanner((items) => {
+    for (const item of items) {
+      const hitRank = hitRankById.get(item.globalId);
+      if (hitRank === undefined) continue;
+      if (
+        !itemPassesBrowseFilter(item, {
+          ...args,
+          normalizedFilter,
+        })
+      ) {
+        continue;
+      }
+      resultCount += 1;
+      insertBoundedSearchItem(retained, { hitRank, item });
+    }
+    return "continue";
+  });
+  return {
+    filteredItems: retained.map(({ item }) => item),
+    isSearching: true,
+    resultCount,
+  };
+}
+
+function prepareScannedSearchResults(
+  args: Omit<SharedScannedSearchResultCache, "promise">,
+): Promise<SearchResults> {
+  const cached = sharedScannedSearchResultCache;
+  if (
+    cached?.scanner === args.scanner &&
+    cached.index === args.index &&
+    cached.resultSourceVersion === args.resultSourceVersion &&
+    cached.activeFilterSignature === args.activeFilterSignature &&
+    cached.accountIndexSignature === args.accountIndexSignature &&
+    cached.trimmedQuery === args.trimmedQuery &&
+    cached.identityMode === args.identityMode
+  ) {
+    return cached.promise;
+  }
+  const promise = computeScannedSearchResults(args).catch((error) => {
+    if (sharedScannedSearchResultCache?.promise === promise) {
+      sharedScannedSearchResultCache = null;
+    }
+    throw error;
+  });
+  sharedScannedSearchResultCache = { ...args, promise };
+  return promise;
 }
 
 function buildEmptyIndex(): MiniSearch<SearchDoc> {
@@ -331,6 +652,11 @@ export interface SearchResults {
   isSearching: boolean;
   /** Number of items matching the query after applying the active filter. */
   resultCount: number;
+}
+
+interface ScannedSearchResult {
+  readonly requestKey: string;
+  readonly result: SearchResults;
 }
 
 interface SearchResultCache {
@@ -395,7 +721,10 @@ function computeSearchResults(args: {
     result = { filteredItems: [], isSearching: true, resultCount: 0 };
   } else {
     // Search then filter, preserving MiniSearch's relevance ordering.
-    const hits = args.index.search(args.trimmedQuery, searchOptionsForQuery(args.trimmedQuery));
+    const hits = args.index.search(
+      args.trimmedQuery,
+      searchOptionsForQuery(args.trimmedQuery),
+    );
 
     const matchingItems: FeedItem[] = [];
     for (const hit of hits) {
@@ -412,7 +741,11 @@ function computeSearchResults(args: {
       friends: args.friends,
     });
 
-    result = { filteredItems: byFeed, isSearching: true, resultCount: byFeed.length };
+    result = {
+      filteredItems: byFeed,
+      isSearching: true,
+      resultCount: byFeed.length,
+    };
   }
 
   lastSearchResultCache = { ...args, result };
@@ -437,27 +770,184 @@ export function useSearchResults(
   persons: Record<string, Person>,
   accounts: Record<string, Account>,
   friends: Record<string, Friend>,
+  resultSourceVersion = searchCorpusVersion,
 ): SearchResults {
+  const { scanLibraryItems, searchLibraryItems, store } = usePlatform();
   const trimmedQuery = searchQuery.trim();
+  const activeFilterSignature = JSON.stringify(
+    normalizeLibraryCoreFeedBrowseFilterV1(activeFilter),
+  );
+  const accountIndexSignature = accountSignature(accounts);
+  const scannedRequestKey = JSON.stringify([
+    searchCorpusVersion,
+    resultSourceVersion,
+    trimmedQuery,
+    activeFilterSignature,
+    accountIndexSignature,
+    identityMode,
+  ]);
+  const activeFilterRef = useRef(activeFilter);
+  activeFilterRef.current = activeFilter;
   const [index, setIndex] = useState<MiniSearch<SearchDoc> | null>(() =>
     getPreparedSearchIndex(items, searchCorpusVersion, accounts),
   );
+  const [scannedResult, setScannedResult] =
+    useState<ScannedSearchResult | null>(null);
+  const [scannedFailed, setScannedFailed] = useState(false);
+  const [persistentResult, setPersistentResult] =
+    useState<ScannedSearchResult | null>(null);
+  const [persistentFailed, setPersistentFailed] = useState(false);
+  useLegacyLibraryItems(
+    Boolean(
+      trimmedQuery &&
+        (!searchLibraryItems || persistentFailed) &&
+        scanLibraryItems &&
+        scannedFailed,
+    ),
+  );
+  const persistentSearchActive = Boolean(
+    searchLibraryItems && !persistentFailed,
+  );
+  const scannedSearchActive = Boolean(
+    !persistentSearchActive && scanLibraryItems && !scannedFailed,
+  );
   const itemById = useMemo(
-    () => getSearchItemById(items, trimmedQuery),
-    [items, trimmedQuery],
+    () =>
+      persistentSearchActive || scannedSearchActive
+        ? null
+        : getSearchItemById(items, trimmedQuery),
+    [items, persistentSearchActive, scannedSearchActive, trimmedQuery],
   );
 
   useEffect(() => {
     let cancelled = false;
-    if (!trimmedQuery) {
-      setIndex(null);
-      releaseSearchIndexSoon();
+    if (!trimmedQuery || !searchLibraryItems) {
+      setPersistentResult(null);
+      setPersistentFailed(false);
       return () => {
         cancelled = true;
       };
     }
 
-    const prepared = getPreparedSearchIndex(items, searchCorpusVersion, accounts);
+    const graphSnapshot = store.getState();
+    setPersistentResult(null);
+    computePersistentSearchResults({
+      searcher: searchLibraryItems,
+      searchCorpusVersion,
+      trimmedQuery,
+      activeFilter: activeFilterRef.current,
+      identityMode,
+      persons: graphSnapshot.persons as Record<string, Person>,
+      accounts: graphSnapshot.accounts as Record<string, Account>,
+      friends: graphSnapshot.friends as Record<string, Friend>,
+    })
+      .then((result) => {
+        if (!cancelled) {
+          setPersistentResult({ requestKey: scannedRequestKey, result });
+          setPersistentFailed(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPersistentFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accountIndexSignature,
+    activeFilterSignature,
+    identityMode,
+    scannedRequestKey,
+    searchCorpusVersion,
+    searchLibraryItems,
+    store,
+    trimmedQuery,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      !trimmedQuery ||
+      !scanLibraryItems ||
+      (searchLibraryItems && !persistentFailed)
+    ) {
+      setScannedResult(null);
+      setScannedFailed(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const graphSnapshot = store.getState();
+    const snapshotAccounts = graphSnapshot.accounts as Record<string, Account>;
+    const snapshotPersons = graphSnapshot.persons as Record<string, Person>;
+    const snapshotFriends = graphSnapshot.friends as Record<string, Friend>;
+    const snapshotActiveFilter = activeFilterRef.current;
+    const snapshotAccountIndexSignature = accountSignature(snapshotAccounts);
+    setScannedResult(null);
+    prepareScannedSearchIndex(
+      scanLibraryItems,
+      searchCorpusVersion,
+      snapshotAccounts,
+    )
+      .then((nextIndex) =>
+        prepareScannedSearchResults({
+          scanner: scanLibraryItems,
+          index: nextIndex,
+          resultSourceVersion,
+          activeFilterSignature,
+          accountIndexSignature: snapshotAccountIndexSignature,
+          trimmedQuery,
+          activeFilter: snapshotActiveFilter,
+          identityMode,
+          persons: snapshotPersons,
+          accounts: snapshotAccounts,
+          friends: snapshotFriends,
+        }),
+      )
+      .then((result) => {
+        if (!cancelled) {
+          setScannedResult({ requestKey: scannedRequestKey, result });
+          setScannedFailed(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setScannedFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accountIndexSignature,
+    activeFilterSignature,
+    identityMode,
+    resultSourceVersion,
+    scanLibraryItems,
+    scannedRequestKey,
+    searchLibraryItems,
+    searchCorpusVersion,
+    store,
+    trimmedQuery,
+    persistentFailed,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!trimmedQuery || persistentSearchActive || scannedSearchActive) {
+      setIndex(null);
+      if (!trimmedQuery) releaseSearchIndexSoon();
+      else sharedSearchIndexCache = null;
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const prepared = getPreparedSearchIndex(
+      items,
+      searchCorpusVersion,
+      accounts,
+    );
     if (prepared) {
       setIndex(prepared);
       return () => {
@@ -477,9 +967,16 @@ export function useSearchResults(
     return () => {
       cancelled = true;
     };
-  }, [accounts, items, searchCorpusVersion, trimmedQuery]);
+  }, [
+    accounts,
+    items,
+    persistentSearchActive,
+    scannedSearchActive,
+    searchCorpusVersion,
+    trimmedQuery,
+  ]);
 
-  return useMemo(
+  const fallbackResult = useMemo(
     () =>
       computeSearchResults({
         items,
@@ -492,6 +989,42 @@ export function useSearchResults(
         index,
         itemById,
       }),
-    [accounts, activeFilter, friends, identityMode, index, itemById, items, persons, trimmedQuery],
+    [
+      accounts,
+      activeFilter,
+      friends,
+      identityMode,
+      index,
+      itemById,
+      items,
+      persons,
+      trimmedQuery,
+    ],
   );
+
+  if (trimmedQuery && persistentSearchActive) {
+    return (
+      (persistentResult?.requestKey === scannedRequestKey
+        ? persistentResult.result
+        : null) ?? {
+        filteredItems: [],
+        isSearching: true,
+        resultCount: 0,
+      }
+    );
+  }
+
+  if (trimmedQuery && scannedSearchActive) {
+    return (
+      (scannedResult?.requestKey === scannedRequestKey
+        ? scannedResult.result
+        : null) ?? {
+        filteredItems: [],
+        isSearching: true,
+        resultCount: 0,
+      }
+    );
+  }
+
+  return fallbackResult;
 }

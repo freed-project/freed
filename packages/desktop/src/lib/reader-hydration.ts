@@ -4,7 +4,7 @@ import type { FeedItem } from "@freed/shared";
 import type { ReaderHydrationResult, ReaderThreadReply } from "@freed/ui/context";
 import { contentCache } from "./content-cache";
 import { toSyncedPreservedText } from "./preserved-text";
-import { docUpdateFeedItem } from "./automerge";
+import { docUpdateFeedItem } from "./library-client";
 import { useAppStore } from "./store";
 import { fetchFacebookComments, fetchInstagramComments } from "./social-comment-hydration";
 import { fetchXThreadReplies } from "./x-capture";

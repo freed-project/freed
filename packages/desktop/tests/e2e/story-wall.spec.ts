@@ -23,7 +23,7 @@ async function openStoryWallSettings(page: Page) {
 async function injectStoryWallMediaItem(page: Page) {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {

@@ -45,6 +45,7 @@ const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
   "chore: promote dev into main for cloud conflict recovery (#784)",
   "chore: promote dev into main for PWA sync recovery (#798)",
+  "chore: promote updater asset url fix to main (#313)",
 ]);
 export const REVERSE_INTEGRATION_COMMIT_SUBJECT_PATTERN =
   /^(?:chore|fix): (?:merge main (?:back )?into dev(?: .*)?|reverse integrate (?:main|v\d+\.\d+\.\d+)(?: into dev| after v\d+\.\d+\.\d+| production release)?|backflow v\d+\.\d+\.\d+ main into dev|sync main(?: release artifacts)?(?: back)? into dev(?: .*)?)(?: \(#\d+\))?$/;

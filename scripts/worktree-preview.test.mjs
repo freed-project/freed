@@ -83,3 +83,17 @@ test("worktree-preview marks product previews as feature previews", () => {
     /cd packages\/pwa && PATH=.*VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=/,
   );
 });
+
+test("native worktree previews cannot reuse the production bundle identifier", () => {
+  const script = readFileSync(path.join(repoRoot, "scripts/worktree-preview.sh"), "utf8");
+
+  assert.match(
+    script,
+    /NATIVE_PREVIEW_IDENTIFIER="wtf\.freed\.desktop\.preview\.p\$\{WORKTREE_ID:0:12\}"/,
+  );
+  assert.match(
+    script,
+    /RUN_ARGS=\("\$\{NPM_BIN\}" "run" "tauri:dev" "--" "--config" "\$\{NATIVE_PREVIEW_CONFIG\}"\)/,
+  );
+  assert.doesNotMatch(script, /RUN_ARGS=\("\$\{NPM_BIN\}" "run" "tauri:dev"\)\n/);
+});

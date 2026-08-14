@@ -37,7 +37,7 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: vi.fn(),
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
   docReconcileFollowRosterCapture: mocks.docReconcileFollowRosterCapture,
 }));
 

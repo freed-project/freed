@@ -23,7 +23,7 @@ Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-T
    exclusive `<pointer>.collector-lock`, rejects a live owner, recovers a stale
    owner, and releases only its own token. Do not bypass that lock or let two
    behavioral verification cycles share one active pointer.
-3. Verify the installed app's version, channel, git SHA, and app session from runtime-health event identity. Record the collector session, page load ID, renderer generation, relevant PIDs with process start times, host OS, RAM tier, provider cohort, and document-size bucket.
+3. Verify the installed app's version, channel, git SHA, and app session from runtime-health event identity. Record the collector session, page load ID, renderer generation, relevant PIDs with process start times, host OS, RAM tier, provider cohort, and document-size bucket. For an activated `library_core_v1` build, also freeze the active storage engine, storage epoch, schema and materializer versions, logical frontier and corpus digest, corpus counts, SQLite cache and mmap limits, renderer cache bounds, and compatibility-worker generation. Legacy memory work records the exact available Automerge and process-generation identity instead; absent Library Core fields do not invalidate a legacy measurement.
 4. Launch with `open -g /Applications/Freed.app` only when needed. Never steal focus for routine observation.
 5. Start the collector with an immutable comparison context:
 
@@ -74,10 +74,18 @@ Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-T
    outcome and every measured baseline requires at least six credited
    app-alive hours. Compare baseline and measured credited durations within the
    inclusive 0.8 to 1.25 ratio. Never substitute wall span.
+   An activated Library Core memory verdict must include both absolute RAM-tier
+   admission and the same-process corpus-over-shell delta. A relative
+   improvement cannot certify an app that still exceeds its absolute budget.
 5. Return a raw analysis of `inconclusive` for mixed builds, missing identity,
    broken sources, insufficient duration, insufficient exposure, or a scenario
    that did not occur. Preserve the raw verdict even when it cannot become a
    lifecycle outcome.
+   For activated `library_core_v1`, missing storage epoch, corpus digest, PID,
+   process start time, page-load generation, or exact cache configuration is
+   also `inconclusive`. Legacy renderer attribution requires the PID, native
+   process start time, page-load generation, and exact attribution mode that
+   its metric declares, but not fields that the legacy engine cannot emit.
 6. A verdict covers only events at or before its end time. It may never suppress a later alarm.
 7. Stop the wake lock owned by this session. Do not stop another task's processes.
 8. Record build identity, bounds, coverage, process segments, trigger history, assertion table, and raw evidence pointers in the verification task.

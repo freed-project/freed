@@ -1,0 +1,127 @@
+[
+  {
+    "name": "null",
+    "input": "null",
+    "accepted": true
+  },
+  {
+    "name": "safe integer boundaries",
+    "input": "[-9007199254740991,0,9007199254740991]",
+    "accepted": true
+  },
+  {
+    "name": "sorted object and canonical escapes",
+    "input": "{\"a\":\"line\\nfeed\",\"emoji\":\"😀\",\"z\":true}",
+    "accepted": true
+  },
+  {
+    "name": "empty containers",
+    "input": "[{},[]]",
+    "accepted": true
+  },
+  {
+    "name": "leading whitespace",
+    "input": " null",
+    "accepted": false
+  },
+  {
+    "name": "trailing whitespace",
+    "input": "null\n",
+    "accepted": false
+  },
+  {
+    "name": "noncanonical object order",
+    "input": "{\"z\":1,\"a\":2}",
+    "accepted": false
+  },
+  {
+    "name": "duplicate literal object name",
+    "input": "{\"a\":1,\"a\":2}",
+    "accepted": false
+  },
+  {
+    "name": "duplicate escaped object name",
+    "input": "{\"a\":1,\"\\u0061\":2}",
+    "accepted": false
+  },
+  {
+    "name": "unnecessary slash escape",
+    "input": "\"\\/\"",
+    "accepted": false
+  },
+  {
+    "name": "unnecessary unicode escape",
+    "input": "\"\\u0061\"",
+    "accepted": false
+  },
+  {
+    "name": "noncanonical control escape",
+    "input": "\"\\u000A\"",
+    "accepted": false
+  },
+  {
+    "name": "negative zero",
+    "input": "-0",
+    "accepted": false
+  },
+  {
+    "name": "leading zero",
+    "input": "01",
+    "accepted": false
+  },
+  {
+    "name": "fraction",
+    "input": "0.5",
+    "accepted": false
+  },
+  {
+    "name": "exponent",
+    "input": "1e3",
+    "accepted": false
+  },
+  {
+    "name": "positive unsafe integer",
+    "input": "9007199254740992",
+    "accepted": false
+  },
+  {
+    "name": "negative unsafe integer",
+    "input": "-9007199254740992",
+    "accepted": false
+  },
+  {
+    "name": "invalid escape",
+    "input": "\"\\x20\"",
+    "accepted": false
+  },
+  {
+    "name": "lone high surrogate",
+    "input": "\"\\ud800\"",
+    "accepted": false
+  },
+  {
+    "name": "lone low surrogate",
+    "input": "\"\\udc00\"",
+    "accepted": false
+  },
+  {
+    "name": "raw control character",
+    "input": "\"\u0001\"",
+    "accepted": false
+  },
+  {
+    "name": "trailing comma",
+    "input": "[null,]",
+    "accepted": false
+  },
+  {
+    "name": "missing comma",
+    "input": "[null true]",
+    "accepted": false
+  },
+  {
+    "name": "trailing value",
+    "input": "nulltrue",
+    "accepted": false
+  }
+]

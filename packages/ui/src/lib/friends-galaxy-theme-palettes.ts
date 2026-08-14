@@ -74,6 +74,42 @@ export const FRIENDS_GALAXY_THEME_PALETTES = {
       rss: "#e49a4c",
     },
   },
+  starship: {
+    background: "#e2e2ee",
+    surface: "#eeeef6",
+    text: "#16163a",
+    mutedText: "#4a4a84",
+    friend: "#2828c0",
+    connection: "#08733b",
+    account: "#5f5f9c",
+    feed: "#b3261e",
+    selection: "#2828c0",
+    providers: {
+      instagram: "#c64f85",
+      facebook: "#3d72c4",
+      linkedin: "#2d7d9d",
+      x: "#59636b",
+      rss: "#d1842d",
+    },
+  },
+  "dark-star": {
+    background: "#222222",
+    surface: "#2c2c2e",
+    text: "#f5f5f7",
+    mutedText: "#c7c7cc",
+    friend: "#2997ff",
+    connection: "#30d158",
+    account: "#aeaeb2",
+    feed: "#ff453a",
+    selection: "#64d2ff",
+    providers: {
+      instagram: "#e06f9d",
+      facebook: "#2997ff",
+      linkedin: "#64d2ff",
+      x: "#f5f5f7",
+      rss: "#ffd60a",
+    },
+  },
 } satisfies Record<ThemeId, FriendsGalaxyRendererPalette>;
 
 export function friendsGalaxyRendererPaletteForTheme(

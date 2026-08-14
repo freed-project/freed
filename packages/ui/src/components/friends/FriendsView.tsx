@@ -1,10 +1,16 @@
-import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { flushSync } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
   DeviceContact,
-  FeedItem,
   Friend,
   FriendCandidateSuggestion,
   FriendCandidateConfidence,
@@ -13,10 +19,20 @@ import type {
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/shared";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import {
+  buildFriendCandidateSuggestions,
+  buildFriendCandidateSuggestionsFromActivity,
+  compareUtf8Binary,
+  isInReconnectZone,
+} from "@freed/shared";
+import {
+  useAppStore,
+  usePlatform,
+  type LibraryFriendsSource,
+} from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useLibraryFriendsRows } from "../../hooks/useLibraryFriendsRows.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -29,8 +45,10 @@ import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntries,
+  buildFriendOverviewEntriesFromActivity,
   buildFriendsById,
   buildFriendsWorkspaceIndexes,
+  friendActivitySourceKey,
   friendFromPersonWithIndexes,
   filterAndSortFriendOverview,
   type FriendOverviewEntry,
@@ -42,8 +60,20 @@ import {
   buildAccountLinkSuggestionGroups,
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
-import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
+import {
+  accountSubtitle,
+  accountTitle,
+  providerLabel,
+} from "../../lib/account-labels.js";
 import { buildIdentityGraphActivitySummaries } from "../../lib/identity-graph-activity-summary.js";
+import {
+  buildFriendSourceActivityEvidence,
+  buildFriendsActivityReadModel,
+  buildVisibleFriendsFallbackItems,
+  createLibraryFriendsGraphRequest,
+  friendSourceAccountProvenance,
+  type FriendSourceActivityEvidence,
+} from "../../lib/friends-library-read-model.js";
 import { px } from "../layout/layoutConstants.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import {
@@ -52,6 +82,7 @@ import {
   setDevicePersonGraphPosition,
   useDeviceGraphLayout,
 } from "../../lib/device-graph-layout.js";
+import { useThemePreference } from "../../lib/theme.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -79,7 +110,10 @@ const MAP_SURFACE_COMMIT_RETRY_MS = 150;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
-const RELATIONSHIP_TIER_OPTIONS: Array<{ level: RelationshipTierLevel; label: string }> = [
+const RELATIONSHIP_TIER_OPTIONS: Array<{
+  level: RelationshipTierLevel;
+  label: string;
+}> = [
   { level: 1, label: "Followed" },
   { level: 3, label: "Friends" },
   { level: 5, label: "Fam" },
@@ -117,23 +151,37 @@ function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
   );
 }
 
-function relationshipTierLevelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): RelationshipTierLevel {
+function relationshipTierLevelForPerson(
+  person: Pick<Person, "relationshipStatus" | "careLevel">,
+): RelationshipTierLevel {
   if (person.relationshipStatus !== "friend") return 1;
   return person.careLevel >= 5 ? 5 : 3;
 }
 
-function relationshipTierLabelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): string {
-  return RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === relationshipTierLevelForPerson(person))?.label ?? "Followed";
+function relationshipTierLabelForPerson(
+  person: Pick<Person, "relationshipStatus" | "careLevel">,
+): string {
+  return (
+    RELATIONSHIP_TIER_OPTIONS.find(
+      (option) => option.level === relationshipTierLevelForPerson(person),
+    )?.label ?? "Followed"
+  );
 }
 
-function relationshipPatchForLevel(level: RelationshipTierLevel): Pick<Person, "relationshipStatus" | "careLevel"> {
+function relationshipPatchForLevel(
+  level: RelationshipTierLevel,
+): Pick<Person, "relationshipStatus" | "careLevel"> {
   if (level === 1) {
     return { relationshipStatus: "connection", careLevel: 1 };
   }
   return { relationshipStatus: "friend", careLevel: level };
 }
 
-function RelationshipTierBadge({ person }: { person: Pick<Person, "relationshipStatus" | "careLevel"> }) {
+function RelationshipTierBadge({
+  person,
+}: {
+  person: Pick<Person, "relationshipStatus" | "careLevel">;
+}) {
   return (
     <span className="theme-chip rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
       {relationshipTierLabelForPerson(person)}
@@ -148,25 +196,33 @@ function RelationshipTierControl({
   value: RelationshipTierLevel;
   onChange: (level: RelationshipTierLevel) => void;
 }) {
-  const [dragOverLevel, setDragOverLevel] = useState<RelationshipTierLevel | null>(null);
+  const [dragOverLevel, setDragOverLevel] =
+    useState<RelationshipTierLevel | null>(null);
 
   useEffect(() => {
     const handleDragOver = (event: Event) => {
-      const detail = (event as CustomEvent<{ level: RelationshipTierLevel | null }>).detail;
+      const detail = (
+        event as CustomEvent<{ level: RelationshipTierLevel | null }>
+      ).detail;
       setDragOverLevel(detail?.level ?? null);
     };
     window.addEventListener("freed-friend-tier-dragover", handleDragOver);
-    return () => window.removeEventListener("freed-friend-tier-dragover", handleDragOver);
+    return () =>
+      window.removeEventListener("freed-friend-tier-dragover", handleDragOver);
   }, []);
 
   return (
-    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="relationship-tier-control">
+    <div
+      className="theme-dialog-divider border-b px-4 py-4"
+      data-testid="relationship-tier-control"
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           Relationship
         </p>
         <span className="text-xs font-medium text-[color:var(--theme-text-primary)]">
-          {RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === value)?.label ?? "Followed"}
+          {RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === value)
+            ?.label ?? "Followed"}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-[color:var(--theme-bg-muted)] p-1">
@@ -211,7 +267,7 @@ function FriendListRow({
     : "Never contacted";
   const avatarUrl = resolveFriendAvatarUrl(
     entry.friend,
-    entry.items.map((item) => item.author.avatarUrl)
+    entry.avatarUrlCandidates,
   );
 
   return (
@@ -242,7 +298,9 @@ function FriendListRow({
             </div>
           </div>
           {entry.friend.bio && (
-            <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">{entry.friend.bio}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
+              {entry.friend.bio}
+            </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
             <span>{lastPost}</span>
@@ -260,7 +318,9 @@ function FriendListRow({
             {entry.needsOutreach && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
-                <span className="theme-feedback-text-warning">Needs outreach</span>
+                <span className="theme-feedback-text-warning">
+                  Needs outreach
+                </span>
               </>
             )}
           </div>
@@ -270,11 +330,7 @@ function FriendListRow({
   );
 }
 
-function CompactDetailCard({
-  children,
-}: {
-  children: ReactNode;
-}) {
+function CompactDetailCard({ children }: { children: ReactNode }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-end px-4">
       <div
@@ -291,14 +347,19 @@ function evidenceIdLabel(itemId: string): string {
   return `...${itemId.slice(-8)}`;
 }
 
-function friendSuggestionSignalLabel(suggestion: FriendCandidateSuggestion): string {
+function friendSuggestionSignalLabel(
+  suggestion: FriendCandidateSuggestion,
+): string {
   const entries = Object.entries(suggestion.signalCounts)
     .filter(([, count]) => (count ?? 0) > 0)
     .sort(([left], [right]) => left.localeCompare(right))
     .slice(0, 4);
   if (entries.length === 0) return "No classified signals yet";
   return entries
-    .map(([signal, count]) => `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`)
+    .map(
+      ([signal, count]) =>
+        `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`,
+    )
     .join(", ");
 }
 
@@ -314,14 +375,18 @@ function FriendSuggestionEvidence({
   onDismiss: (suggestionId: string) => void;
 }) {
   return (
-    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="friend-candidate-detail">
+    <div
+      className="theme-dialog-divider border-b px-4 py-4"
+      data-testid="friend-candidate-detail"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
             Suggested friend
           </p>
           <p className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
-            Score {suggestion.score.toLocaleString()}, {suggestion.confidence} confidence
+            Score {suggestion.score.toLocaleString()}, {suggestion.confidence}{" "}
+            confidence
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -411,11 +476,13 @@ function FriendCandidateRow({
               Score {suggestion.score.toLocaleString()}, {lastActivity}
             </p>
           </div>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-            suggestion.confidence === "high"
-              ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
-              : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
-          }`}>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              suggestion.confidence === "high"
+                ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
+                : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
+            }`}
+          >
             {suggestion.confidence}
           </span>
         </div>
@@ -450,10 +517,6 @@ function FriendCandidateRow({
   );
 }
 
-function sourceKey(platform: string, authorId: string): string {
-  return `${platform}:${authorId}`;
-}
-
 function accountToFriendSource(account: Account): FriendSource {
   return {
     platform: account.provider as FriendSource["platform"],
@@ -484,7 +547,7 @@ function contactAccountId(personId: string, contact: DeviceContact): string {
 function socialAccountDraftFromSource(
   source: FriendSource,
   personId: string,
-  item: FeedItem | null,
+  activity: FriendSourceActivityEvidence | null,
   now: number,
 ): Account {
   return {
@@ -497,9 +560,7 @@ function socialAccountDraftFromSource(
     displayName: source.displayName,
     avatarUrl: source.avatarUrl,
     profileUrl: source.profileUrl,
-    firstSeenAt: item?.publishedAt ?? now,
-    lastSeenAt: item?.publishedAt ?? now,
-    discoveredFrom: item?.contentType === "story" ? "story_author" : item ? "captured_item" : "manual_entry",
+    ...friendSourceAccountProvenance(activity, now),
     createdAt: now,
     updatedAt: now,
   };
@@ -529,7 +590,10 @@ function contactAccountDraft(
   };
 }
 
-function friendDraftFromAccount(account: Account, careLevel: 3 | 5 = 3): Partial<Friend> {
+function friendDraftFromAccount(
+  account: Account,
+  careLevel: 3 | 5 = 3,
+): Partial<Friend> {
   return {
     name: account.displayName ?? account.handle ?? account.externalId,
     avatarUrl: account.avatarUrl,
@@ -548,6 +612,7 @@ export function FriendsView({
   const accounts = useAppStore((s) => s.accounts);
   const feeds = useAppStore((s) => s.feeds);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
   const removePerson = useAppStore((s) => s.removePerson);
@@ -563,25 +628,29 @@ export function FriendsView({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const deviceGraphLayout = useDeviceGraphLayout();
-  const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
+  const [themeId] = useThemePreference();
+  const friendSuggestionPreferences = useAppStore(
+    (s) => s.preferences.friendSuggestions,
+  );
   const savedSidebarWidth = Math.min(
     MAX_SIDEBAR_WIDTH,
     deviceDisplay.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
   );
-  const themeId = display.themeId;
   const effectiveMode = deviceDisplay.friendsMode;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [editorState, setEditorState] = useState<EditorState>(null);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(new Set());
+  const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(
+    new Set(),
+  );
   const [sortBy, setSortBy] = useState<FriendOverviewSort>("recent_activity");
   const [dragWidth, setDragWidth] = useState<number | null>(null);
-  const [committedSidebarWidth, setCommittedSidebarWidth] = useState(savedSidebarWidth);
+  const [committedSidebarWidth, setCommittedSidebarWidth] =
+    useState(savedSidebarWidth);
 
   const graphRef = useRef<FriendGraphHandle>(null);
   const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
@@ -591,41 +660,25 @@ export function FriendsView({
 
   const { googleContacts } = usePlatform();
   const contactSync = useContactSyncContext();
-
-  const feedItems = useMemo(() => {
-    const map: Record<string, FeedItem> = {};
-    for (const item of items) map[item.globalId] = item;
-    return map;
-  }, [items]);
-  const graphActivitySummaries = useMemo(
-    () => buildIdentityGraphActivitySummaries(feedItems),
-    [feedItems],
-  );
   const friendsWorkspaceIndexes = useMemo(
-    () => buildFriendsWorkspaceIndexes(accounts, feedItems),
-    [accounts, feedItems],
+    () => buildFriendsWorkspaceIndexes(accounts, {}),
+    [accounts],
   );
-  const sourceItems = useMemo(() => {
-    const map = new Map<string, FeedItem>();
-    for (const item of items) {
-      const key = sourceKey(item.platform, item.author.id);
-      const current = map.get(key);
-      if (!current || item.publishedAt > current.publishedAt) {
-        map.set(key, item);
-      }
-    }
-    return map;
-  }, [items]);
 
   const friendPersons = useMemo(
     () =>
       Object.values(persons)
         .filter((person) => person.relationshipStatus === "friend")
-        .sort((left, right) => personName(left).localeCompare(personName(right))),
+        .sort((left, right) =>
+          personName(left).localeCompare(personName(right)),
+        ),
     [persons],
   );
   const allPersons = useMemo(
-    () => Object.values(persons).sort((left, right) => personName(left).localeCompare(personName(right))),
+    () =>
+      Object.values(persons).sort((left, right) =>
+        personName(left).localeCompare(personName(right)),
+      ),
     [persons],
   );
   const graphEntities = useMemo(
@@ -633,8 +686,10 @@ export function FriendsView({
     [accounts, deviceGraphLayout, persons],
   );
   const graphPersons = useMemo(
-    () => Object.values(graphEntities.persons)
-      .sort((left, right) => personName(left).localeCompare(personName(right))),
+    () =>
+      Object.values(graphEntities.persons).sort((left, right) =>
+        personName(left).localeCompare(personName(right)),
+      ),
     [graphEntities.persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
@@ -643,17 +698,93 @@ export function FriendsView({
   );
   const friendList = useMemo(() => Object.values(friendsById), [friendsById]);
   const socialAccountCount = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "social").length,
+    () =>
+      Object.values(accounts).filter((account) => account.kind === "social")
+        .length,
     [accounts],
   );
 
-  const selectedPerson = selectedPersonId ? persons[selectedPersonId] ?? null : null;
-  const selectedFriend = selectedPerson ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes) : null;
-  const selectedAccount = selectedAccountId ? accounts[selectedAccountId] ?? null : null;
+  const selectedPerson = selectedPersonId
+    ? (persons[selectedPersonId] ?? null)
+    : null;
+  const selectedFriend = useMemo(
+    () =>
+      selectedPerson
+        ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes)
+        : null,
+    [friendsWorkspaceIndexes, selectedPerson],
+  );
+  const selectedAccount = selectedAccountId
+    ? (accounts[selectedAccountId] ?? null)
+    : null;
+
+  const friendsGraphRequest = useMemo(
+    () => createLibraryFriendsGraphRequest(accounts, feeds),
+    [accounts, feeds, searchCorpusVersion],
+  );
+  const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
+    const sources = selectedFriend
+      ? selectedFriend.sources.map((source) => ({
+          platform: source.platform,
+          authorId: source.authorId,
+        }))
+      : selectedAccount?.kind === "social"
+        ? [
+            {
+              platform: selectedAccount.provider,
+              authorId: selectedAccount.externalId,
+            },
+          ]
+        : [];
+    const unique = new Map<string, LibraryFriendsSource>();
+    for (const source of sources) {
+      const key = friendActivitySourceKey(source.platform, source.authorId);
+      if (!unique.has(key)) unique.set(key, source);
+    }
+    return [...unique.values()].sort(
+      (left, right) =>
+        compareUtf8Binary(left.platform, right.platform) ||
+        compareUtf8Binary(left.authorId, right.authorId),
+    );
+  }, [selectedAccount, selectedFriend]);
+  const locationSources = useMemo<LibraryFriendsSource[]>(
+    () => (selectedFriend ? timelineSources : []),
+    [selectedFriend, timelineSources],
+  );
+  const friendsRows = useLibraryFriendsRows({
+    graphRequest: friendsGraphRequest,
+    locationSources,
+    timelineSources,
+    fallbackItems: items,
+    sourceVersion: searchCorpusVersion,
+  });
+  const nativeActivity = useMemo(
+    () =>
+      !friendsRows.graphUsingFallback && friendsRows.graph
+        ? buildFriendsActivityReadModel(friendsRows.graph)
+        : null,
+    [friendsRows.graph, friendsRows.graphUsingFallback],
+  );
+  const fallbackFeedItems = useMemo(() => {
+    if (!friendsRows.graphUsingFallback || !friendsRows.legacyItemsReady) {
+      return {};
+    }
+    return buildVisibleFriendsFallbackItems(items);
+  }, [friendsRows.graphUsingFallback, friendsRows.legacyItemsReady, items]);
+  const fallbackWorkspaceIndexes = useMemo(
+    () => buildFriendsWorkspaceIndexes(accounts, fallbackFeedItems),
+    [accounts, fallbackFeedItems],
+  );
+  const graphActivitySummaries = useMemo(
+    () =>
+      nativeActivity?.graphActivitySummaries ??
+      buildIdentityGraphActivitySummaries(fallbackFeedItems),
+    [fallbackFeedItems, nativeActivity],
+  );
 
   const reconnectCount = useMemo(
     () => friendPersons.filter((person) => isInReconnectZone(person)).length,
-    [friendPersons]
+    [friendPersons],
   );
 
   const accountLinkSuggestionGroups = useMemo(
@@ -668,18 +799,39 @@ export function FriendsView({
     () => accountLinkSuggestionGroups.byPerson,
     [accountLinkSuggestionGroups],
   );
-  const friendCandidateSuggestions = useMemo(
-    () =>
-      buildFriendCandidateSuggestions({
-        persons: allPersons,
-        accounts,
-        feedItems: items,
-        contactSuggestions: contactSync.syncState.pendingSuggestions,
-        preferences: friendSuggestionPreferences,
-        limit: 10,
-      }),
-    [accounts, allPersons, contactSync.syncState.pendingSuggestions, friendSuggestionPreferences, items],
-  );
+  const friendCandidateSuggestions = useMemo(() => {
+    const common = {
+      persons: allPersons,
+      accounts,
+      contactSuggestions: contactSync.syncState.pendingSuggestions,
+      preferences: friendSuggestionPreferences,
+      limit: 10,
+    } as const;
+    if (nativeActivity) {
+      return buildFriendCandidateSuggestionsFromActivity({
+        ...common,
+        activityBySourceKey: nativeActivity.candidateActivityBySourceKey,
+      });
+    }
+    if (friendsRows.graphUsingFallback && friendsRows.legacyItemsReady) {
+      return buildFriendCandidateSuggestions({
+        ...common,
+        feedItems: fallbackFeedItems,
+        now: friendsGraphRequest.recentWindow.endMs,
+      });
+    }
+    return [];
+  }, [
+    accounts,
+    allPersons,
+    contactSync.syncState.pendingSuggestions,
+    fallbackFeedItems,
+    friendSuggestionPreferences,
+    friendsRows.graphUsingFallback,
+    friendsRows.legacyItemsReady,
+    friendsGraphRequest.recentWindow.endMs,
+    nativeActivity,
+  ]);
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
     for (const suggestion of friendCandidateSuggestions) {
@@ -719,42 +871,69 @@ export function FriendsView({
     return next;
   }, [friendCandidateSuggestions]);
 
-  const overviewEntries = useMemo(
-    () => buildFriendOverviewEntries(friendsById, feedItems, { indexes: friendsWorkspaceIndexes }),
-    [feedItems, friendsById, friendsWorkspaceIndexes]
-  );
+  const overviewEntries = useMemo(() => {
+    if (nativeActivity) {
+      return buildFriendOverviewEntriesFromActivity(
+        friendsById,
+        nativeActivity.socialActivityBySourceKey,
+        friendsGraphRequest.recentWindow.endMs,
+      );
+    }
+    return buildFriendOverviewEntries(friendsById, fallbackFeedItems, {
+      indexes: fallbackWorkspaceIndexes,
+      now: friendsGraphRequest.recentWindow.endMs,
+    });
+  }, [
+    fallbackFeedItems,
+    fallbackWorkspaceIndexes,
+    friendsById,
+    friendsGraphRequest.recentWindow.endMs,
+    nativeActivity,
+  ]);
   const filteredOverviewEntries = useMemo(
-    () => filterAndSortFriendOverview(overviewEntries, searchQuery, activeFilters, sortBy),
-    [activeFilters, overviewEntries, searchQuery, sortBy]
+    () =>
+      filterAndSortFriendOverview(
+        overviewEntries,
+        searchQuery,
+        activeFilters,
+        sortBy,
+      ),
+    [activeFilters, overviewEntries, searchQuery, sortBy],
   );
-  const selectedAccountFeedItems = useMemo(() => {
-    if (!selectedAccount || selectedAccount.kind !== "social") return [];
-    return items
-      .filter(
-        (item) =>
-          item.platform === selectedAccount.provider &&
-          item.author.id === selectedAccount.externalId,
-      )
-      .sort((left, right) => right.publishedAt - left.publishedAt);
-  }, [items, selectedAccount]);
+  const sourceActivityEvidence = useMemo(
+    () =>
+      buildFriendSourceActivityEvidence({
+        accounts,
+        nativeActivityBySourceKey:
+          nativeActivity?.socialActivityBySourceKey ?? null,
+        compatibilityItems: nativeActivity ? {} : fallbackFeedItems,
+      }),
+    [accounts, fallbackFeedItems, nativeActivity],
+  );
   const selectedAccountSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () => (selectedAccount ? suggestionsByAccount.get(selectedAccount.id) ?? [] : []),
+    () =>
+      selectedAccount
+        ? (suggestionsByAccount.get(selectedAccount.id) ?? [])
+        : [],
     [selectedAccount, suggestionsByAccount],
   );
   const selectedPersonSuggestions = useMemo<AccountLinkSuggestion[]>(
-    () => (selectedPerson ? suggestionsByPerson.get(selectedPerson.id) ?? [] : []),
+    () =>
+      selectedPerson ? (suggestionsByPerson.get(selectedPerson.id) ?? []) : [],
     [selectedPerson, suggestionsByPerson],
   );
   const selectedPersonFriendSuggestion = selectedPerson
-    ? friendCandidateByPerson.get(selectedPerson.id) ?? null
+    ? (friendCandidateByPerson.get(selectedPerson.id) ?? null)
     : null;
   const selectedAccountFriendSuggestion = selectedAccount
-    ? friendCandidateByAccount.get(selectedAccount.id) ?? null
+    ? (friendCandidateByAccount.get(selectedAccount.id) ?? null)
     : null;
   const selectedOverviewEntry = useMemo(
     () =>
       selectedPerson
-        ? overviewEntries.find((entry) => entry.friend.id === selectedPerson.id) ?? null
+        ? (overviewEntries.find(
+            (entry) => entry.friend.id === selectedPerson.id,
+          ) ?? null)
         : null,
     [overviewEntries, selectedPerson],
   );
@@ -768,7 +947,12 @@ export function FriendsView({
 
   useEffect(() => {
     friendOverviewVirtualizer.measure();
-  }, [filteredOverviewEntries.length, friendOverviewVirtualizer, searchQuery, sortBy]);
+  }, [
+    filteredOverviewEntries.length,
+    friendOverviewVirtualizer,
+    searchQuery,
+    sortBy,
+  ]);
 
   useEffect(() => {
     if (selectedPersonId && !persons[selectedPersonId]) {
@@ -792,161 +976,213 @@ export function FriendsView({
     graphRef.current?.focusNode(id);
   }, []);
 
-  const handleSelectPerson = useCallback((person: Person, focusGraph: boolean = false) => {
-    setSelectedPerson(person.id);
-    if (focusGraph) {
-      focusGraphNode(person.id);
-    }
-  }, [focusGraphNode, setSelectedPerson]);
+  const handleSelectPerson = useCallback(
+    (person: Person, focusGraph: boolean = false) => {
+      setSelectedPerson(person.id);
+      if (focusGraph) {
+        focusGraphNode(person.id);
+      }
+    },
+    [focusGraphNode, setSelectedPerson],
+  );
 
-  const handleSelectAccount = useCallback((account: Account, focusGraph: boolean = false) => {
-    setSelectedAccount(account.id);
-    if (focusGraph) {
-      focusGraphNode(account.id);
-    }
-  }, [focusGraphNode, setSelectedAccount]);
+  const handleSelectAccount = useCallback(
+    (account: Account, focusGraph: boolean = false) => {
+      setSelectedAccount(account.id);
+      if (focusGraph) {
+        focusGraphNode(account.id);
+      }
+    },
+    [focusGraphNode, setSelectedAccount],
+  );
 
   const handleClearSelection = useCallback(() => {
     setSelectedPerson(null);
     setSelectedAccount(null);
   }, [setSelectedAccount, setSelectedPerson]);
 
-  const handleOpenMapForPerson = useCallback((personId: string) => {
-    flushSync(() => {
-      openMapForPerson(personId);
-    });
-
-    window.setTimeout(() => {
-      if (document.querySelector('[data-testid="map-surface"]')) return;
-      if (!document.querySelector('[data-testid="friends-sidebar"]')) return;
-
-      setActiveView("friends");
-      window.requestAnimationFrame(() => {
+  const handleOpenMapForPerson = useCallback(
+    (personId: string) => {
+      flushSync(() => {
         openMapForPerson(personId);
       });
-    }, MAP_SURFACE_COMMIT_RETRY_MS);
-  }, [openMapForPerson, setActiveView]);
+
+      window.setTimeout(() => {
+        if (document.querySelector('[data-testid="map-surface"]')) return;
+        if (!document.querySelector('[data-testid="friends-sidebar"]')) return;
+
+        setActiveView("friends");
+        window.requestAnimationFrame(() => {
+          openMapForPerson(personId);
+        });
+      }, MAP_SURFACE_COMMIT_RETRY_MS);
+    },
+    [openMapForPerson, setActiveView],
+  );
 
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
       if (!selectedPerson) return;
       await logReachOut(selectedPerson.id, entry);
     },
-    [logReachOut, selectedPerson]
+    [logReachOut, selectedPerson],
   );
 
-  const persistFriend = useCallback(async (
-    data: Omit<Friend, "id" | "createdAt" | "updatedAt">,
-    personId?: string,
-  ) => {
-    const now = Date.now();
-    const existingPerson = personId ? persons[personId] ?? null : null;
-    const nextPersonId = existingPerson?.id ?? crypto.randomUUID();
+  const persistFriend = useCallback(
+    async (
+      data: Omit<Friend, "id" | "createdAt" | "updatedAt">,
+      personId?: string,
+      editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
+    ) => {
+      const now = Date.now();
+      const existingPerson = personId ? (persons[personId] ?? null) : null;
+      const nextPersonId = existingPerson?.id ?? crypto.randomUUID();
 
-    const nextPerson: Person = {
-      id: nextPersonId,
-      name: data.name.trim(),
-      avatarUrl: data.avatarUrl?.trim() || undefined,
-      bio: data.bio?.trim() || undefined,
-      relationshipStatus: "friend",
-      careLevel: data.careLevel,
-      reachOutIntervalDays: data.reachOutIntervalDays,
-      reachOutLog: existingPerson?.reachOutLog,
-      tags: data.tags,
-      notes: data.notes?.trim() || undefined,
-      createdAt: existingPerson?.createdAt ?? now,
-      updatedAt: now,
-    };
+      const nextPerson: Person = {
+        id: nextPersonId,
+        name: data.name.trim(),
+        avatarUrl: data.avatarUrl?.trim() || undefined,
+        bio: data.bio?.trim() || undefined,
+        relationshipStatus: "friend",
+        careLevel: data.careLevel,
+        reachOutIntervalDays: data.reachOutIntervalDays,
+        reachOutLog: existingPerson?.reachOutLog,
+        tags: data.tags,
+        notes: data.notes?.trim() || undefined,
+        createdAt: existingPerson?.createdAt ?? now,
+        updatedAt: now,
+      };
 
-    if (existingPerson) {
-      await updatePerson(nextPersonId, {
-        name: nextPerson.name,
-        avatarUrl: nextPerson.avatarUrl,
-        bio: nextPerson.bio,
-        relationshipStatus: nextPerson.relationshipStatus,
-        careLevel: nextPerson.careLevel,
-        reachOutIntervalDays: nextPerson.reachOutIntervalDays,
-        tags: nextPerson.tags,
-        notes: nextPerson.notes,
-      });
-    } else {
-      await addPerson(nextPerson);
-    }
-
-    const desiredSocialIds = new Set(data.sources.map((source) => socialAccountId(source)));
-    const existingSocialAccounts = Object.values(accounts).filter(
-      (account) => account.kind === "social" && account.personId === nextPersonId,
-    );
-
-    await Promise.all(
-      existingSocialAccounts
-        .filter((account) => !desiredSocialIds.has(account.id))
-        .map((account) => updateAccount(account.id, { personId: undefined })),
-    );
-
-    await Promise.all(
-      data.sources.map(async (source) => {
-        const accountId = socialAccountId(source);
-        const existingAccount = accounts[accountId];
-        const item = sourceItems.get(sourceKey(source.platform, source.authorId)) ?? null;
-        if (existingAccount) {
-          await updateAccount(accountId, {
-            personId: nextPersonId,
-            handle: source.handle ?? existingAccount.handle,
-            displayName: source.displayName ?? existingAccount.displayName,
-            avatarUrl: source.avatarUrl ?? existingAccount.avatarUrl,
-            profileUrl: source.profileUrl ?? existingAccount.profileUrl,
-            firstSeenAt: item ? Math.min(existingAccount.firstSeenAt, item.publishedAt) : existingAccount.firstSeenAt,
-            lastSeenAt: item ? Math.max(existingAccount.lastSeenAt, item.publishedAt) : existingAccount.lastSeenAt,
-          });
-          return;
-        }
-        await addAccount(socialAccountDraftFromSource(source, nextPersonId, item, now));
-      }),
-    );
-
-    const existingContactAccounts = Object.values(accounts).filter(
-      (account) => account.kind === "contact" && account.personId === nextPersonId,
-    );
-
-    if (!data.contact) {
-      await Promise.all(existingContactAccounts.map((account) => removeAccount(account.id)));
-    } else {
-      const nextContact = contactAccountDraft(nextPersonId, data.contact, now);
-      await Promise.all(
-        existingContactAccounts
-          .filter((account) => account.id !== nextContact.id)
-          .map((account) => removeAccount(account.id)),
-      );
-
-      if (accounts[nextContact.id]) {
-        await updateAccount(nextContact.id, {
-          personId: nextPersonId,
-          provider: nextContact.provider,
-          externalId: nextContact.externalId,
-          displayName: nextContact.displayName,
-          email: nextContact.email,
-          phone: nextContact.phone,
-          address: nextContact.address,
-          importedAt: nextContact.importedAt,
-          firstSeenAt: accounts[nextContact.id]?.firstSeenAt ?? nextContact.firstSeenAt,
-          lastSeenAt: nextContact.lastSeenAt,
+      if (existingPerson) {
+        await updatePerson(nextPersonId, {
+          name: nextPerson.name,
+          avatarUrl: nextPerson.avatarUrl,
+          bio: nextPerson.bio,
+          relationshipStatus: nextPerson.relationshipStatus,
+          careLevel: nextPerson.careLevel,
+          reachOutIntervalDays: nextPerson.reachOutIntervalDays,
+          tags: nextPerson.tags,
+          notes: nextPerson.notes,
         });
       } else {
-        await addAccount(nextContact);
+        await addPerson(nextPerson);
       }
-    }
 
-    setEditorState(null);
-    setSelectedPerson(nextPersonId);
-  }, [accounts, addAccount, addPerson, persons, removeAccount, setSelectedPerson, sourceItems, updateAccount, updatePerson]);
+      const desiredSocialIds = new Set(
+        data.sources.map((source) => socialAccountId(source)),
+      );
+      const existingSocialAccounts = Object.values(accounts).filter(
+        (account) =>
+          account.kind === "social" && account.personId === nextPersonId,
+      );
+
+      await Promise.all(
+        existingSocialAccounts
+          .filter((account) => !desiredSocialIds.has(account.id))
+          .map((account) => updateAccount(account.id, { personId: undefined })),
+      );
+
+      await Promise.all(
+        data.sources.map(async (source) => {
+          const accountId = socialAccountId(source);
+          const existingAccount = accounts[accountId];
+          const activity =
+            editorSourceActivity?.get(
+              friendActivitySourceKey(source.platform, source.authorId),
+            ) ??
+            sourceActivityEvidence.get(
+              friendActivitySourceKey(source.platform, source.authorId),
+            ) ??
+            null;
+          if (existingAccount) {
+            await updateAccount(accountId, {
+              personId: nextPersonId,
+              handle: source.handle ?? existingAccount.handle,
+              displayName: source.displayName ?? existingAccount.displayName,
+              avatarUrl: source.avatarUrl ?? existingAccount.avatarUrl,
+              profileUrl: source.profileUrl ?? existingAccount.profileUrl,
+              firstSeenAt: activity
+                ? Math.min(existingAccount.firstSeenAt, activity.firstSeenAt)
+                : existingAccount.firstSeenAt,
+              lastSeenAt: activity
+                ? Math.max(existingAccount.lastSeenAt, activity.lastSeenAt)
+                : existingAccount.lastSeenAt,
+            });
+            return;
+          }
+          await addAccount(
+            socialAccountDraftFromSource(source, nextPersonId, activity, now),
+          );
+        }),
+      );
+
+      const existingContactAccounts = Object.values(accounts).filter(
+        (account) =>
+          account.kind === "contact" && account.personId === nextPersonId,
+      );
+
+      if (!data.contact) {
+        await Promise.all(
+          existingContactAccounts.map((account) => removeAccount(account.id)),
+        );
+      } else {
+        const nextContact = contactAccountDraft(
+          nextPersonId,
+          data.contact,
+          now,
+        );
+        await Promise.all(
+          existingContactAccounts
+            .filter((account) => account.id !== nextContact.id)
+            .map((account) => removeAccount(account.id)),
+        );
+
+        if (accounts[nextContact.id]) {
+          await updateAccount(nextContact.id, {
+            personId: nextPersonId,
+            provider: nextContact.provider,
+            externalId: nextContact.externalId,
+            displayName: nextContact.displayName,
+            email: nextContact.email,
+            phone: nextContact.phone,
+            address: nextContact.address,
+            importedAt: nextContact.importedAt,
+            firstSeenAt:
+              accounts[nextContact.id]?.firstSeenAt ?? nextContact.firstSeenAt,
+            lastSeenAt: nextContact.lastSeenAt,
+          });
+        } else {
+          await addAccount(nextContact);
+        }
+      }
+
+      setEditorState(null);
+      setSelectedPerson(nextPersonId);
+    },
+    [
+      accounts,
+      addAccount,
+      addPerson,
+      persons,
+      removeAccount,
+      setSelectedPerson,
+      sourceActivityEvidence,
+      updateAccount,
+      updatePerson,
+    ],
+  );
 
   const handleSave = useCallback(
-    async (data: Omit<Friend, "id" | "createdAt" | "updatedAt">) => {
-      const personId = editorState?.kind === "edit" ? editorState.personId : undefined;
-      await persistFriend(data, personId);
+    async (
+      data: Omit<Friend, "id" | "createdAt" | "updatedAt">,
+      _id?: string,
+      editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
+    ) => {
+      const personId =
+        editorState?.kind === "edit" ? editorState.personId : undefined;
+      await persistFriend(data, personId, editorSourceActivity);
     },
-    [editorState, persistFriend]
+    [editorState, persistFriend],
   );
 
   const handleDelete = useCallback(
@@ -957,7 +1193,7 @@ export function FriendsView({
       }
       setEditorState(null);
     },
-    [handleClearSelection, removePerson, selectedPersonId]
+    [handleClearSelection, removePerson, selectedPersonId],
   );
 
   const handleLinkAccountToPerson = useCallback(
@@ -970,7 +1206,9 @@ export function FriendsView({
 
   const handlePinPersonPosition = useCallback(
     (personId: string, x: number, y: number) => {
-      if (!setDevicePersonGraphPosition(personId, Math.round(x), Math.round(y))) {
+      if (
+        !setDevicePersonGraphPosition(personId, Math.round(x), Math.round(y))
+      ) {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
@@ -979,112 +1217,151 @@ export function FriendsView({
 
   const handlePinAccountPosition = useCallback(
     (accountId: string, x: number, y: number) => {
-      if (!setDeviceAccountGraphPosition(accountId, Math.round(x), Math.round(y))) {
+      if (
+        !setDeviceAccountGraphPosition(accountId, Math.round(x), Math.round(y))
+      ) {
         toast.error("Freed could not save this graph position on this device.");
       }
     },
     [],
   );
 
-  const handleSetPersonRelationshipLevel = useCallback(async (person: Person, level: RelationshipTierLevel) => {
-    await updatePerson(person.id, {
-      ...relationshipPatchForLevel(level),
-      updatedAt: Date.now(),
-    });
-    setSelectedPerson(person.id);
-  }, [setSelectedPerson, updatePerson]);
+  const handleSetPersonRelationshipLevel = useCallback(
+    async (person: Person, level: RelationshipTierLevel) => {
+      await updatePerson(person.id, {
+        ...relationshipPatchForLevel(level),
+        updatedAt: Date.now(),
+      });
+      setSelectedPerson(person.id);
+    },
+    [setSelectedPerson, updatePerson],
+  );
 
-  const handlePromoteSelectedAccount = useCallback(async (level: 3 | 5 = 3) => {
-    if (!selectedAccount) return;
-    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
-    if (linkedPerson) {
-      await handleSetPersonRelationshipLevel(linkedPerson, level);
-      return;
-    }
-    setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount, level) });
-  }, [handleSetPersonRelationshipLevel, persons, selectedAccount]);
-
-  const handlePromoteSelectedPerson = useCallback(async (level: 3 | 5 = 3) => {
-    if (!selectedPerson) return;
-    await handleSetPersonRelationshipLevel(selectedPerson, level);
-  }, [handleSetPersonRelationshipLevel, selectedPerson]);
-
-  const handlePromoteFriendSuggestion = useCallback(async (
-    suggestion: FriendCandidateSuggestion,
-    level: 3 | 5,
-  ) => {
-    if (suggestion.personId) {
-      const person = persons[suggestion.personId];
-      if (person) {
-        await handleSetPersonRelationshipLevel(person, level);
+  const handlePromoteSelectedAccount = useCallback(
+    async (level: 3 | 5 = 3) => {
+      if (!selectedAccount) return;
+      const linkedPerson = selectedAccount.personId
+        ? (persons[selectedAccount.personId] ?? null)
+        : null;
+      if (linkedPerson) {
+        await handleSetPersonRelationshipLevel(linkedPerson, level);
         return;
       }
-    }
-    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
-    if (!account) return;
-    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
-    if (linkedPerson) {
-      await handleSetPersonRelationshipLevel(linkedPerson, level);
-      return;
-    }
-    setSelectedAccount(account.id);
-    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
-  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
+      setEditorState({
+        kind: "new",
+        draft: friendDraftFromAccount(selectedAccount, level),
+      });
+    },
+    [handleSetPersonRelationshipLevel, persons, selectedAccount],
+  );
 
-  const handleDropGraphNodeToRelationshipTier = useCallback(async ({
-    personId,
-    accountId,
-    level,
-  }: {
-    personId?: string;
-    accountId?: string;
-    level: RelationshipTierLevel;
-  }) => {
-    if (personId) {
-      const person = persons[personId];
-      if (person) {
-        await handleSetPersonRelationshipLevel(person, level);
+  const handlePromoteSelectedPerson = useCallback(
+    async (level: 3 | 5 = 3) => {
+      if (!selectedPerson) return;
+      await handleSetPersonRelationshipLevel(selectedPerson, level);
+    },
+    [handleSetPersonRelationshipLevel, selectedPerson],
+  );
+
+  const handlePromoteFriendSuggestion = useCallback(
+    async (suggestion: FriendCandidateSuggestion, level: 3 | 5) => {
+      if (suggestion.personId) {
+        const person = persons[suggestion.personId];
+        if (person) {
+          await handleSetPersonRelationshipLevel(person, level);
+          return;
+        }
       }
-      return;
-    }
-
-    if (!accountId || level === 1) return;
-    const account = accounts[accountId];
-    if (!account) return;
-    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
-    if (linkedPerson) {
-      await handleSetPersonRelationshipLevel(linkedPerson, level);
-      return;
-    }
-    setSelectedAccount(account.id);
-    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
-  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
-
-  const handleDismissFriendSuggestion = useCallback((suggestionId: string) => {
-    const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
-    if (current.includes(suggestionId)) return;
-    void updatePreferences({
-      friendSuggestions: {
-        dismissedSuggestionIds: [...current, suggestionId],
-      },
-    } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      toast.error("Freed could not dismiss that suggestion.");
-    });
-  }, [friendSuggestionPreferences, updatePreferences]);
-
-  const handleSelectFriendCandidate = useCallback((suggestion: FriendCandidateSuggestion) => {
-    if (suggestion.personId) {
-      const person = persons[suggestion.personId];
-      if (person) {
-        handleSelectPerson(person, true);
+      const account = suggestion.accountIds
+        .map((accountId) => accounts[accountId])
+        .find(Boolean);
+      if (!account) return;
+      const linkedPerson = account.personId
+        ? (persons[account.personId] ?? null)
+        : null;
+      if (linkedPerson) {
+        await handleSetPersonRelationshipLevel(linkedPerson, level);
         return;
       }
-    }
-    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
-    if (account) {
-      handleSelectAccount(account, true);
-    }
-  }, [accounts, handleSelectAccount, handleSelectPerson, persons]);
+      setSelectedAccount(account.id);
+      setEditorState({
+        kind: "new",
+        draft: friendDraftFromAccount(account, level),
+      });
+    },
+    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+  );
+
+  const handleDropGraphNodeToRelationshipTier = useCallback(
+    async ({
+      personId,
+      accountId,
+      level,
+    }: {
+      personId?: string;
+      accountId?: string;
+      level: RelationshipTierLevel;
+    }) => {
+      if (personId) {
+        const person = persons[personId];
+        if (person) {
+          await handleSetPersonRelationshipLevel(person, level);
+        }
+        return;
+      }
+
+      if (!accountId || level === 1) return;
+      const account = accounts[accountId];
+      if (!account) return;
+      const linkedPerson = account.personId
+        ? (persons[account.personId] ?? null)
+        : null;
+      if (linkedPerson) {
+        await handleSetPersonRelationshipLevel(linkedPerson, level);
+        return;
+      }
+      setSelectedAccount(account.id);
+      setEditorState({
+        kind: "new",
+        draft: friendDraftFromAccount(account, level),
+      });
+    },
+    [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount],
+  );
+
+  const handleDismissFriendSuggestion = useCallback(
+    (suggestionId: string) => {
+      const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
+      if (current.includes(suggestionId)) return;
+      void updatePreferences({
+        friendSuggestions: {
+          dismissedSuggestionIds: [...current, suggestionId],
+        },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        toast.error("Freed could not dismiss that suggestion.");
+      });
+    },
+    [friendSuggestionPreferences, updatePreferences],
+  );
+
+  const handleSelectFriendCandidate = useCallback(
+    (suggestion: FriendCandidateSuggestion) => {
+      if (suggestion.personId) {
+        const person = persons[suggestion.personId];
+        if (person) {
+          handleSelectPerson(person, true);
+          return;
+        }
+      }
+      const account = suggestion.accountIds
+        .map((accountId) => accounts[accountId])
+        .find(Boolean);
+      if (account) {
+        handleSelectAccount(account, true);
+      }
+    },
+    [accounts, handleSelectAccount, handleSelectPerson, persons],
+  );
 
   const handleOpenSyncModal = useCallback(async () => {
     setOpeningSyncModal(true);
@@ -1107,101 +1384,112 @@ export function FriendsView({
     });
   }, []);
 
-  useEffect(() => () => {
-    sidebarDragCleanup.current?.();
-    sidebarDragCleanup.current = null;
-  }, []);
+  useEffect(
+    () => () => {
+      sidebarDragCleanup.current?.();
+      sidebarDragCleanup.current = null;
+    },
+    [],
+  );
 
-  const handleSidebarDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (isMobile) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.preventDefault();
-    sidebarDragCleanup.current?.();
-    isDraggingSidebar.current = true;
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
-    let latestWidth = startWidth;
-    const resizeHandle = event.currentTarget;
-    const pointerId = event.pointerId;
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
+  const handleSidebarDragStart = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isMobile) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      event.preventDefault();
+      sidebarDragCleanup.current?.();
+      isDraggingSidebar.current = true;
+      const startX = event.clientX;
+      const startWidth = sidebarWidth;
+      let latestWidth = startWidth;
+      const resizeHandle = event.currentTarget;
+      const pointerId = event.pointerId;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
 
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    resizeHandle.setPointerCapture?.(pointerId);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      resizeHandle.setPointerCapture?.(pointerId);
 
-    const nextWidthFromClientX = (clientX: number) =>
-      Math.min(
-        MAX_SIDEBAR_WIDTH,
-        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (clientX - startX)),
-      );
+      const nextWidthFromClientX = (clientX: number) =>
+        Math.min(
+          MAX_SIDEBAR_WIDTH,
+          Math.max(MIN_SIDEBAR_WIDTH, startWidth - (clientX - startX)),
+        );
 
-    const cleanup = () => {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onCancel);
-      window.removeEventListener("blur", onBlur);
-      try {
-        resizeHandle.releasePointerCapture?.(pointerId);
-      } catch {
-        // The browser may already have released capture after pointerup.
+      const cleanup = () => {
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onCancel);
+        window.removeEventListener("blur", onBlur);
+        try {
+          resizeHandle.releasePointerCapture?.(pointerId);
+        } catch {
+          // The browser may already have released capture after pointerup.
+        }
+        if (sidebarDragCleanup.current === cleanup) {
+          sidebarDragCleanup.current = null;
+        }
+      };
+
+      const finishDrag = (finalWidth: number) => {
+        isDraggingSidebar.current = false;
+        setDragWidth(null);
+        if (setDeviceDisplay({ friendsSidebarWidth: finalWidth })) {
+          setCommittedSidebarWidth(finalWidth);
+        } else {
+          toast.error("Freed could not save the sidebar width on this device.");
+        }
+        cleanup();
+      };
+
+      function onMove(moveEvent: PointerEvent) {
+        if (moveEvent.pointerId !== pointerId) return;
+        if (!isDraggingSidebar.current) return;
+        latestWidth = nextWidthFromClientX(moveEvent.clientX);
+        setDragWidth(latestWidth);
       }
-      if (sidebarDragCleanup.current === cleanup) {
-        sidebarDragCleanup.current = null;
+
+      function onUp(upEvent: PointerEvent) {
+        if (upEvent.pointerId !== pointerId) return;
+        finishDrag(nextWidthFromClientX(upEvent.clientX));
       }
-    };
 
-    const finishDrag = (finalWidth: number) => {
-      isDraggingSidebar.current = false;
-      setDragWidth(null);
-      if (setDeviceDisplay({ friendsSidebarWidth: finalWidth })) {
-        setCommittedSidebarWidth(finalWidth);
-      } else {
-        toast.error("Freed could not save the sidebar width on this device.");
+      function onCancel(cancelEvent: PointerEvent) {
+        if (cancelEvent.pointerId !== pointerId) return;
+        finishDrag(latestWidth);
       }
-      cleanup();
-    };
 
-    function onMove(moveEvent: PointerEvent) {
-      if (moveEvent.pointerId !== pointerId) return;
-      if (!isDraggingSidebar.current) return;
-      latestWidth = nextWidthFromClientX(moveEvent.clientX);
-      setDragWidth(latestWidth);
-    }
+      function onBlur() {
+        isDraggingSidebar.current = false;
+        setDragWidth(null);
+        cleanup();
+      }
 
-    function onUp(upEvent: PointerEvent) {
-      if (upEvent.pointerId !== pointerId) return;
-      finishDrag(nextWidthFromClientX(upEvent.clientX));
-    }
-
-    function onCancel(cancelEvent: PointerEvent) {
-      if (cancelEvent.pointerId !== pointerId) return;
-      finishDrag(latestWidth);
-    }
-
-    function onBlur() {
-      isDraggingSidebar.current = false;
-      setDragWidth(null);
-      cleanup();
-    }
-
-    sidebarDragCleanup.current = cleanup;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onCancel);
-    window.addEventListener("blur", onBlur);
-  }, [isMobile, setDeviceDisplay, sidebarWidth]);
+      sidebarDragCleanup.current = cleanup;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
+      window.addEventListener("blur", onBlur);
+    },
+    [isMobile, setDeviceDisplay, sidebarWidth],
+  );
 
   const renderOverviewSidebar = () => (
     <div className="flex h-full flex-col bg-transparent">
       <div className={FRIENDS_SIDEBAR_SECTION}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Friends</h2>
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Friends
+            </h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {friendList.length.toLocaleString()} total, {socialAccountCount.toLocaleString()} account{socialAccountCount === 1 ? "" : "s"}, {reconnectCount.toLocaleString()} due to reconnect
+              {friendList.length.toLocaleString()} total,{" "}
+              {socialAccountCount.toLocaleString()} account
+              {socialAccountCount === 1 ? "" : "s"},{" "}
+              {reconnectCount.toLocaleString()} due to reconnect
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1250,9 +1538,12 @@ export function FriendsView({
         <div className="theme-panel-muted rounded-xl p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="theme-feedback-text-warning text-[11px] font-semibold uppercase tracking-[0.14em]">Reconnect</p>
+              <p className="theme-feedback-text-warning text-[11px] font-semibold uppercase tracking-[0.14em]">
+                Reconnect
+              </p>
               <p className="mt-1 text-sm font-medium text-[var(--theme-text-primary)]">
-                {reconnectCount.toLocaleString()} friend{reconnectCount === 1 ? "" : "s"} waiting on a follow-up
+                {reconnectCount.toLocaleString()} friend
+                {reconnectCount === 1 ? "" : "s"} waiting on a follow-up
               </p>
             </div>
             <button
@@ -1287,11 +1578,14 @@ export function FriendsView({
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-[color:var(--theme-text-muted)]">
-            Showing {filteredOverviewEntries.length.toLocaleString()} of {friendList.length.toLocaleString()}
+            Showing {filteredOverviewEntries.length.toLocaleString()} of{" "}
+            {friendList.length.toLocaleString()}
           </p>
           <select
             value={sortBy}
-            onChange={(event) => setSortBy(event.target.value as FriendOverviewSort)}
+            onChange={(event) =>
+              setSortBy(event.target.value as FriendOverviewSort)
+            }
             className="theme-input theme-select min-w-[10.75rem] rounded-lg py-1.5 pl-2.5 pr-8 text-xs"
           >
             {SORT_OPTIONS.map((option) => (
@@ -1308,7 +1602,16 @@ export function FriendsView({
         data-testid="friends-overview-scroll"
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        {friendCandidateSuggestions.length > 0 ? (
+        {friendsRows.graphLoading ? (
+          <div
+            className="theme-panel-muted rounded-xl px-4 py-6 text-center"
+            data-testid="friends-activity-loading"
+          >
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+              Loading friend activity...
+            </p>
+          </div>
+        ) : friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1323,25 +1626,35 @@ export function FriendsView({
                   key={suggestion.id}
                   suggestion={suggestion}
                   selected={
-                    (suggestion.personId !== undefined && suggestion.personId === selectedPerson?.id) ||
-                    (selectedAccount?.id !== undefined && suggestion.accountIds.includes(selectedAccount.id))
+                    (suggestion.personId !== undefined &&
+                      suggestion.personId === selectedPerson?.id) ||
+                    (selectedAccount?.id !== undefined &&
+                      suggestion.accountIds.includes(selectedAccount.id))
                   }
                   onSelect={() => handleSelectFriendCandidate(suggestion)}
                   onDismiss={handleDismissFriendSuggestion}
-                  onPromoteToFriend={() => void handlePromoteFriendSuggestion(suggestion, 3)}
-                  onPromoteToFam={() => void handlePromoteFriendSuggestion(suggestion, 5)}
+                  onPromoteToFriend={() =>
+                    void handlePromoteFriendSuggestion(suggestion, 3)
+                  }
+                  onPromoteToFam={() =>
+                    void handlePromoteFriendSuggestion(suggestion, 5)
+                  }
                 />
               ))}
             </div>
           </div>
         ) : null}
 
-        {filteredOverviewEntries.length === 0 ? (
+        {!friendsRows.graphLoading && filteredOverviewEntries.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">No friends match those filters</p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Try clearing a filter or changing the search query.</p>
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+              No friends match those filters
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              Try clearing a filter or changing the search query.
+            </p>
           </div>
-        ) : (
+        ) : !friendsRows.graphLoading ? (
           <div
             data-testid="friends-overview-list"
             className="relative"
@@ -1362,20 +1675,27 @@ export function FriendsView({
                   <FriendListRow
                     entry={entry}
                     selected={entry.friend.id === selectedPerson?.id}
-                    onSelect={() => handleSelectPerson(persons[entry.friend.id] ?? friendPersons[0], true)}
+                    onSelect={() =>
+                      handleSelectPerson(
+                        persons[entry.friend.id] ?? friendPersons[0],
+                        true,
+                      )
+                    }
                   />
                 </div>
               );
             })}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
 
   const renderSelectedPersonSidebar = () => (
     <div className="flex h-full flex-col bg-transparent">
-      <div className={`${FRIENDS_SIDEBAR_SECTION} flex items-center justify-between gap-3`}>
+      <div
+        className={`${FRIENDS_SIDEBAR_SECTION} flex items-center justify-between gap-3`}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -1383,14 +1703,29 @@ export function FriendsView({
             className="btn-secondary rounded-lg p-1.5"
             aria-label="Back to all friends"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
-              <path d="M12.5 4.5L7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              className="h-4 w-4"
+              aria-hidden
+            >
+              <path
+                d="M12.5 4.5L7 10l5.5 5.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{personName(selectedPerson)}</h2>
+            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {personName(selectedPerson)}
+            </h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {selectedPerson ? relationshipTierLabelForPerson(selectedPerson) : "Followed"}
+              {selectedPerson
+                ? relationshipTierLabelForPerson(selectedPerson)
+                : "Followed"}
             </p>
           </div>
         </div>
@@ -1398,7 +1733,9 @@ export function FriendsView({
         {selectedPerson && (
           <button
             type="button"
-            onClick={() => setEditorState({ kind: "edit", personId: selectedPerson.id })}
+            onClick={() =>
+              setEditorState({ kind: "edit", personId: selectedPerson.id })
+            }
             className={BUTTON_CHROME}
           >
             Edit
@@ -1409,7 +1746,9 @@ export function FriendsView({
       {selectedPerson ? (
         <RelationshipTierControl
           value={relationshipTierLevelForPerson(selectedPerson)}
-          onChange={(level) => void handleSetPersonRelationshipLevel(selectedPerson, level)}
+          onChange={(level) =>
+            void handleSetPersonRelationshipLevel(selectedPerson, level)
+          }
         />
       ) : null}
 
@@ -1442,22 +1781,31 @@ export function FriendsView({
                 <button
                   key={`${suggestion.personId}:${suggestion.accountId}`}
                   type="button"
-                  onClick={() => void handleLinkAccountToPerson(account.id, selectedPerson.id)}
+                  onClick={() =>
+                    void handleLinkAccountToPerson(
+                      account.id,
+                      selectedPerson.id,
+                    )
+                  }
                   className="theme-card-soft flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                      {account.displayName ?? account.handle ?? account.externalId}
+                      {account.displayName ??
+                        account.handle ??
+                        account.externalId}
                     </p>
                     <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                       {suggestion.reason}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                    suggestion.confidence === "high"
-                      ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
-                      : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
-                  }`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                      suggestion.confidence === "high"
+                        ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
+                        : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
+                    }`}
+                  >
                     {suggestion.confidence}
                   </span>
                 </button>
@@ -1471,7 +1819,20 @@ export function FriendsView({
         <div className="min-h-0 flex-1">
           <FriendDetailPanel
             friend={selectedFriend}
-            feedItems={feedItems}
+            feedItems={friendsRows.timelineItems}
+            locationItems={friendsRows.locationItems}
+            activityAvatarUrls={
+              selectedOverviewEntry?.avatarUrlCandidates ?? []
+            }
+            latestPostAt={selectedOverviewEntry?.lastPostAt ?? null}
+            activityLoading={friendsRows.graphLoading}
+            timelineLoading={friendsRows.timelineLoading}
+            timelineLoadingMore={friendsRows.timelineLoadingMore}
+            timelineHasMore={friendsRows.timelineHasMore}
+            timelineAwayFromNewest={friendsRows.timelineAwayFromNewest}
+            timelineTotalCount={friendsRows.timelineTotalCount}
+            onLoadMoreTimeline={friendsRows.loadMoreTimeline}
+            onShowNewestTimeline={friendsRows.showNewestTimeline}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
               handleOpenMapForPerson(selectedPerson.id);
@@ -1484,7 +1845,9 @@ export function FriendsView({
 
   const renderSelectedAccountSidebar = () => {
     if (!selectedAccount) return null;
-    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+    const linkedPerson = selectedAccount.personId
+      ? (persons[selectedAccount.personId] ?? null)
+      : null;
     return (
       <AccountDetailPanel
         account={selectedAccount}
@@ -1492,12 +1855,16 @@ export function FriendsView({
         suggestions={selectedAccountSuggestions}
         friendSuggestion={selectedAccountFriendSuggestion}
         persons={allPersons}
-        feedItems={selectedAccountFeedItems}
+        feedItems={friendsRows.timelineItems}
+        timelineLoading={friendsRows.timelineLoading}
+        timelineTotalCount={friendsRows.timelineTotalCount}
         onBack={handleClearSelection}
         onPromoteToFriend={() => void handlePromoteSelectedAccount(3)}
         onPromoteToFam={() => void handlePromoteSelectedAccount(5)}
         onDismissFriendSuggestion={handleDismissFriendSuggestion}
-        onLinkToPerson={(personId) => void handleLinkAccountToPerson(selectedAccount.id, personId)}
+        onLinkToPerson={(personId) =>
+          void handleLinkAccountToPerson(selectedAccount.id, personId)
+        }
         onOpenPerson={(personId) => {
           const person = persons[personId];
           if (person) {
@@ -1517,7 +1884,9 @@ export function FriendsView({
           </div>
           <div>
             <p className="font-medium text-[color:var(--theme-text-primary)]">
-              {friendList.length === 0 ? "No friends yet" : "No friend graph nodes yet"}
+              {friendList.length === 0
+                ? "No friends yet"
+                : "No friend graph nodes yet"}
             </p>
             <p className="mt-1 max-w-xs text-sm text-[color:var(--theme-text-muted)]">
               {friendList.length === 0
@@ -1541,9 +1910,12 @@ export function FriendsView({
           <UsersIcon className="h-8 w-8 text-[color:var(--theme-text-muted)]" />
         </div>
         <div>
-          <p className="font-medium text-[color:var(--theme-text-primary)]">No captured accounts yet</p>
+          <p className="font-medium text-[color:var(--theme-text-primary)]">
+            No captured accounts yet
+          </p>
           <p className="mt-1 max-w-xs text-sm text-[color:var(--theme-text-muted)]">
-            Accounts with captured content will appear here and can be promoted into your friends workspace.
+            Accounts with captured content will appear here and can be promoted
+            into your friends workspace.
           </p>
         </div>
       </div>
@@ -1552,7 +1924,9 @@ export function FriendsView({
 
   const renderCollapsedSelectionCard = () => {
     if (selectedAccount) {
-      const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+      const linkedPerson = selectedAccount.personId
+        ? (persons[selectedAccount.personId] ?? null)
+        : null;
       return (
         <CompactDetailCard>
           <div className="flex items-start gap-3">
@@ -1578,8 +1952,19 @@ export function FriendsView({
                   className="btn-secondary rounded-lg p-1.5"
                   aria-label="Clear selection"
                 >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
-                    <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    className="h-4 w-4"
+                    aria-hidden
+                  >
+                    <path
+                      d="M5 5l10 10M15 5L5 15"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 </button>
               </div>
@@ -1587,10 +1972,16 @@ export function FriendsView({
                 {accountSubtitle(selectedAccount)}
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-muted)]">
-                <span>{selectedAccountFeedItems.length.toLocaleString()} captured post{selectedAccountFeedItems.length === 1 ? "" : "s"}</span>
+                <span>
+                  {friendsRows.timelineLoading
+                    ? "Loading captured posts..."
+                    : `${friendsRows.timelineTotalCount.toLocaleString()} captured post${friendsRows.timelineTotalCount === 1 ? "" : "s"}`}
+                </span>
                 <span>•</span>
                 <span>
-                  {linkedPerson ? `Linked to ${personName(linkedPerson)}` : "Not linked yet"}
+                  {linkedPerson
+                    ? `Linked to ${personName(linkedPerson)}`
+                    : "Not linked yet"}
                 </span>
               </div>
             </div>
@@ -1628,13 +2019,19 @@ export function FriendsView({
     if (selectedPerson && selectedFriend) {
       const avatarUrl = resolveFriendAvatarUrl(
         selectedFriend,
-        selectedOverviewEntry?.items.map((item) => item.author.avatarUrl) ?? [],
+        selectedOverviewEntry?.avatarUrlCandidates ?? [],
       );
-      const lastPostLabel = selectedOverviewEntry?.lastPostAt
-        ? formatDistanceToNow(selectedOverviewEntry.lastPostAt, { addSuffix: true })
-        : "No posts yet";
+      const lastPostLabel = friendsRows.graphLoading
+        ? "Loading friend activity..."
+        : selectedOverviewEntry?.lastPostAt
+          ? formatDistanceToNow(selectedOverviewEntry.lastPostAt, {
+              addSuffix: true,
+            })
+          : "No posts yet";
       const lastContactLabel = selectedOverviewEntry?.lastContactAt
-        ? formatDistanceToNow(selectedOverviewEntry.lastContactAt, { addSuffix: true })
+        ? formatDistanceToNow(selectedOverviewEntry.lastContactAt, {
+            addSuffix: true,
+          })
         : "Never contacted";
 
       return (
@@ -1661,8 +2058,19 @@ export function FriendsView({
                   className="btn-secondary rounded-lg p-1.5"
                   aria-label="Clear selection"
                 >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
-                    <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    className="h-4 w-4"
+                    aria-hidden
+                  >
+                    <path
+                      d="M5 5l10 10M15 5L5 15"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 </button>
               </div>
@@ -1679,7 +2087,10 @@ export function FriendsView({
                 <span>•</span>
                 <span>{lastContactLabel}</span>
                 <span>•</span>
-                <span>{selectedFriend.sources.length.toLocaleString()} channel{selectedFriend.sources.length === 1 ? "" : "s"}</span>
+                <span>
+                  {selectedFriend.sources.length.toLocaleString()} channel
+                  {selectedFriend.sources.length === 1 ? "" : "s"}
+                </span>
                 {selectedOverviewEntry?.hasLocation ? (
                   <>
                     <span>•</span>
@@ -1695,7 +2106,9 @@ export function FriendsView({
           <div className="mt-4 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setEditorState({ kind: "edit", personId: selectedPerson.id })}
+              onClick={() =>
+                setEditorState({ kind: "edit", personId: selectedPerson.id })
+              }
               className={BUTTON_CHROME}
             >
               Edit
@@ -1727,21 +2140,40 @@ export function FriendsView({
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
   const graphIsEmpty =
     (effectiveMode === "friends" && friendList.length === 0) ||
-    (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0);
+    (effectiveMode === "all_content" &&
+      socialAccountCount === 0 &&
+      friendList.length === 0);
+  const renderGraphLoadingState = (overlay = false) => (
+    <div
+      className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}
+      data-testid="friends-graph-loading"
+    >
+      <p className="text-sm text-[color:var(--theme-text-muted)]">
+        Loading friend activity...
+      </p>
+    </div>
+  );
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-transparent">
       <div
         className={`relative flex min-h-0 flex-1 ${isMobile ? "flex-col pt-[var(--feed-card-gap,8px)]" : "flex-row"}`}
       >
-        <div className={`${
-          showGraphSurface
-            ? "relative min-h-0 min-w-0 flex-1 overflow-visible"
-            : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
-        }`}>
-            {graphIsEmpty ? (
-              renderGraphEmptyState()
+        <div
+          className={`${
+            showGraphSurface
+              ? "relative min-h-0 min-w-0 flex-1 overflow-visible"
+              : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
+          }`}
+        >
+          {graphIsEmpty ? (
+            friendsRows.graphLoading ? (
+              renderGraphLoadingState()
             ) : (
+              renderGraphEmptyState()
+            )
+          ) : (
+            <>
               <FriendGraph
                 ref={graphRef}
                 persons={graphPersons}
@@ -1752,18 +2184,30 @@ export function FriendsView({
                 selectedPersonId={selectedPerson?.id ?? null}
                 selectedAccountId={selectedAccount?.id ?? null}
                 onSelectPerson={(person) => handleSelectPerson(person, false)}
-                onSelectAccount={(account) => handleSelectAccount(account, false)}
-                onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
+                onSelectAccount={(account) =>
+                  handleSelectAccount(account, false)
+                }
+                onClearSelection={
+                  showCollapsedSelectionCard ? handleClearSelection : undefined
+                }
                 onLinkAccountToPerson={handleLinkAccountToPerson}
                 onPinPersonPosition={handlePinPersonPosition}
                 onPinAccountPosition={handlePinAccountPosition}
-                onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
-                friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
-                friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
+                onDropNodeToRelationshipTier={
+                  handleDropGraphNodeToRelationshipTier
+                }
+                friendSuggestionStrengthByPerson={
+                  friendSuggestionStrengthByPerson
+                }
+                friendSuggestionStrengthByAccount={
+                  friendSuggestionStrengthByAccount
+                }
                 themeId={themeId}
                 presentationVisible={showGraphSurface}
               />
-            )}
+              {friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
+            </>
+          )}
         </div>
 
         {showDesktopSidebar && (
@@ -1791,7 +2235,7 @@ export function FriendsView({
         ) : showDesktopSidebar ? (
           <div
             data-testid="friends-sidebar-shell"
-            className="flex shrink-0 overflow-hidden"
+            className="flex shrink-0 overflow-hidden py-[var(--feed-card-gap,8px)]"
             style={{ width: `${sidebarWidth}px` }}
           >
             <aside
@@ -1809,8 +2253,14 @@ export function FriendsView({
 
       {editorState ? (
         <FriendEditor
-          existing={editorState.kind === "edit" ? friendsById[editorState.personId] ?? null : null}
-          draft={editorState.kind === "new" ? editorState.draft ?? null : null}
+          existing={
+            editorState.kind === "edit"
+              ? (friendsById[editorState.personId] ?? null)
+              : null
+          }
+          draft={
+            editorState.kind === "new" ? (editorState.draft ?? null) : null
+          }
           onSave={handleSave}
           onDelete={editorState.kind === "edit" ? handleDelete : undefined}
           onCancel={() => setEditorState(null)}

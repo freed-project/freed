@@ -12,10 +12,12 @@ describe("desktop Google Drive platform fetch", () => {
   });
 
   it("routes Drive API requests through the Tauri command", async () => {
+    // Bodies cross IPC as base64, not as a JSON number array. See
+    // NativeHttpResponse in src-tauri/src/lib.rs.
     invokeMock.mockResolvedValueOnce({
       status: 200,
       headers: [["content-type", "application/json"]],
-      body: Array.from(new TextEncoder().encode('{"files":[{"id":"file-1"}]}')),
+      bodyB64: btoa('{"files":[{"id":"file-1"}]}'),
     });
 
     const { googleDriveFetchViaTauri } = await import("./google-drive");
@@ -28,7 +30,7 @@ describe("desktop Google Drive platform fetch", () => {
       url: "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder",
       method: "GET",
       headers: [["Authorization", "Bearer token"]],
-      body: undefined,
+      bodyB64: undefined,
     });
     await expect(response.json()).resolves.toEqual({ files: [{ id: "file-1" }] });
   });
@@ -37,7 +39,7 @@ describe("desktop Google Drive platform fetch", () => {
     invokeMock.mockResolvedValueOnce({
       status: 200,
       headers: [],
-      body: [],
+      bodyB64: "",
     });
 
     const { googleDriveFetchViaTauri } = await import("./google-drive");
@@ -54,7 +56,9 @@ describe("desktop Google Drive platform fetch", () => {
       url: "https://www.googleapis.com/upload/drive/v3/files/file-1?uploadType=media",
       method: "PATCH",
       headers: [["Content-Type", "application/octet-stream"]],
-      body: [1, 2, 3],
+      // base64 of [1,2,3], not a number array. A regression here would silently
+      // restore ~300 MB of renderer transient per cloud sync.
+      bodyB64: "AQID",
     });
     expect(response.ok).toBe(true);
   });

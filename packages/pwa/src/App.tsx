@@ -15,10 +15,8 @@ import {
 } from "@freed/ui/context";
 import { quiescePwaStartupMigrations, useAppStore } from "./lib/store";
 import {
-  connect,
   disconnect,
   onStatusChange,
-  getStoredRelayUrl,
   clearStoredRelayUrlForFactoryReset,
   startCloudSync,
   stopCloudSync,
@@ -26,10 +24,6 @@ import {
   getCloudToken,
   clearStoredCloudDataForFactoryReset,
 } from "./lib/sync";
-import {
-  clearLocalDocAfterPwaQuiesce,
-  getItemLegacyHtml,
-} from "./lib/automerge";
 import {
   applyPwaUpdate,
   checkForPwaUpdate,
@@ -82,6 +76,13 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
+  ensurePwaLibraryCoreFeaturePreviewState,
+  openPwaLibraryCoreFeedReader,
+  readPwaLibraryCoreItemDetail,
+  scanPwaLibraryCoreItems,
+  searchPwaLibraryCoreItems,
+} from "./lib/library-core-runtime";
+import {
   refreshSampleLibraryData,
   summarizeSampleData,
 } from "@freed/ui/lib/sample-library-seed";
@@ -93,7 +94,6 @@ import {
   type InstallNotice,
 } from "./lib/pwa-install";
 import { openPwaUrl } from "./lib/youtube-handoff";
-import { clearPersistedWorkerDebugEvents } from "./lib/automerge-worker-debug";
 import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
@@ -191,6 +191,16 @@ function App() {
     legalAcceptedRef.current = legalAccepted;
   }, [legalAccepted]);
 
+  // Reads a synchronous localStorage flag once on mount, so the extra render
+  // pass react-hooks/set-state-in-effect warns about is real but bounded: it
+  // costs one paint of the blank shell below before the gate resolves.
+  //
+  // Lazy useState initialisers would remove it, but this decides whether the
+  // legal gate is shown, and the acceptPwaBundle() write has to stay in an
+  // effect regardless. Not worth reshaping a consent gate at the same time as a
+  // lint upgrade, so this is suppressed deliberately rather than papered over.
+  // Tracked for a proper pass.
+  /* eslint-disable react-hooks/set-state-in-effect -- bounded gate bootstrap described above */
   useEffect(() => {
     if (IS_FEATURE_PREVIEW) {
       acceptPwaBundle();
@@ -202,6 +212,7 @@ function App() {
     setLegalAccepted(hasAcceptedPwaBundle());
     setLegalResolved(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!legalAccepted) return;
@@ -210,7 +221,6 @@ function App() {
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW) return;
-
     const state = useAppStore.getState();
     const sampleSummary = summarizeSampleData(state);
     const hasTimeWindowMapSamples = state.items.some(
@@ -222,6 +232,7 @@ function App() {
     if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
 
     void (async () => {
+      await ensurePwaLibraryCoreFeaturePreviewState();
       if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
         await state.clearSampleData();
       }
@@ -237,12 +248,6 @@ function App() {
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
-
-    // Resume LAN relay connection if previously paired.
-    const storedUrl = getStoredRelayUrl();
-    if (storedUrl) {
-      connect(storedUrl);
-    }
 
     // Resume cloud sync if previously authenticated.
     const provider = getCloudProvider();
@@ -272,6 +277,11 @@ function App() {
     };
   }, [legalAccepted]);
 
+  // Same shape as the gate above: seed the notice from its current external
+  // value, then subscribe. It cannot become a lazy initialiser as it stands,
+  // because it must not run until the gate resolves. Suppressed with the rest
+  // and tracked together.
+  /* eslint-disable react-hooks/set-state-in-effect -- deferred external-state bootstrap described above */
   useEffect(() => {
     if (!legalResolved) return;
 
@@ -288,6 +298,7 @@ function App() {
       },
     });
   }, [legalResolved]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const checkForUpdates =
     useCallback(async (): Promise<AvailableUpdateInfo | null> => {
@@ -329,7 +340,6 @@ function App() {
               resetFeedCardDensity,
               resetInterfaceZoom,
               resetThemePreference,
-              clearPersistedWorkerDebugEvents,
             ],
             clearLocalData: [],
             clearProviderDataAndConnections: async () => {
@@ -337,7 +347,7 @@ function App() {
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
               clearStoredRelayUrlForFactoryReset();
             },
-            clearDocument: clearLocalDocAfterPwaQuiesce,
+            clearDocument: async () => {},
           });
           clearFactoryResetCloudCleanupBarrier();
         });
@@ -422,19 +432,17 @@ function App() {
         try {
           const cached = await getCachedArticleHtml(globalId);
           if (cached) return cached;
-          const legacyHtml = await getItemLegacyHtml(globalId);
-          if (!legacyHtml) return null;
-          const item = useAppStore
-            .getState()
-            .items.find((candidate) => candidate.globalId === globalId);
+          const item = await readPwaLibraryCoreItemDetail(globalId);
+          const html = item?.preservedContent?.html ?? null;
+          if (!html) return null;
           const articleUrl =
             item?.content.linkPreview?.url ??
             item?.sourceUrl ??
             `/reader-item/${encodeURIComponent(globalId)}`;
-          await cacheArticleHtml(articleUrl, globalId, legacyHtml, {
+          await cacheArticleHtml(articleUrl, globalId, html, {
             pinned: item?.userState.saved ?? false,
           }).catch(() => {});
-          return legacyHtml;
+          return html;
         } catch {
           return null;
         }
@@ -445,6 +453,10 @@ function App() {
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       openUrl: openPwaUrl,
+      openBoundedFeedReader: openPwaLibraryCoreFeedReader,
+      scanLibraryItems: scanPwaLibraryCoreItems,
+      searchLibraryItems: searchPwaLibraryCoreItems,
+      readLibraryItemDetail: readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],

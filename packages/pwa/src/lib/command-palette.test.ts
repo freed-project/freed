@@ -10,6 +10,11 @@ import { SettingsDialog } from "../../../ui/src/components/SettingsDialog.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
 import { SearchJumpField } from "../../../ui/src/components/layout/SearchJumpField.tsx";
 import {
+  LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY,
+  useLibraryCommandPaletteReader,
+  type LibraryCommandPaletteReaderResult,
+} from "../../../ui/src/hooks/useLibraryCommandPaletteReader.ts";
+import {
   dedupeCommandPaletteActions,
   filterCommandPaletteActions,
   rankCommandPaletteAction,
@@ -21,6 +26,7 @@ import { useSettingsStore } from "../../../ui/src/lib/settings-store.ts";
 
 const noop = () => {};
 const noopAsync = async () => {};
+const EMPTY_FILTER: FilterOptions = {};
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -88,6 +94,7 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
   return create<BaseAppState>((set) => ({
     items: overrides.items ?? [],
     searchCorpusVersion: overrides.searchCorpusVersion ?? 0,
+    libraryItemVersion: overrides.libraryItemVersion,
     feeds: overrides.feeds ?? {},
     persons: overrides.persons ?? {},
     accounts: overrides.accounts ?? {},
@@ -288,6 +295,34 @@ function ShortcutProbe({ onShortcut }: { onShortcut: () => void }) {
   return null;
 }
 
+function LibraryCommandPaletteReaderProbe({
+  commandScopeItems,
+  inputValue,
+  onResult,
+  searchQuery,
+  sourceVersion = 0,
+}: {
+  commandScopeItems: FeedItem[];
+  inputValue: string;
+  onResult: (result: LibraryCommandPaletteReaderResult) => void;
+  searchQuery: string;
+  sourceVersion?: number;
+}) {
+  onResult(useLibraryCommandPaletteReader({
+    activeFilter: EMPTY_FILTER,
+    activeView: "feed",
+    commandScopeItems,
+    enabled: true,
+    fallbackItems: commandScopeItems,
+    identityMode: "all_content",
+    inputValue,
+    searchQuery,
+    selectedItemId: null,
+    sourceVersion,
+  }));
+  return null;
+}
+
 function click(element: Element) {
   act(() => {
     (element as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -343,6 +378,7 @@ describe("command palette", () => {
 
   beforeEach(() => {
     resetSurfaceStores();
+    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     document.body.innerHTML = "";
     setViewportWidth(1280);
     Object.defineProperty(window, "matchMedia", {
@@ -366,6 +402,7 @@ describe("command palette", () => {
       cleanups.pop()?.();
     }
     vi.restoreAllMocks();
+    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     resetSurfaceStores();
     document.body.innerHTML = "";
   });
@@ -821,8 +858,6 @@ describe("command palette", () => {
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
-    changeInput(input!, "archive");
-    await flush();
 
     const archiveAction = Array.from(document.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("Archive current scope read items"),
@@ -834,6 +869,544 @@ describe("command palette", () => {
     expect(archiveItems).toHaveBeenCalledTimes(1);
     expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
     expect(toggleArchived).not.toHaveBeenCalled();
+  });
+
+  it("rejects a captured bulk action when the visible query is not committed", async () => {
+    const archiveItems = vi.fn(async () => {});
+    const scopedItem = createItem({
+      globalId: "query-result",
+      content: { text: "cats and dogs", mediaUrls: [], mediaTypes: [] },
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        readAt: 10,
+        tags: [],
+        highlights: [],
+      },
+    });
+    const store = createTestStore({
+      archiveItems,
+      items: [scopedItem],
+      searchQuery: "cats",
+    });
+    const platform = createPlatform(store);
+    let result: LibraryCommandPaletteReaderResult | null = null;
+    const currentResult = () => result;
+    const onResult = (next: LibraryCommandPaletteReaderResult) => {
+      result = next;
+    };
+    const probe = (inputValue: string, sourceVersion = 0) =>
+      createElement(
+        PlatformProvider,
+        {
+          value: platform,
+          children: createElement(LibraryCommandPaletteReaderProbe, {
+            commandScopeItems: [scopedItem],
+            inputValue,
+            onResult,
+            searchQuery: "cats",
+            sourceVersion,
+          }),
+        },
+      );
+    const render = renderNode(probe("cats"));
+    cleanups.push(render.cleanup);
+    await flush();
+
+    expect(currentResult()?.archivableScopeCount).toBe(1);
+    const capturedAction = currentResult()!.archiveScopeRead;
+    await act(async () => {
+      await capturedAction();
+    });
+    expect(archiveItems).toHaveBeenCalledWith(["query-result"]);
+    archiveItems.mockClear();
+
+    act(() => render.root.render(probe("dogs")));
+    await flush();
+    expect(currentResult()?.archivableScopeCount).toBe(0);
+
+    await act(async () => {
+      await capturedAction();
+    });
+    expect(archiveItems).not.toHaveBeenCalled();
+
+    act(() => render.root.render(probe("")));
+    await flush();
+    expect(currentResult()?.archivableScopeCount).toBe(0);
+    await act(async () => {
+      await capturedAction();
+    });
+    expect(archiveItems).not.toHaveBeenCalled();
+
+    act(() => render.root.render(probe("cats", 1)));
+    await flush();
+    expect(currentResult()?.archivableScopeCount).toBe(1);
+    await act(async () => {
+      await capturedAction();
+    });
+    expect(archiveItems).not.toHaveBeenCalled();
+  });
+
+  it("reads SearchJump facets and simple-scope counts without hydrating the Desktop corpus", async () => {
+    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+    const scannedItems = [
+      createItem({
+        globalId: "visible-archived",
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: true,
+          readAt: 10,
+          tags: ["Architecture"],
+          highlights: [],
+        },
+      }),
+      createItem({
+        globalId: "visible-saved-archived",
+        userState: {
+          hidden: false,
+          saved: true,
+          archived: true,
+          readAt: 11,
+          tags: ["Research"],
+          highlights: [],
+        },
+      }),
+      createItem({
+        globalId: "hidden-archived",
+        userState: {
+          hidden: true,
+          saved: true,
+          archived: true,
+          readAt: 12,
+          tags: ["Secret"],
+          highlights: [],
+        },
+      }),
+    ];
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async (visit) => {
+        await visit(scannedItems);
+      },
+    );
+    const store = createTestStore({
+      items: [],
+      totalArchivableCount: 9,
+      totalUnreadCount: 17,
+    });
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+
+    expect(document.querySelector("[data-testid='search-command-action-scope-mark-read']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='search-command-action-scope-archive-read']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='search-command-action-go-tag-Architecture']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='search-command-action-go-tag-Research']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='search-command-action-go-tag-Secret']")).not.toBeNull();
+    expect(document.querySelector("[data-testid='search-command-action-scope-unarchive-saved']")).not.toBeNull();
+    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a native SearchJump tag exceeds its byte bound", async () => {
+    const release = vi.fn();
+    const acquireLegacyLibraryItems = vi.fn(async () => release);
+    const oversizedTag = "x".repeat(1_025);
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async (visit) => {
+        await visit([createItem({
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [oversizedTag],
+            highlights: [],
+          },
+        })]);
+      },
+    );
+    const store = createTestStore({ items: [] });
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    await flush();
+
+    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain(oversizedTag);
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
+    const release = vi.fn();
+    const archiveItems = vi.fn(async () => {});
+    const visibleReadPost = createItem({
+      globalId: "instagram:visible-read-post",
+      platform: "instagram",
+      contentType: "article",
+      userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
+    });
+    const hiddenStory = createItem({
+      globalId: "instagram:hidden-story",
+      platform: "instagram",
+      contentType: "article",
+      userState: { hidden: true, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
+    });
+    const savedPost = createItem({
+      globalId: "instagram:saved-post",
+      platform: "rss",
+      contentType: "article",
+      userState: { hidden: false, saved: true, archived: false, readAt: 12, tags: [], highlights: [] },
+    });
+    const scannedItems = [visibleReadPost, hiddenStory, savedPost];
+    const store = createTestStore({
+      activeFilter: { platform: "rss" },
+      archiveItems,
+      items: [],
+    });
+    const acquireLegacyLibraryItems = vi.fn(async () => {
+      store.setState({ items: scannedItems });
+      return release;
+    });
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async (visit) => {
+        await visit(scannedItems);
+      },
+    );
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+
+    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    changeInput(input!, "archive");
+    await flush();
+    expect(
+      document.querySelector("[data-testid='search-command-action-scope-archive-read']"),
+    ).toBeNull();
+    expect(archiveItems).not.toHaveBeenCalled();
+
+    changeInput(input!, "");
+    await flush();
+    const archiveAction = document.querySelector(
+      "[data-testid='search-command-action-scope-archive-read']",
+    );
+    expect(archiveAction).not.toBeNull();
+    click(archiveAction!);
+    await flush();
+
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
+    expect(release).not.toHaveBeenCalled();
+
+    archiveItems.mockRejectedValueOnce(new Error("mutation unavailable"));
+    click(archiveAction!);
+    await flush();
+    await flush();
+    expect(archiveItems).toHaveBeenCalledTimes(2);
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it("keeps one compatibility lease across persistent native reader retries", async () => {
+    let scanFails = true;
+    let detailFails = true;
+    const release = vi.fn();
+    const selectedItem = createItem({ globalId: "selected" });
+    const store = createTestStore({
+      items: [],
+      libraryItemVersion: 1,
+      selectedItemId: "selected",
+    });
+    const acquireLegacyLibraryItems = vi.fn(async () => {
+      store.setState({ items: [selectedItem] });
+      return release;
+    });
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async () => {
+        if (scanFails) throw new Error("scan unavailable");
+      },
+    );
+    const readLibraryItemDetail = vi.fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>(
+      async () => {
+        if (detailFails) throw new Error("detail unavailable");
+        return selectedItem;
+      },
+    );
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      readLibraryItemDetail,
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    await flush();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+    expect(
+      document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
+    ).not.toBeNull();
+
+    act(() => store.setState({ persons: {}, accounts: {}, friends: {} }));
+    await flush();
+    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(readLibraryItemDetail).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+
+    act(() => store.setState({ libraryItemVersion: 2 }));
+    expect(
+      document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
+    ).not.toBeNull();
+    await flush();
+    await flush();
+    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+
+    scanFails = false;
+    act(() => store.setState({ libraryItemVersion: 3 }));
+    await flush();
+    await flush();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    await flush();
+    expect(release).toHaveBeenCalledOnce();
+
+    detailFails = false;
+    act(() => {
+      input!.blur();
+      input!.focus();
+    });
+    await flush();
+    await flush();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+    expect(scanLibraryItems).toHaveBeenCalledTimes(4);
+    expect(readLibraryItemDetail).toHaveBeenCalledTimes(4);
+  });
+
+  it("cancels a bounded scope scan without falling back to corpus hydration", async () => {
+    let visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0] | null = null;
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async (nextVisit) => {
+        visit = nextVisit;
+        await new Promise<void>(() => {});
+      },
+    );
+    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+    const store = createTestStore({ activeFilter: { tags: ["Research"] } });
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 0,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        tags: ["Research"],
+        totalCount: 17_000,
+      }),
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    expect(visit).not.toBeNull();
+
+    render.cleanup();
+    expect(await visit!([])).toBe("stop");
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest source-fenced selected item and ignores a stale detail response", async () => {
+    let resolveFirst: ((item: FeedItem) => void) | null = null;
+    let resolveSecond: ((item: FeedItem) => void) | null = null;
+    const first = new Promise<FeedItem>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<FeedItem>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const readLibraryItemDetail = vi
+      .fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+    const store = createTestStore({
+      items: [],
+      libraryItemVersion: 1,
+      selectedItemId: "selected",
+    });
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      readLibraryItemDetail,
+      scanLibraryItems: async () => {},
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    act(() => store.setState({ libraryItemVersion: 2 }));
+    await flush();
+
+    await act(async () => {
+      resolveSecond!(createItem({
+        globalId: "selected",
+        userState: { hidden: false, saved: true, archived: false, tags: [], highlights: [] },
+      }));
+      await second;
+    });
+    await act(async () => {
+      resolveFirst!(createItem({ globalId: "selected" }));
+      await first;
+    });
+
+    expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
+    expect(document.querySelector("[data-testid='search-command-action-item-toggle-saved']")?.textContent)
+      .toContain("Unsave current item");
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+
+    readLibraryItemDetail.mockResolvedValueOnce(createItem({
+      globalId: "selected",
+      userState: {
+        hidden: true,
+        saved: false,
+        archived: false,
+        tags: [],
+        highlights: [],
+      },
+    }));
+    act(() => store.setState({ libraryItemVersion: 3 }));
+    await flush();
+    expect(
+      document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
+    ).not.toBeNull();
+  });
+
+  it("keeps the explicit SearchJump rollback on compatibility hydration", async () => {
+    localStorage.setItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY, "1");
+    const release = vi.fn();
+    const acquireLegacyLibraryItems = vi.fn(async () => release);
+    const readLibraryFacetSummary = vi.fn(async () => ({
+      archivedCount: 0,
+      sampleItemCount: 0,
+      savedArchivedCount: 0,
+      savedCount: 0,
+      savedPlatformCount: 0,
+      tags: [],
+      totalCount: 1,
+    }));
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async () => {},
+    );
+    const store = createTestStore({
+      items: [createItem()],
+      totalUnreadCount: 1,
+    });
+    const platform = createPlatform(store, {
+      acquireLegacyLibraryItems,
+      readLibraryFacetSummary,
+      scanLibraryItems,
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(readLibraryFacetSummary).not.toHaveBeenCalled();
+    expect(scanLibraryItems).not.toHaveBeenCalled();
   });
 
   it("renders command action icons and keeps reset confirmation mounted after blur", async () => {

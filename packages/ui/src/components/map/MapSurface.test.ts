@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LocationMarkerSummary } from "@freed/shared";
 import {
   areLocationMarkerListsRenderEquivalent,
+  disposeMapInstance,
+  fitMapToMarkers,
   getMapMovingPriority,
   getRenderedMapMarkers,
 } from "./MapSurface";
@@ -128,5 +130,56 @@ describe("dense map marker prioritization", () => {
         focusedMarkerKey,
       ),
     ).toBe("primary");
+  });
+});
+
+describe("map camera framing", () => {
+  it("keeps clustered markers at a geographic zoom", () => {
+    const fitBounds = vi.fn();
+    const map = {
+      fitBounds,
+      flyTo: vi.fn(),
+    } as unknown as Parameters<typeof fitMapToMarkers>[0];
+
+    fitMapToMarkers(map, [
+      marker(),
+      marker({ key: "friend:grace", lat: 48.8567, lng: 2.3523 }),
+    ]);
+
+    expect(fitBounds).toHaveBeenCalledWith(
+      [
+        [2.3522, 48.8566],
+        [2.3523, 48.8567],
+      ],
+      expect.objectContaining({ maxZoom: 7.5 }),
+    );
+  });
+});
+
+describe("map renderer disposal", () => {
+  it("releases the detached WebGL context and canvas backing store", () => {
+    const calls: string[] = [];
+    const loseContext = vi.fn(() => calls.push("lose"));
+    const canvas = {
+      width: 1_920,
+      height: 1_152,
+      getContext: vi.fn((kind: string) => {
+        calls.push(`context:${kind}`);
+        return kind === "webgl2"
+          ? { getExtension: () => ({ loseContext }) }
+          : null;
+      }),
+    } as unknown as HTMLCanvasElement;
+    const map = {
+      stop: vi.fn(() => calls.push("stop")),
+      getCanvas: vi.fn(() => canvas),
+      remove: vi.fn(() => calls.push("remove")),
+    };
+
+    disposeMapInstance(map as unknown as Parameters<typeof disposeMapInstance>[0]);
+
+    expect(calls).toEqual(["stop", "context:webgl2", "remove", "lose"]);
+    expect(canvas.width).toBe(1);
+    expect(canvas.height).toBe(1);
   });
 });

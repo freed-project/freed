@@ -15,6 +15,7 @@ import {
   ownerGovernanceIntentDigest,
   readTask,
   readTaskManifest,
+  recoverExpiredGeneralActorLeaseAcquire,
   releaseLease,
   resolveAutomationStateRoot,
   transitionTask,
@@ -33,6 +34,7 @@ function usage() {
   node scripts/automation-control.mjs event append [options]
   node scripts/automation-control.mjs owner intent-digest --intent-json <json>
   node scripts/automation-control.mjs lease acquire [options]
+  node scripts/automation-control.mjs lease recover-expired-acquire [options]
   node scripts/automation-control.mjs lease show [options]
   node scripts/automation-control.mjs lease heartbeat [options]
   node scripts/automation-control.mjs lease bind-head [options]
@@ -73,6 +75,7 @@ Lease options:
   --owner-confirmation-file <path> Current-task owner confirmation for one exact freed-owner operation.
   --owner-task-id <task-id>         Exact task bound to the owner authorization.
   --owner-intent-digest <sha256>    Exact canonical governance intent bound to the owner authorization.
+  --pending-operation-id <id>       Exact stranded acquisition operation approved for recovery.
   --head-sha <sha>                  Exact commit bound once to the publisher lease.
   Lease mutations require FREED_AUTOMATION_LEASE_OPERATION_ID and read their
   token only from FREED_AUTOMATION_LEASE_TOKEN. Owner acquisition may use the
@@ -491,6 +494,43 @@ export function executeCommand(command, { env = process.env } = {}) {
       result: inspectLease({
         stateRoot,
         name: required(options, "name", "--name"),
+      }),
+    };
+  }
+
+  if (resource === "lease" && action === "recover-expired-acquire") {
+    assertOnlyOptions(options, [
+      "stateRoot",
+      "name",
+      "owner",
+      "pendingOperationId",
+      "ownerConfirmationFile",
+      "ownerTaskId",
+      "ownerIntentDigest",
+    ]);
+    return {
+      action: "lease.recover-expired-acquire",
+      stateRoot,
+      result: recoverExpiredGeneralActorLeaseAcquire({
+        stateRoot,
+        name: required(options, "name", "--name"),
+        owner: required(options, "owner", "--owner"),
+        operationId: required(
+          options,
+          "pendingOperationId",
+          "--pending-operation-id",
+        ),
+        ownerConfirmationFile: required(
+          options,
+          "ownerConfirmationFile",
+          "--owner-confirmation-file",
+        ),
+        ownerTaskId: required(options, "ownerTaskId", "--owner-task-id"),
+        ownerIntentDigest: required(
+          options,
+          "ownerIntentDigest",
+          "--owner-intent-digest",
+        ),
       }),
     };
   }

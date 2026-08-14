@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Canonical classification of provider-visible paths (stability task W1-06).
+// Canonical classification of provider-visible paths.
 //
 // "Provider-visible" means a change here can alter what X, Facebook, Instagram,
 // LinkedIn, or another third-party provider can observe: WebView loads,

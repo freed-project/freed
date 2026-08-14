@@ -91,6 +91,14 @@ fi
 
 "${NODE_BIN}" scripts/validate-release-notes.mjs "${VALIDATE_ARGS[@]}"
 
+if [[ "$CHANNEL" == "dev" ]]; then
+  "${NODE_BIN}" scripts/validate-dev-integration-receipt.mjs \
+    --repo=freed-project/freed \
+    --sha="${LOCAL_RELEASE_SHA}" \
+    --branch=dev \
+    --workflow=ci.yml
+fi
+
 if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
   echo "Error: tag ${TAG} already exists. Release tags are immutable." >&2
   exit 1

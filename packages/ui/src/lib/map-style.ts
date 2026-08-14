@@ -1,7 +1,14 @@
-import { getThemeDefinition, type ThemeId, type ThemeMapPalette } from "@freed/shared/themes";
+import {
+  getThemeDefinition,
+  type ThemeId,
+  type ThemeMapPalette,
+} from "@freed/shared/themes";
 import type { StyleSpecification } from "maplibre-gl";
 
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
+const MAP_VECTOR_SOURCE_URL = "https://tiles.openfreemap.org/planet";
+const MAP_GLYPHS_URL =
+  "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
 
 type MapStyleLayer = StyleSpecification["layers"][number] & {
   paint?: Record<string, unknown>;
@@ -27,28 +34,32 @@ function setPaint(layer: MapStyleLayer, property: string, value: unknown) {
   };
 }
 
-function applyLabelPaint(layer: MapStyleLayer, textColor: string, haloColor: string) {
+function applyLabelPaint(
+  layer: MapStyleLayer,
+  textColor: string,
+  haloColor: string,
+) {
   setPaint(layer, "text-color", textColor);
   setPaint(layer, "text-halo-color", haloColor);
 }
 
 function isMajorRoadLayer(id: string): boolean {
   return (
-    id.includes("motorway")
-    || id.includes("highway_major")
-    || id.includes("major")
+    id.includes("motorway") ||
+    id.includes("highway_major") ||
+    id.includes("major")
   );
 }
 
 function isMinorRoadLayer(id: string): boolean {
   return (
-    id.includes("highway_minor")
-    || id.includes("highway_path")
-    || id.includes("railway")
-    || id.includes("tunnel")
-    || id.includes("aeroway")
-    || id.includes("road")
-    || id.includes("pier")
+    id.includes("highway_minor") ||
+    id.includes("highway_path") ||
+    id.includes("railway") ||
+    id.includes("tunnel") ||
+    id.includes("aeroway") ||
+    id.includes("road") ||
+    id.includes("pier")
   );
 }
 
@@ -67,9 +78,9 @@ function rethemeLayer(layer: MapStyleLayer, palette: ThemeMapPalette) {
     }
 
     if (
-      id.startsWith("label_country")
-      || id.startsWith("label_city")
-      || id === "airport"
+      id.startsWith("label_country") ||
+      id.startsWith("label_city") ||
+      id === "airport"
     ) {
       applyLabelPaint(layer, palette.labelStrong, palette.labelHalo);
       return;
@@ -101,7 +112,10 @@ function rethemeLayer(layer: MapStyleLayer, palette: ThemeMapPalette) {
     return;
   }
 
-  if (layer.type === "fill" && (id.includes("ice_shelf") || id.includes("glacier"))) {
+  if (
+    layer.type === "fill" &&
+    (id.includes("ice_shelf") || id.includes("glacier"))
+  ) {
     setPaint(layer, "fill-color", palette.residential);
     return;
   }
@@ -151,7 +165,10 @@ function rethemeLayer(layer: MapStyleLayer, palette: ThemeMapPalette) {
   }
 }
 
-function applyPaletteToStyle(style: MapStyle, palette: ThemeMapPalette): MapStyle {
+function applyPaletteToStyle(
+  style: MapStyle,
+  palette: ThemeMapPalette,
+): MapStyle {
   const themedStyle = cloneStyle(style);
 
   themedStyle.layers = themedStyle.layers.map((layer) => {
@@ -160,6 +177,85 @@ function applyPaletteToStyle(style: MapStyle, palette: ThemeMapPalette): MapStyl
   });
 
   return themedStyle;
+}
+
+/**
+ * A small bundled style keeps the geographic map functional when the remote
+ * style document is temporarily unavailable. It deliberately references the
+ * same vector source and glyph service as the preferred OpenFreeMap style, so
+ * it is a startup fallback rather than a second map provider.
+ */
+function createBundledMapStyle(): MapStyle {
+  return {
+    version: 8,
+    glyphs: MAP_GLYPHS_URL,
+    sources: {
+      openmaptiles: {
+        type: "vector",
+        url: MAP_VECTOR_SOURCE_URL,
+      },
+    },
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: { "background-color": "#f2f3f0" },
+      },
+      {
+        id: "park",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "park",
+        paint: { "fill-color": "#e6e9e5" },
+      },
+      {
+        id: "water",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "water",
+        paint: { "fill-color": "#c2c8ca" },
+      },
+      {
+        id: "boundary_2",
+        type: "line",
+        source: "openmaptiles",
+        "source-layer": "boundary",
+        filter: ["==", ["get", "admin_level"], 2],
+        paint: { "line-color": "#b3b3b3", "line-width": 1 },
+      },
+      {
+        id: "highway_major_inner",
+        type: "line",
+        source: "openmaptiles",
+        "source-layer": "transportation",
+        filter: [
+          "match",
+          ["get", "class"],
+          ["motorway", "trunk", "primary", "secondary", "tertiary"],
+          true,
+          false,
+        ],
+        paint: { "line-color": "#ffffff", "line-width": 1.5 },
+      },
+      {
+        id: "label_city",
+        type: "symbol",
+        source: "openmaptiles",
+        "source-layer": "place",
+        filter: ["==", ["get", "class"], "city"],
+        layout: {
+          "text-field": ["coalesce", ["get", "name_en"], ["get", "name"]],
+          "text-font": ["Noto Sans Regular"],
+          "text-size": 12,
+        },
+        paint: {
+          "text-color": "#333333",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1,
+        },
+      },
+    ],
+  };
 }
 
 async function loadBaseMapStyle(): Promise<MapStyle> {
@@ -171,11 +267,14 @@ async function loadBaseMapStyle(): Promise<MapStyle> {
         throw new Error(`Map style request failed with ${response.status}`);
       }
 
-      return await response.json() as MapStyle;
+      return (await response.json()) as MapStyle;
     })
     .catch((error) => {
-      baseStyleLoader = null;
-      throw error;
+      console.warn(
+        "[MapSurface] Remote map style unavailable; using bundled geographic style",
+        error,
+      );
+      return createBundledMapStyle();
     });
 
   return baseStyleLoader;

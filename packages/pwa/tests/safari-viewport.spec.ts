@@ -56,8 +56,8 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
   if (hasDevelopmentStore) {
     await page.evaluate(async ({ id, name }) => {
       const runtime = window as unknown as Record<string, unknown>;
-      const automerge = runtime.__FREED_AUTOMERGE__ as {
-        docAddFriend: (friend: unknown) => Promise<void>;
+      const libraryCore = runtime.__FREED_LIBRARY_CORE__ as {
+        addFriend: (friend: unknown) => Promise<void>;
       };
       const store = runtime.__FREED_STORE__ as {
         getState: () => {
@@ -65,7 +65,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
         };
       };
       const now = Date.now();
-      await automerge.docAddFriend({
+      await libraryCore.addFriend({
         id,
         name,
         careLevel: 5,
@@ -374,6 +374,7 @@ test.describe("Friends graph touch gestures in WebKit", () => {
           sceneSyncCount?: number;
           rendererLabelCount?: number;
           readyRendererLabelCount?: number;
+          labelLayoutCount?: number;
         };
       }
     ).__FREED_GRAPH_PERF__ ?? null);
@@ -409,6 +410,7 @@ test.describe("Friends graph touch gestures in WebKit", () => {
           sceneSyncCount?: number;
           rendererLabelCount?: number;
           readyRendererLabelCount?: number;
+          labelLayoutCount?: number;
         };
         __FREED_GRAPH_DEBUG__?: {
           transform?: { scale?: number };
@@ -441,6 +443,9 @@ test.describe("Friends graph touch gestures in WebKit", () => {
       JSON.stringify(result),
     ).toBeGreaterThan(before!.transformScale ?? 0);
     expect(result.during?.sceneSyncCount).toBe(before!.sceneSyncCount);
+    expect(result.during?.labelLayoutCount ?? 0).toBeGreaterThan(
+      before!.labelLayoutCount ?? 0,
+    );
     expect(result.during?.rendererLabelCount ?? 0).toBeGreaterThan(0);
     expect(result.during?.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);

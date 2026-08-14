@@ -150,8 +150,7 @@
 /scripts/promote-dev-to-main.sh @AubreyF
 /automation/ @AubreyF
 
-# Program governance and executable task definitions.
+# Program governance.
 /docs/STABILITY-PROGRAM.md @AubreyF
 /docs/AUTOMATION-CONTROL-PLANE.md @AubreyF
 /docs/roadmap-status.json @AubreyF
-/docs/stability-tasks/ @AubreyF

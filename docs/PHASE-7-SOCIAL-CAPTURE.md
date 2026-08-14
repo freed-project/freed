@@ -116,6 +116,8 @@ Background scrape and auth-check sessions now force provider media elements sile
 
 Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
 
+Startup memory attribution now primes a nonblocking native sample before document hydration and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as document or provider memory.
+
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
 Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
@@ -137,6 +139,10 @@ Profile backfill is user-started and visible in settings. The current implementa
 ### Story Wall beta
 
 Freed Desktop now has a Story Wall settings section for owner-controlled memory publishing. It sits under a dedicated Beta settings group with AI, and stays out of the primary app sidebar while the feature is still early. The wall starts from existing Freed history, guides the user through Instagram Accounts Center ZIP export before import, can import those exports into the local media vault, and keeps the synced wall config small in `preferences.storyWall`. Media binaries stay in the device-local vault until a publish run writes static assets to the target. The settings section uses shared theme panels, inputs, and buttons, stays gated until the user enables Story Wall, and only previews media-backed memories from real Freed history or imported archives.
+
+On Freed Desktop, Story Wall now obtains its complete visible media candidate set through the authenticated local SQLite generation instead of retaining the full Library item corpus in the renderer. The native query caps the exact candidate set at 250 rows and falls back without truncation when the set is larger or the source changes. Existing year, provider, account, hidden-item, featured-item, preview, and manifest logic remains unchanged, and no publishing or provider behavior changes.
+
+Facebook and Instagram media backup now source visible candidates from source-fenced 64-row SQLite pages. Freed stages only compact local candidate pages, performs no provider request until the final source check succeeds, then streams those pages through the existing user-triggered archive path. YouTube saved-video sync uses compact visible identities in deterministic SQLite order and retains the existing 25-action cap. No automatic provider work or cadence change is introduced.
 
 The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. Successful destination details sync so another device can find the published wall. In-progress status and error messages remain device-local because they describe one machine's current publish attempt. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
 
@@ -188,6 +194,7 @@ const RATE_LIMITS = {
 | 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
 | 7.23 | Local social scrape optimization loop       | ✓ Complete  |
 | 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete |
+| 7.25 | Process-matched startup memory attribution  | ✓ Complete  |
 
 ---
 
@@ -221,6 +228,7 @@ const RATE_LIMITS = {
 - [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
+- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-hydration comparisons
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
 - [x] Authenticated Substack and Medium beta capture serializes behind the same
       native social session lock, runs memory preflight before provider loads,
@@ -271,6 +279,123 @@ const RATE_LIMITS = {
 
 ---
 
+## Future Shared Provider Runtime: Obscura
+
+**Status:** Research only. The current Tauri WebView provider runtime remains
+the production path. This roadmap entry does not authorize implementation,
+live provider traffic, or a cookie-handoff experiment.
+
+The [Obscura](https://github.com/h4ckf0r0day/obscura) project is a small
+Rust and V8 browser engine with Chrome DevTools Protocol support. It could give
+Freed one provider-scraping runtime across macOS, Windows, and Linux. This
+review reflects Obscura v0.2.0 and upstream commit
+`28e230cd0b4526df63f5b3b2aa0b458c2dcab443`, reviewed on 2026-08-13.
+
+### Potential rewards
+
+- One DOM, JavaScript, cookie, navigation, and diagnostics implementation
+  across all supported Freed Desktop platforms.
+- A smaller on-demand browser process than a full Chromium sidecar, if matched
+  installed-build measurements confirm the upstream resource claims against
+  Freed's actual WebView workloads.
+- Process isolation from Freed's main renderer. A failed provider page could
+  terminate its own sidecar without taking the library UI with it.
+- CDP offers a narrow adapter for navigation, script injection, extraction,
+  screenshots, and provider fixtures. Most existing self-contained DOM
+  extractors could keep their selectors and replace only the Tauri event
+  bridge.
+- One provider runtime contract could standardize session locks, bounded
+  retries, cooldowns, telemetry, and failure handling without forcing RSS,
+  public APIs, or X's native request path through a browser.
+
+These are hypotheses, not measured Freed results. Obscura's public benchmarks
+do not establish lower memory than WKWebView, WebView2, or WebKitGTK under the
+same provider page, account, runtime window, and extraction workload.
+
+### Primary risk: login and browser identity discontinuity
+
+Copying authenticated cookies from the visible login WebView into Obscura would
+transfer credentials, not the browser session that created them. The handoff
+would omit or alter several signals a provider can compare:
+
+- TLS, HTTP/2, HTTP/3, header ordering, and connection reuse
+- JavaScript engine semantics, browser APIs, error shapes, timers, and event
+  ordering
+- canvas, WebGL, audio, fonts, text measurement, media codecs, and rendering
+  quirks
+- local storage outside the cookie jar, including session storage, IndexedDB,
+  service workers, caches, and device-bound authentication state
+- locale, time zone, screen, input, permissions, WebRTC, and hardware hints
+- navigation history, resource graph, interaction timing, retries, and
+  challenge history
+
+The mismatch is largest on macOS. The current login surface is WKWebView with a
+Safari-shaped identity, while Obscura uses V8 and a Chrome-shaped network and
+JavaScript profile. Setting Obscura's user agent, screen size, canvas output,
+or navigator fields to the values reported by the login view would not change
+its engine, transport, API behavior, or renderer. A Safari label attached to
+Chrome-shaped behavior may be easier to identify than an honest new browser.
+
+Windows WebView2 is closer to Obscura's target, but version, Edge runtime,
+network behavior, feature support, and rendering can still disagree. Linux
+also changes engines. Facebook, Instagram, LinkedIn, Substack, and Medium may
+treat the same cookies arriving through that new client as a new device,
+challenge the session, expire it, or block later requests.
+
+Obscura's fingerprint controls reduce obvious automation markers, but they do
+not turn its engine into the login WebView. Per-session fingerprint rotation is
+also the wrong default for Freed. One account repeatedly becoming a new device
+is less plausible than one stable installation and provider profile.
+
+### Requirements before implementation
+
+1. Obscura should own the provider session from the first request through
+   login, authentication checks, and capture. The visible login surface would
+   need to render that same Obscura context and forward keyboard, pointer,
+   accessibility, IME, password-manager, two-factor, CAPTCHA, and passkey flows
+   without falling back to a second browser engine.
+2. If a cookie handoff remains necessary, qualify it separately for Facebook,
+   Instagram, LinkedIn, Substack, and Medium. Each provider needs an explicit
+   Gate 1 decision describing the browser transition, request graph, timing,
+   and bounded exposure before any live test.
+3. Use one deterministic profile per installation and provider. Match only
+   values Obscura can represent coherently, keep host locale and time zone
+   honest, and never rotate profiles between routine captures.
+4. Disable tracker blocking, request rewriting, proxy rotation, and unrelated
+   stealth behavior for provider sessions. Missing provider subresources are
+   part of the observable request graph.
+5. Preserve full cookie semantics, including host-only, partitioned, secure,
+   HTTP-only, same-site, path, and expiry behavior. Prove storage continuity
+   for every non-cookie API the provider uses.
+6. Wrap the sidecar in authenticated local IPC. Provider credentials must not
+   enter command-line arguments, environment variables, logs, diagnostics, or
+   plaintext persistence. The sidecar needs strict file permissions, bounded
+   lifetime, crash cleanup, and exact binary identity.
+7. Build an offline qualification suite first. Run saved provider fixtures,
+   SPA navigation, extraction, storage, and challenge-page compatibility with
+   all external traffic blocked. Delete temporary probes before publication.
+8. Pilot one provider and one observable change at a time. Use a matched
+   installed-build baseline, bounded soak, explicit rollback trigger, and the
+   existing WebView path as the immediate rollback.
+
+### Current decision
+
+The transition is deferred because login continuity is unresolved and
+Obscura's browser compatibility is still moving. The lowest-profile near-term
+work is an offline `ProviderRuntime` adapter that standardizes orchestration,
+extractor output, diagnostics, and fixtures around the existing native
+WebViews. That work must not add provider requests or change navigation,
+cookies, headers, timing, scrolling, clicking, or extraction behavior.
+
+Revisit an Obscura pilot when it can own a usable visible login from the first
+provider request, or when the owner approves a provider-specific cookie
+handoff after reviewing the exact discontinuity. RSS and public API capture
+should remain native. X should remain on its current native request path unless
+separate evidence shows a browser runtime would improve its risk and resource
+profile.
+
+---
+
 ## Future Anti-Detection Improvements
 
 These are documented for future implementation. They were discussed and deferred in the anti-detection hardening PR (feat/anti-detection-hardening).
@@ -279,24 +404,18 @@ These are documented for future implementation. They were discussed and deferred
 
 Gate automatic sync to not run between midnight and 6am (configurable by user). A machine that checks social media at 3am with perfectly regular intervals is a bot signal. The sync scheduler should check the current hour before triggering a background scrape and apply additional random delay at day boundaries.
 
-### Canvas Fingerprint Noise
+### Stable Canvas Identity
 
-Facebook and Instagram use canvas fingerprinting to build a persistent device fingerprint across sessions. The technique renders text or shapes to an offscreen canvas and reads back the pixel data - minor rendering differences between GPU drivers and font engines make each device unique.
+Do not add per-session canvas noise. A provider can compare canvas output with
+WebGL, fonts, text measurement, GPU, browser version, and prior sessions.
+Changing one surface on every launch creates a rotating device identity and can
+introduce contradictions with the real WebView engine.
 
-Fix: inject a per-session imperceptible noise layer into `CanvasRenderingContext2D.prototype.getImageData` via the webkit-mask.js init script. Add `±1` to a deterministic-but-session-varied subset of pixel values. This breaks cross-session fingerprint matching without affecting visible rendering.
-
-```javascript
-// In webkit-mask.js (future addition)
-const _origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-const _noise = (Math.random() * 2 - 1); // stable for this session
-CanvasRenderingContext2D.prototype.getImageData = function(...args) {
-  const data = _origGetImageData.apply(this, args);
-  for (let i = 0; i < data.data.length; i += 127) {
-    data.data[i] = Math.max(0, Math.min(255, data.data[i] + Math.round(_noise)));
-  }
-  return data;
-};
-```
+Keep the native browser's canvas behavior unchanged. If a future runtime needs
+fingerprint controls, use one coherent, deterministic installation and
+provider profile across the complete login and capture lifecycle. Treat any
+canvas, WebGL, audio, font, or renderer override as a provider-visible behavior
+that requires its own Gate 1 review.
 
 ### X API via X Login WebView (Option C)
 
