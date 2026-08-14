@@ -669,6 +669,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     return page.evaluate(async () => {
       const snapshot = JSON.parse(await navigator.clipboard.readText()) as {
         camera: {
+          x: number;
+          y: number;
           scale: number;
           outwardTargetScale: number;
           resistanceScale: number;
@@ -682,18 +684,19 @@ test("friends graph controls align to the graph lane between sidebars", async ({
   const fittedCamera = await copyCameraDiagnostics();
   const graphViewport = page.getByTestId("friend-graph-viewport");
   await graphViewport.hover();
-  await page.keyboard.down("Control");
-  for (let index = 0; index < 8; index += 1) await page.mouse.wheel(0, -800);
-  await page.keyboard.up("Control");
+  for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, -120);
   const zoomedInCamera = await copyCameraDiagnostics();
-  await graphViewport.hover();
-  await page.keyboard.down("Control");
-  for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, 800);
-  await page.keyboard.up("Control");
+  const graphBox = await graphViewport.boundingBox();
+  if (!graphBox) throw new Error("Friends graph viewport is not visible.");
+  await page.mouse.move(graphBox.x + graphBox.width * 0.2, graphBox.y + graphBox.height * 0.25);
+  for (let index = 0; index < 48; index += 1) await page.mouse.wheel(0, 120);
   const wheelOutCamera = await copyCameraDiagnostics();
+  await page.getByRole("button", { name: "Fit all" }).click();
+  const fittedAfterWheelCamera = await copyCameraDiagnostics();
 
   expect(zoomedInCamera.scale).toBeGreaterThan(fittedCamera.scale);
-  expect(wheelOutCamera.scale).toBe(fittedCamera.scale);
+  expect(wheelOutCamera).toEqual(fittedCamera);
+  expect(fittedAfterWheelCamera).toEqual(wheelOutCamera);
   expect(wheelOutCamera.outwardTargetScale).toBe(fittedCamera.scale);
   expect(wheelOutCamera.resistanceScale).toBe(fittedCamera.scale);
   await expect(page.getByText("Diagnostics copied", { exact: true })).toBeVisible();

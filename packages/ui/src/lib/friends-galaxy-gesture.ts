@@ -2,6 +2,32 @@ import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
 const OUTWARD_RESISTANCE_CURVE_POWER = 0.15;
 const MAX_WHEEL_ZOOM_LOG_STEP = 0.24;
+const COARSE_PIXEL_WHEEL_DELTA = 40;
+
+export type FriendsGalaxyWheelIntent =
+  | "pinch-zoom"
+  | "wheel-zoom"
+  | "two-finger-pan";
+
+export function friendsGalaxyWheelIntent(
+  deltaX: number,
+  deltaY: number,
+  deltaMode: number,
+  ctrlKey: boolean,
+  shiftKey: boolean,
+): FriendsGalaxyWheelIntent {
+  if (ctrlKey || shiftKey) return "pinch-zoom";
+  const horizontal = Math.abs(Number.isFinite(deltaX) ? deltaX : 0);
+  const vertical = Math.abs(Number.isFinite(deltaY) ? deltaY : 0);
+  const verticalOnly = vertical > 0 && horizontal <= vertical * 0.25;
+  if (
+    verticalOnly &&
+    (deltaMode !== 0 || vertical >= COARSE_PIXEL_WHEEL_DELTA)
+  ) {
+    return "wheel-zoom";
+  }
+  return "two-finger-pan";
+}
 
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
