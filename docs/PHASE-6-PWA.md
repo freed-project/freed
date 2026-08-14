@@ -27,7 +27,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **FeedItem capture mutations:** New and updated FeedItems enter the signed epoch-scoped intent outbox in ordered transactions of at most 128 unique items. IndexedDB and local search update after each durable batch, repeated identities retain input order across transaction boundaries, and device-local ranking fields never enter canonical payloads.
 - **Library maintenance mutations:** Sample seeding, fingerprinted sample clearing, and bulk feed removal use the same signed Library Core operations as normal writes. Sample clearing scans the complete IndexedDB corpus and unlinks real accounts before removing sample people.
 - **SQLite-only PWA:** IndexedDB Library Core is the only PWA product store. Production builds reject any Automerge asset, the rollback flag cannot reactivate the retired worker, and legacy Automerge cloud-file merging fails closed.
-- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
+- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu with tappable 10% zoom steps, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
 

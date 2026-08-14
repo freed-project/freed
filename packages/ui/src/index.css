@@ -2234,6 +2234,41 @@ html.freed-mobile-sidebar-open body {
 
 .theme-toolbar-zoom-control {
   width: 9.5rem;
+  padding-inline: 0;
+}
+
+.theme-toolbar-zoom-step {
+  display: inline-flex;
+  align-self: stretch;
+  width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--button-radius) - 0.15rem);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.theme-toolbar-zoom-step:hover:not(:disabled) {
+  background: var(--theme-button-secondary-hover);
+  color: var(--theme-text-secondary);
+}
+
+.theme-toolbar-zoom-step:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline-offset: -2px;
+}
+
+.theme-toolbar-zoom-step:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 .theme-toolbar-zoom-icon {
