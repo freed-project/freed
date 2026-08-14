@@ -925,8 +925,13 @@ export function buildValidationPlan(mode, changedFiles) {
         ),
       );
     }
-    const identityArtifacts =
-      collectChangedReleaseIdentityArtifacts(changedFiles);
+    // A dev-to-main promotion carries reviewed dev release notes into main,
+    // but it does not turn those historical dev artifacts into the current
+    // production build. Their identities were admitted in the dev lane. Only
+    // production artifacts belong to production identity validation here.
+    const identityArtifacts = collectChangedReleaseIdentityArtifacts(
+      changedFiles,
+    ).filter((filePath) => !filePath.endsWith("-dev.json"));
     if (identityArtifacts.length > 0) {
       plan.push(
         releaseIdentityValidationItem(

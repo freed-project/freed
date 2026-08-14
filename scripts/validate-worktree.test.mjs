@@ -1006,6 +1006,21 @@ test("feature and production plans validate changed release identity directly", 
   }
 });
 
+test("production validation ignores dev release identities copied during promotion", () => {
+  const identityItem = buildValidationPlan("production", [
+    "release-notes/releases/v26.8.1303-dev.json",
+    "release-notes/releases/v26.8.1303-dev.md",
+    "release-notes/releases/v26.8.1400.json",
+    "release-notes/releases/v26.8.1400.md",
+  ]).find((item) => item.label === "release identity validation");
+
+  assert.deepEqual(identityItem, {
+    kind: "release-identity-validation",
+    label: "release identity validation",
+    files: ["release-notes/releases/v26.8.1400.json"],
+  });
+});
+
 test("release identity execution separates modern releases, historical corrections, and backfills", () => {
   const filePath = "release-notes/releases/v26.7.2800-dev.json";
   const artifact = {
