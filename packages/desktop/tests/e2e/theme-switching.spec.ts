@@ -597,7 +597,6 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       if (!(header instanceof HTMLElement)) return null;
 
       const graphRect = graph.getBoundingClientRect();
-      const fitAllRect = fitAll.getBoundingClientRect();
       const controlsRect = controls.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
       const navigationHandleRect = navigationHandle.getBoundingClientRect();
@@ -615,8 +614,9 @@ test("friends graph controls align to the graph lane between sidebars", async ({
         graphToRightRailPx: Math.round(friendsHandleCenter - graphRect.right),
         rightRailToSidebarPx: Math.round(friendsSidebarRect.left - friendsHandleCenter),
         bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
-        fitAllTopGapPx: Math.round(fitAllRect.top - graphRect.top),
-        controlsRightGapPx: Math.round(graphRect.right - controlsRect.right),
+        controlsTopDeltaPx: Math.round(controlsRect.top - friendsSidebarRect.top),
+        controlsToFriendsSidebarGapPx: Math.round(friendsSidebarRect.left - controlsRect.right),
+        friendsSidebarOuterGapPx: Math.round(window.innerWidth - friendsSidebarRect.right),
         friendsSidebarTopGapPx: Math.round(friendsSidebarRect.top - headerRect.bottom),
         sidebarTopDeltaPx: Math.round(friendsSidebarRect.top - sidebarRect.top),
         navigationHandleTopDeltaPx: Math.round(navigationHandleRect.top - handleRect.top),
@@ -634,8 +634,9 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     // The graph is the primary full-height canvas. Each floating sidebar owns
     // its panel inset, so the graph itself reaches the window edge.
     bottomGapPx: 0,
-    fitAllTopGapPx: 16,
-    controlsRightGapPx: 16,
+    controlsTopDeltaPx: 0,
+    controlsToFriendsSidebarGapPx: 8,
+    friendsSidebarOuterGapPx: 8,
     friendsSidebarTopGapPx: 8,
     sidebarTopDeltaPx: 0,
     navigationHandleTopDeltaPx: 0,

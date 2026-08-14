@@ -94,6 +94,7 @@ interface FriendGraphProps {
   friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
   presentationVisible?: boolean;
+  controlsAdjacentToSidebar?: boolean;
 }
 
 interface GraphContextMenuState {
@@ -447,6 +448,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     friendSuggestionStrengthByAccount,
     themeId,
     presentationVisible = true,
+    controlsAdjacentToSidebar = false,
   },
   ref,
 ) {
@@ -1365,7 +1367,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       <div
         data-testid="friend-graph-controls"
         data-graph-gesture-ignore="true"
-        className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4"
+        className={`absolute z-20 flex items-center gap-2 ${
+          controlsAdjacentToSidebar
+            ? "top-[var(--feed-card-gap,8px)]"
+            : "right-3 top-3 sm:right-4 sm:top-4"
+        }`}
+        style={
+          controlsAdjacentToSidebar
+            // The control crosses 4px into the 12px resize gutter so the
+            // remaining 8px matches the detail panel's outer window inset.
+            ? { right: "calc(var(--feed-card-gap, 8px) - 0.75rem)" }
+            : undefined
+        }
       >
         <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all

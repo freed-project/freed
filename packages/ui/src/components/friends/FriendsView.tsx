@@ -2204,6 +2204,7 @@ export function FriendsView({
                 }
                 themeId={themeId}
                 presentationVisible={showGraphSurface}
+                controlsAdjacentToSidebar={showDesktopSidebar}
               />
               {friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
             </>
