@@ -38,6 +38,9 @@ copy the backlog into local task state.
 | `~/.freed/automation/soaks/`                               | Installed-build evidence windows and verdicts                                                                                                             |
 | `docs/roadmap-status.json`                                 | Structured phase status used to validate roadmap truth                                                                                                    |
 
+Active factory claims remain a projection inside the same
+`current-tasks.json` manifest. They do not create another authority source.
+
 The default state root can be replaced with `FREED_AUTOMATION_STATE_ROOT` or the
 CLI `--state-root` option. Repository automation specifications intentionally do
 not invent machine-local schedules, models, targets, or working directories for
@@ -267,6 +270,60 @@ appends a missing event, and deduplicates an event that was already synced by
 its stable event ID. A failed caller can therefore leave prepared work, but it
 cannot leave an unexplained task revision permanently. Use
 `scripts/automation-control.mjs` instead of editing the JSON manually.
+
+### Task-scoped factory execution claims
+
+The factory does not introduce another queue, lease database, or authority
+file. Active claims and the latest retry receipt for each claimed task live as
+sorted projections in `current-tasks.json`. They advance the manifest revision
+without changing the task revision. The same task transaction, kernel guard,
+atomic exchange, and exact event-history recovery used for task authority also
+protect every claim mutation.
+
+Only `freed-nightly-runner` with its live `nightly-writer` trusted-launcher
+lease may acquire, heartbeat, transfer, or release a factory claim. This lets
+one reviewed AubTown coordinator dispatch underneath the existing nightly
+authority without giving each worker a permanent lease. Workers receive the
+task-scoped admission, never the nightly lease token. Read-only claim show and
+list operations require no credential and return no credential.
+
+The initial contract admits only tasks that are `approved_for_pr`, explicitly
+nonbehavioral, provider-forbidden, backed by an exact Freed GitHub issue, and
+limited to the runtime-neutral lane with a `draft-pr` ceiling. Acquisition
+binds the task revision, issue, claim ID, custody epoch, host, worker, branch,
+worktree, conflict domains, base head, account, driver, and target. Duplicate
+task, issue, claim, branch, worktree, or conflict-domain ownership fails closed.
+The five-minute admission expires if launch does not begin. It does not erase
+the durable claim.
+
+The supported broker-facing commands are:
+
+```text
+task claim-acquire
+task claim-show
+task claim-list
+task claim-heartbeat
+task claim-transfer
+task claim-release
+```
+
+Mutations accept one exact versioned request through `--request-json`. A
+caller-owned UUID and canonical request digest make the latest operation for a
+task replay-safe after response loss. Reusing the UUID for changed bytes is an
+`operation_replay_conflict`. The UUID is also the immutable control-event ID,
+so it remains globally one-use after the latest receipt advances. Heartbeats
+move `claimed` to `running`. Transfers
+advance exactly one custody epoch and bind a checkpoint digest. A stale epoch,
+task revision, heartbeat, or release cannot take custody from the current
+owner. While a claim is active, normal task transitions and authority updates
+are fenced. The coordinator must release the exact claim before lifecycle
+projection continues.
+
+Claim expiry policy remains conservative. AubTown may release an unlaunched
+`claimed` record only after its initial grace and an exact heartbeat compare.
+A stale `running` record remains authoritative custody until the worker returns
+or the checkpoint-backed 24-hour transfer path advances its epoch. A crash
+never silently makes unpublished work dispatchable again.
 
 ### Generic authority file protocol
 
