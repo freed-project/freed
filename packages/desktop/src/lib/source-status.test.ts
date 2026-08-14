@@ -160,6 +160,27 @@ describe("desktop source status", () => {
     expect(status?.syncing).toBe(true);
   });
 
+  it("keeps a connected empty provider active while its first sync is running", () => {
+    const status = getDesktopSourceStatus(
+      "x",
+      sourceState({
+        xAuth: { isAuthenticated: true },
+        providerSyncCounts: { x: 1 },
+        itemCountByPlatform: { x: 0 },
+      }),
+      health({
+        x: providerSnapshot("x", {
+          status: "healthy",
+          lastOutcome: "success",
+        }),
+      }),
+    );
+
+    expect(status?.tone).toBe("healthy");
+    expect(status?.label).toBe("Connected");
+    expect(status?.syncing).toBe(true);
+  });
+
   it("projects authenticated beta source health and active sync state", () => {
     const status = getDesktopSourceStatus(
       "substack",
