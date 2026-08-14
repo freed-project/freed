@@ -621,13 +621,19 @@ test("production plan includes dev desktop gates without duplicating shipped bui
     "the production promotion must not test the separate website lane",
   );
 
-  // The release matrix runs the real signed desktop build on all four
-  // platforms. Building the frontend once more here made it five builds to
-  // gate four artifacts, and a frontend break still fails the build that ships.
+  // The release matrix still owns the real signed Desktop build. Native clippy
+  // needs only the frontend context because generate_context! validates the
+  // configured dist path at compile time.
   assert.ok(
     !labels.includes("desktop production build"),
     "the desktop build must not be duplicated ahead of the release matrix",
   );
+  const frontendContextIndex = labels.indexOf(
+    "desktop frontend context build",
+  );
+  const nativeClippyIndex = labels.indexOf("native rust clippy");
+  assert.ok(frontendContextIndex >= 0);
+  assert.ok(nativeClippyIndex > frontendContextIndex);
 
   // The website ships from `www` through publish-website against the reviewed
   // marketing branch. Building it in the Desktop release lane couples two

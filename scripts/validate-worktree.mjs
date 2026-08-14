@@ -872,15 +872,28 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (normalizedMode === "production") {
     const plan = [
-      ...buildValidationPlan("dev", changedFiles).filter(
-        (item) =>
-          ![
-            "root build",
-            "root typecheck",
-            "root lint",
-            "website tests",
-          ].includes(item.label),
-      ),
+      ...buildValidationPlan("dev", changedFiles)
+        .filter(
+          (item) =>
+            ![
+              "root build",
+              "root typecheck",
+              "root lint",
+              "website tests",
+            ].includes(item.label),
+        )
+        .flatMap((item) =>
+          item.label === "native rust clippy"
+            ? [
+                npmCommand(
+                  "desktop frontend context build",
+                  ["run", "build"],
+                  "packages/desktop",
+                ),
+                item,
+              ]
+            : [item],
+        ),
       nodeCommand("release notes shared tests", [
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
@@ -892,10 +905,9 @@ export function buildValidationPlan(mode, changedFiles) {
       // also include the website, so production validation inherits the green dev
       // product build and reruns only the release-critical product checks.
       //
-      // The desktop production build is also gone: the release matrix runs the
-      // real signed build on all four platforms, so building the frontend once
-      // more on ubuntu made it five builds to gate four artifacts. A frontend
-      // break still fails, just in the build that actually ships.
+      // The signed Desktop build remains in the release matrix. Production
+      // validation builds only the frontend context required by Tauri's
+      // generate_context! macro before native clippy and tests.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
     ];
 
