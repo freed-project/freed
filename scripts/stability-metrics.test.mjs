@@ -16,7 +16,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 8);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 9);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -699,6 +699,11 @@ test("provider-neutral lifecycle metrics route to their existing program buckets
   assert.deepEqual(metricSignalsForBucket("scrape-zero-persist"), {
     assertions: ["scrape_zero_persist"],
     alarms: ["scrape_zero_persist"],
+    canaryMetrics: [],
+  });
+  assert.deepEqual(metricSignalsForBucket("social-scheduler-deferral"), {
+    assertions: ["provider_schedule_integrity"],
+    alarms: ["provider_schedule_integrity"],
     canaryMetrics: [],
   });
 });

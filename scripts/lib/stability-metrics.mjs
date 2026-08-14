@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 8;
+export const STABILITY_METRIC_REGISTRY_VERSION = 9;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
@@ -547,16 +547,16 @@ export const STABILITY_METRICS = Object.freeze([
     canaryMetrics: Object.freeze([]),
   }),
   Object.freeze({
-    id: "meta-scheduled-runtime-deferral",
-    soakAssertionId: null,
+    id: "provider-schedule-integrity",
+    soakAssertionId: "provider_schedule_integrity",
     outcomeMeasurement: Object.freeze({
-      unit: "events/scheduled-meta-attempt",
+      unit: "violations/app-alive-day",
       direction: "lower",
       tolerance: 0.01,
     }),
     target: Object.freeze({ kind: "max_count", value: 0 }),
     triageBucketId: "social-scheduler-deferral",
-    alarmNames: Object.freeze([]),
+    alarmNames: Object.freeze(["provider_schedule_integrity"]),
     canaryMetrics: Object.freeze([]),
   }),
   Object.freeze({

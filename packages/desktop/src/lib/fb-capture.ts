@@ -411,11 +411,16 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export function fetchFbFeed(): Promise<FbSyncResult> {
-  return runFactoryResetSensitiveDesktopOperation(fetchFbFeedInternal);
+export function fetchFbFeed(onProviderContact?: () => void): Promise<FbSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchFbFeedInternal(resetEpoch, onProviderContact),
+  );
 }
 
-async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
+async function fetchFbFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<FbSyncResult> {
   const diag = createEmptyFbSyncDiag();
 
   const cookieState = await loadSocialProviderCookieState("facebook");
@@ -564,8 +569,12 @@ async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
       retainUntilSettledAfterTimeout: true,
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
-      run: () =>
-        invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
+      run: () => {
+        onProviderContact?.();
+        return invoke("fb_scrape_feed", {
+          windowMode: getFbScraperWindowMode(),
+        });
+      },
     });
     assertFactoryResetEpoch(resetEpoch);
     await waitForSocialScrapeEvents();
@@ -873,11 +882,12 @@ async function verifyFacebookGroupLeaveInternal(
  */
 export function captureFbFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<FbSyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const scrapeStartedAt = Date.now();
     try {
-      const result = await captureFbFeedInternal(resetEpoch);
+      const result = await captureFbFeedInternal(resetEpoch, onProviderContact);
       assertFactoryResetEpoch(resetEpoch);
       recordScrapeOutcome({
         provider: "facebook",
@@ -906,6 +916,7 @@ export function captureFbFeed(
 
 async function captureFbFeedInternal(
   resetEpoch: number,
+  onProviderContact?: () => void,
 ): Promise<FbSyncResult> {
   assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
@@ -956,7 +967,7 @@ async function captureFbFeedInternal(
   try {
     addDebugEvent("change", "[FB] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchFbFeed();
+    const result = await fetchFbFeed(onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +

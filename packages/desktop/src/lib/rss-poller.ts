@@ -5,11 +5,12 @@
  * Runs in the JavaScript layer so it works regardless of Tauri's background state.
  */
 
-import { refreshScheduledNonMetaFeeds } from "./capture";
+import { refreshScheduledRssFeeds } from "./capture";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
+  canStartBackgroundJob,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import {
@@ -18,14 +19,15 @@ import {
 } from "./rss-refresh-plan";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import {
-  startMetaSyncScheduler,
-  stopMetaSyncScheduler,
-  stopMetaSyncSchedulerAndDrain,
-} from "./meta-sync-scheduler";
+  claimRssSyncDue,
+  deferRssSyncClaim,
+  getRssSyncSchedule,
+  setRssSyncInterval,
+  settleRssSync,
+} from "./rss-sync-schedule-state";
 
-/** Default poll interval: 30 minutes */
-const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
-const DEFAULT_STARTUP_POLL_DELAY_MS = 5 * 60 * 1000;
+const SCHEDULER_TICK_MS = 60 * 1_000;
+const DEFAULT_STARTUP_POLL_DELAY_MS = 0;
 const DEFERRED_RETRY_BASE_MS = 60_000;
 const DEFERRED_RETRY_MAX_MS = 30 * 60_000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
@@ -108,14 +110,18 @@ function scheduleDeferredRetry(reason: string): void {
  * Start background RSS polling.
  * Safe to call multiple times — will not create duplicate intervals.
  *
- * @param intervalMs Poll interval in milliseconds (default: 30 minutes)
+ * @param intervalMs Poll interval in milliseconds (default: 3 hours)
  */
 export function startRssPoller(
-  intervalMs = DEFAULT_INTERVAL_MS,
+  intervalMs?: number,
   options: RssPollerOptions = {},
 ): void {
   if (pollIntervalId !== null || factoryResetDrainInProgress) return; // Already running
   pollerAcceptingWork = true;
+  if (intervalMs !== undefined && !setRssSyncInterval(intervalMs)) {
+    addDebugEvent("error", "[RSS] automatic sync paused because its device schedule is unavailable.");
+  }
+  const schedule = getRssSyncSchedule();
 
   const startupDelayMs =
     options.startupDelayMs ?? DEFAULT_STARTUP_POLL_DELAY_MS;
@@ -132,15 +138,9 @@ export function startRssPoller(
     void triggerPoll();
   }
 
-  pollIntervalId = setInterval(triggerPoll, intervalMs);
-  // Register RSS first so the existing non-Meta cycle keeps its scheduling
-  // priority. Meta retains its durable due state until local work settles.
-  startMetaSyncScheduler({
-    providerIntervalMs: intervalMs,
-    startupDelayMs,
-  });
+  pollIntervalId = setInterval(triggerPoll, SCHEDULER_TICK_MS);
   console.log(
-    `[SyncPoller] Started, polling every ${(intervalMs / 60000).toLocaleString()} minutes`,
+    `[SyncPoller] Started, polling every ${((schedule?.intervalMs ?? intervalMs ?? 0) / 60000).toLocaleString()} minutes`,
   );
 }
 
@@ -149,7 +149,6 @@ export function startRssPoller(
  */
 export function stopRssPoller(): void {
   pollerAcceptingWork = false;
-  stopMetaSyncScheduler();
   clearStartupPoll();
   clearDeferredRetry();
   if (pollIntervalId !== null) {
@@ -163,14 +162,11 @@ export function stopRssPoller(): void {
 export async function stopRssPollerAndDrain(): Promise<void> {
   factoryResetDrainInProgress = true;
   stopRssPoller();
-  await Promise.all([
-    waitForFactoryResetDrain(
-      () => Array.from(activeResetSensitiveOperations),
-      "RSS poller",
-      FACTORY_RESET_DRAIN_TIMEOUT_MS,
-    ),
-    stopMetaSyncSchedulerAndDrain(),
-  ]);
+  await waitForFactoryResetDrain(
+    () => Array.from(activeResetSensitiveOperations),
+    "RSS poller",
+    FACTORY_RESET_DRAIN_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -178,6 +174,13 @@ export async function stopRssPollerAndDrain(): Promise<void> {
  */
 async function triggerPoll(): Promise<void> {
   if (!pollerAcceptingWork || isPolling) return;
+  const gate = canStartBackgroundJob("rss-poll");
+  if (!gate.ok) {
+    scheduleDeferredRetry(gate.reason);
+    return;
+  }
+  const claim = claimRssSyncDue();
+  if (!claim) return;
   isPolling = true;
 
   try {
@@ -188,13 +191,15 @@ async function triggerPoll(): Promise<void> {
       run: () =>
         trackResetSensitiveOperation(
           Promise.resolve().then(() =>
-            refreshScheduledNonMetaFeeds(SCHEDULED_REFRESH_OPTIONS),
+            refreshScheduledRssFeeds(SCHEDULED_REFRESH_OPTIONS),
           ),
         ),
     });
+    settleRssSync();
     clearDeferredRetry();
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
+      deferRssSyncClaim(claim.lastAttemptAt ?? Date.now());
       addDebugEvent(
         "change",
         `[Sync] poll deferred: ${formatBackgroundRuntimeDeferredReason(err.reason)}`,

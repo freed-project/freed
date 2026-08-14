@@ -50,11 +50,21 @@ const DEFAULT_LOCK_PATH = path.join(
 );
 const DEFAULT_JSONL_TAIL_BYTES = 8 * 1024 * 1024;
 const HEAVY_DIAGNOSTIC_FIELDS = ["sampleSummary", "vmmapSummary"];
-const PROVIDERS = ["facebook", "instagram", "linkedin", "youtube", "x"];
+const PROVIDERS = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "youtube",
+  "x",
+];
 const PROVIDER_LABELS = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  medium: "Medium",
+  substack: "Substack",
   youtube: "YouTube",
   x: "X",
 };
@@ -521,15 +531,18 @@ function updateProviderStats(stats, row) {
     stats.memoryCooldowns += 1;
   }
 
-  if (row.event === "meta_sync_schedule_attempt") {
+  if (row.event === "provider_schedule_claimed") {
     stats.scheduleAttempts += 1;
     stats.scheduleCoalescedIntervals += Math.max(
       0,
-      Number(row.coalescedIntervals ?? 0),
+      Math.floor(
+        Number(row.dueAgeMs ?? 0) /
+          Math.max(1, Number(row.lowerBoundMs ?? 1)),
+      ),
     );
     stats.maxScheduleOverdueMs = Math.max(
       stats.maxScheduleOverdueMs,
-      Number(row.overdueMs ?? 0),
+      Number(row.dueAgeMs ?? 0),
     );
     stats.lastScheduleAttemptTsMs = Math.max(
       stats.lastScheduleAttemptTsMs,
@@ -537,10 +550,18 @@ function updateProviderStats(stats, row) {
     );
   }
 
-  if (row.event === "meta_sync_schedule_outcome") {
+  if (
+    [
+      "provider_schedule_settled",
+      "provider_schedule_backoff",
+      "provider_schedule_state_blocked",
+      "provider_schedule_deferred",
+    ].includes(row.event) &&
+    row.attemptId
+  ) {
     stats.scheduleOutcomes += 1;
-    if (row.status === "success") stats.scheduleSuccesses += 1;
-    if (row.stage === "runtime_deferred") {
+    if (row.outcome === "success") stats.scheduleSuccesses += 1;
+    if (row.event === "provider_schedule_deferred") {
       stats.scheduleRuntimeDeferrals += 1;
     }
     stats.lastScheduleOutcomeTsMs = Math.max(
@@ -970,7 +991,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         title: `Remove local scheduler deferrals from ${label} sync.`,
         evidence: `${label} recorded ${numberFormatter.format(stats.scheduleRuntimeDeferrals)} runtime deferral${stats.scheduleRuntimeDeferrals === 1 ? "" : "s"} across ${numberFormatter.format(stats.scheduleAttempts)} device-ledger attempt${stats.scheduleAttempts === 1 ? "" : "s"}.`,
         nextStep:
-          "Inspect coordinator ownership and durable due state. Do not add provider requests or shorten the 30-minute provider interval.",
+          "Inspect coordinator ownership and durable due state. Do not add provider requests or shorten the configured provider bounds.",
       });
     }
     if (stats.silentExtractions > 0) {
@@ -1090,7 +1111,15 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   blockedProviderRisk.push(
     {
       id: "extra-feed-navigation",
-      providers: ["Facebook", "Instagram", "LinkedIn", "YouTube", "X"],
+      providers: [
+        "Facebook",
+        "Instagram",
+        "LinkedIn",
+        "Medium",
+        "Substack",
+        "YouTube",
+        "X",
+      ],
       behavior: "Extra authenticated feed loads or refreshes.",
       whyRisky:
         "Providers can observe repeated navigation cadence and associate it with automation.",
@@ -1099,7 +1128,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
     },
     {
       id: "scripted-scroll-click-recovery",
-      providers: ["Facebook", "Instagram", "LinkedIn", "X"],
+      providers: ["Facebook", "Instagram", "LinkedIn", "Medium", "Substack", "X"],
       behavior:
         "Scripted scrolling, clicking, retrying, or story traversal to force more coverage.",
       whyRisky:
@@ -1109,7 +1138,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
     },
     {
       id: "media-comment-hydration",
-      providers: ["Facebook", "Instagram", "LinkedIn", "X"],
+      providers: ["Facebook", "Instagram", "LinkedIn", "Medium", "Substack", "X"],
       behavior:
         "Automatic media preload, comment hydration, reply expansion, or profile backfill.",
       whyRisky:

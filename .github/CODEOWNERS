@@ -15,6 +15,7 @@
 /packages/desktop/src/App.tsx @AubreyF
 /packages/desktop/src/components/CloudProviderCard.tsx @AubreyF
 /packages/desktop/src/components/CloudSyncNudge.tsx @AubreyF
+/packages/desktop/src/components/DesktopFeedsSettingsSection.tsx @AubreyF
 /packages/desktop/src/components/FacebookFeedEmptyState.tsx @AubreyF
 /packages/desktop/src/components/FacebookSettingsSection.tsx @AubreyF
 /packages/desktop/src/components/InstagramFeedEmptyState.tsx @AubreyF
@@ -22,6 +23,7 @@
 /packages/desktop/src/components/LinkedInSettingsSection.tsx @AubreyF
 /packages/desktop/src/components/MobileSyncTab.tsx @AubreyF
 /packages/desktop/src/components/ProviderSyncActionButton.tsx @AubreyF
+/packages/desktop/src/components/ProviderSyncCadenceControl.tsx @AubreyF
 /packages/desktop/src/components/ScraperWindowModeControl.tsx @AubreyF
 /packages/desktop/src/components/SyncProviderSectionSurface.tsx @AubreyF
 /packages/desktop/src/components/XFeedEmptyState.tsx @AubreyF
@@ -60,6 +62,7 @@
 /packages/desktop/src/lib/rss-poller.ts @AubreyF
 /packages/desktop/src/lib/rss-refresh-plan.ts @AubreyF
 /packages/desktop/src/lib/rss-runtime-state.ts @AubreyF
+/packages/desktop/src/lib/rss-sync-schedule-state.ts @AubreyF
 /packages/desktop/src/lib/runtime-health-events.ts @AubreyF
 /packages/desktop/src/lib/scraper-*.ts @AubreyF
 /packages/desktop/src/lib/secure-storage.ts @AubreyF

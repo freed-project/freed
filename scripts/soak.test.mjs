@@ -63,8 +63,61 @@ import {
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
   summarizeRequestSurfaceEvents,
+  summarizeProviderScheduleIntegrity,
   summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
+
+test("provider schedule integrity reconciles claims, contacts, settlement, and overlap", () => {
+  const claimed = {
+    event: "provider_schedule_claimed",
+    provider: "facebook",
+    attemptId: "facebook:1",
+    actualAt: 1_000,
+    scheduledAt: 900,
+    lowerBoundMs: 300_000,
+    upperBoundMs: 600_000,
+  };
+  const healthy = [
+    claimed,
+    {
+      event: "provider_contact_issued",
+      provider: "facebook",
+      attemptId: "facebook:1",
+      actualAt: 1_100,
+      scheduledAt: 900,
+      lowerBoundMs: 300_000,
+      upperBoundMs: 600_000,
+      contactIndex: 1,
+    },
+    {
+      event: "provider_schedule_settled",
+      provider: "facebook",
+      attemptId: "facebook:1",
+      actualAt: 1_200,
+    },
+  ].map((entry, index) => ({ entry, line: index + 1, raw: JSON.stringify(entry) }));
+  assert.equal(summarizeProviderScheduleIntegrity(healthy, 2_000).violations.length, 0);
+
+  const overlapping = [
+    healthy[0],
+    {
+      entry: {
+        ...claimed,
+        provider: "instagram",
+        attemptId: "instagram:1",
+        actualAt: 1_050,
+      },
+      line: 4,
+      raw: "{overlap}",
+    },
+  ];
+  assert.deepEqual(
+    summarizeProviderScheduleIntegrity(overlapping, 2_000).violations.map(
+      ({ reason }) => reason,
+    ),
+    ["concurrent_automatic_claim"],
+  );
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MB = 1024 * 1024;
@@ -2532,7 +2585,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 8);
+  assert.equal(verdict.metricRegistryVersion, 9);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);

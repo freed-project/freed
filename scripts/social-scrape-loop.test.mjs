@@ -440,18 +440,18 @@ test("buildReport writes provider summaries from health and diagnostics logs", (
         afterWebkitResidentBytes: GIB,
       },
       {
-        event: "meta_sync_schedule_attempt",
+        event: "provider_schedule_claimed",
         provider: "facebook",
         attemptId: "facebook:one",
-        overdueMs: 90_000,
-        coalescedIntervals: 2,
+        dueAgeMs: 90_000,
+        lowerBoundMs: 45_000,
       },
       {
-        event: "meta_sync_schedule_outcome",
+        event: "provider_schedule_deferred",
         provider: "facebook",
         attemptId: "facebook:one",
-        status: "deferred",
-        stage: "runtime_deferred",
+        outcome: "deferred",
+        stage: "memory_pressure",
       },
     ]
       .map((row) => JSON.stringify(row))

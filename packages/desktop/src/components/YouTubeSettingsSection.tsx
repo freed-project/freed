@@ -31,6 +31,7 @@ import { useAppStore, withProviderSyncing } from "../lib/store";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import {
   clearProviderPause,
   resetProviderPauseState,
@@ -43,6 +44,7 @@ import {
   isLibraryCoreProviderSettingsReaderDisabled,
   readSavedLibraryCoreYouTubeVideoUrls,
 } from "../lib/library-core-provider-settings-runtime";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 
 const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
@@ -163,19 +165,26 @@ export function YouTubeSettingsSection({
 
   const runSync = useCallback(
     async (trigger: "manual" | "post_login" = "manual") => {
-      setActionError(null);
-      setLastDiag(null);
-      if (healthSnapshot?.status === "paused")
-        await clearProviderPause("youtube");
-      const result = await withProviderSyncing("youtube", () =>
-        captureYouTube(trigger),
-      );
-      if (!isDesktopProviderAuthAllowed()) return result;
-      setLastDiag(result.diag);
-      if (result.diag.errorStage) {
-        throw new Error(result.diag.errorMessage ?? "YouTube sync failed.");
+      try {
+        setActionError(null);
+        setLastDiag(null);
+        if (healthSnapshot?.status === "paused")
+          await clearProviderPause("youtube");
+        const result = await withProviderSyncing("youtube", () =>
+          captureYouTube(trigger),
+        );
+        if (!isDesktopProviderAuthAllowed()) return result;
+        setLastDiag(result.diag);
+        if (result.diag.errorStage) {
+          throw new Error(result.diag.errorMessage ?? "YouTube sync failed.");
+        }
+        return result;
+      } finally {
+        rescheduleProviderAfterExternalSettlement({
+          provider: "youtube",
+          unblockAuth: trigger === "post_login",
+        });
       }
-      return result;
     },
     [healthSnapshot?.status],
   );
@@ -492,7 +501,10 @@ export function YouTubeSettingsSection({
             </p>
           ) : null}
           {auth.isAuthenticated ? (
-            <ProviderHealthSectionSummary provider="youtube" showMessages />
+            <>
+              <ProviderSyncCadenceControl provider="youtube" />
+              <ProviderHealthSectionSummary provider="youtube" showMessages />
+            </>
           ) : null}
         </div>
       </SyncProviderSectionSurface>

@@ -223,11 +223,16 @@ function applyInstagramPlaceholderDiag(
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export function fetchIgFeed(): Promise<IgSyncResult> {
-  return runFactoryResetSensitiveDesktopOperation(fetchIgFeedInternal);
+export function fetchIgFeed(onProviderContact?: () => void): Promise<IgSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchIgFeedInternal(resetEpoch, onProviderContact),
+  );
 }
 
-async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
+async function fetchIgFeedInternal(
+  resetEpoch: number,
+  onProviderContact?: () => void,
+): Promise<IgSyncResult> {
   const diag = createEmptyIgSyncDiag();
 
   if (await applyLockedSessionDeferredDiag(diag)) {
@@ -332,8 +337,12 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
       retainUntilSettledAfterTimeout: true,
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
-      run: () =>
-        invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
+      run: () => {
+        onProviderContact?.();
+        return invoke("ig_scrape_feed", {
+          windowMode: getIgScraperWindowMode(),
+        });
+      },
     });
     assertFactoryResetEpoch(resetEpoch);
 
@@ -400,11 +409,12 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
  */
 export function captureIgFeed(
   trigger: SocialScrapeTrigger = "unknown",
+  onProviderContact?: () => void,
 ): Promise<IgSyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const scrapeStartedAt = Date.now();
     try {
-      const result = await captureIgFeedInternal(resetEpoch);
+      const result = await captureIgFeedInternal(resetEpoch, onProviderContact);
       assertFactoryResetEpoch(resetEpoch);
       recordScrapeOutcome({
         provider: "instagram",
@@ -433,6 +443,7 @@ export function captureIgFeed(
 
 async function captureIgFeedInternal(
   resetEpoch: number,
+  onProviderContact?: () => void,
 ): Promise<IgSyncResult> {
   assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
@@ -483,7 +494,7 @@ async function captureIgFeedInternal(
   try {
     addDebugEvent("change", "[IG] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchIgFeed();
+    const result = await fetchIgFeed(onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[IG] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +

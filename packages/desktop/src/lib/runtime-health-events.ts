@@ -117,27 +117,44 @@ export function recordScrapeOutcome(input: {
   recordRuntimeHealthEvent({ event: "scrape_outcome", ...input });
 }
 
-/** One start record for each device-ledger-owned Facebook or Instagram run. */
-export function recordMetaSyncScheduleAttempt(input: {
-  provider: "facebook" | "instagram";
-  attemptId: string;
-  overdueMs: number;
-  coalescedIntervals: number;
-}): void {
-  recordRuntimeHealthEvent({ event: "meta_sync_schedule_attempt", ...input });
+export type ProviderScheduleEventProvider = ScrapeOutcomeProvider;
+
+export interface ProviderScheduleEventBase {
+  provider: ProviderScheduleEventProvider;
+  attemptId: string | null;
+  trigger: SocialScrapeTrigger | "migration" | "wake";
+  scheduledAt: number | null;
+  actualAt: number;
+  dueAgeMs: number | null;
+  lowerBoundMs: number;
+  upperBoundMs: number;
+  multiplierBucket: string;
+  wakeContext: boolean;
+  migrationContext: string;
 }
 
-/** One terminal record for each device-ledger-owned Facebook or Instagram run. */
-export function recordMetaSyncScheduleOutcome(input: {
-  provider: "facebook" | "instagram";
-  attemptId: string;
-  status: "success" | "empty" | "deferred" | "error" | "ignored";
-  stage: string | null;
-  overdueMs: number;
-  coalescedIntervals: number;
-  durationMs: number;
-}): void {
-  recordRuntimeHealthEvent({ event: "meta_sync_schedule_outcome", ...input });
+export function recordProviderScheduleEvent(
+  event:
+    | "provider_schedule_initialized"
+    | "provider_schedule_decision"
+    | "provider_schedule_deferred"
+    | "provider_schedule_regime_changed"
+    | "provider_schedule_claimed"
+    | "provider_contact_issued"
+    | "provider_schedule_settled"
+    | "provider_schedule_backoff"
+    | "provider_schedule_state_blocked",
+  input: ProviderScheduleEventBase & {
+    deferralCategory?: string | null;
+    contactIndex?: number | null;
+    outcome?: string | null;
+    stage?: string | null;
+    itemsSeen?: number | null;
+    itemsAdded?: number | null;
+    durationMs?: number | null;
+  },
+): void {
+  recordRuntimeHealthEvent({ event, ...input });
 }
 
 /**

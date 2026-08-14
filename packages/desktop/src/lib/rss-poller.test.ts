@@ -1,45 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const refreshScheduledNonMetaFeeds = vi.fn();
+const refreshScheduledRssFeeds = vi.fn(async () => {});
 const addDebugEvent = vi.fn();
-const runBackgroundJob = vi.fn();
-const startMetaSyncScheduler = vi.fn();
-const stopMetaSyncScheduler = vi.fn();
-const stopMetaSyncSchedulerAndDrain = vi.fn(async () => {});
-const isBackgroundRuntimeDeferredError = vi.fn(
-  (error: unknown) =>
-    typeof error === "object" && error !== null && "reason" in error,
-);
-
-vi.mock("./capture", () => ({
-  refreshScheduledNonMetaFeeds,
+const runBackgroundJob = vi.fn(async (task: { run: () => Promise<unknown> }) => task.run());
+const canStartBackgroundJob = vi.fn<
+  () => { ok: true } | { ok: false; reason: string }
+>(() => ({ ok: true }));
+const claimRssSyncDue = vi.fn(() => ({
+  intervalMs: 10_800_000,
+  nextDueAt: 20_000_000,
+  lastAttemptAt: 123,
 }));
+const deferRssSyncClaim = vi.fn(() => true);
+const getRssSyncSchedule = vi.fn(() => ({ intervalMs: 10_800_000, nextDueAt: 20_000_000 }));
+const setRssSyncInterval = vi.fn(() => true);
+const settleRssSync = vi.fn(() => true);
 
-vi.mock("./meta-sync-scheduler", () => ({
-  startMetaSyncScheduler,
-  stopMetaSyncScheduler,
-  stopMetaSyncSchedulerAndDrain,
+vi.mock("./capture", () => ({ refreshScheduledRssFeeds }));
+vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent }));
+vi.mock("./rss-sync-schedule-state", () => ({
+  claimRssSyncDue,
+  deferRssSyncClaim,
+  getRssSyncSchedule,
+  setRssSyncInterval,
+  settleRssSync,
 }));
-
-vi.mock("@freed/ui/lib/debug-store", () => ({
-  addDebugEvent,
-}));
-
 vi.mock("./background-runtime-coordinator", () => ({
+  canStartBackgroundJob,
   runBackgroundJob,
-  isBackgroundRuntimeDeferredError,
-  formatBackgroundRuntimeDeferredReason: (reason: string) => {
-    if (reason.startsWith("waiting_for_renderer_heartbeat:")) {
-      return "Freed is waiting for the app window to report healthy. Try again in a moment.";
-    }
-    if (reason.startsWith("cooldown:")) {
-      return "Freed paused background work while the app recovers. Try again in a moment.";
-    }
-    if (reason === "high_memory_pressure") {
-      return "Freed paused background work because memory is high. Try again after memory settles.";
-    }
-    return "Freed deferred background work. Try again in a moment.";
-  },
+  isBackgroundRuntimeDeferredError: (error: unknown) =>
+    typeof error === "object" && error !== null && "reason" in error,
+  formatBackgroundRuntimeDeferredReason: (reason: string) => reason,
 }));
 
 async function loadPoller() {
@@ -47,16 +38,27 @@ async function loadPoller() {
   return import("./rss-poller");
 }
 
-describe("rss poller", () => {
+describe("RSS-only poller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    refreshScheduledNonMetaFeeds.mockReset();
-    startMetaSyncScheduler.mockReset();
-    stopMetaSyncScheduler.mockReset();
-    stopMetaSyncSchedulerAndDrain.mockClear();
-    addDebugEvent.mockReset();
-    runBackgroundJob.mockReset();
-    isBackgroundRuntimeDeferredError.mockClear();
+    vi.clearAllMocks();
+    canStartBackgroundJob.mockReturnValue({ ok: true });
+    claimRssSyncDue.mockReturnValue({
+      intervalMs: 10_800_000,
+      nextDueAt: 20_000_000,
+      lastAttemptAt: 123,
+    });
+  });
+
+  it("restores the due RSS opportunity when coordination defers after claim", async () => {
+    runBackgroundJob.mockRejectedValueOnce({ reason: "active:social-scrape" });
+    const poller = await loadPoller();
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deferRssSyncClaim).toHaveBeenCalledWith(123);
+    expect(settleRssSync).not.toHaveBeenCalled();
+    poller.stopRssPoller();
   });
 
   afterEach(() => {
@@ -64,172 +66,55 @@ describe("rss poller", () => {
     vi.useRealTimers();
   });
 
-  it("delays the startup poll so launch stays responsive", async () => {
-    runBackgroundJob.mockResolvedValueOnce(undefined);
-
+  it("claims one persisted due interval and calls only the RSS entrypoint", async () => {
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000);
-    await vi.runAllTicks();
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect(runBackgroundJob).not.toHaveBeenCalled();
-    expect(addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[Sync] startup refresh scheduled in 300s",
-    );
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
-    expect(runBackgroundJob).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
-
-    poller.stopRssPoller();
-  });
-
-  it("still supports an immediate startup poll when requested", async () => {
-    runBackgroundJob.mockResolvedValueOnce(undefined);
-
-    const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-    await vi.runAllTicks();
-
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
-
-    poller.stopRssPoller();
-  });
-
-  it("drains an in-flight refresh before reset cleanup begins", async () => {
-    let releaseRefresh!: () => void;
-    const refreshGate = new Promise<void>((resolve) => {
-      releaseRefresh = resolve;
-    });
-    const refreshSettled = vi.fn();
-    refreshScheduledNonMetaFeeds.mockImplementationOnce(async () => {
-      await refreshGate;
-      refreshSettled();
-    });
-    runBackgroundJob.mockImplementationOnce(async (task) => task.run());
-
-    const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-    await vi.runAllTicks();
-    expect(refreshScheduledNonMetaFeeds).toHaveBeenCalledOnce();
-
-    const cleanupStarted = vi.fn();
-    const draining = poller.stopRssPollerAndDrain().then(cleanupStarted);
-    await Promise.resolve();
-    expect(cleanupStarted).not.toHaveBeenCalled();
-
-    releaseRefresh();
-    await draining;
-    expect(refreshSettled).toHaveBeenCalledOnce();
-    expect(refreshSettled.mock.invocationCallOrder[0]).toBeLessThan(
-      cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    );
-  });
-
-  it("backs off a deferred startup poll before the normal interval", async () => {
-    const deferredError = { reason: "waiting_for_renderer_heartbeat:1" };
-    runBackgroundJob
-      .mockRejectedValueOnce(deferredError)
-      .mockResolvedValueOnce(undefined);
-
-    const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-
-    await vi.runAllTicks();
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+    expect(claimRssSyncDue).toHaveBeenCalledOnce();
     expect(runBackgroundJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "rss-poll",
-        run: expect.any(Function),
-      }),
+      expect.objectContaining({ kind: "rss-poll", source: "rss-poller" }),
     );
-    const task = runBackgroundJob.mock.calls[0]?.[0];
-    await task.run();
-    expect(refreshScheduledNonMetaFeeds).toHaveBeenCalledWith({
+    expect(refreshScheduledRssFeeds).toHaveBeenCalledWith({
       maxFeeds: 80,
-      staleAfterMs: 2 * 60 * 60 * 1000,
+      staleAfterMs: 3 * 60 * 60 * 1_000,
     });
-
-    await vi.advanceTimersByTimeAsync(59_999);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
-    expect(addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[Sync] poll deferred: Freed is waiting for the app window to report healthy. Try again in a moment.",
-    );
-    expect(addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[Sync] poll retry scheduled in 60s. Freed is waiting for the app window to report healthy. Try again in a moment.",
-    );
-
+    expect(settleRssSync).toHaveBeenCalledOnce();
     poller.stopRssPoller();
   });
 
-  it("clears a deferred retry when the poller stops", async () => {
-    runBackgroundJob.mockRejectedValueOnce({ reason: "cooldown:120000" });
-
+  it("retains due state when local runtime work is ineligible", async () => {
+    canStartBackgroundJob.mockReturnValue({
+      ok: false as const,
+      reason: "high_memory_pressure",
+    });
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-    await vi.runAllTicks();
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
 
-    poller.stopRssPoller();
-    await vi.advanceTimersByTimeAsync(120_000);
-
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
-  });
-
-  it("uses the runtime cooldown when it is longer than the base retry", async () => {
-    runBackgroundJob
-      .mockRejectedValueOnce({ reason: "cooldown:120,000" })
-      .mockResolvedValueOnce(undefined);
-
-    const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-    await vi.runAllTicks();
-
-    await vi.advanceTimersByTimeAsync(119_999);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
+    expect(claimRssSyncDue).not.toHaveBeenCalled();
+    expect(refreshScheduledRssFeeds).not.toHaveBeenCalled();
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[Sync] poll retry scheduled in 120s. Freed paused background work while the app recovers. Try again in a moment.",
+      expect.stringContaining("poll retry scheduled"),
     );
-
     poller.stopRssPoller();
   });
 
-  it("doubles repeated deferred retries up to the cap", async () => {
-    runBackgroundJob
-      .mockRejectedValueOnce({ reason: "high_memory_pressure" })
-      .mockRejectedValueOnce({ reason: "high_memory_pressure" })
-      .mockResolvedValueOnce(undefined);
-
+  it("drains an already-issued RSS refresh before factory reset cleanup", async () => {
+    let release!: () => void;
+    refreshScheduledRssFeeds.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { release = resolve; }),
+    );
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
-    await vi.runAllTicks();
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(119_999);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(runBackgroundJob).toHaveBeenCalledTimes(3);
-    expect(addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[Sync] poll retry scheduled in 60s. Freed paused background work because memory is high. Try again after memory settles.",
-    );
-    expect(addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[Sync] poll retry scheduled in 120s. Freed paused background work because memory is high. Try again after memory settles.",
-    );
-
-    poller.stopRssPoller();
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    const drained = vi.fn();
+    const draining = poller.stopRssPollerAndDrain().then(drained);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
+    release();
+    await draining;
+    expect(drained).toHaveBeenCalledOnce();
   });
 });

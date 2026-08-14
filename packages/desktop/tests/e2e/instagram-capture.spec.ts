@@ -86,10 +86,14 @@ test("Instagram settings shows connected state when authenticated", async ({
   await expect(
     igSection.getByText("Connected", { exact: true }),
   ).toBeVisible({ timeout: 5_000 });
-  await expect(igSection.getByText("Sync Now")).toBeVisible({
+  await expect(
+    igSection.getByRole("button", { name: "Sync Now", exact: true }),
+  ).toBeVisible({
     timeout: 3_000,
   });
-  await expect(igSection.getByText("Disconnect")).toBeVisible({
+  await expect(
+    igSection.getByRole("button", { name: "Disconnect", exact: true }),
+  ).toBeVisible({
     timeout: 3_000,
   });
 });

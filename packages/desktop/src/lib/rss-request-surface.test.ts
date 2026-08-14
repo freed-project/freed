@@ -83,12 +83,12 @@ describe("RSS request surface counters", () => {
   });
 
   it("counts subscription, manual, and scheduled pulls without feed identifiers", async () => {
-    const { addRssFeed, refreshScheduledNonMetaFeeds, refreshRssFeeds } =
+    const { addRssFeed, refreshScheduledRssFeeds, refreshRssFeeds } =
       await import("./capture");
 
     await addRssFeed("https://new.example/feed.xml");
     await refreshRssFeeds();
-    await refreshScheduledNonMetaFeeds();
+    await refreshScheduledRssFeeds();
 
     expect(mocks.recordRssPullAttempt.mock.calls).toEqual([
       [{ trigger: "subscription" }],

@@ -115,14 +115,6 @@ function socialResult(provider: ProviderStage): unknown {
   };
 }
 
-function captureMock(provider: ProviderStage) {
-  if (provider === "x") return mocks.captureXTimeline;
-  if (provider === "facebook") return mocks.captureFbFeed;
-  if (provider === "instagram") return mocks.captureIgFeed;
-  if (provider === "linkedin") return mocks.captureLiFeed;
-  return mocks.captureYouTube;
-}
-
 describe("capture factory reset boundary", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -207,8 +199,8 @@ describe("capture factory reset boundary", () => {
       return new Promise<string>((resolve) => pendingFetches.push(resolve));
     });
 
-    const { refreshScheduledNonMetaFeeds } = await import("./capture");
-    const refreshing = refreshScheduledNonMetaFeeds();
+    const { refreshScheduledRssFeeds } = await import("./capture");
+    const refreshing = refreshScheduledRssFeeds();
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(5));
 
     mocks.resetActive = true;
@@ -225,48 +217,6 @@ describe("capture factory reset boundary", () => {
     expect(mocks.captureLiFeed).not.toHaveBeenCalled();
     expect(mocks.captureYouTube).not.toHaveBeenCalled();
   });
-
-  it.each<ProviderStage>(["x", "linkedin"])(
-    "does not start the provider after %s when reset begins",
-    async (pausedStage) => {
-      mocks.state.xAuth = {
-        isAuthenticated: true,
-        cookies: [{ name: "auth_token" }],
-      };
-      mocks.state.fbAuth = { isAuthenticated: true };
-      mocks.state.igAuth = { isAuthenticated: true };
-      mocks.state.liAuth = { isAuthenticated: true };
-      mocks.state.ytAuth = { isAuthenticated: true };
-
-      let releaseStage!: (value: unknown) => void;
-      captureMock(pausedStage).mockImplementationOnce(
-        () =>
-          new Promise<unknown>((resolve) => {
-            releaseStage = resolve;
-          }),
-      );
-
-      const { refreshScheduledNonMetaFeeds } = await import("./capture");
-      const refreshing = refreshScheduledNonMetaFeeds();
-      await vi.waitFor(() =>
-        expect(captureMock(pausedStage)).toHaveBeenCalledOnce(),
-      );
-
-      mocks.resetActive = true;
-      releaseStage(socialResult(pausedStage));
-      await refreshing;
-
-      const stages: ProviderStage[] = [
-        "x",
-        "linkedin",
-        "youtube",
-      ];
-      const laterStages = stages.slice(stages.indexOf(pausedStage) + 1);
-      for (const provider of laterStages) {
-        expect(captureMock(provider)).not.toHaveBeenCalled();
-      }
-    },
-  );
 
   it("ignores a direct social refresh after reset begins", async () => {
     mocks.state.fbAuth = { isAuthenticated: true };

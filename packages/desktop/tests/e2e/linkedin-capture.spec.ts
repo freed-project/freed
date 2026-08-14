@@ -156,7 +156,7 @@ test("browser preview skips native LinkedIn refresh instead of crashing", async 
 
   await page.evaluate(async (captureModulePath) => {
     const mod = await import(captureModulePath);
-    await mod.refreshScheduledNonMetaFeeds();
+    await mod.refreshScheduledRssFeeds();
   }, CAPTURE_MODULE_PATH);
 
   await expect(page.locator("main")).toBeVisible();
