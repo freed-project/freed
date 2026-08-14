@@ -1,10 +1,10 @@
 [
   {
-    "version": "26.8.1400",
-    "tagName": "v26.8.1400",
+    "version": "26.8.1404",
+    "tagName": "v26.8.1404",
     "channel": "production",
-    "date": "2026-08-14T10:05:06Z",
-    "deck": "Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use",
+    "date": "2026-08-14T22:35:49Z",
+    "deck": "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory, adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics, and moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization",
     "features": [
       {
         "text": "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory"
@@ -28,9 +28,30 @@
       },
       {
         "text": "Strengthens migration rollback, daily backups, corruption checks, release validation, and installed-build identity"
+      },
+      {
+        "text": "Repairs Google Drive authentication and automatic cloud-sync startup on Freed Desktop"
+      },
+      {
+        "text": "Keeps PWA connection status truthful, restores sample-data setup, and replaces stale service workers automatically"
+      },
+      {
+        "text": "Stabilizes geographic map panels, map markers, and background loading across Freed Desktop and the PWA"
+      },
+      {
+        "text": "Restores authenticated Google Drive synchronization in the PWA by binding browser requests correctly"
+      },
+      {
+        "text": "Returns from the Google authorization callback to the feed instead of leaving the connection screen stuck"
+      },
+      {
+        "text": "Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token"
       }
     ],
     "followUps": [
+      {
+        "text": "Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use"
+      },
       {
         "text": "Continue profiling explicit fuzzy search on unusually broad queries"
       },
@@ -41,7 +62,7 @@
         "text": "Reduce the remaining control-plane test runtime outside the product release path"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1400",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1404",
     "prNumbers": [
       990,
       991,
@@ -325,12 +346,30 @@
       1485
     ],
     "builds": [
-      "26.8.1400"
+      "26.8.1400",
+      "26.8.1401",
+      "26.8.1403",
+      "26.8.1404"
     ],
     "buildLinks": [
       {
         "version": "26.8.1400",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1400",
+        "channel": "production"
+      },
+      {
+        "version": "26.8.1401",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1401",
+        "channel": "production"
+      },
+      {
+        "version": "26.8.1403",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1403",
+        "channel": "production"
+      },
+      {
+        "version": "26.8.1404",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1404",
         "channel": "production"
       }
     ]
