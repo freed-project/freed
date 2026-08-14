@@ -604,10 +604,16 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       const friendsSidebarRect = friendsSidebar.getBoundingClientRect();
       const handleRect = handle.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
+      const navigationHandleCenter = navigationHandleRect.left + navigationHandleRect.width / 2;
+      const friendsHandleCenter = handleRect.left + handleRect.width / 2;
       return {
         leftGapPx: Math.round(graphRect.left - sidebarRect.right),
+        leftSidebarToRailPx: Math.round(navigationHandleCenter - sidebarRect.right),
+        leftRailToGraphPx: Math.round(graphRect.left - navigationHandleCenter),
         topGapPx: Math.round(graphRect.top - headerRect.bottom),
         rightGapPx: Math.round(handleRect.left - graphRect.right),
+        graphToRightRailPx: Math.round(friendsHandleCenter - graphRect.right),
+        rightRailToSidebarPx: Math.round(friendsSidebarRect.left - friendsHandleCenter),
         bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
         fitAllTopGapPx: Math.round(fitAllRect.top - graphRect.top),
         controlsRightGapPx: Math.round(graphRect.right - controlsRect.right),
@@ -618,9 +624,13 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       };
     });
   }).toEqual({
-    leftGapPx: 0,
+    leftGapPx: 12,
+    leftSidebarToRailPx: 6,
+    leftRailToGraphPx: 6,
     topGapPx: 0,
     rightGapPx: 0,
+    graphToRightRailPx: 6,
+    rightRailToSidebarPx: 6,
     // The graph is the primary full-height canvas. Each floating sidebar owns
     // its panel inset, so the graph itself reaches the window edge.
     bottomGapPx: 0,
@@ -659,6 +669,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     return page.evaluate(async () => {
       const snapshot = JSON.parse(await navigator.clipboard.readText()) as {
         camera: {
+          x: number;
+          y: number;
           scale: number;
           outwardTargetScale: number;
           resistanceScale: number;
@@ -672,18 +684,19 @@ test("friends graph controls align to the graph lane between sidebars", async ({
   const fittedCamera = await copyCameraDiagnostics();
   const graphViewport = page.getByTestId("friend-graph-viewport");
   await graphViewport.hover();
-  await page.keyboard.down("Control");
-  for (let index = 0; index < 8; index += 1) await page.mouse.wheel(0, -800);
-  await page.keyboard.up("Control");
+  for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, -120);
   const zoomedInCamera = await copyCameraDiagnostics();
-  await graphViewport.hover();
-  await page.keyboard.down("Control");
-  for (let index = 0; index < 24; index += 1) await page.mouse.wheel(0, 800);
-  await page.keyboard.up("Control");
+  const graphBox = await graphViewport.boundingBox();
+  if (!graphBox) throw new Error("Friends graph viewport is not visible.");
+  await page.mouse.move(graphBox.x + graphBox.width * 0.2, graphBox.y + graphBox.height * 0.25);
+  for (let index = 0; index < 48; index += 1) await page.mouse.wheel(0, 120);
   const wheelOutCamera = await copyCameraDiagnostics();
+  await page.getByRole("button", { name: "Fit all" }).click();
+  const fittedAfterWheelCamera = await copyCameraDiagnostics();
 
   expect(zoomedInCamera.scale).toBeGreaterThan(fittedCamera.scale);
-  expect(wheelOutCamera.scale).toBe(fittedCamera.scale);
+  expect(wheelOutCamera).toEqual(fittedCamera);
+  expect(fittedAfterWheelCamera).toEqual(wheelOutCamera);
   expect(wheelOutCamera.outwardTargetScale).toBe(fittedCamera.scale);
   expect(wheelOutCamera.resistanceScale).toBe(fittedCamera.scale);
   await expect(page.getByText("Diagnostics copied", { exact: true })).toBeVisible();

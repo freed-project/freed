@@ -223,6 +223,12 @@ export class FriendsGalaxyNavigationController {
     );
     this.transformValue.x = nextViewportX - worldX * this.transformValue.scale;
     this.transformValue.y = nextViewportY - worldY * this.transformValue.scale;
+    if (
+      scaleRatio < 1 &&
+      this.transformValue.scale <= this.frameValue.outwardZoomEnvelope.target
+    ) {
+      this.fit(false);
+    }
     return this.transformValue.scale !== previousScale ||
       this.transformValue.x !== previousX ||
       this.transformValue.y !== previousY;
@@ -238,7 +244,15 @@ export class FriendsGalaxyNavigationController {
     nextSecondX: number,
     nextSecondY: number,
   ): boolean {
-    return applyFriendsGalaxyPinch(
+    const previousDistance = Math.hypot(
+      previousSecondX - previousFirstX,
+      previousSecondY - previousFirstY,
+    );
+    const nextDistance = Math.hypot(
+      nextSecondX - nextFirstX,
+      nextSecondY - nextFirstY,
+    );
+    const changed = applyFriendsGalaxyPinch(
       this.transformValue,
       previousFirstX,
       previousFirstY,
@@ -252,6 +266,14 @@ export class FriendsGalaxyNavigationController {
       this.frameValue.outwardZoomEnvelope.resistance,
       this.frameValue.scaleLimits.maximum,
     );
+    if (
+      changed &&
+      nextDistance < previousDistance &&
+      this.transformValue.scale <= this.frameValue.outwardZoomEnvelope.target
+    ) {
+      this.fit(false);
+    }
+    return changed;
   }
 
   private buildFrame(): FriendsGalaxyCameraFrameState {

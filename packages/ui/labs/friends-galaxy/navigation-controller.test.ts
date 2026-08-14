@@ -163,24 +163,43 @@ describe("Friends Galaxy navigation controller", () => {
       .toBeCloseTo(365, 10);
   });
 
-  it("lets repeated outward input reach the same exact scale as Fit All", () => {
+  it("makes Fit All a no-op after outward input reaches the frame boundary", () => {
     const navigation = new FriendsGalaxyNavigationController(
       rendererScene(),
       1_280,
       720,
       { top: 0, right: 356, bottom: 0, left: 292 },
     );
+    navigation.fit();
+    const fittedTransform = { ...navigation.transform };
     navigation.focusNode("person:product-person-2", 1.2);
 
-    for (let index = 0; index < 24; index += 1) {
-      navigation.zoomAt(646, 360, 0.8);
+    for (let index = 0; index < 96; index += 1) {
+      navigation.zoomAt(360, 180, 0.92);
     }
 
-    expect(navigation.transform.scale).toBe(navigation.frame.fittedScale);
-    const wheelScale = navigation.transform.scale;
-    navigation.focusNode("person:product-person-2", 1.2);
+    expect(navigation.transform).toEqual(fittedTransform);
     navigation.fit();
-    expect(navigation.transform.scale).toBe(wheelScale);
+    expect(navigation.transform).toEqual(fittedTransform);
+  });
+
+  it("makes Fit All a no-op after pinch reaches the frame boundary", () => {
+    const navigation = new FriendsGalaxyNavigationController(
+      rendererScene(),
+      390,
+      844,
+    );
+    navigation.fit();
+    const fittedTransform = { ...navigation.transform };
+    navigation.focusNode("person:product-person-2", 1.2);
+
+    for (let index = 0; index < 96; index += 1) {
+      navigation.pinch(80, 180, 310, 180, 120, 210, 270, 210);
+    }
+
+    expect(navigation.transform).toEqual(fittedTransform);
+    navigation.fit();
+    expect(navigation.transform).toEqual(fittedTransform);
   });
 
   it("preserves the previous pinch midpoint world point at the moving midpoint", () => {

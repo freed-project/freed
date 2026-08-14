@@ -6,6 +6,7 @@ import {
   friendsGalaxyGestureScaleRatio,
   friendsGalaxyResistedScaleAtRatio,
   friendsGalaxyWheelDeltaPixels,
+  friendsGalaxyWheelIntent,
   friendsGalaxyWheelScaleRatio,
 } from "../../src/lib/friends-galaxy-gesture.js";
 
@@ -272,5 +273,14 @@ describe("Friends Galaxy gesture math", () => {
   it("normalizes line and page wheel deltas before panning", () => {
     expect(friendsGalaxyWheelDeltaPixels(3, 1, 900)).toBe(48);
     expect(friendsGalaxyWheelDeltaPixels(-0.5, 2, 800)).toBe(-400);
+  });
+
+  it("separates coarse mouse-wheel zoom from fine trackpad pan", () => {
+    expect(friendsGalaxyWheelIntent(0, 120, 0, false, false)).toBe("wheel-zoom");
+    expect(friendsGalaxyWheelIntent(0, 3, 1, false, false)).toBe("wheel-zoom");
+    expect(friendsGalaxyWheelIntent(0, 18.5, 0, false, false)).toBe("two-finger-pan");
+    expect(friendsGalaxyWheelIntent(14, 18.5, 0, false, false)).toBe("two-finger-pan");
+    expect(friendsGalaxyWheelIntent(0, 2, 0, true, false)).toBe("pinch-zoom");
+    expect(friendsGalaxyWheelIntent(0, 2, 0, false, true)).toBe("pinch-zoom");
   });
 });
