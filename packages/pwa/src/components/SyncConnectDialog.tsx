@@ -281,12 +281,20 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
     }
   }, [stopCamera, handleClose]);
 
+  // startCamera reaches getUserMedia and writes error state on the denial path,
+  // which the rule sees as setState from an effect. Requesting camera
+  // permission is exactly the kind of thing an effect is for, and moving it to
+  // an event handler would mean the dialog no longer starts scanning when mode
+  // changes. Suppressed deliberately; the permission flow is not something to
+  // restructure alongside a lint upgrade.
+  /* eslint-disable react-hooks/set-state-in-effect -- camera permission effect described above */
   useEffect(() => {
     if (mode === "scanning") {
       startCamera();
     }
     return () => stopCamera();
   }, [mode, startCamera, stopCamera]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleConnect = async () => {
     const trimmedIp = ip.trim();

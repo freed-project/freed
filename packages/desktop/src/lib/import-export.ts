@@ -14,7 +14,7 @@ import { parseMarkdownArchiveFile } from "@freed/capture-save/import-markdown";
 import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { FeedItem } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docBatchImportItems, getAllItemIds } from "./automerge.js";
+import { docBatchImportItems, getAllItemIds } from "./library-client";
 import { enqueue as enqueueFetch } from "./content-fetcher.js";
 
 export type ImportPhase = "scanning" | "writing" | "caching" | "fetching";

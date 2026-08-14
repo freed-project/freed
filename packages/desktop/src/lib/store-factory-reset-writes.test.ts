@@ -5,7 +5,7 @@ const automerge = vi.hoisted(() => {
   const resolved = () => vi.fn(() => Promise.resolve());
   return {
     initDoc: vi.fn(),
-    quiesceDesktopAutomergeForFactoryReset: resolved(),
+    quiesceDesktopLibraryForFactoryReset: resolved(),
     subscribe: vi.fn(() => () => {}),
     getDocState: vi.fn(() => null),
     docAddFeedItems: resolved(),
@@ -52,7 +52,7 @@ const automerge = vi.hoisted(() => {
   };
 });
 
-vi.mock("./automerge", () => automerge);
+vi.mock("./library-client", () => automerge);
 
 vi.mock("./outbox", () => ({
   startOutboxProcessor: vi.fn(() => () => {}),

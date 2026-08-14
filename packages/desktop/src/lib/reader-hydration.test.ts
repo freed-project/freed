@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("./content-cache", () => ({ contentCache: { set: mocks.cacheSet } }));
-vi.mock("./automerge", () => ({ docUpdateFeedItem: mocks.docUpdateFeedItem }));
+vi.mock("./library-client", () => ({ docUpdateFeedItem: mocks.docUpdateFeedItem }));
 vi.mock("./store", () => ({
   useAppStore: { getState: () => ({ xAuth: { isAuthenticated: false, cookies: null } }) },
 }));

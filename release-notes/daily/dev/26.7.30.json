@@ -1,0 +1,17 @@
+{
+  "channel": "dev",
+  "dayKey": "26.7.30",
+  "date": "2026-07-30",
+  "preferredDeck": "Cuts peak memory while building the SQLite-backed feed by reusing the renderer snapshot instead of traversing the full Automerge library twice",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [
+    "Keep v26.7.3001-dev focused on the memory correction layered over the SQLite reader shipped in v26.7.3000-dev.",
+    "State plainly that Automerge remains authoritative and is the immediate fallback."
+  ],
+  "updatedAt": "2026-07-30T21:36:13.644Z"
+}

@@ -20,13 +20,13 @@ const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
   /^fix\/main-governance-[a-z0-9._-]+$/;
 const GOVERNANCE_BACKPORT_FILES = new Set([
   ".github/CODEOWNERS",
+  ".github/ISSUE_TEMPLATE/debt.yml",
   ".agents/skills/freed-build-feature/SKILL.md",
   ".agents/skills/freed-provider-risk-review/SKILL.md",
   "AGENTS.md",
   "docs/AUTOMATION-CONTROL-PLANE.md",
   "docs/NIGHTLY-SELF-IMPROVE.md",
   "docs/STABILITY-PROGRAM.md",
-  "docs/stability-tasks/W1-06-provider-visible-single-source.md",
   "scripts/automation-control.mjs",
   "scripts/automation-control.test.mjs",
   "scripts/lib/automation-control.mjs",

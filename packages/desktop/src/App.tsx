@@ -18,6 +18,8 @@ import {
   PlatformProvider,
   type AvailableUpdateInfo,
   type PlatformConfig,
+  type ScanLibraryItems,
+  type SearchLibraryItems,
   type UpdateDownloadProgress,
 } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -41,9 +43,7 @@ import {
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
-  startSync,
   stopSync,
-  startAllCloudSyncs,
   restartCloudSync,
   stopAllCloudSyncs,
   getActiveProviders,
@@ -62,10 +62,24 @@ import {
 } from "./lib/sync";
 import {
   clearLocalDoc,
-  getCachedDocStats,
-  getItemLegacyHtml,
-  getItemPreservedText,
-} from "./lib/automerge";
+  acquireLegacyRendererItems,
+} from "./lib/library-client";
+import {
+  openBoundedDesktopFeedReader,
+  openBoundedDesktopFriendsFeedReader,
+  readDesktopFeedSignalCounts,
+} from "./lib/library-core-feed-browse-reader-runtime";
+import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
+import {
+  openLibraryCoreItemScanSession,
+  readLibraryCoreFacetSummary,
+  readLibraryCoreFriendsGraph,
+  readLibraryCoreFriendsLocationItem,
+  readLibraryCoreItemDetail,
+  readLibraryCorePersonTimeline,
+  readLibraryCoreSavedAnalytics,
+  readLibraryCoreSurfaceItems,
+} from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -165,13 +179,18 @@ import {
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
+import { isSqliteLibraryActive, searchSqliteItemsPage } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
 import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
-import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
+import {
+  captureShellMemoryBaseline,
+  startMemoryMonitor,
+  stopMemoryMonitor,
+} from "./lib/memory-monitor";
 import {
   getBackgroundRuntimeStatus,
   noteMemoryPressure,
@@ -202,6 +221,39 @@ import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
 
+const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
+  const session = await openLibraryCoreItemScanSession();
+  try {
+    for (;;) {
+      const page = await session.nextPage();
+      if (page.items.length > 0) {
+        const decision = await visit(page.items);
+        if (decision === "stop") return;
+      }
+      if (page.done) return;
+    }
+  } finally {
+    await session.close();
+  }
+};
+
+const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
+  query,
+  _searchCorpusVersion,
+  visit,
+) => {
+  let afterGlobalId: string | null = null;
+  for (;;) {
+    const page = await searchSqliteItemsPage(query, afterGlobalId);
+    if (page.matches.length > 0 && visit(page.matches) === "stop") return;
+    if (!page.nextAfterGlobalId) return;
+    if (page.nextAfterGlobalId === afterGlobalId) {
+      throw new Error("SQLite Library search cursor did not advance");
+    }
+    afterGlobalId = page.nextAfterGlobalId;
+  }
+};
+
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
@@ -223,7 +275,6 @@ interface DesktopSessionState {
   screenLocked: boolean;
   error?: string | null;
 }
-
 type LockedStartupState = "checking" | "ready" | "locked";
 
 type FriendGraphSurfacePerf = {
@@ -376,6 +427,13 @@ function App() {
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (!tauriRuntimeAvailable) return;
+    // Give the nonblocking shell probe the legal and lock checks as headroom.
+    // Document initialization closes the window and discards a late result.
+    void captureShellMemoryBaseline();
+  }, [tauriRuntimeAvailable]);
 
   useEffect(() => {
     if (
@@ -531,7 +589,6 @@ function App() {
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
     startMemoryMonitor({
-      getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
         stopContentFetcher();
         stopSemanticClassifier();
@@ -549,12 +606,16 @@ function App() {
     void initProviderHealth();
     startRssPoller();
     startAuthenticatedEssayPoller();
-    // Wire the LAN relay change subscription and client-count polling.
-    startSync();
-    // Resume cloud sync loops for any previously authenticated providers.
-    void startAllCloudSyncs();
+    // Replacement sync follows the SQLite Desktop revamp. The legacy
+    // Automerge relay and cloud loops stay off in this build.
     if (isTauri()) {
-      void startSnapshotManager();
+      void startSnapshotManager().catch((error) => {
+        log.error(
+          `[snapshots] failed to start SQLite snapshot manager: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     }
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
@@ -995,9 +1056,6 @@ function App() {
           phaseTimeoutMs: 255_000,
           trackedWorkDrainTimeoutMs: 240_000,
           quiesceLocalWriters: [
-            async () => {
-              await invoke("factory_reset_sync_relay");
-            },
             quiesceDesktopProviderAuthForFactoryReset,
             quiesceDesktopOAuthForFactoryReset,
             quiesceDesktopStoreForFactoryReset,
@@ -1046,7 +1104,6 @@ function App() {
           },
           clearDocument: async () => {
             await clearLocalDoc();
-            await invoke("resume_sync_relay_after_factory_reset");
           },
         });
         clearFactoryResetCloudCleanupBarrier();
@@ -1055,9 +1112,6 @@ function App() {
       onFailure: (error) => {
         const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
         const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
-        if (recovery.resumeRelay) {
-          void invoke("resume_sync_relay_after_factory_reset").catch(() => undefined);
-        }
         toast.error(recovery.message);
       },
     });
@@ -1207,20 +1261,19 @@ function App() {
       IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
     if (!isInitialized || !shouldAutoSeedPreview) return;
 
-    const state = useAppStore.getState();
-    const sampleSummary = summarizeSampleData(state);
-    const hasTimeWindowMapSamples = state.items.some((item) =>
-      item.globalId.includes("sample-location-window:") && item.location?.coordinates && item.timeRange
-    );
-    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
-
     const guardKey = "freed_dev_seeded";
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
     void (async () => {
-      if (IS_FEATURE_PREVIEW && sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
-        await state.clearSampleData();
-      }
+      const state = useAppStore.getState();
+      const facets = isSqliteLibraryActive()
+        ? await readLibraryCoreFacetSummary()
+        : null;
+      const sampleSummary = summarizeSampleData(
+        state,
+        facets?.sampleItemCount,
+      );
+      if (sampleSummary.total > 0) return;
 
       await refreshSampleLibraryData({
         ...useAppStore.getState(),
@@ -1247,6 +1300,10 @@ function App() {
       startWindowDrag:
         import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
           ? () => getCurrentWindow().startDragging()
+          : undefined,
+      releaseMapRendererMemory:
+        import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
+          ? () => invoke("release_main_renderer_memory")
           : undefined,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
@@ -1286,8 +1343,12 @@ function App() {
         return saveUrlInDesktop(url, options);
       },
       importMarkdown: importMarkdownFiles,
-      exportMarkdown: () => {
-        const items = useDesktopStore.getState().items ?? [];
+      exportMarkdown: async () => {
+        const items: Parameters<typeof exportLibrary>[0] = [];
+        await scanLibraryCoreItemsForDesktop((page) => {
+          items.push(...page);
+          return "continue";
+        });
         return exportLibrary(items);
       },
       retryCloudProvider,
@@ -1376,12 +1437,18 @@ function App() {
       getLocalContent: async (globalId) => {
         const cached = await contentCache.get(globalId);
         if (cached) return cached;
-        const legacyHtml = await getItemLegacyHtml(globalId);
-        if (!legacyHtml) return null;
-        await contentCache.set(globalId, legacyHtml).catch(() => {});
-        return legacyHtml;
+        const item = await readLibraryCoreItemDetail(globalId);
+        const sqliteHtml = item?.preservedContent?.html;
+        if (sqliteHtml) {
+          await contentCache.set(globalId, sqliteHtml).catch(() => {});
+          return sqliteHtml;
+        }
+        return null;
       },
-      getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
+      getLocalPreservedText: async (globalId) => {
+        const item = await readLibraryCoreItemDetail(globalId);
+        return item?.preservedContent?.text ?? null;
+      },
       hydrateReaderItem: hydrateReaderItemForDesktop,
       pinReaderItem,
       youtube: {
@@ -1408,6 +1475,58 @@ function App() {
       },
       publishStoryWall: publishStoryWallToGitHubPages,
       openUrl: (url: string) => { void shellOpen(url); },
+      openBoundedFeedReader: tauriRuntimeAvailable
+        ? openBoundedDesktopFeedReader
+        : undefined,
+      openBoundedFriendsFeedReader: tauriRuntimeAvailable
+        ? openBoundedDesktopFriendsFeedReader
+        : undefined,
+      openBoundedSavedFeedReader: tauriRuntimeAvailable
+        ? openBoundedDesktopSavedFeedReader
+        : undefined,
+      scanLibraryItems: tauriRuntimeAvailable
+        ? scanLibraryCoreItemsForDesktop
+        : undefined,
+      searchLibraryItems:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? searchLibraryCoreItemsForDesktop
+          : undefined,
+      readFeedSignalCounts:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? readDesktopFeedSignalCounts
+          : undefined,
+      acquireLegacyLibraryItems:
+        tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()
+          ? acquireLegacyRendererItems
+          : undefined,
+      readLibraryFacetSummary:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFacetSummary
+          : undefined,
+      readLibraryItemDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreItemDetail
+          : undefined,
+      readLibrarySavedAnalytics:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreSavedAnalytics
+          : undefined,
+      readLibraryFriendsGraph:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendsGraph
+          : undefined,
+      readLibraryPersonTimeline:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCorePersonTimeline
+          : undefined,
+      readLibraryFriendsLocationItem:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendsLocationItem
+          : undefined,
+      readLibrarySurfaceItems:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreSurfaceItems
+          : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
         ? {
@@ -1436,7 +1555,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
   );
 
   if (lockedStartupState !== "ready") {

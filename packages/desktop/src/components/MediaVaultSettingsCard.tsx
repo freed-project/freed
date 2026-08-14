@@ -3,21 +3,28 @@ import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import type { FeedItem } from "@freed/shared";
 import { SettingsToggle } from "@freed/ui/components/SettingsToggle";
 import { toast } from "@freed/ui/components/Toast";
+import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
 import {
+  archiveLibraryCoreProviderMedia,
   archiveRecentProviderMedia,
   getMediaVaultProviderDir,
   setMediaVaultEnabled,
   subscribeMediaVault,
   summarizeMediaVault,
+  type MediaVaultImportSource,
   type MediaVaultProvider,
   type MediaVaultSummary,
 } from "../lib/media-vault";
 import { importMetaExportFiles } from "../lib/meta-export-import";
+import {
+  isLibraryCoreProviderSettingsReaderDisabled,
+  scanLibraryCoreProviderItems,
+} from "../lib/library-core-provider-settings-runtime";
+import { useAppStore } from "../lib/store";
 
 interface MediaVaultSettingsCardProps {
   provider: MediaVaultProvider;
   providerLabel: string;
-  items: FeedItem[];
   authenticated: boolean;
 }
 
@@ -26,6 +33,7 @@ type JobKind = "import" | "backup" | "backfill" | null;
 const BYTE_FORMAT = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
+const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes.toLocaleString()} B`;
@@ -62,16 +70,21 @@ function emptySummary(): MediaVaultSummary {
 export function MediaVaultSettingsCard({
   provider,
   providerLabel,
-  items,
   authenticated,
 }: MediaVaultSettingsCardProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [summary, setSummary] = useState<MediaVaultSummary>(() => emptySummary());
+  const [summary, setSummary] = useState<MediaVaultSummary>(() =>
+    emptySummary(),
+  );
   const [job, setJob] = useState<JobKind>(null);
-
+  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
+  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
+  const legacyItems = useAppStore((state) =>
+    useLegacyItems ? state.items : EMPTY_FEED_ITEMS,
+  );
   const providerItems = useMemo(
-    () => items.filter((item) => item.platform === provider),
-    [items, provider],
+    () => legacyItems.filter((item) => item.platform === provider),
+    [legacyItems, provider],
   );
 
   const refreshSummary = useCallback(() => {
@@ -102,7 +115,11 @@ export function MediaVaultSettingsCard({
         );
         refreshSummary();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : `Could not import ${providerLabel} export`);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : `Could not import ${providerLabel} export`,
+        );
       } finally {
         setJob(null);
         if (inputRef.current) inputRef.current.value = "";
@@ -111,39 +128,88 @@ export function MediaVaultSettingsCard({
     [provider, providerLabel, refreshSummary],
   );
 
+  const archiveProviderItems = useCallback(
+    async (
+      importSource: Exclude<MediaVaultImportSource, "meta_export">,
+    ): Promise<number> => {
+      if (useLegacyItems) {
+        if (!legacyItemsReady) {
+          throw new Error("Library items are temporarily unavailable.");
+        }
+        return archiveRecentProviderMedia(
+          provider,
+          providerItems,
+          importSource,
+        );
+      }
+      return archiveLibraryCoreProviderMedia(
+        provider,
+        importSource,
+        scanLibraryCoreProviderItems,
+      );
+    },
+    [legacyItemsReady, provider, providerItems, useLegacyItems],
+  );
+
   const handleBackupNow = useCallback(async () => {
     setJob("backup");
     try {
-      const count = await archiveRecentProviderMedia(provider, providerItems, "continuous");
+      const count = await archiveProviderItems("continuous");
       if (count === 0 && summary.ownerHandles.length === 0) {
-        toast.info(`Import a Meta export first so Freed can identify your ${providerLabel} account.`);
+        toast.info(
+          `Import a Meta export first so Freed can identify your ${providerLabel} account.`,
+        );
       } else {
-        toast.success(`Archived ${count.toLocaleString()} ${providerLabel} media file${count === 1 ? "" : "s"}`);
+        toast.success(
+          `Archived ${count.toLocaleString()} ${providerLabel} media file${count === 1 ? "" : "s"}`,
+        );
       }
       refreshSummary();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `Could not archive ${providerLabel} media`);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Could not archive ${providerLabel} media`,
+      );
     } finally {
       setJob(null);
     }
-  }, [provider, providerItems, providerLabel, refreshSummary, summary.ownerHandles.length]);
+  }, [
+    archiveProviderItems,
+    providerLabel,
+    refreshSummary,
+    summary.ownerHandles.length,
+  ]);
 
   const handleBackfill = useCallback(async () => {
     setJob("backfill");
     try {
-      const count = await archiveRecentProviderMedia(provider, providerItems, "profile_backfill");
+      const count = await archiveProviderItems("profile_backfill");
       if (count === 0 && summary.ownerHandles.length === 0) {
-        toast.info(`Import a Meta export first, then profile backfill can match your ${providerLabel} handle.`);
+        toast.info(
+          `Import a Meta export first, then profile backfill can match your ${providerLabel} handle.`,
+        );
       } else {
-        toast.success(`Backfilled ${count.toLocaleString()} ${providerLabel} media file${count === 1 ? "" : "s"}`);
+        toast.success(
+          `Backfilled ${count.toLocaleString()} ${providerLabel} media file${count === 1 ? "" : "s"}`,
+        );
       }
       refreshSummary();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `Could not backfill ${providerLabel} media`);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Could not backfill ${providerLabel} media`,
+      );
     } finally {
       setJob(null);
     }
-  }, [provider, providerItems, providerLabel, refreshSummary, summary.ownerHandles.length]);
+  }, [
+    archiveProviderItems,
+    providerLabel,
+    refreshSummary,
+    summary.ownerHandles.length,
+  ]);
 
   const handleOpenFolder = useCallback(async () => {
     const providerDir = await getMediaVaultProviderDir(provider);
@@ -186,7 +252,11 @@ export function MediaVaultSettingsCard({
         </div>
         <div>
           <span className="text-[#52525b]">Known account</span>{" "}
-          <span>{summary.ownerHandles[0] ? `@${summary.ownerHandles[0]}` : "Not set"}</span>
+          <span>
+            {summary.ownerHandles[0]
+              ? `@${summary.ownerHandles[0]}`
+              : "Not set"}
+          </span>
         </div>
       </div>
 
@@ -195,13 +265,21 @@ export function MediaVaultSettingsCard({
       ) : null}
 
       {summary.lastError ? (
-        <p className="text-xs leading-relaxed text-red-400">{summary.lastError}</p>
+        <p className="text-xs leading-relaxed text-red-400">
+          {summary.lastError}
+        </p>
       ) : null}
 
       {summary.failureCount > 0 ? (
         <p className="text-xs leading-relaxed text-amber-400">
           {summary.failureCount.toLocaleString()} media download failure
           {summary.failureCount === 1 ? "" : "s"} will retry later.
+        </p>
+      ) : null}
+
+      {useLegacyItems && !legacyItemsReady ? (
+        <p className="text-xs leading-relaxed text-amber-400">
+          Library items are temporarily unavailable.
         </p>
       ) : null}
 
@@ -230,7 +308,12 @@ export function MediaVaultSettingsCard({
           onClick={() => {
             void handleBackfill();
           }}
-          disabled={busy || !summary.enabled || !authenticated}
+          disabled={
+            busy ||
+            !summary.enabled ||
+            !authenticated ||
+            (useLegacyItems && !legacyItemsReady)
+          }
           className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 disabled:opacity-50 transition-colors"
         >
           Backfill from profile
@@ -240,7 +323,12 @@ export function MediaVaultSettingsCard({
           onClick={() => {
             void handleBackupNow();
           }}
-          disabled={busy || !summary.enabled || !authenticated}
+          disabled={
+            busy ||
+            !summary.enabled ||
+            !authenticated ||
+            (useLegacyItems && !legacyItemsReady)
+          }
           className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 disabled:opacity-50 transition-colors"
         >
           Back up now
@@ -258,7 +346,8 @@ export function MediaVaultSettingsCard({
       </div>
 
       <p className="text-xs leading-relaxed text-[#52525b]">
-        Use Meta export for all history. Profile backfill only saves media Freed can match to your known account handle.
+        Use Meta export for all history. Profile backfill only saves media Freed
+        can match to your known account handle.
       </p>
     </div>
   );

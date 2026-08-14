@@ -157,7 +157,7 @@ const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
   new URL("./lease-archive-move.py", import.meta.url),
 );
 const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
-  "d23a65379acad43c7fb601d65fc150c29f1d214796121362f2a44c7e6c305a3e";
+  "a91265dd02399ef3f362e1feed269d4907311cd0a6fb492a956915e67ace666e";
 const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
 const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
   "import hashlib,sys",
@@ -171,6 +171,8 @@ const LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES =
   64 + 1 + 64 + Buffer.byteLength(".json");
 const LEASE_ARCHIVE_LIST_MAX_BUFFER =
   LEASE_ARCHIVE_MAX_ENTRIES * (LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES + 1);
+const LEASE_ARCHIVE_LIST_BATCH_MAX_DIRECTORIES = 16;
+const LEASE_ARCHIVE_LIST_BATCH_MAX_BUFFER = 128 * 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_BUFFER = 128 * 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_REQUEST_BYTES = 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_SELECTED_ENTRIES = 4_096;
@@ -1909,18 +1911,12 @@ export function withAutomationOutcomeLedgerWriterGuard(
         paths.stateRoot,
         context,
       );
-      OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(context, new Map());
-      OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(context, null);
-      OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(context, new Set());
-      OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(context, new Map());
+      openAuthorityCacheScope(paths.stateRoot, context);
       try {
         return operation(context);
       } finally {
         active = false;
-        OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(context);
-        OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(context);
-        OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(context);
-        OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(context);
+        closeAuthorityCacheScope(paths.stateRoot, context);
         ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.delete(paths.stateRoot);
         ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.delete(context);
       }
@@ -2002,8 +1998,56 @@ function withFilesystemGuard(
 
 const ACTIVE_AUTOMATION_EVENTS_GUARDS = new WeakSet();
 const ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT = new Map();
+// Authority read caches hang off whichever exclusive kernel-guard scope is
+// active for a state root. The outcome ledger writer guard was the first such
+// scope; the automation events guard is the second. Both hold an exclusive
+// kernel file guard for the whole scope, both are single-instance per state
+// root, and both drop their caches when the scope unwinds, so a cached
+// generation can never outlive the guard that admitted it.
+const ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT = new Map();
 const AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS = new WeakMap();
 const OUTCOME_REPAIR_OWNER_LEASE_BYPASSES = new WeakMap();
+
+function openAuthorityCacheScope(stateRoot, scope) {
+  OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(scope, new Map());
+  OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(scope, null);
+  OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(scope, new Set());
+  OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(scope, new Map());
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  if (stack === undefined) {
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.set(stateRoot, [scope]);
+    return;
+  }
+  stack.push(scope);
+}
+
+function closeAuthorityCacheScope(stateRoot, scope) {
+  OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(scope);
+  OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(scope);
+  OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(scope);
+  OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(scope);
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  if (stack === undefined) return;
+  const index = stack.lastIndexOf(scope);
+  if (index !== -1) stack.splice(index, 1);
+  if (stack.length === 0) {
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.delete(stateRoot);
+  }
+}
+
+// An outcome ledger writer context keeps its own cache for the whole guard, so
+// it stays the preferred scope whenever one is active for the root. That keeps
+// writer-guard behavior byte for byte identical and confines the widened
+// caching to the events-guard scopes that previously had none.
+function activeAuthorityCacheScopeForRoot(stateRoot) {
+  const writerContext =
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(stateRoot);
+  if (writerContext !== undefined) return writerContext;
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  return stack === undefined || stack.length === 0
+    ? null
+    : stack[stack.length - 1];
+}
 
 function requireActiveAutomationEventsGuard(token) {
   if (
@@ -2049,6 +2093,7 @@ function withActiveAutomationEventsGuard(
       }
       ACTIVE_AUTOMATION_EVENTS_GUARDS.add(token);
       ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.set(paths.stateRoot, token);
+      openAuthorityCacheScope(paths.stateRoot, token);
       try {
         if (authorizeOutcomeRepairBypass !== null) {
           if (typeof authorizeOutcomeRepairBypass !== "function") {
@@ -2087,6 +2132,7 @@ function withActiveAutomationEventsGuard(
         }
         return result;
       } finally {
+        closeAuthorityCacheScope(paths.stateRoot, token);
         AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.delete(token);
         ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.delete(paths.stateRoot);
         OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.delete(token);
@@ -15274,13 +15320,10 @@ function automationAuthoritySnapshotGenerationFingerprint(filePath) {
   return before === after ? digestBytes(Buffer.from(after, "utf8")) : null;
 }
 
-function activeOutcomeWriterContextForPath(filePath) {
-  let matchingContext = null;
+function longestActiveStateRootForPath(filePath, stateRoots) {
+  let matchingRoot = null;
   let matchingRootLength = -1;
-  for (const [
-    stateRoot,
-    context,
-  ] of ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT) {
+  for (const stateRoot of stateRoots) {
     const relative = path.relative(stateRoot, filePath);
     if (
       relative !== "" &&
@@ -15289,11 +15332,34 @@ function activeOutcomeWriterContextForPath(filePath) {
       !path.isAbsolute(relative) &&
       stateRoot.length > matchingRootLength
     ) {
-      matchingContext = context;
+      matchingRoot = stateRoot;
       matchingRootLength = stateRoot.length;
     }
   }
-  return matchingContext;
+  return matchingRoot;
+}
+
+function activeAuthorityCacheScopeForPath(filePath) {
+  const stateRoot = longestActiveStateRootForPath(
+    filePath,
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.keys(),
+  );
+  return stateRoot === null
+    ? null
+    : activeAuthorityCacheScopeForRoot(stateRoot);
+}
+
+// Private batch re-admission skips a pinned-helper verification outright rather
+// than reusing an already-admitted value, so it stays bound to the outcome
+// ledger writer guard that originally admitted the skip.
+function activeOutcomeLedgerWriterContextForPath(filePath) {
+  const stateRoot = longestActiveStateRootForPath(
+    filePath,
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.keys(),
+  );
+  return stateRoot === null
+    ? null
+    : (ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(stateRoot) ?? null);
 }
 
 function cloneAutomationAuthoritySnapshot(snapshot) {
@@ -15318,7 +15384,7 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
       label,
       invalidCode,
     );
-  const context = activeOutcomeWriterContextForPath(normalizedFilePath);
+  const context = activeAuthorityCacheScopeForPath(normalizedFilePath);
   const helperTestPause = options?.helperTestPause;
   if (context === null || helperTestPause !== undefined) {
     return readAutomationAuthorityFileSnapshotWithPolicyUncached(
@@ -17117,10 +17183,8 @@ function leaseAuthorityTreeGenerationFingerprint(paths) {
 }
 
 function inspectLeaseTransactionEventHistoryForPlanning(paths, events) {
-  const context = ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(
-    paths.stateRoot,
-  );
-  if (context === undefined) {
+  const context = activeAuthorityCacheScopeForRoot(paths.stateRoot);
+  if (context === null) {
     return inspectLeaseTransactionEventHistoryInternal({
       stateRoot: paths.stateRoot,
       events,
@@ -20042,7 +20106,35 @@ export function framePinnedLeaseArchiveHelperInvocation(
 
 function openPinnedLeaseArchiveHelper() {
   try {
-    const pythonRuntime = resolveLeaseArchivePythonRuntime();
+    // Tooling tests exercise the real descriptor and helper protocol, but a
+    // GitHub runner's /usr directory is not part of the host trust contract.
+    // The explicit Node test context may supply one private copied runtime.
+    // Ordinary CLI and actor processes always take the fixed root-owned path.
+    const testRuntime =
+      typeof process.env.NODE_TEST_CONTEXT === "string" &&
+      process.env.NODE_TEST_CONTEXT !== ""
+        ? {
+            entryPath:
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME ?? "",
+            trustedRoot:
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT ?? "",
+            requiredUid: Number(
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_UID ?? Number.NaN,
+            ),
+          }
+        : null;
+    const hasCompleteTestRuntime =
+      testRuntime !== null &&
+      path.isAbsolute(testRuntime.entryPath) &&
+      path.isAbsolute(testRuntime.trustedRoot) &&
+      Number.isSafeInteger(testRuntime.requiredUid) &&
+      testRuntime.requiredUid >= 0;
+    const pythonRuntime = hasCompleteTestRuntime
+      ? resolveLeaseArchivePythonRuntime(testRuntime.entryPath, {
+          requiredUid: testRuntime.requiredUid,
+          trustedRoot: testRuntime.trustedRoot,
+        })
+      : resolveLeaseArchivePythonRuntime();
     const source = readPinnedLeaseArchiveHelperSource();
     return Object.freeze({ source, pythonRuntime });
   } catch (error) {
@@ -20122,6 +20214,8 @@ function runLeaseArchiveHelper(
               "private-lease-state-batch-read",
             ].includes(operation)
           ? LEASE_PRIVATE_BATCH_MAX_BUFFER
+          : operation === "list-bounded-batch"
+            ? LEASE_ARCHIVE_LIST_BATCH_MAX_BUFFER
           : operation === "list" || operation === "list-bounded"
             ? LEASE_ARCHIVE_LIST_MAX_BUFFER
             : 2 * LEASE_TRANSACTION_MAX_BYTES,
@@ -20251,7 +20345,7 @@ function requirePinnedLeaseArchiveDirectoryChild(helper, parent, child, label) {
   }
   assertPinnedLeaseArchiveDirectory(parent);
   assertPinnedLeaseArchiveDirectory(child);
-  const writerContext = activeOutcomeWriterContextForPath(parent.path);
+  const writerContext = activeAuthorityCacheScopeForPath(parent.path);
   const proofCache =
     writerContext === null
       ? undefined
@@ -21334,7 +21428,7 @@ function requirePrivateBatchInventoryUnchanged(
     }
   };
   if (
-    activeOutcomeWriterContextForPath(directory.path) !== null &&
+    activeOutcomeLedgerWriterContextForPath(directory.path) !== null &&
     currentGenerationMatches() &&
     currentGenerationMatches()
   ) {
@@ -21388,7 +21482,7 @@ function automationPlanningReadNames(
       return null;
     }
   };
-  const context = activeOutcomeWriterContextForPath(directory.path);
+  const context = activeAuthorityCacheScopeForPath(directory.path);
   const cache =
     context === null
       ? undefined
@@ -26714,6 +26808,97 @@ function listPinnedLeaseArchiveDirectory(context, binding) {
   return entries;
 }
 
+function listPinnedLeaseArchiveDirectories(context, bindings) {
+  if (
+    bindings.length === 0 ||
+    bindings.length > LEASE_ARCHIVE_LIST_BATCH_MAX_DIRECTORIES
+  ) {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing has an invalid directory count.",
+    );
+  }
+  for (const binding of bindings) {
+    assertPinnedLeaseArchiveDirectory(binding);
+  }
+  const result = runLeaseArchiveHelper(
+    context.helperDescriptor,
+    "list-bounded-batch",
+    [
+      bindings.length.toString(),
+      ...bindings.flatMap((binding) => [
+        LEASE_ARCHIVE_MAX_ENTRIES.toString(),
+        Math.min(
+          LEASE_ARCHIVE_LIST_MAX_BUFFER,
+          LEASE_BOUNDED_DIRECTORY_MAX_BYTES,
+        ).toString(),
+        ...pinnedDirectoryArguments(binding),
+      ]),
+    ],
+    bindings.map(({ descriptor }) => descriptor),
+  );
+  let receipt;
+  try {
+    receipt = JSON.parse(result.toString("utf8"));
+  } catch {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing returned invalid JSON.",
+    );
+  }
+  if (
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== ["listings", "protocol"].sort().join("\n") ||
+    receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
+    !Array.isArray(receipt.listings) ||
+    receipt.listings.length !== bindings.length
+  ) {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing returned an invalid receipt.",
+    );
+  }
+  const listings = receipt.listings.map((encoded, index) => {
+    if (typeof encoded !== "string") {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive batch listing returned invalid entry bytes.",
+      );
+    }
+    const bytes = Buffer.from(encoded, "base64");
+    if (bytes.toString("base64") !== encoded) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive batch listing returned noncanonical entry bytes.",
+      );
+    }
+    if (bytes.length === 0) return [];
+    const entries = bytes.toString("utf8").split("\0");
+    if (
+      entries.length > LEASE_ARCHIVE_MAX_ENTRIES ||
+      entries.some(
+        (entry) =>
+          entry.length === 0 ||
+          entry === "." ||
+          entry === ".." ||
+          entry.includes("/") ||
+          entry.includes("\0"),
+      )
+    ) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        `${bindings[index].label} contains an invalid entry name.`,
+      );
+    }
+    return entries;
+  });
+  for (const binding of bindings) {
+    assertPinnedLeaseArchiveDirectory(binding);
+  }
+  return listings;
+}
+
 function inspectLeaseArchiveEntry(binding, entry, expectedDevice) {
   const entryPath = path.join(binding.path, entry);
   let descriptor;
@@ -26928,12 +27113,35 @@ export function inspectLeaseCleanupArchiveCapacity(
     let oldestMtimeMs = null;
     const archiveNamePattern =
       /^(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\.[0-9a-f]{64})?\.[0-9a-f]{64}\.json$/;
+    const stateArchiveDirectory = leaseStateQuarantineDirectory(paths);
+    const capacityBindings = [
+      ...leaseCleanupArchiveDirectories(paths),
+      stateArchiveDirectory,
+    ].map((directoryPath) =>
+      directoryBindings.find((binding) => binding.path === directoryPath),
+    );
+    if (capacityBindings.some((binding) => binding === undefined)) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive capacity directories are incomplete.",
+      );
+    }
+    const beforeListings = listPinnedLeaseArchiveDirectories(
+      context,
+      capacityBindings,
+    );
+    const beforeEntriesByPath = new Map(
+      capacityBindings.map((binding, index) => [
+        binding.path,
+        beforeListings[index],
+      ]),
+    );
     for (const archiveDirectory of leaseCleanupArchiveDirectories(paths)) {
       const binding = directoryBindings.find(
         (candidate) => candidate.path === archiveDirectory,
       );
       if (binding === undefined) continue;
-      const beforeEntries = listPinnedLeaseArchiveDirectory(context, binding);
+      const beforeEntries = beforeEntriesByPath.get(binding.path);
       for (const entry of beforeEntries) {
         if (!archiveNamePattern.test(entry)) {
           throw new AutomationControlError(
@@ -26949,23 +27157,12 @@ export function inspectLeaseCleanupArchiveCapacity(
             ? inspected.mtimeMs
             : Math.min(oldestMtimeMs, inspected.mtimeMs);
       }
-      const afterEntries = listPinnedLeaseArchiveDirectory(context, binding);
-      if (beforeEntries.join("\0") !== afterEntries.join("\0")) {
-        throw new AutomationControlError(
-          "lease_archive_capacity_invalid",
-          `${binding.label} changed during capacity accounting.`,
-        );
-      }
     }
-    const stateArchiveDirectory = leaseStateQuarantineDirectory(paths);
     const stateArchiveBinding = directoryBindings.find(
       (candidate) => candidate.path === stateArchiveDirectory,
     );
     const stateArchiveNamePattern = /^[0-9a-f]{64}\.[0-9a-f]{64}\.lease$/;
-    const stateEntriesBefore = listPinnedLeaseArchiveDirectory(
-      context,
-      stateArchiveBinding,
-    );
+    const stateEntriesBefore = beforeEntriesByPath.get(stateArchiveBinding.path);
     for (const entry of stateEntriesBefore) {
       if (!stateArchiveNamePattern.test(entry)) {
         throw new AutomationControlError(
@@ -26986,15 +27183,17 @@ export function inspectLeaseCleanupArchiveCapacity(
           ? inspected.mtimeMs
           : Math.min(oldestMtimeMs, inspected.mtimeMs);
     }
-    const stateEntriesAfter = listPinnedLeaseArchiveDirectory(
+    const afterListings = listPinnedLeaseArchiveDirectories(
       context,
-      stateArchiveBinding,
+      capacityBindings,
     );
-    if (stateEntriesBefore.join("\0") !== stateEntriesAfter.join("\0")) {
-      throw new AutomationControlError(
-        "lease_archive_capacity_invalid",
-        `${stateArchiveBinding.label} changed during capacity accounting.`,
-      );
+    for (const [index, binding] of capacityBindings.entries()) {
+      if (beforeListings[index].join("\0") !== afterListings[index].join("\0")) {
+        throw new AutomationControlError(
+          "lease_archive_capacity_invalid",
+          `${binding.label} changed during capacity accounting.`,
+        );
+      }
     }
     const oldestAgeMs =
       oldestMtimeMs === null ? 0 : Math.max(0, nowMs - oldestMtimeMs);
@@ -27209,13 +27408,28 @@ function leaseAtomicArchiveSpecificationMatches(
   specification,
   snapshot,
 ) {
-  return (
+  const archiveDirectory = path.dirname(archivePath);
+  const currentDigest = leaseCleanupGenerationDigest(
+    specification.temporaryPath,
+    snapshot,
+  );
+  if (
     path.join(
-      path.dirname(archivePath),
-      `${specification.selectionPrefix}.${leaseCleanupGenerationDigest(
-        specification.temporaryPath,
-        snapshot,
-      )}.json`,
+      archiveDirectory,
+      `${specification.selectionPrefix}.${currentDigest}.json`,
+    ) === archivePath
+  ) {
+    return true;
+  }
+  const legacyDigest = legacyLeaseCleanupGenerationDigest(
+    specification.temporaryPath,
+    snapshot,
+  );
+  return (
+    legacyDigest !== null &&
+    path.join(
+      archiveDirectory,
+      `${specification.selectionPrefix}.${legacyDigest}.json`,
     ) === archivePath
   );
 }
@@ -30822,6 +31036,347 @@ export function acquireLease(options) {
     );
   }
   return acquireLeaseAuthorized(leaseOptions);
+}
+
+function retireDriftedControlEventPredecessorForLeaseRecovery(
+  paths,
+  transaction,
+  beforeRemove,
+) {
+  const current = readAutomationAuthorityFileSnapshot(paths.events, {
+    allowEmpty: true,
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Control event history",
+    invalidCode: "authority_generation_conflict",
+  });
+  if (current.missing) return false;
+  const directory = openPinnedLeaseArchiveDirectory(
+    path.dirname(paths.events),
+    "Control event recovery authority parent directory",
+  );
+  try {
+    requireAutomationAuthorityDirectoryGeneration(
+      directory,
+      current.directoryIdentity,
+      "Control event recovery authority parent directory",
+    );
+    const helper = openPinnedLeaseArchiveHelper();
+    const stages = listAutomationAuthorityStages(
+      paths.events,
+      helper,
+      directory,
+    );
+    if (stages.length === 0) return false;
+    if (stages.length !== 1 || stages[0].kind !== "ready") {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Expired lease recovery requires at most one complete control event predecessor witness.",
+      );
+    }
+    if (
+      stages[0].successorStableDigest ===
+      automationAuthorityStableGenerationDigest(current)
+    ) {
+      return false;
+    }
+    const stagePath = path.join(path.dirname(paths.events), stages[0].entry);
+    const stage = readAutomationAuthorityStage(stagePath, {
+      privateRoot: paths.controlRoot,
+      maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Control event recovery predecessor witness",
+    });
+    requireAutomationAuthoritySnapshotDirectory(
+      stage,
+      directory,
+      "Control event recovery predecessor witness",
+    );
+    if (stage.missing) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor witness disappeared.",
+      );
+    }
+    const semantic = requireControlEventSemanticSuccessor(
+      paths,
+      stage,
+      current,
+    );
+    if (
+      semantic.operationId !== `control-event:${transaction.event.eventId}` ||
+      !canonicalValuesEqual(semantic.event, transaction.event)
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor does not lead to the pending lease event.",
+      );
+    }
+    beforeRemove();
+    removeAutomationAuthorityFile({
+      filePath: stagePath,
+      snapshot: stage,
+      operationId: `expired-lease-recovery:${transaction.operationId}`,
+      privateRoot: paths.controlRoot,
+      maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Control event recovery predecessor witness",
+      beforeRemove,
+      retirementBasename: path.basename(paths.events),
+      rawSource: true,
+    });
+    if (listAutomationAuthorityStages(paths.events, helper, directory).length) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event recovery predecessor survived exact retirement.",
+      );
+    }
+    return true;
+  } finally {
+    closeSync(directory.descriptor);
+  }
+}
+
+function normalizeLegacyLeaseAtomicArchivesForRecovery(
+  paths,
+  transaction,
+  beforeMove,
+) {
+  const files = leaseTransactionFiles(
+    paths,
+    transaction.name,
+    transaction.operationId,
+    transaction.operation,
+  );
+  const archiveDirectory = leaseCleanupQuarantineDirectory(files.transaction);
+  const specifications = leaseAtomicArchiveSpecifications(
+    paths,
+    transaction,
+    "transaction",
+  );
+  const entries = readLeaseCleanupArchiveEntries(
+    paths,
+    archiveDirectory,
+    specifications.map((specification) => specification.selectionPrefix),
+  );
+  let normalized = 0;
+  for (const entry of entries) {
+    if (
+      specifications.some((specification) =>
+        leaseAtomicArchiveSpecificationMatches(
+          entry.quarantinePath,
+          specification,
+          entry.snapshot,
+        ),
+      )
+    ) {
+      continue;
+    }
+    const matchingSpecifications = specifications.filter((specification) => {
+      const prefix = `${specification.selectionPrefix}.`;
+      return (
+        entry.entry.startsWith(prefix) &&
+        /^[0-9a-f]{64}\.json$/.test(entry.entry.slice(prefix.length))
+      );
+    });
+    if (
+      matchingSpecifications.length !== 1 ||
+      matchingSpecifications[0].target !== "wal"
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_conflict",
+        `Lease cleanup archive ${entry.entry} does not identify one exact recoverable WAL namespace.`,
+      );
+    }
+    parseRetiredLeaseTransactionSnapshot(paths, transaction, entry.snapshot);
+    const [specification] = matchingSpecifications;
+    const canonicalPath = path.join(
+      archiveDirectory,
+      `${specification.selectionPrefix}.${leaseCleanupGenerationDigest(
+        specification.temporaryPath,
+        entry.snapshot,
+      )}.json`,
+    );
+    beforeMove();
+    moveLeaseFileGenerationDurable(
+      paths,
+      entry.quarantinePath,
+      canonicalPath,
+      entry.snapshot,
+      "Expired lease recovery atomic archive",
+    );
+    normalized += 1;
+  }
+  return normalized;
+}
+
+export function recoverExpiredGeneralActorLeaseAcquire({
+  stateRoot,
+  name,
+  owner,
+  operationId,
+  ownerConfirmationFile,
+  ownerTaskId,
+  ownerIntentDigest,
+}) {
+  const paths = automationControlPaths(stateRoot);
+  const normalizedOperationId = requireLeaseOperationId(operationId);
+  requireIdentifier(name, "lease name");
+  requireNonemptyString(owner, "owner");
+  requireIdentifier(ownerTaskId, "ownerTaskId");
+  const policy = actorPolicy(owner);
+  if (!isGeneralAutomationActor(owner) || policy.leaseName !== name) {
+    throw new AutomationControlError(
+      "lease_policy_mismatch",
+      `Expired acquisition recovery requires the canonical lease for one general automation actor.`,
+      { owner, expectedLeaseName: policy.leaseName, name },
+    );
+  }
+  const recoveryIntent = {
+    schemaVersion: OWNER_CAPABILITY_SCHEMA_VERSION,
+    action: "lease.recover-expired-acquire",
+    taskId: ownerTaskId,
+    parameters: {
+      owner,
+      name,
+      operationId: normalizedOperationId,
+    },
+  };
+  const expectedIntentDigest = ownerGovernanceIntentDigest(recoveryIntent);
+  if (ownerIntentDigest !== expectedIntentDigest) {
+    throw new AutomationControlError(
+      "owner_capability_intent_mismatch",
+      "The owner governance intent does not match this exact expired lease acquisition recovery.",
+      { ownerTaskId, expectedIntentDigest, ownerIntentDigest },
+    );
+  }
+  const validateRecoveryConfirmation = () =>
+    validateCurrentTaskOwnerConfirmation({
+      confirmationFile: ownerConfirmationFile,
+      taskId: ownerTaskId,
+      intentDigest: ownerIntentDigest,
+    });
+  validateRecoveryConfirmation();
+  let retiredControlEventStage = false;
+  let normalizedLegacyAtomicArchives = 0;
+  const recovery = withFilesystemGuard(paths, `lease-${name}`, () => {
+    validateRecoveryConfirmation();
+    const activePath = path.join(
+      leaseTransactionDirectories(paths).transactions,
+      `${name}.json`,
+    );
+    if (!pathEntryExists(activePath)) {
+      throw new AutomationControlError(
+        "lease_transaction_not_found",
+        `Lease ${name} has no pending transaction to recover.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    const transaction = readLeaseTransactionFile(activePath, paths, name);
+    if (
+      transaction.operation !== "acquire" ||
+      transaction.operationId !== normalizedOperationId ||
+      !["state-committed", "event-appended", "complete"].includes(
+        transaction.phase,
+      ) ||
+      transaction.request.owner !== owner ||
+      transaction.request.name !== name ||
+      transaction.request.operation !== "acquire" ||
+      transaction.request.operationId !== normalizedOperationId ||
+      transaction.request.launcherChannelProtocol !==
+        ACTOR_LAUNCHER_CHANNEL_PROTOCOL ||
+      typeof transaction.request.launcherSha256 !== "string" ||
+      typeof transaction.request.actorRuntimeDigest !== "string" ||
+      transaction.staging.afterPath === null
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_recovery_forbidden",
+        `Lease ${name} does not have the exact committed trusted-launcher acquisition authorized for recovery.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    const afterSnapshot = readLeaseAtomicSnapshot(
+      paths,
+      transaction.staging.afterPath,
+      "Expired lease acquisition after staging",
+    );
+    const record = parseLeaseRecordBytes(afterSnapshot.bytes, name);
+    validateLeaseRecord(record, name);
+    if (
+      record.owner !== owner ||
+      record.credentialKind !== "trusted-launcher-channel" ||
+      record.launcherSha256 !== transaction.request.launcherSha256 ||
+      record.actorRuntimeDigest !== transaction.request.actorRuntimeDigest ||
+      record.launcherChannelProtocol !==
+        transaction.request.launcherChannelProtocol ||
+      secretDigest(record.token) !== transaction.tokenDigest ||
+      secretDigest(record.token) !== transaction.request.tokenDigest
+    ) {
+      throw new AutomationControlError(
+        "lease_transaction_conflict",
+        `Lease ${name} retained staging does not match its trusted-launcher acquisition.`,
+        { name, operationId: normalizedOperationId },
+      );
+    }
+    if (!isLeaseExpired(record, Date.now())) {
+      throw new AutomationControlError(
+        "lease_recovery_not_expired",
+        `Lease ${name} acquisition is still live and cannot use owner recovery.`,
+        { name, expiresAt: record.expiresAt },
+      );
+    }
+    retiredControlEventStage = withFilesystemGuard(paths, "events", () =>
+      retireDriftedControlEventPredecessorForLeaseRecovery(
+        paths,
+        transaction,
+        validateRecoveryConfirmation,
+      ),
+    );
+    normalizedLegacyAtomicArchives =
+      normalizeLegacyLeaseAtomicArchivesForRecovery(
+        paths,
+        transaction,
+        validateRecoveryConfirmation,
+      );
+    return {
+      stateRoot: paths.stateRoot,
+      name,
+      owner,
+      operationId: normalizedOperationId,
+      ttlMs: transaction.request.ttlMs,
+      observerAuthority: transaction.request.observerAuthority,
+      providerAuthority: transaction.request.providerAuthority,
+      token: record.token,
+      trustedLauncherAuthorization: {
+        marker: TRUSTED_LAUNCHER_AUTHORIZATION,
+        launcherSha256: transaction.request.launcherSha256,
+        actorRuntimeDigest: transaction.request.actorRuntimeDigest,
+        launcherChannelProtocol: transaction.request.launcherChannelProtocol,
+        launcherAttestationSha256: record.launcherAttestationSha256,
+        launcherSessionId: record.launcherSessionId,
+        leaseOperationId: normalizedOperationId,
+        leaseTokenSha256: transaction.tokenDigest,
+      },
+    };
+  });
+  validateRecoveryConfirmation();
+  const result = acquireLeaseAuthorized(recovery);
+  const { token: _retainedToken, ...publicRecoveredLease } = result.lease;
+  const confirmation = validateRecoveryConfirmation();
+  return {
+    ...result,
+    lease: publicRecoveredLease,
+    recoveryAuthorization: {
+      kind: "owner-confirmation",
+      confirmationId: confirmation.confirmation.confirmationId,
+      confirmationDigest: confirmation.digest,
+      taskId: ownerTaskId,
+      intentDigest: ownerIntentDigest,
+      retiredControlEventStage,
+      normalizedLegacyAtomicArchives,
+    },
+  };
 }
 
 export function acquireGeneralActorLeaseFromTrustedLauncher(options) {

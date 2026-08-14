@@ -1,5 +1,5 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docBackfillContentSignals, subscribe } from "./automerge.js";
+import { docBackfillContentSignals, subscribe } from "./library-client";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
 import {

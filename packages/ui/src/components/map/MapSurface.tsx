@@ -11,6 +11,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
 import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
@@ -18,6 +19,7 @@ import { buildThemedMapStyle } from "../../lib/map-style.js";
 type PopupInstance = MapLibrePopup;
 type MarkerInstance = MapLibreMarker;
 type MapInstance = MapLibreMap;
+type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
@@ -66,6 +68,37 @@ const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_CAMERA_PADDING_PX = 72;
+const MAP_CLUSTER_MAX_ZOOM = 7.5;
+const MAP_MAX_PIXEL_RATIO = 1.5;
+const MAP_MAX_TILE_CACHE_SIZE = 24;
+
+/**
+ * MapLibre removes its DOM and workers, but WebKit can retain the detached
+ * canvas backing store and GPU context for the rest of the renderer process.
+ * Release that context after MapLibre has stopped using it so leaving Map
+ * returns the browsing surface's memory to the system.
+ */
+export function disposeMapInstance(map: DisposableMapInstance): void {
+  let canvas: HTMLCanvasElement | null = null;
+  let loseContext: WEBGL_lose_context | null = null;
+
+  try {
+    try {
+      map.stop();
+      canvas = map.getCanvas();
+      const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+      loseContext = context?.getExtension("WEBGL_lose_context") ?? null;
+    } finally {
+      map.remove();
+    }
+  } finally {
+    loseContext?.loseContext();
+    if (canvas) {
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+  }
+}
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -121,7 +154,16 @@ function loadMapLibre(): Promise<MapLibreModule> {
   mapLibreLoader = Promise.all([
     import("maplibre-gl"),
     import("maplibre-gl/dist/maplibre-gl.css"),
-  ]).then(([module]) => module).catch((error) => {
+  ]).then(([module]) => {
+    module.setWorkerUrl(mapLibreWorkerUrl);
+    // Safari otherwise creates as many as three MapLibre workers. WebKit gives
+    // each worker a large process allocation, which pushed the geographic map
+    // above 2 GB on the 20,000-item Library even though tile caching and marker
+    // counts were already bounded. One worker keeps the same map data and
+    // rendering behavior without multiplying that fixed memory cost.
+    module.setWorkerCount(1);
+    return module;
+  }).catch((error) => {
     mapLibreLoader = null;
     throw error;
   });
@@ -592,7 +634,7 @@ function mapCameraOffset(viewportInsets?: MapViewportInsets): [number, number] {
   ];
 }
 
-function fitMarkers(
+export function fitMapToMarkers(
   map: MapInstance,
   markers: LocationMarkerSummary[],
   focusedMarkerKey?: string | null,
@@ -643,7 +685,14 @@ function fitMarkers(
       [minLng, minLat],
       [maxLng, maxLat],
     ],
-    { padding: mapCameraPadding(viewportInsets), duration: 600 }
+    {
+      padding: mapCameraPadding(viewportInsets),
+      duration: 600,
+      // Closely clustered updates can otherwise drive fitBounds to building
+      // level. At that scale the map looks like an empty canvas with a few
+      // oversized road strokes, even though every tile loaded successfully.
+      maxZoom: MAP_CLUSTER_MAX_ZOOM,
+    }
   );
 }
 
@@ -848,7 +897,7 @@ export function MapSurface({
         clearNativeMarkerRestoreTimeout();
         for (const { marker } of markersRef.current) marker.remove();
         markersRef.current = [];
-        mapRef.current?.remove();
+        if (mapRef.current) disposeMapInstance(mapRef.current);
         mapRef.current = null;
       };
     }
@@ -867,6 +916,13 @@ export function MapSurface({
           style: mapStyle,
           center: [0, 20],
           zoom: 1.8,
+          // A full device-pixel-ratio canvas and MapLibre's dynamically sized
+          // tile cache retained hundreds of megabytes after visiting Map on a
+          // Retina display. The map is a browsing surface, not a print canvas.
+          // Bound both owners so one route cannot consume the memory saved by
+          // moving the Library corpus into SQLite.
+          pixelRatio: Math.min(window.devicePixelRatio || 1, MAP_MAX_PIXEL_RATIO),
+          maxTileCacheSize: MAP_MAX_TILE_CACHE_SIZE,
           interactive,
           attributionControl: false,
         });
@@ -892,7 +948,7 @@ export function MapSurface({
         setTimeout(() => map.resize(), 0);
       } catch (error) {
         console.error("[MapSurface] Failed to initialize MapLibre", error);
-        mapRef.current?.remove();
+        if (mapRef.current) disposeMapInstance(mapRef.current);
         mapRef.current = null;
         setLoadFailed(true);
       }
@@ -908,7 +964,7 @@ export function MapSurface({
       clearNativeMarkerRestoreTimeout();
       for (const { marker } of markersRef.current) marker.remove();
       markersRef.current = [];
-      mapRef.current?.remove();
+      if (mapRef.current) disposeMapInstance(mapRef.current);
       mapRef.current = null;
       setShellMoving(false);
     };
@@ -1025,7 +1081,7 @@ export function MapSurface({
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    fitMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
+    fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
   }, [focusedMarkerKey, mapReady, stableMarkers, viewportInsets]);
 
   return (

@@ -171,7 +171,7 @@ fn bench_json_serialise(c: &mut Criterion) {
                     // Array.from(Uint8Array) and then Tauri serialises it.
                     let as_array: Vec<u8> = bin.to_vec();
                     let json = serde_json::to_vec(&as_array).expect("json");
-                    criterion::black_box(json);
+                    std::hint::black_box(json);
                 });
             },
         );

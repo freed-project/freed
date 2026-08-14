@@ -4,12 +4,14 @@ export type LibraryDialogTab = "import" | "export";
 
 interface CommandSurfaceStore {
   searchPaletteRequestId: number;
+  copyFriendsDiagnosticsRequestId: number;
   addFeedOpen: boolean;
   savedContentOpen: boolean;
   savedContentInitialUrl: string;
   libraryDialogOpen: boolean;
   libraryDialogTab: LibraryDialogTab;
   requestSearchPalette: () => void;
+  requestCopyFriendsDiagnostics: () => void;
   openAddFeedDialog: () => void;
   closeAddFeedDialog: () => void;
   openSavedContentDialog: (initialUrl?: string) => void;
@@ -20,6 +22,7 @@ interface CommandSurfaceStore {
 
 export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
   searchPaletteRequestId: 0,
+  copyFriendsDiagnosticsRequestId: 0,
   addFeedOpen: false,
   savedContentOpen: false,
   savedContentInitialUrl: "",
@@ -27,6 +30,10 @@ export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
   libraryDialogTab: "import",
   requestSearchPalette: () =>
     set((state) => ({ searchPaletteRequestId: state.searchPaletteRequestId + 1 })),
+  requestCopyFriendsDiagnostics: () =>
+    set((state) => ({
+      copyFriendsDiagnosticsRequestId: state.copyFriendsDiagnosticsRequestId + 1,
+    })),
   openAddFeedDialog: () => set({ addFeedOpen: true }),
   closeAddFeedDialog: () => set({ addFeedOpen: false }),
   openSavedContentDialog: (initialUrl = "") =>

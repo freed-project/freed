@@ -257,6 +257,7 @@ test("documented cutover retirement is retained and uses pinned durable moves", 
     "exchange-durable",
     "retire-directory-durable",
     "list-bounded",
+    "list-bounded-batch",
   ]) {
     assert.equal(controlPlaneDocs.includes("`" + operation + "`"), true);
   }

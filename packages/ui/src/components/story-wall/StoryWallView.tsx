@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   buildStoryWallManifest,
   estimateStoryWallPublishSize,
+  itemHasStoryWallMedia,
   PLATFORM_LABELS,
   selectableStoryWallYears,
   selectStoryWallItems,
@@ -12,6 +13,7 @@ import {
 } from "@freed/shared";
 import { useAppStore, usePlatform, type StoryWallArchiveSummary } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
+import { useLibrarySurfaceItems } from "../../hooks/useLibrarySurfaceItems.js";
 
 type StoryWallPreferenceUpdate = Partial<Omit<StoryWallPreferences, "style" | "publishTarget">> & {
   style?: Partial<StoryWallPreferences["style"]>;
@@ -314,8 +316,11 @@ interface StoryWallViewProps {
   variant?: StoryWallViewVariant;
 }
 
-export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}) {
+export function StoryWallView({
+  variant = "workspace",
+}: StoryWallViewProps = {}) {
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const accounts = useAppStore((s) => s.accounts);
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -331,14 +336,32 @@ export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
-  const availableYears = useMemo(() => selectableStoryWallYears(items), [items]);
+  const readFallbackStoryWallItems = useCallback(
+    () =>
+      items.filter(
+        (item) =>
+          !item.userState.hidden &&
+          !item.userState.archived &&
+          itemHasStoryWallMedia(item),
+      ),
+    [items],
+  );
+  const storyWallItems = useLibrarySurfaceItems(
+    "story_wall",
+    readFallbackStoryWallItems,
+    searchCorpusVersion,
+  );
+  const availableYears = useMemo(
+    () => selectableStoryWallYears(storyWallItems),
+    [storyWallItems],
+  );
   const selectedItems = useMemo(
-    () => selectStoryWallItems(items, storyWall, accounts),
-    [accounts, items, storyWall],
+    () => selectStoryWallItems(storyWallItems, storyWall, accounts),
+    [accounts, storyWall, storyWallItems],
   );
   const manifest = useMemo(
-    () => buildStoryWallManifest(items, storyWall),
-    [items, storyWall],
+    () => buildStoryWallManifest(storyWallItems, storyWall),
+    [storyWall, storyWallItems],
   );
   const estimatedSize = useMemo(() => estimateStoryWallPublishSize(manifest), [manifest]);
   const featuredIds = useMemo(() => new Set(storyWall.featuredItemIds), [storyWall.featuredItemIds]);

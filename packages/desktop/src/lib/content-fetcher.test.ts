@@ -68,6 +68,9 @@ function makeTextPostItem(): FeedItem {
 async function loadContentFetcherModule(options: {
   cacheSetImpl?: () => Promise<void>;
   isFactoryResetInProgress?: () => boolean;
+  scanItems?: (
+    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  ) => Promise<void>;
 } = {}) {
   vi.resetModules();
 
@@ -86,12 +89,29 @@ async function loadContentFetcherModule(options: {
   const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
-  const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
+  let latestItems: readonly FeedItem[] = [];
+  const mockScanLibraryCoreItems = vi.fn(
+    options.scanItems ??
+      (async (visitPage) => {
+        await visitPage(latestItems);
+      }),
+  );
+  const mockSubscribe = vi.fn<(cb: (
+    state: { items: FeedItem[]; docItemCount: number },
+    event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
+  ) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
-    subscriberRef.current = cb;
+    subscriberRef.current = (state) => {
+      latestItems = state.items;
+      cb(state, {
+        source: "state_update",
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
+    };
     return () => {
       subscriberRef.current = null;
     };
@@ -105,9 +125,12 @@ async function loadContentFetcherModule(options: {
   vi.doMock("./content-cache.js", () => ({
     contentCache: { set: mockCacheSet },
   }));
-  vi.doMock("./automerge.js", () => ({
+  vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
     subscribe: mockSubscribe,
+  }));
+  vi.doMock("./library-core-item-detail-runtime.js", () => ({
+    scanLibraryCoreItems: mockScanLibraryCoreItems,
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -169,6 +192,7 @@ async function loadContentFetcherModule(options: {
     mockCacheSet,
     mockDocUpdateFeedItem,
     mockRecordReaderArticleFetchAttempt,
+    mockScanLibraryCoreItems,
   };
 }
 
@@ -210,12 +234,23 @@ async function loadContentFetcherModuleWithAi({
   const mockCacheSet = vi.fn(async () => undefined);
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
-  const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
+  let latestItems: readonly FeedItem[] = [];
+  const mockSubscribe = vi.fn<(cb: (
+    state: { items: FeedItem[]; docItemCount: number },
+    event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
+  ) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
   } = { current: null };
   mockSubscribe.mockImplementation((cb) => {
-    subscriberRef.current = cb;
+    subscriberRef.current = (state) => {
+      latestItems = state.items;
+      cb(state, {
+        source: "state_update",
+        changedItemIds: null,
+        requiresFullScan: true,
+      });
+    };
     return () => {
       subscriberRef.current = null;
     };
@@ -235,9 +270,12 @@ async function loadContentFetcherModuleWithAi({
   vi.doMock("./content-cache.js", () => ({
     contentCache: { set: mockCacheSet },
   }));
-  vi.doMock("./automerge.js", () => ({
+  vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
     subscribe: mockSubscribe,
+  }));
+  vi.doMock("./library-core-item-detail-runtime.js", () => ({
+    scanLibraryCoreItems: vi.fn(async (visitPage) => visitPage(latestItems)),
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -313,6 +351,31 @@ afterEach(() => {
 });
 
 describe("content fetcher", () => {
+  it("discovers new article stubs through bounded SQLite pages", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockInvoke, mockScanLibraryCoreItems } =
+      await loadContentFetcherModule({
+        scanItems: async (visitPage) => {
+          await visitPage([makeStubItem()]);
+        },
+      });
+
+    mod.start();
+    subscriberRef.current?.({ items: [], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    mod.stop();
+
+    expect(mockScanLibraryCoreItems).toHaveBeenCalledTimes(1);
+    expect(mockScanLibraryCoreItems).toHaveBeenCalledWith(
+      expect.any(Function),
+      { hasLinkPreview: true, missingPreservedText: true },
+    );
+    expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
+      url: SAMPLE_URL,
+      maxBytes: 2 * 1024 * 1024,
+    });
+  });
+
   it("drains an in-flight cache write before reset cleanup begins", async () => {
     vi.useFakeTimers();
     let releaseWrite!: () => void;

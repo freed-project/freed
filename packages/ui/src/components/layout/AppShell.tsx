@@ -17,7 +17,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
 import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
@@ -38,7 +38,6 @@ import {
   buildSocialAccountsFromAuthorIds,
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
-import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import {
   applyAnimationIntensityToDocument,
   resolveAnimationIntensity,
@@ -107,6 +106,8 @@ export function AppShell({ children }: AppShellProps) {
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
+  const { releaseMapRendererMemory, scanLibraryItems } = usePlatform();
+  const previousActiveViewRef = useRef(activeView);
   const accounts = useAppStore((s) => s.accounts);
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
@@ -114,7 +115,6 @@ export function AppShell({ children }: AppShellProps) {
   const removeAccount = useAppStore((s) => s.removeAccount);
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
-  const themeId = useAppStore((s) => s.preferences.display.themeId);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
@@ -133,6 +133,23 @@ export function AppShell({ children }: AppShellProps) {
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
   const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
 
+  useEffect(() => {
+    const previousActiveView = previousActiveViewRef.current;
+    previousActiveViewRef.current = activeView;
+    if (previousActiveView !== "map" || activeView === "map" || !releaseMapRendererMemory) {
+      return;
+    }
+
+    void releaseMapRendererMemory().catch((error) => {
+      addDebugEvent(
+        "error",
+        `[map] native renderer memory release failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }, [activeView, releaseMapRendererMemory]);
+
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
   const contactSync = useContactSync();
@@ -147,18 +164,13 @@ export function AppShell({ children }: AppShellProps) {
   const contentFrameRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const [mapViewportInsets, setMapViewportInsets] = useState<CanvasViewportInsets>(EMPTY_CANVAS_VIEWPORT_INSETS);
-  const usesFullCanvasFrame = activeView === "friends";
-  const contentFrameSpacingClass = usesFullCanvasFrame
-      ? desktopSidebarMode === "closed"
-        ? ""
-        : "pl-[var(--feed-card-gap,8px)]"
-      : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
+  const contentFrameSpacingClass =
+    "px-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
-  const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
   const provisionalPersonScanRef = useRef("");
   const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
@@ -350,12 +362,6 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     if (!isInitialized) return;
-    applyThemeToDocument(themeId);
-    persistTheme(themeId);
-  }, [isInitialized, themeId]);
-
-  useEffect(() => {
-    if (!isInitialized) return;
     applyAnimationIntensityToDocument(animationIntensity);
   }, [animationIntensity, isInitialized]);
 
@@ -419,17 +425,16 @@ export function AppShell({ children }: AppShellProps) {
   }, [accounts, isInitialized, removeAccount]);
 
   useEffect(() => {
-    const itemCount = items.length;
-    const accountCount = Object.keys(accounts).length;
-    const previous = discoveredAccountScanRef.current;
-    if (itemCount === previous.itemCount && accountCount === previous.accountCount) {
-      return;
-    }
-    discoveredAccountScanRef.current = { itemCount, accountCount };
+    if (!isInitialized || scanLibraryItems) return;
     const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
-    if (missingAccounts.length === 0) return;
-    void addAccounts(missingAccounts);
-  }, [accounts, addAccounts, items]);
+    if (missingAccounts.length > 0) void addAccounts(missingAccounts);
+  }, [
+    accounts,
+    addAccounts,
+    isInitialized,
+    items,
+    scanLibraryItems,
+  ]);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -464,7 +469,20 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
-    const socialAccounts = buildSocialAccountsFromAuthorIds(items, match.authorIds, now, personId);
+    let sourceItems = items;
+    if (scanLibraryItems) {
+      const authorIds = new Set(match.authorIds);
+      const matches = new Map<string, typeof items[number]>();
+      await scanLibraryItems((page) => {
+        for (const item of page) {
+          if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
+          matches.set(item.author.id, item);
+        }
+        return matches.size >= authorIds.size ? "stop" : "continue";
+      });
+      sourceItems = [...matches.values()];
+    }
+    const socialAccounts = buildSocialAccountsFromAuthorIds(sourceItems, match.authorIds, now, personId);
     const mergedAccounts = [
       contactAccount,
       ...socialAccounts.filter((account) => !accounts[account.id]),
@@ -474,7 +492,7 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     contactSync.dismissSuggestion(suggestion.id);
-  }, [accounts, addAccounts, addPerson, contactSync, items]);
+  }, [accounts, addAccounts, addPerson, contactSync, items, scanLibraryItems]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
     const now = Date.now();
@@ -550,7 +568,6 @@ export function AppShell({ children }: AppShellProps) {
               desktopMode={desktopSidebarMode}
               onDesktopModeChange={persistDesktopSidebarMode}
               onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
-              desktopGapWidthPx={usesFullCanvasFrame ? 0 : undefined}
             />
           </div>
           <main
@@ -576,7 +593,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <div
             data-testid="debug-panel-drawer"
-            className="relative z-10 hidden sm:flex flex-none overflow-hidden"
+            className="relative z-10 hidden flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] sm:flex"
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,

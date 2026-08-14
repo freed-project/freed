@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "@freed/shared";
 import {
+  facebookGroupNameRepairItems,
   facebookGroupsFromFeedItems,
   getFacebookGroupDisplayName,
   mergeFacebookGroupRecords,
@@ -64,7 +65,9 @@ describe("facebook group records", () => {
       url: "https://www.facebook.com/groups/377650389038228",
     };
 
-    expect(getFacebookGroupDisplayName(group)).toBe("Facebook group ...89038228");
+    expect(getFacebookGroupDisplayName(group)).toBe(
+      "Facebook group ...89038228",
+    );
   });
 
   it("collects usable group names from already captured feed items", () => {
@@ -94,5 +97,41 @@ describe("facebook group records", () => {
         url: "https://www.facebook.com/groups/one",
       },
     ]);
+  });
+
+  it("uses captured history only to fill missing group names", () => {
+    const historical = {
+      platform: "facebook",
+      fbGroup: {
+        id: "one",
+        name: "Old Group Name",
+        url: "https://www.facebook.com/groups/one",
+      },
+    } as FeedItem;
+
+    expect(
+      facebookGroupNameRepairItems(
+        {
+          one: {
+            id: "one",
+            name: "Current Group Name",
+            url: "https://www.facebook.com/groups/one",
+          },
+        },
+        [historical],
+      ),
+    ).toEqual([]);
+    expect(
+      facebookGroupNameRepairItems(
+        {
+          one: {
+            id: "one",
+            name: "1d",
+            url: "https://www.facebook.com/groups/one",
+          },
+        },
+        [historical],
+      ),
+    ).toEqual([historical]);
   });
 });

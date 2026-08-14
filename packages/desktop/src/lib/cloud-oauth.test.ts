@@ -20,9 +20,15 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
   open: shellOpenMock,
 }));
 
-vi.mock("./automerge", () => ({
+vi.mock("./library-client", () => ({
+  getCommittedDoc: vi.fn(async () => ({
+    binary: new Uint8Array(),
+    heads: [],
+    revision: { generation: 0, saveRevision: 0 },
+    itemCount: 0,
+    friendCount: 0,
+  })),
   getDocBinary: vi.fn(async () => new Uint8Array()),
-  mergeDoc: vi.fn(),
   setRelayClientCount: vi.fn(),
   subscribe: vi.fn(() => vi.fn()),
 }));
@@ -225,16 +231,14 @@ describe("desktop Google OAuth", () => {
     });
   });
 
-  it("uses direct Google token exchange with a configured secret unless proxy is forced", async () => {
+  it("never exposes a configured Google client secret to the renderer exchange", async () => {
     vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
     vi.stubEnv("VITE_GDRIVE_CLIENT_SECRET", "desktop-secret");
     const oauthCalls = await completeGoogleOAuth();
 
-    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
-    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("client_id")).toBe("custom-web-client.apps.googleusercontent.com");
-    expect(body.get("client_secret")).toBe("desktop-secret");
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(oauthCalls[0]?.body).not.toContain("desktop-secret");
   });
 
   it("forces the token proxy even when a direct Google secret is configured", async () => {

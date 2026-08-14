@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -12,6 +13,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  DARWIN_ONLY_TEST_FILES,
+  NATIVE_ACCEPTANCE_TEST_FILES,
+} from "./lib/tooling-smoke-suites.mjs";
+import {
   buildToolingSmokeShardPlan,
   exactTestNamePattern,
   exactTestUnitPattern,
@@ -19,6 +24,7 @@ import {
   extractTopLevelTestUnits,
   partitionToolingSmokeItems,
   partitionWeightedTestUnits,
+  runToolingSmokeShard,
 } from "./run-tooling-smoke-shard.mjs";
 
 function repositoryTestFiles(relativeDirectory = "scripts") {
@@ -84,6 +90,33 @@ for (const variant of ["one", "two"]) {
   assert.equal(pattern.test("not registered"), false);
 });
 
+test("top-level extraction admits only a name-transparent local test wrapper", () => {
+  const transparent = `
+    import nodeTest from "node:test";
+    function test(name, callback) {
+      return nodeTest(name, async (context) => callback(context));
+    }
+    test("first", () => {});
+  `;
+  assert.deepEqual(
+    extractTopLevelTestUnits(transparent, "wrapped.test.mjs", {
+      allowTransparentLocalWrapper: true,
+    }).map(({ name }) => name),
+    ["first"],
+  );
+  const renamed = transparent.replace(
+    "return nodeTest(name,",
+    "return nodeTest(`wrapped: ${name}`,",
+  );
+  assert.throws(
+    () =>
+      extractTopLevelTestUnits(renamed, "renamed.test.mjs", {
+        allowTransparentLocalWrapper: true,
+      }),
+    /aliases or passes/,
+  );
+});
+
 test("shard assignment covers every item exactly once", () => {
   const items = Array.from({ length: 64 }, (_, index) => `test ${index}`);
   const assignments = Array.from({ length: 8 }, (_, index) =>
@@ -109,6 +142,61 @@ test("weighted shard assignment is deterministic, complete, and balanced", () =>
     first.every((shard) => shard.length > 0),
     true,
   );
+});
+
+test("recorded unit durations override source size when building shards", (t) => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "freed-unit-weights-"));
+  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
+  mkdirSync(path.join(repoRoot, "scripts", "lib"), { recursive: true });
+  for (const name of ["alpha", "beta", "gamma"]) {
+    writeFileSync(
+      path.join(repoRoot, "scripts", `${name}.test.mjs`),
+      `import test from "node:test";\ntest("${name}", () => undefined);\n`,
+    );
+  }
+
+  const durations = {
+    suites: {
+      general: {
+        units: {
+          "scripts/alpha.test.mjs": { seconds: 1 },
+          "scripts/beta.test.mjs": { seconds: 1 },
+          "scripts/gamma.test.mjs": { seconds: 100 },
+        },
+      },
+    },
+  };
+  const plans = [1, 2].map((shardIndex) =>
+    buildToolingSmokeShardPlan(
+      { suite: "general", shardIndex, shardCount: 2 },
+      { repoRoot, durations },
+    ),
+  );
+
+  assert.deepEqual(plans[0].testFiles, ["scripts/gamma.test.mjs"]);
+  assert.deepEqual(plans[1].testFiles.sort(), [
+    "scripts/alpha.test.mjs",
+    "scripts/beta.test.mjs",
+  ]);
+
+  const fallback = buildToolingSmokeShardPlan(
+    { suite: "general", shardIndex: 1, shardCount: 2 },
+    { repoRoot, durations: { suites: { general: { units: {} } } } },
+  );
+  const partial = buildToolingSmokeShardPlan(
+    { suite: "general", shardIndex: 1, shardCount: 2 },
+    {
+      repoRoot,
+      durations: {
+        suites: {
+          general: {
+            units: { "scripts/gamma.test.mjs": { seconds: 100 } },
+          },
+        },
+      },
+    },
+  );
+  assert.deepEqual(partial, fallback);
 });
 
 test("exact name patterns run selected parents and all of their subtests", (t) => {
@@ -152,11 +240,41 @@ test("delta", async (t) => { console.log("top:delta"); await t.test("nested", ()
   }
 });
 
+test("shard execution preserves JUnit unit timings", (t) => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "freed-shard-junit-"));
+  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
+  mkdirSync(path.join(repoRoot, "scripts"), { recursive: true });
+  writeFileSync(
+    path.join(repoRoot, "scripts", "fixture.test.mjs"),
+    'import test from "node:test";\ntest("measured", () => undefined);\n',
+  );
+
+  runToolingSmokeShard(
+    {
+      suite: "general",
+      shardIndex: 1,
+      shardCount: 1,
+      shellFiles: [],
+      testFiles: ["scripts/fixture.test.mjs"],
+      testNames: [],
+      testNamePattern: null,
+    },
+    { repoRoot },
+  );
+
+  const junit = readFileSync(
+    path.join(repoRoot, "tooling-smoke-results", "general-1-of-1.xml"),
+    "utf8",
+  );
+  assert.match(junit, /<testcase name="measured"/);
+});
+
 test("repository plans are nonempty and cover each named suite", () => {
   for (const suite of [
     "general",
     "automation-control",
     "kernel-guard-cutover",
+    "nightly-self-improve",
     "outcome-ledger-repair",
   ]) {
     const plans = Array.from({ length: 8 }, (_, index) =>
@@ -176,12 +294,43 @@ test("repository plans are nonempty and cover each named suite", () => {
       const specialFiles = new Set([
         "scripts/automation-control.test.mjs",
         "scripts/automation-kernel-guard-cutover.test.mjs",
+        "scripts/nightly-self-improve.test.mjs",
         "scripts/outcome-ledger-repair.test.mjs",
+      ]);
+      // The darwin-only files moved to the macOS lane. They gate every test
+      // behind one module-level platform check, so running them on Linux only
+      // ever skipped them.
+      const routedElsewhere = new Set([
+        ...specialFiles,
+        ...DARWIN_ONLY_TEST_FILES,
       ]);
       assert.deepEqual(
         files,
-        repositoryTestFiles().filter((filePath) => !specialFiles.has(filePath)),
+        repositoryTestFiles().filter(
+          (filePath) => !routedElsewhere.has(filePath),
+        ),
       );
+
+      // Nothing may silently fall out of the lane. Every repository test file
+      // must be claimed by a sharded suite, the general suite, or the macOS
+      // native lane.
+      const covered = new Set([
+        ...files,
+        ...specialFiles,
+        ...NATIVE_ACCEPTANCE_TEST_FILES,
+      ]);
+      const orphaned = repositoryTestFiles().filter(
+        (filePath) => !covered.has(filePath),
+      );
+      assert.deepEqual(orphaned, [], "every test file must run somewhere");
+
+      // Each darwin-only file must actually be claimed by the native lane.
+      for (const darwinOnly of DARWIN_ONLY_TEST_FILES) {
+        assert.ok(
+          NATIVE_ACCEPTANCE_TEST_FILES.includes(darwinOnly),
+          `${darwinOnly} left the general suite and must run on the macOS lane`,
+        );
+      }
     } else {
       const names = plans.flatMap((plan) => plan.testNames);
       assert.equal(names.length, new Set(names).size);
@@ -189,7 +338,9 @@ test("repository plans are nonempty and cover each named suite", () => {
       const source = readFileSync(path.join(process.cwd(), testFile), "utf8");
       assert.equal(
         names.length,
-        extractTopLevelTestUnits(source, testFile).length,
+        extractTopLevelTestUnits(source, testFile, {
+          allowTransparentLocalWrapper: suite === "nightly-self-improve",
+        }).length,
       );
     }
   }
@@ -200,19 +351,53 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
     path.join(process.cwd(), ".github", "workflows", "ci.yml"),
     "utf8",
   );
-  for (const suite of [
-    "general",
-    "automation-control",
-    "kernel-guard-cutover",
-    "outcome-ledger-repair",
-  ]) {
-    assert.match(workflow, new RegExp(`^          - ${suite}$`, "m"));
-  }
-  assert.match(workflow, /^        shard: \[1, 2, 3, 4, 5, 6, 7, 8\]$/m);
+  // The matrix is computed, never hardcoded. A literal suite list here would
+  // silently reintroduce the fixed 32 job lane this planner replaced.
   assert.match(
     workflow,
-    /^          node scripts\/run-tooling-smoke-shard\.mjs$/m,
+    /matrix: \$\{\{ fromJSON\(needs\.tooling-smoke-plan\.outputs\.matrix\) \}\}/,
+  );
+  assert.match(workflow, /node scripts\/plan-tooling-smoke\.mjs/);
+  assert.match(workflow, /--shard-count=\$\{\{ matrix\.shardCount \}\}/);
+  assert.match(workflow, /tooling-smoke-results\/\*\.xml/);
+
+  // Dev retains the full application integration job, while tooling smoke
+  // scopes itself to the merged delta. Missing push history fails closed.
+  assert.match(workflow, /--base-ref "\$BEFORE_SHA"/);
+  assert.match(workflow, /git cat-file -e "\$\{BEFORE_SHA\}\^\{commit\}"/);
+  assert.match(workflow, /plan-tooling-smoke\.mjs --all --github-output/);
+
+  const nightlyWorkflow = readFileSync(
+    path.join(
+      process.cwd(),
+      ".github",
+      "workflows",
+      "tooling-nightly.yml",
+    ),
+    "utf8",
+  );
+  assert.match(nightlyWorkflow, /node scripts\/measure-tooling-smoke\.mjs/);
+
+  // The gate observes the planner, the shards, and the native lane together.
+  assert.match(
+    workflow,
+    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance\]/,
   );
   assert.match(workflow, /^  tooling-smoke:\n    name: Tooling smoke$/m);
-  assert.match(workflow, /^    needs: tooling-smoke-shards$/m);
+
+  // Fail-closed wiring: a skipped shard job is acceptable only when the planner
+  // said the lane was not applicable, and a failed planner always fails.
+  assert.match(workflow, /if \[ "\$PLAN_RESULT" != "success" \]/);
+  assert.match(workflow, /if \[ "\$SHARD_RESULT" != "skipped" \]/);
+  // The macOS lane is observe-only until the first-run hang is diagnosed, so it
+  // must warn rather than exit. It must still be wired up and still fail closed
+  // when it runs unexpectedly, which the next assertion covers.
+  assert.match(workflow, /observe-only, not gating yet/);
+  assert.match(
+    workflow,
+    /Native acceptance was not required but reported \$NATIVE_RESULT/,
+  );
+
+  // Superseded dev runs cancel.
+  assert.match(workflow, /^  cancel-in-progress: true$/m);
 });

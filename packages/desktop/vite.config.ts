@@ -54,6 +54,27 @@ const tauriMockExclude = process.env.VITE_TEST_TAURI
   ? Object.keys(tauriMockAliases)
   : [];
 
+const libraryClientTestAliases: Record<string, string> = {};
+
+const rejectRetiredDesktopLibraryAssets = {
+  name: "reject-retired-desktop-library-assets",
+  generateBundle(_options: unknown, bundle: Record<string, unknown>) {
+    const retiredAssets = Object.keys(bundle).filter((fileName) => {
+      const normalized = fileName.toLowerCase();
+      return (
+        normalized.includes("automerge") ||
+        normalized.includes("cloud-merge") ||
+        normalized.endsWith(".wasm")
+      );
+    });
+    if (retiredAssets.length > 0) {
+      throw new Error(
+        `The retired Desktop document runtime leaked into the production bundle: ${retiredAssets.join(", ")}`,
+      );
+    }
+  },
+};
+
 const buildMetadata = getBuildMetadata(pkg.version);
 
 export default defineConfig({
@@ -76,19 +97,30 @@ export default defineConfig({
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
       '@freed/capture-linkedin': src('capture-linkedin'),
+      ...libraryClientTestAliases,
       ...tauriMockAliases,
     },
   },
-  // vite-plugin-wasm must also be applied to the worker sub-bundle.
-  // Without this, Vite 7's worker pipeline processes automerge.worker.ts
-  // without WASM support and fails on the automerge_wasm_bg.wasm import.
+  // Production bundles reject retired document workers and WASM artifacts.
   worker: {
     format: "es",
-    plugins: () => [wasm(), topLevelAwait()],
+    plugins: () => [
+      rejectRetiredDesktopLibraryAssets,
+      wasm(),
+      topLevelAwait(),
+    ],
   },
-  plugins: [wasm(), topLevelAwait(), react()],
+  plugins: [
+    rejectRetiredDesktopLibraryAssets,
+    wasm(),
+    topLevelAwait(),
+    react(),
+  ],
   optimizeDeps: {
-    exclude: tauriMockExclude,
+    exclude: [
+      ...tauriMockExclude,
+      "maplibre-gl/dist/maplibre-gl-worker.mjs",
+    ],
   },
 
   // Tauri development server.
