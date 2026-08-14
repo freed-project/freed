@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -11,6 +17,11 @@ const vitestBin = path.join(repoRoot, "node_modules", "vitest", "vitest.mjs");
 const configPath = path.join(repoRoot, "vitest.config.ts");
 
 test("root Vitest discovery excludes compiled test copies", (t) => {
+  if (!existsSync(configPath)) {
+    t.skip("the root Vitest config is intentionally excluded from production main");
+    return;
+  }
+
   const fixture = mkdtempSync(
     path.join(repoRoot, ".vitest-config-fixture-"),
   );
