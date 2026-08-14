@@ -21,7 +21,7 @@ if (import.meta.env.DEV) {
     const w = window as unknown as Record<string, unknown>
     w.__FREED_STORE__ = store.useAppStore
     const run = async (action: () => Promise<void>) => {
-      await libraryCore.ensurePwaLibraryCoreFeaturePreviewState()
+      await libraryCore.ensurePwaLibraryCoreLocalSampleState()
       await action()
     }
     w.__FREED_LIBRARY_CORE__ = {

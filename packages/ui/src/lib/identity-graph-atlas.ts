@@ -246,7 +246,7 @@ function personActivity(
     if (account.personId !== personId || account.kind !== "social") continue;
     const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
     count += summary?.itemCount ?? 0;
-    latest = Math.max(latest, summary?.latestActivityAt ?? 0, account.lastSeenAt ?? 0);
+    latest = Math.max(latest, summary?.latestActivityAt ?? 0);
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
   }
   return { count, latest, avatarUrl };
@@ -431,7 +431,7 @@ export function buildIdentityGraphAtlasModel({
   const personNodeById = new Map(allNodes.filter((node) => node.personId).map((node) => [node.personId!, node]));
   const visibleSocialAccounts = accountValues
     .filter((account) => account.kind === "social")
-    .filter((account) => mode === "all_content" || (!!account.personId && visiblePersonIds.has(account.personId)));
+    .filter((account) => mode === "all_content" || !account.personId || visiblePersonIds.has(account.personId));
 
   for (const account of visibleSocialAccounts) {
     const provider = normalizedProvider(account.provider);
@@ -699,10 +699,10 @@ export function sliceIdentityGraphAtlas({
       .map((region) => ({
         id: `label:${region.id}`,
         nodeId: `provider:${region.provider}`,
-        text: `${region.label} ${region.count.toLocaleString()}`,
+        text: `${region.label} ${region.unlinkedCount.toLocaleString()}`,
         x: region.x,
         y: region.y,
-        priority: 1_200 + region.count,
+        priority: 1_200 + region.unlinkedCount,
         kind: "provider_cluster",
       }));
   const nodeLabels = quality === "interactive"
@@ -713,7 +713,7 @@ export function sliceIdentityGraphAtlas({
           selectedNodeIds.has(node.id) ||
           (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
           (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
-          (lod === "detail" && node.priority >= 320)
+          (lod === "detail" && (node.kind === "account" || node.priority >= 320))
         ),
       )
       .map((node) => ({
@@ -722,7 +722,9 @@ export function sliceIdentityGraphAtlas({
         text: node.label,
         x: node.x,
         y: node.y,
-        priority: node.priority + (selectedNodeIds.has(node.id) ? 10_000 : 0),
+        priority: node.priority +
+          (lod === "detail" && node.kind === "account" && !node.linkedPersonId ? 1_000 : 0) +
+          (selectedNodeIds.has(node.id) ? 10_000 : 0),
         kind: node.kind,
       }));
   const labels = [...regionLabels, ...nodeLabels]

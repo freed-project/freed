@@ -834,6 +834,41 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
   await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("interface-zoom-slider")).toHaveValue("150");
 });
 
+test.describe("interface zoom step controls", () => {
+  test.use({ hasTouch: true });
+
+  test("support cursor and touch activation across the menu and settings", async ({ app, page }) => {
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("freed-interface-zoom", "85");
+    });
+    await app.goto();
+    await app.waitForReady();
+
+    await page.getByTestId("mobile-toolbar-filter-button").click();
+    const filterMenu = page.getByTestId("feed-signal-filter-menu");
+    await filterMenu.getByTestId("interface-zoom-decrease").click();
+
+    await expect(filterMenu.getByTestId("interface-zoom-slider")).toHaveValue("80");
+    await expect(filterMenu.getByTestId("interface-zoom-value")).toHaveText("80%");
+    await page.keyboard.press("Escape");
+
+    await page.evaluate(async (settingsStorePath) => {
+      const mod = await import(settingsStorePath);
+      mod.useSettingsStore.getState().openDefault();
+    }, SETTINGS_STORE_PATH);
+
+    const settingsControls = page.getByTestId("settings-display-scale-controls");
+    await settingsControls.getByTestId("interface-zoom-increase").tap();
+
+    await expect(settingsControls.getByTestId("interface-zoom-slider")).toHaveValue("90");
+    await expect(settingsControls.getByTestId("settings-interface-zoom-value")).toHaveText("90%");
+    await expect.poll(() =>
+      page.evaluate(() => window.localStorage.getItem("freed-interface-zoom")),
+    ).toBe("90");
+  });
+});
+
 test("filter menu stays visually stable while interface zoom is dragged", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {

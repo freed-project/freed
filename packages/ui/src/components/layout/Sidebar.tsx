@@ -70,6 +70,48 @@ function MoreIcon() {
   );
 }
 
+interface SidebarNavMenuButtonProps {
+  countsVisible: boolean;
+  label: string;
+  menuOpen: boolean;
+  onToggle: (element: HTMLButtonElement) => void;
+  testId?: string;
+}
+
+function SidebarNavMenuButton({
+  countsVisible,
+  label,
+  menuOpen,
+  onToggle,
+  testId,
+}: SidebarNavMenuButtonProps) {
+  const positionClass = countsVisible
+    ? "absolute right-[-6px] top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+    : "absolute bottom-[-1px] right-0 top-[-1px] flex items-center justify-center px-1";
+
+  return (
+    <button
+      type="button"
+      aria-label={`Options for ${label}`}
+      data-testid={testId}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle(event.currentTarget);
+      }}
+      className={`${positionClass} rounded-md transition-all duration-200 ease-in-out hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] ${
+        menuOpen
+          ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
+          : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
+      }`}
+    >
+      <MoreIcon />
+    </button>
+  );
+}
+
 interface SidebarNavRowProps {
   active: boolean;
   actionSlotClass?: string;
@@ -335,7 +377,7 @@ function SidebarContextMenuShell({
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleDown = (e: MouseEvent) => {
+    const handleDown = (e: PointerEvent) => {
       if (ignoreElement && ignoreElement.contains(e.target as Node)) {
         return;
       }
@@ -346,10 +388,10 @@ function SidebarContextMenuShell({
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", handleDown);
+    document.addEventListener("pointerdown", handleDown, true);
     document.addEventListener("keydown", handleKey);
     return () => {
-      document.removeEventListener("mousedown", handleDown);
+      document.removeEventListener("pointerdown", handleDown, true);
       document.removeEventListener("keydown", handleKey);
     };
   }, [ignoreElement, onClose]);
@@ -1202,9 +1244,6 @@ export function Sidebar({
     (source.id === "substack" && Boolean(SubstackSettingsContent)) ||
     (source.id === "medium" && Boolean(MediumSettingsContent)) ||
     (source.id === "youtube" && Boolean(YouTubeSettingsContent));
-  const sourceMenuTriggerBaseClass = rowCountsVisible
-    ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
-    : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
   const rowActionSlotClass = (menuAvailable: boolean, hasCount: boolean, key: string) => {
     if (rowCountsVisible) {
       if (hasCount) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
@@ -1416,14 +1455,12 @@ export function Sidebar({
     if (!sourceMenusVisible || !menuAvailable) return null;
 
     return (
-      <button
-        aria-label={`Options for ${label}`}
-        data-testid={`source-menu-trigger-${key}`}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
+      <SidebarNavMenuButton
+        countsVisible={rowCountsVisible}
+        label={label}
+        menuOpen={openMenuSourceKey === key}
+        testId={`source-menu-trigger-${key}`}
+        onToggle={(element) => {
           if (openMenuSourceKey === key) {
             setOpenMenuSourceKey(null);
             setSourceMenuAnchorRect(null);
@@ -1433,30 +1470,22 @@ export function Sidebar({
             setMenuAnchorRect(null);
             setMenuAnchorElement(null);
             setOpenMenuSourceKey(key);
-            setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-            setSourceMenuAnchorElement(e.currentTarget);
+            setSourceMenuAnchorRect(element.getBoundingClientRect());
+            setSourceMenuAnchorElement(element);
           }
         }}
-        className={`${sourceMenuTriggerBaseClass} ${
-          openMenuSourceKey === key
-            ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
-            : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
-        }`}
-      >
-        <MoreIcon />
-      </button>
+      />
     );
   };
   const renderSourceMenu = (source: SourceNavigationItem) =>
     renderRowMenu(sourceKey(source), source.label, canShowSourceMenu(source));
   const renderFeedMenu = (feed: RssFeed, menuOpen: boolean) => (
-    <button
-      aria-label={`Options for ${feed.title}`}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
+    <SidebarNavMenuButton
+      countsVisible={rowCountsVisible}
+      label={feed.title}
+      menuOpen={menuOpen}
+      testId={`feed-menu-trigger-${feed.url}`}
+      onToggle={(element) => {
         if (menuOpen) {
           setOpenMenuFeedUrl(null);
           setMenuAnchorRect(null);
@@ -1466,20 +1495,11 @@ export function Sidebar({
           setSourceMenuAnchorRect(null);
           setSourceMenuAnchorElement(null);
           setOpenMenuFeedUrl(feed.url);
-          setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-          setMenuAnchorElement(e.currentTarget);
+          setMenuAnchorRect(element.getBoundingClientRect());
+          setMenuAnchorElement(element);
         }
       }}
-      className={`absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] ${
-        menuOpen
-          ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
-          : sourceMenusVisible
-            ? "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
-            : "pointer-events-none opacity-0"
-      }`}
-    >
-      <MoreIcon />
-    </button>
+    />
   );
 
   const sidebarBody = (
@@ -1611,7 +1631,7 @@ export function Sidebar({
                 <SidebarNavRow
                   active={activeView === "friends"}
                   actionSlotClass={rowActionSlotClass(
-                    activeView === "friends",
+                    true,
                     pendingMatchCount > 0 || friendCount > 0,
                     "friends",
                   )}
@@ -1629,7 +1649,7 @@ export function Sidebar({
                   icon={renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
                   label="Friends"
                   labelClass={sidebarLabelClass}
-                  menu={renderRowMenu("friends", "Friends", activeView === "friends")}
+                  menu={renderRowMenu("friends", "Friends", true)}
                   menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
@@ -2116,7 +2136,7 @@ export function Sidebar({
         />
       )}
 
-      {openMenuSourceKey === "friends" && sourceMenuAnchorRect && activeView === "friends" ? (
+      {openMenuSourceKey === "friends" && sourceMenuAnchorRect ? (
         <FriendsContextMenu
           anchorRect={sourceMenuAnchorRect}
           anchorElement={sourceMenuAnchorElement}

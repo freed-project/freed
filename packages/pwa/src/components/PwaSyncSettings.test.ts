@@ -134,6 +134,38 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
   });
 
+  it("shows a linked Google account with a failed Library sync as needing attention", () => {
+    useAppStore.setState({ syncConnected: false });
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "error",
+          stage: "download",
+          error: "No published SQLite Library was found in Google Drive",
+          statusMessage: "SQLite Library sync failed.",
+          pendingReason: "Fix the error, then use Sync now to retry.",
+          events: [],
+        },
+      },
+    });
+
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const text = container.textContent ?? "";
+
+    expect(text).toContain("Google Drive");
+    expect(text).toContain("Needs attention");
+    expect(text).toContain("No published SQLite Library was found in Google Drive");
+    expect(text).not.toContain("Choose a sync method below to get started.");
+    expect(
+      container.querySelector("[data-testid='pwa-cloud-sync-now-button']"),
+    ).toBeInstanceOf(HTMLButtonElement);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it("summarizes blocked merge errors in the provider card and shows details only in diagnostics", () => {
     const blockedMessage =
       "Freed blocked a sync merge because it would remove too much feed history. Source: PWA sync. Largest input: 11,238 items. Merged result: 0 items. Potential loss: 11,238 items (100%). Restore from a trusted snapshot or reconnect sync after confirming which copy should win.";

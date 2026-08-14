@@ -4,17 +4,18 @@ import {
   type GoogleContactsConnectionsResponse,
   type GoogleContactsResult,
 } from "@freed/shared/google-contacts";
+import { base64ToBytes } from "./google-drive";
 
 const GOOGLE_CONTACTS_CONNECTIONS_URL = "https://people.googleapis.com/v1/people/me/connections";
 
 interface NativeGoogleApiResponse {
   status: number;
   headers: Array<[string, string]>;
-  body: number[];
+  bodyB64: string;
 }
 
-function decodeBody(body: number[]): string {
-  return new TextDecoder().decode(new Uint8Array(body));
+function decodeBody(bodyB64: string): string {
+  return new TextDecoder().decode(base64ToBytes(bodyB64));
 }
 
 function googleErrorMessage(prefix: string, status: number, body: string): string {
@@ -54,7 +55,7 @@ export async function fetchGoogleContactsViaTauri(
     const url = `${GOOGLE_CONTACTS_CONNECTIONS_URL}?${params.toString()}`;
     try {
       const response = await invoke<NativeGoogleApiResponse>("google_api_request", { url, accessToken: token });
-      const raw = decodeBody(response.body);
+      const raw = decodeBody(response.bodyB64);
       if (response.status < 200 || response.status >= 300) {
         throw Object.assign(
           new Error(googleErrorMessage("Google Contacts API failed", response.status, raw)),

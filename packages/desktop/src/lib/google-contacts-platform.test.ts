@@ -15,13 +15,13 @@ describe("desktop Google Contacts platform fetch", () => {
     invokeMock.mockResolvedValueOnce({
       status: 200,
       headers: [["content-type", "application/json"]],
-      body: Array.from(new TextEncoder().encode(JSON.stringify({
+      bodyB64: btoa(JSON.stringify({
       connections: [{
         resourceName: "people/1",
         names: [{ displayName: "Test Contact" }],
       }],
       nextSyncToken: "sync-token",
-      }))),
+      })),
     });
 
     const { fetchGoogleContactsViaTauri } = await import("./google-contacts");
@@ -40,12 +40,12 @@ describe("desktop Google Contacts platform fetch", () => {
     invokeMock.mockResolvedValueOnce({
       status: 403,
       headers: [["content-type", "application/json"]],
-      body: Array.from(new TextEncoder().encode(JSON.stringify({
+      bodyB64: btoa(JSON.stringify({
         error: {
           message: "Request had insufficient authentication scopes.",
           errors: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }],
         },
-      }))),
+      })),
     });
 
     const { fetchGoogleContactsViaTauri } = await import("./google-contacts");

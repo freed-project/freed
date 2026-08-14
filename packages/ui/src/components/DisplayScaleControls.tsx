@@ -20,6 +20,18 @@ import {
 } from "../lib/interface-zoom.js";
 import { Tooltip } from "./Tooltip.js";
 
+const INTERFACE_ZOOM_BUTTON_STEP = 10;
+
+function getNextInterfaceZoom(value: number, direction: -1 | 1): number {
+  const currentZoom = normalizeInterfaceZoom(value);
+  const nextZoom = direction < 0
+    ? Math.ceil(currentZoom / INTERFACE_ZOOM_BUTTON_STEP) * INTERFACE_ZOOM_BUTTON_STEP
+      - INTERFACE_ZOOM_BUTTON_STEP
+    : Math.floor(currentZoom / INTERFACE_ZOOM_BUTTON_STEP) * INTERFACE_ZOOM_BUTTON_STEP
+      + INTERFACE_ZOOM_BUTTON_STEP;
+  return normalizeInterfaceZoom(nextZoom);
+}
+
 export function FeedCardDensitySlider({
   value,
   onChange,
@@ -109,6 +121,8 @@ export function InterfaceZoomSlider({
     onDragStart?.(baselineZoom);
   };
   const currentZoom = normalizeInterfaceZoom(value);
+  const smallerZoom = getNextInterfaceZoom(currentZoom, -1);
+  const largerZoom = getNextInterfaceZoom(currentZoom, 1);
   const dragScale = dragBaselineZoom === null ? 1 : dragBaselineZoom / currentZoom;
   const triggerStyle = dragBaselineZoom === null || dragStabilization === "parent"
     ? undefined
@@ -152,9 +166,18 @@ export function InterfaceZoomSlider({
         }}
         onPointerDown={handlePointerDown}
       >
-        <span className="theme-toolbar-zoom-icon theme-toolbar-zoom-icon-small" aria-hidden="true">
-          A
-        </span>
+        <button
+          type="button"
+          data-testid="interface-zoom-decrease"
+          className="theme-toolbar-zoom-step"
+          onClick={() => onChange(smallerZoom)}
+          disabled={smallerZoom === currentZoom}
+          aria-label="Decrease zoom"
+        >
+          <span className="theme-toolbar-zoom-icon theme-toolbar-zoom-icon-small" aria-hidden="true">
+            A
+          </span>
+        </button>
         <input
           data-testid="interface-zoom-slider"
           className="theme-toolbar-density-slider theme-toolbar-zoom-slider"
@@ -169,9 +192,18 @@ export function InterfaceZoomSlider({
           aria-valuemax={INTERFACE_ZOOM_MAX}
           aria-valuetext={zoomLabel}
         />
-        <span className="theme-toolbar-zoom-icon theme-toolbar-zoom-icon-large" aria-hidden="true">
-          A
-        </span>
+        <button
+          type="button"
+          data-testid="interface-zoom-increase"
+          className="theme-toolbar-zoom-step"
+          onClick={() => onChange(largerZoom)}
+          disabled={largerZoom === currentZoom}
+          aria-label="Increase zoom"
+        >
+          <span className="theme-toolbar-zoom-icon theme-toolbar-zoom-icon-large" aria-hidden="true">
+            A
+          </span>
+        </button>
       </div>
     </Tooltip>
   );

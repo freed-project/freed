@@ -137,7 +137,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Marketing-site manifesto buttons now use the shared theme secondary button treatment consistently, including both `Read the Manifesto` and `Why We Built This`
 - Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
 - Freed Desktop and Freed Web now include AubOS's current Starship and Dark Star themes, with Barlow typography, command-deck geometry, live preview art, theme-native maps, and Friends Galaxy palettes
-- The shared far-right view menu now exposes all six theme swatches and the global Zoom control in one appearance section across Feed, Friends, and Map, while feed-only Card density stays in its own section below
+- The shared far-right view menu now exposes all six theme swatches and the global Zoom control with tappable 10% steps in one appearance section across Feed, Friends, and Map, while feed-only Card density stays in its own section below
 - Neon now uses the original randomized marketing-site background logic as the canonical shared theme background across the marketing site, Freed Desktop, and Freed Web, while the other themes keep their current shared rendering
 - Marketing site no longer inherits the shared app scrollbar chrome, while Freed Desktop and Freed Web keep the themed scrollbar treatment inside app shells and dialogs
 - Theme-aware form controls across the marketing site and shared UI package

@@ -544,7 +544,7 @@ html[data-theme="starship"] {
   --theme-bg-muted: #e8e8f1;
 
   --theme-border-subtle: rgb(0 0 40 / 0.1);
-  --theme-border-strong: rgb(40 40 192 / 0.28);
+  --theme-border-strong: rgb(41 151 255 / 0.28);
   --theme-border-quiet: rgb(0 0 40 / 0.07);
 
   --theme-text-primary: #16163a;
@@ -552,11 +552,11 @@ html[data-theme="starship"] {
   --theme-text-muted: #5f5f9c;
   --theme-text-soft: #8585b0;
 
-  --theme-accent-primary: #2828c0;
-  --theme-accent-secondary: #4a4ad1;
+  --theme-accent-primary: #2997ff;
+  --theme-accent-secondary: #2997ff;
   --theme-accent-tertiary: #08733b;
-  --theme-accent-primary-rgb: 40 40 192;
-  --theme-accent-secondary-rgb: 74 74 209;
+  --theme-accent-primary-rgb: 41 151 255;
+  --theme-accent-secondary-rgb: 41 151 255;
   --theme-accent-tertiary-rgb: 8 115 59;
 
   --theme-shell-rgb: 226 226 238;
@@ -571,35 +571,35 @@ html[data-theme="starship"] {
   --theme-shell-background:
     radial-gradient(
       ellipse 120% 90% at 50% 0%,
-      rgb(40 40 192 / 0.08),
+      rgb(41 151 255 / 0.08),
       transparent 55%
     ),
     radial-gradient(
       ellipse 70% 50% at 50% 110%,
-      rgb(40 40 192 / 0.06),
+      rgb(41 151 255 / 0.06),
       transparent 60%
     ),
     #e2e2ee;
 
-  --theme-button-primary-background: #2828c0;
+  --theme-button-primary-background: #2997ff;
   --theme-button-primary-shadow:
     0 2px 6px rgb(0 0 30 / 0.06), 0 10px 36px rgb(0 0 40 / 0.09);
   --theme-button-primary-shadow-hover:
     0 2px 8px rgb(0 0 30 / 0.08), 0 12px 40px rgb(0 0 40 / 0.12);
   --theme-button-primary-text: #f0f0fa;
-  --theme-button-secondary-background: rgb(40 40 192 / 0.025);
-  --theme-button-secondary-hover: rgb(40 40 192 / 0.07);
+  --theme-button-secondary-background: rgb(41 151 255 / 0.025);
+  --theme-button-secondary-hover: rgb(41 151 255 / 0.07);
   --theme-gradient-text-start: #16163a;
-  --theme-gradient-text-mid: #2828c0;
-  --theme-gradient-text-end: #4a4ad1;
-  --theme-heading-accent-color: #2828c0;
+  --theme-gradient-text-mid: #2997ff;
+  --theme-gradient-text-end: #2997ff;
+  --theme-heading-accent-color: #2997ff;
   --theme-heading-accent-fill: none;
   --theme-heading-accent-text-fill: currentColor;
   --theme-heading-accent-clip: border-box;
   --theme-metric-value: #16163a;
-  --theme-logo-spectrum: linear-gradient(to right, #16163a, #2828c0);
-  --theme-media-icon: #2828c0;
-  --theme-hero-media-icon: #2828c0;
+  --theme-logo-spectrum: linear-gradient(to right, #16163a, #2997ff);
+  --theme-media-icon: #2997ff;
+  --theme-hero-media-icon: #2997ff;
   --theme-status-complete-border: rgb(8 115 59 / 0.24);
   --theme-status-complete-bg: rgb(20 163 82 / 0.1);
   --theme-status-complete-text: #08733b;
@@ -614,11 +614,11 @@ html[data-theme="starship"] {
     0 28px 72px rgb(0 0 40 / 0.06);
   --theme-overlay-scrim: rgb(22 22 58 / 0.26);
   --theme-code-background: rgb(244 244 250 / 0.92);
-  --theme-selection: rgb(40 40 192 / 0.18);
-  --theme-focus-ring: rgb(40 40 192 / 0.38);
+  --theme-selection: rgb(41 151 255 / 0.18);
+  --theme-focus-ring: rgb(41 151 255 / 0.38);
   --theme-destructive: #b3261e;
   --theme-success: #08733b;
-  --theme-feedback-info-rgb: 40 40 192;
+  --theme-feedback-info-rgb: 41 151 255;
   --theme-feedback-success-rgb: 8 115 59;
   --theme-feedback-warning-rgb: 118 80 0;
   --theme-feedback-danger-rgb: 179 38 30;
@@ -632,10 +632,10 @@ html[data-theme="starship"] {
   --theme-platform-surface-fill-active: #f4f4fa;
   --theme-platform-ring-fill: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill-active: var(--theme-platform-surface-fill-active);
-  --theme-platform-ring-stroke: rgb(40 40 192 / 0.34);
-  --theme-platform-ring-stroke-active: rgb(40 40 192 / 0.5);
-  --theme-control-accent: #2828c0;
-  --theme-control-accent-rgb: 40 40 192;
+  --theme-platform-ring-stroke: rgb(41 151 255 / 0.34);
+  --theme-platform-ring-stroke-active: rgb(41 151 255 / 0.5);
+  --theme-control-accent: #2997ff;
+  --theme-control-accent-rgb: 41 151 255;
   --theme-glow-sm:
     0 2px 6px rgb(0 0 30 / 0.05), 0 8px 24px rgb(0 0 40 / 0.07);
   --theme-glow-md:
@@ -1065,6 +1065,12 @@ html[data-theme="dark-star"] .theme-display {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+html[data-theme="starship"] .gradient-text.font-logo {
+  background: none;
+  color: var(--theme-accent-primary);
+  -webkit-text-fill-color: currentColor;
 }
 
 .theme-heading-accent {
@@ -2228,6 +2234,41 @@ html.freed-mobile-sidebar-open body {
 
 .theme-toolbar-zoom-control {
   width: 9.5rem;
+  padding-inline: 0;
+}
+
+.theme-toolbar-zoom-step {
+  display: inline-flex;
+  align-self: stretch;
+  width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--button-radius) - 0.15rem);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.theme-toolbar-zoom-step:hover:not(:disabled) {
+  background: var(--theme-button-secondary-hover);
+  color: var(--theme-text-secondary);
+}
+
+.theme-toolbar-zoom-step:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline-offset: -2px;
+}
+
+.theme-toolbar-zoom-step:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 .theme-toolbar-zoom-icon {

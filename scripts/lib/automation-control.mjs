@@ -74,6 +74,31 @@ export const CONTROL_EVENT_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const CONTROL_EVENT_MAX_LINE_BYTES = 1024 * 1024;
 export const CONTROL_EVENT_HISTORY_MAX_RECORDS = 100_000;
 const TASK_CONTROL_FILE_MAX_BYTES = 16 * 1024 * 1024;
+const FACTORY_CLAIM_ADMISSION_LIFETIME_MS = 5 * 60 * 1_000;
+const FACTORY_CLAIM_CLOCK_SKEW_MS = 30 * 1_000;
+const FACTORY_CLAIM_ACTOR = "freed-nightly-runner";
+const FACTORY_CLAIM_ACTIONS = Object.freeze([
+  "claim-acquire",
+  "claim-heartbeat",
+  "claim-transfer",
+  "claim-release",
+]);
+const FACTORY_CLAIM_EVENT_TYPES = new Set(
+  FACTORY_CLAIM_ACTIONS.map((action) => `task_${action.replaceAll("-", "_")}`),
+);
+const FACTORY_CLAIM_RELEASE_REASONS = Object.freeze([
+  "prelaunch-denied",
+  "worker-completed",
+  "worker-failed",
+  "worker-interrupted",
+  "reconciled-unlaunched",
+]);
+const FACTORY_CLAIM_TARGETS = Object.freeze([
+  "shared",
+  "desktop",
+  "pwa",
+  "website",
+]);
 const controlEventHistoryDecoder = new TextDecoder("utf-8", { fatal: true });
 export const DEFAULT_AUTOMATION_STATE_ROOT = path.join(
   os.homedir(),
@@ -278,6 +303,10 @@ const RESERVED_CONTROL_EVENT_TYPES = new Set([
   "outcome_reservation_created",
   "outcome_reservation_finalized",
   "task_authority_updated",
+  "task_claim_acquire",
+  "task_claim_heartbeat",
+  "task_claim_release",
+  "task_claim_transfer",
   "task_created",
   "task_transitioned",
 ]);
@@ -2206,6 +2235,353 @@ function emptyTaskManifest(nowMs) {
   };
 }
 
+function canonicalFactoryClaim(value) {
+  const issue = value?.githubIssue;
+  const issueUrl =
+    Number.isSafeInteger(issue?.number) && issue.number > 0
+      ? `https://github.com/freed-project/freed/issues/${issue.number}`
+      : null;
+  const domains = value?.conflictDomains;
+  const normalizedDomains = Array.isArray(domains)
+    ? [...new Set(domains)].sort((left, right) => left.localeCompare(right))
+    : [];
+  return (
+    exactObjectKeys(value, [
+      "accountId",
+      "baseHead",
+      "branch",
+      "claimId",
+      "claimedAt",
+      ...(value?.checkpointReference === undefined
+        ? []
+        : ["checkpointReference"]),
+      "conflictDomainDigest",
+      "conflictDomains",
+      "custodyEpoch",
+      "driverId",
+      "executionStage",
+      "githubIssue",
+      "heartbeatAt",
+      "hostId",
+      "publicationCeiling",
+      "target",
+      ...(value?.transferredAt === undefined ? [] : ["transferredAt"]),
+      "workerId",
+      "workLane",
+      "worktree",
+    ]) &&
+    typeof value.claimId === "string" &&
+    IDENTIFIER_PATTERN.test(value.claimId) &&
+    exactObjectKeys(issue, ["number", "url"]) &&
+    issueUrl !== null &&
+    issue.url === issueUrl &&
+    Number.isSafeInteger(value.custodyEpoch) &&
+    value.custodyEpoch > 0 &&
+    typeof value.hostId === "string" &&
+    IDENTIFIER_PATTERN.test(value.hostId) &&
+    typeof value.workerId === "string" &&
+    IDENTIFIER_PATTERN.test(value.workerId) &&
+    typeof value.branch === "string" &&
+    /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/.test(value.branch) &&
+    !/(?:codex|symphony|openhands|agent)/i.test(value.branch) &&
+    typeof value.worktree === "string" &&
+    path.isAbsolute(value.worktree) &&
+    path.normalize(value.worktree) === value.worktree &&
+    Array.isArray(domains) &&
+    domains.length > 0 &&
+    domains.length <= 64 &&
+    domains.every(
+      (domain) =>
+        typeof domain === "string" &&
+        /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,511}$/.test(domain),
+    ) &&
+    canonicalValuesEqual(domains, normalizedDomains) &&
+    SHA256_PATTERN.test(String(value.conflictDomainDigest ?? "")) &&
+    isCanonicalIsoTimestamp(value.claimedAt) &&
+    isCanonicalIsoTimestamp(value.heartbeatAt) &&
+    Date.parse(value.heartbeatAt) >= Date.parse(value.claimedAt) &&
+    /^[0-9a-f]{40}$/.test(String(value.baseHead ?? "")) &&
+    typeof value.accountId === "string" &&
+    IDENTIFIER_PATTERN.test(value.accountId) &&
+    typeof value.driverId === "string" &&
+    IDENTIFIER_PATTERN.test(value.driverId) &&
+    FACTORY_CLAIM_TARGETS.includes(value.target) &&
+    value.workLane === "runtime-neutral" &&
+    value.publicationCeiling === "draft-pr" &&
+    ["claimed", "running"].includes(value.executionStage) &&
+    (value.transferredAt === undefined ||
+      (isCanonicalIsoTimestamp(value.transferredAt) &&
+        value.transferredAt === value.heartbeatAt &&
+        value.custodyEpoch > 1)) &&
+    (value.checkpointReference === undefined ||
+      (SHA256_PATTERN.test(value.checkpointReference) &&
+        value.transferredAt !== undefined)) &&
+    ((value.transferredAt === undefined &&
+      value.checkpointReference === undefined) ||
+      (value.transferredAt !== undefined &&
+        value.checkpointReference !== undefined))
+  );
+}
+
+function canonicalFactoryClaimEntry(value) {
+  return (
+    exactObjectKeys(value, [
+      "bindingDigest",
+      "claim",
+      "taskId",
+      "taskRevision",
+    ]) &&
+    typeof value.taskId === "string" &&
+    IDENTIFIER_PATTERN.test(value.taskId) &&
+    Number.isSafeInteger(value.taskRevision) &&
+    value.taskRevision > 0 &&
+    SHA256_PATTERN.test(String(value.bindingDigest ?? "")) &&
+    canonicalFactoryClaim(value.claim)
+  );
+}
+
+function canonicalFactoryAdmission(value) {
+  return (
+    exactObjectKeys(value, [
+      "authorityClaimId",
+      "authorizedAt",
+      "bindingDigest",
+      "bridgeId",
+      "expiresAt",
+      "schemaVersion",
+      "taskId",
+      "taskRevision",
+    ]) &&
+    value.schemaVersion === 1 &&
+    value.bridgeId === "freed-authority-v1" &&
+    typeof value.authorityClaimId === "string" &&
+    IDENTIFIER_PATTERN.test(value.authorityClaimId) &&
+    typeof value.taskId === "string" &&
+    IDENTIFIER_PATTERN.test(value.taskId) &&
+    Number.isSafeInteger(value.taskRevision) &&
+    value.taskRevision > 0 &&
+    SHA256_PATTERN.test(String(value.bindingDigest ?? "")) &&
+    isCanonicalIsoTimestamp(value.authorizedAt) &&
+    isCanonicalIsoTimestamp(value.expiresAt) &&
+    Date.parse(value.expiresAt) > Date.parse(value.authorizedAt) &&
+    Date.parse(value.expiresAt) - Date.parse(value.authorizedAt) ===
+      FACTORY_CLAIM_ADMISSION_LIFETIME_MS
+  );
+}
+
+function canonicalFactoryClaimResult(action, value) {
+  const common =
+    value?.schemaVersion === 1 &&
+    typeof value?.operationId === "string" &&
+    isCanonicalUuidV4(value.operationId) &&
+    typeof value?.taskId === "string" &&
+    IDENTIFIER_PATTERN.test(value.taskId);
+  if (!common) return false;
+  if (action === "claim-acquire") {
+    return (
+      exactObjectKeys(value, [
+        "admission",
+        "authorityClaimId",
+        "bindingDigest",
+        "conflictDomainDigest",
+        "custodyEpoch",
+        "operationId",
+        "schemaVersion",
+        "taskId",
+        "taskRevision",
+      ]) &&
+      Number.isSafeInteger(value.taskRevision) &&
+      value.taskRevision > 0 &&
+      typeof value.authorityClaimId === "string" &&
+      IDENTIFIER_PATTERN.test(value.authorityClaimId) &&
+      Number.isSafeInteger(value.custodyEpoch) &&
+      value.custodyEpoch > 0 &&
+      SHA256_PATTERN.test(String(value.bindingDigest ?? "")) &&
+      SHA256_PATTERN.test(String(value.conflictDomainDigest ?? "")) &&
+      canonicalFactoryAdmission(value.admission) &&
+      value.admission.authorityClaimId === value.authorityClaimId &&
+      value.admission.taskId === value.taskId &&
+      value.admission.taskRevision === value.taskRevision &&
+      value.admission.bindingDigest === value.bindingDigest
+    );
+  }
+  const taskRevision = value.taskRevision;
+  const commonMutation =
+    Number.isSafeInteger(taskRevision) &&
+    taskRevision > 0 &&
+    typeof value.authorityClaimId === "string" &&
+    IDENTIFIER_PATTERN.test(value.authorityClaimId) &&
+    SHA256_PATTERN.test(String(value.bindingDigest ?? ""));
+  if (!commonMutation) return false;
+  if (action === "claim-heartbeat") {
+    return (
+      exactObjectKeys(value, [
+        "authorityClaimId",
+        "bindingDigest",
+        "custodyEpoch",
+        "executionStage",
+        "heartbeatAt",
+        "operationId",
+        "schemaVersion",
+        "taskId",
+        "taskRevision",
+      ]) &&
+      Number.isSafeInteger(value.custodyEpoch) &&
+      value.custodyEpoch > 0 &&
+      isCanonicalIsoTimestamp(value.heartbeatAt) &&
+      value.executionStage === "running"
+    );
+  }
+  if (action === "claim-transfer") {
+    return (
+      exactObjectKeys(value, [
+        "authorityClaimId",
+        "bindingDigest",
+        "checkpointReference",
+        "destinationHostId",
+        "destinationWorkerId",
+        "destinationWorktree",
+        "nextEpoch",
+        "operationId",
+        "priorEpoch",
+        "schemaVersion",
+        "taskId",
+        "taskRevision",
+        "transferredAt",
+      ]) &&
+      Number.isSafeInteger(value.priorEpoch) &&
+      value.priorEpoch > 0 &&
+      Number.isSafeInteger(value.nextEpoch) &&
+      value.nextEpoch === value.priorEpoch + 1 &&
+      value.custodyEpoch === undefined &&
+      typeof value.destinationHostId === "string" &&
+      IDENTIFIER_PATTERN.test(value.destinationHostId) &&
+      typeof value.destinationWorkerId === "string" &&
+      IDENTIFIER_PATTERN.test(value.destinationWorkerId) &&
+      typeof value.destinationWorktree === "string" &&
+      path.isAbsolute(value.destinationWorktree) &&
+      path.normalize(value.destinationWorktree) === value.destinationWorktree &&
+      SHA256_PATTERN.test(String(value.checkpointReference ?? "")) &&
+      isCanonicalIsoTimestamp(value.transferredAt)
+    );
+  }
+  if (action === "claim-release") {
+    return (
+      exactObjectKeys(value, [
+        "authorityClaimId",
+        "bindingDigest",
+        ...(value.custodyEpoch === undefined ? [] : ["custodyEpoch"]),
+        "expectedHeartbeatAt",
+        "operationId",
+        "reason",
+        "releasedAt",
+        "schemaVersion",
+        "taskId",
+        "taskRevision",
+      ]) &&
+      (value.custodyEpoch === undefined ||
+        (Number.isSafeInteger(value.custodyEpoch) && value.custodyEpoch > 0)) &&
+      isCanonicalIsoTimestamp(value.expectedHeartbeatAt) &&
+      FACTORY_CLAIM_RELEASE_REASONS.includes(value.reason) &&
+      isCanonicalIsoTimestamp(value.releasedAt)
+    );
+  }
+  return false;
+}
+
+function canonicalFactoryClaimOperation(value) {
+  return (
+    exactObjectKeys(value, [
+      "action",
+      "operationId",
+      "requestDigest",
+      "result",
+      "taskId",
+    ]) &&
+    FACTORY_CLAIM_ACTIONS.includes(value.action) &&
+    typeof value.operationId === "string" &&
+    isCanonicalUuidV4(value.operationId) &&
+    SHA256_PATTERN.test(String(value.requestDigest ?? "")) &&
+    typeof value.taskId === "string" &&
+    IDENTIFIER_PATTERN.test(value.taskId) &&
+    canonicalFactoryClaimResult(value.action, value.result) &&
+    value.result.operationId === value.operationId &&
+    value.result.taskId === value.taskId
+  );
+}
+
+function validateFactoryManifestProjection(manifest) {
+  const claims = manifest.executionClaims ?? [];
+  const operations = manifest.executionClaimOperations ?? [];
+  if (
+    !Array.isArray(claims) ||
+    !Array.isArray(operations) ||
+    !claims.every(canonicalFactoryClaimEntry) ||
+    !operations.every(canonicalFactoryClaimOperation)
+  ) {
+    throw new AutomationControlError(
+      "invalid_state",
+      "The current task manifest contains an unsupported factory claim projection.",
+    );
+  }
+  const taskIds = new Set(manifest.tasks.map((task) => task.taskId));
+  const identities = {
+    tasks: new Set(),
+    claims: new Set(),
+    issues: new Set(),
+    branches: new Set(),
+    worktrees: new Set(),
+    operations: new Set(),
+  };
+  const domains = new Map();
+  for (const entry of claims) {
+    const claim = entry.claim;
+    if (
+      !taskIds.has(entry.taskId) ||
+      identities.tasks.has(entry.taskId) ||
+      identities.claims.has(claim.claimId) ||
+      identities.issues.has(claim.githubIssue.number) ||
+      identities.branches.has(claim.branch) ||
+      identities.worktrees.has(claim.worktree)
+    ) {
+      throw new AutomationControlError(
+        "invalid_state",
+        "The current task manifest contains duplicate or orphaned factory claim identity.",
+      );
+    }
+    for (const domain of claim.conflictDomains) {
+      if (domains.has(domain)) {
+        throw new AutomationControlError(
+          "invalid_state",
+          `Factory claims ${domains.get(domain)} and ${entry.taskId} overlap conflict domain ${domain}.`,
+        );
+      }
+      domains.set(domain, entry.taskId);
+    }
+    identities.tasks.add(entry.taskId);
+    identities.claims.add(claim.claimId);
+    identities.issues.add(claim.githubIssue.number);
+    identities.branches.add(claim.branch);
+    identities.worktrees.add(claim.worktree);
+  }
+  const operationTasks = new Set();
+  for (const operation of operations) {
+    if (
+      !taskIds.has(operation.taskId) ||
+      operationTasks.has(operation.taskId) ||
+      identities.operations.has(operation.operationId)
+    ) {
+      throw new AutomationControlError(
+        "invalid_state",
+        "The current task manifest contains duplicate or orphaned factory claim operation identity.",
+      );
+    }
+    operationTasks.add(operation.taskId);
+    identities.operations.add(operation.operationId);
+  }
+  return manifest;
+}
+
 export function validateTaskManifest(manifest) {
   if (
     manifest?.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
@@ -2322,7 +2698,7 @@ export function validateTaskManifest(manifest) {
     }
     taskIds.add(task.taskId);
   }
-  return manifest;
+  return validateFactoryManifestProjection(manifest);
 }
 
 function readTaskControlJsonFile(
@@ -7390,6 +7766,7 @@ const TASK_MANIFEST_EVENT_TYPES = new Set([
   "outcome_reservation_created",
   "outcome_reservation_finalized",
   "task_authority_updated",
+  ...FACTORY_CLAIM_EVENT_TYPES,
   "task_created",
   "task_transitioned",
 ]);
@@ -7511,6 +7888,88 @@ function canonicalTaskEventEnvelope(event, type) {
     Number.isInteger(event.manifestRevision) &&
     event.manifestRevision >= event.taskRevision &&
     canonicalTaskAuthoritySnapshot(taskEventAuthoritySnapshot(event))
+  );
+}
+
+function canonicalFactoryClaimEvent(
+  event,
+  record,
+  records,
+  recordsByEventId,
+  acquisitionRecordsByKey,
+  leaseTimelinesByAcquisitionIndex,
+) {
+  const data = event?.data;
+  const action = data?.operation?.action;
+  const expectedType =
+    typeof action === "string" ? `task_${action.replaceAll("-", "_")}` : null;
+  if (
+    !FACTORY_CLAIM_EVENT_TYPES.has(event?.type) ||
+    event.type !== expectedType ||
+    !canonicalTaskEventEnvelope(event, event.type) ||
+    !isCanonicalUuidV4(event.eventId) ||
+    event.eventId !== data?.operation?.operationId ||
+    event.actor !== FACTORY_CLAIM_ACTOR ||
+    !exactObjectKeys(data, [
+      "activeClaim",
+      "authorizationProvenance",
+      "operation",
+    ]) ||
+    !canonicalFactoryClaimOperation(data.operation) ||
+    data.operation.taskId !== event.taskId ||
+    data.operation.result.taskRevision !== event.taskRevision ||
+    !canonicalTaskAuthorizationProvenance(data.authorizationProvenance, {
+      actor: event.actor,
+      taskId: event.taskId,
+      eventTimestamp: event.ts,
+      recordIndex: record.index,
+      records,
+      recordsByEventId,
+      acquisitionRecordsByKey,
+      leaseTimelinesByAcquisitionIndex,
+    })
+  ) {
+    return false;
+  }
+  const result = data.operation.result;
+  if (action === "claim-release") {
+    return data.activeClaim === null;
+  }
+  const entry = data.activeClaim;
+  if (
+    !canonicalFactoryClaimEntry(entry) ||
+    entry.taskId !== event.taskId ||
+    entry.taskRevision !== event.taskRevision ||
+    entry.bindingDigest !== result.bindingDigest ||
+    entry.claim.claimId !== result.authorityClaimId
+  ) {
+    return false;
+  }
+  if (action === "claim-acquire") {
+    return (
+      entry.claim.custodyEpoch === result.custodyEpoch &&
+      entry.claim.conflictDomainDigest === result.conflictDomainDigest &&
+      entry.claim.heartbeatAt === result.admission.authorizedAt &&
+      entry.claim.executionStage === "claimed"
+    );
+  }
+  if (action === "claim-heartbeat") {
+    return (
+      entry.claim.custodyEpoch === result.custodyEpoch &&
+      entry.claim.heartbeatAt === result.heartbeatAt &&
+      entry.claim.executionStage === "running"
+    );
+  }
+  return (
+    action === "claim-transfer" &&
+    entry.claim.custodyEpoch === result.nextEpoch &&
+    entry.claim.hostId === result.destinationHostId &&
+    entry.claim.workerId === result.destinationWorkerId &&
+    entry.claim.worktree === result.destinationWorktree &&
+    entry.claim.heartbeatAt === result.transferredAt &&
+    entry.claim.transferredAt === result.transferredAt &&
+    entry.claim.checkpointReference === result.checkpointReference &&
+    entry.claim.executionStage === "running"
   );
 }
 
@@ -8986,6 +9445,8 @@ export function inspectExactTaskLifecycleHistory(events) {
   const lifecycleByRecordIndex = new Map();
   const canonicalTaskEventIndexes = new Set();
   const currentByTask = new Map();
+  const currentFactoryClaimsByTask = new Map();
+  const currentFactoryOperationsByTask = new Map();
   const invalidTasks = new Set();
   let lastManifestRevision = null;
 
@@ -9125,7 +9586,39 @@ export function inspectExactTaskLifecycleHistory(events) {
     }
 
     let after;
-    if (event.type === "task_authority_updated") {
+    if (FACTORY_CLAIM_EVENT_TYPES.has(event.type)) {
+      if (
+        !canonicalFactoryClaimEvent(
+          event,
+          record,
+          records,
+          recordsByEventId,
+          acquisitionRecordsByKey,
+          leaseTimelinesByAcquisitionIndex,
+        ) ||
+        event.taskRevision !== before.taskRevision
+      ) {
+        fail("is not one exact factory execution claim mutation");
+        continue;
+      }
+      if (event.data.activeClaim === null) {
+        currentFactoryClaimsByTask.delete(taskId);
+      } else {
+        currentFactoryClaimsByTask.set(
+          taskId,
+          structuredClone(event.data.activeClaim),
+        );
+      }
+      currentFactoryOperationsByTask.set(
+        taskId,
+        structuredClone(event.data.operation),
+      );
+      after = {
+        ...before,
+        manifestRevision: event.manifestRevision,
+        lastRecordIndex: record.index,
+      };
+    } else if (event.type === "task_authority_updated") {
       if (
         !canonicalTaskAuthorityUpdatedEvent(
           event,
@@ -9301,6 +9794,8 @@ export function inspectExactTaskLifecycleHistory(events) {
     lifecycleByRecordIndex,
     canonicalTaskEventIndexes,
     currentByTask,
+    currentFactoryClaimsByTask,
+    currentFactoryOperationsByTask,
     lastManifestRevision,
     issues,
     healthy: issues.length === 0,
@@ -9576,20 +10071,17 @@ export function inspectExactOutcomeControlHistory(
       transition.data?.outcomeDigest !== event.data.outcomeDigest ||
       (pinnedLegacyTransition
         ? !canonicalPinnedLegacyActorOutcomeEvent(event, transition)
-        : !canonicalTaskAuthorizationProvenance(
-            activeLeaseProvenance,
-            {
-              actor: event.actor,
-              taskId: event.taskId,
-              eventTimestamp: event.ts,
-              recordIndex: record.index,
-              records: lifecycle.records,
-              recordsByEventId: lifecycle.recordsByEventId,
-              acquisitionRecordsByKey: lifecycle.acquisitionRecordsByKey,
-              leaseTimelinesByAcquisitionIndex:
-                lifecycle.leaseTimelinesByAcquisitionIndex,
-            },
-          )) ||
+        : !canonicalTaskAuthorizationProvenance(activeLeaseProvenance, {
+            actor: event.actor,
+            taskId: event.taskId,
+            eventTimestamp: event.ts,
+            recordIndex: record.index,
+            records: lifecycle.records,
+            recordsByEventId: lifecycle.recordsByEventId,
+            acquisitionRecordsByKey: lifecycle.acquisitionRecordsByKey,
+            leaseTimelinesByAcquisitionIndex:
+              lifecycle.leaseTimelinesByAcquisitionIndex,
+          })) ||
       (deterministicRequired && event.eventId !== deterministicId)
     ) {
       issues.push(
@@ -9747,6 +10239,32 @@ function inspectTaskManifestHistoryParity(lifecycle, manifest) {
           `task manifest record ${taskId} does not match its exact history cursor`,
         );
       }
+    }
+    const projectedClaims = [
+      ...lifecycle.currentFactoryClaimsByTask.values(),
+    ].sort((left, right) => left.taskId.localeCompare(right.taskId));
+    const projectedOperations = [
+      ...lifecycle.currentFactoryOperationsByTask.values(),
+    ].sort((left, right) => left.taskId.localeCompare(right.taskId));
+    if (
+      !canonicalValuesEqual(
+        projectedClaims,
+        validatedManifest.executionClaims ?? [],
+      )
+    ) {
+      issues.push(
+        "factory claim manifest projection does not match exact claim history",
+      );
+    }
+    if (
+      !canonicalValuesEqual(
+        projectedOperations,
+        validatedManifest.executionClaimOperations ?? [],
+      )
+    ) {
+      issues.push(
+        "factory claim operation projection does not match exact claim history",
+      );
     }
   }
 
@@ -10142,6 +10660,16 @@ function mutateTaskManifestUnderGuards(
   mutation.manifest.tasks.sort((left, right) =>
     left.taskId.localeCompare(right.taskId),
   );
+  if (mutation.manifest.executionClaims !== undefined) {
+    mutation.manifest.executionClaims.sort((left, right) =>
+      left.taskId.localeCompare(right.taskId),
+    );
+  }
+  if (mutation.manifest.executionClaimOperations !== undefined) {
+    mutation.manifest.executionClaimOperations.sort((left, right) =>
+      left.taskId.localeCompare(right.taskId),
+    );
+  }
   mutation.manifest.revision = manifest.revision + 1;
   mutation.manifest.updatedAt = nowIso(nowMs);
   const event = buildTaskEvent(
@@ -10263,6 +10791,9 @@ function mutateTaskManifestUnderGuards(
     manifestRevision: mutation.manifest.revision,
     task: structuredClone(mutation.task),
     event: structuredClone(event),
+    ...(mutation.result === undefined
+      ? {}
+      : { result: structuredClone(mutation.result) }),
   };
 }
 
@@ -10425,6 +10956,733 @@ export function withOutcomeRecordingGuards(
     },
     { now: () => nowMs },
   );
+}
+
+function factoryClaimRequestDigest(request) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalIntentValue(request)), "utf8")
+    .digest("hex");
+}
+
+function requireFactoryClaimActor(actor) {
+  if (actor !== FACTORY_CLAIM_ACTOR) {
+    throw new AutomationControlError(
+      "actor_not_authorized",
+      `Factory execution claims require ${FACTORY_CLAIM_ACTOR}.`,
+      { actor },
+    );
+  }
+}
+
+function requireCanonicalFactoryTimestamp(value, field, nowMs) {
+  if (!isCanonicalIsoTimestamp(value)) {
+    throw new AutomationControlError(
+      "invalid_value",
+      `${field} must be a canonical ISO timestamp.`,
+      { field },
+    );
+  }
+  const timestampMs = Date.parse(value);
+  if (timestampMs > nowMs + FACTORY_CLAIM_CLOCK_SKEW_MS) {
+    throw new AutomationControlError(
+      "claim_time_invalid",
+      `${field} is too far in the future.`,
+      { field, value },
+    );
+  }
+  return timestampMs;
+}
+
+function requireFactoryClaimRequestEnvelope(request, action, nowMs) {
+  const value = requireExactPlainObject(request, `${action} request`);
+  if (
+    value.schemaVersion !== 1 ||
+    typeof value.operationId !== "string" ||
+    !isCanonicalUuidV4(value.operationId) ||
+    typeof value.taskId !== "string" ||
+    !IDENTIFIER_PATTERN.test(value.taskId)
+  ) {
+    throw new AutomationControlError(
+      "invalid_value",
+      `${action} request has an invalid schema, operation, or task identity.`,
+    );
+  }
+  if (!Number.isFinite(nowMs)) {
+    throw new AutomationControlError(
+      "invalid_value",
+      "Factory claim mutation time is invalid.",
+    );
+  }
+  return value;
+}
+
+function factoryClaimOperationReplay(manifest, action, request, requestDigest) {
+  const existing = (manifest.executionClaimOperations ?? []).find(
+    (operation) => operation.operationId === request.operationId,
+  );
+  if (existing === undefined) return null;
+  if (
+    existing.action !== action ||
+    existing.taskId !== request.taskId ||
+    existing.requestDigest !== requestDigest
+  ) {
+    throw new AutomationControlError(
+      "operation_replay_conflict",
+      `Factory claim operation ${request.operationId} was already used for another request.`,
+      { operationId: request.operationId },
+    );
+  }
+  return structuredClone(existing.result);
+}
+
+function replaceFactoryClaimOperation(manifest, operation) {
+  manifest.executionClaimOperations = [
+    ...(manifest.executionClaimOperations ?? []).filter(
+      (candidate) => candidate.taskId !== operation.taskId,
+    ),
+    operation,
+  ];
+}
+
+function replaceFactoryClaim(manifest, entry) {
+  manifest.executionClaims = [
+    ...(manifest.executionClaims ?? []).filter(
+      (candidate) => candidate.taskId !== entry.taskId,
+    ),
+    entry,
+  ];
+}
+
+function activeFactoryClaim(manifest, taskId) {
+  return (manifest.executionClaims ?? []).find(
+    (candidate) => candidate.taskId === taskId,
+  );
+}
+
+function requireFactoryTaskForClaim(manifest, taskId, expectedRevision) {
+  const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
+  if (task === undefined) {
+    throw new AutomationControlError(
+      "task_not_found",
+      `Task ${taskId} does not exist.`,
+      { taskId },
+    );
+  }
+  if (task.revision !== expectedRevision) {
+    throw new AutomationControlError(
+      "revision_conflict",
+      `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
+      { taskId, expectedRevision, actualRevision: task.revision },
+    );
+  }
+  return task;
+}
+
+function requireFactoryPilotTask(task, issue) {
+  if (
+    task.state !== "approved_for_pr" ||
+    !["pr-only", "merge-safe"].includes(task.observerAuthority) ||
+    task.providerAuthority !== "forbidden" ||
+    taskBehavioralClassification(task) !== false ||
+    !Number.isSafeInteger(task.details?.estimatedMinutes) ||
+    task.details.estimatedMinutes <= 0 ||
+    task.details?.githubIssue?.number !== issue.number ||
+    task.details?.githubIssue?.url !== issue.url
+  ) {
+    throw new AutomationControlError(
+      "claim_authority_ineligible",
+      `Task ${task.taskId} is outside the runtime-neutral factory pilot authority.`,
+      { taskId: task.taskId },
+    );
+  }
+}
+
+function requireCurrentFactoryClaim(entry, request) {
+  if (entry === undefined) {
+    throw new AutomationControlError(
+      "claim_not_found",
+      `Task ${request.taskId} has no active factory claim.`,
+      { taskId: request.taskId },
+    );
+  }
+  if (
+    entry.taskRevision !== request.taskRevision ||
+    entry.bindingDigest !== request.bindingDigest ||
+    entry.claim.claimId !== request.authorityClaimId
+  ) {
+    throw new AutomationControlError(
+      "claim_identity_mismatch",
+      `Task ${request.taskId} factory claim does not match the exact request.`,
+      { taskId: request.taskId },
+    );
+  }
+  return entry;
+}
+
+function runFactoryClaimMutation({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  action,
+  request,
+  nowMs,
+  mutate,
+}) {
+  requireFactoryClaimActor(actor);
+  const requestDigest = factoryClaimRequestDigest(request);
+  const authority = {
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    taskId: request.taskId,
+    ownerIntentDigest: requestDigest,
+  };
+  return withMutationLeaseAuthority(authority, (authorityContext) => {
+    const authorize = () =>
+      requireMutationLease({ ...authority, authorityContext });
+    authorize();
+    const mutation = mutateTaskManifest(
+      stateRoot,
+      nowMs,
+      (manifest) => {
+        const { lease } = authorize();
+        const replay = factoryClaimOperationReplay(
+          manifest,
+          action,
+          request,
+          requestDigest,
+        );
+        if (replay !== null) {
+          return { changed: false, result: replay };
+        }
+        const prepared = mutate(manifest);
+        const operation = {
+          action,
+          operationId: request.operationId,
+          requestDigest,
+          taskId: request.taskId,
+          result: structuredClone(prepared.result),
+        };
+        replaceFactoryClaimOperation(manifest, operation);
+        return {
+          changed: true,
+          manifest,
+          task: prepared.task,
+          actor,
+          eventId: request.operationId,
+          eventType: `task_${action.replaceAll("-", "_")}`,
+          eventData: {
+            activeClaim:
+              prepared.activeClaim === null
+                ? null
+                : structuredClone(prepared.activeClaim),
+            authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
+            operation,
+          },
+          result: prepared.result,
+        };
+      },
+      { beforeCommit: authorize },
+    );
+    return structuredClone(
+      mutation?.changed === true ? mutation.result : mutation,
+    );
+  });
+}
+
+export function acquireFactoryExecutionClaim({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  request,
+  nowMs = Date.now(),
+}) {
+  const value = requireFactoryClaimRequestEnvelope(
+    request,
+    "claim-acquire",
+    nowMs,
+  );
+  if (
+    !exactObjectKeys(value, [
+      "bindingDigest",
+      "claim",
+      "expectedTaskRevision",
+      "operationId",
+      "requestedAt",
+      "schemaVersion",
+      "taskId",
+    ]) ||
+    !Number.isSafeInteger(value.expectedTaskRevision) ||
+    value.expectedTaskRevision <= 0 ||
+    !SHA256_PATTERN.test(String(value.bindingDigest ?? "")) ||
+    value.claim === null ||
+    typeof value.claim !== "object" ||
+    Array.isArray(value.claim)
+  ) {
+    throw new AutomationControlError(
+      "invalid_value",
+      "claim-acquire request has an unsupported shape.",
+    );
+  }
+  const activeClaim = {
+    ...structuredClone(value.claim),
+    heartbeatAt: value.claim.claimedAt,
+    executionStage: "claimed",
+  };
+  return runFactoryClaimMutation({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    action: "claim-acquire",
+    request: value,
+    nowMs,
+    mutate: (manifest) => {
+      const requestedAtMs = requireCanonicalFactoryTimestamp(
+        value.requestedAt,
+        "requestedAt",
+        nowMs,
+      );
+      if (
+        nowMs - requestedAtMs > 120 * 1_000 ||
+        value.claim.claimedAt !== value.requestedAt ||
+        value.claim.custodyEpoch !== 1
+      ) {
+        throw new AutomationControlError(
+          "claim_time_invalid",
+          "Initial factory claim must be current, begin at custody epoch one, and match requestedAt.",
+        );
+      }
+      if (!canonicalFactoryClaim(activeClaim)) {
+        throw new AutomationControlError(
+          "invalid_value",
+          "claim-acquire contains an invalid runtime-neutral factory claim.",
+        );
+      }
+      const expectedDomainDigest = createHash("sha256")
+        .update(JSON.stringify(activeClaim.conflictDomains), "utf8")
+        .digest("hex");
+      if (activeClaim.conflictDomainDigest !== expectedDomainDigest) {
+        throw new AutomationControlError(
+          "claim_conflict_digest_mismatch",
+          "Factory claim conflict domains do not match their digest.",
+        );
+      }
+      const task = requireFactoryTaskForClaim(
+        manifest,
+        value.taskId,
+        value.expectedTaskRevision,
+      );
+      requireFactoryPilotTask(task, activeClaim.githubIssue);
+      if (activeFactoryClaim(manifest, value.taskId) !== undefined) {
+        throw new AutomationControlError(
+          "claim_already_exists",
+          `Task ${value.taskId} already has an active factory claim.`,
+          { taskId: value.taskId },
+        );
+      }
+      const conflicting = (manifest.executionClaims ?? []).find((entry) => {
+        const claim = entry.claim;
+        return (
+          claim.claimId === activeClaim.claimId ||
+          claim.githubIssue.number === activeClaim.githubIssue.number ||
+          claim.branch === activeClaim.branch ||
+          claim.worktree === activeClaim.worktree ||
+          claim.conflictDomains.some((domain) =>
+            activeClaim.conflictDomains.includes(domain),
+          )
+        );
+      });
+      if (conflicting !== undefined) {
+        throw new AutomationControlError(
+          "claim_conflict",
+          `Task ${value.taskId} conflicts with active factory task ${conflicting.taskId}.`,
+          { taskId: value.taskId, conflictingTaskId: conflicting.taskId },
+        );
+      }
+      const entry = {
+        taskId: value.taskId,
+        taskRevision: task.revision,
+        bindingDigest: value.bindingDigest,
+        claim: activeClaim,
+      };
+      replaceFactoryClaim(manifest, entry);
+      const admission = {
+        schemaVersion: 1,
+        bridgeId: "freed-authority-v1",
+        authorityClaimId: activeClaim.claimId,
+        taskId: task.taskId,
+        taskRevision: task.revision,
+        bindingDigest: value.bindingDigest,
+        authorizedAt: value.requestedAt,
+        expiresAt: new Date(
+          requestedAtMs + FACTORY_CLAIM_ADMISSION_LIFETIME_MS,
+        ).toISOString(),
+      };
+      const result = {
+        schemaVersion: 1,
+        operationId: value.operationId,
+        taskId: task.taskId,
+        taskRevision: task.revision,
+        authorityClaimId: activeClaim.claimId,
+        custodyEpoch: activeClaim.custodyEpoch,
+        bindingDigest: value.bindingDigest,
+        conflictDomainDigest: activeClaim.conflictDomainDigest,
+        admission,
+      };
+      return { task, activeClaim: entry, result };
+    },
+  });
+}
+
+export function heartbeatFactoryExecutionClaim({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  request,
+  nowMs = Date.now(),
+}) {
+  const value = requireFactoryClaimRequestEnvelope(
+    request,
+    "claim-heartbeat",
+    nowMs,
+  );
+  if (
+    !exactObjectKeys(value, [
+      "authorityClaimId",
+      "bindingDigest",
+      "custodyEpoch",
+      "executionStage",
+      "heartbeatAt",
+      "operationId",
+      "schemaVersion",
+      "taskId",
+      "taskRevision",
+    ]) ||
+    !Number.isSafeInteger(value.taskRevision) ||
+    value.taskRevision <= 0 ||
+    !Number.isSafeInteger(value.custodyEpoch) ||
+    value.custodyEpoch <= 0 ||
+    !SHA256_PATTERN.test(String(value.bindingDigest ?? "")) ||
+    value.executionStage !== "running"
+  ) {
+    throw new AutomationControlError(
+      "invalid_value",
+      "claim-heartbeat request has an unsupported shape.",
+    );
+  }
+  const heartbeatAtMs = requireCanonicalFactoryTimestamp(
+    value.heartbeatAt,
+    "heartbeatAt",
+    nowMs,
+  );
+  return runFactoryClaimMutation({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    action: "claim-heartbeat",
+    request: value,
+    nowMs,
+    mutate: (manifest) => {
+      const task = requireFactoryTaskForClaim(
+        manifest,
+        value.taskId,
+        value.taskRevision,
+      );
+      const entry = requireCurrentFactoryClaim(
+        activeFactoryClaim(manifest, value.taskId),
+        value,
+      );
+      if (entry.claim.custodyEpoch !== value.custodyEpoch) {
+        throw new AutomationControlError(
+          "claim_epoch_mismatch",
+          `Task ${value.taskId} is at custody epoch ${entry.claim.custodyEpoch}, not ${value.custodyEpoch}.`,
+        );
+      }
+      if (heartbeatAtMs <= Date.parse(entry.claim.heartbeatAt)) {
+        throw new AutomationControlError(
+          "claim_heartbeat_stale",
+          "Factory claim heartbeat must advance exact custody time.",
+        );
+      }
+      const nextEntry = {
+        ...entry,
+        claim: {
+          ...entry.claim,
+          heartbeatAt: value.heartbeatAt,
+          executionStage: "running",
+        },
+      };
+      replaceFactoryClaim(manifest, nextEntry);
+      const result = structuredClone(value);
+      return { task, activeClaim: nextEntry, result };
+    },
+  });
+}
+
+export function transferFactoryExecutionClaim({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  request,
+  nowMs = Date.now(),
+}) {
+  const value = requireFactoryClaimRequestEnvelope(
+    request,
+    "claim-transfer",
+    nowMs,
+  );
+  if (
+    !exactObjectKeys(value, [
+      "authorityClaimId",
+      "bindingDigest",
+      "checkpointReference",
+      "destinationHostId",
+      "destinationWorkerId",
+      "destinationWorktree",
+      "nextEpoch",
+      "operationId",
+      "priorEpoch",
+      "schemaVersion",
+      "taskId",
+      "taskRevision",
+      "transferredAt",
+    ]) ||
+    !Number.isSafeInteger(value.taskRevision) ||
+    value.taskRevision <= 0 ||
+    !Number.isSafeInteger(value.priorEpoch) ||
+    value.priorEpoch <= 0 ||
+    value.nextEpoch !== value.priorEpoch + 1 ||
+    !SHA256_PATTERN.test(String(value.bindingDigest ?? "")) ||
+    !SHA256_PATTERN.test(String(value.checkpointReference ?? "")) ||
+    typeof value.destinationHostId !== "string" ||
+    !IDENTIFIER_PATTERN.test(value.destinationHostId) ||
+    typeof value.destinationWorkerId !== "string" ||
+    !IDENTIFIER_PATTERN.test(value.destinationWorkerId) ||
+    typeof value.destinationWorktree !== "string" ||
+    !path.isAbsolute(value.destinationWorktree) ||
+    path.normalize(value.destinationWorktree) !== value.destinationWorktree
+  ) {
+    throw new AutomationControlError(
+      "invalid_value",
+      "claim-transfer request has an unsupported shape.",
+    );
+  }
+  const transferredAtMs = requireCanonicalFactoryTimestamp(
+    value.transferredAt,
+    "transferredAt",
+    nowMs,
+  );
+  return runFactoryClaimMutation({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    action: "claim-transfer",
+    request: value,
+    nowMs,
+    mutate: (manifest) => {
+      const task = requireFactoryTaskForClaim(
+        manifest,
+        value.taskId,
+        value.taskRevision,
+      );
+      const entry = requireCurrentFactoryClaim(
+        activeFactoryClaim(manifest, value.taskId),
+        value,
+      );
+      if (
+        entry.claim.custodyEpoch !== value.priorEpoch ||
+        transferredAtMs <= Date.parse(entry.claim.heartbeatAt)
+      ) {
+        throw new AutomationControlError(
+          "claim_epoch_mismatch",
+          "Factory claim transfer does not advance current custody exactly once.",
+        );
+      }
+      const conflicting = (manifest.executionClaims ?? []).find(
+        (candidate) =>
+          candidate.taskId !== value.taskId &&
+          candidate.claim.worktree === value.destinationWorktree,
+      );
+      if (conflicting !== undefined) {
+        throw new AutomationControlError(
+          "claim_conflict",
+          `Destination worktree is already owned by ${conflicting.taskId}.`,
+        );
+      }
+      const nextEntry = {
+        ...entry,
+        claim: {
+          ...entry.claim,
+          custodyEpoch: value.nextEpoch,
+          hostId: value.destinationHostId,
+          workerId: value.destinationWorkerId,
+          worktree: value.destinationWorktree,
+          heartbeatAt: value.transferredAt,
+          executionStage: "running",
+          transferredAt: value.transferredAt,
+          checkpointReference: value.checkpointReference,
+        },
+      };
+      replaceFactoryClaim(manifest, nextEntry);
+      const result = structuredClone(value);
+      return { task, activeClaim: nextEntry, result };
+    },
+  });
+}
+
+export function releaseFactoryExecutionClaim({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  request,
+  nowMs = Date.now(),
+}) {
+  const value = requireFactoryClaimRequestEnvelope(
+    request,
+    "claim-release",
+    nowMs,
+  );
+  if (
+    !exactObjectKeys(value, [
+      "authorityClaimId",
+      "bindingDigest",
+      ...(value.custodyEpoch === undefined ? [] : ["custodyEpoch"]),
+      "expectedHeartbeatAt",
+      "expectedTaskRevision",
+      "operationId",
+      "reason",
+      "releasedAt",
+      "schemaVersion",
+      "taskId",
+    ]) ||
+    !Number.isSafeInteger(value.expectedTaskRevision) ||
+    value.expectedTaskRevision <= 0 ||
+    !SHA256_PATTERN.test(String(value.bindingDigest ?? "")) ||
+    !FACTORY_CLAIM_RELEASE_REASONS.includes(value.reason) ||
+    (value.custodyEpoch !== undefined &&
+      (!Number.isSafeInteger(value.custodyEpoch) || value.custodyEpoch <= 0))
+  ) {
+    throw new AutomationControlError(
+      "invalid_value",
+      "claim-release request has an unsupported shape.",
+    );
+  }
+  requireCanonicalFactoryTimestamp(
+    value.expectedHeartbeatAt,
+    "expectedHeartbeatAt",
+    nowMs,
+  );
+  const releasedAtMs = requireCanonicalFactoryTimestamp(
+    value.releasedAt,
+    "releasedAt",
+    nowMs,
+  );
+  const mutationRequest = {
+    ...value,
+    taskRevision: value.expectedTaskRevision,
+  };
+  delete mutationRequest.expectedTaskRevision;
+  return runFactoryClaimMutation({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    action: "claim-release",
+    request: value,
+    nowMs,
+    mutate: (manifest) => {
+      const task = requireFactoryTaskForClaim(
+        manifest,
+        value.taskId,
+        value.expectedTaskRevision,
+      );
+      const entry = requireCurrentFactoryClaim(
+        activeFactoryClaim(manifest, value.taskId),
+        mutationRequest,
+      );
+      if (
+        entry.claim.heartbeatAt !== value.expectedHeartbeatAt ||
+        (value.custodyEpoch !== undefined &&
+          entry.claim.custodyEpoch !== value.custodyEpoch)
+      ) {
+        throw new AutomationControlError(
+          "claim_heartbeat_mismatch",
+          "Factory claim changed before exact release.",
+        );
+      }
+      if (releasedAtMs < Date.parse(entry.claim.heartbeatAt)) {
+        throw new AutomationControlError(
+          "claim_time_invalid",
+          "Factory claim cannot be released before its current heartbeat.",
+        );
+      }
+      manifest.executionClaims = (manifest.executionClaims ?? []).filter(
+        (candidate) => candidate.taskId !== value.taskId,
+      );
+      const result = {
+        schemaVersion: 1,
+        operationId: value.operationId,
+        taskId: value.taskId,
+        taskRevision: value.expectedTaskRevision,
+        authorityClaimId: value.authorityClaimId,
+        bindingDigest: value.bindingDigest,
+        ...(value.custodyEpoch === undefined
+          ? {}
+          : { custodyEpoch: value.custodyEpoch }),
+        expectedHeartbeatAt: value.expectedHeartbeatAt,
+        reason: value.reason,
+        releasedAt: value.releasedAt,
+      };
+      return { task, activeClaim: null, result };
+    },
+  });
+}
+
+export function readFactoryExecutionClaim({
+  stateRoot,
+  taskId,
+  nowMs = Date.now(),
+}) {
+  requireIdentifier(taskId, "taskId");
+  const manifest = readTaskManifest({ stateRoot, nowMs });
+  const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
+  if (task === undefined) {
+    throw new AutomationControlError(
+      "task_not_found",
+      `Task ${taskId} does not exist.`,
+      { taskId },
+    );
+  }
+  const entry = activeFactoryClaim(manifest, taskId);
+  return {
+    schemaVersion: 1,
+    taskId,
+    taskRevision: entry?.taskRevision ?? task.revision,
+    bindingDigest: entry?.bindingDigest ?? null,
+    claim: entry === undefined ? null : structuredClone(entry.claim),
+  };
+}
+
+export function listFactoryExecutionClaims({
+  stateRoot,
+  nowMs = Date.now(),
+} = {}) {
+  const manifest = readTaskManifest({ stateRoot, nowMs });
+  return {
+    schemaVersion: 1,
+    claims: structuredClone(manifest.executionClaims ?? []).sort(
+      (left, right) => left.taskId.localeCompare(right.taskId),
+    ),
+  };
 }
 
 export function createTask({
@@ -11014,6 +12272,13 @@ export function transitionTask({
           throw new AutomationControlError(
             "task_not_found",
             `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
+        if (activeFactoryClaim(manifest, taskId) !== undefined) {
+          throw new AutomationControlError(
+            "claim_active",
+            `Task ${taskId} cannot transition while its factory execution claim is active.`,
             { taskId },
           );
         }
@@ -11994,6 +13259,13 @@ export function updateTaskAuthorities({
           throw new AutomationControlError(
             "task_not_found",
             `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
+        if (activeFactoryClaim(manifest, taskId) !== undefined) {
+          throw new AutomationControlError(
+            "claim_active",
+            `Task ${taskId} authority cannot change while its factory execution claim is active.`,
             { taskId },
           );
         }

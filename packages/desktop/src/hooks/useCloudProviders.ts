@@ -28,8 +28,8 @@ export type { ProviderState, CloudProviderStatus };
 
 function initialStatus(): CloudProviderStatus {
   return {
-    gdrive: { status: getCloudToken("gdrive") ? "connected" : "idle" },
-    dropbox: { status: getCloudToken("dropbox") ? "connected" : "idle" },
+    gdrive: { status: getCloudToken("gdrive") ? "connecting" : "idle" },
+    dropbox: { status: getCloudToken("dropbox") ? "connecting" : "idle" },
   };
 }
 
@@ -40,6 +40,9 @@ export function useCloudProviders() {
   const setProvider = useCallback(
     (provider: CloudProvider, state: ProviderState) => {
       setProviders((prev) => ({ ...prev, [provider]: state }));
+      updateCloudProvider(provider, state.status === "error"
+        ? { status: state.status, error: state.error }
+        : { status: state.status });
     },
     [],
   );
@@ -126,16 +129,6 @@ export function useCloudProviders() {
       connectAbortControllers.current = {};
     };
   }, []);
-
-  // Keep the debug panel's cloud sync section in sync with live provider state.
-  useEffect(() => {
-    (["gdrive", "dropbox"] as const).forEach((provider) => {
-      const providerState = providers[provider];
-      updateCloudProvider(provider, providerState.status === "error"
-        ? { status: providerState.status, error: providerState.error }
-        : { status: providerState.status });
-    });
-  }, [providers]);
 
   const anyConnected =
     providers.gdrive.status === "connected" ||

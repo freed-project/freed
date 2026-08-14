@@ -64,6 +64,7 @@ export class FriendsGalaxyRendererHost {
   private settledTransform: FriendsGalaxyTransform | null = null;
   private activityJournal: FriendsGalaxyActivityPatchJournal;
   private requestedRendererId: FriendsGalaxyRendererId | null = null;
+  private readonly showSurface: FriendsGalaxyRendererHostOptions["showSurface"];
   private readonly runtime: FriendsGalaxyBackendRuntime<
     FriendsGalaxyRendererId,
     FriendsGalaxyRendererBackend,
@@ -72,6 +73,7 @@ export class FriendsGalaxyRendererHost {
 
   constructor(options: FriendsGalaxyRendererHostOptions) {
     this.scene = options.scene;
+    this.showSurface = options.showSurface;
     this.activityJournal = new FriendsGalaxyActivityPatchJournal(
       options.scene.scene.nodeIds.length,
     );
@@ -148,6 +150,21 @@ export class FriendsGalaxyRendererHost {
       );
     }
     this.scene = scene;
+    const backend = this.activeBackend;
+    if (backend?.replaceScene) {
+      try {
+        if (backend.replaceScene(scene)) {
+          this.activeScene = scene;
+          this.applyState(backend);
+          const surface = this.runtime.activeSurface;
+          if (surface) this.showSurface(surface, backend.id);
+          return Promise.resolve(null);
+        }
+      } catch {
+        // Full activation preserves the previous visible surface while the
+        // replacement backend recovers from an in-place staging failure.
+      }
+    }
     const rendererId = this.activeId ?? this.requestedRendererId;
     return rendererId ? this.activate(rendererId) : Promise.resolve(null);
   }

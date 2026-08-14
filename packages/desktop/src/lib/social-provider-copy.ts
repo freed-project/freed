@@ -12,11 +12,16 @@ export interface SocialProviderCopy {
   memoryPressure: string;
 }
 
+export const EMPTY_PROVIDER_FEED_COPY = {
+  title: "Welcome!",
+  detail: "No items to show.",
+} as const;
+
 export const SOCIAL_PROVIDER_COPY = {
   x: {
     label: "X",
     settingsTitle: "X",
-    connectedEmptyState: "Your X timeline is up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull your home timeline into Freed. Sign in with your X account to start syncing.",
     disconnectedEmptyState:
@@ -32,7 +37,7 @@ export const SOCIAL_PROVIDER_COPY = {
   facebook: {
     label: "Facebook",
     settingsTitle: "Facebook",
-    connectedEmptyState: "Your Facebook feed is up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull your Facebook feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would.",
     disconnectedEmptyState:
@@ -49,7 +54,7 @@ export const SOCIAL_PROVIDER_COPY = {
   instagram: {
     label: "Instagram",
     settingsTitle: "Instagram",
-    connectedEmptyState: "Your Instagram feed is up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull your Instagram feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would.",
     disconnectedEmptyState:
@@ -66,7 +71,7 @@ export const SOCIAL_PROVIDER_COPY = {
   linkedin: {
     label: "LinkedIn",
     settingsTitle: "LinkedIn",
-    connectedEmptyState: "Your LinkedIn feed is up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull your LinkedIn feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would.",
     disconnectedEmptyState:
@@ -83,7 +88,7 @@ export const SOCIAL_PROVIDER_COPY = {
   substack: {
     label: "Substack",
     settingsTitle: "Substack",
-    connectedEmptyState: "Your Substack essays and notes are up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull Substack essays, notes, public follows, and visible subscriptions into Freed. Log in through a native browser window.",
     disconnectedEmptyState:
@@ -100,7 +105,7 @@ export const SOCIAL_PROVIDER_COPY = {
   medium: {
     label: "Medium",
     settingsTitle: "Medium",
-    connectedEmptyState: "Your Medium stories and responses are up to date.",
+    connectedEmptyState: EMPTY_PROVIDER_FEED_COPY.detail,
     disconnectedSettings:
       "Pull Medium stories, responses, public follows, and visible activity into Freed. Log in through a native browser window.",
     disconnectedEmptyState:

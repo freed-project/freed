@@ -76,7 +76,7 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
-  ensurePwaLibraryCoreFeaturePreviewState,
+  ensurePwaLibraryCoreLocalSampleState,
   openPwaLibraryCoreFeedReader,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
@@ -232,7 +232,7 @@ function App() {
     if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
 
     void (async () => {
-      await ensurePwaLibraryCoreFeaturePreviewState();
+      await ensurePwaLibraryCoreLocalSampleState();
       if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
         await state.clearSampleData();
       }

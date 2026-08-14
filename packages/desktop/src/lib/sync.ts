@@ -24,6 +24,7 @@ import {
   stopSqliteLibraryCloudSync,
 } from "./library-core-cloud-sync";
 import { reloadSqliteLibraryState } from "./library-client";
+import { base64ToBytes } from "./google-drive";
 import { safeUnlisten } from "./safe-unlisten";
 
 export type { CloudProvider };
@@ -76,7 +77,7 @@ interface TokenExchangeResponse {
 interface NativeGoogleOAuthResponse {
   readonly status: number;
   readonly headers: Array<[string, string]>;
-  readonly body: number[];
+  readonly bodyB64: string;
 }
 
 export type CloudConflictWinner = "local" | "cloud";
@@ -173,8 +174,8 @@ function tokenBundleFromResponse(
   };
 }
 
-function decodeNativeBody(body: number[]): string {
-  return new TextDecoder().decode(new Uint8Array(body));
+function decodeNativeBody(bodyB64: string): string {
+  return new TextDecoder().decode(base64ToBytes(bodyB64));
 }
 
 async function postGoogleTokenProxy(
@@ -188,7 +189,7 @@ async function postGoogleTokenProxy(
       contentType: "application/json",
     },
   );
-  const body = decodeNativeBody(response.body);
+  const body = decodeNativeBody(response.bodyB64);
   if (response.status < 200 || response.status >= 300) {
     let errorCode = "";
     let description = "";

@@ -92,7 +92,7 @@ import {
   enqueuePwaLibraryCoreReadAssignments,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   enqueuePwaLibraryCoreUserStateToggle,
-  ensurePwaLibraryCoreFeaturePreviewState,
+  ensurePwaLibraryCoreLocalSampleState,
   initializePwaLibraryCoreState,
   subscribePwaLibraryCoreState,
 } from "./library-core-runtime";
@@ -551,15 +551,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
-    if (import.meta.env.DEV) {
-      await ensurePwaLibraryCoreFeaturePreviewState();
-    }
+    await ensurePwaLibraryCoreLocalSampleState();
     const persons = data.friends.map((friend) =>
       personFromLegacyFriend(friend as Friend),
     );
-    const accounts = data.friends.flatMap((friend) =>
-      accountsFromLegacyFriend(friend as Friend),
-    );
+    const accounts = data.accounts;
     for (const feed of data.feeds) {
       await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     }
