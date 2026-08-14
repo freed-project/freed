@@ -72,9 +72,32 @@ test("release publication delegates one exact tag to the trusted App publisher",
     /release-tag-publisher\.mjs publish[\s\S]*--tag "\$\{TAG\}"[\s\S]*--commit "\$\{LOCAL_RELEASE_SHA\}"[\s\S]*--branch "\$\{EXPECTED_BRANCH\}"[\s\S]*--release-file-sha256 "\$\{RELEASE_FILE_SHA256\}"/,
   );
   assert.match(releasePublish, /git ls-remote --tags origin/);
+  assert.match(releasePublish, /TAG_ALREADY_PUBLISHED=false/);
+  assert.match(
+    releasePublish,
+    /\$\{LOCAL_TAG_EXISTS\}" != "\$\{REMOTE_TAG_EXISTS\}"[\s\S]*local and remote state disagree for immutable tag/,
+  );
+  assert.match(
+    releasePublish,
+    /Recovered exact existing immutable tag \$\{TAG\}; publication was already committed/,
+  );
+  assert.match(
+    releasePublish,
+    /if \[\[ "\$\{TAG_ALREADY_PUBLISHED\}" != true \]\]; then[\s\S]*release-tag-publisher\.mjs publish/,
+  );
   assert.match(
     releasePublish,
     /git fetch origin "refs\/tags\/\$\{TAG\}:refs\/tags\/\$\{TAG\}"/,
+  );
+  assert.match(releasePublish, /TAG_FETCH_MAX_ATTEMPTS=8/);
+  assert.match(
+    releasePublish,
+    /for \(\(TAG_FETCH_ATTEMPT = 1; TAG_FETCH_ATTEMPT <= TAG_FETCH_MAX_ATTEMPTS; TAG_FETCH_ATTEMPT \+= 1\)\)/,
+  );
+  assert.match(releasePublish, /Waiting for GitHub to expose newly published tag/);
+  assert.match(
+    releasePublish,
+    /published tag \$\{TAG\} did not become readable after \$\{TAG_FETCH_MAX_ATTEMPTS\} attempts/,
   );
   assert.match(releasePublish, /git cat-file -t "refs\/tags\/\$\{TAG\}"/);
   assert.match(releasePublish, /git rev-list -n 1 "refs\/tags\/\$\{TAG\}"/);
