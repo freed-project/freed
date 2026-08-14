@@ -80,7 +80,12 @@ export function MobileSyncTab() {
   const [transferringWriter, setTransferringWriter] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
   const driveState = cloudProviders?.gdrive ?? null;
-  const connected = providers.gdrive.status === "connected";
+  const driveCardState = driveState === null
+    ? providers.gdrive
+    : driveState.status === "error"
+      ? { status: "error" as const, error: driveState.error ?? "Cloud sync failed." }
+      : { status: driveState.status };
+  const connected = driveCardState.status === "connected";
   const diagnosticError = driveState?.error ?? manualError;
 
   useEffect(() => {
@@ -154,7 +159,7 @@ export function MobileSyncTab() {
 
           <CloudProviderCard
             provider="gdrive"
-            state={providers.gdrive}
+            state={driveCardState}
             onConnect={connect}
             onCancelConnect={setCancelProvider}
             onDisconnect={disconnect}

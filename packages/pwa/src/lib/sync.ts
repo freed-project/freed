@@ -145,7 +145,26 @@ async function syncGoogleDriveOnce(
     statusMessage: "Refreshing the SQLite Library checkpoint.",
     error: undefined,
   });
-  await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+  try {
+    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+  } catch (error) {
+    if (generation !== cloudGeneration || signal.aborted) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    updateCloudProvider("gdrive", {
+      status: "error",
+      stage: "download",
+      error: message,
+      lastErrorAt: Date.now(),
+      statusMessage: "SQLite Library sync failed.",
+      pendingReason: "Fix the error, then use Sync now to retry.",
+    });
+    recordCloudProviderEvent("gdrive", {
+      kind: "error",
+      stage: "download",
+      message,
+    });
+    throw error;
+  }
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
   updateCloudProvider("gdrive", {
@@ -281,9 +300,11 @@ export async function startCloudSync(
   const generation = cloudGeneration;
   const controller = new AbortController();
   cloudAbort = controller;
-  setCloudConnected(true);
+  setCloudConnected(false);
   try {
     await syncGoogleDriveOnce(generation, controller.signal);
+    if (generation !== cloudGeneration || controller.signal.aborted) return;
+    setCloudConnected(true);
     scheduleRefresh(generation, controller.signal);
   } catch (error) {
     if (generation === cloudGeneration && !controller.signal.aborted) {
@@ -308,9 +329,15 @@ export async function syncCloudProviderNow(
   if (provider !== "gdrive") {
     throw new Error("The SQLite Library PWA currently requires Google Drive");
   }
-  const generation = cloudGeneration;
-  const controller = cloudAbort ?? new AbortController();
-  await syncGoogleDriveOnce(generation, controller.signal);
+  if (!cloudConnected || !cloudAbort || cloudAbort.signal.aborted) {
+    const token = await getValidCloudToken(provider);
+    if (!token) {
+      throw new Error("Reconnect Google Drive before retrying sync");
+    }
+    await startCloudSync(provider, token);
+    return;
+  }
+  await syncGoogleDriveOnce(cloudGeneration, cloudAbort.signal);
 }
 
 export function scheduleCloudUpload(

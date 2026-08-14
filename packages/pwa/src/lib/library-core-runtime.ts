@@ -230,8 +230,8 @@ export async function initializePwaLibraryCoreState(): Promise<LibraryState> {
   return state;
 }
 
-/** Establish the isolated signed Library used only by local feature previews. */
-export async function ensurePwaLibraryCoreFeaturePreviewState(): Promise<void> {
+/** Establish the isolated signed Library used by local sample-data previews. */
+export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
   await getPortableStore().bootstrapFeaturePreviewAuthority();
   const state = await readSelectedState();
   if (state) publishState(state);
