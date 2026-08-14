@@ -1458,7 +1458,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
-                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                  <div className="theme-settings-theme-options">
                     {THEME_DEFINITIONS.map((theme) => {
                       const isActive = themeId === theme.id;
                       return (
