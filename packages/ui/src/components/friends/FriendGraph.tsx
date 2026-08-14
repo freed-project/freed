@@ -187,7 +187,8 @@ interface GraphDiagnosticState {
 
 const BACKGROUND_STAR_COUNT = 100_000;
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
-const CANVAS_CONTROL_BASE = `${CONTROL_BASE} theme-canvas-control`;
+const CANVAS_CONTROL_BASE =
+  "btn-secondary theme-canvas-control rounded-[var(--card-radius)] px-3 py-1.5 text-xs shadow-sm";
 const MENU_WIDTH = 264;
 const MENU_ESTIMATED_HEIGHT = 376;
 
