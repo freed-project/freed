@@ -1,5 +1,4 @@
 import type { MetadataRoute } from "next";
-import { posts } from "@/content";
 import {
   getChangelogPageHref,
   getChangelogTotalPages,
@@ -48,26 +47,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/updates`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
       url: `${baseUrl}/privacy`,
       lastModified: new Date(),
       changeFrequency: "yearly",
       priority: 0.3,
     },
   ];
-
-  // Dynamic blog posts
-  const blogPosts: MetadataRoute.Sitemap = posts.map((post) => ({
-    url: `${baseUrl}/updates/${post.slug}`,
-    lastModified: new Date(post.date),
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-  }));
 
   const changelogPages: MetadataRoute.Sitemap = (
     ["all", "production"] satisfies ChangelogMode[]
@@ -83,5 +68,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ),
   );
 
-  return [...staticPages, ...blogPosts, ...changelogPages];
+  return [...staticPages, ...changelogPages];
 }

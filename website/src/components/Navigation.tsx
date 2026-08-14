@@ -6,6 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { Tooltip } from "@freed/ui/components/Tooltip";
 import { useNewsletter } from "@/context/NewsletterContext";
+import {
+  NAV_INDICATOR_SPRING,
+  NAV_INDICATOR_THICKNESS,
+  NAV_INDICATOR_THICKNESS_TRANSITION,
+} from "@/components/navigation-indicator";
 
 const WTF_CAPTIONS = [
   // Core brand
@@ -57,11 +62,16 @@ export default function Navigation() {
   const [scrolled, setScrolled] = useState(false);
   const [homePageScrolledPastFold, setHomePageScrolledPastFold] = useState(false);
   const [mobileMenuTopOffset, setMobileMenuTopOffset] = useState(64);
+  const [hoveredNavPath, setHoveredNavPath] = useState<string | null>(null);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const mobileTopBarRef = useRef<HTMLDivElement | null>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
   const showMobileTopCta =
     !mobileMenuOpen && (pathname !== "/" || homePageScrolledPastFold);
+  const activeNavPath = NAV_ITEMS.find((item) =>
+    isActive(item.path, pathname),
+  )?.path;
+  const activeIndicatorHovered = hoveredNavPath === activeNavPath;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -143,7 +153,7 @@ export default function Navigation() {
         onMouseEnter={handleMouseEnter}
         onFocus={handleMouseEnter}
       >
-        <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
+        <span className="theme-logo-primary relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
           FREED
           <span
             className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
@@ -152,7 +162,7 @@ export default function Navigation() {
             }}
           />
         </span>
-        <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
+        <span className="theme-logo-suffix text-sm sm:text-base font-bold gradient-text relative font-logo">
           .WTF
         </span>
       </Link>
@@ -173,6 +183,10 @@ export default function Navigation() {
               ? "text-text-primary"
               : "text-text-secondary hover:text-text-primary"
           }`}
+          onMouseEnter={() => setHoveredNavPath(item.path)}
+          onMouseLeave={() => setHoveredNavPath(null)}
+          onFocus={() => setHoveredNavPath(item.path)}
+          onBlur={() => setHoveredNavPath(null)}
         >
           {item.label}
         </Link>
@@ -180,10 +194,19 @@ export default function Navigation() {
       {/* Sliding underline - only animates horizontally */}
       {underlineStyle.width > 0 && (
         <motion.span
-          className="absolute -bottom-0.5 h-px bg-text-primary pointer-events-none"
+          className="absolute top-[calc(100%-1px)] bg-text-primary pointer-events-none"
           initial={false}
-          animate={{ left: underlineStyle.left, width: underlineStyle.width }}
-          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          animate={{
+            left: underlineStyle.left,
+            width: underlineStyle.width,
+            height: activeIndicatorHovered
+              ? NAV_INDICATOR_THICKNESS.hovered
+              : NAV_INDICATOR_THICKNESS.resting,
+          }}
+          transition={{
+            ...NAV_INDICATOR_SPRING,
+            height: NAV_INDICATOR_THICKNESS_TRANSITION,
+          }}
         />
       )}
 

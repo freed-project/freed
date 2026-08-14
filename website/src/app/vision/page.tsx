@@ -89,15 +89,18 @@ export default function VisionPage() {
           <aside className={styles.status} aria-label="Current status">
             <div>
               <strong>Working software</strong>
-              <span>
+              <span className={styles.statusLinks}>
                 <a
                   href="https://github.com/freed-project/freed"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Open
-                </a>{" "}
-                source. <Link href="/updates">Active</Link> development.
+                  Open source
+                </a>
+                <span className={styles.statusLinkSeparator} aria-hidden="true">
+                  ·
+                </span>
+                <Link href="/changelog">Active development</Link>
               </span>
             </div>
             <div>
@@ -158,8 +161,7 @@ export default function VisionPage() {
             <p>
               I need angels who can fund real engineering now, and I need users
               whose support proves the thesis those angels are betting on. Every
-              dollar a user sends makes that bet more rational, which is why the
-              two groups are one system rather than two asks.
+              dollar a user contributes proves that bet.
             </p>
           </div>
 
@@ -175,54 +177,33 @@ export default function VisionPage() {
                   <strong>Material effect</strong>
                   <p>{path.effect}</p>
                 </aside>
+                {path.stage === "Users" && (
+                  <aside className={styles.modelNote}>
+                    <strong>Every contribution works twice.</strong>
+                    <p>
+                      Every dollar you send funds the work and becomes a vote of
+                      confidence when I sit down with angels. Monthly support
+                      carries more weight because you renew that vote. It shows
+                      Freed keeps earning its place in your life, gives me
+                      dependable runway, and makes an angel check easier to
+                      justify. Angel capital can then buy engineering capacity,
+                      specialist work, and speed I cannot reach alone.
+                    </p>
+                    <p>
+                      If Freed reaches {integer.format(10_000)} active users and
+                      {" "}
+                      {percent.format(0.1)} choose to contribute {dollars.format(10)}
+                      {" "}
+                      per month, that is {dollars.format(120_000)} in gross annual
+                      support. That can eventually make Freed permanently
+                      independent. Before then, that evidence can attract the
+                      patient capital I need to get there.
+                    </p>
+                  </aside>
+                )}
               </article>
             ))}
           </div>
-
-          <div className={styles.supportLoop}>
-            <p className={styles.cardLabel}>How support compounds</p>
-            <ol>
-              <li>
-                <strong>Monthly support</strong>
-                <span>Funds each month of work.</span>
-              </li>
-              <li>
-                <strong>Evidence</strong>
-                <span>
-                  Shows that Freed keeps earning a place in people&rsquo;s lives.
-                </span>
-              </li>
-              <li>
-                <strong>Angel confidence</strong>
-                <span>Makes a larger check easier to justify.</span>
-              </li>
-              <li>
-                <strong>More capacity</strong>
-                <span>Buys engineering, security, counsel, and reach.</span>
-              </li>
-            </ol>
-          </div>
-
-          <aside className={styles.modelNote}>
-            <strong>Every contribution works twice.</strong>
-            <p>
-              Every dollar you send funds the work and becomes a vote of
-              confidence when I sit down with angels. Monthly support carries
-              more weight because you renew that vote. It shows Freed keeps
-              earning its place in your life, gives me dependable runway, and
-              makes an angel check easier to justify. Angel capital can then buy
-              engineering capacity, specialist work, and speed I cannot reach
-              alone.
-            </p>
-            <p>
-              If Freed reaches {integer.format(10_000)} active users and
-              {" "}{percent.format(0.1)} choose to contribute {dollars.format(10)}
-              {" "}per month, that is {dollars.format(120_000)} in gross annual
-              support. That can eventually make Freed permanently independent.
-              Before then, that evidence can attract the patient capital I need
-              to get there.
-            </p>
-          </aside>
         </VisionReveal>
       </section>
 
@@ -264,17 +245,9 @@ export default function VisionPage() {
               </p>
             </div>
             <div className={styles.invitationActions}>
-              <Link className={`${styles.primaryAction} btn-primary`} href="/get">
-                Get Freed <Arrow />
+              <Link className={`${styles.secondaryAction} btn-secondary`} href="/get">
+                Get Freed
               </Link>
-              <a
-                className={`${styles.secondaryAction} btn-secondary`}
-                href="https://aubreyfalconer.com"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Talk with Aubrey
-              </a>
               <a
                 className={`${styles.secondaryAction} btn-secondary`}
                 href="https://github.com/freed-project/freed"
@@ -282,6 +255,14 @@ export default function VisionPage() {
                 rel="noopener noreferrer"
               >
                 Review the code
+              </a>
+              <a
+                className={`${styles.primaryAction} btn-primary`}
+                href="https://aubreyfalconer.com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Talk with Aubrey <Arrow />
               </a>
             </div>
           </div>

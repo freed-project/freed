@@ -12,6 +12,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/updates",
+        destination: "/changelog",
+        permanent: false,
+      },
+      {
+        source: "/updates/:path*",
+        destination: "/changelog",
+        permanent: false,
+      },
+      {
         source: "/changelog/all",
         destination: "/changelog",
         permanent: true,

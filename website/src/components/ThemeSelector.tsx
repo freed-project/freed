@@ -1,27 +1,15 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
-  useState,
   type FocusEvent as ReactFocusEvent,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import type { ThemeId } from "@freed/shared/themes";
 import { ThemePreviewButton } from "@freed/ui/components/ThemePreviewButton";
 import { Tooltip } from "@freed/ui/components/Tooltip";
 import { THEME_DEFINITIONS, useTheme } from "@/context/ThemeContext";
-
-interface ThemeSelectorProps {
-  compact?: boolean;
-}
-
-interface FloatingRect {
-  left: number;
-  top: number;
-  width: number;
-}
 
 // Light themes occupy the first row and dark themes occupy the second.
 // THEME_DEFINITIONS serves other consumers, so this surface owns its order.
@@ -39,225 +27,192 @@ function displayRank(id: ThemeId): number {
   return index === -1 ? THEME_DISPLAY_ORDER.length : index;
 }
 
-export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
+export default function ThemeSelector() {
   const { themeId, setThemeId, previewTheme, revertPreview } = useTheme();
   const orderedThemes = [...THEME_DEFINITIONS].sort(
     (a, b) => displayRank(a.id) - displayRank(b.id),
   );
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const inlineGridRef = useRef<HTMLDivElement | null>(null);
-  const floatingGridRef = useRef<HTMLDivElement | null>(null);
-  const ignoreNextInlineMouseLeaveRef = useRef(false);
-  const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
-  const [stableHeight, setStableHeight] = useState<number | null>(null);
-  const isFloating = compact && floatingRect !== null;
+  // Freed Desktop previews the complete theme on hover and focus. On the
+  // website, a font change can reflow everything above this footer. Anchor the
+  // real grid with scroll compensation so it never detaches from its footer or
+  // moves out from under the pointer. A cloned fixed layer caused both defects.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const anchorTopRef = useRef<number | null>(null);
+  const anchorFrameRef = useRef<number | null>(null);
+  const anchorRequestedRef = useRef(false);
+  const anchorStableFramesRef = useRef(0);
+  const committedThemeIdRef = useRef(themeId);
+  const revertPreviewRef = useRef(revertPreview);
+  const previousInlineScrollBehaviorRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!isFloating) {
-      return;
+  committedThemeIdRef.current = themeId;
+  revertPreviewRef.current = revertPreview;
+
+  const stopSelectorAnchor = useCallback(() => {
+    if (anchorFrameRef.current !== null) {
+      window.cancelAnimationFrame(anchorFrameRef.current);
+      anchorFrameRef.current = null;
     }
 
-    function clearFloatingPreview() {
-      setFloatingRect(null);
-      revertPreview();
-    }
+    anchorTopRef.current = null;
+    anchorStableFramesRef.current = 0;
 
-    window.addEventListener("resize", clearFloatingPreview);
-    window.addEventListener("scroll", clearFloatingPreview, true);
-    return () => {
-      window.removeEventListener("resize", clearFloatingPreview);
-      window.removeEventListener("scroll", clearFloatingPreview, true);
-    };
-  }, [isFloating, revertPreview]);
-
-  useEffect(() => {
-    if (!wrapperRef.current || typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const recordHeight = () => {
-      if (!wrapperRef.current) {
-        return;
+    if (previousInlineScrollBehaviorRef.current !== null) {
+      const root = document.documentElement;
+      const previousScrollBehavior = previousInlineScrollBehaviorRef.current;
+      if (previousScrollBehavior) {
+        root.style.scrollBehavior = previousScrollBehavior;
+      } else {
+        root.style.removeProperty("scroll-behavior");
       }
-
-      const nextHeight = Math.ceil(wrapperRef.current.getBoundingClientRect().height);
-      setStableHeight((currentHeight) => {
-        if (currentHeight !== null && currentHeight >= nextHeight) {
-          return currentHeight;
-        }
-
-        return nextHeight;
-      });
-    };
-
-    recordHeight();
-    const observer = new ResizeObserver(recordHeight);
-    observer.observe(wrapperRef.current);
-    window.addEventListener("resize", recordHeight);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", recordHeight);
-    };
+      previousInlineScrollBehaviorRef.current = null;
+    }
   }, []);
 
-  function activatePreview(nextThemeId: ThemeId) {
-    if (compact && floatingRect === null) {
-      const rect = wrapperRef.current?.getBoundingClientRect();
-      if (rect) {
-        // Theme previews can change page fonts and total document height. Keep
-        // the interactive copy fixed at its captured viewport coordinates so
-        // that global reflow cannot move the swatch out from under the pointer.
-        ignoreNextInlineMouseLeaveRef.current = true;
-        setFloatingRect({
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-        });
-      }
-    }
-
-    previewTheme(nextThemeId);
-  }
-
-  function clearPreview() {
-    ignoreNextInlineMouseLeaveRef.current = false;
-    setFloatingRect(null);
-    revertPreview();
-  }
-
-  function commitTheme(nextThemeId: ThemeId) {
-    ignoreNextInlineMouseLeaveRef.current = false;
-    setFloatingRect(null);
-    setThemeId(nextThemeId);
-  }
-
-  function shouldKeepPreview(
-    event:
-      | ReactFocusEvent<HTMLDivElement>
-      | ReactMouseEvent<HTMLDivElement>,
-  ) {
-    const nextTarget = event.relatedTarget;
-    if (!(nextTarget instanceof Node)) {
-      return false;
-    }
-
-    if (event.currentTarget.contains(nextTarget)) {
-      return true;
-    }
-
-    return (
-      inlineGridRef.current?.contains(nextTarget)
-      || floatingGridRef.current?.contains(nextTarget)
-      || false
-    );
-  }
-
-  function handleMouseLeave(
-    layer: "inline" | "floating",
-    event: ReactMouseEvent<HTMLDivElement>,
-  ) {
-    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
-      ignoreNextInlineMouseLeaveRef.current = false;
+  const keepSelectorAnchored = useCallback(function anchorFrame() {
+    const grid = gridRef.current;
+    const anchorTop = anchorTopRef.current;
+    if (!grid || anchorTop === null) {
+      stopSelectorAnchor();
       return;
     }
 
-    if (!shouldKeepPreview(event)) {
-      clearPreview();
-    }
-  }
-
-  function handleBlurCapture(event: ReactFocusEvent<HTMLDivElement>) {
-    if (!shouldKeepPreview(event)) {
-      clearPreview();
-    }
-  }
-
-  function handleButtonMouseLeave(
-    layer: "inline" | "floating",
-    event: ReactMouseEvent<HTMLButtonElement>,
-  ) {
-    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
-      ignoreNextInlineMouseLeaveRef.current = false;
-      return;
+    const delta = grid.getBoundingClientRect().top - anchorTop;
+    const scrollBeforeCorrection = window.scrollY;
+    if (Math.abs(delta) > 0.25) {
+      // The stylesheet enables smooth scrolling globally. startSelectorAnchor
+      // temporarily overrides it so this correction lands before the next paint.
+      window.scrollBy(0, delta);
     }
 
-    const nextTarget = event.relatedTarget;
+    const correctionApplied = Math.abs(window.scrollY - scrollBeforeCorrection) > 0.25;
+    if (Math.abs(delta) <= 0.25 || !correctionApplied) {
+      anchorStableFramesRef.current += 1;
+    } else {
+      anchorStableFramesRef.current = 0;
+    }
+
+    const root = document.documentElement;
+    const committedThemeRestored = root.dataset.theme === committedThemeIdRef.current;
+    const transitionFinished = root.dataset.themeTransition === undefined;
     if (
-      nextTarget instanceof Element
-      && nextTarget.closest(".theme-preview-button")
+      !anchorRequestedRef.current
+      && committedThemeRestored
+      && transitionFinished
+      && anchorStableFramesRef.current >= 3
     ) {
+      stopSelectorAnchor();
+      return;
+    }
+
+    anchorFrameRef.current = window.requestAnimationFrame(anchorFrame);
+  }, [stopSelectorAnchor]);
+
+  const startSelectorAnchor = useCallback(() => {
+    anchorRequestedRef.current = true;
+    anchorStableFramesRef.current = 0;
+
+    if (anchorTopRef.current === null && gridRef.current) {
+      anchorTopRef.current = gridRef.current.getBoundingClientRect().top;
+      const root = document.documentElement;
+      previousInlineScrollBehaviorRef.current = root.style.scrollBehavior;
+      root.style.scrollBehavior = "auto";
+    }
+
+    if (anchorFrameRef.current === null) {
+      anchorFrameRef.current = window.requestAnimationFrame(keepSelectorAnchored);
+    }
+  }, [keepSelectorAnchored]);
+
+  const settleSelectorAnchor = useCallback(() => {
+    anchorRequestedRef.current = false;
+    anchorStableFramesRef.current = 0;
+    if (anchorTopRef.current !== null && anchorFrameRef.current === null) {
+      anchorFrameRef.current = window.requestAnimationFrame(keepSelectorAnchored);
+    }
+  }, [keepSelectorAnchored]);
+
+  const activatePreview = useCallback((nextThemeId: ThemeId) => {
+    startSelectorAnchor();
+    previewTheme(nextThemeId);
+  }, [previewTheme, startSelectorAnchor]);
+
+  const clearPreview = useCallback(() => {
+    revertPreview();
+    settleSelectorAnchor();
+  }, [revertPreview, settleSelectorAnchor]);
+
+  const commitTheme = useCallback((nextThemeId: ThemeId) => {
+    committedThemeIdRef.current = nextThemeId;
+    setThemeId(nextThemeId);
+    settleSelectorAnchor();
+  }, [setThemeId, settleSelectorAnchor]);
+
+  const handleBlurCapture = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
+    if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) {
       return;
     }
 
     clearPreview();
-  }
+  }, [clearPreview]);
 
-  function renderSelectorContent(layer: "inline" | "floating") {
-    return (
-      <>
-        <h4 className="mb-4 font-semibold text-text-primary">Theme</h4>
-        <div
-          ref={layer === "inline" ? inlineGridRef : floatingGridRef}
-          role="group"
-          aria-label="Theme"
-          className="website-theme-grid"
-          data-theme-selector-layer={layer}
-          onMouseLeave={(event) => handleMouseLeave(layer, event)}
-          onBlurCapture={handleBlurCapture}
-        >
-          {orderedThemes.map((theme) => (
-            <Tooltip
-              key={theme.id}
-              side="top"
-              label={theme.name}
-              description={theme.description}
-              className="items-center justify-center"
-            >
-              <ThemePreviewButton
-                theme={theme}
-                active={themeId === theme.id}
-                variant="compact"
-                onMouseEnter={() => activatePreview(theme.id)}
-                onMouseLeave={(event) => handleButtonMouseLeave(layer, event)}
-                onFocus={() => previewTheme(theme.id)}
-                onClick={() => commitTheme(theme.id)}
-                className="website-theme-swatch"
-              />
-            </Tooltip>
-          ))}
-        </div>
-      </>
-    );
-  }
+  useEffect(() => {
+    const cancelPreviewForViewportChange = () => {
+      anchorRequestedRef.current = false;
+      stopSelectorAnchor();
+      revertPreviewRef.current();
+    };
+
+    window.addEventListener("resize", cancelPreviewForViewportChange);
+    window.addEventListener("wheel", cancelPreviewForViewportChange, { passive: true });
+    window.addEventListener("touchmove", cancelPreviewForViewportChange, { passive: true });
+    return () => {
+      window.removeEventListener("resize", cancelPreviewForViewportChange);
+      window.removeEventListener("wheel", cancelPreviewForViewportChange);
+      window.removeEventListener("touchmove", cancelPreviewForViewportChange);
+    };
+  }, [stopSelectorAnchor]);
+
+  useEffect(() => {
+    return () => {
+      anchorRequestedRef.current = false;
+      stopSelectorAnchor();
+      revertPreviewRef.current();
+    };
+  }, [stopSelectorAnchor]);
 
   return (
-    <div
-      ref={wrapperRef}
-      className="relative"
-      style={stableHeight ? { minHeight: `${stableHeight}px` } : undefined}
-    >
+    <div>
+      <h4 className="mb-4 font-semibold text-text-primary">Theme</h4>
       <div
-        aria-hidden={isFloating || undefined}
-        style={isFloating ? { visibility: "hidden" } : undefined}
+        role="group"
+        aria-label="Theme"
+        className="website-theme-grid"
+        data-theme-selector-layer="inline"
+        ref={gridRef}
+        onMouseLeave={clearPreview}
+        onBlurCapture={handleBlurCapture}
       >
-        {renderSelectorContent("inline")}
-      </div>
-      {isFloating && typeof document !== "undefined"
-        ? createPortal(
-          <div
-            className="fixed z-[80]"
-            style={{
-              left: `${floatingRect.left}px`,
-              top: `${floatingRect.top}px`,
-              width: `${floatingRect.width}px`,
-            }}
+        {orderedThemes.map((theme) => (
+          <Tooltip
+            key={theme.id}
+            side="top"
+            label={theme.name}
+            description={theme.description}
+            className="items-center justify-center"
           >
-            {renderSelectorContent("floating")}
-          </div>,
-          document.body,
-        )
-        : null}
+            <ThemePreviewButton
+              theme={theme}
+              active={themeId === theme.id}
+              variant="compact"
+              onMouseEnter={() => activatePreview(theme.id)}
+              onFocus={() => activatePreview(theme.id)}
+              onClick={() => commitTheme(theme.id)}
+              className="website-theme-swatch"
+            />
+          </Tooltip>
+        ))}
+      </div>
     </div>
   );
 }

@@ -231,7 +231,7 @@ export default function PrivacyContent() {
                 If we make a material change to this policy, we'll update the
                 effective date at the top and post a note in the{" "}
                 <Link
-                  href="/updates"
+                  href="/changelog"
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
                   Updates
