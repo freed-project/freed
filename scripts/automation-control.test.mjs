@@ -42,6 +42,7 @@ import {
   OBSERVER_AUTHORITIES,
   TASK_STATES,
   acquireLease as acquireLeasePublic,
+  acquireFactoryExecutionClaim,
   appendControlEvent,
   appendOutcomeControlEvent,
   automationControlPaths,
@@ -53,10 +54,12 @@ import {
   createTask,
   finalizeTaskOutcome,
   heartbeatLease as heartbeatLeaseLive,
+  heartbeatFactoryExecutionClaim,
   inspectExactOutcomeControlHistory,
   inspectExactTaskLifecycleHistory,
   inspectExactTaskManifestHistoryParity,
   inspectLeaseTransactionEventHistory,
+  listFactoryExecutionClaims,
   inspectLeaseCleanupArchiveCapacity,
   inspectLease,
   isTaskTransitionAllowed,
@@ -70,11 +73,14 @@ import {
   readAutomationPlanningAdmission,
   readBoundedLeaseDirectoryEntriesForTest,
   readTask,
+  readFactoryExecutionClaim,
   readTaskManifest,
   recoverExpiredGeneralActorLeaseAcquire,
   releaseLease as releaseLeaseMutation,
+  releaseFactoryExecutionClaim,
   resolveAutomationStateRoot,
   transitionTask,
+  transferFactoryExecutionClaim,
   updateTaskAuthorities,
   validateOutcomeLedgerRepairEvent,
   verifyOwnerCapabilityEnvelope,
@@ -3187,7 +3193,10 @@ test("a pending task transaction recovers once and rejects stale resurrection", 
       error.code === "authority_generation_conflict" &&
       /no unique exact task transaction lineage/i.test(error.details?.cause),
   );
-  assert.deepEqual(readFileSync(paths.taskManifest), manifestBeforeResurrection);
+  assert.deepEqual(
+    readFileSync(paths.taskManifest),
+    manifestBeforeResurrection,
+  );
   assert.deepEqual(readFileSync(paths.events), eventsBeforeResurrection);
   assert.equal(
     readEvents(stateRoot).filter((item) => item.eventId === event.eventId)
@@ -3295,8 +3304,9 @@ test("an event-first task transaction recovers against its settled manifest witn
   const recovered = readTaskManifest({ stateRoot });
   assert.deepEqual(recovered, targetManifest);
   assert.equal(
-    readEvents(stateRoot).filter((candidate) => candidate.eventId === event.eventId)
-      .length,
+    readEvents(stateRoot).filter(
+      (candidate) => candidate.eventId === event.eventId,
+    ).length,
     1,
   );
   assert.equal(existsSync(transactionPath), false);
@@ -3510,7 +3520,9 @@ test("task recovery admits manifest and transaction authority files safely", asy
 
         assertReadFailsClosed(
           stateRoot,
-          kind === "manifest" ? "authority_generation_conflict" : "invalid_state",
+          kind === "manifest"
+            ? "authority_generation_conflict"
+            : "invalid_state",
         );
         assert.deepEqual(readFileSync(paths.events), eventsBefore);
         if (kind === "transaction") {
@@ -3964,6 +3976,285 @@ test("task lifecycle events stay inside their exact lease authority window", () 
       `authority update ${boundary.label}`,
     );
   }
+});
+
+test("task-scoped factory claims survive retries, fence custody, and release exactly", () => {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
+  const taskId = "factory-claim-1465";
+  const controller = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs,
+  });
+  createTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    observerAuthority: "pr-only",
+    providerAuthority: "forbidden",
+    details: {
+      behavioral: false,
+      estimatedMinutes: 30,
+      githubIssue: {
+        number: 1465,
+        url: "https://github.com/freed-project/freed/issues/1465",
+      },
+    },
+    nowMs: nowMs + 1,
+  });
+  transitionTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    toState: "triaged",
+    nowMs: nowMs + 2,
+  });
+  transitionTask({
+    stateRoot,
+    taskId,
+    ...controller,
+    toState: "approved_for_pr",
+    nowMs: nowMs + 3,
+  });
+  const coordinator = actorLease(stateRoot, "freed-nightly-runner", {
+    nowMs: nowMs + 4,
+  });
+  const claimedAt = new Date(nowMs + 5).toISOString();
+  const bindingDigest = "a".repeat(64);
+  const conflictDomains = ["logical:tooling-validation", "path:scripts/lib"];
+  const acquireRequest = {
+    schemaVersion: 1,
+    operationId: "b47150a5-7aa2-44b8-a26f-dc95e429a5cb",
+    taskId,
+    expectedTaskRevision: 3,
+    bindingDigest,
+    claim: {
+      claimId: "factory-claim-one",
+      githubIssue: {
+        number: 1465,
+        url: "https://github.com/freed-project/freed/issues/1465",
+      },
+      custodyEpoch: 1,
+      hostId: "linux-one",
+      workerId: "worker-one",
+      branch: "feat/factory-claim-test",
+      worktree: "/tmp/freed-factory-claim-test",
+      conflictDomains,
+      conflictDomainDigest: createHash("sha256")
+        .update(JSON.stringify(conflictDomains))
+        .digest("hex"),
+      claimedAt,
+      baseHead: "b".repeat(40),
+      accountId: "account-one",
+      driverId: "codex-app-server",
+      target: "shared",
+      workLane: "runtime-neutral",
+      publicationCeiling: "draft-pr",
+    },
+    requestedAt: claimedAt,
+  };
+
+  const acquired = acquireFactoryExecutionClaim({
+    stateRoot,
+    ...coordinator,
+    request: acquireRequest,
+    nowMs: nowMs + 5,
+  });
+  assert.equal(acquired.authorityClaimId, "factory-claim-one");
+  assert.equal(acquired.admission.bridgeId, "freed-authority-v1");
+  assert.equal(
+    Date.parse(acquired.admission.expiresAt) -
+      Date.parse(acquired.admission.authorizedAt),
+    5 * 60_000,
+  );
+  assert.deepEqual(
+    acquireFactoryExecutionClaim({
+      stateRoot,
+      ...coordinator,
+      request: acquireRequest,
+      nowMs: nowMs + 6,
+    }),
+    acquired,
+  );
+  assert.throws(
+    () =>
+      acquireFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: {
+          ...acquireRequest,
+          requestedAt: new Date(nowMs + 6).toISOString(),
+        },
+        nowMs: nowMs + 6,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "operation_replay_conflict",
+  );
+  assert.throws(
+    () =>
+      acquireFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: {
+          ...acquireRequest,
+          operationId: "d036d629-6ec8-43e9-b4d0-2004e06494f0",
+        },
+        nowMs: nowMs + 6,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "claim_already_exists",
+  );
+  assert.throws(
+    () =>
+      acquireFactoryExecutionClaim({
+        stateRoot,
+        ...controller,
+        request: {
+          ...acquireRequest,
+          operationId: "2d6833f2-df16-4846-85ec-ff09ca7cc1ac",
+        },
+        nowMs: nowMs + 6,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "actor_not_authorized",
+  );
+  const heartbeatAt = new Date(nowMs + 8).toISOString();
+  const heartbeatRequest = {
+    schemaVersion: 1,
+    operationId: "3bf90b9b-46e7-42f9-a0bc-3dad2b3b3e8d",
+    taskId,
+    taskRevision: 3,
+    authorityClaimId: "factory-claim-one",
+    custodyEpoch: 1,
+    bindingDigest,
+    heartbeatAt,
+    executionStage: "running",
+  };
+  const heartbeat = heartbeatFactoryExecutionClaim({
+    stateRoot,
+    ...coordinator,
+    request: heartbeatRequest,
+    nowMs: nowMs + 8,
+  });
+  assert.deepEqual(heartbeat, heartbeatRequest);
+  assert.deepEqual(
+    heartbeatFactoryExecutionClaim({
+      stateRoot,
+      ...coordinator,
+      request: heartbeatRequest,
+      nowMs: nowMs + 9,
+    }),
+    heartbeat,
+  );
+
+  const transferredAt = new Date(nowMs + 10).toISOString();
+  const transferRequest = {
+    schemaVersion: 1,
+    operationId: "dd4ccff7-279a-446c-9412-0bb4ce457132",
+    taskId,
+    taskRevision: 3,
+    authorityClaimId: "factory-claim-one",
+    bindingDigest,
+    priorEpoch: 1,
+    nextEpoch: 2,
+    destinationHostId: "mac-one",
+    destinationWorkerId: "worker-two",
+    destinationWorktree: "/tmp/freed-factory-claim-mac",
+    checkpointReference: "c".repeat(64),
+    transferredAt,
+  };
+  assert.deepEqual(
+    transferFactoryExecutionClaim({
+      stateRoot,
+      ...coordinator,
+      request: transferRequest,
+      nowMs: nowMs + 10,
+    }),
+    transferRequest,
+  );
+  assert.throws(
+    () =>
+      heartbeatFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: {
+          ...heartbeatRequest,
+          operationId: "f4775fd5-e1f7-42e8-b974-56bd95f6359e",
+          heartbeatAt: new Date(nowMs + 11).toISOString(),
+        },
+        nowMs: nowMs + 11,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "claim_epoch_mismatch",
+  );
+  const [shownAfterTransfer] = listFactoryExecutionClaims({ stateRoot }).claims;
+  assert.ok(shownAfterTransfer);
+  assert.equal(shownAfterTransfer.claim.hostId, "mac-one");
+  assert.equal(shownAfterTransfer.claim.custodyEpoch, 2);
+
+  assert.throws(
+    () =>
+      releaseFactoryExecutionClaim({
+        stateRoot,
+        ...coordinator,
+        request: {
+          schemaVersion: 1,
+          operationId: "3fbb479a-630f-4637-aae8-3dfd49e12061",
+          taskId,
+          expectedTaskRevision: 3,
+          authorityClaimId: "factory-claim-one",
+          bindingDigest,
+          custodyEpoch: 1,
+          expectedHeartbeatAt: heartbeatAt,
+          reason: "worker-completed",
+          releasedAt: new Date(nowMs + 11).toISOString(),
+        },
+        nowMs: nowMs + 11,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "claim_heartbeat_mismatch",
+  );
+
+  const releaseRequest = {
+    schemaVersion: 1,
+    operationId: "241c786b-699d-4ca5-a1b1-5ed93dd61a1e",
+    taskId,
+    expectedTaskRevision: 3,
+    authorityClaimId: "factory-claim-one",
+    bindingDigest,
+    custodyEpoch: 2,
+    expectedHeartbeatAt: transferredAt,
+    reason: "worker-completed",
+    releasedAt: new Date(nowMs + 12).toISOString(),
+  };
+  const released = releaseFactoryExecutionClaim({
+    stateRoot,
+    ...coordinator,
+    request: releaseRequest,
+    nowMs: nowMs + 12,
+  });
+  assert.equal(released.reason, "worker-completed");
+  assert.deepEqual(
+    releaseFactoryExecutionClaim({
+      stateRoot,
+      ...coordinator,
+      request: releaseRequest,
+      nowMs: nowMs + 13,
+    }),
+    released,
+  );
+  assert.equal(readFactoryExecutionClaim({ stateRoot, taskId }).claim, null);
+
+  const manifest = readTaskManifest({ stateRoot });
+  const history = inspectExactTaskManifestHistoryParity(
+    readEvents(stateRoot),
+    manifest,
+  );
+  assert.equal(history.healthy, true, history.issues.join("\n"));
 });
 
 test("direct control, outcome, and repair audit paths reject lease clock boundaries byte-stably", () => {
@@ -10185,8 +10476,7 @@ test("new writes reject release authority while legacy records downgrade to merg
         providerAuthority: "forbidden",
       }),
     (error) =>
-      isAutomationControlError(error) &&
-      error.code === "lease_policy_mismatch",
+      isAutomationControlError(error) && error.code === "lease_policy_mismatch",
   );
 
   const paths = automationControlPaths(stateRoot);
@@ -11589,8 +11879,7 @@ test("legacy lease upgrade rejects unauthenticated, cross-actor, and token-reuse
         token: tokenReuse.record.token,
       }),
     (error) =>
-      isAutomationControlError(error) &&
-      error.code === "lease_token_reuse",
+      isAutomationControlError(error) && error.code === "lease_token_reuse",
   );
 });
 
@@ -11679,8 +11968,7 @@ test("named leases are exclusive and inspection redacts the token", () => {
         token: "token-b-caller-retained-12345678901234567890",
         actorCredentialToken,
       }),
-    (error) =>
-      isAutomationControlError(error) && error.code === "lease_busy",
+    (error) => isAutomationControlError(error) && error.code === "lease_busy",
   );
   const inspected = inspectLease({
     stateRoot,
@@ -11935,7 +12223,6 @@ test("private lease readers reject FIFOs symlinks unsafe ancestry and invalid UT
       error instanceof AutomationControlError &&
       error.code === "invalid_state_permissions",
   );
-
 });
 
 test("dangling active lease transaction symlinks fail closed before authority", () => {
@@ -12590,7 +12877,7 @@ test("lease receipt pruning preserves the current retry under tied mtimes", () =
     path.basename(currentReceipt),
     ...retainedOperationIds
       .slice(-7)
-      .map((operationId) => `${name}.heartbeat.${operationId}.json`)
+      .map((operationId) => `${name}.heartbeat.${operationId}.json`),
   ].sort();
   assert.deepEqual(heartbeatReceipts.sort(), expectedReceipts);
   const archivedReceipts = leaseCleanupQuarantines(
@@ -13583,7 +13870,7 @@ test("lease cleanup no-overwrite archive preserves a destination created after a
             mode: 0o600,
           });
         },
-        }),
+      }),
     (error) =>
       isAutomationControlError(error) &&
       error.code === "lease_transaction_conflict",
@@ -17412,10 +17699,7 @@ test("owner recovery completes only an expired committed trusted-launcher acquis
   assert.ok(atomicArchive);
   renameSync(
     path.join(cleanupDirectory, atomicArchive),
-    path.join(
-      cleanupDirectory,
-      `${atomicArchivePrefix}${"0".repeat(64)}.json`,
-    ),
+    path.join(cleanupDirectory, `${atomicArchivePrefix}${"0".repeat(64)}.json`),
   );
 
   const ownerTaskId = "recover-expired-nightly-writer";
@@ -17903,8 +18187,7 @@ test("caller operation identity and acquire token are mandatory", () => {
         actorCredentialToken,
       }),
     (error) =>
-      isAutomationControlError(error) &&
-      error.code === "lease_token_required",
+      isAutomationControlError(error) && error.code === "lease_token_required",
   );
 });
 
@@ -18628,7 +18911,9 @@ test("concurrent direct CLI acquisition cannot bypass the trusted actor launcher
   assert.equal(failures.length, 6);
   assert.ok(
     failures.every((attempt) =>
-      ["actor_launcher_required"].includes(JSON.parse(attempt.stderr).error.code),
+      ["actor_launcher_required"].includes(
+        JSON.parse(attempt.stderr).error.code,
+      ),
     ),
     JSON.stringify(
       failures.map((attempt) => ({
@@ -20216,25 +20501,24 @@ test("same-operation task recovery rewrites its partial provisional manifest sta
     manifestRevision: targetManifest.revision,
     observerAuthority: targetTask.observerAuthority,
     providerAuthority: targetTask.providerAuthority,
-      data: {
-        fromState: "observed",
-        toState: "triaged",
-        authorizationProvenance: {
-          leaseName: leaseRecord.name,
-          leaseAcquiredAt: leaseRecord.acquiredAt,
-          credentialKind: leaseRecord.credentialKind,
-          launcherSha256: leaseRecord.launcherSha256,
-          actorRuntimeDigest: leaseRecord.actorRuntimeDigest,
-          launcherChannelProtocol: leaseRecord.launcherChannelProtocol,
-          launcherAttestationSha256:
-            leaseRecord.launcherAttestationSha256,
-          launcherSessionId: leaseRecord.launcherSessionId,
-        },
+    data: {
+      fromState: "observed",
+      toState: "triaged",
+      authorizationProvenance: {
+        leaseName: leaseRecord.name,
+        leaseAcquiredAt: leaseRecord.acquiredAt,
+        credentialKind: leaseRecord.credentialKind,
+        launcherSha256: leaseRecord.launcherSha256,
+        actorRuntimeDigest: leaseRecord.actorRuntimeDigest,
+        launcherChannelProtocol: leaseRecord.launcherChannelProtocol,
+        launcherAttestationSha256: leaseRecord.launcherAttestationSha256,
+        launcherSessionId: leaseRecord.launcherSessionId,
       },
-    };
-    const transaction = {
-      schemaVersion: 1,
-      transactionId: "10000000-2000-4000-8000-000000000004",
+    },
+  };
+  const transaction = {
+    schemaVersion: 1,
+    transactionId: "10000000-2000-4000-8000-000000000004",
     preparedAt: transitionAt,
     previousManifestRevision: current.revision,
     targetManifest,
@@ -20910,9 +21194,7 @@ test("random task pre-WAL authority temps are bounded and cannot wedge later mut
       const retiredName = newRetirementEntries[0];
       const transactionBasename = path.basename(transactionPath);
       const retiredBasename =
-        variant === "complete"
-          ? transactionBasename
-          : "raw-task-pre-wal";
+        variant === "complete" ? transactionBasename : "raw-task-pre-wal";
       assert.ok(retiredName.startsWith(`${retiredBasename}.`));
       assert.match(
         retiredName.slice(retiredBasename.length + 1),
