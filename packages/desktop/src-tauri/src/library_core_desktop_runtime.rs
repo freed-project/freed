@@ -64,6 +64,21 @@ pub(super) struct DesktopLibraryShell {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryCounts {
+    revision: i64,
+    item_count: i64,
+    unread_count: i64,
+    archivable_count: i64,
+    counts_by_platform: std::collections::BTreeMap<String, i64>,
+    unread_by_platform: std::collections::BTreeMap<String, i64>,
+    archivable_by_platform: std::collections::BTreeMap<String, i64>,
+    feed_counts: std::collections::BTreeMap<String, i64>,
+    unread_feed_counts: std::collections::BTreeMap<String, i64>,
+    archivable_feed_counts: std::collections::BTreeMap<String, i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct DesktopLibrarySyncDescriptor {
     revision: i64,
     item_count: i64,
@@ -268,6 +283,13 @@ pub(super) struct ReadItemsRequest {
     ids: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct QueryAuthorKey {
+    platform: String,
+    author_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct QueryItemsRequest {
@@ -275,6 +297,16 @@ pub(super) struct QueryItemsRequest {
     platform: Option<String>,
     author_id: Option<String>,
     feed_url: Option<String>,
+    content_type: Option<String>,
+    exclude_content_type: Option<String>,
+    tags: Option<Vec<String>>,
+    signals: Option<Vec<String>>,
+    author_keys: Option<Vec<QueryAuthorKey>>,
+    has_link_preview: Option<bool>,
+    missing_preserved_text: Option<bool>,
+    has_media: Option<bool>,
+    location_candidate: Option<bool>,
+    include_total_count: Option<bool>,
     saved: Option<bool>,
     archived: Option<bool>,
     show_hidden: bool,
@@ -288,6 +320,18 @@ pub(super) struct QueryItemsRequest {
 pub(super) struct QueryItemsResult {
     items_json: Vec<String>,
     next_offset: Option<u32>,
+    total_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFacetSummary {
+    archived_count: i64,
+    sample_item_count: i64,
+    saved_archived_count: i64,
+    saved_count: i64,
+    saved_platform_count: i64,
+    tags: Vec<String>,
     total_count: i64,
 }
 
@@ -829,6 +873,12 @@ pub(super) fn read_sqlite_library_shell(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|error| error.to_string())?;
+    let mut shell = validate_json_object(&shell_json, MAX_SHELL_BYTES)?;
+    if let Some(object) = shell.as_object_mut() {
+        object.remove("feedSourceOrderIds");
+        object.remove("friends");
+    }
+    let shell_json = serde_json::to_string(&shell).map_err(|error| error.to_string())?;
     let (item_count, unread_count, archivable_count): (i64, i64, i64) = connection
         .query_row(
             "SELECT COUNT(*),
@@ -873,6 +923,104 @@ pub(super) fn read_sqlite_library_shell(
         archivable_count,
         counts_by_platform,
         unread_by_platform,
+    })
+}
+
+
+#[tauri::command]
+pub(super) fn read_sqlite_library_counts(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryCounts, String> {
+    let connection = open_database(&app)?;
+    require_active(&connection)?;
+    let revision = connection
+        .query_row(
+            "SELECT revision FROM library_core_desktop_state WHERE singletonId = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    let (item_count, unread_count, archivable_count): (i64, i64, i64) = connection
+        .query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
+             FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    let mut counts_by_platform = std::collections::BTreeMap::new();
+    let mut unread_by_platform = std::collections::BTreeMap::new();
+    let mut archivable_by_platform = std::collections::BTreeMap::new();
+    let mut statement = connection
+        .prepare(
+            "SELECT COALESCE(platform, ''), COUNT(*),
+                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
+             FROM library_core_feed_items WHERE deletedAt IS NULL
+             GROUP BY platform ORDER BY platform;",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    for row in rows {
+        let (platform, total, unread, archivable) = row.map_err(|error| error.to_string())?;
+        if !platform.is_empty() {
+            counts_by_platform.insert(platform.clone(), total);
+            unread_by_platform.insert(platform.clone(), unread);
+            archivable_by_platform.insert(platform, archivable);
+        }
+    }
+    drop(statement);
+    let mut feed_counts = std::collections::BTreeMap::new();
+    let mut unread_feed_counts = std::collections::BTreeMap::new();
+    let mut archivable_feed_counts = std::collections::BTreeMap::new();
+    let mut statement = connection
+        .prepare(
+            "SELECT feedUrl, COUNT(*),
+                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
+             FROM library_core_feed_items
+             WHERE deletedAt IS NULL AND feedUrl IS NOT NULL
+             GROUP BY feedUrl ORDER BY feedUrl;",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    for row in rows {
+        let (feed_url, total, unread, archivable) = row.map_err(|error| error.to_string())?;
+        feed_counts.insert(feed_url.clone(), total);
+        unread_feed_counts.insert(feed_url.clone(), unread);
+        archivable_feed_counts.insert(feed_url, archivable);
+    }
+    Ok(DesktopLibraryCounts {
+        revision,
+        item_count,
+        unread_count,
+        archivable_count,
+        counts_by_platform,
+        unread_by_platform,
+        archivable_by_platform,
+        feed_counts,
+        unread_feed_counts,
+        archivable_feed_counts,
     })
 }
 
@@ -1679,9 +1827,50 @@ pub(super) fn query_sqlite_library_items(
     app: tauri::AppHandle,
     request: QueryItemsRequest,
 ) -> Result<QueryItemsResult, String> {
+    let encode_filter_set = |values: Option<&[String]>, label: &str| {
+        let Some(values) = values else {
+            return Ok(None);
+        };
+        if values.len() > 32 || values.iter().any(|value| value.len() > 8_192) {
+            return Err(format!("SQLite Library {label} filter exceeds its bound"));
+        }
+        serde_json::to_string(values)
+            .map(Some)
+            .map_err(|error| error.to_string())
+    };
+    let tags_json = encode_filter_set(request.tags.as_deref(), "tag")?;
+    let signals_json = encode_filter_set(request.signals.as_deref(), "signal")?;
+    let author_keys = request.author_keys.unwrap_or_default();
+    if author_keys.len() > 5_000
+        || author_keys
+            .iter()
+            .any(|key| key.platform.len() > 8_192 || key.author_id.len() > 8_192)
+    {
+        return Err("SQLite Library author filter exceeds its bound".into());
+    }
     let limit = request.limit.clamp(1, 128);
     let connection = open_database(&app)?;
     require_active(&connection)?;
+    connection
+        .execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS query_author_keys (
+               platform TEXT NOT NULL,
+               authorId TEXT NOT NULL,
+               PRIMARY KEY (platform, authorId)
+             ) WITHOUT ROWID;
+             DELETE FROM query_author_keys;",
+        )
+        .map_err(|error| error.to_string())?;
+    if !author_keys.is_empty() {
+        let mut insert = connection
+            .prepare("INSERT OR IGNORE INTO query_author_keys (platform, authorId) VALUES (?1, ?2);")
+            .map_err(|error| error.to_string())?;
+        for key in &author_keys {
+            insert
+                .execute(params![key.platform, key.author_id])
+                .map_err(|error| error.to_string())?;
+        }
+    }
     let query = request.query.unwrap_or_default();
     let like = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
     // Keep the visibility predicate literal. Hiding it behind an optional OR
@@ -1723,10 +1912,51 @@ pub(super) fn query_sqlite_library_items(
         }
         Some(_) => return Err("SQLite Library sort mode is invalid".into()),
     };
+    let page_sql = page_sql.replace("publishedAt DESC, capturedAt DESC, globalId ASC", order_by);
+    let exact_filter_sql = "
+       AND (?11 IS NULL OR contentType = ?11)
+       AND (?12 IS NULL OR contentType <> ?12)
+       AND (?13 IS NULL OR EXISTS (
+         SELECT 1 FROM json_each(json_extract(payloadJson, '$.userState.tags'))
+         WHERE value IN (SELECT value FROM json_each(?13))
+       ))
+       AND (?14 IS NULL OR EXISTS (
+         SELECT 1 FROM json_each(json_extract(payloadJson, '$.contentSignals.tags'))
+         WHERE value IN (SELECT value FROM json_each(?14))
+       ))
+       AND (?15 = 0 OR EXISTS (
+         SELECT 1 FROM query_author_keys
+         WHERE query_author_keys.platform = library_core_feed_items.platform
+           AND query_author_keys.authorId = library_core_feed_items.authorId
+       ))
+       AND (?16 IS NULL OR (json_extract(payloadJson, '$.content.linkPreview.url') IS NOT NULL) = ?16)
+       AND (?17 IS NULL OR (
+         json_extract(payloadJson, '$.preservedContent.text') IS NULL
+         OR json_extract(payloadJson, '$.preservedContent.text') = ''
+       ) = ?17)
+       AND (?18 IS NULL OR (
+         COALESCE(json_array_length(json_extract(payloadJson, '$.content.mediaUrls')), 0) > 0
+       ) = ?18)
+       AND (?19 IS NULL OR (
+         json_extract(payloadJson, '$.location.coordinates') IS NOT NULL
+         OR NULLIF(TRIM(COALESCE(json_extract(payloadJson, '$.location.name'), '')), '') IS NOT NULL
+         OR NULLIF(TRIM(COALESCE(json_extract(payloadJson, '$.location.url'), '')), '') IS NOT NULL
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') LIKE '%📍%'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') LIKE '%🌍%'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') LIKE '%🌎%'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') LIKE '%🌏%'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB 'in [A-Z]*'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB 'at [A-Z]*'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB 'from [A-Z]*'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB '* in [A-Z]*'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB '* at [A-Z]*'
+         OR COALESCE(json_extract(payloadJson, '$.content.text'), '') GLOB '* from [A-Z]*'
+       ) = ?19)";
     let page_sql = page_sql.replace(
-        "publishedAt DESC, capturedAt DESC, globalId ASC",
-        order_by,
+        "\n     ORDER BY",
+        &format!("{exact_filter_sql}\n     ORDER BY"),
     );
+    let count_sql = count_sql.replace(';', &format!("{exact_filter_sql};"));
     let mut statement = connection
         .prepare(&page_sql)
         .map_err(|error| error.to_string())?;
@@ -1743,6 +1973,15 @@ pub(super) fn query_sqlite_library_items(
                 request.feed_url,
                 i64::from(limit + 1),
                 i64::from(request.offset),
+                request.content_type,
+                request.exclude_content_type,
+                tags_json,
+                signals_json,
+                i64::from(!author_keys.is_empty()),
+                request.has_link_preview.map(i64::from),
+                request.missing_preserved_text.map(i64::from),
+                request.has_media.map(i64::from),
+                request.location_candidate.map(i64::from),
             ],
             |row| row.get::<_, String>(0),
         )
@@ -1753,25 +1992,107 @@ pub(super) fn query_sqlite_library_items(
     drop(statement);
     let has_more = items_json.len() > limit as usize;
     items_json.truncate(limit as usize);
-    let total_count = connection
-        .query_row(
-            count_sql,
-            params![
-                query,
-                like,
-                request.platform,
-                request.saved.map(i64::from),
-                request.archived.map(i64::from),
-                i64::from(request.show_hidden),
-                request.author_id,
-                request.feed_url,
-            ],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
+    let total_count = if request.include_total_count.unwrap_or(true) {
+        connection
+            .query_row(
+                &count_sql,
+                params![
+                    query,
+                    like,
+                    request.platform,
+                    request.saved.map(i64::from),
+                    request.archived.map(i64::from),
+                    i64::from(request.show_hidden),
+                    request.author_id,
+                    request.feed_url,
+                    i64::from(limit + 1),
+                    i64::from(request.offset),
+                    request.content_type,
+                    request.exclude_content_type,
+                    tags_json,
+                    signals_json,
+                    i64::from(!author_keys.is_empty()),
+                    request.has_link_preview.map(i64::from),
+                    request.missing_preserved_text.map(i64::from),
+                    request.has_media.map(i64::from),
+                    request.location_candidate.map(i64::from),
+                ],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?
+    } else {
+        -1
+    };
     Ok(QueryItemsResult {
         next_offset: has_more.then_some(request.offset + limit),
         items_json,
+        total_count,
+    })
+}
+
+#[tauri::command]
+pub(super) fn read_sqlite_library_facet_summary(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFacetSummary, String> {
+    const MAXIMUM_TAGS: usize = 4_096;
+    const MAXIMUM_TAG_BYTES: usize = 1_024;
+
+    let connection = open_database(&app)?;
+    require_active(&connection)?;
+    let (
+        total_count,
+        archived_count,
+        sample_item_count,
+        saved_count,
+        saved_archived_count,
+        saved_platform_count,
+    ): (i64, i64, i64, i64, i64, i64) = connection
+        .query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(archived = 1), 0),
+                    COALESCE(SUM(sampleData = 1), 0),
+                    COALESCE(SUM(saved = 1), 0),
+                    COALESCE(SUM(saved = 1 AND archived = 1), 0),
+                    COUNT(DISTINCT CASE WHEN saved = 1 THEN platform END)
+             FROM library_core_feed_items
+             WHERE deletedAt IS NULL;",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(
+            "SELECT DISTINCT tag.value
+             FROM library_core_feed_items AS item,
+                  json_each(json_extract(item.payloadJson, '$.userState.tags')) AS tag
+             WHERE item.deletedAt IS NULL AND typeof(tag.value) = 'text'
+             LIMIT 4097;",
+        )
+        .map_err(|error| error.to_string())?;
+    let tags = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if tags.len() > MAXIMUM_TAGS || tags.iter().any(|tag| tag.len() > MAXIMUM_TAG_BYTES) {
+        return Err("SQLite Library facet tags exceed their bound".into());
+    }
+    Ok(DesktopLibraryFacetSummary {
+        archived_count,
+        sample_item_count,
+        saved_archived_count,
+        saved_count,
+        saved_platform_count,
+        tags,
         total_count,
     })
 }

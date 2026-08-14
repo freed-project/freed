@@ -67,6 +67,7 @@ import {
 import {
   openBoundedDesktopFeedReader,
   openBoundedDesktopFriendsFeedReader,
+  readDesktopFeedSignalCounts,
 } from "./lib/library-core-feed-browse-reader-runtime";
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
 import {
@@ -1489,6 +1490,10 @@ function App() {
       searchLibraryItems:
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? searchLibraryCoreItemsForDesktop
+          : undefined,
+      readFeedSignalCounts:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? readDesktopFeedSignalCounts
           : undefined,
       acquireLegacyLibraryItems:
         tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()

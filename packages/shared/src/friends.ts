@@ -209,6 +209,7 @@ export function isFriendAuthoredItem(
  */
 export interface CompiledFriendAuthorIndex {
   has(platform: Platform, authorId: string): boolean;
+  entries(): readonly Readonly<{ platform: Platform; authorId: string }>[];
 }
 
 export function compileFriendAuthorIndex(
@@ -255,9 +256,26 @@ export function compileFriendAuthorIndex(
     }
   }
 
+  const entries = Object.freeze(
+    [...includedAuthorIds.entries()]
+      .flatMap(([platform, authorIds]) =>
+        [...authorIds].map((authorId) => Object.freeze({
+          platform: platform as Platform,
+          authorId,
+        })),
+      )
+      .sort((left, right) =>
+        left.platform.localeCompare(right.platform) ||
+        left.authorId.localeCompare(right.authorId),
+      ),
+  );
+
   return Object.freeze({
     has(platform: Platform, authorId: string): boolean {
       return includedAuthorIds.get(platform)?.has(authorId) ?? false;
+    },
+    entries() {
+      return entries;
     },
   });
 }

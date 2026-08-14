@@ -20,6 +20,7 @@ import type {
   BugReportDraft,
   BugReportIssueType,
   FeedItem,
+  FeedSignalMode,
   FilterOptions,
   GeneratedBugReportBundle,
   PrivateVulnerabilityReportPayload,
@@ -140,6 +141,10 @@ export type SearchLibraryItems = (
     matches: readonly ScoredLibraryItem[],
   ) => LibraryItemScanDecision,
 ) => Promise<void>;
+
+export type ReadFeedSignalCounts = (
+  filter: FilterOptions,
+) => Promise<Readonly<Record<FeedSignalMode, number>>>;
 
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
@@ -628,6 +633,9 @@ export interface PlatformConfig {
 
   /** Search a persistent local projection without building an in-memory corpus index. */
   searchLibraryItems?: SearchLibraryItems;
+
+  /** Count signal presets inside the platform row store without streaming the corpus. */
+  readFeedSignalCounts?: ReadFeedSignalCounts;
 
   /**
    * Temporarily acquire the legacy full item projection for a surface that has

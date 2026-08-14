@@ -31,11 +31,6 @@ export type DocumentHistoryRelation =
 
 export interface DocState {
   items: FeedItem[];
-  /**
-   * Feed item IDs in the exact Automerge map enumeration order used as the
-   * final recommendation tie-break. The UI receives ranked items separately.
-   */
-  feedSourceOrderIds?: string[];
   searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
   persons: Record<string, Person>;

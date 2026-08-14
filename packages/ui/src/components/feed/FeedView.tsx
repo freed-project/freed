@@ -1146,6 +1146,10 @@ export function FeedView() {
         onItemLike={toggleLiked ? handleItemLike : undefined}
         onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
+        loading={
+          boundedFeedEligible &&
+          (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading")
+        }
         searchQuery={searchQuery}
         onLoadMore={loadMoreBoundedItems}
         hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}

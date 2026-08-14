@@ -183,7 +183,12 @@ export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
 async function scanAllItems(visit: (page: FeedItem[]) => void): Promise<void> {
   let offset: number | null = 0;
   while (offset !== null) {
-    const page = await querySqliteItems({ offset, limit: 256, showHidden: true });
+    const page = await querySqliteItems({
+      offset,
+      limit: 256,
+      showHidden: true,
+      includeTotalCount: false,
+    });
     visit(page.items);
     offset = page.nextOffset;
   }

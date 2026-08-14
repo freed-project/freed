@@ -140,9 +140,30 @@ describe("useFeedSignalCounts", () => {
     expect(scanLibraryItems).toHaveBeenCalledOnce();
   });
 
+  it("prefers platform aggregates over streaming the corpus", async () => {
+    const scanLibraryItems = vi.fn(async () => undefined);
+    const nativeCounts: FeedSignalCounts = {
+      all: 20_085,
+      inspiring: 2_004,
+      events: 312,
+      personal: 141,
+      conversation: 845,
+      news: 4_220,
+    };
+    const readFeedSignalCounts = vi.fn(async () => nativeCounts);
+    const read = await render({ readFeedSignalCounts, scanLibraryItems }, []);
+
+    await vi.waitFor(() => {
+      expect(read()?.all).toBe(20_085);
+    });
+    expect(read()).toEqual(nativeCounts);
+    expect(readFeedSignalCounts).toHaveBeenCalledOnce();
+    expect(scanLibraryItems).not.toHaveBeenCalled();
+  });
+
   it("reads nothing before the library reports initialized", async () => {
     // The bounded scanner pins the projection source. Asking for it during
-    // startup made the Automerge worker log a fatal-looking console error.
+    // startup made the persistence worker log a fatal-looking console error.
     const scanLibraryItems = vi.fn(async () => undefined);
     const acquireLegacyLibraryItems = vi.fn(async () => () => undefined);
     const read = await render(

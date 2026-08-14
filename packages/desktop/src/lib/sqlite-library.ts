@@ -4,6 +4,7 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
+  buildDiscoveredAccountsFromItems,
   createDefaultPreferences,
   friendFromPerson,
   hasSampleDataFingerprint,
@@ -130,10 +131,32 @@ interface SqliteShell {
   unreadByPlatform: Record<string, number>;
 }
 
+interface SqliteCounts extends Omit<SqliteShell, "shellJson"> {
+  archivableByPlatform: Record<string, number>;
+  feedCounts: Record<string, number>;
+  unreadFeedCounts: Record<string, number>;
+  archivableFeedCounts: Record<string, number>;
+}
+
 interface SqliteQueryResult {
   itemsJson: string[];
   nextOffset: number | null;
   totalCount: number;
+}
+
+export interface SqliteLibraryFacetSummary {
+  archivedCount: number;
+  sampleItemCount: number;
+  savedArchivedCount: number;
+  savedCount: number;
+  savedPlatformCount: number;
+  tags: string[];
+  totalCount: number;
+}
+
+export async function readSqliteLibraryFacetSummary(): Promise<SqliteLibraryFacetSummary> {
+  const summary = await invoke<SqliteLibraryFacetSummary>("read_sqlite_library_facet_summary");
+  return { ...summary, tags: [...summary.tags].sort((left, right) => left.localeCompare(right)) };
 }
 
 interface SqliteSearchMatch {
@@ -205,13 +228,24 @@ function emptyShell(): Omit<DocState, "items"> {
   };
 }
 
-function shellFromState(state: DocState): Omit<DocState, "items"> {
-  const { items: _items, ...shell } = state;
+function shellFromState(state: DocState): Omit<DocState, "items" | "friends"> {
+  const {
+    items: _items,
+    feedSourceOrderIds: _retiredSourceOrder,
+    friends: _derivedFriends,
+    ...shell
+  } = state as DocState & { feedSourceOrderIds?: string[] };
   return shell;
 }
 
 function stateFromShell(result: SqliteShell, items: FeedItem[] = []): DocState {
-  const decoded = decodeJson(result.shellJson) as Partial<DocState>;
+  const {
+    feedSourceOrderIds: _retiredSourceOrder,
+    friends: _derivedFriends,
+    ...decoded
+  } = decodeJson(result.shellJson) as Partial<DocState> & {
+    feedSourceOrderIds?: string[];
+  };
   const base = { ...emptyShell(), ...decoded };
   const friends = Object.fromEntries(
     Object.values(base.persons).map((person) => [
@@ -488,6 +522,16 @@ export async function querySqliteItems(options: {
   platform?: string;
   authorId?: string;
   feedUrl?: string;
+  contentType?: string;
+  excludeContentType?: string;
+  tags?: readonly string[];
+  signals?: readonly string[];
+  authorKeys?: readonly Readonly<{ platform: string; authorId: string }>[];
+  hasLinkPreview?: boolean;
+  missingPreservedText?: boolean;
+  hasMedia?: boolean;
+  locationCandidate?: boolean;
+  includeTotalCount?: boolean;
   saved?: boolean;
   archived?: boolean;
   showHidden?: boolean;
@@ -501,6 +545,16 @@ export async function querySqliteItems(options: {
       platform: options.platform ?? null,
       authorId: options.authorId ?? null,
       feedUrl: options.feedUrl ?? null,
+      contentType: options.contentType ?? null,
+      excludeContentType: options.excludeContentType ?? null,
+      tags: options.tags?.length ? [...options.tags] : null,
+      signals: options.signals?.length ? [...options.signals] : null,
+      authorKeys: options.authorKeys?.length ? [...options.authorKeys] : null,
+      hasLinkPreview: options.hasLinkPreview ?? null,
+      missingPreservedText: options.missingPreservedText ?? null,
+      hasMedia: options.hasMedia ?? null,
+      locationCandidate: options.locationCandidate ?? null,
+      includeTotalCount: options.includeTotalCount ?? true,
       saved: options.saved ?? null,
       archived: options.archived ?? null,
       showHidden: options.showHidden ?? false,
@@ -583,14 +637,28 @@ function deepMerge<T>(current: T, update: Partial<T>): T {
   return next as T;
 }
 
-async function latestState(): Promise<DocState> {
-  return loadSqliteLibraryState();
+async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
+  const result = await invoke<SqliteCounts>("read_sqlite_library_counts");
+  return {
+    ...state,
+    searchCorpusVersion: result.revision,
+    feedUnreadCounts: result.unreadFeedCounts,
+    feedTotalCounts: result.feedCounts,
+    totalUnreadCount: result.unreadCount,
+    unreadCountByPlatform: result.unreadByPlatform,
+    totalItemCount: result.itemCount,
+    itemCountByPlatform: result.countsByPlatform,
+    totalArchivableCount: result.archivableCount,
+    archivableCountByPlatform: result.archivableByPlatform,
+    archivableFeedCounts: result.archivableFeedCounts,
+    docItemCount: result.itemCount,
+  };
 }
 
 async function saveMetadataMutation(
   current: DocState,
   update: (next: DocState) => void,
-): Promise<void> {
+): Promise<DocState> {
   const next: DocState = {
     ...current,
     feeds: { ...current.feeds },
@@ -601,6 +669,7 @@ async function saveMetadataMutation(
   };
   update(next);
   await replaceShell(next);
+  return next;
 }
 
 export async function dispatchSqliteMutation(
@@ -611,23 +680,38 @@ export async function dispatchSqliteMutation(
   let changedIds: string[] = [];
   let source: DocChangeEvent["source"] = "state_update";
   let result: unknown;
+  let nextState = current;
+  const saveMetadata = async (update: (next: DocState) => void) => {
+    nextState = await saveMetadataMutation(current, update);
+  };
+  const saveDiscoveredAccounts = async (items: readonly FeedItem[]) => {
+    const missing = buildDiscoveredAccountsFromItems([...items], current.accounts);
+    if (missing.length === 0) return;
+    await saveMetadata((next) => {
+      for (const account of missing) next.accounts[account.id] = account;
+    });
+  };
 
   switch (message.type) {
     case "ADD_FEED_ITEM": {
       const inserted = await insertMissingSqliteItems([message.item]);
+      await saveDiscoveredAccounts([message.item]);
       changedIds = inserted.map((item) => item.globalId);
+      source = "item_patch";
       break;
     }
     case "ADD_FEED_ITEMS":
     case "BATCH_IMPORT_ITEMS": {
       const inserted = await insertMissingSqliteItems(message.items);
+      await saveDiscoveredAccounts(message.items);
       changedIds = inserted.map((item) => item.globalId);
+      source = "item_patch";
       break;
     }
     case "RECONCILE_YOUTUBE_CAPTURE":
     case "RECONCILE_FOLLOW_ROSTER_CAPTURE": {
       const merged = await mergeIncomingSqliteItems(message.items);
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         const incomingIds = new Set(message.accounts.map((account) => account.id));
         for (const account of message.accounts) {
           const existing = next.accounts[account.id];
@@ -654,7 +738,7 @@ export async function dispatchSqliteMutation(
     }
     case "ADD_SAMPLE_LIBRARY_DATA":
       await insertMissingSqliteItems(message.items);
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const feed of message.feeds) next.feeds[feed.url] = feed;
         for (const person of message.persons) next.persons[person.id] = person;
         for (const account of message.accounts) next.accounts[account.id] = account;
@@ -675,7 +759,7 @@ export async function dispatchSqliteMutation(
         total: 0,
       };
       summary.total = summary.feeds + summary.items + summary.persons + summary.accounts;
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const [url, feed] of Object.entries(next.feeds)) {
           if (hasSampleDataFingerprint(feed)) delete next.feeds[url];
         }
@@ -695,6 +779,7 @@ export async function dispatchSqliteMutation(
       const [item] = await readSqliteItems([message.globalId]);
       if (item) await upsertSqliteItems([deepMerge(item, message.updates)]);
       changedIds = [message.globalId];
+      source = "item_patch";
       break;
     }
     case "MARK_AS_READ":
@@ -763,10 +848,10 @@ export async function dispatchSqliteMutation(
       await mutateItems("prune_archived", { maxAgeMs: message.maxAgeMs, timestampMs: timestamp });
       break;
     case "ADD_RSS_FEED":
-      await saveMetadataMutation(current, (next) => { next.feeds[message.feed.url] = message.feed; });
+      await saveMetadata((next) => { next.feeds[message.feed.url] = message.feed; });
       break;
     case "UPDATE_RSS_FEED":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         const feed = next.feeds[message.url];
         if (feed) next.feeds[message.url] = { ...feed, ...message.updates };
       });
@@ -778,36 +863,36 @@ export async function dispatchSqliteMutation(
           timestampMs: timestamp,
         });
       }
-      await saveMetadataMutation(current, (next) => { delete next.feeds[message.url]; });
+      await saveMetadata((next) => { delete next.feeds[message.url]; });
       break;
     case "REMOVE_ALL_FEEDS":
       if (message.includeItems) {
         await mutateItems("delete_rss", { timestampMs: timestamp });
       }
-      await saveMetadataMutation(current, (next) => { next.feeds = {}; });
+      await saveMetadata((next) => { next.feeds = {}; });
       break;
     case "UPDATE_PREFERENCES":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         next.preferences = deepMerge<UserPreferences>(next.preferences, message.updates);
       });
       source = "preferences_patch";
       break;
     case "ADD_PERSON":
-      await saveMetadataMutation(current, (next) => { next.persons[message.person.id] = message.person; });
+      await saveMetadata((next) => { next.persons[message.person.id] = message.person; });
       break;
     case "ADD_PERSONS":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const person of message.persons) next.persons[person.id] = person;
       });
       break;
     case "UPDATE_PERSON":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         const person = next.persons[message.personId];
         if (person) next.persons[message.personId] = { ...person, ...message.updates };
       });
       break;
     case "UPSERT_CONNECTION_PERSONS":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const candidate of message.candidates) {
           next.persons[candidate.person.id] = candidate.person;
           for (const accountId of candidate.accountIds) {
@@ -818,7 +903,7 @@ export async function dispatchSqliteMutation(
       });
       break;
     case "REMOVE_PERSON":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         delete next.persons[message.personId];
         for (const [id, account] of Object.entries(next.accounts)) {
           if (account.personId === message.personId) next.accounts[id] = { ...account, personId: undefined };
@@ -826,7 +911,7 @@ export async function dispatchSqliteMutation(
       });
       break;
     case "LOG_REACH_OUT":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         const person = next.persons[message.personId];
         if (person) {
           const log: ReachOutLog[] = [message.entry, ...(person.reachOutLog ?? [])].slice(0, 20);
@@ -835,25 +920,25 @@ export async function dispatchSqliteMutation(
       });
       break;
     case "ADD_ACCOUNT":
-      await saveMetadataMutation(current, (next) => { next.accounts[message.account.id] = message.account; });
+      await saveMetadata((next) => { next.accounts[message.account.id] = message.account; });
       break;
     case "ADD_ACCOUNTS":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const account of message.accounts) next.accounts[account.id] = account;
       });
       break;
     case "UPDATE_ACCOUNT":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         const account = next.accounts[message.accountId];
         if (account) next.accounts[message.accountId] = { ...account, ...message.updates };
       });
       break;
     case "REMOVE_ACCOUNT":
-      await saveMetadataMutation(current, (next) => { delete next.accounts[message.accountId]; });
+      await saveMetadata((next) => { delete next.accounts[message.accountId]; });
       break;
     case "BATCH_REFRESH_FEEDS":
       await mergeIncomingSqliteItems(message.items);
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const update of message.feeds) {
           const feed = next.feeds[update.url];
           if (feed) next.feeds[update.url] = { ...feed, ...update };
@@ -862,7 +947,7 @@ export async function dispatchSqliteMutation(
       changedIds = message.items.map((item) => item.globalId);
       break;
     case "HEAL_UNTITLED_FEEDS":
-      await saveMetadataMutation(current, (next) => {
+      await saveMetadata((next) => {
         for (const [url, feed] of Object.entries(next.feeds)) {
           if (feed.title !== "Untitled Feed" && feed.title !== feed.url) continue;
           try {
@@ -881,7 +966,13 @@ export async function dispatchSqliteMutation(
       throw new Error(`SQLite Library does not implement ${message.type}`);
   }
 
-  const state = await latestState();
+  // Browser E2E deliberately retains the complete mock projection so existing
+  // workflow tests can inspect injected rows. Production never reloads it.
+  const state = await refreshSqliteLibraryCounts(
+    import.meta.env.VITE_TEST_TAURI === "1"
+      ? await loadSqliteLibraryState()
+      : nextState,
+  );
   const changedItems = changedIds.length > 0 ? await readSqliteItems(changedIds) : [];
   const event: DocChangeEvent = source === "item_patch"
     ? {

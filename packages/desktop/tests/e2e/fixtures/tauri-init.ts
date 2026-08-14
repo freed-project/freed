@@ -76,6 +76,57 @@ export function tauriInitScript(): string {
         unreadByPlatform: unreadByPlatform,
       };
     }
+    function sqliteCountsResult() {
+      var shell = sqliteShellResult();
+      var archivableByPlatform = {};
+      var feedCounts = {};
+      var unreadFeedCounts = {};
+      var archivableFeedCounts = {};
+      Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; }).forEach(function(item) {
+        var user = sqliteItemState(item);
+        var platform = item.platform || 'unknown';
+        var archivable = user.readAt != null && !user.saved;
+        if (archivable) archivableByPlatform[platform] = (archivableByPlatform[platform] || 0) + 1;
+        var feedUrl = item.rssSource && item.rssSource.feedUrl;
+        if (!feedUrl) return;
+        feedCounts[feedUrl] = (feedCounts[feedUrl] || 0) + 1;
+        if (user.readAt == null) unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] || 0) + 1;
+        if (archivable) archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] || 0) + 1;
+      });
+      return {
+        revision: shell.revision,
+        itemCount: shell.itemCount,
+        unreadCount: shell.unreadCount,
+        archivableCount: shell.archivableCount,
+        countsByPlatform: shell.countsByPlatform,
+        unreadByPlatform: shell.unreadByPlatform,
+        archivableByPlatform: archivableByPlatform,
+        feedCounts: feedCounts,
+        unreadFeedCounts: unreadFeedCounts,
+        archivableFeedCounts: archivableFeedCounts,
+      };
+    }
+    function sqliteFacetSummary() {
+      var items = Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; });
+      var tags = new Set();
+      items.forEach(function(item) {
+        (sqliteItemState(item).tags || []).forEach(function(tag) { tags.add(tag); });
+      });
+      return {
+        archivedCount: items.filter(function(item) { return !!sqliteItemState(item).archived; }).length,
+        sampleItemCount: items.filter(function(item) { return !!item.sampleData; }).length,
+        savedArchivedCount: items.filter(function(item) {
+          var user = sqliteItemState(item);
+          return !!user.saved && !!user.archived;
+        }).length,
+        savedCount: items.filter(function(item) { return !!sqliteItemState(item).saved; }).length,
+        savedPlatformCount: new Set(items.filter(function(item) {
+          return !!sqliteItemState(item).saved;
+        }).map(function(item) { return item.platform; })).size,
+        tags: Array.from(tags).sort(),
+        totalCount: items.length,
+      };
+    }
     function sqliteUpsertItems(args) {
       var state = sqliteState();
       var request = args && args.request ? args.request : {};
@@ -212,6 +263,8 @@ export function tauriInitScript(): string {
         }
         return sqliteShellResult();
       },
+      read_sqlite_library_counts: sqliteCountsResult,
+      read_sqlite_library_facet_summary: sqliteFacetSummary,
       replace_sqlite_library_shell: (args) => {
         sqliteState().shell = JSON.parse(args.request.shellJson);
         sqliteState().revision += 1;
@@ -261,13 +314,26 @@ export function tauriInitScript(): string {
         var query = (request.query || '').toLowerCase();
         var items = Object.values(sqliteState().items).filter(function(item) {
           var user = sqliteItemState(item);
+          var authorKeys = request.authorKeys || [];
+          var itemSignals = item.contentSignals && item.contentSignals.tags || [];
           return !item.__deleted
             && (!request.platform || item.platform === request.platform)
+            && (!request.contentType || item.contentType === request.contentType)
+            && (!request.excludeContentType || item.contentType !== request.excludeContentType)
             && (request.saved == null || !!user.saved === request.saved)
             && (request.archived == null || !!user.archived === request.archived)
             && (request.showHidden || !user.hidden)
             && (!request.authorId || (item.author && item.author.id === request.authorId))
             && (!request.feedUrl || (item.rssSource && item.rssSource.feedUrl === request.feedUrl))
+            && (!authorKeys.length || authorKeys.some(function(key) {
+              return key.platform === item.platform && key.authorId === (item.author && item.author.id);
+            }))
+            && (!request.tags || !request.tags.length || request.tags.some(function(tag) {
+              return (user.tags || []).includes(tag);
+            }))
+            && (!request.signals || !request.signals.length || request.signals.some(function(signal) {
+              return itemSignals.includes(signal);
+            }))
             && (!query || JSON.stringify(item).toLowerCase().includes(query));
         }).sort(function(left, right) {
           return (right.publishedAt || 0) - (left.publishedAt || 0)
