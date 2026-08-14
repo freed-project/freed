@@ -258,6 +258,7 @@ async function cancelYouTubeCapture(captureId: string): Promise<void> {
 async function fetchYouTubeCaptureOnce(
   includeRoster: boolean = true,
   resetEpoch?: number,
+  onProviderContact?: () => void,
 ): Promise<YouTubeSyncResult> {
   const result = emptyResult();
   const captureId = globalThis.crypto.randomUUID();
@@ -375,6 +376,7 @@ async function fetchYouTubeCaptureOnce(
     });
 
     if (resetEpoch !== undefined) assertFactoryResetEpoch(resetEpoch);
+    onProviderContact?.();
     const commandResult = await Promise.race([
       invoke<YouTubeCaptureCommandResult>("yt_capture", { includeRoster, captureId }),
       new Promise<never>((_resolve, reject) => {
@@ -465,10 +467,15 @@ export function fetchYouTubeCapture(
 function fetchYouTubeCaptureForEpoch(
   includeRoster: boolean,
   resetEpoch: number,
+  onProviderContact?: () => void,
 ): Promise<YouTubeSyncResult> {
   return enqueueCaptureOperation(async () => {
     assertFactoryResetEpoch(resetEpoch);
-    const result = await fetchYouTubeCaptureOnce(includeRoster, resetEpoch);
+    const result = await fetchYouTubeCaptureOnce(
+      includeRoster,
+      resetEpoch,
+      onProviderContact,
+    );
     assertFactoryResetEpoch(resetEpoch);
     return result;
   });
@@ -477,11 +484,16 @@ function fetchYouTubeCaptureForEpoch(
 /** Persist one authenticated YouTube roster and subscriptions-page refresh. */
 export function captureYouTube(
   trigger: SocialScrapeTrigger = "manual",
+  onProviderContact?: () => void,
 ): Promise<YouTubeSyncResult> {
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const startedAt = Date.now();
     const store = useAppStore.getState();
-    const result = await fetchYouTubeCapture(trigger !== "scheduled");
+    const result = await fetchYouTubeCaptureForEpoch(
+      trigger !== "scheduled",
+      resetEpoch,
+      onProviderContact,
+    );
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

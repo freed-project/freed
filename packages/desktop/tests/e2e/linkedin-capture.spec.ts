@@ -30,14 +30,19 @@ async function openLinkedInSection(
     timeout: 5_000,
   });
 
-  const liNavBtn = getSettingsDialog(page).getByRole("button", { name: /^LinkedIn$/ });
+  const liNavBtn = getSettingsDialog(page).getByRole("button", {
+    name: /^LinkedIn$/,
+  });
   await expect(liNavBtn).toBeVisible({ timeout: 3_000 });
   await liNavBtn.evaluate((button) => {
     (button as HTMLButtonElement).click();
   });
   await page.waitForTimeout(500);
 
-  const liHeading = getSettingsDialog(page).getByRole("heading", { name: "LinkedIn", level: 3 });
+  const liHeading = getSettingsDialog(page).getByRole("heading", {
+    name: "LinkedIn",
+    level: 3,
+  });
   await expect(liHeading).toBeVisible({ timeout: 3_000 });
   return liHeading.locator("..");
 }
@@ -102,7 +107,9 @@ async function injectLinkedInItems(
       const store = w.__FREED_STORE__ as
         | { getState: () => { itemCountByPlatform: Record<string, number> } }
         | undefined;
-      return (store?.getState().itemCountByPlatform.linkedin ?? 0) >= expectedCount;
+      return (
+        (store?.getState().itemCountByPlatform.linkedin ?? 0) >= expectedCount
+      );
     },
     count,
     { timeout: 30_000 },
@@ -119,13 +126,15 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
 
   const sidebar = getDesktopSidebar(app.page);
   await sidebar.getByTestId("source-row-linkedin").click();
-  await app.page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { activeFilter: { platform?: string } } }
-      | undefined;
-    return store?.getState().activeFilter.platform === "linkedin";
-  }, { timeout: 5_000 });
+  await app.page.waitForFunction(
+    () => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        { getState: () => { activeFilter: { platform?: string } } } | undefined;
+      return store?.getState().activeFilter.platform === "linkedin";
+    },
+    { timeout: 5_000 },
+  );
 
   await expect(
     app.page.getByText("LinkedIn item 0 for sidebar filtering"),
@@ -147,9 +156,11 @@ test("browser preview skips native LinkedIn refresh instead of crashing", async 
 
   await page.evaluate(async (captureModulePath) => {
     const mod = await import(captureModulePath);
-    await mod.refreshAllFeeds();
+    await mod.refreshScheduledRssFeeds();
   }, CAPTURE_MODULE_PATH);
 
   await expect(page.locator("main")).toBeVisible();
-  await expect(page.getByText("Freed Desktop hit a fatal error")).toHaveCount(0);
+  await expect(page.getByText("Freed Desktop hit a fatal error")).toHaveCount(
+    0,
+  );
 });

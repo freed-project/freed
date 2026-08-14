@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => {
   const state = {
     feeds: {},
     items: [],
-    xAuth: { isAuthenticated: false, cookies: null },
+    xAuth: {
+      isAuthenticated: false,
+      cookies: null as { ct0: string; authToken: string } | null,
+    },
     fbAuth: { isAuthenticated: true },
     igAuth: { isAuthenticated: false },
     liAuth: { isAuthenticated: false },
@@ -135,6 +138,7 @@ describe("scheduled social capture retries", () => {
     mocks.withProviderSyncing.mockClear();
     mocks.state.setSyncing.mockClear();
     mocks.state.setError.mockClear();
+    mocks.state.xAuth = { isAuthenticated: false, cookies: null };
     mocks.state.fbAuth = { isAuthenticated: true };
     mocks.state.igAuth = { isAuthenticated: false };
     mocks.state.liAuth = { isAuthenticated: false };
@@ -151,7 +155,7 @@ describe("scheduled social capture retries", () => {
     vi.useRealTimers();
   });
 
-  it("retries a Facebook memory deferral before the next scheduled poll", async () => {
+  it("leaves scheduled Facebook deferrals to the durable Meta scheduler", async () => {
     mocks.captureFbFeed
       .mockResolvedValueOnce({
         items: [],
@@ -169,23 +173,11 @@ describe("scheduled social capture retries", () => {
         },
       });
 
-    await captureModule.refreshAllFeeds();
+    await captureModule.refreshSocialProvider("facebook", "scheduled");
 
     expect(mocks.captureFbFeed).toHaveBeenCalledTimes(1);
-    expect(mocks.addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[FB] retry scheduled in 120s after memory_pressure",
-    );
-
-    await vi.advanceTimersByTimeAsync(119_999);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(mocks.captureFbFeed).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(mocks.captureFbFeed).toHaveBeenCalledTimes(2);
-    expect(mocks.withProviderSyncing).toHaveBeenLastCalledWith(
-      "facebook",
-      expect.any(Function),
-    );
   });
 
   it("does not contact providers after another Desktop becomes the writer", async () => {
@@ -196,7 +188,7 @@ describe("scheduled social capture retries", () => {
       "facebook",
       "scheduled",
     );
-    await captureModule.refreshAllFeeds();
+    await captureModule.refreshScheduledRssFeeds();
 
     expect(result).toMatchObject({
       status: "ignored",
@@ -227,6 +219,92 @@ describe("scheduled social capture retries", () => {
       postsExtracted: 4,
       itemsAdded: 0,
     });
+  });
+
+  it("passes the durable contact callback through every scheduled provider adapter", async () => {
+    const onProviderContact = vi.fn();
+    mocks.state.xAuth = {
+      isAuthenticated: true,
+      cookies: { ct0: "ct0", authToken: "auth" },
+    };
+    mocks.state.igAuth = { isAuthenticated: true };
+    mocks.state.liAuth = { isAuthenticated: true };
+    mocks.state.substackAuth = { isAuthenticated: true };
+    mocks.state.mediumAuth = { isAuthenticated: true };
+    mocks.state.ytAuth = { isAuthenticated: true };
+    const feedResult = {
+      items: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        postsExtracted: 1,
+        itemsAdded: 0,
+      },
+    };
+    mocks.captureFbFeed.mockResolvedValue(feedResult);
+    mocks.captureIgFeed.mockResolvedValue(feedResult);
+    mocks.captureLiFeed.mockResolvedValue(feedResult);
+    mocks.captureXTimeline.mockResolvedValue({
+      items: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        tweetsExtracted: 1,
+        itemsAdded: 0,
+      },
+    });
+    const essayResult = {
+      items: [],
+      accounts: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        entriesExtracted: 1,
+        profilesExtracted: 0,
+        itemsAdded: 0,
+        accountsAdded: 0,
+      },
+    };
+    mocks.captureSubstackFeed.mockResolvedValue(essayResult);
+    mocks.captureMediumFeed.mockResolvedValue(essayResult);
+    mocks.captureYouTube.mockResolvedValue({
+      items: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        videosExtracted: 1,
+        itemsAdded: 0,
+      },
+    });
+
+    for (const provider of [
+      "x",
+      "facebook",
+      "instagram",
+      "linkedin",
+      "youtube",
+      "substack",
+      "medium",
+    ] as const) {
+      await captureModule.refreshSocialProvider(
+        provider,
+        "scheduled",
+        onProviderContact,
+      );
+    }
+
+    expect(mocks.captureXTimeline).toHaveBeenCalledWith(
+      mocks.state.xAuth.cookies,
+      undefined,
+      "scheduled",
+      onProviderContact,
+    );
+    expect(mocks.captureFbFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureIgFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureLiFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureYouTube).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureSubstackFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
+    expect(mocks.captureMediumFeed).toHaveBeenCalledWith("scheduled", onProviderContact);
   });
 
   it("returns empty when Facebook sees no posts", async () => {

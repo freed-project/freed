@@ -21,6 +21,7 @@ vi.mock("./native-json-store", () => ({
 import {
   getOrCreateDesktopClientRegistration,
   resetDesktopClientRegistrationForTests,
+  wasDesktopClientRegistrationCreatedThisLaunch,
 } from "./desktop-client-registration";
 
 describe("desktop client registration", () => {
@@ -53,6 +54,7 @@ describe("desktop client registration", () => {
     )).toEqual(localRecord);
     expect(mocks.invoke).toHaveBeenCalledOnce();
     expect(mocks.read).toHaveBeenCalledOnce();
+    expect(wasDesktopClientRegistrationCreatedThisLaunch()).toBe(true);
   });
 
   it("reuses a bound native installation identity without rewriting it", async () => {
@@ -69,6 +71,7 @@ describe("desktop client registration", () => {
       registeredAt: stored.registeredAt,
     });
     expect(mocks.write).not.toHaveBeenCalled();
+    expect(wasDesktopClientRegistrationCreatedThisLaunch()).toBe(false);
   });
 
   it("upgrades a legacy native identity with the current installation witness", async () => {
@@ -163,6 +166,7 @@ describe("desktop client registration", () => {
 
     const first = await getOrCreateDesktopClientRegistration();
     expect(first.id).not.toBe(copied.id);
+    expect(wasDesktopClientRegistrationCreatedThisLaunch()).toBe(true);
     const rebound = JSON.parse(
       window.localStorage.getItem("freed-desktop-client-registration-v1") ?? "null",
     );

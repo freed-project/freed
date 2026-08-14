@@ -20,7 +20,13 @@ import {
 const GIB = 1024 * 1024 * 1024;
 
 test("parseArgs keeps the loop local-only by default", () => {
-  const args = parseArgs(["--tail", "100", "--memory-budget-gib", "3.5", "--no-write"]);
+  const args = parseArgs([
+    "--tail",
+    "100",
+    "--memory-budget-gib",
+    "3.5",
+    "--no-write",
+  ]);
 
   assert.equal(args.tail, 100);
   assert.equal(args.memoryBudgetGib, 3.5);
@@ -45,11 +51,16 @@ test("readJsonl tails rows and counts parse errors", () => {
   const result = readJsonl(filePath, { tail: 3 });
   assert.equal(result.exists, true);
   assert.equal(result.parseErrors, 1);
-  assert.deepEqual(result.rows.map((row) => row.event), ["newer", "newest"]);
+  assert.deepEqual(
+    result.rows.map((row) => row.event),
+    ["newer", "newest"],
+  );
 });
 
 test("readJsonl reads only the byte tail for large logs", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-jsonl-tail-"));
+  const dir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-social-loop-jsonl-tail-"),
+  );
   const filePath = path.join(dir, "runtime-diagnostics.jsonl");
   writeFileSync(
     filePath,
@@ -65,11 +76,16 @@ test("readJsonl reads only the byte tail for large logs", () => {
 
   assert.equal(result.exists, true);
   assert.equal(result.parseErrors, 0);
-  assert.deepEqual(result.rows.map((row) => row.event), ["recent-a", "recent-b"]);
+  assert.deepEqual(
+    result.rows.map((row) => row.event),
+    ["recent-a", "recent-b"],
+  );
 });
 
 test("readJsonl compacts heavyweight diagnostic text fields", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-jsonl-compact-"));
+  const dir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-social-loop-jsonl-compact-"),
+  );
   const filePath = path.join(dir, "runtime-diagnostics.jsonl");
   writeFileSync(
     filePath,
@@ -162,14 +178,39 @@ test("summarizeSocialScrapeHealth groups provider memory and scrape failures", (
   assert.equal(summary.maxEventLoopLagMs, 45);
   assert.equal(summary.maxDomNodeCount, 900);
   assert.equal(summary.providers.instagram.lastBlockedPreflightTsMs, 100);
-  assert.equal(summary.providers.instagram.minMemorySampleAfterBlockedWebkitResidentBytes, 0);
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedTsMs, 140);
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedBackgroundWorkPaused, true);
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedPauseReason, "memory");
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedPauseRemainingMs, 90_000);
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedSafeModeActive, true);
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedActiveJob, "content-fetch");
-  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedActiveJobAgeMs, 30_000);
+  assert.equal(
+    summary.providers.instagram.minMemorySampleAfterBlockedWebkitResidentBytes,
+    0,
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedTsMs,
+    140,
+  );
+  assert.equal(
+    summary.providers.instagram
+      .lastMemorySampleAfterBlockedBackgroundWorkPaused,
+    true,
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedPauseReason,
+    "memory",
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedPauseRemainingMs,
+    90_000,
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedSafeModeActive,
+    true,
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedActiveJob,
+    "content-fetch",
+  );
+  assert.equal(
+    summary.providers.instagram.lastMemorySampleAfterBlockedActiveJobAgeMs,
+    30_000,
+  );
 });
 
 test("buildOptimizationPlan ranks local memory work before missing coverage", () => {
@@ -191,10 +232,19 @@ test("buildOptimizationPlan ranks local memory work before missing coverage", ()
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
   assert.equal(plan.actions[0].id, "local-memory-preflight");
   assert.equal(plan.actions[0].scope, "local-only");
-  const linkedinAction = plan.actions.find((action) => action.id === "linkedin-preflight-without-plan");
+  const linkedinAction = plan.actions.find(
+    (action) => action.id === "linkedin-preflight-without-plan",
+  );
   assert.ok(linkedinAction);
-  assert.match(linkedinAction.evidence, /Lowest WebKit RSS after the last blocked preflight was 2 GiB/);
-  assert.ok(plan.blockedProviderRisk.some((risk) => risk.id === "scripted-scroll-click-recovery"));
+  assert.match(
+    linkedinAction.evidence,
+    /Lowest WebKit RSS after the last blocked preflight was 2 GiB/,
+  );
+  assert.ok(
+    plan.blockedProviderRisk.some(
+      (risk) => risk.id === "scripted-scroll-click-recovery",
+    ),
+  );
 });
 
 test("buildOptimizationPlan flags recovered providers without a later scrape plan", () => {
@@ -232,7 +282,8 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
               {
                 outcome: "error",
                 stage: "invoke",
-                reason: "Facebook sync paused because Freed Desktop memory remains critically high after cleanup.",
+                reason:
+                  "Facebook sync paused because Freed Desktop memory remains critically high after cleanup.",
                 finishedAt: 250,
                 itemsSeen: 0,
                 itemsAdded: 0,
@@ -246,7 +297,9 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   );
 
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
-  const action = plan.actions.find((candidate) => candidate.id === "facebook-recovered-without-later-plan");
+  const action = plan.actions.find(
+    (candidate) => candidate.id === "facebook-recovered-without-later-plan",
+  );
 
   assert.ok(action);
   assert.equal(action.scope, "local-only");
@@ -255,16 +308,26 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   assert.match(action.evidence, /safe mode was not active/);
   assert.match(action.evidence, /no background job was active/);
   assert.match(action.evidence, /provider health is not actively paused/);
-  assert.match(action.evidence, /latest provider-health attempt was error stage invoke/);
+  assert.match(
+    action.evidence,
+    /latest provider-health attempt was error stage invoke/,
+  );
   assert.match(action.nextStep, /scheduler pause/);
 
   const staleHealthAction = plan.actions.find(
-    (candidate) => candidate.id === "facebook-stale-memory-health-after-recovery",
+    (candidate) =>
+      candidate.id === "facebook-stale-memory-health-after-recovery",
   );
   assert.ok(staleHealthAction);
   assert.equal(staleHealthAction.scope, "local-only");
-  assert.match(staleHealthAction.evidence, /latest provider-health attempt is still invoke/);
-  assert.match(staleHealthAction.nextStep, /Do not enqueue extra provider traffic/);
+  assert.match(
+    staleHealthAction.evidence,
+    /latest provider-health attempt is still invoke/,
+  );
+  assert.match(
+    staleHealthAction.nextStep,
+    /Do not enqueue extra provider traffic/,
+  );
 });
 
 test("buildOptimizationPlan flags provider-health empty feed attempts", () => {
@@ -307,11 +370,16 @@ test("buildOptimizationPlan flags provider-health empty feed attempts", () => {
   );
 
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
-  const action = plan.actions.find((candidate) => candidate.id === "instagram-empty-feed-health");
+  const action = plan.actions.find(
+    (candidate) => candidate.id === "instagram-empty-feed-health",
+  );
 
   assert.ok(action);
   assert.equal(action.scope, "local-only");
-  assert.match(action.evidence, /Provider-health latest attempt is error stage extract_empty/);
+  assert.match(
+    action.evidence,
+    /Provider-health latest attempt is error stage extract_empty/,
+  );
   assert.match(action.evidence, /Instagram feed returned 0 posts/);
   assert.match(action.nextStep, /Do not add extra provider loads/);
 });
@@ -325,14 +393,16 @@ test("YouTube uses passive provider health without demanding social preflight ev
         providers: {
           youtube: {
             pause: null,
-            latestAttempts: [{
-              outcome: "empty",
-              stage: "empty",
-              reason: "No recent subscription videos were visible.",
-              finishedAt: 160,
-              itemsSeen: 0,
-              itemsAdded: 0,
-            }],
+            latestAttempts: [
+              {
+                outcome: "empty",
+                stage: "empty",
+                reason: "No recent subscription videos were visible.",
+                finishedAt: 160,
+                itemsSeen: 0,
+                itemsAdded: 0,
+              },
+            ],
           },
         },
       },
@@ -341,12 +411,16 @@ test("YouTube uses passive provider health without demanding social preflight ev
   );
 
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
-  const action = plan.actions.find((candidate) => candidate.id === "youtube-empty-feed-health");
+  const action = plan.actions.find(
+    (candidate) => candidate.id === "youtube-empty-feed-health",
+  );
 
   assert.ok(action);
   assert.match(action.title, /zero videos/);
   assert.equal(
-    plan.actions.some((candidate) => candidate.id === "youtube-missing-coverage"),
+    plan.actions.some(
+      (candidate) => candidate.id === "youtube-missing-coverage",
+    ),
     false,
   );
 });
@@ -358,12 +432,30 @@ test("buildReport writes provider summaries from health and diagnostics logs", (
   mkdirSync(path.dirname(healthLog), { recursive: true });
   writeFileSync(
     healthLog,
-    `${JSON.stringify({
-      event: "scrape_memory_preflight",
-      provider: "Facebook",
-      pressureLevel: "normal",
-      afterWebkitResidentBytes: GIB,
-    })}\n`,
+    [
+      {
+        event: "scrape_memory_preflight",
+        provider: "Facebook",
+        pressureLevel: "normal",
+        afterWebkitResidentBytes: GIB,
+      },
+      {
+        event: "provider_schedule_claimed",
+        provider: "facebook",
+        attemptId: "facebook:one",
+        dueAgeMs: 90_000,
+        lowerBoundMs: 45_000,
+      },
+      {
+        event: "provider_schedule_deferred",
+        provider: "facebook",
+        attemptId: "facebook:one",
+        outcome: "deferred",
+        stage: "memory_pressure",
+      },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n") + "\n",
   );
   writeFileSync(
     diagnosticsLog,
@@ -385,6 +477,16 @@ test("buildReport writes provider summaries from health and diagnostics logs", (
   assert.equal(report.inputs.healthLogExists, true);
   assert.equal(report.summary.providers.facebook.preflights, 1);
   assert.equal(report.summary.providers.facebook.authFailures, 1);
+  assert.equal(report.summary.providers.facebook.scheduleAttempts, 1);
+  assert.equal(report.summary.providers.facebook.scheduleOutcomes, 1);
+  assert.equal(report.summary.providers.facebook.scheduleRuntimeDeferrals, 1);
+  assert.equal(report.summary.providers.facebook.scheduleCoalescedIntervals, 2);
+  assert.equal(report.summary.providers.facebook.maxScheduleOverdueMs, 90_000);
+  assert.ok(
+    report.plan.actions.some(
+      (action) => action.id === "facebook-scheduled-runtime-deferral",
+    ),
+  );
 });
 
 test("formatBytes uses locale grouped units", () => {
@@ -454,7 +556,9 @@ test("run lock blocks overlapping loops and releases by token", () => {
 });
 
 test("run lock recovers stale lock files", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-stale-lock-"));
+  const dir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-social-loop-stale-lock-"),
+  );
   const lockPath = path.join(dir, "run.lock");
   writeFileSync(
     lockPath,

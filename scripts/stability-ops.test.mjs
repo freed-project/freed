@@ -639,7 +639,7 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
     bounds,
   );
   assert.equal(summary.version, "26.7.800");
-  assert.equal(summary.metricRegistryVersion, 7);
+  assert.equal(summary.metricRegistryVersion, 9);
   assert.equal(summary.spanHours, 6);
   assert.equal(summary.metrics.uploadsUnchangedPerHour, 2);
   assert.equal(summary.metrics.startupRepairUploadsPerHour, 0.17);

@@ -34,6 +34,7 @@ import {
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
@@ -41,6 +42,7 @@ import { clearProviderPause, resetProviderPauseState } from "../lib/provider-hea
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
+import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 
 // =============================================================================
 // Diagnostic Panel
@@ -129,6 +131,11 @@ export function LinkedInSettingsSection({
       setLastDiag(result.diag);
     } catch (err) {
       console.error("LinkedIn feed capture failed:", err);
+    } finally {
+      rescheduleProviderAfterExternalSettlement({
+        provider: "linkedin",
+        unblockAuth: trigger === "post_login",
+      });
     }
   }, []);
 
@@ -319,6 +326,7 @@ export function LinkedInSettingsSection({
             </p>
           )}
 
+          <ProviderSyncCadenceControl provider="linkedin" />
           <ProviderHealthSectionSummary
             provider="linkedin"
             showMessages={surface === "debug-card" && !syncError && !actionError}

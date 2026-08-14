@@ -195,7 +195,6 @@ export function OAuthCallback() {
 
       const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
       const lifecycle = captureCloudLifecycle();
-
       try {
         const result = await exchange(code, verifier);
         if (!result.ok) {
@@ -224,6 +223,7 @@ export function OAuthCallback() {
         startCloudSync(provider, result.token.accessToken).catch((err) => {
           console.error("[OAuthCallback] startCloudSync failed:", err);
         });
+        const redirectLifecycle = captureCloudLifecycle();
 
         if (cancelled) return;
 
@@ -234,7 +234,7 @@ export function OAuthCallback() {
           if (
             cancelled ||
             !runtimeLifecycle.isCurrent() ||
-            !lifecycle.isCurrent()
+            !redirectLifecycle.isCurrent()
           )
             return;
           window.location.replace("/");
