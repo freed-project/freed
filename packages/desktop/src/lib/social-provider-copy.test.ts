@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { SOCIAL_PROVIDER_COPY, type SocialProviderId } from "./social-provider-copy";
+import {
+  EMPTY_PROVIDER_FEED_COPY,
+  SOCIAL_PROVIDER_COPY,
+  type SocialProviderId,
+} from "./social-provider-copy";
 
 const allCopyText = (provider: SocialProviderId) => Object.values(SOCIAL_PROVIDER_COPY[provider]).join(" ");
 
 describe("social provider copy", () => {
+  it("uses the welcome state when a provider has no items", () => {
+    expect(EMPTY_PROVIDER_FEED_COPY).toEqual({
+      title: "Welcome!",
+      detail: "No items to show.",
+    });
+
+    for (const provider of Object.keys(SOCIAL_PROVIDER_COPY) as SocialProviderId[]) {
+      expect(SOCIAL_PROVIDER_COPY[provider].connectedEmptyState).toBe(
+        EMPTY_PROVIDER_FEED_COPY.detail,
+      );
+    }
+  });
+
   it("keeps provider labels, domains, and feed terms scoped to the right provider", () => {
     const forbidden: Record<SocialProviderId, string[]> = {
       x: ["Facebook", "Instagram", "LinkedIn", "Substack", "Medium", "facebook.com", "instagram.com", "linkedin.com"],

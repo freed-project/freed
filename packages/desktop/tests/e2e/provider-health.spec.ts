@@ -1683,11 +1683,11 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   await expect(page.getByTestId("settings-provider-status-linkedin")).toHaveClass(/bg-amber-500/);
   const sidebar = getDesktopSidebar(page);
   await expect(sidebar.getByTestId("source-indicator-x")).toHaveAttribute("title", "Reconnect required");
-  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveAttribute("title", "Connected");
+  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveAttribute("title", "No items yet");
   await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Sync issue");
   await expect(sidebar.getByTestId("source-indicator-instagram")).toHaveCount(0);
   await expect(sidebar.getByTestId("source-indicator-x")).toHaveClass(/bg-red-500/);
-  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveClass(/bg-emerald-500/);
+  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveClass(/theme-text-soft/);
   await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveClass(/bg-amber-500/);
 
   const facebookSourceIndicatorLayout = await page.evaluate(() => {
