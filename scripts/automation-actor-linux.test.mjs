@@ -11,6 +11,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -40,6 +41,7 @@ const authority = {
 };
 
 let goExecutable = "";
+let testRoot = "";
 let buildRoot = "";
 let testHost = "";
 
@@ -240,9 +242,12 @@ before(async () => {
     path.isAbsolute(goExecutable),
     "Linux native tests require Go on PATH",
   );
-  buildRoot = await mkdtemp(
-    path.join(repoRoot, ".automation-actor-linux-build-"),
+  testRoot = await mkdtemp(
+    path.join(os.homedir(), ".freed-automation-actor-linux-tests-"),
   );
+  await chmod(testRoot, 0o700);
+  buildRoot = path.join(testRoot, "build");
+  await mkdir(buildRoot, { mode: 0o700 });
   await chmod(buildRoot, 0o700);
   testHost = path.join(buildRoot, "automation-actor-host-test");
   await execFileAsync(
@@ -264,12 +269,12 @@ before(async () => {
 });
 
 after(async () => {
-  if (buildRoot) await rm(buildRoot, { recursive: true, force: true });
+  if (testRoot) await rm(testRoot, { recursive: true, force: true });
 });
 
 async function createFixture(mode = "valid") {
   const fixtureRoot = await mkdtemp(
-    path.join(repoRoot, ".automation-actor-linux-fixture-"),
+    path.join(testRoot, "fixture-"),
   );
   await chmod(fixtureRoot, 0o700);
   const bindingRoot = path.join(fixtureRoot, "automation-actor-launchers");
