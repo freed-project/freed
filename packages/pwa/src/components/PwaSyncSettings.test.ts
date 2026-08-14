@@ -134,6 +134,28 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
   });
 
+  it("clears the configured cloud provider before disconnecting the app store", () => {
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const disconnectButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Disconnect",
+    );
+
+    expect(disconnectButton).toBeInstanceOf(HTMLButtonElement);
+
+    act(() => {
+      disconnectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(mocks.clearCloudSync).toHaveBeenCalledWith("gdrive");
+    expect(mocks.getCloudProvider.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mocks.disconnect.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it("shows a linked Google account with a failed Library sync as needing attention", () => {
     useAppStore.setState({ syncConnected: false });
     useDebugStore.setState({
