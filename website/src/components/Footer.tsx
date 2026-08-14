@@ -31,7 +31,7 @@ export default function Footer() {
               </span>
             </Link>
             <div className="max-w-[18rem] sm:mt-6">
-              <ThemeSelector />
+              <ThemeSelector compact />
             </div>
           </div>
 

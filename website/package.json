@@ -12,7 +12,8 @@
     "generate-changelog": "npx tsx scripts/generate-changelog.ts",
     "start": "next start",
     "generate-feed": "npx tsx scripts/generate-feed.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:e2e": "node ../node_modules/playwright/cli.js test -c playwright.config.ts"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.17",
@@ -27,6 +28,7 @@
     "react-icons": "^5.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
