@@ -14,7 +14,9 @@ describe("provider settings status copy", () => {
   it("suppresses health messages when a primary sync error is visible", () => {
     for (const source of socialSettingsSources) {
       expect(source).toContain("<ProviderHealthSectionSummary");
-      expect(source).toContain('showMessages={surface === "debug-card" && !syncError && !actionError}');
+      expect(source).toMatch(
+        /showMessages=\{\s*surface === "debug-card" && !syncError && !actionError\s*\}/u,
+      );
     }
   });
 });

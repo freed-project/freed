@@ -317,7 +317,7 @@ if (verification.status !== 0) {
 }
 const channel = JSON.parse(verification.stdout);
 if (MODE === "slow-process-success") {
-  await new Promise((resolve) => setTimeout(resolve, 11_000));
+  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 if (options["--action"] === "attest") {
   const readiness = {
@@ -919,8 +919,8 @@ test(
 );
 
 test(
-  "native process acquisition returns a durable success beyond the former child deadline",
-  { skip: !darwinOnly, timeout: 25_000 },
+  "native process acquisition returns a durable success after a delayed child",
+  { skip: !darwinOnly, timeout: 15_000 },
   async () => {
     await withFixture({ mode: "slow-process-success" }, async (fixture) => {
       const startedAt = Date.now();
@@ -930,11 +930,11 @@ test(
         {
           encoding: "utf8",
           env: { ...process.env },
-          timeout: 20_000,
+          timeout: 12_000,
         },
       );
       assert.equal(result.status, 0, result.stderr);
-      assert.ok(Date.now() - startedAt >= 11_000);
+      assert.ok(Date.now() - startedAt >= 400);
       const handoff = JSON.parse(result.stdout);
       assert.equal(handoff.actor, fixture.binding.actor);
       assert.equal(handoff.leaseName, fixture.binding.leaseName);

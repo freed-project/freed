@@ -2,14 +2,27 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 
 const {
+  mockArchiveLibraryCoreProviderMedia,
   mockArchiveRecentProviderMedia,
+  mockAcquireLegacyLibraryItems,
   mockImportMetaExportFiles,
+  mockIsReaderDisabled,
+  mockLegacyRelease,
+  mockScanProviderItems,
+  mockStoreState,
   mockSummary,
 } = vi.hoisted(() => ({
+  mockArchiveLibraryCoreProviderMedia: vi.fn(),
   mockArchiveRecentProviderMedia: vi.fn(),
+  mockAcquireLegacyLibraryItems: vi.fn(),
   mockImportMetaExportFiles: vi.fn(),
+  mockIsReaderDisabled: vi.fn(),
+  mockLegacyRelease: vi.fn(),
+  mockScanProviderItems: vi.fn(),
+  mockStoreState: { items: [] as FeedItem[] },
   mockSummary: {
     enabled: false,
     fileCount: 0,
@@ -30,14 +43,30 @@ vi.mock("../lib/meta-export-import", () => ({
   importMetaExportFiles: mockImportMetaExportFiles,
 }));
 
+vi.mock("../lib/library-core-provider-settings-runtime", () => ({
+  isLibraryCoreProviderSettingsReaderDisabled: mockIsReaderDisabled,
+  scanLibraryCoreProviderItems: mockScanProviderItems,
+}));
+
+vi.mock("../lib/store", () => ({
+  useAppStore: (selector: (state: typeof mockStoreState) => unknown) =>
+    selector(mockStoreState),
+}));
+
 vi.mock("../lib/media-vault", () => ({
+  archiveLibraryCoreProviderMedia: mockArchiveLibraryCoreProviderMedia,
   archiveRecentProviderMedia: mockArchiveRecentProviderMedia,
-  getMediaVaultProviderDir: vi.fn(async (provider: string) => `/mock/app-data/media-vault/${provider}`),
+  getMediaVaultProviderDir: vi.fn(
+    async (provider: string) => `/mock/app-data/media-vault/${provider}`,
+  ),
   setMediaVaultEnabled: vi.fn(async (_provider: string, enabled: boolean) => {
     mockSummary.enabled = enabled;
   }),
   subscribeMediaVault: vi.fn(() => () => {}),
-  summarizeMediaVault: vi.fn(async () => ({ ...mockSummary, ownerHandles: [...mockSummary.ownerHandles] })),
+  summarizeMediaVault: vi.fn(async () => ({
+    ...mockSummary,
+    ownerHandles: [...mockSummary.ownerHandles],
+  })),
 }));
 
 import { useToastStore } from "@freed/ui/components/Toast";
@@ -71,9 +100,20 @@ describe("MediaVaultSettingsCard", () => {
   let root: Root;
 
   beforeEach(() => {
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
     mockImportMetaExportFiles.mockReset();
+    mockArchiveLibraryCoreProviderMedia.mockReset();
     mockArchiveRecentProviderMedia.mockReset();
+    mockAcquireLegacyLibraryItems.mockReset();
+    mockAcquireLegacyLibraryItems.mockResolvedValue(mockLegacyRelease);
+    mockIsReaderDisabled.mockReset();
+    mockIsReaderDisabled.mockReturnValue(false);
+    mockLegacyRelease.mockReset();
+    mockScanProviderItems.mockReset();
+    mockScanProviderItems.mockImplementation(async () => {});
+    mockStoreState.items = [];
     Object.assign(mockSummary, {
       enabled: false,
       fileCount: 0,
@@ -94,18 +134,27 @@ describe("MediaVaultSettingsCard", () => {
       root.unmount();
     });
     container.remove();
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  async function renderCard(authenticated = true, items: FeedItem[] = []) {
+  async function renderCard(authenticated = true) {
     await act(async () => {
       root.render(
-        <MediaVaultSettingsCard
-          provider="instagram"
-          providerLabel="Instagram"
-          items={items}
-          authenticated={authenticated}
-        />,
+        <PlatformProvider
+          value={
+            {
+              acquireLegacyLibraryItems: mockAcquireLegacyLibraryItems,
+            } as unknown as PlatformConfig
+          }
+        >
+          <MediaVaultSettingsCard
+            provider="instagram"
+            providerLabel="Instagram"
+            authenticated={authenticated}
+          />
+        </PlatformProvider>,
       );
       await Promise.resolve();
     });
@@ -120,10 +169,14 @@ describe("MediaVaultSettingsCard", () => {
     expect(container.textContent).toContain("(Beta) Back up my uploaded media");
     expect(container.textContent).toContain("Files 0");
     expect(container.textContent).toContain("Last backup Never");
-    expect(container.querySelector("button[aria-label='(Beta) Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("false");
+    expect(
+      container
+        .querySelector("button[aria-label='(Beta) Back up my uploaded media']")
+        ?.getAttribute("aria-checked"),
+    ).toBe("false");
 
-    const backfill = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Backfill from profile")
+    const backfill = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Backfill from profile"),
     );
     expect(backfill).toBeInstanceOf(HTMLButtonElement);
     expect((backfill as HTMLButtonElement | undefined)?.disabled).toBe(true);
@@ -139,7 +192,11 @@ describe("MediaVaultSettingsCard", () => {
 
     await renderCard(true);
 
-    expect(container.querySelector("button[aria-label='(Beta) Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("true");
+    expect(
+      container
+        .querySelector("button[aria-label='(Beta) Back up my uploaded media']")
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
     expect(container.textContent).toContain("Files 1");
     expect(container.textContent).toContain("Size 3 B");
     expect(container.textContent).toContain("Known account @ada");
@@ -149,19 +206,22 @@ describe("MediaVaultSettingsCard", () => {
     let finishImport: (() => void) | undefined;
     mockImportMetaExportFiles.mockReturnValue(
       new Promise((resolve) => {
-        finishImport = () => resolve({
-          provider: "instagram",
-          filesScanned: 1,
-          mediaFilesFound: 1,
-          imported: 1,
-          skipped: 0,
-          failed: 0,
-          ownerHandles: ["ada"],
-        });
+        finishImport = () =>
+          resolve({
+            provider: "instagram",
+            filesScanned: 1,
+            mediaFilesFound: 1,
+            imported: 1,
+            skipped: 0,
+            failed: 0,
+            ownerHandles: ["ada"],
+          });
       }),
     );
     await renderCard(true);
-    const input = container.querySelector("input[type='file']") as HTMLInputElement;
+    const input = container.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [new File(["zip"], "instagram.zip", { type: "application/zip" })],
       configurable: true,
@@ -179,19 +239,21 @@ describe("MediaVaultSettingsCard", () => {
     });
 
     expect(container.textContent).not.toContain("Importing...");
-    expect(useToastStore.getState().toasts[0]?.message).toContain("Imported 1 Instagram media file");
+    expect(useToastStore.getState().toasts[0]?.message).toContain(
+      "Imported 1 Instagram media file",
+    );
   });
 
-  it("reports backup success for current own media", async () => {
+  it("uses the source-fenced SQLite archiver without acquiring the legacy corpus", async () => {
     Object.assign(mockSummary, {
       enabled: true,
       ownerHandles: ["ada"],
     });
-    mockArchiveRecentProviderMedia.mockResolvedValue(1);
-    await renderCard(true, [instagramItem()]);
+    mockArchiveLibraryCoreProviderMedia.mockResolvedValue(3);
+    await renderCard(true);
 
-    const backup = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Back up now")
+    const backup = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Back up now"),
     );
     await act(async () => {
       backup?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -200,7 +262,74 @@ describe("MediaVaultSettingsCard", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(useToastStore.getState().toasts[0]?.message).toContain("Archived 1 Instagram media file");
+    expect(mockArchiveLibraryCoreProviderMedia).toHaveBeenCalledWith(
+      "instagram",
+      "continuous",
+      mockScanProviderItems,
+    );
+    expect(mockArchiveRecentProviderMedia).not.toHaveBeenCalled();
+    expect(mockAcquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts[0]?.message).toContain(
+      "Archived 3 Instagram media files",
+    );
+  });
+
+  it("surfaces a SQLite scan failure instead of reporting a false success", async () => {
+    Object.assign(mockSummary, {
+      enabled: true,
+      ownerHandles: ["ada"],
+    });
+    mockArchiveLibraryCoreProviderMedia.mockRejectedValue(
+      new Error("Library source changed during scan."),
+    );
+    await renderCard(true);
+
+    const backup = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Back up now"),
+    );
+    await act(async () => {
+      backup?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockArchiveRecentProviderMedia).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts[0]?.message).toBe(
+      "Library source changed during scan.",
+    );
+    expect(useToastStore.getState().toasts[0]?.message).not.toContain(
+      "Archived 0",
+    );
+  });
+
+  it("uses the legacy items only when the rollback key disables SQLite reads", async () => {
+    Object.assign(mockSummary, {
+      enabled: true,
+      ownerHandles: ["ada"],
+    });
+    const item = instagramItem();
+    mockStoreState.items = [item];
+    mockIsReaderDisabled.mockReturnValue(true);
+    mockArchiveRecentProviderMedia.mockResolvedValue(1);
+    await renderCard(true);
+
+    const backup = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Back up now"),
+    );
+    expect((backup as HTMLButtonElement | undefined)?.disabled).toBe(false);
+    await act(async () => {
+      backup?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockAcquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
+    expect(mockArchiveLibraryCoreProviderMedia).not.toHaveBeenCalled();
+    expect(mockArchiveRecentProviderMedia).toHaveBeenCalledWith(
+      "instagram",
+      [item],
+      "continuous",
+    );
   });
 
   it("shows the most recent archive error", async () => {
@@ -213,6 +342,8 @@ describe("MediaVaultSettingsCard", () => {
     await renderCard(true);
 
     expect(container.textContent).toContain("Provider CDN expired");
-    expect(container.textContent).toContain("1 media download failure will retry later.");
+    expect(container.textContent).toContain(
+      "1 media download failure will retry later.",
+    );
   });
 });

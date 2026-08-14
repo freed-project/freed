@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
+  recordRuntimeHealthEvent: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -30,6 +31,10 @@ vi.mock("./logger", () => ({
     info: vi.fn(),
     warn: vi.fn(),
   },
+}));
+
+vi.mock("./runtime-health-events", () => ({
+  recordRuntimeHealthEvent: mocks.recordRuntimeHealthEvent,
 }));
 
 async function loadMonitor() {
@@ -64,7 +69,19 @@ function blockedPreparation() {
     webkitLargestCpuUsage: 0,
     webkitLargestAgeSeconds: 10,
     webkitLargestRole: "freed-webcontent",
-    webkitProcesses: [],
+    webkitProcesses: [
+      {
+        processId: 12345,
+        startedAtUnixSeconds: 1_783_000_000,
+        startedAtUnixMicros: 1_783_000_000_500_000,
+        residentBytes: 96 * 1024 * 1024,
+        footprintBytes: 96 * 1024 * 1024,
+        virtualBytes: 512 * 1024 * 1024,
+        cpuUsage: 0,
+        ageSeconds: 10,
+        role: "freed-webcontent",
+      },
+    ],
     webkitTelemetryAvailable: true,
     webkitAttributionPrecise: true,
     indexedDbBytes: 0,
@@ -89,6 +106,7 @@ describe("social scrape memory preflight scheduling", () => {
   beforeEach(() => {
     vi.useRealTimers();
     mocks.invoke.mockReset();
+    mocks.recordRuntimeHealthEvent.mockReset();
   });
 
   it("reuses the failed preflight result instead of stampeding other providers", async () => {
@@ -163,6 +181,22 @@ describe("social scrape memory preflight scheduling", () => {
       includeStorageSizes: true,
       preciseWebkitAttribution: true,
     });
+    expect(mocks.recordRuntimeHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "renderer_memory_attribution",
+        reason: "startup",
+        shellBaselineMainRendererResidentBytes:
+          after.webkitProcesses[0].residentBytes,
+        shellBaselineMainRendererProcessId: after.webkitProcesses[0].processId,
+        shellBaselineMainRendererStartedAtUnixSeconds:
+          after.webkitProcesses[0].startedAtUnixSeconds,
+        shellBaselineMainRendererStartedAtUnixMicros:
+          after.webkitProcesses[0].startedAtUnixMicros,
+        mainRendererResidentOverShellBaselineBytes: 0,
+        shellBaselineComparisonStatus: "same_process",
+        webkitTotalResidentBytes: after.webkitTotalResidentBytes,
+      }),
+    );
 
     await vi.advanceTimersByTimeAsync(30_000);
     await flushPromises();

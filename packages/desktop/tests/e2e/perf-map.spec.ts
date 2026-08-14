@@ -13,7 +13,7 @@ const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<unknown>;
     };
 
@@ -135,6 +135,12 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   await page.addInitScript(() => {
     (
       window as Window & {
+        __FREED_E2E_SQLITE_SHELL_ONLY__?: boolean;
+        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+      }
+    ).__FREED_E2E_SQLITE_SHELL_ONLY__ = true;
+    (
+      window as Window & {
         __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
       }
     ).__FREED_E2E_MAP_TIME_REFRESH_MS__ = 120;
@@ -143,21 +149,33 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   await app.goto();
   await app.waitForReady();
   await seedLargeMapWorkspace(page);
-  await page.waitForFunction(
+  const sqliteActive = await page.waitForFunction(
     (expectedCount: number) => {
       const w = window as Record<string, unknown>;
+      const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+        | { active?: boolean; items?: Record<string, { __deleted?: boolean }> }
+        | undefined;
       const store = w.__FREED_STORE__ as
         | { getState: () => { items: unknown[] } }
         | undefined;
-      return (store?.getState().items.length ?? 0) >= expectedCount;
+      if (sqlite?.active) {
+        const sqliteItemCount = Object.values(sqlite.items ?? {})
+          .filter((item) => !item.__deleted).length;
+        return sqliteItemCount >= expectedCount && (store?.getState().items.length ?? 0) === 0
+          ? true
+          : undefined;
+      }
+      return (store?.getState().items.length ?? 0) >= expectedCount ? false : undefined;
     },
     MAP_ITEM_COUNT,
     { timeout: 30_000 },
-  );
+  ).then((handle) => handle.jsonValue());
   await page.waitForTimeout(600);
-  await page.reload();
-  await app.waitForReady();
-  await page.waitForTimeout(1_000);
+  if (!sqliteActive) {
+    await page.reload();
+    await app.waitForReady();
+    await page.waitForTimeout(1_000);
+  }
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;

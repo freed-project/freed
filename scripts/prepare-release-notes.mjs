@@ -25,8 +25,20 @@ import {
 import { listPromotionDiffFiles } from "./release-promotion-shared.mjs";
 import {
   historicalPublishedTagReceipt,
+  publishedReleaseInspectionSource,
+  releaseInspectionRange,
   releasePreparationReceipt,
 } from "./release-receipt.mjs";
+import {
+  LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+  inspectLibraryCoreActivationManifest,
+  inspectPreviousLibraryCoreActivationWitness,
+  prepareLibraryCoreReleaseActivation,
+  validatePreviousLibraryCoreActivationContinuity,
+  withReleaseArtifactWriteLock,
+} from "./lib/library-core-release-activation.mjs";
+import { readGitPathAtRef } from "./lib/git-path-at-ref.mjs";
+import { readGithubReleasePublications } from "./lib/github-release-publications.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,11 +53,13 @@ const OPENAI_API = "https://api.openai.com/v1/chat/completions";
 const OPENAI_MODEL = process.env.OPENAI_RELEASE_NOTES_MODEL || "gpt-5.4";
 const OPENAI_TIMEOUT_MS = Math.max(
   1_000,
-  Number.parseInt(process.env.OPENAI_RELEASE_NOTES_TIMEOUT_MS || "20000", 10) || 20_000,
+  Number.parseInt(process.env.OPENAI_RELEASE_NOTES_TIMEOUT_MS || "20000", 10) ||
+    20_000,
 );
 const GITHUB_FETCH_TIMEOUT_MS = Math.max(
   1_000,
-  Number.parseInt(process.env.RELEASE_NOTES_GITHUB_TIMEOUT_MS || "15000", 10) || 15_000,
+  Number.parseInt(process.env.RELEASE_NOTES_GITHUB_TIMEOUT_MS || "15000", 10) ||
+    15_000,
 );
 const MAX_PR_DETAILS = Math.max(
   0,
@@ -97,6 +111,61 @@ function hasGitRef(ref) {
   }
 }
 
+function gitIsAncestor(fromRef, toRef) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", fromRef, toRef], {
+      cwd: REPO_ROOT,
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readTaggedReleaseArtifact(tag) {
+  const relativePath = path.posix.join(
+    "release-notes",
+    "releases",
+    `${tag}.json`,
+  );
+  const artifactRead = readGitPathAtRef({
+    cwd: REPO_ROOT,
+    ref: tag,
+    filePath: relativePath,
+  });
+  if (artifactRead.state === "absent") {
+    return null;
+  }
+  try {
+    return JSON.parse(artifactRead.contents);
+  } catch {
+    throw new Error(
+      `Previous published release ${tag} has an invalid immutable release artifact.`,
+    );
+  }
+}
+
+function previousReleaseInspection({ tag, channel }) {
+  const immutableArtifact = readTaggedReleaseArtifact(tag);
+  if (
+    immutableArtifact &&
+    (immutableArtifact.tag !== tag || immutableArtifact.channel !== channel)
+  ) {
+    throw new Error(
+      `Previous published release ${tag} has inconsistent immutable identity.`,
+    );
+  }
+  return {
+    artifact: immutableArtifact,
+    source: publishedReleaseInspectionSource({
+      channel,
+      immutableSource: immutableArtifact?.source ?? null,
+      tagCommitSha: git(["rev-parse", `${tag}^{commit}`]),
+    }),
+  };
+}
+
 function maybeGhToken() {
   try {
     return execFileSync(ghBinary(), ["auth", "token"], {
@@ -110,7 +179,8 @@ function maybeGhToken() {
 }
 
 function githubHeaders() {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || maybeGhToken();
+  const token =
+    process.env.GITHUB_TOKEN || process.env.GH_TOKEN || maybeGhToken();
   const headers = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -125,7 +195,10 @@ function githubHeaders() {
 
 async function fetchJson(url, headers) {
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), GITHUB_FETCH_TIMEOUT_MS);
+  const timeoutHandle = setTimeout(
+    () => controller.abort(),
+    GITHUB_FETCH_TIMEOUT_MS,
+  );
 
   try {
     const response = await fetch(url, { headers, signal: controller.signal });
@@ -150,7 +223,10 @@ function normalizeSubject(subject) {
 }
 
 function isExactDuplicateText(a, b) {
-  return normalizeReleaseText(a).toLowerCase() === normalizeReleaseText(b).toLowerCase();
+  return (
+    normalizeReleaseText(a).toLowerCase() ===
+    normalizeReleaseText(b).toLowerCase()
+  );
 }
 
 function commitKind(subject) {
@@ -244,7 +320,9 @@ function parseDetails(lines) {
 
     if (
       text &&
-      !["Includes", "Include", "Summary", "What changed", "Impact"].includes(text)
+      !["Includes", "Include", "Summary", "What changed", "Impact"].includes(
+        text,
+      )
     ) {
       const normalized = summarizeFallbackText(text);
       if (!details.some((item) => areNearDuplicates(item, normalized))) {
@@ -319,7 +397,9 @@ function legacyDailyPath(dayKey) {
 function readDailyArtifact(dayKey, channel) {
   return (
     readJsonIfExists(dailyPath(dayKey, channel)) ??
-    (channel === "production" ? readJsonIfExists(legacyDailyPath(dayKey)) : null)
+    (channel === "production"
+      ? readJsonIfExists(legacyDailyPath(dayKey))
+      : null)
   );
 }
 
@@ -408,9 +488,9 @@ function withComputedDeck(release, context, existingDaily) {
 function releaseHasContent(release) {
   return Boolean(
     release?.deck ||
-      (release?.features ?? []).length > 0 ||
-      (release?.fixes ?? []).length > 0 ||
-      (release?.followUps ?? []).length > 0,
+    (release?.features ?? []).length > 0 ||
+    (release?.fixes ?? []).length > 0 ||
+    (release?.followUps ?? []).length > 0,
   );
 }
 
@@ -465,7 +545,9 @@ function mergePriorSameDayReleases(baseRelease, earlierReleases) {
         continue;
       }
 
-      if (!merged.followUps.some((followUp) => areNearDuplicates(followUp, item))) {
+      if (
+        !merged.followUps.some((followUp) => areNearDuplicates(followUp, item))
+      ) {
         merged.followUps.push(item);
       }
     }
@@ -491,13 +573,21 @@ function releaseArtifactsMatch(existingArtifact, nextRelease, nextSource) {
 
   const existingRelease = sanitizeReleaseShape(existingArtifact.release ?? {});
   const existingSource = {
-    channel: existingArtifact.source?.channel ?? existingArtifact.channel ?? "production",
+    channel:
+      existingArtifact.source?.channel ??
+      existingArtifact.channel ??
+      "production",
     previousPublishedTag: existingArtifact.source?.previousPublishedTag ?? null,
-    previousPublishedDayTag: existingArtifact.source?.previousPublishedDayTag ?? null,
+    previousPublishedDayTag:
+      existingArtifact.source?.previousPublishedDayTag ?? null,
     compareRef: existingArtifact.source?.compareRef ?? "HEAD",
     productCommitSha: existingArtifact.source?.productCommitSha ?? null,
-    promotedDevCommitSha:
-      existingArtifact.source?.promotedDevCommitSha ?? null,
+    promotedDevCommitSha: existingArtifact.source?.promotedDevCommitSha ?? null,
+    ...(Object.hasOwn(existingArtifact.source ?? {}, "libraryCoreActivation")
+      ? {
+          libraryCoreActivation: existingArtifact.source.libraryCoreActivation,
+        }
+      : {}),
     isLatestOfDay: Boolean(existingArtifact.source?.isLatestOfDay),
     sameDayTagsIncluded: existingArtifact.source?.sameDayTagsIncluded ?? [],
     relatedBuildTags: existingArtifact.source?.relatedBuildTags ?? [],
@@ -522,14 +612,21 @@ function compareReleases(a, b) {
   return compareTags(a.tag_name, b.tag_name);
 }
 
-async function listPublishedReleases(channel) {
-  const headers = githubHeaders();
-  const releases = await fetchJson(
-    `${GITHUB_API}/repos/freed-project/freed/releases?per_page=100`,
-    headers,
-  );
+let githubReleasePublicationCache = null;
 
-  return releases
+async function listPublishedReleases(channel) {
+  githubReleasePublicationCache ??= readGithubReleasePublications({
+    projectRelease: (release) => ({
+      id: release.id ?? null,
+      tag_name: release.tag_name,
+      draft: release.draft,
+      prerelease: release.prerelease,
+      published_at: release.published_at,
+      body: release.body ?? "",
+    }),
+  });
+
+  return githubReleasePublicationCache
     .filter((release) => {
       if (release.draft) {
         return false;
@@ -550,7 +647,10 @@ async function listPublishedReleases(channel) {
 
 async function fetchPull(prNumber) {
   const headers = githubHeaders();
-  return fetchJson(`${GITHUB_API}/repos/freed-project/freed/pulls/${prNumber}`, headers);
+  return fetchJson(
+    `${GITHUB_API}/repos/freed-project/freed/pulls/${prNumber}`,
+    headers,
+  );
 }
 
 function parseArguments(argv) {
@@ -577,9 +677,11 @@ function parseArguments(argv) {
 }
 
 function previousPublishedDayRelease(version, publishedReleases) {
-  return [...publishedReleases]
-    .filter((release) => compareVersionDays(release.tag_name, version) < 0)
-    .pop() ?? null;
+  return (
+    [...publishedReleases]
+      .filter((release) => compareVersionDays(release.tag_name, version) < 0)
+      .pop() ?? null
+  );
 }
 
 function releaseSummaryScore(text, kind, pinnedTexts) {
@@ -609,15 +711,13 @@ function releaseSummaryScore(text, kind, pinnedTexts) {
 }
 
 function chooseBestSummary(entry) {
-  const candidates = [
-    entry.title,
-    ...(entry.details ?? []),
-    entry.fallback,
-  ]
+  const candidates = [entry.title, ...(entry.details ?? []), entry.fallback]
     .map((candidate) => summarizeFallbackText(candidate))
     .filter(Boolean);
 
-  return candidates[0] ?? summarizeFallbackText(entry.fallback || entry.title || "");
+  return (
+    candidates[0] ?? summarizeFallbackText(entry.fallback || entry.title || "")
+  );
 }
 
 function collectPriorSameDayReleases(tag, dayKey, publishedReleases) {
@@ -711,7 +811,11 @@ function parsePublishedReleaseBody(body) {
         ),
     );
 
-    if (heading.includes("feature") || heading.includes("new") || heading.includes("feat")) {
+    if (
+      heading.includes("feature") ||
+      heading.includes("new") ||
+      heading.includes("feat")
+    ) {
       features.push(...items);
       continue;
     }
@@ -750,7 +854,11 @@ function loadPublishedReleaseSummary(release) {
   };
 }
 
-function collectIntermediaryDevReleases(tag, previousPublishedTag, publishedReleases) {
+function collectIntermediaryDevReleases(
+  tag,
+  previousPublishedTag,
+  publishedReleases,
+) {
   return publishedReleases.filter((release) => {
     if (!release.prerelease || !release.tag_name.endsWith(DEV_SUFFIX)) {
       return false;
@@ -772,7 +880,11 @@ async function collectReleaseContext(
   tag,
   version,
   channel,
-  { historicalPublishedTag = false, existingSource = null } = {},
+  {
+    historicalPublishedTag = false,
+    existingSource = null,
+    existingReleaseArtifact = null,
+  } = {},
 ) {
   let releaseReceipt;
   if (historicalPublishedTag) {
@@ -818,18 +930,111 @@ async function collectReleaseContext(
   }
   const publishedReleases = await listPublishedReleases(channel);
   const allPublishedReleases =
-    channel === "production" ? await listPublishedReleases("all") : publishedReleases;
+    channel === "production"
+      ? await listPublishedReleases("all")
+      : publishedReleases;
   const dayKey = versionDayKey(version);
   const sameDayPublished = publishedReleases.filter(
     (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey,
   );
-  const previousPublished = [...publishedReleases]
-    .filter((release) => compareTags(release.tag_name, tag) < 0)
-    .pop() ?? null;
-  const previousPublishedDay = previousPublishedDayRelease(version, publishedReleases);
+  const previousPublished =
+    [...publishedReleases]
+      .filter((release) => compareTags(release.tag_name, tag) < 0)
+      .pop() ?? null;
+  let libraryCoreActivation = existingSource?.libraryCoreActivation ?? null;
+  if (!historicalPublishedTag) {
+    const previousPublishedTag = previousPublished?.tag_name ?? null;
+    let previousSource = null;
+    let previousArtifact = null;
+    let previousTagCommitSha = null;
+    if (previousPublishedTag !== null) {
+      if (!/^v\d+\.\d+\.\d+(?:-dev)?$/.test(previousPublishedTag)) {
+        throw new Error(
+          `Previous published release tag is invalid: ${previousPublishedTag}.`,
+        );
+      }
+      previousTagCommitSha = git([
+        "rev-parse",
+        `${previousPublishedTag}^{commit}`,
+      ]);
+      const previousInspection = previousReleaseInspection({
+        tag: previousPublishedTag,
+        channel,
+      });
+      previousSource = previousInspection.source;
+      previousArtifact = previousInspection.artifact;
+    }
+    const activationRange = releaseInspectionRange({
+      channel,
+      previousPublishedTag,
+      previousSource,
+      previousTagCommitSha,
+      productCommitSha: releaseReceipt.productCommitSha,
+      isAncestor: gitIsAncestor,
+    });
+    const previousTagManifestRead =
+      previousTagCommitSha === null
+        ? { state: "absent" }
+        : readGitPathAtRef({
+            cwd: REPO_ROOT,
+            ref: previousTagCommitSha,
+            filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+          });
+    const previousActivationWitness =
+      inspectPreviousLibraryCoreActivationWitness({
+        releaseArtifact: previousArtifact,
+        tag: previousPublishedTag,
+        manifestRead: previousTagManifestRead,
+      });
+    const previousManifestRead =
+      activationRange.fromExclusiveCommitSha === null
+        ? { state: "absent" }
+        : readGitPathAtRef({
+            cwd: REPO_ROOT,
+            ref: activationRange.fromExclusiveCommitSha,
+            filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+          });
+    const currentManifestRead = readGitPathAtRef({
+      cwd: REPO_ROOT,
+      ref: releaseReceipt.productCommitSha,
+      filePath: LIBRARY_CORE_ACTIVATION_MANIFEST_PATH,
+    });
+    if (currentManifestRead.state !== "present") {
+      throw new Error(
+        `${LIBRARY_CORE_ACTIVATION_MANIFEST_PATH} is missing from exact release source ${releaseReceipt.productCommitSha}.`,
+      );
+    }
+    const manifestInspection = inspectLibraryCoreActivationManifest({
+      previousContents:
+        previousManifestRead.state === "present"
+          ? previousManifestRead.contents
+          : null,
+      currentContents: currentManifestRead.contents,
+    });
+    validatePreviousLibraryCoreActivationContinuity({
+      witness: previousActivationWitness,
+      manifestInspection,
+    });
+    libraryCoreActivation = prepareLibraryCoreReleaseActivation({
+      range: activationRange,
+      manifestInspection,
+      existingValue: existingSource?.libraryCoreActivation ?? null,
+      releaseArtifact: existingReleaseArtifact,
+    });
+  }
+  const previousPublishedDay = previousPublishedDayRelease(
+    version,
+    publishedReleases,
+  );
   const isLatestOfDay =
-    sameDayPublished.find((release) => compareTags(release.tag_name, tag) > 0) === undefined;
-  const priorSameDayReleases = collectPriorSameDayReleases(tag, dayKey, publishedReleases);
+    sameDayPublished.find(
+      (release) => compareTags(release.tag_name, tag) > 0,
+    ) === undefined;
+  const priorSameDayReleases = collectPriorSameDayReleases(
+    tag,
+    dayKey,
+    publishedReleases,
+  );
   const intermediaryDevReleases =
     channel === "production"
       ? collectIntermediaryDevReleases(
@@ -839,10 +1044,15 @@ async function collectReleaseContext(
         )
       : [];
   const priorCumulativeReleases = isLatestOfDay
-    ? dedupePublishedReleases([...priorSameDayReleases, ...intermediaryDevReleases])
+    ? dedupePublishedReleases([
+        ...priorSameDayReleases,
+        ...intermediaryDevReleases,
+      ])
     : [];
   const compareRef = hasGitRef(tag) ? tag : "HEAD";
-  const rangeStart = isLatestOfDay ? previousPublishedDay?.tag_name : previousPublished?.tag_name;
+  const rangeStart = isLatestOfDay
+    ? previousPublishedDay?.tag_name
+    : previousPublished?.tag_name;
   const range = rangeStart ? `${rangeStart}..${compareRef}` : compareRef;
   const subjects = git(["log", range, "--format=%s"])
     .split("\n")
@@ -851,7 +1061,9 @@ async function collectReleaseContext(
 
   const entries = [];
   const prNumbers = new Set();
-  const prDetailCount = subjects.filter((subject) => /\(#(\d+)\)$/.test(subject)).length;
+  const prDetailCount = subjects.filter((subject) =>
+    /\(#(\d+)\)$/.test(subject),
+  ).length;
   const shouldFetchPrDetails = prDetailCount <= MAX_PR_DETAILS;
 
   if (!shouldFetchPrDetails) {
@@ -893,7 +1105,9 @@ async function collectReleaseContext(
         }
 
         if (details.length === 0) {
-          details = parseDetails(normalizeBodyText(pull.body || "").split("\n"));
+          details = parseDetails(
+            normalizeBodyText(pull.body || "").split("\n"),
+          );
         }
       } catch {
         details = [];
@@ -919,6 +1133,7 @@ async function collectReleaseContext(
     dayKey,
     compareRef,
     releaseReceipt,
+    libraryCoreActivation,
     isLatestOfDay,
     previousPublishedTag: previousPublished?.tag_name ?? null,
     previousPublishedDayTag: previousPublishedDay?.tag_name ?? null,
@@ -927,7 +1142,10 @@ async function collectReleaseContext(
     intermediaryDevReleases,
     priorCumulativeReleases,
     relatedBuildTags: isLatestOfDay
-      ? dedupeReleaseTags([...priorCumulativeReleases.map((release) => release.tag_name), tag])
+      ? dedupeReleaseTags([
+          ...priorCumulativeReleases.map((release) => release.tag_name),
+          tag,
+        ])
       : [tag],
     publishedReleases,
     commitSubjects: subjects,
@@ -937,7 +1155,9 @@ async function collectReleaseContext(
 }
 
 function buildHeuristicRelease(context, existingDaily) {
-  const pinnedTexts = normalizePinnedHighlightTexts(existingDaily?.pinnedHighlights ?? []);
+  const pinnedTexts = normalizePinnedHighlightTexts(
+    existingDaily?.pinnedHighlights ?? [],
+  );
 
   const candidates = context.entries
     .map((entry, index) => {
@@ -991,16 +1211,23 @@ function buildHeuristicRelease(context, existingDaily) {
     followUps.push(candidate.text);
   }
 
-  return withComputedDeck({
-    deck: pinnedTexts[0] ?? "",
-    features,
-    fixes,
-    followUps,
-  }, context, existingDaily);
+  return withComputedDeck(
+    {
+      deck: pinnedTexts[0] ?? "",
+      features,
+      fixes,
+      followUps,
+    },
+    context,
+    existingDaily,
+  );
 }
 
 function parseJsonContent(raw) {
-  const cleaned = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  const cleaned = raw
+    .replace(/^```(?:json)?\n?/, "")
+    .replace(/\n?```$/, "")
+    .trim();
   return JSON.parse(cleaned);
 }
 
@@ -1090,7 +1317,9 @@ async function generateWithOpenAI(promptInput) {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error ${response.status}: ${await response.text()}`);
+      throw new Error(
+        `OpenAI API error ${response.status}: ${await response.text()}`,
+      );
     }
 
     const data = await response.json();
@@ -1125,15 +1354,19 @@ async function main() {
   const existingRelease = readJsonIfExists(releaseFile.json);
 
   if (existingRelease?.approved && !force) {
-    console.log(`${tag} already has an approved release file. Leaving it untouched.`);
+    console.log(
+      `${tag} already has an approved release file. Leaving it untouched.`,
+    );
     return;
   }
 
   const existingDaily =
-    readDailyArtifact(dayKey, channel) ?? defaultDailyEditorial(dayKey, version, channel);
+    readDailyArtifact(dayKey, channel) ??
+    defaultDailyEditorial(dayKey, version, channel);
   const context = await collectReleaseContext(tag, version, channel, {
     historicalPublishedTag,
     existingSource: existingRelease?.source ?? null,
+    existingReleaseArtifact: existingRelease,
   });
   const existingSeedRelease = releaseFromArtifact(existingRelease);
   const heuristicRelease = buildHeuristicRelease(context, existingDaily);
@@ -1143,10 +1376,15 @@ async function main() {
   const carriedForwardSummaries = context.priorCumulativeReleases
     .map((release) => loadPublishedReleaseSummary(release))
     .filter((summary) => releaseHasContent(summary.release));
-  const carriedForwardReleases = carriedForwardSummaries.map((summary) => summary.release);
-  const previousDayRelease = channel === "dev" && context.previousPublishedDayTag
-    ? loadPublishedReleaseSummary({ tag_name: context.previousPublishedDayTag }).release
-    : null;
+  const carriedForwardReleases = carriedForwardSummaries.map(
+    (summary) => summary.release,
+  );
+  const previousDayRelease =
+    channel === "dev" && context.previousPublishedDayTag
+      ? loadPublishedReleaseSummary({
+          tag_name: context.previousPublishedDayTag,
+        }).release
+      : null;
   const cumulativePrNumbers = dedupeNumericList([
     ...context.prNumbers,
     ...carriedForwardSummaries.flatMap((summary) => summary.prNumbers),
@@ -1169,7 +1407,12 @@ async function main() {
       previousPublishedTag: context.previousPublishedTag,
       previousPublishedDayTag: context.previousPublishedDayTag,
       sameDayTagsIncluded: context.isLatestOfDay
-        ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
+        ? [
+            ...context.sameDayPublishedTags.filter(
+              (sameDayTag) => compareTags(sameDayTag, tag) < 0,
+            ),
+            tag,
+          ]
         : [tag],
       relatedBuildTags: context.relatedBuildTags,
       commitSubjects: context.commitSubjects,
@@ -1181,7 +1424,9 @@ async function main() {
         details: entry.details.slice(0, 5),
       })),
       priorSameDayReleases: carriedForwardReleases,
-      intermediaryBuildTags: context.intermediaryDevReleases.map((release) => release.tag_name),
+      intermediaryBuildTags: context.intermediaryDevReleases.map(
+        (release) => release.tag_name,
+      ),
       editorialGuidance: existingDaily.editorialGuidance,
       pinnedHighlights: existingDaily.pinnedHighlights,
       editorialNotes: existingDaily.editorialNotes,
@@ -1193,10 +1438,14 @@ async function main() {
   try {
     structured = await generateWithOpenAI(promptInput);
   } catch (error) {
-    console.warn(`[prepare-release-notes] OpenAI generation failed, using fallback. ${error}`);
+    console.warn(
+      `[prepare-release-notes] OpenAI generation failed, using fallback. ${error}`,
+    );
   }
 
-  const draftedRelease = sanitizeReleaseShape(structured?.release ?? cumulativeDraftRelease);
+  const draftedRelease = sanitizeReleaseShape(
+    structured?.release ?? cumulativeDraftRelease,
+  );
   const generatedRelease = withComputedDeck(
     context.isLatestOfDay
       ? mergePriorSameDayReleases(draftedRelease, carriedForwardReleases)
@@ -1235,9 +1484,17 @@ async function main() {
     previousPublishedDayTag: context.previousPublishedDayTag,
     compareRef: context.compareRef,
     ...context.releaseReceipt,
+    ...(context.libraryCoreActivation === null
+      ? {}
+      : { libraryCoreActivation: context.libraryCoreActivation }),
     isLatestOfDay: context.isLatestOfDay,
     sameDayTagsIncluded: context.isLatestOfDay
-      ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
+      ? [
+          ...context.sameDayPublishedTags.filter(
+            (sameDayTag) => compareTags(sameDayTag, tag) < 0,
+          ),
+          tag,
+        ]
       : [tag],
     relatedBuildTags: context.relatedBuildTags,
     prNumbers: cumulativePrNumbers,
@@ -1250,7 +1507,8 @@ async function main() {
   );
 
   const releaseArtifact = {
-    ...(existingRelease ?? defaultReleaseArtifact(tag, version, dayKey, channel)),
+    ...(existingRelease ??
+      defaultReleaseArtifact(tag, version, dayKey, channel)),
     tag,
     version,
     channel,
@@ -1279,9 +1537,17 @@ async function main() {
     updatedAt: new Date().toISOString(),
   };
 
-  writeFileSync(releaseFile.json, `${JSON.stringify(releaseArtifact, null, 2)}\n`);
-  writeFileSync(releaseFile.markdown, releaseArtifact.releaseBody);
-  writeFileSync(dailyPath(dayKey, channel), `${JSON.stringify(dailyArtifact, null, 2)}\n`);
+  withReleaseArtifactWriteLock(releaseFile.json, () => {
+    writeFileSync(
+      releaseFile.json,
+      `${JSON.stringify(releaseArtifact, null, 2)}\n`,
+    );
+    writeFileSync(releaseFile.markdown, releaseArtifact.releaseBody);
+    writeFileSync(
+      dailyPath(dayKey, channel),
+      `${JSON.stringify(dailyArtifact, null, 2)}\n`,
+    );
+  });
 
   console.log(`Prepared release notes for ${tag}`);
   console.log(`- ${path.relative(REPO_ROOT, releaseFile.json)}`);

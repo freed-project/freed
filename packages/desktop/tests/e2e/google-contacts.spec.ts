@@ -113,7 +113,7 @@ async function readContactSyncState(page: import("@playwright/test").Page) {
 async function injectAuthor(page: import("@playwright/test").Page, displayName: string, handle = "author-handle") {
   await page.evaluate(async ({ displayName, handle }) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docBatchImportItems: (items: unknown[]) => Promise<void>;
     };
     const now = Date.now();
@@ -136,7 +136,7 @@ async function injectAuthor(page: import("@playwright/test").Page, displayName: 
 async function injectFriend(page: import("@playwright/test").Page, friendName: string) {
   await page.evaluate(async (friendName) => {
     const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
+    const automerge = w.__FREED_LIBRARY_CORE__ as {
       docAddPerson: (person: unknown) => Promise<void>;
     };
     const now = Date.now();

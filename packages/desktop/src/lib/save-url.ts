@@ -7,7 +7,7 @@
  *  3. Queue background detail fetching and cache hydration.
  */
 
-import { docAddStubItem } from "./automerge.js";
+import { docAddStubItem } from "./library-client";
 import { enqueue } from "./content-fetcher.js";
 
 export interface SaveUrlOptions {

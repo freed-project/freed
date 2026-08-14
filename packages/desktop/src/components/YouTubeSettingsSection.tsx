@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collectSavedYouTubeVideoUrls } from "@freed/shared";
+import { collectSavedYouTubeVideoUrls, type FeedItem } from "@freed/shared";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
 import { usePlatform } from "@freed/ui/context";
+import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
-import { getProviderStatusLabel, getProviderStatusTone } from "@freed/ui/lib/provider-status";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "@freed/ui/lib/provider-status";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { listen } from "@tauri-apps/api/event";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
@@ -27,11 +31,20 @@ import { useAppStore, withProviderSyncing } from "../lib/store";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
-import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import {
+  clearProviderPause,
+  resetProviderPauseState,
+} from "../lib/provider-health";
 import {
   isDesktopProviderAuthAllowed,
   registerDesktopProviderAuthQuiesceHandler,
 } from "../lib/provider-auth-lifecycle";
+import {
+  isLibraryCoreProviderSettingsReaderDisabled,
+  readSavedLibraryCoreYouTubeVideoUrls,
+} from "../lib/library-core-provider-settings-runtime";
+
+const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 export function YouTubeSettingsSection({
   surface = "settings",
@@ -39,87 +52,182 @@ export function YouTubeSettingsSection({
   const { openUrl } = usePlatform();
   const auth = useAppStore((state) => state.ytAuth);
   const setAuth = useAppStore((state) => state.setYtAuth);
-  const syncing = useAppStore((state) => (state.providerSyncCounts.youtube ?? 0) > 0);
-  const healthSnapshot = useDebugStore((state) => state.health?.providers.youtube ?? null);
-  const items = useAppStore((state) => state.items);
-  const savedVideoUrls = useMemo(() => collectSavedYouTubeVideoUrls(items), [items]);
-  const savedCount = savedVideoUrls.length;
+  const syncing = useAppStore(
+    (state) => (state.providerSyncCounts.youtube ?? 0) > 0,
+  );
+  const healthSnapshot = useDebugStore(
+    (state) => state.health?.providers.youtube ?? null,
+  );
+  const sourceVersion = useAppStore((state) => state.searchCorpusVersion);
+  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
+  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
+  const legacyItems = useAppStore((state) =>
+    useLegacyItems ? state.items : EMPTY_FEED_ITEMS,
+  );
   const { confirm, dialog } = useProviderRiskGate("youtube");
   const [checking, setChecking] = useState(false);
   const [playlistSyncing, setPlaylistSyncing] = useState(false);
-  const [playlist, setPlaylist] = useState<YouTubePlaylistState>(getYouTubePlaylistState);
+  const [playlist, setPlaylist] = useState<YouTubePlaylistState>(
+    getYouTubePlaylistState,
+  );
   const [lastDiag, setLastDiag] = useState<YouTubeSyncDiag | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [savedVideoRead, setSavedVideoRead] = useState<{
+    sourceVersion: number;
+    urls: readonly string[];
+  } | null>(null);
+  const [savedVideoReadError, setSavedVideoReadError] = useState<{
+    message: string;
+    sourceVersion: number;
+  } | null>(null);
   const loginPendingRef = useRef(false);
   const playlistAbortRef = useRef<AbortController | null>(null);
+  const savedVideoUrls = useMemo(
+    () =>
+      savedVideoRead?.sourceVersion === sourceVersion
+        ? savedVideoRead.urls
+        : null,
+    [savedVideoRead, sourceVersion],
+  );
+  const savedVideoReaderError =
+    savedVideoReadError?.sourceVersion === sourceVersion
+      ? savedVideoReadError.message
+      : null;
+  const savedCount = savedVideoUrls?.length ?? null;
 
-  const applyAuthResult = useCallback((loggedIn: boolean) => {
-    if (!isDesktopProviderAuthAllowed()) return;
-    const current = useAppStore.getState().ytAuth;
-    const next = {
-      ...current,
-      isAuthenticated: loggedIn,
-      lastCheckedAt: Date.now(),
-      lastCaptureError: loggedIn ? undefined : current.lastCaptureError,
-    };
-    setAuth(next);
-    storeYouTubeAuthState(next);
-    if (!loggedIn) clearYouTubePlaylistState();
-  }, [setAuth]);
-
-  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
-    setActionError(null);
-    setLastDiag(null);
-    if (healthSnapshot?.status === "paused") await clearProviderPause("youtube");
-    const result = await withProviderSyncing("youtube", () => captureYouTube(trigger));
-    if (!isDesktopProviderAuthAllowed()) return result;
-    setLastDiag(result.diag);
-    if (result.diag.errorStage) {
-      throw new Error(result.diag.errorMessage ?? "YouTube sync failed.");
+  useEffect(() => {
+    if (!auth.isAuthenticated) {
+      setSavedVideoRead(null);
+      setSavedVideoReadError(null);
+      return;
     }
-    return result;
-  }, [healthSnapshot?.status]);
+    if (useLegacyItems && !legacyItemsReady) {
+      setSavedVideoRead(null);
+      setSavedVideoReadError(null);
+      return;
+    }
+    const controller = new AbortController();
+    const requestedSourceVersion = sourceVersion;
+    setSavedVideoRead(null);
+    setSavedVideoReadError(null);
+    const read = useLegacyItems
+      ? Promise.resolve().then(() => collectSavedYouTubeVideoUrls(legacyItems))
+      : readSavedLibraryCoreYouTubeVideoUrls({ signal: controller.signal });
+    void read
+      .then((urls) => {
+        if (!controller.signal.aborted) {
+          setSavedVideoRead({
+            sourceVersion: requestedSourceVersion,
+            urls: [...urls],
+          });
+        }
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setSavedVideoReadError({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Saved YouTube videos are unavailable.",
+          sourceVersion: requestedSourceVersion,
+        });
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [
+    auth.isAuthenticated,
+    legacyItems,
+    legacyItemsReady,
+    sourceVersion,
+    useLegacyItems,
+  ]);
+
+  const applyAuthResult = useCallback(
+    (loggedIn: boolean) => {
+      if (!isDesktopProviderAuthAllowed()) return;
+      const current = useAppStore.getState().ytAuth;
+      const next = {
+        ...current,
+        isAuthenticated: loggedIn,
+        lastCheckedAt: Date.now(),
+        lastCaptureError: loggedIn ? undefined : current.lastCaptureError,
+      };
+      setAuth(next);
+      storeYouTubeAuthState(next);
+      if (!loggedIn) clearYouTubePlaylistState();
+    },
+    [setAuth],
+  );
+
+  const runSync = useCallback(
+    async (trigger: "manual" | "post_login" = "manual") => {
+      setActionError(null);
+      setLastDiag(null);
+      if (healthSnapshot?.status === "paused")
+        await clearProviderPause("youtube");
+      const result = await withProviderSyncing("youtube", () =>
+        captureYouTube(trigger),
+      );
+      if (!isDesktopProviderAuthAllowed()) return result;
+      setLastDiag(result.diag);
+      if (result.diag.errorStage) {
+        throw new Error(result.diag.errorMessage ?? "YouTube sync failed.");
+      }
+      return result;
+    },
+    [healthSnapshot?.status],
+  );
 
   useEffect(() => subscribeYouTubePlaylistState(setPlaylist), []);
   useEffect(
-    () => registerDesktopProviderAuthQuiesceHandler(() => {
-      loginPendingRef.current = false;
-      playlistAbortRef.current?.abort();
-      playlistAbortRef.current = null;
-    }),
+    () =>
+      registerDesktopProviderAuthQuiesceHandler(() => {
+        loginPendingRef.current = false;
+        playlistAbortRef.current?.abort();
+        playlistAbortRef.current = null;
+      }),
     [],
   );
 
   useEffect(() => {
-    const authUnlisten = listen<{ loggedIn: boolean }>("yt-auth-result", (event) => {
-      if (!isDesktopProviderAuthAllowed()) return;
-      const loggedIn = event.payload.loggedIn;
-      applyAuthResult(loggedIn);
-      if (!loggedIn || !loginPendingRef.current) return;
+    const authUnlisten = listen<{ loggedIn: boolean }>(
+      "yt-auth-result",
+      (event) => {
+        if (!isDesktopProviderAuthAllowed()) return;
+        const loggedIn = event.payload.loggedIn;
+        applyAuthResult(loggedIn);
+        if (!loggedIn || !loginPendingRef.current) return;
 
-      loginPendingRef.current = false;
-      setMessage("Connected. Syncing your subscriptions in the background.");
-      void hideYouTubeLogin()
-        .catch(() => {})
-        .then(() => runSync("post_login"))
-        .then(() => {
-          if (!isDesktopProviderAuthAllowed()) return;
-          setMessage("Connected. Subscription sync finished.");
-        })
-        .catch((error) => {
-          if (!isDesktopProviderAuthAllowed()) return;
-          setMessage(null);
-          setActionError(error instanceof Error ? error.message : String(error));
-        });
-    });
-    const closeUnlisten = listen<{ closed: boolean }>("yt-login-window-closed", (event) => {
-      if (!isDesktopProviderAuthAllowed()) return;
-      if (!event.payload.closed) return;
-      const wasPending = loginPendingRef.current;
-      loginPendingRef.current = false;
-      if (wasPending) setMessage(null);
-    });
+        loginPendingRef.current = false;
+        setMessage("Connected. Syncing your subscriptions in the background.");
+        void hideYouTubeLogin()
+          .catch(() => {})
+          .then(() => runSync("post_login"))
+          .then(() => {
+            if (!isDesktopProviderAuthAllowed()) return;
+            setMessage("Connected. Subscription sync finished.");
+          })
+          .catch((error) => {
+            if (!isDesktopProviderAuthAllowed()) return;
+            setMessage(null);
+            setActionError(
+              error instanceof Error ? error.message : String(error),
+            );
+          });
+      },
+    );
+    const closeUnlisten = listen<{ closed: boolean }>(
+      "yt-login-window-closed",
+      (event) => {
+        if (!isDesktopProviderAuthAllowed()) return;
+        if (!event.payload.closed) return;
+        const wasPending = loginPendingRef.current;
+        loginPendingRef.current = false;
+        if (wasPending) setMessage(null);
+      },
+    );
 
     return () => {
       void authUnlisten.then((fn) => fn());
@@ -139,7 +247,9 @@ export function YouTubeSettingsSection({
       } catch (error) {
         if (!isDesktopProviderAuthAllowed()) return;
         loginPendingRef.current = false;
-        setActionError(error instanceof Error ? error.message : "Could not open YouTube.");
+        setActionError(
+          error instanceof Error ? error.message : "Could not open YouTube.",
+        );
       }
     });
   }, [confirm]);
@@ -153,7 +263,8 @@ export function YouTubeSettingsSection({
         const loggedIn = await checkYouTubeAuth();
         if (!isDesktopProviderAuthAllowed()) return;
         applyAuthResult(loggedIn);
-        if (!loggedIn) setActionError("YouTube did not find a signed-in website session.");
+        if (!loggedIn)
+          setActionError("YouTube did not find a signed-in website session.");
       } finally {
         if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
@@ -174,6 +285,10 @@ export function YouTubeSettingsSection({
   const handlePlaylistSync = useCallback(async () => {
     await confirm(async () => {
       if (!isDesktopProviderAuthAllowed()) return;
+      if (!savedVideoUrls) {
+        setActionError("Saved YouTube videos are temporarily unavailable.");
+        return;
+      }
       setPlaylistSyncing(true);
       setActionError(null);
       const controller = new AbortController();
@@ -184,11 +299,17 @@ export function YouTubeSettingsSection({
           controller.signal,
         );
         const progress = `${result.addedCount.toLocaleString()} added, ${result.existingCount.toLocaleString()} already confirmed.`;
-        setMessage(result.remainingCount > 0
-          ? `${progress} ${result.remainingCount.toLocaleString()} remain for the next batch.`
-          : `${progress} Freed Offline is up to date.`);
+        setMessage(
+          result.remainingCount > 0
+            ? `${progress} ${result.remainingCount.toLocaleString()} remain for the next batch.`
+            : `${progress} Freed Offline is up to date.`,
+        );
       } catch (error) {
-        setActionError(error instanceof Error ? error.message : "YouTube playlist sync failed.");
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "YouTube playlist sync failed.",
+        );
       } finally {
         playlistAbortRef.current = null;
         setPlaylistSyncing(false);
@@ -223,8 +344,8 @@ export function YouTubeSettingsSection({
           </div>
 
           <p className="text-sm leading-relaxed text-[#71717a]">
-            Freed reads your subscriptions and followed channels through your signed-in YouTube
-            website session. Sync never opens Home or Shorts.
+            Freed reads your subscriptions and followed channels through your
+            signed-in YouTube website session. Sync never opens Home or Shorts.
           </p>
 
           {auth.isAuthenticated ? (
@@ -238,7 +359,11 @@ export function YouTubeSettingsSection({
                       try {
                         await runSync();
                       } catch (error) {
-                        setActionError(error instanceof Error ? error.message : String(error));
+                        setActionError(
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                        );
                       }
                     });
                   }}
@@ -258,15 +383,32 @@ export function YouTubeSettingsSection({
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                 <p className="text-sm text-[#a1a1aa]">Freed Offline</p>
                 <p className="mt-1 text-xs leading-relaxed text-[#52525b]">
-                  {savedCount.toLocaleString()} saved YouTube video{savedCount === 1 ? "" : "s"}.
-                  Sync uses YouTube's normal Save controls. Premium manages downloads on each device.
+                  {savedCount === null
+                    ? savedVideoReaderError
+                      ? "Saved YouTube videos are temporarily unavailable."
+                      : "Loading saved YouTube videos..."
+                    : `${savedCount.toLocaleString()} saved YouTube video${savedCount === 1 ? "" : "s"}.`}{" "}
+                  Sync uses YouTube's normal Save controls. Premium manages
+                  downloads on each device.
                 </p>
+                {savedVideoReaderError ? (
+                  <p className="mt-2 text-xs leading-relaxed text-red-400">
+                    {savedVideoReaderError}
+                  </p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <ProviderSyncActionButton
                     busy={playlistSyncing}
                     busyLabel="Saving"
-                    disabled={syncing || playlistSyncing || savedCount === 0}
-                    onClick={() => { void handlePlaylistSync(); }}
+                    disabled={
+                      syncing ||
+                      playlistSyncing ||
+                      savedCount === null ||
+                      savedCount === 0
+                    }
+                    onClick={() => {
+                      void handlePlaylistSync();
+                    }}
                     testId="youtube-sync-saved-playlist"
                   >
                     Sync Saved Videos
@@ -294,7 +436,9 @@ export function YouTubeSettingsSection({
                           type="button"
                           onClick={() => {
                             resetYouTubePlaylistProgress();
-                            setMessage("The next sync will recheck every saved YouTube video.");
+                            setMessage(
+                              "The next sync will recheck every saved YouTube video.",
+                            );
                           }}
                           className="rounded-xl bg-white/5 px-3 py-2 text-sm text-[#a1a1aa] transition-colors hover:bg-white/10"
                         >
@@ -310,14 +454,20 @@ export function YouTubeSettingsSection({
             <div className="flex gap-2">
               <ProviderSyncActionButton
                 busy={false}
-                onClick={() => { void handleLogin(); }}
+                onClick={() => {
+                  void handleLogin();
+                }}
                 testId="provider-connect-youtube"
               >
-                {auth.lastCaptureError ? "Reconnect YouTube" : "Log in with YouTube"}
+                {auth.lastCaptureError
+                  ? "Reconnect YouTube"
+                  : "Log in with YouTube"}
               </ProviderSyncActionButton>
               <button
                 type="button"
-                onClick={() => { void handleCheck(); }}
+                onClick={() => {
+                  void handleCheck();
+                }}
                 disabled={checking}
                 className="rounded-xl bg-white/5 px-4 py-2 text-sm text-[#71717a] transition-colors hover:bg-white/10 disabled:opacity-50"
               >
@@ -326,12 +476,18 @@ export function YouTubeSettingsSection({
             </div>
           )}
 
-          {message ? <p className="text-xs leading-relaxed text-[#a1a1aa]">{message}</p> : null}
-          {authError ? <p className="text-xs leading-relaxed text-red-400">{authError}</p> : null}
+          {message ? (
+            <p className="text-xs leading-relaxed text-[#a1a1aa]">{message}</p>
+          ) : null}
+          {authError ? (
+            <p className="text-xs leading-relaxed text-red-400">{authError}</p>
+          ) : null}
           {lastDiag && !lastDiag.errorStage ? (
             <p className="text-xs leading-relaxed text-[#52525b]">
-              Found {lastDiag.channelsExtracted.toLocaleString()} followed channel
-              {lastDiag.channelsExtracted === 1 ? "" : "s"} and {lastDiag.videosExtracted.toLocaleString()} video
+              Found {lastDiag.channelsExtracted.toLocaleString()} followed
+              channel
+              {lastDiag.channelsExtracted === 1 ? "" : "s"} and{" "}
+              {lastDiag.videosExtracted.toLocaleString()} video
               {lastDiag.videosExtracted === 1 ? "" : "s"}.
             </p>
           ) : null}

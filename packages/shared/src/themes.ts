@@ -159,6 +159,20 @@ const SCRIPTORIUM_SHELL_BACKGROUND = `radial-gradient(circle at 16% 13%, rgb(176
     radial-gradient(circle at 70% 88%, rgb(216 196 161 / 0.04) 0, transparent 32%),
     linear-gradient(180deg, #f4ead7 0%, #efe3ce 44%, #eadcc4 100%)`;
 
+const STARSHIP_SHELL_BACKGROUND = `radial-gradient(
+      ellipse 120% 90% at 50% 0%,
+      rgb(40 40 192 / 0.08),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 50% 110%,
+      rgb(40 40 192 / 0.06),
+      transparent 60%
+    ),
+    #e2e2ee`;
+
+const DARK_STAR_SHELL_BACKGROUND = "#222222";
+
 const NEON_MAP: ThemeMapPalette = {
   background: "#1c232c",
   water: "#0f1722",
@@ -267,6 +281,44 @@ const SCRIPTORIUM_MAP: ThemeMapPalette = {
   gridOpacity: 0.028,
 };
 
+const STARSHIP_MAP: ThemeMapPalette = {
+  background: "#e2e2ee",
+  water: "#2828c0",
+  park: "#eeeef6",
+  wood: "#4a4a84",
+  residential: "#e2e2ee",
+  building: "#ccccd8",
+  roadsMinor: "#4a4a84",
+  roadsMajor: "#2828c0",
+  boundary: "#2828c0",
+  labelStrong: "#16163a",
+  labelSoft: "#4a4a84",
+  labelWater: "#2828c0",
+  labelHalo: "#eeeef6",
+  overlayVignette:
+    "linear-gradient(180deg,rgb(226 226 238 / 0.04),rgb(22 22 58 / 0.12))",
+  gridOpacity: 0.035,
+};
+
+const DARK_STAR_MAP: ThemeMapPalette = {
+  background: "#222222",
+  water: "#2997ff",
+  park: "#2c2c2e",
+  wood: "#c7c7cc",
+  residential: "#222222",
+  building: "#545458",
+  roadsMinor: "#c7c7cc",
+  roadsMajor: "#2997ff",
+  boundary: "#2997ff",
+  labelStrong: "#f5f5f7",
+  labelSoft: "#c7c7cc",
+  labelWater: "#2997ff",
+  labelHalo: "#2c2c2e",
+  overlayVignette:
+    "linear-gradient(180deg,rgb(34 34 34 / 0.04),rgb(245 245 247 / 0.12))",
+  gridOpacity: 0.035,
+};
+
 export const DEFAULT_THEME_ID: ThemeId = "scriptorium";
 
 export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
@@ -358,6 +410,74 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       rowOrbs: DEFAULT_ROW_ORBS,
     },
     map: SCRIPTORIUM_MAP,
+  },
+  {
+    id: "starship",
+    name: "Starship",
+    tagline: "Bright command deck",
+    description:
+      "The original AubOS command interface in its daylight palette.",
+    previewGradient:
+      "radial-gradient(circle at 71% 22%, #faffff 0 7%, rgb(139 234 255 / 0.34) 8% 13%, transparent 14%), radial-gradient(ellipse 82% 58% at 50% 112%, #77f1ff 0%, #3a8ee8 30%, #3644b8 68%, #211c72 100%), linear-gradient(180deg, #fbffff 0%, #e9f8ff 35%, #c9e6ff 68%, #aabcf6 100%)",
+    previewDisplayFont: '"Barlow Condensed", "Arial Narrow", sans-serif',
+    previewBodyFont: '"Barlow", "Avenir Next", "Segoe UI", sans-serif',
+    surface: "light",
+    effects: "restrained",
+    background: {
+      shellBackground: STARSHIP_SHELL_BACKGROUND,
+      overlayBackground: "none",
+      baseOpacity: 0,
+      textures: [],
+      heroOrbs: [],
+      rowOrbs: {
+        countPerRow: 0,
+        channels: ["primary"],
+        xMin: 0,
+        xRange: 0,
+        yRangeFactor: 0,
+        sizeMin: 0,
+        sizeRange: 0,
+        intensityMin: 0,
+        intensityRange: 0,
+      },
+      renderer: "legacy",
+      overlayEnabled: false,
+    },
+    map: STARSHIP_MAP,
+  },
+  {
+    id: "dark-star",
+    name: "Dark Star",
+    tagline: "Night command deck",
+    description:
+      "A midnight command deck lit by electric blue, orbital traces, and distant stars.",
+    previewGradient:
+      "radial-gradient(circle at 72% 28%, #d8f7ff 0 4%, transparent 5%), linear-gradient(145deg, #07090d 0%, #171a24 54%, #28405e 100%)",
+    previewDisplayFont: '"Barlow Condensed", "Arial Narrow", sans-serif',
+    previewBodyFont: '"Barlow", "Avenir Next", "Segoe UI", sans-serif',
+    surface: "dark",
+    effects: "restrained",
+    background: {
+      shellBackground: DARK_STAR_SHELL_BACKGROUND,
+      overlayBackground: "none",
+      baseOpacity: 0,
+      textures: [],
+      heroOrbs: [],
+      rowOrbs: {
+        countPerRow: 0,
+        channels: ["primary"],
+        xMin: 0,
+        xRange: 0,
+        yRangeFactor: 0,
+        sizeMin: 0,
+        sizeRange: 0,
+        intensityMin: 0,
+        intensityRange: 0,
+      },
+      renderer: "legacy",
+      overlayEnabled: false,
+    },
+    map: DARK_STAR_MAP,
   },
 ] as const;
 

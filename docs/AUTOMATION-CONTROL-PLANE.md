@@ -10,14 +10,21 @@ This is coordination substrate. It does not grant an automation permission to
 change product behavior, contact a provider, merge owner-review work, or ship a
 release.
 
+GitHub Issues carrying the `debt` label are the sole canonical technical debt
+backlog. The control plane may activate work from that backlog, but it must not
+copy the backlog into local task state.
+
 ## Sources of truth
 
 | Source                                                     | Purpose                                                                                                                                                   |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Issues with the `debt` label                        | Canonical technical debt backlog, evidence, gates, completion criteria, and disposition                                                                   |
 | `automation/specs/*.json`                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
 | `automation/prompts/*.md`                                  | Checked-in behavioral contract for each automation                                                                                                        |
+| `automation/host-assignments.json`                         | Reviewed opaque host ID assigned to the single `primary-automation-host` role                                                                             |
+| `/Library/Application Support/Freed/automation-host.json`  | Root-owned local host identity enrolled by the owner                                                                                                      |
 | `.github/rulesets/*.json`                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
-| `~/.freed/automation/control/current-tasks.json`           | Atomic current task state                                                                                                                                 |
+| `~/.freed/automation/control/current-tasks.json`           | Atomic active execution authority; every task references its canonical GitHub issue                                                                       |
 | `~/.freed/automation/control/task-transactions/`           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
 | `~/.freed/automation/control/outcome-ledger-transactions/` | Recoverable owner-governed outcome history repairs                                                                                                        |
 | `~/.freed/automation/control/events.jsonl`                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
@@ -65,6 +72,59 @@ registry or a selected-project hint. A `pr-only` or `merge-safe` actor must use
 worktree execution.
 Guessed model names, alternate repositories, extra working directories,
 self-expiring schedules, and unsupported execution modes are drift.
+
+## Primary automation host
+
+Freed designates one machine for repository-wide scheduled ownership. The
+checked-in `automation/host-assignments.json` maps
+`primary-automation-host` to an opaque UUID. The designated Mac stores the same
+UUID in the root-owned, read-only
+`/Library/Application Support/Freed/automation-host.json` profile. Hostnames,
+usernames, network addresses, and `inv.local` files are not identity. They are
+mutable labels and, in the case of `inv.local`, merely another same-user file
+that can drift outside review.
+
+Inspect the current machine without mutation:
+
+```bash
+npm run automation:hosts -- inspect
+```
+
+After the assignment has been reviewed and merged, the owner enrolls that exact
+identity once from a canonical clean checkout:
+
+```bash
+npm run automation:hosts -- enroll
+```
+
+Enrollment is idempotent for the exact valid identity. It refuses to overwrite
+an existing invalid or differently assigned profile. Reassignment requires a
+reviewed change to the checked-in mapping plus an explicit owner migration. It
+never happens automatically. There is no election, opportunistic takeover, or
+multi-primary failover.
+
+Only the assigned primary may activate or acquire the `freed-nightly-runner`.
+`validate:host-automations` reports an active nightly runner on another machine
+as drift, and the canonical actor acquisition command fails before invoking the
+trusted launcher. This extends the existing cooperative same-user boundary. A
+same-user process can still invoke a provisioned launcher directly, but it does
+not thereby gain task, provider, merge, release, or publisher authority.
+
+The primary runs one nightly executor cron. Other repository maintenance lives
+in a single `Freed automation custodian` heartbeat attached to a durable Codex
+task. Its checked-in prompt is
+`automation/prompts/freed-automation-custodian.md`. The custodian validates
+saved actors, enforces runner models only from current callable capability data,
+and archives confirmed no-op automation tasks through Codex thread controls.
+It never archives failures, authority blocks, actionable findings, changed
+runs, or tasks waiting for the owner. The custodian is a Codex host utility, not
+a sixth Freed actor, and it holds no control-plane lease.
+
+Automation state under `~/.freed/automation/` remains host-local evidence and
+is not synchronized between machines. The checked-in assignment is the shared
+coordination point. This avoids pretending that local validation snapshots form
+a distributed consensus protocol. Computers love inventing theology where a
+single UUID would do.
 
 Every actor specification also requires `trusted-launcher` and
 `short-lived-lease-handoff`. Readiness means all of these are present:
@@ -118,8 +178,7 @@ CryptoKit and has no Security framework or Keychain API dependency. The second
 program links Security only for one bounded migration from the installed schema
 1 contract. Provisioning validates the real root-owned legacy binding, deletes
 the fixed `freed-automation-actor` Keychain item with interaction disabled,
-removes the matching owner digest record when present, and then installs schema
-4. Migration tolerates all four item and digest-record presence combinations,
+removes the matching owner digest record when present, and then installs schema 4. Migration tolerates all four item and digest-record presence combinations,
 so an exact retry completes safely after response loss. Fresh installs and
 schema 4 replacements never invoke the migration program. Provision and rotate
 are rejected by the migration program.
@@ -177,10 +236,18 @@ Provisioning grants no provider traffic and no task authority.
 
 ## Atomic current task manifest
 
-`current-tasks.json` is the current-state authority. It has a schema version,
-manifest revision, update timestamp, and a stable sorted array of tasks. Each
-task has its own revision, stable task ID, state, timestamps, execution
-authority, provider authority, and JSON details.
+`current-tasks.json` is active execution authority, not a backlog. It has a
+schema version, manifest revision, update timestamp, and a stable sorted array
+of tasks. Each task has its own revision, stable task ID, state, timestamps,
+execution authority, provider authority, and JSON details. A task selected from
+the debt backlog stores its issue as
+`details.githubIssue: { number, url }`. The URL must exactly match
+`https://github.com/freed-project/freed/issues/<number>`. The nightly runner
+rejects missing or mismatched references. Closing or labeling an issue does not
+grant execution authority. Task state does not replace issue evidence, scope,
+gates, completion criteria, or disposition. A selected task also records a
+positive integer `details.estimatedMinutes`; the runner does not invent scope
+or timing for unestimated work.
 
 Task writes use this sequence:
 
@@ -579,6 +646,46 @@ earlier acquisition failed. Acquisition and inspection reject it with
 separate explicit owner-governed repair. Do not delete a lease directory to
 make a second runner fit.
 
+If a trusted launcher exits after an acquisition reaches `state-committed` or
+`event-appended`, the pending transaction blocks every later lease operation.
+The original launcher normally retries with its retained operation ID and
+token. If that process is gone and the committed lease has expired, the owner
+may approve one exact recovery in the current task. The recovery command reads
+the retained token only from validated private staging, verifies its digest and
+trusted-launcher provenance, finishes the existing transaction, and omits the
+token from its result. It cannot recover a live lease, a prepared transaction,
+another operation type, another operation ID, or a mismatched actor and lease.
+
+Create a private current-task owner confirmation whose canonical intent is:
+
+```json
+{
+  "schemaVersion": 1,
+  "action": "lease.recover-expired-acquire",
+  "taskId": "recover-expired-nightly-writer",
+  "parameters": {
+    "owner": "freed-nightly-runner",
+    "name": "nightly-writer",
+    "operationId": "<pending-operation-id>"
+  }
+}
+```
+
+Then run the exact recovery from the trusted source checkout:
+
+```bash
+node scripts/automation-control.mjs lease recover-expired-acquire \
+  --name nightly-writer \
+  --owner freed-nightly-runner \
+  --pending-operation-id <pending-operation-id> \
+  --owner-confirmation-file /absolute/path/to/confirmation.json \
+  --owner-task-id recover-expired-nightly-writer \
+  --owner-intent-digest <intent-digest>
+```
+
+Retain the private confirmation as the recovery authorization record. A normal
+trusted-launcher acquisition can then take over the completed expired lease.
+
 Read-only observers do not need a lease merely to read or ingest evidence. The
 runtime observer must acquire its canonical lease before it appends a control
 event or creates an `observed` task. Every other task mutation also requires the
@@ -682,7 +789,10 @@ and archive listings are relative to held directory descriptors. The
 destination directory is synced before the source directory. Missing native
 syscalls, directory sync, local filesystem admission, or exact readback fail
 closed. Its admitted operations are `rename-durable`, `exchange-durable`,
-`retire-directory-durable`, and `list-bounded`. General actor runtime schema v3
+`retire-directory-durable`, `list-bounded`, and `list-bounded-batch`. Capacity
+accounting uses one descriptor-bound batch snapshot before inspecting archive
+entries and one after. This preserves the exact-generation comparison without
+launching a separate pinned interpreter for every directory. General actor runtime schema v3
 copies and digests the helper, the kernel guard contract, and the outcome ledger
 repair contract beside the pinned control library. The installed control entry
 must load from that content-addressed runtime without access to the source
@@ -943,7 +1053,7 @@ For a task authority update, the canonical object is:
 {
   "schemaVersion": 1,
   "action": "task.authorize",
-  "taskId": "P1-04",
+  "taskId": "github-issue-1070",
   "parameters": {
     "observerAuthority": "merge-safe",
     "providerAuthority": "approved",
@@ -963,7 +1073,7 @@ node scripts/automation-control.mjs owner intent-digest \
   --intent-json '<exact canonical operation JSON>'
 
 "$FREED_TRUSTED_PUBLISHER" owner-capability \
-  --task-id P1-04 \
+  --task-id github-issue-1070 \
   --intent-digest <sha256> \
   --ttl-seconds 600
 ```
@@ -980,9 +1090,9 @@ therefore cannot authorize another governance operation.
 
 The repository does not install the broker, root config, Keychain key, or owner
 capability. Missing host trust keeps broker-backed owner acquisition closed, but
-does not block normal publication. Provider work can use the signing-free
-GitHub reaction path described below. GitHub records the CODEOWNER account that
-made the human Gate 2 decision.
+does not block normal publication. Provider work uses the behavior-scoped Gate
+1 artifact described below. The generated GitHub comment records the
+provider-visible paths and diff for audit. It is not a second approval.
 
 ### Current-task owner confirmation
 
@@ -994,18 +1104,18 @@ private mode `0600` JSON file outside the repository:
 {
   "schemaVersion": 1,
   "kind": "owner-confirmation",
-  "confirmationId": "authenticated-essay-capture-create",
+  "confirmationId": "github-issue-1070-create",
   "approvedBy": "AubreyF",
   "ownerApprovalReference": "Owner approved this exact lifecycle operation in the current task.",
   "approvalSource": {
     "kind": "current-task",
-    "reference": "authenticated-essay-capture-pr-642"
+    "reference": "current-delivery-task"
   },
-  "taskId": "authenticated-essay-capture-pr-642",
+  "taskId": "github-issue-1070",
   "intent": {
     "schemaVersion": 1,
     "action": "task.create",
-    "taskId": "authenticated-essay-capture-pr-642",
+    "taskId": "github-issue-1070",
     "parameters": {
       "state": "observed",
       "observerAuthority": "merge-safe",
@@ -1013,7 +1123,11 @@ private mode `0600` JSON file outside the repository:
       "approvalReference": "<provider approval reference>",
       "details": {
         "behavioral": true,
-        "metricId": "renderer-recovery-count"
+        "metricId": "renderer-recovery-count",
+        "githubIssue": {
+          "number": 1070,
+          "url": "https://github.com/freed-project/freed/issues/1070"
+        }
       }
     }
   },
@@ -1050,8 +1164,8 @@ events.
 
 This route is cooperative evidence. The JSON does not prove who wrote it, so
 the current task must contain the owner's explicit decision. It does not grant
-provider contact and cannot replace Gate 1, Gate 2, or exact-diff CODEOWNER
-review. The signed broker remains the stronger machine-verifiable option.
+provider contact and cannot replace the provider behavior gate. The signed
+broker remains the stronger machine-verifiable option.
 
 ## Authority model
 
@@ -1064,17 +1178,15 @@ Checked-in automation authority is one of:
 
 Provider authority is separate. `forbidden` prohibits provider activity.
 `approval-required` may prepare a draft, but it cannot implement or make
-provider-visible work ready without the owner's scoped Gate 1 decision and the
-Gate 2 CODEOWNER reaction. A task may move to provider authority
-`approved` only with an approval reference. Only the `freed-owner` lease may
-change task authority. That lease can be bound to either the optional signed
-owner capability or one exact current-task owner confirmation. The
-confirmation file does not authenticate the owner. It records the owner's
-explicit current-task decision and the canonical operation intent. The direct
-provider Gate 2 route remains the CODEOWNER's GitHub thumbs-up on the generated
-provider review comment, and that reaction does not itself mutate task
-authority. Task authority never substitutes for the publish gate or CODEOWNER
-review. Creating a task
+provider-visible work ready without the owner's scoped Gate 1 decision. A task
+may move to provider authority `approved` only with an approval reference. Only
+the `freed-owner` lease may change task authority. That lease can be bound to
+either the optional signed owner capability or one exact current-task owner
+confirmation. The confirmation file does not authenticate the owner. It
+records the owner's explicit current-task decision and canonical operation
+intent. The generated provider review comment is an audit record and does not
+mutate task authority. Task authority never substitutes for publication,
+merge, release, install, or live provider authority. Creating a task
 directly with provider authority `approved` also requires an approval reference.
 The current manifest retains that reference, and every task event carries the
 same approval snapshot.
@@ -1200,15 +1312,15 @@ BASELINE=/absolute/path/to/baseline-soak-verdict.json
 VERDICT=/absolute/path/to/outcome-verdict.json
 node scripts/build-outcome-verdict.mjs \
   --soak-verdict "$RAW_VERDICT" \
-  --task-id P1-01 \
+  --task-id github-issue-1066 \
   --outcome verified_effective \
   --metric unchanged-cloud-upload-rate \
   --baseline-reference "$BASELINE" \
   --out "$VERDICT"
 
 node scripts/record-outcome.mjs \
-  --id P1-01 \
-  --task-id P1-01 \
+  --id github-issue-1066 \
+  --task-id github-issue-1066 \
   --kind task \
   --status verified_effective \
   --evidence-window-end 2026-07-10T12:00:00Z \
@@ -1407,46 +1519,45 @@ entry names a phase ID, its `docs/PHASE-*.md` source, and one of `complete`,
 `current`, or `upcoming`. `npm run validate:roadmap` derives status from each
 phase document and fails when the manifest disagrees.
 
-The manifest supplies status, not implementation authority. Agents must not
-invent work from broad roadmap prose. Public roadmap presentation remains a
-separate `www` branch change. Product and automation work remains in the `dev`
-lane.
+The manifest supplies phase status, not implementation authority or a debt
+backlog. Agents must not invent work from broad roadmap prose. Open GitHub
+Issues carrying the `debt` label are the only canonical debt candidates.
+Public roadmap presentation remains a separate `www` branch change. Product
+and automation work remains in the `dev` lane.
 
 ## Provider approval records
 
-Provider approval JSON belongs outside the repository because the approved
-provider branch must remain clean. The record cannot be future-dated, may last
-at most seven days, must still be unexpired, and must name the exact
-provider-visible path set. Its `diffSha` must equal the provider-only binary
-diff hash. It records `approvedBy`, one provider scope for every approved path,
-and a `control-task` approval source. Provider names inferred from
-provider-specific paths must match that scope. Any provider-visible edit
-invalidates the record.
+The normal human path uses a healthy `provider-risk-review` stability artifact.
+It records the provider set, observable behavior, fingerprinting risk,
+lowest-profile alternative, and allowed behavior. The current task preserves
+the owner's explicit decision and stable reference. Provider names inferred
+from the current classified diff must match the artifact provider set.
 
 Gate 1 happens before code. The owner must explicitly approve the named
 provider, observable behavior, fingerprinting risk, and lowest-profile
 alternative. General permission to proceed with a plan or program is not this
 approval.
 
-Gate 2 happens after the provider-visible diff is committed and published as a
-draft. The helper posts a GitHub review comment containing the providers,
+After code, the helper posts a GitHub review comment containing the providers,
 provider-visible paths, behavior, risk, alternative, and provider-only diff
-fingerprint. The direct human authorization is a CODEOWNER thumbs-up reaction
-on that comment. The helper verifies the actor and fingerprint before marking
-the pull request ready. Unrelated branch edits preserve the reaction.
+fingerprint. The comment is the audit record. It is not a second owner gate.
+The artifact approves the described behavior rather than one exact diff. A
+material behavior change requires a new Gate 1 decision. A path-only change
+with no observable behavior uses `diff_authorized`.
 
-For machine-verifiable unattended authorization, set `approvalSource.kind` to
-`control-task`. Use the optional signed broker to authorize the same packet
-digest on the referenced task. The publish helper verifies the task manifest,
-approved provider authority, and matching owner capability event. Broker
-provisioning is optional and does not block the GitHub reaction path.
+The optional machine-verifiable `control-task` approval record is a separate
+route. That JSON lives outside the repository, cannot be future-dated, lasts at
+most seven days, and binds the exact provider-visible path set and
+provider-only `diffSha`. The publish helper verifies the task manifest,
+approved provider authority, matching owner capability event, and exact diff.
+Broker provisioning is optional and does not block normal artifact-backed
+publication.
 
-The signed source does not replace external review policy. The direct path uses
-the CODEOWNER reaction itself as the structured GitHub authorization event.
+The signed source does not replace external review policy, merge authority, or
+live provider authority.
 
-See [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) and the
-fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full publish
-contract.
+See the fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full
+publish contract.
 
 ## Operator checks
 

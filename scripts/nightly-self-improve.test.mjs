@@ -1,13 +1,19 @@
+import "./test-helpers/lease-archive-python-runtime.mjs";
+
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import {
+  execFileSync as nodeExecFileSync,
+  spawnSync as nodeSpawnSync,
+} from "node:child_process";
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   chmodSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
+  mkdtempSync as nodeMkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -18,7 +24,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import nodeTest from "node:test";
 
 import {
   acquireLease,
@@ -46,6 +52,7 @@ import {
   buildBehavioralTaskGate,
   buildCandidates,
   buildExecutionPlan,
+  buildIssueBackedTaskCandidates,
   collectDuplicateWork,
   collectPeerWorktrees,
   collectRepoSnapshot,
@@ -57,12 +64,14 @@ import {
   formatBytes,
   loadTriageCandidates,
   main,
+  matchesOpenDebtIssue,
   parseArgs,
   parseGitWorktreePorcelain,
   parseTsv,
   planOutcomeRecord,
   planNightlyRun,
   repairSoakPointer,
+  readOpenGovernedGithubIssues,
   resolveOutcomeLedgerPathWithoutLegacyCopy,
   resolveReadableSoak,
   selectTargets,
@@ -71,6 +80,7 @@ import {
   summarizeOutcomeLedger,
   summarizeDailyBugMemory,
   summarizeSoak,
+  taskGithubIssueReference,
   runNightlyMachinePreflight,
   withOutcomeLedgerWriterLock,
   writeRunPlan,
@@ -93,6 +103,75 @@ import {
   TEST_TRUSTED_LAUNCHER_PROVENANCE,
   acquireGeneralActorLeaseForTest,
 } from "./test-helpers/trusted-actor-lease.mjs";
+
+const CHILD_OPERATION_TIMEOUT_MS = 30_000;
+const TEST_CASE_TIMEOUT_MS = 5 * 60_000;
+const fixtureContext = new AsyncLocalStorage();
+
+function activeFixtureLabel() {
+  return fixtureContext.getStore()?.name ?? "module setup";
+}
+
+function reportFixtureOperation(command, args) {
+  process.stderr.write(
+    `[nightly fixture] test=${activeFixtureLabel()} operation=${[command, ...args].join(" ")}\n`,
+  );
+}
+
+function execFileSync(command, args, options = {}) {
+  reportFixtureOperation(command, args);
+  return nodeExecFileSync(command, args, {
+    timeout: CHILD_OPERATION_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    ...options,
+  });
+}
+
+function spawnSync(command, args, options = {}) {
+  reportFixtureOperation(command, args);
+  return nodeSpawnSync(command, args, {
+    timeout: CHILD_OPERATION_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    ...options,
+  });
+}
+
+function mkdtempSync(prefix, options) {
+  const directory = nodeMkdtempSync(prefix, options);
+  fixtureContext.getStore()?.tempDirectories.add(directory);
+  return directory;
+}
+
+function test(name, optionsOrFn, maybeFn) {
+  const options =
+    typeof optionsOrFn === "function" ? {} : { ...(optionsOrFn ?? {}) };
+  const callback =
+    typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  if (typeof callback !== "function") {
+    throw new TypeError(`Test ${name} requires a callback.`);
+  }
+  options.timeout = Math.min(
+    options.timeout ?? TEST_CASE_TIMEOUT_MS,
+    TEST_CASE_TIMEOUT_MS,
+  );
+
+  return nodeTest(name, options, async (context) => {
+    const state = { name, tempDirectories: new Set() };
+    context.after(() => {
+      for (const directory of [...state.tempDirectories].reverse()) {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+    process.stderr.write(`[nightly fixture] start test=${name}\n`);
+    return fixtureContext.run(state, async () => {
+      try {
+        return await callback(context);
+      } finally {
+        process.stderr.write(`[nightly fixture] finish test=${name}\n`);
+      }
+    });
+  });
+}
 
 const GIB = 1024 * 1024 * 1024;
 const NIGHTLY_MODULE_URL = new URL(
@@ -1190,6 +1269,18 @@ function writeOutcomeVerdict(
   }).verdictPath;
 }
 
+test("nightly fixture child operations fail inside their explicit bound", () => {
+  assert.throws(
+    () =>
+      execFileSync(
+        process.execPath,
+        ["-e", "setInterval(() => {}, 1_000)"],
+        { stdio: "ignore", timeout: 25 },
+      ),
+    (error) => error?.code === "ETIMEDOUT",
+  );
+});
+
 test("summarizeSoak reads WebKit memory, heartbeat, and DOM evidence", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-test-"));
   writeFileSync(
@@ -1489,7 +1580,6 @@ test("target selection permits only one behavioral candidate per installed-build
     {
       maxTargets: 4,
       durationMinutes: 240,
-      minimumNightMinutes: 180,
       allowProviderVisible: false,
       behaviorGate: {
         status: "reserved",
@@ -1515,7 +1605,6 @@ test("behavioral work requires one persisted control-task reservation", () => {
   const options = {
     maxTargets: 1,
     durationMinutes: 120,
-    minimumNightMinutes: 60,
   };
 
   assert.deepEqual(selectTargets([candidate], options), []);
@@ -1567,7 +1656,6 @@ test("an unresolved behavior blocks every new behavior across runs", () => {
         {
           maxTargets: 2,
           durationMinutes: 120,
-          minimumNightMinutes: 60,
           behaviorGate: gate,
         },
       ),
@@ -3114,12 +3202,268 @@ test("target selection ignores candidates outside the runnable task manifest", (
   const selected = selectTargets(candidates, {
     maxTargets: 2,
     durationMinutes: 60,
-    minimumNightMinutes: 60,
     authorizedTaskIds: ["authorized"],
   });
   assert.deepEqual(
     selected.map((candidate) => candidate.id),
     ["authorized"],
+  );
+});
+
+test("nightly issue references are exact and candidate bound", () => {
+  const issue = {
+    number: 1066,
+    url: "https://github.com/freed-project/freed/issues/1066",
+  };
+  assert.deepEqual(
+    taskGithubIssueReference({ details: { githubIssue: issue } }),
+    issue,
+  );
+  assert.equal(
+    taskGithubIssueReference({
+      details: {
+        githubIssue: {
+          number: 1066,
+          url: "https://github.com/freed-project/freed/issues/1067",
+        },
+      },
+    }),
+    null,
+  );
+
+  const selected = selectTargets(
+    [
+      {
+        id: "issue-backed",
+        taskId: "issue-backed",
+        estimatedMinutes: 30,
+        behavioral: false,
+        providerVisible: false,
+        githubIssueNumber: issue.number,
+        githubIssueUrl: issue.url,
+      },
+      {
+        id: "issue-mismatch",
+        taskId: "issue-mismatch",
+        estimatedMinutes: 30,
+        behavioral: false,
+        providerVisible: false,
+        githubIssueNumber: 1067,
+        githubIssueUrl:
+          "https://github.com/freed-project/freed/issues/1067",
+      },
+    ],
+    {
+      maxTargets: 2,
+      durationMinutes: 60,
+      authorizedTaskIds: ["issue-backed", "issue-mismatch"],
+      canonicalTaskPolicies: [
+        {
+          taskId: "issue-backed",
+          state: "approved_for_pr",
+          behavioral: false,
+          providerAuthority: "forbidden",
+          githubIssueNumber: issue.number,
+          githubIssueUrl: issue.url,
+        },
+        {
+          taskId: "issue-mismatch",
+          state: "approved_for_pr",
+          behavioral: false,
+          providerAuthority: "forbidden",
+          githubIssueNumber: issue.number,
+          githubIssueUrl: issue.url,
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    selected.map((candidate) => candidate.id),
+    ["issue-backed"],
+  );
+});
+
+test("nightly reads only open governed GitHub issues", () => {
+  const issues = readOpenGovernedGithubIssues({
+    exec: () =>
+      JSON.stringify([
+        {
+          number: 1066,
+          url: "https://github.com/freed-project/freed/issues/1066",
+          title: "Break the cloud upload loop",
+          labels: [{ name: "debt" }],
+        },
+        {
+          number: 1014,
+          url: "https://github.com/freed-project/freed/issues/1014",
+          title: "Investigate a CI incident",
+          labels: [{ name: "automation-triage" }],
+        },
+        {
+          number: 22,
+          url: "https://github.com/freed-project/freed/issues/22",
+          labels: [{ name: "bug" }],
+        },
+      ]),
+  });
+  assert.deepEqual([...issues], [
+    [
+      1066,
+      {
+        url: "https://github.com/freed-project/freed/issues/1066",
+        kind: "debt",
+        title: "Break the cloud upload loop",
+      },
+    ],
+    [
+      1014,
+      {
+        url: "https://github.com/freed-project/freed/issues/1014",
+        kind: "incident",
+        title: "Investigate a CI incident",
+      },
+    ],
+  ]);
+  assert.throws(
+    () =>
+      readOpenGovernedGithubIssues({
+        exec: () => {
+          throw new Error("offline");
+        },
+      }),
+    /Nightly execution stopped/,
+  );
+});
+
+test("nightly execution accepts debt issues and rejects incident issues", () => {
+  const debtIssue = {
+    number: 1066,
+    url: "https://github.com/freed-project/freed/issues/1066",
+  };
+  const incidentIssue = {
+    number: 1014,
+    url: "https://github.com/freed-project/freed/issues/1014",
+  };
+  const issues = new Map([
+    [debtIssue.number, { url: debtIssue.url, kind: "debt" }],
+    [incidentIssue.number, { url: incidentIssue.url, kind: "incident" }],
+  ]);
+
+  assert.equal(matchesOpenDebtIssue(debtIssue, issues), true);
+  assert.equal(matchesOpenDebtIssue(incidentIssue, issues), false);
+  assert.equal(
+    matchesOpenDebtIssue(
+      {
+        number: debtIssue.number,
+        url: "https://github.com/freed-project/freed/issues/1067",
+      },
+      issues,
+    ),
+    false,
+  );
+});
+
+test("an arbitrary selected debt issue is runnable without triage evidence", () => {
+  const issues = new Map([
+    [
+      1091,
+      {
+        url: "https://github.com/freed-project/freed/issues/1091",
+        kind: "debt",
+        title: "Replace proxy CPU monitoring with process sampling",
+      },
+    ],
+  ]);
+  const candidates = buildIssueBackedTaskCandidates(
+    [
+      {
+        taskId: "github-issue-1091",
+        state: "approved_for_pr",
+        observerAuthority: "merge-safe",
+        providerAuthority: "forbidden",
+        details: {
+          behavioral: false,
+          estimatedMinutes: 45,
+          githubIssue: {
+            number: 1091,
+            url: "https://github.com/freed-project/freed/issues/1091",
+          },
+        },
+      },
+    ],
+    issues,
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].githubIssueNumber, 1091);
+  assert.equal(candidates[0].estimatedMinutes, 45);
+});
+
+test("nightly can select two nonbehavioral debt issues and still rejects unsafe work", () => {
+  const issue = (number, title) => ({
+    url: `https://github.com/freed-project/freed/issues/${String(number)}`,
+    kind: "debt",
+    title,
+  });
+  const issues = new Map([
+    [1091, issue(1091, "Measure real process CPU")],
+    [1093, issue(1093, "Prune dead relay clients")],
+    [1078, issue(1078, "Repair provider auth classification")],
+    [1084, issue(1084, "Reuse a bounded warm worker")],
+  ]);
+  const task = (
+    number,
+    { behavioral = false, providerAuthority = "forbidden" } = {},
+  ) => ({
+    taskId: `github-issue-${String(number)}`,
+    state: "approved_for_pr",
+    observerAuthority: "merge-safe",
+    providerAuthority,
+    details: {
+      behavioral,
+      estimatedMinutes: 40,
+      githubIssue: {
+        number,
+        url: issues.get(number).url,
+      },
+    },
+  });
+  const tasks = [
+    task(1091),
+    task(1093),
+    task(1078, { providerAuthority: "approved" }),
+    task(1084, { behavioral: true }),
+  ];
+  const candidates = buildIssueBackedTaskCandidates(tasks, issues);
+  const canonicalTaskPolicies = tasks.map((candidateTask) => ({
+    taskId: candidateTask.taskId,
+    state: candidateTask.state,
+    behavioral: candidateTask.details.behavioral,
+    providerAuthority: candidateTask.providerAuthority,
+    githubIssueNumber: candidateTask.details.githubIssue.number,
+    githubIssueUrl: candidateTask.details.githubIssue.url,
+  }));
+  const selected = selectTargets(candidates, {
+    maxTargets: 6,
+    durationMinutes: 480,
+    authorizedTaskIds: tasks.map((candidateTask) => candidateTask.taskId),
+    canonicalTaskPolicies,
+    behaviorGate: {
+      status: "awaiting-soak-outcome",
+      authorizedTaskId: null,
+      activeTasks: [
+        {
+          taskId: "existing-behavior",
+          state: "merged",
+          revision: 1,
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    selected.map((candidate) => candidate.githubIssueNumber),
+    [1091, 1093],
   );
 });
 
@@ -3149,7 +3493,6 @@ test("canonical behavioral and provider policy override candidate metadata", () 
     {
       maxTargets: 1,
       durationMinutes: 60,
-      minimumNightMinutes: 30,
       authorizedTaskIds: ["behavior-b"],
       canonicalTaskPolicies: [
         {
@@ -3176,7 +3519,6 @@ test("canonical behavioral and provider policy override candidate metadata", () 
     {
       maxTargets: 1,
       durationMinutes: 60,
-      minimumNightMinutes: 30,
       authorizedTaskIds: ["provider-task"],
       canonicalTaskPolicies: [
         {
@@ -3354,13 +3696,15 @@ test("pending verification reservations block follow-on task state changes", () 
   );
 });
 
-test("triage candidates inherit behavioral and provider gates from their program task", () => {
+test("triage candidates take gates from an issue-linked evidence manifest", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-triage-contract-"));
+  const generationDir = path.join(dir, "generations", "generation-1");
+  mkdirSync(generationDir, { recursive: true });
   writeFileSync(
-    path.join(dir, "T-01-preflight-kill.md"),
+    path.join(generationDir, "T-01-preflight-kill.md"),
     [
       "# T-1: Provider preflight kill",
-      "Program task: P1-04-preflight-recycle-guard.md",
+      "Canonical issue: https://github.com/freed-project/freed/issues/1070",
       "Generated at: 2026-07-10T12:00:00Z",
       "Evidence window end: 2026-07-10T12:00:00Z",
       "- evidence",
@@ -3368,35 +3712,59 @@ test("triage candidates inherit behavioral and provider gates from their program
     ].join("\n"),
   );
   writeFileSync(
-    path.join(dir, "T-02-auth-zombie.md"),
+    path.join(generationDir, "T-02-unlinked.md"),
     [
-      "# T-2: Auth zombie",
-      "Program task: Wave 4 auth-truth tasks",
+      "# T-2: Unlinked evidence",
+      "Canonical issue: https://github.com/freed-project/freed/issues/1078",
       "Generated at: 2026-07-10T12:00:00Z",
       "Evidence window end: 2026-07-10T12:00:00Z",
       "- evidence",
       "",
     ].join("\n"),
+  );
+  writeFileSync(
+    path.join(dir, "current.json"),
+    `${JSON.stringify({
+      generation: "generation-1",
+      generationDir: "generations/generation-1",
+      generatedAt: "2026-07-10T12:00:00Z",
+      evidenceWindowEnd: "2026-07-10T12:00:00Z",
+      candidates: [
+        {
+          file: "T-01-preflight-kill.md",
+          id: "preflight-kill",
+          taskId: "P1-04",
+          issueKind: "debt",
+          githubIssueNumber: 1070,
+          githubIssueUrl:
+            "https://github.com/freed-project/freed/issues/1070",
+          providerVisible: true,
+          behavioral: true,
+          soakExclusivityKey: "provider-window-lifecycle",
+          sourceHealth: "healthy",
+          evidenceFingerprint: "a".repeat(64),
+          observerAuthority: "pr-only",
+        },
+      ],
+    })}\n`,
   );
 
   const candidates = loadTriageCandidates(
     dir,
     Date.parse("2026-07-10T13:00:00Z"),
   );
+  assert.equal(candidates.length, 1);
   assert.equal(candidates[0].providerVisible, true);
   assert.equal(candidates[0].behavioral, true);
+  assert.equal(candidates[0].soakExclusivityKey, "provider-window-lifecycle");
+  assert.equal(candidates[0].githubIssueNumber, 1070);
   assert.equal(
-    candidates[0].soakExclusivityKey,
-    DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY,
-  );
-  assert.equal(candidates[1].behavioral, true);
-  assert.equal(
-    candidates[1].soakExclusivityKey,
-    DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY,
+    candidates[0].githubIssueUrl,
+    "https://github.com/freed-project/freed/issues/1070",
   );
 });
 
-test("target selection keeps batching small work until the three-hour floor is met", () => {
+test("target selection fills the budget without a minimum work quota", () => {
   const selected = selectTargets(
     [
       { id: "one", estimatedMinutes: 45, providerVisible: false },
@@ -3409,21 +3777,20 @@ test("target selection keeps batching small work until the three-hour floor is m
     {
       maxTargets: 6,
       durationMinutes: 480,
-      minimumNightMinutes: 180,
       allowProviderVisible: false,
     },
   );
 
   assert.deepEqual(
     selected.map((candidate) => candidate.id),
-    ["one", "two", "three", "four", "five"],
+    ["one", "two", "three", "four", "five", "six"],
   );
   assert.equal(
     selected.reduce(
       (total, candidate) => total + candidate.estimatedMinutes,
       0,
     ),
-    180,
+    200,
   );
 });
 
@@ -3610,7 +3977,6 @@ test("missing root dependencies stay visible without outranking the bug scan", (
   const selected = selectTargets(candidates, {
     maxTargets: 2,
     durationMinutes: 480,
-    minimumNightMinutes: 180,
     allowProviderVisible: false,
     behaviorGate: {
       status: "reserved",
@@ -3686,6 +4052,28 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
   execFileSync("git", ["commit", "-m", "test"], { cwd: repo });
   execFileSync("git", ["branch", "-M", "dev"], { cwd: repo });
 
+  const githubIssue = (number) => ({
+    number,
+    url: `https://github.com/freed-project/freed/issues/${String(number)}`,
+  });
+  const openGithubIssues = new Map([
+    [
+      11_001,
+      {
+        url: githubIssue(11_001).url,
+        kind: "debt",
+        title: "Sanitized runnable task",
+      },
+    ],
+    [
+      11_002,
+      {
+        url: githubIssue(11_002).url,
+        kind: "debt",
+        title: "Sanitized planning-only task",
+      },
+    ],
+  ]);
   const nowMs = Date.now();
   const controller = outcomeAuthentication(
     stateRoot,
@@ -3702,6 +4090,7 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
     providerAuthority: "forbidden",
     details: {
       behavioral: true,
+      githubIssue: githubIssue(11_001),
       privateNote: "must-not-appear-in-json",
     },
     nowMs: nowMs + 1,
@@ -3732,7 +4121,10 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
     leaseToken: controller.authentication.leaseToken,
     observerAuthority: "pr-only",
     providerAuthority: "forbidden",
-    details: { behavioral: false },
+    details: {
+      behavioral: false,
+      githubIssue: githubIssue(11_002),
+    },
     nowMs: nowMs + 4,
   });
   transitionTask({
@@ -3769,6 +4161,7 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
       "--dry-run",
       "--json",
     ]),
+    { openGithubIssues },
   );
   const serialized = JSON.stringify(plan);
 
@@ -4384,13 +4777,11 @@ test("duplicate work candidates are selected before generic roadmap fallback", (
       (candidate) => candidate.id === "nightly-duplicate-work",
     ) >= 0,
   );
-  assert.ok(
-    candidates.findIndex(
-      (candidate) => candidate.id === "nightly-duplicate-work",
-    ) <
-      candidates.findIndex(
-        (candidate) => candidate.id === "roadmap-autonomous-task",
-      ),
+  assert.equal(
+    candidates.some(
+      (candidate) => candidate.id === "roadmap-autonomous-task",
+    ),
+    false,
   );
 });
 
@@ -5384,7 +5775,6 @@ test("target selection excludes completed and governance-blocked candidates", ()
     ],
     {
       durationMinutes: 60,
-      minimumNightMinutes: 30,
       maxTargets: 3,
       allowProviderVisible: false,
     },
@@ -5412,7 +5802,6 @@ for (const status of [
       ],
       {
         durationMinutes: 60,
-        minimumNightMinutes: 30,
         maxTargets: 1,
         behaviorGate: {
           status,
@@ -5430,7 +5819,7 @@ for (const [state, requiredControlEvents] of Object.entries({
   implemented: 4,
   validated: 3,
 })) {
-  test(`${state} target requires ${requiredControlEvents.toLocaleString()} control event slots and one outcome slot`, () => {
+  test(`target state ${state} requires ${requiredControlEvents.toLocaleString()} control event slots and one outcome slot`, () => {
     const candidate = {
       id: `capacity-${state}`,
       taskId: `capacity-${state}`,
@@ -5446,7 +5835,6 @@ for (const [state, requiredControlEvents] of Object.entries({
     };
     const options = {
       durationMinutes: 60,
-      minimumNightMinutes: 30,
       maxTargets: 1,
       authorizedTaskIds: [candidate.taskId],
       canonicalTaskPolicies: [policy],
@@ -5492,7 +5880,6 @@ test("target selection consumes exact aggregate append capacity", () => {
   }));
   const options = {
     durationMinutes: 180,
-    minimumNightMinutes: 180,
     maxTargets: 3,
     authorizedTaskIds: candidates.map((candidate) => candidate.taskId),
     canonicalTaskPolicies: candidates.map((candidate) => ({
@@ -6356,7 +6743,7 @@ test("appendOutcomeLedger crash recovery reserves merged and installed outcomes 
 });
 
 for (const route of ["fresh", "legacy-backfill"]) {
-  test(`${route} installed identity drift blocks finalization and continuous trust`, () => {
+  test(`installed identity route ${route} drift blocks finalization and continuous trust`, () => {
     const stateRoot = temporaryOutcomeStateRoot(
       `freed-installed-${route}-finalization-`,
     );
@@ -7492,9 +7879,16 @@ test("execution plan includes peer review and release soak gates", () => {
       prompt: "Wait for provider approval.",
     },
   ]).find((phase) => phase.id === "publish");
-  assert.equal(providerPublish?.closeout, "draft");
-  assert.doesNotMatch(providerPublish?.commands[0] ?? "", /--ready/);
-  assert.match(providerPublish?.stopGate ?? "", /provider-risk approval/);
+  assert.equal(providerPublish?.closeout, "provider-artifact-required");
+  assert.equal(providerPublish?.mutates, false);
+  assert.match(providerPublish?.commands[0] ?? "", /^# Stop before publication/);
+  assert.match(
+    providerPublish?.commands[0] ?? "",
+    /--provider-risk-review-artifact <path> --ready$/,
+  );
+  assert.match(providerPublish?.stopGate ?? "", /provider-risk artifact/);
+  assert.match(providerPublish?.stopGate ?? "", /approved observable behavior/);
+  assert.doesNotMatch(providerPublish?.title ?? "", /owner review/i);
   assert.equal(
     deriveCandidatePrTitle({
       id: "unsafe",
@@ -7585,16 +7979,11 @@ test("argument parsing validates numeric budgets", () => {
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
   assert.equal(parseArgs([]).expectedBranch, "dev");
   assert.equal(parseArgs([]).maxTargets, 6);
-  assert.equal(parseArgs([]).minimumNightMinutes, 180);
   assert.equal(
     parseArgs(["--expected-branch", "release"]).expectedBranch,
     "release",
   );
   assert.equal(parseArgs(["--no-expected-branch"]).expectedBranch, "");
-  assert.equal(
-    parseArgs(["--minimum-night-minutes", "210"]).minimumNightMinutes,
-    210,
-  );
   const customStateRoot = path.join(os.tmpdir(), "freed-nightly-custom-state");
   assert.equal(
     parseArgs(["--automation-state-root", customStateRoot]).outcomeLedger,
@@ -7615,14 +8004,8 @@ test("argument parsing validates numeric budgets", () => {
     /expected-branch/,
   );
   assert.throws(
-    () =>
-      parseArgs([
-        "--duration-minutes",
-        "120",
-        "--minimum-night-minutes",
-        "180",
-      ]),
-    /minimumNightMinutes/,
+    () => parseArgs(["--minimum-night-minutes", "180"]),
+    /Unexpected argument/,
   );
   assert.equal(
     parseArgs(["--soak-pointer", "/tmp/pointer"]).soakPointer,

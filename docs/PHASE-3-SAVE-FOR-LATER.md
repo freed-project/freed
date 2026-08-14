@@ -88,6 +88,7 @@ architecture is now:
 | 3.8 | User-facing AI summarization controls | ✓ Complete | Settings UI is live, desktop-only key storage stays local |
 | 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
 | 3.10 | Saved content pinned in local reader cache | ✓ Complete | Saved URLs, saved posts, and saved stories enter the high-priority local cache path |
+| 3.11 | Bound Saved overview analytics on Freed Desktop | ✓ Complete | The overview now reads exact source, content, and time-bucket aggregates from the authenticated SQLite generation without retaining the Library corpus; stale or unavailable derived state falls back to the existing Automerge-compatible reducer |
 
 ---
 

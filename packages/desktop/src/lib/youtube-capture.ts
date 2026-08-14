@@ -10,7 +10,7 @@ import type { Account, FeedItem } from "@freed/shared";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { docReconcileYouTubeCapture } from "./automerge";
+import { docReconcileYouTubeCapture } from "./library-client";
 import { safeUnlisten } from "./safe-unlisten";
 import { storeYouTubeAuthState } from "./youtube-auth";
 import { clearYouTubePlaylistState } from "./youtube-playlist";
@@ -535,15 +535,19 @@ export function captureYouTube(
     result.diag.accountsAdded = result.accounts.filter(
       (account) => !existingAccountIds.has(account.id),
     ).length;
-    result.diag.itemsAdded = result.items.filter(
-      (item) => !existingItemIds.has(item.globalId),
-    ).length;
+    const beforeItemCount = typeof before.docItemCount === "number"
+      ? before.docItemCount
+      : null;
 
     await docReconcileYouTubeCapture(result.accounts, result.items, {
       rosterComplete: result.diag.rosterComplete,
       capturedAt: result.capturedAt,
     });
     assertFactoryResetEpoch(resetEpoch);
+    const afterItemCount = useAppStore.getState().docItemCount;
+    result.diag.itemsAdded = beforeItemCount !== null && typeof afterItemCount === "number"
+      ? Math.max(0, afterItemCount - beforeItemCount)
+      : result.items.filter((item) => !existingItemIds.has(item.globalId)).length;
 
     const auth = {
       ...useAppStore.getState().ytAuth,

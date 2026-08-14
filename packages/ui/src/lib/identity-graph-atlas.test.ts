@@ -126,6 +126,8 @@ describe("buildIdentityGraphAtlas", () => {
             sampleItemIds: [`item-${index}`],
             hasLocation: false,
             avatarUrl: null,
+            avatarPublishedAt: null,
+            avatarGlobalId: null,
           },
         ]),
       ),

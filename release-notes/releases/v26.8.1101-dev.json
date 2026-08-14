@@ -1,0 +1,75 @@
+{
+  "tag": "v26.8.1101-dev",
+  "version": "26.8.1101-dev",
+  "channel": "dev",
+  "dayKey": "26.8.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-11T23:22:06.436Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1100-dev",
+    "previousPublishedDayTag": "v26.8.1004-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "ddb7d90fb552532e8c0145e47ddeb09877b94c0e",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1100-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "d00f3e0b932e00cb72c9f739e602b072a461466d",
+        "toInclusiveProductCommitSha": "ddb7d90fb552532e8c0145e47ddeb09877b94c0e"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:e04f4edcf127809e7bd0b7022fe439b473a45eb92cc8ee0314ffe514ba785f4a",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev"
+    ],
+    "prNumbers": [
+      1395,
+      1396,
+      1397,
+      1398
+    ],
+    "commitSubjects": [
+      "perf: move Desktop library search into SQLite (#1398)",
+      "perf: move PWA library search into IndexedDB (#1397)",
+      "chore: prepare v26.8.1100-dev (#1396)",
+      "fix: preserve Unicode during SQLite import (#1395)"
+    ]
+  },
+  "release": {
+    "deck": "Search the whole Library without loading it into browser memory",
+    "features": [
+      "Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit.",
+      "The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory."
+    ],
+    "fixes": [
+      "SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1101-dev\n\nSearch the whole Library without loading it into browser memory\n\n### Features\n\n- Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit.\n- The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory.\n\n### Fixes\n\n- SQLite Library imports now preserve full Unicode text, including flag emoji, so large libraries can finish migrating instead of safely falling back to Automerge.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

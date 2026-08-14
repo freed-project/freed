@@ -9,8 +9,8 @@
  *  1. Fetch raw HTML via the `fetchUrl` Tauri IPC command (bypasses CORS)
  *  2. Extract article content with Readability via extractContentBrowser()
  *  3. Write full HTML to the device content cache (contentCache.set)
- *  4. Update Automerge with preservedContent.text + wordCount + readingTime
- *     (which then syncs back to the PWA via relay)
+ *  4. Update SQLite with preservedContent.text + wordCount + readingTime
+ *     so Library Core can publish it through the replacement sync outbox
  *  5. Optionally run AI summarization and update preservedContent.text again
  *
  * Subscribe behavior: call start() once at app init. The fetcher wires a
@@ -22,7 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe } from "./automerge.js";
+import { docUpdateFeedItem, subscribe, type DocChangeEvent } from "./library-client";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
@@ -43,6 +43,7 @@ import {
   isFactoryResetInProgress,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
+import { scanLibraryCoreItems } from "./library-core-item-detail-runtime.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -252,10 +253,29 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
   return trackResetSensitiveOperation(pinReaderItemInternal(item));
 }
 
-function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
+function maybeScanLibraryItems(
+  _items: FeedItem[],
+  docItemCount: number,
+  event: DocChangeEvent,
+): void {
+  if (event.source === "item_patch") {
+    enqueue(event.changedItems);
+    lastScannedDocItemCount = docItemCount;
+    return;
+  }
+  if (!event.requiresFullScan) return;
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
-  enqueue(items);
+  void scanLibraryCoreItems(
+    (page) => enqueue([...page]),
+    { hasLinkPreview: true, missingPreservedText: true },
+  ).catch((error) => {
+    log.error(
+      `[content-fetcher] bounded SQLite scan unavailable; background fetch remains paused: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  });
 }
 
 type ProcessOutcome = "success" | "skipped" | "backoff" | "deferred" | "idle";
@@ -535,11 +555,11 @@ async function processNext(): Promise<ProcessOutcome> {
       : undefined;
 
     // Keep the synced document small. Full article HTML already lives in the
-    // device-local cache, so Automerge only needs a compact fallback excerpt.
+    // device-local cache, so the Library row only needs a compact fallback excerpt.
     let summaryText = toSyncedPreservedText(content.text);
     let extraTopics: string[] = [];
 
-    // Optionally run AI summarization (replaces raw text in Automerge with a concise summary)
+    // Optionally run AI summarization and retain only a concise Library summary.
     if (prefs?.autoSummarize && prefs.provider !== "none") {
       if (isFactoryResetInProgress()) return "skipped";
       const cloudProvider = prefs.provider === "openai" ||
@@ -572,8 +592,8 @@ async function processNext(): Promise<ProcessOutcome> {
 
     if (isFactoryResetInProgress()) return "skipped";
 
-    // Write metadata + short text summary to Automerge (syncs to all devices).
-    // author is omitted rather than set to undefined — Automerge's proxy
+    // Write metadata and the short text summary to the Library row.
+    // Omit author rather than assigning undefined so the durable JSON stays canonical.
     // throws on undefined assignments and updateFeedItem uses Object.assign.
     const resolvedAuthor = content.author ?? metadata.author;
     await docUpdateFeedItem(entry.globalId, {
@@ -635,19 +655,15 @@ export function start(options: ContentFetcherOptions = {}): void {
   memoryGuardEnabled = options.memoryGuard ?? false;
   lastScannedDocItemCount = null;
 
-  // Wire up the Automerge subscription so stub items arriving via relay sync
-  // are automatically enqueued for background fetch.
+  // Wire up the SQLite subscription so new stub items are enqueued directly.
   //
-  // Important: do not rescan the whole visible feed on every mutation. Mark as
-  // read, archive toggles, and preference changes all trigger document updates,
-  // and a full enqueue() scan here turns those tiny mutations into O(n)
-  // churn across the whole library. Only rescan when the document item count
-  // changes, which is the common case for newly imported or relayed items.
-  unsubscribeDoc = subscribe((state) => {
-    // state.items contains non-hidden, ranked items from DocState.
-    // Stub items we care about are not hidden or archived, so the visible list
-    // is sufficient when the library grows or shrinks.
-    maybeScanVisibleItems(state.items, state.docItemCount);
+  // Important: never rescan the Library for an ordinary item patch. New rows
+  // arrive with their exact payload. A whole-corpus scan is reserved for an
+  // explicit state replacement whose changed identities are unknowable.
+  unsubscribeDoc = subscribe((state, event) => {
+    // SQLite is the bounded primary scan. The renderer array is only a rollback
+    // fallback and is usually empty in the compact Desktop shell.
+    maybeScanLibraryItems(state.items, state.docItemCount, event);
   });
 
   log.info("[content-fetcher] started");

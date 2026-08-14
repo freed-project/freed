@@ -69,9 +69,7 @@ declare module "@tauri-apps/plugin-updater" {
     /** Release notes body from the update manifest. */
     body?: string;
     rawJson: Record<string, unknown>;
-    download(
-      onEvent?: (progress: DownloadEvent) => void,
-    ): Promise<void>;
+    download(onEvent?: (progress: DownloadEvent) => void): Promise<void>;
     install(): Promise<void>;
     downloadAndInstall(
       onEvent?: (progress: DownloadEvent) => void,
@@ -98,20 +96,29 @@ declare module "@tauri-apps/plugin-fs" {
 
   export function readFile(path: string): Promise<Uint8Array>;
   export function readTextFile(path: string): Promise<string>;
+  export function readTextFileLines(
+    path: string,
+  ): Promise<AsyncIterableIterator<string>>;
   export function writeFile(
     path: string,
     contents: Uint8Array | string,
   ): Promise<void>;
-  export function writeTextFile(
+  export function writeTextFile(path: string, contents: string): Promise<void>;
+  export function remove(
     path: string,
-    contents: string,
+    options?: { recursive?: boolean },
   ): Promise<void>;
-  export function remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   export function rename(oldPath: string, newPath: string): Promise<void>;
   export function size(path: string): Promise<number>;
   export function open(
     path: string,
-    options?: { write?: boolean; append?: boolean; create?: boolean; truncate?: boolean },
+    options?: {
+      write?: boolean;
+      append?: boolean;
+      create?: boolean;
+      createNew?: boolean;
+      truncate?: boolean;
+    },
   ): Promise<{
     write(contents: Uint8Array): Promise<number>;
     close(): Promise<void>;

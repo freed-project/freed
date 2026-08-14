@@ -1,6 +1,6 @@
 [package]
 name = "freed-desktop"
-version = "26.7.2300"
+version = "26.8.1303"
 description = "Freed Desktop - Escape algorithmic manipulation"
 authors = ["Freed"]
 edition = "2021"
@@ -10,51 +10,76 @@ name = "freed_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.5.3", features = [] }
+tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
-tauri = { version = "=2.9.5", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "=2.11.5", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
-tauri-plugin-global-shortcut = "=2.2.1"
-tauri-plugin-clipboard-manager = "=2.2.1"
+tauri-plugin-global-shortcut = "=2.3.2"
+tauri-plugin-clipboard-manager = "=2.3.2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-window-vibrancy = "0.6"
-# default-features = false drops native-tls (OpenSSL) which conflicts with rquest's BoringSSL on Linux.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rquest = { version = "5", features = ["json"] }
-rquest-util = "2"
+window-vibrancy = "0.8"
+# default-features = false drops native-tls (OpenSSL) which conflicts with wreq's BoringSSL on Linux.
+#
+# "stream" is used directly: lib.rs calls Response::bytes_stream to download the
+# local AI model without buffering it whole. It was never declared here, and the
+# build only worked because tauri-plugin-updater 2.9.0 happened to turn it on
+# and cargo unifies features across the graph. That is a borrowed guarantee: the
+# updater bump to 2.10.1 drops it and the call site stops compiling. Declare what
+# we use so the build does not depend on another crate's feature choices.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# wreq is rquest renamed. The author renamed the crate and yanked every rquest
+# release, all 152 of them, so `rquest = "5"` no longer resolves at all and any
+# fresh dependency resolution fails outright. Version numbering carried straight
+# over: rquest 5.1.0 is wreq 5.1.0, and 5.3.0 continues that line.
+wreq = { version = "5.3", features = ["json"] }
+wreq-util = "2.2"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.26"
 futures-util = "0.3"
 fslock = "0.2.1"
-local-ip-address = "0.6"
-mdns-sd = "0.11"
 hostname = "0.4"
-rand = "0.8"
-base64 = "0.22"
+rand = "0.10"
+base64 = "0.23"
 url = "2"
-sysinfo = "0.37"
-sha2 = "0.10"
+sysinfo = "0.39"
+sha2 = "0.11"
+ring = "0.17"
+# The Library Core shadow store runs in the native process rather than the
+# renderer, which is the entire point: the renderer is the process fighting for
+# memory. `bundled` compiles SQLite from source so every install runs the same
+# engine version. Linking whatever libsqlite3 a user's machine happens to ship
+# would make STRICT table support and FTS5 availability vary per machine, and
+# the projection contract depends on STRICT.
+rusqlite = { version = "0.32", features = ["blob", "bundled", "limits"] }
+tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
+# The migration signer uses the ordinary macOS credential vault, but every
+# access disables Keychain user interaction first. If the item cannot be used
+# without a prompt, migration fails closed instead of interrupting the user.
+security-framework = "3.7"
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSRunningApplication"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSKeyValueCoding", "NSObject", "NSThread"] }
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-tempfile = "3"
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "relay"

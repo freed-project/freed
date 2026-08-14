@@ -1,0 +1,252 @@
+{
+  "engine": "turso",
+  "variant": "default",
+  "scale": 7,
+  "rows": 110922,
+  "insertMs": 1121,
+  "corpusTextMB": 160,
+  "baseFootprintMB": 222.8,
+  "indexBuildMs": 7706,
+  "indexBuildRssBeforeMB": 774.1,
+  "indexBuildPeakRssMB": 927.6,
+  "indexBuildRssDeltaMB": 153.5,
+  "rssSamples": 664,
+  "afterFootprintMB": 389.8,
+  "indexSizeMB": 167,
+  "indexOverheadPctOfText": 104.4,
+  "files": [
+    "db.db 389.8MB",
+    "db.db-wal 0MB"
+  ],
+  "queries": [
+    {
+      "label": "single-veryhigh-freq",
+      "query": "that",
+      "hits": 54374,
+      "countP50ms": 7.91,
+      "countMinMs": 7.62,
+      "countMaxMs": 287.6,
+      "topP50ms": 2.25,
+      "topMinMs": 1.83,
+      "topIds": [
+        "x:2048825454262710515|",
+        "c3:x:2048825454262710515|",
+        "c4:x:2048825454262710515|",
+        "c2:x:2048825454262710515|",
+        "c6:x:2048825454262710515|"
+      ],
+      "topLiteralScoreP50ms": 2.1,
+      "topLiteralScoreIds": [
+        "x:2048825454262710515|1.463",
+        "c3:x:2048825454262710515|1.463",
+        "c4:x:2048825454262710515|1.463",
+        "c2:x:2048825454262710515|1.463",
+        "c6:x:2048825454262710515|1.463"
+      ]
+    },
+    {
+      "label": "single-common",
+      "query": "climate",
+      "hits": 645,
+      "countP50ms": 2.03,
+      "countMinMs": 1.78,
+      "countMaxMs": 2.39,
+      "topP50ms": 1.92,
+      "topMinMs": 1.67,
+      "topIds": [
+        "c3:rss:https://thedailybell.com/?p=42437|",
+        "c1:rss:https://thedailybell.com/?p=42437|",
+        "c2:rss:https://thedailybell.com/?p=42437|",
+        "c6:rss:https://thedailybell.com/?p=42437|",
+        "rss:https://thedailybell.com/?p=42437|"
+      ],
+      "topLiteralScoreP50ms": 1.94,
+      "topLiteralScoreIds": [
+        "c3:rss:https://thedailybell.com/?p=42437|9.628",
+        "c1:rss:https://thedailybell.com/?p=42437|9.628",
+        "c2:rss:https://thedailybell.com/?p=42437|9.628",
+        "c6:rss:https://thedailybell.com/?p=42437|9.628",
+        "rss:https://thedailybell.com/?p=42437|9.628"
+      ]
+    },
+    {
+      "label": "single-rare",
+      "query": "tantivy",
+      "hits": 0,
+      "countP50ms": 1.81,
+      "countMinMs": 1.52,
+      "countMaxMs": 2.23,
+      "topP50ms": 1.63,
+      "topMinMs": 1.51,
+      "topIds": [],
+      "topLiteralScoreP50ms": 1.71,
+      "topLiteralScoreIds": []
+    },
+    {
+      "label": "multi-term-default",
+      "query": "climate change",
+      "hits": 6277,
+      "countP50ms": 2.79,
+      "countMinMs": 2.62,
+      "countMaxMs": 3.24,
+      "topP50ms": 2.21,
+      "topMinMs": 1.86,
+      "topIds": [
+        "c1:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "c5:x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c3:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 2.16,
+      "topLiteralScoreIds": [
+        "c1:x:2059327973224845418|13.991",
+        "c6:x:2059327973224845418|13.991",
+        "c5:x:2059327973224845418|13.991",
+        "c2:x:2059327973224845418|13.991",
+        "c3:x:2059327973224845418|13.991"
+      ]
+    },
+    {
+      "label": "multi-term-AND",
+      "query": "climate AND change",
+      "hits": 316,
+      "countP50ms": 2.26,
+      "countMinMs": 1.84,
+      "countMaxMs": 3.2,
+      "topP50ms": 2.01,
+      "topMinMs": 1.74,
+      "topIds": [
+        "c1:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "c5:x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c3:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 1.98,
+      "topLiteralScoreIds": [
+        "c1:x:2059327973224845418|13.991",
+        "c6:x:2059327973224845418|13.991",
+        "c5:x:2059327973224845418|13.991",
+        "c2:x:2059327973224845418|13.991",
+        "c3:x:2059327973224845418|13.991"
+      ]
+    },
+    {
+      "label": "phrase",
+      "query": "\"climate change\"",
+      "hits": 273,
+      "countP50ms": 2,
+      "countMinMs": 1.76,
+      "countMaxMs": 37.17,
+      "topP50ms": 2.07,
+      "topMinMs": 1.75,
+      "topIds": [
+        "c1:x:2059327973224845418|",
+        "c6:x:2059327973224845418|",
+        "c5:x:2059327973224845418|",
+        "c2:x:2059327973224845418|",
+        "c3:x:2059327973224845418|"
+      ],
+      "topLiteralScoreP50ms": 2.35,
+      "topLiteralScoreIds": [
+        "c1:x:2059327973224845418|13.562",
+        "c6:x:2059327973224845418|13.562",
+        "c5:x:2059327973224845418|13.562",
+        "c2:x:2059327973224845418|13.562",
+        "c3:x:2059327973224845418|13.562"
+      ]
+    },
+    {
+      "label": "prefix",
+      "query": "democr*",
+      "hits": 0,
+      "countP50ms": 1.85,
+      "countMinMs": 1.55,
+      "countMaxMs": 2.32,
+      "topP50ms": 1.9,
+      "topMinMs": 1.54,
+      "topIds": [],
+      "topLiteralScoreP50ms": 1.81,
+      "topLiteralScoreIds": []
+    },
+    {
+      "label": "typo-missing-letter",
+      "query": "climat",
+      "hits": 0,
+      "countP50ms": 1.77,
+      "countMinMs": 1.53,
+      "countMaxMs": 2.21,
+      "topP50ms": 1.7,
+      "topMinMs": 1.52,
+      "topIds": [],
+      "topLiteralScoreP50ms": 1.61,
+      "topLiteralScoreIds": []
+    },
+    {
+      "label": "typo-transposed",
+      "query": "cimate",
+      "hits": 0,
+      "countP50ms": 1.67,
+      "countMinMs": 1.52,
+      "countMaxMs": 2.1,
+      "topP50ms": 1.73,
+      "topMinMs": 1.47,
+      "topIds": [],
+      "topLiteralScoreP50ms": 1.64,
+      "topLiteralScoreIds": []
+    },
+    {
+      "label": "stem-run",
+      "query": "run",
+      "hits": 7023,
+      "countP50ms": 2.64,
+      "countMinMs": 2.35,
+      "countMaxMs": 3.03,
+      "topP50ms": 1.98,
+      "topMinMs": 1.68,
+      "topIds": [
+        "c1:rss:https://dave.cheney.net/?p=4373|",
+        "c4:rss:https://dave.cheney.net/?p=4373|",
+        "c3:rss:https://dave.cheney.net/?p=4373|",
+        "c6:rss:https://dave.cheney.net/?p=4373|",
+        "rss:https://dave.cheney.net/?p=4373|"
+      ],
+      "topLiteralScoreP50ms": 1.95,
+      "topLiteralScoreIds": [
+        "c1:rss:https://dave.cheney.net/?p=4373|5.306",
+        "c4:rss:https://dave.cheney.net/?p=4373|5.306",
+        "c3:rss:https://dave.cheney.net/?p=4373|5.306",
+        "c6:rss:https://dave.cheney.net/?p=4373|5.306",
+        "rss:https://dave.cheney.net/?p=4373|5.306"
+      ]
+    },
+    {
+      "label": "three-term",
+      "query": "climate change policy",
+      "hits": 8830,
+      "countP50ms": 3.69,
+      "countMinMs": 3.21,
+      "countMaxMs": 4.08,
+      "topP50ms": 2.52,
+      "topMinMs": 2.05,
+      "topIds": [
+        "c3:rss:https://thedailybell.com/?p=42437|",
+        "c1:rss:https://thedailybell.com/?p=42437|",
+        "c2:rss:https://thedailybell.com/?p=42437|",
+        "c6:rss:https://thedailybell.com/?p=42437|",
+        "rss:https://thedailybell.com/?p=42437|"
+      ],
+      "topLiteralScoreP50ms": 2.52,
+      "topLiteralScoreIds": [
+        "c3:rss:https://thedailybell.com/?p=42437|15.877",
+        "c1:rss:https://thedailybell.com/?p=42437|15.877",
+        "c2:rss:https://thedailybell.com/?p=42437|15.877",
+        "c6:rss:https://thedailybell.com/?p=42437|15.877",
+        "rss:https://thedailybell.com/?p=42437|15.877"
+      ]
+    }
+  ],
+  "likeScanP50ms": 424.74,
+  "likeScanHits": 672
+}

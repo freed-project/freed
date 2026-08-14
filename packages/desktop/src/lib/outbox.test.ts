@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import type { DocChangeEvent } from "./automerge-types";
+import type { DocChangeEvent } from "./library-types";
 import type { ConfirmFn } from "./outbox";
 import type { PlatformActions } from "./platform-actions";
 
@@ -8,8 +8,22 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: vi.fn(),
 }));
 
-const { mockRecordSocialOutboxAttempt } = vi.hoisted(() => ({
+const {
+  mockRecordSocialOutboxAttempt,
+  mockSqliteLibraryCloudWriterAdmissionStatus,
+  mockIsSqliteLibraryActive,
+} = vi.hoisted(() => ({
   mockRecordSocialOutboxAttempt: vi.fn(),
+  mockSqliteLibraryCloudWriterAdmissionStatus: vi.fn(async () => ({
+    configured: false,
+    allowed: true,
+    localWriterId: null as string | null,
+    activeWriterId: null as string | null,
+    storageEpoch: null as string | null,
+    controlRevision: null as string | null,
+    verifiedAtMs: null as number | null,
+  })),
+  mockIsSqliteLibraryActive: vi.fn(() => false),
 }));
 
 vi.mock("./runtime-health-events", () => ({
@@ -24,6 +38,11 @@ async function loadOutbox(
   vi.resetModules();
   vi.doMock("./side-effect-scheduler", () => ({
     scheduleSideEffect: vi.fn(scheduleSideEffect),
+  }));
+  vi.doMock("./sqlite-library", () => ({
+    isSqliteLibraryActive: mockIsSqliteLibraryActive,
+    sqliteLibraryCloudWriterAdmissionStatus:
+      mockSqliteLibraryCloudWriterAdmissionStatus,
   }));
   return import("./outbox");
 }
@@ -93,6 +112,16 @@ describe("outbox processor", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockRecordSocialOutboxAttempt.mockReset();
+    mockIsSqliteLibraryActive.mockReset().mockReturnValue(false);
+    mockSqliteLibraryCloudWriterAdmissionStatus.mockReset().mockResolvedValue({
+      configured: false,
+      allowed: true,
+      localWriterId: null,
+      activeWriterId: null,
+      storageEpoch: null,
+      controlRevision: null,
+      verifiedAtMs: null,
+    });
   });
 
   afterEach(() => {
@@ -141,6 +170,84 @@ describe("outbox processor", () => {
     expect(getItems).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledTimes(1);
     expect(like).toHaveBeenCalledWith(patchedItem);
+    teardown();
+  });
+
+  it("makes no provider attempt when another Desktop owns Library writes", async () => {
+    vi.useFakeTimers();
+    mockIsSqliteLibraryActive.mockReturnValue(true);
+    mockSqliteLibraryCloudWriterAdmissionStatus.mockResolvedValue({
+      configured: true,
+      allowed: false,
+      localWriterId: "1".repeat(64),
+      activeWriterId: "2".repeat(64),
+      storageEpoch: "3".repeat(64),
+      controlRevision: "etag-retired",
+      verifiedAtMs: 1_000,
+    });
+    const like = vi.fn(async () => true);
+    const markSeen = vi.fn(async () => true);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen,
+      commentUrl: vi.fn(() => null),
+    };
+
+    const { startOutboxProcessor } = await loadOutbox();
+    const teardown = startOutboxProcessor(
+      () => [makeItem("x:retired", { liked: true, likedAt: 10 })],
+      () => () => {},
+      new Map([["x", actions]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    await vi.runAllTimersAsync();
+
+    expect(mockSqliteLibraryCloudWriterAdmissionStatus).toHaveBeenCalled();
+    expect(like).not.toHaveBeenCalled();
+    expect(markSeen).not.toHaveBeenCalled();
+    expect(mockRecordSocialOutboxAttempt).not.toHaveBeenCalled();
+    teardown();
+  });
+
+  it("streams startup candidates from bounded SQLite pages", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor } = await loadOutbox();
+    const first = makeItem("x:first", { liked: true, likedAt: 10 });
+    const second = makeItem("x:second", { liked: true, likedAt: 20 });
+    const getItems = vi.fn(() => {
+      throw new Error("full Automerge corpus must not be read");
+    });
+    const like = vi.fn(async () => true);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+    const scanItems = vi.fn(async (
+      visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+    ) => {
+      await visitPage([first]);
+      await visitPage([second]);
+    });
+
+    const teardown = startOutboxProcessor(
+      getItems,
+      () => () => {},
+      new Map([["x", actions]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+      scanItems,
+    );
+    await vi.runAllTimersAsync();
+
+    expect(scanItems).toHaveBeenCalledTimes(1);
+    expect(getItems).not.toHaveBeenCalled();
+    expect(like).toHaveBeenCalledTimes(2);
+    expect(like).toHaveBeenNthCalledWith(1, first);
+    expect(like).toHaveBeenNthCalledWith(2, second);
     teardown();
   });
 
@@ -442,7 +549,7 @@ describe("outbox processor", () => {
         likedAt: 60,
         likedSyncedAt: -1,
       })),
-      mutation: "MERGE_DOC",
+      mutation: "BATCH_IMPORT_ITEMS",
     });
     await vi.advanceTimersByTimeAsync(5_000);
 

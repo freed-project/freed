@@ -20,7 +20,7 @@ async function injectItems(page: import("@playwright/test").Page): Promise<void>
     async ({ articleTitle, articleUrl, storyAuthor, xTitle, fbTitle, igTitle }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docBatchImportItems: (items: unknown[]) => Promise<unknown>;
       };
 
