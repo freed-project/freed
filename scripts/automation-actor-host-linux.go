@@ -944,7 +944,8 @@ func readProtectedFile(file, root string, requiredUID int, executable bool, maxB
 }
 
 func trustedOwner(actual, required int) bool {
-	return actual == required || (testingMode == "true" && actual == os.Getuid())
+	return actual == required ||
+		(testingMode == "true" && (actual == 0 || actual == os.Getuid()))
 }
 
 func requirePhysicalPrivateDirectory(directory string, owner int) error {
