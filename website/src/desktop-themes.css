@@ -324,27 +324,21 @@ html[data-theme="dark-star"]
   pointer-events: none;
 }
 
-/* Hovering a swatch previews the theme, which repaints the whole shell. The
-   swatch must not change size while that happens: the shared button grows its
-   surface from 1.1rem to 1.65rem on hover, and that reflow resizes the grid
-   row, slides the swatch out from under the pointer, and drops the hover. The
-   preview then reverts and the pointer lands on it again, so the row oscillates.
-   Pin every state to the resting size and drop the scale. Hover feedback stays,
-   via the compact variant's opacity and shadow, neither of which reflows. */
+/* The active swatch is deliberately taller than the other themes. Each row is
+   sized for that maximum state, so moving the active theme between rows cannot
+   move either row. The fixed preview layer in ThemeSelector separately protects
+   the pointer from page-wide font and document-height changes during preview. */
+.website-theme-grid {
+  display: grid;
+  width: max-content;
+  grid-template-columns: repeat(3, max-content);
+  grid-auto-rows: 2.75rem;
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.5rem;
+}
+
 .website-theme-swatch:hover,
 .website-theme-swatch:focus-visible {
   transform: none;
-}
-
-.website-theme-swatch .theme-preview-button-surface,
-.website-theme-swatch:hover .theme-preview-button-surface,
-.website-theme-swatch:focus-visible .theme-preview-button-surface,
-.website-theme-swatch.theme-preview-button-active .theme-preview-button-surface,
-.website-theme-swatch.theme-preview-button-active:hover
-  .theme-preview-button-surface,
-.website-theme-swatch.theme-preview-button-active:focus-visible
-  .theme-preview-button-surface {
-  width: 3rem;
-  height: 1.1rem;
-  flex: none;
 }

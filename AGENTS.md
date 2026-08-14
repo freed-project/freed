@@ -50,6 +50,21 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 **Never write `freed.wtf/app`** — the PWA lives at the subdomain `app.freed.wtf`.
 
+## Website Theme Selector
+
+- The footer theme selector previews fonts and layout, so it must render its
+  interactive preview in a fixed layer captured before the theme changes. Do
+  not replace that layer with an inline-only hover preview. Page reflow can move
+  the control out from under the pointer and create an infinite preview loop.
+- Keep exactly three themes per row in this order: Ember, Midas, Scriptorium,
+  then Starship, Dark Star, Neon.
+- The active swatch is taller than resting themes. Reserve fixed row height for
+  the maximum active state so switching themes never moves either row.
+- Any change to `ThemeSelector.tsx`, `desktop-themes.css`, or the compact theme
+  preview styles must run `npm run test:e2e` from `website/`. The regression test
+  must keep asserting a stable pointer target, fixed row centers, and a taller
+  active swatch.
+
 ## Git Workflow
 
 **Never work directly on `main`.** Always create a git worktree for feature work:
