@@ -451,7 +451,7 @@ not mean those internal stages remain unreachable.
 - [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, refreshes stored OAuth credentials before Drive or Contacts calls, and retries Contacts once after a 401 with a forced token refresh
 - [x] Freed Desktop falls back to the production Google token proxy when the build omits `VITE_GDRIVE_TOKEN_PROXY_URL`, so local and dev builds do not silently use direct Google token exchange
 - [x] Google Contacts token lookup and forced refresh failures remain recoverable in sync state instead of opening the fatal recovery screen, while corrupt or unsupported local sync ledgers preserve their raw evidence and block automatic provider requests until explicit repair
-- [x] PWA and Desktop retry the initial Google Drive document download after a 401 token refresh before starting from a fresh Drive changes cursor, so existing remote libraries are not skipped after reconnect
+- [x] PWA and Desktop retry the initial Google Drive download after a 401 token refresh. The PWA applies this recovery to immutable Library Core checkpoint discovery even when cached expiry metadata says the rejected access token is still current.
 - [x] PWA cloud sync waits for Automerge worker initialization before Drive downloads, merges, uploads, OAuth callback sync starts, or LAN relay resume can touch the local document
 - [x] Google Drive upload returns the merged local plus remote Automerge binary to the uploading device, so a client that discovers remote changes during upload also converges locally
 - [x] Desktop, PWA, and cloud upload merges block delete-heavy Automerge histories before they can replace a much larger document
