@@ -388,10 +388,10 @@ export function createGalaxyLabFixture({
     ...regions.map((region) => ({
       id: `label:${region.id}`,
       nodeId: `provider:${region.provider}`,
-      text: `${region.label} ${region.count.toLocaleString()}`,
+      text: `${region.label} ${region.unlinkedCount.toLocaleString()}`,
       x: region.x,
       y: region.y,
-      priority: 1_500 + region.count,
+      priority: 1_500 + region.unlinkedCount,
       kind: "provider_cluster" as const,
     })),
     ...labeledPeople.map((node) => ({

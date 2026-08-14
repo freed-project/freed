@@ -1178,7 +1178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       feeds: data.feeds,
       items: data.items,
       persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
-      accounts: data.friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend)),
+      accounts: data.accounts,
     });
   },
 
