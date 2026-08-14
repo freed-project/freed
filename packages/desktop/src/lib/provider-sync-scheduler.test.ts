@@ -183,7 +183,9 @@ describe("provider sync scheduler", () => {
   });
 
   it("coalesces repeated wake signals without issuing a second provider contact", async () => {
-    let releaseProvider: (() => void) | null = null;
+    let releaseProvider: () => void = () => {
+      throw new Error("provider contact did not start");
+    };
     listDueProviderSchedules
       .mockReturnValueOnce([
         {
@@ -223,7 +225,7 @@ describe("provider sync scheduler", () => {
     expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
     expect(markProviderContactIssued).toHaveBeenCalledOnce();
 
-    releaseProvider?.();
+    releaseProvider();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
