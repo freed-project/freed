@@ -204,6 +204,7 @@ export class FriendsGalaxyProductWorkerService {
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
       backgroundStarCount: request.backgroundStarCount,
+      proceduralBackgroundStarCount: request.proceduralBackgroundStarCount,
       backgroundSeed: request.backgroundSeed,
     });
     const sourceIndexes = productSourceIndexes(model);

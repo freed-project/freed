@@ -13,6 +13,7 @@ import {
 } from "../../src/lib/friends-galaxy-product-worker-service.js";
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
 import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
+import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
 import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
 
 function sourceRequest(
@@ -64,7 +65,7 @@ function activityRequest(
     referenceTime: 1_800_000_000_000,
     patches: [{
       namespace: "social",
-      key: "linkedin:product-author-2",
+      key: socialActivitySummaryKey("linkedin", "product-author-2"),
       summary: {
         itemCount: 17,
         latestActivityAt: 1_799_999_000_000,

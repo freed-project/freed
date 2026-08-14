@@ -23,6 +23,7 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   initializedAtlas: IdentityGraphAtlas | null = null;
   presentationAtlas: IdentityGraphAtlas | null = null;
   activityPatches: FriendsGalaxyActivityScenePatchBatch[] = [];
+  replaceSceneResult = false;
 
   constructor(
     readonly id: FriendsGalaxyRendererId,
@@ -37,6 +38,12 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
     this.initializedAtlas = scene.atlas;
     this.events.push(`initialize:${scene.scene.nodeIds.length}:${palette.background}`);
     await this.initializeGate;
+  }
+
+  replaceScene(scene: FriendsGalaxyRendererScene): boolean {
+    this.events.push(`replace:${scene.scene.nodeIds.length}`);
+    if (this.replaceSceneResult) this.initializedAtlas = scene.atlas;
+    return this.replaceSceneResult;
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
@@ -216,6 +223,47 @@ describe("Friends Galaxy renderer host", () => {
     host.dispose();
     expect(backend.disposed).toBe(true);
     expect(host.activeBackend).toBeNull();
+  });
+
+  it("reuses an active backend and surface when it can replace the scene in place", async () => {
+    const firstScene = createGalaxyLabFixture({
+      personCount: 2,
+      accountCount: 2,
+      backgroundStarCount: 0,
+    });
+    const replacementScene = createGalaxyLabFixture({
+      personCount: 4,
+      accountCount: 8,
+      backgroundStarCount: 0,
+    });
+    const backend = new FakeRendererBackend("raw-webgpu");
+    backend.replaceSceneResult = true;
+    const surfaces: HTMLCanvasElement[] = [];
+    const host = new FriendsGalaxyRendererHost({
+      scene: firstScene,
+      palette: GALAXY_LAB_THEMES.scriptorium,
+      resolvePresentation: galaxyLabNodePresentation,
+      createSurface: () => {
+        const surface = {} as HTMLCanvasElement;
+        surfaces.push(surface);
+        return surface;
+      },
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async () => backend,
+    });
+
+    await host.activate("raw-webgpu");
+    const generation = host.generation;
+    await host.replaceScene(replacementScene);
+
+    expect(surfaces).toHaveLength(1);
+    expect(host.generation).toBe(generation);
+    expect(host.activeBackend).toBe(backend);
+    expect(backend.disposed).toBe(false);
+    expect(backend.events).toContain(`replace:${replacementScene.scene.nodeIds.length.toLocaleString()}`);
+    expect(backend.initializedAtlas).toBe(replacementScene.atlas);
   });
 
   it("keeps settled metadata on its source scene during atomic replacement", async () => {

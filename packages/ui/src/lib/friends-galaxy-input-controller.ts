@@ -1,4 +1,5 @@
 import { friendsGalaxyFrameStats, type FriendsGalaxyFrameStats } from "./friends-galaxy-diagnostics.js";
+import { FriendsGalaxyCameraFitAnimation } from "./friends-galaxy-camera-animation.js";
 import { shouldContinueFriendsGalaxyFrame } from "./friends-galaxy-frame-loop.js";
 import {
   friendsGalaxyGestureScaleRatio,
@@ -129,6 +130,7 @@ export class FriendsGalaxyInputController {
   private readonly pointers = new FriendsGalaxyPointerRoster(2);
   private readonly inertialPan = new FriendsGalaxyInertialPan();
   private readonly inertialZoom = new FriendsGalaxyInertialZoom();
+  private readonly fitAnimation = new FriendsGalaxyCameraFitAnimation();
   private readonly settleScheduler = new FriendsGalaxySettleScheduler();
   private readonly longPress = new FriendsGalaxyLongPressTracker();
   private readonly frameSamples = new FriendsGalaxySampleRing(180);
@@ -221,14 +223,31 @@ export class FriendsGalaxyInputController {
   }
 
   fitAll(): void {
-    this.cancelCameraInertia();
-    if (!this.engine.fitAll(false)) return;
-    this.settleNow();
+    this.cancelCameraMotion();
+    const source = this.engine.cameraTransform;
+    const target = this.engine.fittedCameraTransform(false);
+    if (!source || !target) return;
+    if (!this.fitAnimation.start(
+      source,
+      target,
+      this.geometryValue.interactionCenterX,
+      this.geometryValue.interactionCenterY,
+      this.now(),
+      this.reducedMotionQuery.matches,
+    )) {
+      this.engine.setCameraTransform(target);
+      this.settleNow(true);
+      this.markDirty();
+      return;
+    }
+    this.viewport.dataset.fitAnimation = "true";
+    this.settleScheduler.cancel();
+    this.setCameraInMotion(true);
     this.markDirty();
   }
 
   focusNode(nodeId: string): boolean {
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     const focused = this.engine.focusNode(nodeId);
     if (!focused) return false;
     this.settleNow();
@@ -301,7 +320,7 @@ export class FriendsGalaxyInputController {
     this.reducedMotionQuery.removeEventListener("change", this.handleReducedMotionChange);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.removeEventListeners();
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     this.settleScheduler.cancel();
     this.longTasks.dispose();
   }
@@ -520,7 +539,7 @@ export class FriendsGalaxyInputController {
   }
 
   private beginPanSample(timeMs: number): boolean {
-    const interrupted = this.cancelCameraInertia();
+    const interrupted = this.cancelCameraMotion();
     this.inertialPan.begin(timeMs);
     this.viewport.dataset.inertialPan = "false";
     return interrupted;
@@ -543,7 +562,7 @@ export class FriendsGalaxyInputController {
   }
 
   private beginZoomSample(timeMs: number, x: number, y: number): void {
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     this.inertialZoom.begin(timeMs);
     this.inertialZoomFocalX = x;
     this.inertialZoomFocalY = y;
@@ -570,14 +589,16 @@ export class FriendsGalaxyInputController {
     return true;
   }
 
-  private cancelCameraInertia(): boolean {
+  private cancelCameraMotion(): boolean {
     const active = this.inertialPan.isActive || this.inertialZoom.isActive ||
-      this.wheelZoomReleaseAt > 0;
+      this.wheelZoomReleaseAt > 0 || this.fitAnimation.isActive;
     this.inertialPan.cancel();
     this.inertialZoom.cancel();
+    this.fitAnimation.cancel();
     this.wheelZoomReleaseAt = 0;
     this.viewport.dataset.inertialPan = "false";
     this.viewport.dataset.inertialZoom = "false";
+    this.viewport.dataset.fitAnimation = "false";
     return active;
   }
 
@@ -594,10 +615,14 @@ export class FriendsGalaxyInputController {
     this.requestFrame();
   }
 
-  private settleNow(): void {
+  private settleNow(fitAll = false): void {
     if (!this.canPresent() || !this.engine.sourceReady) return;
     this.settleScheduler.cancel();
     this.setCameraInMotion(false);
+    if (fitAll) {
+      const target = this.engine.fittedCameraTransform(false);
+      if (target) this.engine.setCameraTransform(target);
+    }
     if (this.renderResizePending) this.resizeEngine();
     this.engine.settleCamera();
     this.presentationRevision += 1;
@@ -706,6 +731,16 @@ export class FriendsGalaxyInputController {
       this.scheduleSettle();
     }
 
+    const fitStep = this.fitAnimation.step(timeMs);
+    if (fitStep.active || fitStep.finished) {
+      this.engine.setCameraTransform(fitStep.transform);
+      this.dirty = true;
+    }
+    if (fitStep.finished) {
+      this.viewport.dataset.fitAnimation = "false";
+      this.settleNow(true);
+    }
+
     const settledGeneration = this.settleScheduler.takeDue(timeMs);
     if (settledGeneration !== null) this.settleNow();
     if (this.renderResizePending) this.resizeEngine();
@@ -742,7 +777,8 @@ export class FriendsGalaxyInputController {
       renderable && ambientMotion,
       renderable && this.dirty,
       this.settleScheduler.isPending || this.inertialPan.isActive ||
-        this.inertialZoom.isActive || this.wheelZoomReleaseAt > 0 || transition,
+        this.inertialZoom.isActive || this.wheelZoomReleaseAt > 0 ||
+        this.fitAnimation.isActive || transition,
       this.canPresent(),
     )) {
       this.requestFrame();
@@ -755,7 +791,7 @@ export class FriendsGalaxyInputController {
     this.settleScheduler.cancel();
     this.clearLongPress();
     this.pointers.clear();
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     this.safariGestureActive = false;
     this.gestureMoved = false;
     this.gestureInterruptedInertia = false;
@@ -773,7 +809,7 @@ export class FriendsGalaxyInputController {
 
   private handleResize = (): void => {
     if (this.disposed) return;
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     this.refreshGeometry();
     this.settleNow();
     this.markDirty();
@@ -781,8 +817,10 @@ export class FriendsGalaxyInputController {
 
   private handleReducedMotionChange = (): void => {
     if (this.reducedMotionQuery.matches) {
-      this.cancelCameraInertia();
-      this.scheduleSettle();
+      const finishingFit = this.fitAnimation.isActive;
+      this.cancelCameraMotion();
+      if (finishingFit) this.settleNow(true);
+      else this.scheduleSettle();
     }
     this.engine.setAmbientMotionEnabled(!this.reducedMotionQuery.matches);
     this.markDirty();
@@ -1044,7 +1082,7 @@ export class FriendsGalaxyInputController {
     if (event.cancelable) event.preventDefault();
     this.clearLongPress();
     this.pointers.clear();
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     this.viewport.dataset.dragging = "false";
     this.gestureMoved = false;
     this.gestureInterruptedInertia = false;
@@ -1068,7 +1106,7 @@ export class FriendsGalaxyInputController {
       const speed = event.shiftKey && !event.ctrlKey ? 0.0035 : 0.012;
       const scaleRatio = friendsGalaxyWheelScaleRatio(event.deltaY, speed);
       if (wheelIntent === "wheel-zoom") {
-        this.cancelCameraInertia();
+        this.cancelCameraMotion();
         this.settleScheduler.cancel();
         this.setCameraInMotion(true);
         this.engine.zoomCameraAt(point.x, point.y, scaleRatio);
@@ -1093,7 +1131,7 @@ export class FriendsGalaxyInputController {
       this.markDirty();
       return;
     }
-    this.cancelCameraInertia();
+    this.cancelCameraMotion();
     const deltaX = friendsGalaxyWheelDeltaPixels(
       event.deltaX,
       event.deltaMode,
@@ -1116,7 +1154,7 @@ export class FriendsGalaxyInputController {
   private handleContextMenu = (event: MouseEvent): void => {
     if (isGestureUiTarget(event.target)) return;
     event.preventDefault();
-    const interrupted = this.cancelCameraInertia();
+    const interrupted = this.cancelCameraMotion();
     this.refreshGeometry();
     const point = this.canvasPoint(event.clientX, event.clientY);
     this.requestContextAt(point.x, point.y, "pointer");
@@ -1194,13 +1232,13 @@ export class FriendsGalaxyInputController {
     let handled = true;
     switch (command.type) {
       case "pan":
-        this.cancelCameraInertia();
+        this.cancelCameraMotion();
         this.setCameraInMotion(true);
         this.engine.panCameraBy(command.deltaX, command.deltaY);
         this.scheduleSettle();
         break;
       case "zoom":
-        this.cancelCameraInertia();
+        this.cancelCameraMotion();
         this.setCameraInMotion(true);
         this.engine.zoomCameraAt(
           this.geometryValue.interactionCenterX,

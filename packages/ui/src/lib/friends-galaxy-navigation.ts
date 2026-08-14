@@ -141,6 +141,31 @@ export class FriendsGalaxyNavigationController {
     );
   }
 
+  fittedTransform(initial = false): FriendsGalaxyTransform {
+    const transform = { ...this.transformValue };
+    writeFriendsGalaxyFramedTransform(
+      transform,
+      this.scene.atlas.bounds,
+      this.frameValue,
+      this.width,
+      this.height,
+      this.insets,
+      initial,
+    );
+    return transform;
+  }
+
+  setTransform(transform: FriendsGalaxyTransform): boolean {
+    if (
+      !Number.isFinite(transform.x) || !Number.isFinite(transform.y) ||
+      !Number.isFinite(transform.scale) || transform.scale <= 0
+    ) return false;
+    this.transformValue.x = transform.x;
+    this.transformValue.y = transform.y;
+    this.transformValue.scale = transform.scale;
+    return true;
+  }
+
   focusNode(nodeId: string, minimumScale = 0.92): boolean {
     const nodeIndex = findFriendsGalaxySceneNodeIndex(
       this.scene.scene,

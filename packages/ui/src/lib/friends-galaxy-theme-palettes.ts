@@ -79,11 +79,11 @@ export const FRIENDS_GALAXY_THEME_PALETTES = {
     surface: "#eeeef6",
     text: "#16163a",
     mutedText: "#4a4a84",
-    friend: "#2828c0",
+    friend: "#2997ff",
     connection: "#08733b",
     account: "#5f5f9c",
     feed: "#b3261e",
-    selection: "#2828c0",
+    selection: "#2997ff",
     providers: {
       instagram: "#c64f85",
       facebook: "#3d72c4",
