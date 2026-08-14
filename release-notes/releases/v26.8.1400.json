@@ -193,10 +193,10 @@
       ],
       "inspectionDigest": "sha256:2f58e823946cbe30bfff9d522acbe3d0929cd955ab0a71e46ccfc4112f96c25d",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-8-1400#sha256:c885589b063bc67ba39f6bddb69f1e9f56482912ea0fbd836ad4421715541d37",
+        "approvedInspectionDigest": "sha256:2f58e823946cbe30bfff9d522acbe3d0929cd955ab0a71e46ccfc4112f96c25d",
+        "approvedReleaseArtifactDigest": "sha256:66fac652c05da302dbdb677fa90a3f1d83d1cd674e99f31f3b5334fbfe4bf0c7"
       }
     },
     "isLatestOfDay": true,
