@@ -74,6 +74,16 @@ export default function Footer() {
                 <li>
                   <FooterLink href="/qr">Sharing QR</FooterLink>
                 </li>
+                <li>
+                  <a
+                    href="https://github.com/freed-project/freed"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-secondary text-sm transition-colors hover:text-text-primary"
+                  >
+                    GitHub
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
