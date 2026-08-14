@@ -153,11 +153,14 @@ export function PwaSyncSettings() {
   const diagnosticError = cloudProviderState?.error ?? manualSyncError;
 
   const handleDisconnect = () => {
+    // Capture the configured provider before clearing the connection store.
+    // disconnect() removes the provider marker, so looking it up afterward
+    // leaves the OAuth credentials behind and makes Disconnect appear inert.
+    const cloudProvider = getCloudProvider();
     clearStoredRelayUrl();
     disconnect();
-    const p = getCloudProvider();
-    if (p) {
-      clearCloudSync(p);
+    if (cloudProvider) {
+      clearCloudSync(cloudProvider);
       stopCloudSync();
     }
   };
