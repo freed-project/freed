@@ -31,7 +31,9 @@ export function ProviderStatusIndicator({
       ? "border-red-400"
       : tone === "warning"
         ? "border-amber-400"
-        : "border-emerald-400";
+        : tone === "healthy"
+          ? "border-emerald-400"
+          : "border-[var(--theme-text-soft)]";
   const activeLabel = syncing && tone === "healthy" ? "Syncing" : label;
   const emojiClass =
     size === "xxs"

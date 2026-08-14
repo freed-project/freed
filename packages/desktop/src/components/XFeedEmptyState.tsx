@@ -16,7 +16,7 @@ import { captureXTimeline } from "../lib/x-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
-import { socialProviderCopy } from "../lib/social-provider-copy";
+import { EMPTY_PROVIDER_FEED_COPY, socialProviderCopy } from "../lib/social-provider-copy";
 
 const XIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-x)]" viewBox="0 0 24 24" fill="currentColor">
@@ -69,8 +69,8 @@ export function XFeedEmptyState() {
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
           <span className="text-2xl">📡</span>
         </div>
-        <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="text-sm text-[var(--theme-text-muted)]">No new items to show.</p>
+        <p className="text-lg font-medium mb-2">{EMPTY_PROVIDER_FEED_COPY.title}</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">{EMPTY_PROVIDER_FEED_COPY.detail}</p>
         <SampleDataTestingSection />
       </>
     );
@@ -83,7 +83,7 @@ export function XFeedEmptyState() {
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
           <XIcon />
         </div>
-        <p className="text-lg font-medium mb-2">All caught up!</p>
+        <p className="text-lg font-medium mb-2">{EMPTY_PROVIDER_FEED_COPY.title}</p>
         <p className="mb-6 text-sm text-[var(--theme-text-muted)]">{copy.connectedEmptyState}</p>
         <div className="flex gap-3">
           <button

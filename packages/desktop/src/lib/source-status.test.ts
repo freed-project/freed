@@ -75,6 +75,47 @@ describe("desktop source status", () => {
     expect(status).toBeNull();
   });
 
+  it("omits the status indicator for a provider that has never been configured", () => {
+    const status = getDesktopSourceStatus(
+      "substack",
+      sourceState({
+        substackAuth: { isAuthenticated: false },
+        itemCountByPlatform: { substack: 0 },
+      }),
+      null,
+    );
+
+    expect(status).toBeNull();
+  });
+
+  it("keeps a configured provider neutral until it has synced an item", () => {
+    const status = getDesktopSourceStatus(
+      "substack",
+      sourceState({
+        substackAuth: { isAuthenticated: true },
+        itemCountByPlatform: { substack: 0 },
+      }),
+      health(),
+    );
+
+    expect(status?.tone).toBe("idle");
+    expect(status?.label).toBe("No items yet");
+  });
+
+  it("marks a configured provider healthy after it has synced an item", () => {
+    const status = getDesktopSourceStatus(
+      "substack",
+      sourceState({
+        substackAuth: { isAuthenticated: true },
+        itemCountByPlatform: { substack: 1 },
+      }),
+      health(),
+    );
+
+    expect(status?.tone).toBe("healthy");
+    expect(status?.label).toBe("Connected");
+  });
+
   it("still surfaces reconnect-required social source errors without a live connection", () => {
     const status = getDesktopSourceStatus(
       "facebook",
@@ -104,6 +145,7 @@ describe("desktop source status", () => {
       sourceState({
         ytAuth: { isAuthenticated: true },
         providerSyncCounts: { youtube: 1 },
+        itemCountByPlatform: { youtube: 1 },
       }),
       health({
         youtube: providerSnapshot("youtube", {
@@ -124,6 +166,7 @@ describe("desktop source status", () => {
       sourceState({
         substackAuth: { isAuthenticated: true },
         providerSyncCounts: { substack: 1 },
+        itemCountByPlatform: { substack: 1 },
       }),
       health({
         substack: providerSnapshot("substack", {

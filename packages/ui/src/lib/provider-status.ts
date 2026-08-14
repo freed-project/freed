@@ -3,11 +3,16 @@ import type { ProviderHealthSnapshot } from "./debug-store.js";
 export type ProviderStatusTone = "idle" | "healthy" | "warning" | "critical";
 
 export function getProviderStatusToneClass(tone: ProviderStatusTone): string {
-  return tone === "critical"
-    ? "bg-red-500"
-    : tone === "warning"
-      ? "bg-amber-500"
-      : "bg-emerald-500";
+  switch (tone) {
+    case "critical":
+      return "bg-red-500";
+    case "warning":
+      return "bg-amber-500";
+    case "healthy":
+      return "bg-emerald-500";
+    case "idle":
+      return "bg-[var(--theme-text-soft)]";
+  }
 }
 
 export function getHealthStatusLabel(snapshot?: ProviderHealthSnapshot | null): string {
