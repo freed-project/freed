@@ -202,9 +202,8 @@ interface ScheduledFriendsGalaxySource {
 }
 
 const BACKGROUND_STAR_COUNT = 100_000;
-const DECORATIVE_STARS_PREVIEW_STORAGE_KEY =
-  "freed.preview.friends.decorative-stars-v1";
 type DecorativeStarMode = "buffered" | "procedural" | "off";
+const DECORATIVE_STAR_MODE: DecorativeStarMode = "procedural";
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
 const CANVAS_CONTROL_BASE =
   "btn-secondary theme-canvas-control rounded-[var(--card-radius)] px-3 py-1.5 text-xs shadow-sm";
@@ -215,17 +214,6 @@ function nowMs(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
     : Date.now();
-}
-
-function initialDecorativeStarMode(): DecorativeStarMode {
-  if (typeof window === "undefined") return "buffered";
-  try {
-    const stored = window.localStorage.getItem(DECORATIVE_STARS_PREVIEW_STORAGE_KEY);
-    if (stored === "off" || stored === "procedural") return stored;
-    return "buffered";
-  } catch {
-    return "buffered";
-  }
 }
 
 function shouldExposeGraphDebug(): boolean {
@@ -532,9 +520,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [graphReady, setGraphReady] = useState(false);
   const [graphStatus, setGraphStatus] = useState("Building galaxy...");
   const [graphError, setGraphError] = useState<string | null>(null);
-  const [decorativeStarMode, setDecorativeStarMode] = useState<DecorativeStarMode>(
-    initialDecorativeStarMode,
-  );
+  const decorativeStarMode = DECORATIVE_STAR_MODE;
   const [sourceBuildInFlight, setSourceBuildInFlight] = useState(true);
   const [lastBuildMs, setLastBuildMs] = useState<number | null>(null);
   const [sourceRetry, setSourceRetry] = useState(0);
@@ -550,12 +536,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const graphDescriptionId = useId();
   const graphAnnouncementId = useId();
 
-  const backgroundStarCount = decorativeStarMode === "buffered"
-    ? BACKGROUND_STAR_COUNT
-    : 0;
-  const proceduralBackgroundStarCount = decorativeStarMode === "procedural"
-    ? BACKGROUND_STAR_COUNT
-    : 0;
+  const backgroundStarCount = 0;
+  const proceduralBackgroundStarCount = BACKGROUND_STAR_COUNT;
 
   latestActivityRef.current = activitySummaries;
 
@@ -1144,22 +1126,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         : null;
     setAnnouncement(friendsGalaxySelectionAnnouncement(label, "focus"));
   }, [accounts, feeds, personsById]);
-  const cycleDecorativeStarMode = useCallback(() => {
-    setDecorativeStarMode((mode) => {
-      const next: DecorativeStarMode = mode === "buffered"
-        ? "procedural"
-        : mode === "procedural" ? "off" : "buffered";
-      try {
-        window.localStorage.setItem(
-          DECORATIVE_STARS_PREVIEW_STORAGE_KEY,
-          next,
-        );
-      } catch {
-        // The preview remains usable when storage is unavailable.
-      }
-      return next;
-    });
-  }, []);
   useImperativeHandle(ref, () => ({
     fitAll,
     focusNode,
@@ -1485,22 +1451,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       >
         <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all
-        </button>
-        <button
-          type="button"
-          className={CANVAS_CONTROL_BASE}
-          aria-busy={sourceBuildInFlight}
-          aria-label="Cycle decorative star rendering mode"
-          data-decorative-star-mode={decorativeStarMode}
-          data-testid="friend-graph-decorative-stars-toggle"
-          onClick={cycleDecorativeStarMode}
-          title="Cycle buffered, GPU-procedural, and disabled decorative stars"
-        >
-          {decorativeStarMode === "buffered"
-            ? `Dust buffer ${BACKGROUND_STAR_COUNT.toLocaleString()}`
-            : decorativeStarMode === "procedural"
-              ? `Dust vertex ${BACKGROUND_STAR_COUNT.toLocaleString()}`
-              : "Dust off"}
         </button>
         <span
           className="theme-canvas-control rounded-lg px-2.5 py-1.5 text-xs tabular-nums text-[color:var(--theme-text-muted)]"
