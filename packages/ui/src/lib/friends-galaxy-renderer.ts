@@ -36,6 +36,7 @@ export interface FriendsGalaxyRendererScene {
   accountCount: number;
   linkedAccountCount: number;
   backgroundStarCount: number;
+  proceduralBackgroundStarCount?: number;
 }
 
 export interface FriendsGalaxyRendererMetrics {
@@ -79,6 +80,7 @@ export interface FriendsGalaxyRenderer<
     scene: Scene,
     palette: Palette,
   ): Promise<void>;
+  replaceScene?(scene: Scene): boolean;
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: Palette): void;
   applyActivityPatches?(patches: FriendsGalaxyActivityScenePatchBatch): void;

@@ -73,6 +73,7 @@ export interface IdentityGalaxyEngineSceneOptions {
   selectedAccountId?: string | null;
   variation: IdentityGalaxyVariation;
   quality: IdentityGraphAtlasQuality;
+  decorativeStarCount?: number;
 }
 
 function cssRgbVar(style: CSSStyleDeclaration, name: string, fallback: string): string {
@@ -892,6 +893,7 @@ function drawFallbackStarfield(
   selectedPersonId: string | null | undefined,
   selectedAccountId: string | null | undefined,
   variation: IdentityGalaxyVariation,
+  decorativeStarsEnabled: boolean,
   residentLabelIds: ReadonlySet<string> | null,
 ): Set<string> | null {
   const context = canvas.getContext("2d");
@@ -907,11 +909,13 @@ function drawFallbackStarfield(
   }
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.clearRect(0, 0, pixelWidth, pixelHeight);
-  context.drawImage(
-    getFallbackStarfieldBackground(canvas, width, height, pixelRatio, palette),
-    0,
-    0,
-  );
+  if (decorativeStarsEnabled) {
+    context.drawImage(
+      getFallbackStarfieldBackground(canvas, width, height, pixelRatio, palette),
+      0,
+      0,
+    );
+  }
 
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.save();
@@ -1105,6 +1109,7 @@ class StarfieldGraphRenderer {
     palette: GraphPalette,
     variation: IdentityGalaxyVariation,
     quality: IdentityGraphAtlasQuality,
+    decorativeStarCount?: number,
   ): void {
     if (this.disposed) return;
     this.ensureSceneIndex(galaxyScene);
@@ -1122,10 +1127,12 @@ class StarfieldGraphRenderer {
     const starBudget = smallViewport
       ? { min: 3_000, max: 7_000, perSource: 2 }
       : { min: 5_000, max: 12_000, perSource: 3 };
-    const nextStarCount = Math.max(
-      starBudget.min,
-      Math.min(starBudget.max, atlas.metrics.sourceNodeCount * starBudget.perSource),
-    );
+    const nextStarCount = decorativeStarCount === undefined
+      ? Math.max(
+          starBudget.min,
+          Math.min(starBudget.max, atlas.metrics.sourceNodeCount * starBudget.perSource),
+        )
+      : Math.max(0, Math.floor(decorativeStarCount));
     if (nextStarCount !== this.starCount || nextPaletteKey !== this.paletteKey || !this.starPoints) {
       if (this.starPoints) {
         this.scene.remove(this.starPoints);
@@ -1580,6 +1587,7 @@ export class IdentityGalaxyEngine {
   private fallbackLabelTransformScale = Number.NaN;
   private ambientMotionEnabled = false;
   private cameraInMotion = false;
+  private decorativeStarsEnabled = true;
 
   constructor(canvas: HTMLCanvasElement, paletteElement: HTMLElement | null) {
     this.canvas = canvas;
@@ -1636,11 +1644,19 @@ export class IdentityGalaxyEngine {
     this.selectedPersonId = options.selectedPersonId;
     this.selectedAccountId = options.selectedAccountId;
     this.variation = options.variation;
+    this.decorativeStarsEnabled = options.decorativeStarCount !== 0;
     if (!this.renderer && options.quality === "settled") {
       this.fallbackLabelCount = Math.min(atlas.labels.length, this.canvas.clientWidth < 720 ? 24 : 72);
       this.fallbackLabelLayoutDirty = true;
     }
-    this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
+    this.renderer?.syncScene(
+      atlas,
+      scene,
+      palette,
+      options.variation,
+      options.quality,
+      options.decorativeStarCount,
+    );
   }
 
   setPresentationAtlas(atlas: IdentityGraphAtlas): void {
@@ -1696,6 +1712,7 @@ export class IdentityGalaxyEngine {
       this.selectedPersonId,
       this.selectedAccountId,
       this.variation,
+      this.decorativeStarsEnabled,
       this.fallbackLabelLayoutDirty || transformChanged
         ? null
         : this.fallbackResidentLabelIds,
@@ -1733,6 +1750,7 @@ export class IdentityGalaxyEngine {
     this.fallbackLabelTransformScale = Number.NaN;
     this.ambientMotionEnabled = false;
     this.cameraInMotion = false;
+    this.decorativeStarsEnabled = true;
     fallbackStarfieldBackgrounds.delete(this.canvas);
   }
 }

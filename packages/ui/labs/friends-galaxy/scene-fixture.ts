@@ -33,6 +33,7 @@ export interface GalaxyLabFixtureOptions {
   personCount: number;
   accountCount: number;
   backgroundStarCount: number;
+  proceduralBackgroundStarCount?: number;
   activitySummaryCount?: number;
   representedActivityItemCount?: number;
 }
@@ -206,6 +207,7 @@ export function createGalaxyLabFixture({
   personCount,
   accountCount,
   backgroundStarCount,
+  proceduralBackgroundStarCount = 0,
   activitySummaryCount = accountCount,
   representedActivityItemCount = activitySummaryCount * 10,
 }: GalaxyLabFixtureOptions): GalaxyLabFixture {
@@ -453,6 +455,7 @@ export function createGalaxyLabFixture({
     accountCount: safeAccountCount,
     linkedAccountCount,
     backgroundStarCount: safeBackgroundCount,
+    proceduralBackgroundStarCount,
     backgroundSeed: "",
   });
   const buildMs = nowMs() - startedAt;

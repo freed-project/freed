@@ -346,6 +346,14 @@ export class FriendsGalaxyProductEngine {
     return true;
   }
 
+  fittedCameraTransform(initial = false): FriendsGalaxyTransform | null {
+    return this.navigation?.fittedTransform(initial) ?? null;
+  }
+
+  setCameraTransform(transform: FriendsGalaxyTransform): boolean {
+    return this.navigation?.setTransform(transform) ?? false;
+  }
+
   focusNode(nodeId: string, minimumScale = 0.92): boolean {
     return this.navigation?.focusNode(nodeId, minimumScale) ?? false;
   }

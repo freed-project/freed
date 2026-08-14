@@ -43,6 +43,7 @@ export interface FriendsGalaxyProductWorkerSourceRequest extends
   source: BuildIdentityGraphAtlasModelInput;
   viewport: Omit<FriendsGalaxyProductWorkerViewport, "transform">;
   backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
   backgroundSeed?: string;
 }
 

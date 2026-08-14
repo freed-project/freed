@@ -246,7 +246,7 @@ function personActivity(
     if (account.personId !== personId || account.kind !== "social") continue;
     const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
     count += summary?.itemCount ?? 0;
-    latest = Math.max(latest, summary?.latestActivityAt ?? 0, account.lastSeenAt ?? 0);
+    latest = Math.max(latest, summary?.latestActivityAt ?? 0);
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
   }
   return { count, latest, avatarUrl };

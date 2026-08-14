@@ -190,10 +190,12 @@ export function validateFriendsGalaxyWorkerScene(
   }
   const nodeCount = scene.nodeIds.length;
   const backgroundCount = rendererScene.backgroundStarCount;
+  const proceduralBackgroundCount = rendererScene.proceduralBackgroundStarCount ?? 0;
   assertSourceCount("person count", rendererScene.personCount);
   assertSourceCount("account count", rendererScene.accountCount);
   assertSourceCount("linked account count", rendererScene.linkedAccountCount);
   assertSourceCount("background star count", backgroundCount);
+  assertSourceCount("procedural background star count", proceduralBackgroundCount);
 
   if (scene.version !== IDENTITY_GALAXY_SCENE_VERSION) {
     throw new Error(

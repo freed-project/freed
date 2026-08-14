@@ -56,6 +56,14 @@ describe("Friends Galaxy navigation controller", () => {
     expect(navigation.frame.outwardZoomEnvelope.resistance).toBe(
       navigation.frame.fittedScale,
     );
+
+    navigation.focusNode("person:product-person-2", 1.2);
+    const focusedTransform = { ...navigation.transform };
+    const fittedTransform = navigation.fittedTransform();
+    expect(navigation.transform).toEqual(focusedTransform);
+    expect(fittedTransform).not.toEqual(focusedTransform);
+    expect(navigation.setTransform(fittedTransform)).toBe(true);
+    expect(navigation.transform).toEqual(fittedTransform);
   });
 
   it("focuses positive-depth identities at the bounded usable center", () => {
