@@ -393,6 +393,10 @@ Sample data batches now append friend-linked LinkedIn posts and bounded past, cu
 New sample data batches now carry an internal cleanup marker on generated feeds, items, people, and accounts, so the app can clear sample records without guessing from names or URLs.
 Friends and Map now use the same shared content header pattern as the rest of the app, instead of shipping bespoke top bars that wander off into their own little kingdoms.
 Map popovers now include the time of each location update and behave like a sane interface, with only one popup open at a time.
+Map now exposes the same `Fit all` canvas control as Friends Galaxy. It shares the sidebar's outer canvas gutter, closes an open location panel, and reframes every marker in the current time and identity filters without preserving a previously focused person.
+Map avatar markers now remain circular while zoomed and preserve the zoomed hover treatment while their location panel is open. Floating UI positions the open card around its marker, flips it when space is tight, keeps the marker outside the card, and holds the tooltip-style tail on the exact marker axis without intersecting the timeline or floating controls. When a control obscures the marker or the arrow would need clamping, the card omits the tail instead of pointing at false geography.
+Map theme changes now repaint the live MapLibre style and markers in place without losing the current markers or changing the camera, including transient theme hovers and a return to a previously cached theme.
+Map now paints exact coincident locations once, using the newest marker and a combined update count, so repeated city-level coordinates do not accumulate dozens of glows into concentric rings. A focused marker remains the representative for its location.
 Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
 That Friends detail rail now uses the same floating shell-card treatment and gap-based resize grip as the main app sidebars, so it finally looks like it belongs in the same product.
 That same Friends rail can now be collapsed from a far-right toolbar toggle on larger screens, and narrow screens fold the detail surface into a third `Details` lens instead of stacking the graph and sidebar on top of each other like a punishment.
@@ -412,7 +416,7 @@ The Friends starfield now bleeds under the primary app sidebar like the map back
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 The Friends graph now defaults to `All content`, keeps confirmed friends as larger center hubs, renders their linked channels as smaller radial satellites with straight connectors, and shows every other captured social account on the periphery inside provider-shaped metaball island regions.
 Unlinked accounts can now be promoted to friends or linked to an existing friend directly from the Friends sidebar workflow, while unlinked map markers route into that same account workflow instead of dead-ending.
-Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
+Map popovers now use a wider card layout with a compact theme-aware tail attached to the open card, so place names and actions fit cleanly while the card still points back to its marker.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so Starship, Dark Star, Neon, Midas, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a device-local `Friends` / `All content` toggle. It restores the current device's last mode and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
@@ -611,6 +615,11 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.169 | Keep graph-invalidating fields narrow, coalesce sustained source hydration through one resident latest-wins worker, and replace Raw WebGPU scenes without recreating the canvas, device, or compiled pipelines | High       | Done        |
 | 8.170 | Animate Fit All through simultaneous world-center pan and logarithmic zoom, preserve exact final framing and reduced-motion snapping, and interrupt the transition on direct camera input | Medium     | Done        |
 | 8.171 | Remove the temporary decorative-star comparison control and local-storage override from the product Friends view while retaining 100,000 Raw WebGPU vertex-generated dust stars and build timing diagnostics | Medium     | Done        |
+| 8.172 | Add the shared Friends Galaxy `Fit all` canvas control to Map with the standard sidebar gutter so it closes open location panels and reframes every marker admitted by the current filters | Low        | Done        |
+| 8.173 | Keep Map avatar bubbles circular while their hover treatment scales beyond the marker's resting bounds | Low        | Done        |
+| 8.174 | Position open Map cards from their marker with Floating UI, flip and constrain them around reserved controls, align honest card tails to the marker axis, omit tails for obscured or unalignable markers, and preserve the marker's zoomed hover treatment | High       | Done        |
+| 8.175 | Repaint the live MapLibre style and markers in place across theme changes, including transient hovers and cached-theme round trips, without losing markers or changing the camera | High       | Done        |
+| 8.176 | Coalesce exact coincident Map locations into one newest-marker representation with a combined update count while preserving a focused marker | Medium     | Done        |
 
 ---
 
@@ -651,6 +660,10 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] Confirmed friend hubs render linked channel satellites with provider-shaped island backgrounds
 - [x] Friends and Map share header-level identity controls, and feed bulk actions stay feed-only
 - [x] Map exposes a lower-left draggable time range slider with all available time selected by default
+- [x] Map exposes the shared `Fit all` canvas control and reframes every marker admitted by the current time and identity filters
+- [x] Map avatar markers stay circular and zoomed while their Floating UI card remains outside the marker and controls, with a connected tail only when it can align honestly to an unobscured marker
+- [x] Map theme changes repaint in place through transient hovers and cached-theme round trips while preserving the exact marker set and camera
+- [x] Exact coincident Map locations paint once with the newest marker and a combined update count, while a focused marker remains the location representative
 - [x] Unlinked accounts can be promoted or linked from both the Friends workspace and Map popups
 - [x] Likely human social accounts can persist as provisional `connection` identities before they are confirmed as friends
 - [x] Substack and Medium follower, following, and visible subscription accounts
