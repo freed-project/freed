@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import VisionReveal from "@/components/VisionReveal";
 
 import styles from "./vision.module.css";
 
@@ -67,7 +68,7 @@ export default function VisionPage() {
   return (
     <div className={styles.page}>
       <section className={styles.hero} aria-labelledby="vision-title">
-        <div className={styles.frame}>
+        <VisionReveal className={styles.frame} enterOnLoad>
           <div className={styles.heroGrid}>
             <div>
               <h1 id="vision-title">
@@ -98,11 +99,11 @@ export default function VisionPage() {
               <span>No public user, retention, or revenue claims</span>
             </div>
           </aside>
-        </div>
+        </VisionReveal>
       </section>
 
       <section className={styles.proposition} aria-labelledby="mechanism-title">
-        <div className={styles.frame}>
+        <VisionReveal className={styles.frame}>
           <p className={styles.eyebrow}>The cultural mechanism</p>
           <div className={styles.propositionGrid}>
             <h2 id="mechanism-title">Change the environment that shapes a mind.</h2>
@@ -142,11 +143,11 @@ export default function VisionPage() {
               </ul>
             </article>
           </div>
-        </div>
+        </VisionReveal>
       </section>
 
       <section className={styles.capital} id="support" aria-labelledby="support-title">
-        <div className={styles.frame}>
+        <VisionReveal className={styles.frame}>
           <p className={styles.eyebrow}>Material support</p>
           <div className={styles.sectionHeading}>
             <h2 id="support-title">Two groups can make Freed endure.</h2>
@@ -218,11 +219,11 @@ export default function VisionPage() {
               to get there.
             </p>
           </aside>
-        </div>
+        </VisionReveal>
       </section>
 
       <section className={styles.governance} aria-labelledby="capital-title">
-        <div className={styles.frame}>
+        <VisionReveal className={styles.frame}>
           <p className={styles.eyebrow}>What capital must protect</p>
           <div className={styles.governanceGrid}>
             <h2 id="capital-title">Freed's financing must preserve its reason to exist.</h2>
@@ -241,11 +242,11 @@ export default function VisionPage() {
               </p>
             </div>
           </div>
-        </div>
+        </VisionReveal>
       </section>
 
       <section className={styles.invitation} aria-labelledby="invitation-title">
-        <div className={styles.frame}>
+        <VisionReveal className={styles.frame}>
           <p className={styles.eyebrow}>The next step</p>
           <div className={styles.invitationGrid}>
             <div>
@@ -285,7 +286,7 @@ export default function VisionPage() {
             to sell securities, a solicitation to buy them, or a promise of
             returns.
           </p>
-        </div>
+        </VisionReveal>
       </section>
     </div>
   );
