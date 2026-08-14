@@ -307,6 +307,25 @@ function adapter(fake: FakeGoogleDrive) {
 }
 
 describe("Google Drive Library Core immutable adapter", () => {
+  it("binds the browser fetch receiver when no fetch override is supplied", async () => {
+    const originalFetch = globalThis.fetch;
+    let receiver: unknown;
+    globalThis.fetch = function (this: unknown) {
+      receiver = this;
+      return Promise.resolve(Response.json({ files: [] }));
+    } as typeof fetch;
+
+    try {
+      await discoverGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        libraryId: "library-1",
+      });
+      expect(receiver).toBe(globalThis);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("provisions one empty control and then reuses its exact file ID", async () => {
     const fake = new FakeGoogleDrive();
 
