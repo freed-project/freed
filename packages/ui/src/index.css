@@ -2715,7 +2715,36 @@ html[data-theme="dark-star"]
 }
 
 .theme-settings-theme-card {
+  container-type: inline-size;
   cursor: pointer;
+}
+
+.theme-settings-theme-options {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(6, max-content);
+  align-items: center;
+  justify-content: start;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .theme-settings-theme-options {
+    flex: 1 1 0%;
+    justify-content: end;
+  }
+}
+
+@container (max-width: 32rem) {
+  .theme-settings-theme-options {
+    grid-template-columns: repeat(3, max-content);
+  }
+}
+
+@container (max-width: 15rem) {
+  .theme-settings-theme-options {
+    grid-template-columns: repeat(2, max-content);
+  }
 }
 
 .theme-settings-theme-card__label {
