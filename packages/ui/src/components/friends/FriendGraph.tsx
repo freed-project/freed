@@ -39,6 +39,7 @@ import {
 import { FriendsGalaxyInputController } from "../../lib/friends-galaxy-input-controller.js";
 import type { FriendsGalaxyContextTarget } from "../../lib/friends-galaxy-interaction.js";
 import { FriendsGalaxyProductEngine } from "../../lib/friends-galaxy-product-engine.js";
+import type { FriendsGalaxyProductWorkerSourceInput } from "../../lib/friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
   FriendsGalaxyProductWorkerPresentationResponse,
@@ -53,6 +54,12 @@ import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportGeometry,
 } from "../../lib/friends-galaxy-viewport.js";
+import {
+  sameFriendsGalaxyAccounts,
+  sameFriendsGalaxyFeeds,
+  sameFriendsGalaxyPersons,
+} from "../../lib/friends-galaxy-source-equality.js";
+import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
   buildIdentityGraphActivitySummaries,
   type IdentityGraphActivitySummaries,
@@ -152,7 +159,10 @@ interface GraphSurfacePerfSnapshot {
   residentNodeCount: number;
   visibleNodeCount: number;
   renderedPrimitiveCount: number;
+  decorativeStarCount: number;
+  decorativeStarMode: DecorativeStarMode;
   firstVisibleMs: number;
+  lastBuildMs: number;
   frameP95Ms: number;
   longTaskCount: number;
   memoryEstimateBytes: number;
@@ -180,12 +190,21 @@ interface GraphDiagnosticState {
   transformOnlySyncCount: number;
   lastTransform: FriendsGalaxyTransform | null;
   firstVisibleMs: number;
+  lastBuildMs: number;
   activityPatchKeyCount: number;
   activityPatchNodeCount: number;
   unknownActivitySourceCount: number;
 }
 
+interface ScheduledFriendsGalaxySource {
+  input: FriendsGalaxyProductWorkerSourceInput;
+  fallbackBaseline: IdentityGraphActivitySummaries;
+}
+
 const BACKGROUND_STAR_COUNT = 100_000;
+const DECORATIVE_STARS_PREVIEW_STORAGE_KEY =
+  "freed.preview.friends.decorative-stars-v1";
+type DecorativeStarMode = "buffered" | "procedural" | "off";
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
 const CANVAS_CONTROL_BASE =
   "btn-secondary theme-canvas-control rounded-[var(--card-radius)] px-3 py-1.5 text-xs shadow-sm";
@@ -196,6 +215,17 @@ function nowMs(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function"
     ? performance.now()
     : Date.now();
+}
+
+function initialDecorativeStarMode(): DecorativeStarMode {
+  if (typeof window === "undefined") return "buffered";
+  try {
+    const stored = window.localStorage.getItem(DECORATIVE_STARS_PREVIEW_STORAGE_KEY);
+    if (stored === "off" || stored === "procedural") return stored;
+    return "buffered";
+  } catch {
+    return "buffered";
+  }
 }
 
 function shouldExposeGraphDebug(): boolean {
@@ -226,36 +256,12 @@ function useStableSuggestionRecord(
   return stable.current;
 }
 
-function sameGraphSourceValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (
-    !left ||
-    !right ||
-    typeof left !== "object" ||
-    typeof right !== "object"
-  ) {
-    return false;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((entry, index) => sameGraphSourceValue(entry, right[index]));
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  return leftKeys.length === Object.keys(rightRecord).length &&
-    leftKeys.every(
-      (key) =>
-        Object.hasOwn(rightRecord, key) &&
-        sameGraphSourceValue(leftRecord[key], rightRecord[key]),
-    );
-}
-
-function useStableGraphSourceValue<T>(value: T): T {
+function useStableGraphSourceValue<T>(
+  value: T,
+  equal: (left: T, right: T) => boolean,
+): T {
   const stable = useRef(value);
-  if (!sameGraphSourceValue(stable.current, value)) stable.current = value;
+  if (!equal(stable.current, value)) stable.current = value;
   return stable.current;
 }
 
@@ -459,11 +465,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const controllerRef = useRef<FriendsGalaxyInputController | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const mountedAtRef = useRef(nowMs());
+  const sourceBuildStartedAtRef = useRef(mountedAtRef.current);
+  const graphReadyRef = useRef(false);
   const diagnosticsOwnerRef = useRef({});
   const recoveringRef = useRef(false);
   const contextMenuOpenRef = useRef(false);
   const sourceRevisionRef = useRef(0);
   const activityRevisionRef = useRef(0);
+  const sourceSchedulerRef = useRef<FriendsGalaxySourceScheduler<ScheduledFriendsGalaxySource> | null>(null);
+  const sourceControlSignatureRef = useRef<string | null>(null);
+  const nextSourceImmediateRef = useRef(false);
   const sourceActivityBaselineRef = useRef(new Map<number, IdentityGraphActivitySummaries>());
   const lastAppliedActivityRef = useRef<IdentityGraphActivitySummaries | null>(null);
   const latestActivityRef = useRef<IdentityGraphActivitySummaries | null>(null);
@@ -480,13 +491,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     transformOnlySyncCount: 0,
     lastTransform: null,
     firstVisibleMs: 0,
+    lastBuildMs: 0,
     activityPatchKeyCount: 0,
     activityPatchNodeCount: 0,
     unknownActivitySourceCount: 0,
   });
-  const sourcePersons = useStableGraphSourceValue(persons);
-  const sourceAccounts = useStableGraphSourceValue(accounts);
-  const sourceFeeds = useStableGraphSourceValue(feeds);
+  const sourcePersons = useStableGraphSourceValue(persons, sameFriendsGalaxyPersons);
+  const sourceAccounts = useStableGraphSourceValue(accounts, sameFriendsGalaxyAccounts);
+  const sourceFeeds = useStableGraphSourceValue(feeds, sameFriendsGalaxyFeeds);
   const personsById = useMemo(
     () => new Map(sourcePersons.map((person) => [person.id, person])),
     [sourcePersons],
@@ -520,6 +532,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [graphReady, setGraphReady] = useState(false);
   const [graphStatus, setGraphStatus] = useState("Building galaxy...");
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [decorativeStarMode, setDecorativeStarMode] = useState<DecorativeStarMode>(
+    initialDecorativeStarMode,
+  );
+  const [sourceBuildInFlight, setSourceBuildInFlight] = useState(true);
+  const [lastBuildMs, setLastBuildMs] = useState<number | null>(null);
   const [sourceRetry, setSourceRetry] = useState(0);
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
@@ -532,6 +549,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const handledCopyDiagnosticsRequestIdRef = useRef(copyDiagnosticsRequestId);
   const graphDescriptionId = useId();
   const graphAnnouncementId = useId();
+
+  const backgroundStarCount = decorativeStarMode === "buffered"
+    ? BACKGROUND_STAR_COUNT
+    : 0;
+  const proceduralBackgroundStarCount = decorativeStarMode === "procedural"
+    ? BACKGROUND_STAR_COUNT
+    : 0;
 
   latestActivityRef.current = activitySummaries;
 
@@ -682,7 +706,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         (renderer?.decorativeStarCount ?? 0) +
         visibleLabelCount +
         (renderer?.contextualEdgeCount ?? 0),
+      decorativeStarCount: renderer?.decorativeStarCount ?? 0,
+      decorativeStarMode,
       firstVisibleMs: diagnostic.firstVisibleMs,
+      lastBuildMs: diagnostic.lastBuildMs,
       frameP95Ms: snapshot.frame.p95Ms,
       longTaskCount: snapshot.longTasks.count ?? 0,
       memoryEstimateBytes: renderer?.trackedGpuDataBytes ?? 0,
@@ -702,6 +729,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     viewport.dataset.graphChannelCount = String(channelCount);
     viewport.dataset.graphResidentNodeCount = String(residentNodeCount);
     viewport.dataset.graphVisibleNodeCount = String(visibleNodeCount);
+    viewport.dataset.graphDecorativeStarCount = String(renderer?.decorativeStarCount ?? 0);
+    viewport.dataset.graphDecorativeStarMode = decorativeStarMode;
+    viewport.dataset.graphLastBuildMs = String(Math.round(diagnostic.lastBuildMs));
     viewport.dataset.graphRenderer = renderer?.id ?? "initializing";
     viewport.dataset.graphQualityMode = qualityMode;
     viewport.dataset.visibleLabelCount = String(visibleLabelCount);
@@ -743,7 +773,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         metrics: perf,
       };
     }
-  }, [activitySummaries.buildMs, channelCount, linkCount, personCount]);
+  }, [activitySummaries.buildMs, channelCount, decorativeStarMode, linkCount, personCount]);
   publishDiagnosticsRef.current = publishDiagnostics;
 
   const sourceReadyRef = useRef<(response: FriendsGalaxyProductWorkerSourceResponse) => void>(
@@ -879,11 +909,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           candidate.removeAttribute("data-testid");
         }
         surface.dataset.testid = "friend-graph-canvas";
+        graphReadyRef.current = true;
         setGraphReady(true);
+        setSourceBuildInFlight(false);
         setGraphStatus("");
         setGraphError(null);
+        const completedAt = nowMs();
+        diagnosticsRef.current.lastBuildMs = Math.max(
+          0,
+          completedAt - sourceBuildStartedAtRef.current,
+        );
+        setLastBuildMs(diagnosticsRef.current.lastBuildMs);
         if (diagnosticsRef.current.firstVisibleMs === 0) {
-          diagnosticsRef.current.firstVisibleMs = nowMs() - mountedAtRef.current;
+          diagnosticsRef.current.firstVisibleMs = completedAt - mountedAtRef.current;
         }
         delete (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
           .__FREED_GRAPH_DRAW_ERROR__;
@@ -899,7 +937,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       },
       removeSurface: (surface) => surface.remove(),
       onLoading: ({ recovery }) => {
-        if (!graphReady) setGraphStatus(recovery ? "Recovering graphics..." : "Starting galaxy...");
+        if (!graphReadyRef.current) {
+          setGraphStatus(recovery ? "Recovering graphics..." : "Starting galaxy...");
+        }
       },
       onRecovering: ({ reason }) => {
         recoveringRef.current = true;
@@ -908,6 +948,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           .__FREED_GRAPH_DRAW_ERROR__ = reason;
       },
       onFailure: ({ reason }) => {
+        setSourceBuildInFlight(false);
         if (!engineRef.current?.activeRenderer) {
           setGraphError(reason);
           setGraphStatus("");
@@ -915,6 +956,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
       },
       onWorkerFailure: (failure) => {
+        setSourceBuildInFlight(false);
         if (failure.phase === "source" && !engineRef.current?.sourceReady) {
           setGraphError(failure.message);
           setGraphStatus("");
@@ -925,6 +967,27 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onActivityReady: (response) => activityReadyRef.current(response),
     });
     engineRef.current = engine;
+    sourceSchedulerRef.current = new FriendsGalaxySourceScheduler({
+      flush: ({ input, fallbackBaseline }) => {
+        const baseline = latestActivityRef.current ?? fallbackBaseline;
+        sourceActivityBaselineRef.current.set(input.sourceRevision, baseline);
+        if (!engine.sourceReady) {
+          graphReadyRef.current = false;
+          setGraphReady(false);
+          setGraphStatus("Building galaxy...");
+        }
+        sourceBuildStartedAtRef.current = nowMs();
+        setSourceBuildInFlight(true);
+        setGraphError(null);
+        engine.requestSource({
+          ...input,
+          source: {
+            ...input.source,
+            activitySummaries: baseline,
+          },
+        });
+      },
+    });
     engine.setFieldStyle("nebula");
     engine.setInteraction({
       selectedNodeId: selectedPersonId
@@ -950,6 +1013,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     controller.setPresentationVisible(presentationVisible);
 
     return () => {
+      sourceSchedulerRef.current?.dispose();
+      sourceSchedulerRef.current = null;
       controller.dispose();
       engine.dispose();
       controllerRef.current = null;
@@ -977,18 +1042,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, []);
 
   useEffect(() => {
-    const engine = engineRef.current;
     const controller = controllerRef.current;
-    if (!engine || !controller) return;
+    const scheduler = sourceSchedulerRef.current;
+    if (!scheduler || !controller) return;
     sourceRevisionRef.current += 1;
     const sourceRevision = sourceRevisionRef.current;
     const baseline = latestActivityRef.current ?? activitySummaries;
-    sourceActivityBaselineRef.current.set(sourceRevision, baseline);
-    if (!engine.sourceReady) {
-      setGraphReady(false);
-      setGraphStatus("Building galaxy...");
-    }
-    setGraphError(null);
     const geometry = controller.geometry;
     const source: BuildIdentityGraphAtlasModelInput = {
       persons: sourcePersons,
@@ -1001,21 +1060,38 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       friendSuggestionStrengthByPerson: personSuggestionRecord,
       friendSuggestionStrengthByAccount: accountSuggestionRecord,
     };
-    engine.requestSource({
-      kind: "source",
-      sourceRevision,
-      source,
-      viewport: {
-        width: geometry.canvasWidth,
-        height: geometry.canvasHeight,
-        selectedPersonId,
-        selectedAccountId,
+    const controlSignature = [
+      mode,
+      backgroundStarCount,
+      proceduralBackgroundStarCount,
+      sourceRetry,
+    ].join(":");
+    const controlsChanged = sourceControlSignatureRef.current !== null &&
+      sourceControlSignatureRef.current !== controlSignature;
+    sourceControlSignatureRef.current = controlSignature;
+    const immediate = controlsChanged || nextSourceImmediateRef.current;
+    nextSourceImmediateRef.current = false;
+    scheduler.request({
+      fallbackBaseline: baseline,
+      input: {
+        kind: "source",
+        sourceRevision,
+        source,
+        viewport: {
+          width: geometry.canvasWidth,
+          height: geometry.canvasHeight,
+          selectedPersonId,
+          selectedAccountId,
+        },
+        backgroundStarCount,
+        proceduralBackgroundStarCount,
+        backgroundSeed: `freed-friends-${mode}-${sourcePersons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
       },
-      backgroundStarCount: BACKGROUND_STAR_COUNT,
-      backgroundSeed: `freed-friends-${mode}-${sourcePersons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
-    });
+    }, immediate);
   }, [
     accountSuggestionRecord,
+    backgroundStarCount,
+    proceduralBackgroundStarCount,
     sourceAccounts,
     channelCount,
     sourceFeeds,
@@ -1068,6 +1144,22 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         : null;
     setAnnouncement(friendsGalaxySelectionAnnouncement(label, "focus"));
   }, [accounts, feeds, personsById]);
+  const cycleDecorativeStarMode = useCallback(() => {
+    setDecorativeStarMode((mode) => {
+      const next: DecorativeStarMode = mode === "buffered"
+        ? "procedural"
+        : mode === "procedural" ? "off" : "buffered";
+      try {
+        window.localStorage.setItem(
+          DECORATIVE_STARS_PREVIEW_STORAGE_KEY,
+          next,
+        );
+      } catch {
+        // The preview remains usable when storage is unavailable.
+      }
+      return next;
+    });
+  }, []);
   useImperativeHandle(ref, () => ({
     fitAll,
     focusNode,
@@ -1092,7 +1184,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       },
       personCount,
       accountCount: channelCount,
-      backgroundStarCount: BACKGROUND_STAR_COUNT,
+      backgroundStarCount: backgroundStarCount + proceduralBackgroundStarCount,
       backend: snapshot.renderer,
       theme: themeId ?? "scriptorium",
       fieldStyle: "nebula",
@@ -1135,7 +1227,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     } catch {
       setGraphStatus("Clipboard unavailable");
     }
-  }, [activitySummaries, channelCount, personCount, themeId]);
+  }, [
+    activitySummaries,
+    backgroundStarCount,
+    channelCount,
+    personCount,
+    proceduralBackgroundStarCount,
+    themeId,
+  ]);
 
   useEffect(() => {
     if (copyDiagnosticsRequestId === handledCopyDiagnosticsRequestIdRef.current) return;
@@ -1151,6 +1250,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const handlePinContextNode = useCallback(async () => {
     const node = contextMenu?.node;
     if (!node) return;
+    nextSourceImmediateRef.current = true;
     if (node.personId) {
       await onPinPersonPosition?.(node.personId, node.x, node.y);
     } else if (node.accountId) {
@@ -1162,6 +1262,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const handlePromoteContextNode = useCallback(async (level: 1 | 3 | 5) => {
     const node = contextMenu?.node;
     if (!node || !onDropNodeToRelationshipTier) return;
+    nextSourceImmediateRef.current = true;
     await onDropNodeToRelationshipTier({
       personId: node.personId,
       accountId: node.accountId,
@@ -1172,6 +1273,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   const handleLinkAccountToPickerPerson = useCallback(async (personId: string) => {
     if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+    nextSourceImmediateRef.current = true;
     await onLinkAccountToPerson(linkPickerAccountId, personId);
     closeContextMenu();
   }, [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson]);
@@ -1384,6 +1486,33 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
+        <button
+          type="button"
+          className={CANVAS_CONTROL_BASE}
+          aria-busy={sourceBuildInFlight}
+          aria-label="Cycle decorative star rendering mode"
+          data-decorative-star-mode={decorativeStarMode}
+          data-testid="friend-graph-decorative-stars-toggle"
+          onClick={cycleDecorativeStarMode}
+          title="Cycle buffered, GPU-procedural, and disabled decorative stars"
+        >
+          {decorativeStarMode === "buffered"
+            ? `Dust buffer ${BACKGROUND_STAR_COUNT.toLocaleString()}`
+            : decorativeStarMode === "procedural"
+              ? `Dust vertex ${BACKGROUND_STAR_COUNT.toLocaleString()}`
+              : "Dust off"}
+        </button>
+        <span
+          className="theme-canvas-control rounded-lg px-2.5 py-1.5 text-xs tabular-nums text-[color:var(--theme-text-muted)]"
+          data-testid="friend-graph-build-time"
+          title="Worker and renderer time for the last Galaxy build"
+        >
+          {lastBuildMs === null
+            ? "Build..."
+            : `${Math.round(lastBuildMs).toLocaleString()} ms${
+                sourceBuildInFlight ? ", updating" : ""
+              }`}
+        </span>
       </div>
     </div>
   );

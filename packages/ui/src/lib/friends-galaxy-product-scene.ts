@@ -27,6 +27,7 @@ export interface CompileFriendsGalaxyProductSceneInput {
   selectedPersonId?: string | null;
   selectedAccountId?: string | null;
   backgroundStarCount?: number;
+  proceduralBackgroundStarCount?: number;
   backgroundSeed?: string;
   metadataNodeCap?: number;
   now?: number;
@@ -103,6 +104,7 @@ export function compileFriendsGalaxyProductRendererScene({
   selectedPersonId,
   selectedAccountId,
   backgroundStarCount = FRIENDS_GALAXY_PRODUCT_BACKGROUND_STAR_COUNT,
+  proceduralBackgroundStarCount = 0,
   backgroundSeed,
   metadataNodeCap = FRIENDS_GALAXY_PRODUCT_METADATA_NODE_CAP,
   now,
@@ -129,6 +131,7 @@ export function compileFriendsGalaxyProductRendererScene({
       accountCount: product.accountCount,
       linkedAccountCount: product.linkedAccountCount,
       backgroundStarCount,
+      proceduralBackgroundStarCount,
       backgroundSeed,
       presentationCandidateSource: "atlas",
     }),

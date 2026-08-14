@@ -18,6 +18,7 @@ import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scen
 import { FRIENDS_GALAXY_THEME_PALETTES } from "../../src/lib/friends-galaxy-theme-palettes.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { IdentityGraphAtlas } from "../../src/lib/identity-graph-atlas.js";
+import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
 import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
 
 class ControlledProductWorker implements FriendsGalaxyProductWorkerPort {
@@ -178,7 +179,7 @@ function activityRequest(sourceRevision = 1, activityRevision = 1) {
     referenceTime: 1_800_000_000_000,
     patches: [{
       namespace: "social" as const,
-      key: "linkedin:product-author-2",
+      key: socialActivitySummaryKey("linkedin", "product-author-2"),
       summary: {
         itemCount: activityRevision,
         latestActivityAt: 1_799_999_000_000 + activityRevision,
@@ -551,10 +552,7 @@ describe("Friends Galaxy product engine", () => {
 
   it("invalidates an initializing source scene when a newer revision arrives", async () => {
     const workers: ControlledProductWorker[] = [];
-    const services = [
-      new FriendsGalaxyProductWorkerService(),
-      new FriendsGalaxyProductWorkerService(),
-    ];
+    const service = new FriendsGalaxyProductWorkerService();
     let releaseFirst: () => void = () => {};
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -582,10 +580,10 @@ describe("Friends Galaxy product engine", () => {
     });
 
     engine.requestSource(sourceRequest(1, 4, 12));
-    workers[0]!.emit(response(services[0]!, workers[0]!, 0));
+    workers[0]!.emit(response(service, workers[0]!, 0));
     await Promise.resolve();
     engine.requestSource(sourceRequest(2, 9, 27));
-    workers[1]!.emit(response(services[1]!, workers[1]!, 0));
+    workers[0]!.emit(response(service, workers[0]!, 1));
     await flushActivation();
 
     expect(engine.activeSourceRevision).toBe(2);
@@ -594,7 +592,8 @@ describe("Friends Galaxy product engine", () => {
     releaseFirst();
     await flushActivation();
     expect(backends[0]?.disposed).toBe(true);
-    expect(workers[0]?.terminated).toBe(true);
+    expect(workers).toHaveLength(1);
+    expect(workers[0]?.terminated).toBe(false);
   });
 
   it("disposes its worker and active renderer exactly once", async () => {

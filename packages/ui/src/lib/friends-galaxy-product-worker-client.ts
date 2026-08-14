@@ -129,6 +129,7 @@ export class FriendsGalaxyProductWorkerClient {
   private nextRequestId = 1;
   private currentSourceRevision: number | null = null;
   private sourceRequest: FriendsGalaxyProductWorkerSourceRequest | null = null;
+  private queuedSourceRequest: FriendsGalaxyProductWorkerSourceRequest | null = null;
   private residentScene: FriendsGalaxyRendererScene | null = null;
   private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
   private queuedPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
@@ -189,9 +190,6 @@ export class FriendsGalaxyProductWorkerClient {
 
   requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
     this.assertActive();
-    this.releaseWorker();
-    this.generation += 1;
-    this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
     this.inFlightActivity = null;
@@ -205,29 +203,39 @@ export class FriendsGalaxyProductWorkerClient {
       requestId: this.nextRequestId++,
     };
     this.currentSourceRevision = request.sourceRevision;
+    if (this.sourceRequest) {
+      this.queuedSourceRequest = request;
+      return request.requestId;
+    }
+    this.startSource(request);
+    return request.requestId;
+  }
+
+  private startSource(request: FriendsGalaxyProductWorkerSourceRequest): void {
     this.sourceRequest = request;
-    const generation = this.generation;
     try {
-      const worker = this.createWorker();
-      this.worker = worker;
-      worker.onmessage = (event) => this.receive(generation, event.data);
-      worker.onmessageerror = () => this.receivePortFailure(
-        generation,
-        "protocol",
-        "Friends Galaxy worker response could not be deserialized.",
-        request,
-      );
-      worker.onerror = (event) => this.receivePortFailure(
-        generation,
-        "runtime",
-        event.message || "Friends Galaxy worker failed.",
-        request,
-      );
+      if (!this.worker) {
+        const generation = ++this.generation;
+        const worker = this.createWorker();
+        this.worker = worker;
+        worker.onmessage = (event) => this.receive(generation, event.data);
+        worker.onmessageerror = () => this.receivePortFailure(
+          generation,
+          "protocol",
+          "Friends Galaxy worker response could not be deserialized.",
+          request,
+        );
+        worker.onerror = (event) => this.receivePortFailure(
+          generation,
+          "runtime",
+          event.message || "Friends Galaxy worker failed.",
+          request,
+        );
+      }
       this.post(request);
     } catch (error) {
       this.fail("post", error, request);
     }
-    return request.requestId;
   }
 
   requestPresentation(
@@ -305,6 +313,7 @@ export class FriendsGalaxyProductWorkerClient {
     this.releaseWorker();
     this.currentSourceRevision = null;
     this.sourceRequest = null;
+    this.queuedSourceRequest = null;
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
@@ -387,6 +396,13 @@ export class FriendsGalaxyProductWorkerClient {
       }
       this.sourceDeadline = 0;
       this.sourceRequest = null;
+      const queuedSource = this.queuedSourceRequest;
+      if (queuedSource) {
+        this.queuedSourceRequest = null;
+        this.droppedResponses += 1;
+        this.startSource(queuedSource);
+        return;
+      }
       this.residentScene = candidate.rendererScene;
       this.onSourceReady(candidate);
       this.flushPresentation();
@@ -522,6 +538,7 @@ export class FriendsGalaxyProductWorkerClient {
     this.releaseWorker();
     this.currentSourceRevision = null;
     this.sourceRequest = null;
+    this.queuedSourceRequest = null;
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;

@@ -12,6 +12,7 @@ import type {
   FriendsGalaxyProductWorkerResponse,
 } from "../../src/lib/friends-galaxy-product-worker-protocol.js";
 import { FriendsGalaxyProductWorkerService } from "../../src/lib/friends-galaxy-product-worker-service.js";
+import { socialActivitySummaryKey } from "../../src/lib/identity-graph-activity-summary.js";
 import { createFriendsGalaxyProductSource } from "./product-source-fixture.js";
 
 class FakeProductWorker implements FriendsGalaxyProductWorkerPort {
@@ -68,7 +69,7 @@ function presentationInput(
 
 function activityInput(
   activityRevision: number,
-  key = "x:product-author-1",
+  key = socialActivitySummaryKey("x", "product-author-1"),
   sourceRevision = 1,
 ): FriendsGalaxyProductWorkerActivityInput {
   return {
@@ -199,8 +200,14 @@ describe("Friends Galaxy product worker client", () => {
     client.requestSource(sourceInput());
     worker.emit(serviceResponse(service, worker, 0));
     client.requestActivity(activityInput(1));
-    client.requestActivity(activityInput(2, "linkedin:product-author-2"));
-    client.requestActivity(activityInput(3, "instagram:product-author-3"));
+    client.requestActivity(activityInput(
+      2,
+      socialActivitySummaryKey("linkedin", "product-author-2"),
+    ));
+    client.requestActivity(activityInput(
+      3,
+      socialActivitySummaryKey("instagram", "product-author-3"),
+    ));
     expect(client.activityInFlight).toBe(true);
     expect(client.activityQueued).toBe(true);
     expect(worker.messages).toHaveLength(2);
@@ -215,14 +222,14 @@ describe("Friends Galaxy product worker client", () => {
     const queued = worker.messages[2];
     if (queued?.kind !== "activity") throw new Error("Expected an activity request.");
     expect(queued.patches.map((patch) => patch.key)).toEqual([
-      "instagram:product-author-3",
-      "linkedin:product-author-2",
+      socialActivitySummaryKey("instagram", "product-author-3"),
+      socialActivitySummaryKey("linkedin", "product-author-2"),
     ]);
     worker.emit(serviceResponse(service, worker, 2));
     expect(activityRevisions).toEqual([1, 3]);
   });
 
-  it("terminates an older source generation and ignores its late callback", () => {
+  it("keeps one worker and admits only the latest queued source", () => {
     const workers: FakeProductWorker[] = [];
     const sourceReady: number[] = [];
     const failures: FriendsGalaxyProductWorkerFailure[] = [];
@@ -238,22 +245,21 @@ describe("Friends Galaxy product worker client", () => {
     });
 
     client.requestSource(sourceInput(1));
-    const staleHandler = workers[0]!.onmessage!;
-    const staleErrorHandler = workers[0]!.onerror!;
-    const staleResponse = new FriendsGalaxyProductWorkerService().handle(
-      workers[0]!.messages[0]!,
-    );
     client.requestSource(sourceInput(2));
-    expect(workers[0]!.terminated).toBe(true);
-    staleHandler({ data: staleResponse } as MessageEvent<unknown>);
-    staleErrorHandler({ message: "late worker error" } as ErrorEvent);
+    client.requestSource(sourceInput(3));
+    expect(workers).toHaveLength(1);
+    expect(workers[0]!.terminated).toBe(false);
+    expect(workers[0]!.messages).toHaveLength(1);
+
+    const service = new FriendsGalaxyProductWorkerService();
+    workers[0]!.emit(serviceResponse(service, workers[0]!, 0));
     expect(sourceReady).toEqual([]);
     expect(failures).toEqual([]);
-    expect(workers[1]!.terminated).toBe(false);
-    const currentService = new FriendsGalaxyProductWorkerService();
-    workers[1]!.emit(currentService.handle(workers[1]!.messages[0]!));
-    expect(sourceReady).toEqual([2]);
-    expect(client.droppedResponseCount).toBe(2);
+    expect(workers[0]!.messages).toHaveLength(2);
+    expect(workers[0]!.messages[1]).toMatchObject({ sourceRevision: 3 });
+    workers[0]!.emit(serviceResponse(service, workers[0]!, 1));
+    expect(sourceReady).toEqual([3]);
+    expect(client.droppedResponseCount).toBe(1);
   });
 
   it("terminates a current generation response without a valid request id", () => {
