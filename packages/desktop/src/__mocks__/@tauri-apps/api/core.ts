@@ -32,32 +32,12 @@ type PluginEventRecord = {
   callbackId: number;
 };
 
-type IpcTiming = {
-  cmd: string;
-  startMs: number;
-  endMs: number;
-  args: Record<string, unknown>;
-};
-
 function mockArray<T>(name: string): T[] {
   const w = window as unknown as Record<string, unknown>;
   if (!Array.isArray(w[name])) {
     w[name] = [] as T[];
   }
   return w[name] as T[];
-}
-
-function ipcTimings(): IpcTiming[] {
-  return mockArray<IpcTiming>("__TAURI_MOCK_IPC_TIMINGS__");
-}
-
-function timedHandler(cmd: string, handler: Handler): Handler {
-  return (args: Record<string, unknown>) => {
-    const startMs = performance.now();
-    const result = handler(args);
-    ipcTimings().push({ cmd, startMs, endMs: performance.now(), args });
-    return result;
-  };
 }
 
 function setMockYouTubeWindowVisible(visible: boolean): null {
@@ -100,11 +80,32 @@ async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]
   return Array.from(new Uint8Array(await resp.arrayBuffer()));
 }
 
+// Mirrors the real command: bodies cross the IPC boundary as base64, never as
+// a JSON number array. See NativeHttpResponse in src-tauri/src/lib.rs.
+function mockBytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
+function mockBase64ToBytes(encoded: string): Uint8Array {
+  if (!encoded) return new Uint8Array(0);
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
   status: number;
   headers: Array<[string, string]>;
-  body: number[];
+  bodyB64: string;
 }> {
+  const requestBody = typeof args.bodyB64 === "string"
+    ? Array.from(mockBase64ToBytes(args.bodyB64))
+    : [];
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -112,13 +113,13 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
       url: args.url,
       headers: args.headers ?? [],
       method: args.method ?? "GET",
-      body: args.body ?? [],
+      body: requestBody,
     }),
   });
   return {
     status: resp.status,
     headers: Array.from(resp.headers.entries()),
-    body: Array.from(new Uint8Array(await resp.arrayBuffer())),
+    bodyB64: mockBytesToBase64(new Uint8Array(await resp.arrayBuffer())),
   };
 }
 
@@ -144,9 +145,324 @@ async function proxyNativeHttpRequest(args: Record<string, unknown>): Promise<{
   };
 }
 
+type MockSqliteItem = Record<string, unknown> & {
+  globalId: string;
+  platform?: string;
+  author?: { id?: string };
+  rssSource?: { feedUrl?: string };
+  userState?: Record<string, unknown>;
+  __deleted?: boolean;
+};
+
+type MockSqliteLibrary = {
+  active: boolean;
+  revision: number;
+  sourceGeneration: number;
+  sourceRevision: number;
+  sourceDigest: string;
+  expectedItemCount: number;
+  shell: Record<string, unknown>;
+  items: Record<string, MockSqliteItem>;
+  writerAdmission?: {
+    configured: boolean;
+    allowed: boolean;
+    localWriterId: string | null;
+    activeWriterId: string | null;
+    storageEpoch: string | null;
+    controlRevision: string | null;
+    verifiedAtMs: number | null;
+  };
+};
+
+function sqliteLibrary(): MockSqliteLibrary {
+  const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
+  w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
+    active: false,
+    revision: 0,
+    sourceGeneration: 0,
+    sourceRevision: 0,
+    sourceDigest: "",
+    expectedItemCount: 0,
+    shell: {},
+    items: {},
+  };
+  return w.__TAURI_MOCK_SQLITE_LIBRARY__;
+}
+
+function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
+  item.userState ??= {};
+  return item.userState;
+}
+
+function sqliteShellResult() {
+  const state = sqliteLibrary();
+  const items = Object.values(state.items).filter((item) => !item.__deleted);
+  const countsByPlatform: Record<string, number> = {};
+  const unreadByPlatform: Record<string, number> = {};
+  for (const item of items) {
+    const platform = item.platform ?? "unknown";
+    countsByPlatform[platform] = (countsByPlatform[platform] ?? 0) + 1;
+    if (sqliteItemUserState(item).readAt == null) {
+      unreadByPlatform[platform] = (unreadByPlatform[platform] ?? 0) + 1;
+    }
+  }
+  return {
+    shellJson: JSON.stringify(state.shell),
+    revision: state.revision,
+    itemCount: items.length,
+    unreadCount: items.filter((item) => sqliteItemUserState(item).readAt == null).length,
+    archivableCount: items.filter((item) => {
+      const user = sqliteItemUserState(item);
+      return user.readAt != null && !user.saved && !user.archived && !user.hidden;
+    }).length,
+    countsByPlatform,
+    unreadByPlatform,
+  };
+}
+
+function sqliteUpsertItems(args: Record<string, unknown>): null {
+  const state = sqliteLibrary();
+  const request = (args.request ?? {}) as { itemsBase64?: string[] };
+  for (const encoded of request.itemsBase64 ?? []) {
+    const binary = atob(encoded);
+    const json = new TextDecoder().decode(
+      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    );
+    const item = JSON.parse(json) as MockSqliteItem;
+    state.items[item.globalId] = item;
+  }
+  state.revision += 1;
+  return null;
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  broadcast_doc: timedHandler("broadcast_doc", () => null),
+  sqlite_library_status: () => {
+    const state = sqliteLibrary();
+    return state.active ? {
+      active: true,
+      revision: state.revision,
+      expectedItemCount: state.expectedItemCount,
+      importedItemCount: Object.keys(state.items).length,
+      sourceGeneration: state.sourceGeneration,
+      sourceRevision: state.sourceRevision,
+      sourceDigest: state.sourceDigest,
+    } : null;
+  },
+  begin_sqlite_library_import: (args: Record<string, unknown>) => {
+    const request = args.request as {
+      sourceGeneration: number;
+      sourceRevision: number;
+      sourceDigest: string;
+      expectedItemCount: number;
+      shellJson: string;
+    };
+    const state = sqliteLibrary();
+    Object.assign(state, {
+      active: false,
+      revision: 0,
+      sourceGeneration: request.sourceGeneration,
+      sourceRevision: request.sourceRevision,
+      sourceDigest: request.sourceDigest,
+      expectedItemCount: request.expectedItemCount,
+      shell: JSON.parse(request.shellJson) as Record<string, unknown>,
+      items: {},
+    });
+    return null;
+  },
+  append_sqlite_library_import: sqliteUpsertItems,
+  finalize_sqlite_library_import: () => {
+    const state = sqliteLibrary();
+    state.active = true;
+    return {
+      active: true,
+      revision: state.revision,
+      expectedItemCount: state.expectedItemCount,
+      importedItemCount: Object.keys(state.items).length,
+      sourceGeneration: state.sourceGeneration,
+      sourceRevision: state.sourceRevision,
+      sourceDigest: state.sourceDigest,
+    };
+  },
+  read_sqlite_library_shell: sqliteShellResult,
+  replace_sqlite_library_shell: (args: Record<string, unknown>) => {
+    const state = sqliteLibrary();
+    const request = args.request as { shellJson: string };
+    state.shell = JSON.parse(request.shellJson) as Record<string, unknown>;
+    state.revision += 1;
+    return null;
+  },
+  upsert_sqlite_library_items: sqliteUpsertItems,
+  read_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = args.request as { ids?: string[] };
+    return (request.ids ?? []).flatMap((id) => {
+      const item = sqliteLibrary().items[id];
+      return item && !item.__deleted ? [JSON.stringify(item)] : [];
+    });
+  },
+  query_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      query?: string | null;
+      platform?: string | null;
+      authorId?: string | null;
+      feedUrl?: string | null;
+      saved?: boolean | null;
+      archived?: boolean | null;
+      showHidden?: boolean;
+      offset?: number;
+      limit?: number;
+    };
+    const query = request.query?.toLowerCase() ?? "";
+    const items = Object.values(sqliteLibrary().items)
+      .filter((item) => {
+        const user = sqliteItemUserState(item);
+        return !item.__deleted
+          && (!request.platform || item.platform === request.platform)
+          && (request.saved == null || Boolean(user.saved) === request.saved)
+          && (request.archived == null || Boolean(user.archived) === request.archived)
+          && (request.showHidden || !user.hidden)
+          && (!request.authorId || item.author?.id === request.authorId)
+          && (!request.feedUrl || item.rssSource?.feedUrl === request.feedUrl)
+          && (!query || JSON.stringify(item).toLowerCase().includes(query));
+      })
+      .sort((left, right) => {
+        const published = Number(right.publishedAt ?? 0) - Number(left.publishedAt ?? 0);
+        if (published !== 0) return published;
+        const captured = Number(right.capturedAt ?? 0) - Number(left.capturedAt ?? 0);
+        return captured !== 0 ? captured : left.globalId.localeCompare(right.globalId);
+      });
+    const offset = request.offset ?? 0;
+    const limit = Math.max(1, Math.min(request.limit ?? 64, 128));
+    const page = items.slice(offset, offset + limit);
+    return {
+      itemsJson: page.map((item) => JSON.stringify(item)),
+      nextOffset: offset + page.length < items.length ? offset + page.length : null,
+      totalCount: items.length,
+    };
+  },
+  mutate_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      mutation?: string;
+      ids?: string[];
+      platform?: string | null;
+      feedUrl?: string | null;
+      timestampMs?: number;
+      maxAgeMs?: number;
+    };
+    const state = sqliteLibrary();
+    const candidates = request.ids?.length
+      ? request.ids.flatMap((id) => state.items[id] ? [state.items[id]] : [])
+      : Object.values(state.items);
+    let affected = 0;
+    for (const item of candidates) {
+      if (item.__deleted || (request.platform && item.platform !== request.platform)) continue;
+      if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
+      const user = sqliteItemUserState(item);
+      const timestampMs = request.timestampMs ?? Date.now();
+      switch (request.mutation) {
+        case "mark_read":
+        case "mark_all_read":
+          user.readAt ??= timestampMs;
+          break;
+        case "toggle_saved":
+          user.saved = !user.saved;
+          if (user.saved) {
+            user.savedAt = timestampMs;
+            user.archived = false;
+            delete user.archivedAt;
+          } else {
+            delete user.savedAt;
+          }
+          break;
+        case "toggle_archived":
+          if (user.saved) continue;
+          user.archived = !user.archived;
+          if (user.archived) user.archivedAt = timestampMs;
+          else delete user.archivedAt;
+          break;
+        case "archive":
+        case "archive_all_read_unsaved":
+          if (user.saved || user.hidden || user.readAt == null) continue;
+          user.archived = true;
+          user.archivedAt ??= timestampMs;
+          break;
+        case "toggle_liked":
+          user.liked = !user.liked;
+          if (user.liked) user.likedAt = timestampMs;
+          else {
+            delete user.likedAt;
+            delete user.likedSyncedAt;
+          }
+          break;
+        case "confirm_liked":
+          user.likedSyncedAt = timestampMs;
+          break;
+        case "confirm_seen":
+          user.seenSyncedAt = timestampMs;
+          break;
+        case "unarchive_saved":
+          if (!user.saved || !user.archived) continue;
+          user.archived = false;
+          delete user.archivedAt;
+          break;
+        case "delete_all_archived":
+          if (!user.archived || user.saved) continue;
+          item.__deleted = true;
+          break;
+        case "prune_archived":
+          if (!user.archived || user.saved || user.archivedAt == null
+            || Number(user.archivedAt) > timestampMs - (request.maxAgeMs ?? 0)) continue;
+          item.__deleted = true;
+          break;
+        case "delete_rss":
+          if (item.platform !== "rss") continue;
+          item.__deleted = true;
+          break;
+        case "delete":
+          item.__deleted = true;
+          break;
+        case "clear_sample":
+          if (!item.sampleData) continue;
+          item.__deleted = true;
+          break;
+        default:
+          continue;
+      }
+      affected += 1;
+    }
+    state.revision += 1;
+    return affected;
+  },
+  set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
+    const request = args.request as {
+      localWriterId: string;
+      activeWriterId: string;
+      storageEpoch: string;
+      controlRevision: string;
+      verifiedAtMs: number;
+    };
+    const admission = {
+      configured: true,
+      allowed: request.localWriterId === request.activeWriterId,
+      localWriterId: request.localWriterId,
+      activeWriterId: request.activeWriterId,
+      storageEpoch: request.storageEpoch,
+      controlRevision: request.controlRevision,
+      verifiedAtMs: request.verifiedAtMs,
+    };
+    sqliteLibrary().writerAdmission = admission;
+    return admission;
+  },
+  sqlite_library_cloud_writer_admission_status: () =>
+    sqliteLibrary().writerAdmission ?? {
+      configured: false,
+      allowed: true,
+      localWriterId: null,
+      activeWriterId: null,
+      storageEpoch: null,
+      controlRevision: null,
+      verifiedAtMs: null,
+    },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,
@@ -162,16 +478,12 @@ const handlers: Record<string, Handler> = {
   google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
   fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
-  get_local_ip: () => "127.0.0.1",
-  get_all_local_ips: () => [],
-  get_sync_url: () => "ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
     const request = args.request as { expectedSizeBytes?: number } | undefined;
     return request?.expectedSizeBytes ?? 0;
   },
   cancel_local_ai_model_download: () => null,
-  get_sync_client_count: () => 0,
   get_desktop_session_state: () =>
     (window as unknown as {
       __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
@@ -253,12 +565,7 @@ const handlers: Record<string, Handler> = {
   retry_startup_after_crash: () => null,
   export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
   clear_factory_reset_runtime_artifacts: () => null,
-  factory_reset_sync_relay: () => "factory-reset-pairing-token",
-  resume_sync_relay_after_factory_reset: () => null,
-  reset_pairing_token: () => null,
   get_recent_logs: () => [],
-  start_relay: () => null,
-  stop_relay: () => null,
   show_window: () => null,
   list_snapshots: () => [],
   save_url_content: () => null,
@@ -324,6 +631,10 @@ const handlers: Record<string, Handler> = {
   yt_capture: () => setMockYouTubeWindowVisible(false),
   yt_add_to_offline_playlist: () => setMockYouTubeWindowVisible(false),
   yt_disconnect: () => setMockYouTubeWindowVisible(false),
+  // The init script runs before the Vite module graph and owns persistent or
+  // test-specific handlers. Keep those overrides last so this module's
+  // convenient defaults cannot silently replace them.
+  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.

@@ -13,20 +13,22 @@ import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   getInterfaceChromeScale,
   scaleInterfaceChromePx,
   useInterfaceZoom,
 } from "../../lib/interface-zoom.js";
-import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon, CopyIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
-import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
+import { buildTopLevelTagFilters, childTagsOf } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
   CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
@@ -572,6 +574,54 @@ function SourceContextMenu({
   );
 }
 
+function FriendsContextMenu({
+  anchorRect,
+  anchorElement,
+  friendCount,
+  onClose,
+  onCopyDiagnostics,
+}: {
+  anchorRect: DOMRect;
+  anchorElement?: HTMLElement | null;
+  friendCount: number;
+  onClose: () => void;
+  onCopyDiagnostics: () => void;
+}) {
+  const friendLabel = `${friendCount.toLocaleString()} ${friendCount === 1 ? "friend" : "friends"}`;
+
+  return (
+    <SidebarContextMenuShell
+      anchorRect={anchorRect}
+      ignoreElement={anchorElement}
+      onClose={onClose}
+      testId="friends-context-menu"
+    >
+      <div className="theme-dialog-divider flex items-center border-b px-3 py-2.5">
+        <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">
+          Friends
+        </span>
+        <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">
+          {friendLabel}
+        </span>
+      </div>
+      <div className="py-1">
+        <button
+          type="button"
+          data-testid="friends-menu-copy-diagnostics"
+          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-[color:var(--theme-text-secondary)] transition-colors hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+          onClick={() => {
+            onCopyDiagnostics();
+            onClose();
+          }}
+        >
+          <CopyIcon className="h-3.5 w-3.5 shrink-0" />
+          Copy diagnostics
+        </button>
+      </div>
+    </SidebarContextMenuShell>
+  );
+}
+
 const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
@@ -649,15 +699,20 @@ export function Sidebar({
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
-  const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const savedCount = libraryFacets.savedCount;
+  const archivedCount = libraryFacets.archivedCount;
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const requestCopyFriendsDiagnostics = useCommandSurfaceStore(
+    (state) => state.requestCopyFriendsDiagnostics,
+  );
   const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const effectiveMapMode = resolveMapMode(
@@ -702,7 +757,7 @@ export function Sidebar({
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
   /** All unique tags collected from the library, sorted alphabetically */
-  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const allTags = libraryFacets.tags;
   const topLevelTagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
   const topLevelTags = useMemo(
     () => topLevelTagFilters.map((tagFilter) => tagFilter.label),
@@ -822,6 +877,7 @@ export function Sidebar({
   const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
     ? "var(--feed-card-gap, 8px)"
     : 0;
+  const desktopShellBottomPadding = desktopShellTopPadding;
   const sidebarHandleCenterlinePx =
     renderMode === "closed" && !closedPreviewActive
       ? effectiveGapWidthPx / 2
@@ -1149,16 +1205,22 @@ export function Sidebar({
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
-  const sourceActionSlotClass = (source: SourceNavigationItem) => {
+  const rowActionSlotClass = (menuAvailable: boolean, hasCount: boolean, key: string) => {
     if (rowCountsVisible) {
-      if (sourceTotalCount(source) > 0) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
-      return sourceMenusVisible && canShowSourceMenu(source) ? "ml-0 w-8" : "ml-0 w-0";
+      if (hasCount) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+      return sourceMenusVisible && menuAvailable ? "ml-0 w-8" : "ml-0 w-0";
     }
-    if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
-    return openMenuSourceKey === sourceKey(source)
+    if (!sourceMenusVisible || !menuAvailable) return "ml-0 w-0";
+    return openMenuSourceKey === key
       ? "ml-0 w-[26px]"
       : "ml-0 w-0 group-hover/sidebar-row:w-[26px]";
   };
+  const sourceActionSlotClass = (source: SourceNavigationItem) =>
+    rowActionSlotClass(
+      canShowSourceMenu(source),
+      sourceTotalCount(source) > 0,
+      sourceKey(source),
+    );
   const feedActionSlotClass = (menuOpen: boolean) => {
     if (rowCountsVisible) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
     if (!sourceMenusVisible) return "ml-0 w-0";
@@ -1334,6 +1396,7 @@ export function Sidebar({
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
   const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
+  const sidebarAdjacentBadgeLabelClass = `min-w-0 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
   const renderSimpleCount = (count: number, active = false) => (
     <span className={active ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
@@ -1349,14 +1412,12 @@ export function Sidebar({
       <span className="text-[var(--theme-text-soft)]">{fmt(total)}</span>
     </>
   );
-  const renderSourceMenu = (source: SourceNavigationItem) => {
-    if (!sourceMenusVisible || !canShowSourceMenu(source)) return null;
-
-    const key = sourceKey(source);
+  const renderRowMenu = (key: string, label: string, menuAvailable: boolean) => {
+    if (!sourceMenusVisible || !menuAvailable) return null;
 
     return (
       <button
-        aria-label={`Options for ${source.label}`}
+        aria-label={`Options for ${label}`}
         data-testid={`source-menu-trigger-${key}`}
         onMouseDown={(e) => {
           e.stopPropagation();
@@ -1386,6 +1447,8 @@ export function Sidebar({
       </button>
     );
   };
+  const renderSourceMenu = (source: SourceNavigationItem) =>
+    renderRowMenu(sourceKey(source), source.label, canShowSourceMenu(source));
   const renderFeedMenu = (feed: RssFeed, menuOpen: boolean) => (
     <button
       aria-label={`Options for ${feed.title}`}
@@ -1547,6 +1610,11 @@ export function Sidebar({
               ) : (
                 <SidebarNavRow
                   active={activeView === "friends"}
+                  actionSlotClass={rowActionSlotClass(
+                    activeView === "friends",
+                    pendingMatchCount > 0 || friendCount > 0,
+                    "friends",
+                  )}
                   count={rowCountsVisible && (pendingMatchCount > 0 || friendCount > 0) ? (
                     <>
                       {pendingMatchCount > 0 ? (
@@ -1561,6 +1629,8 @@ export function Sidebar({
                   icon={renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
                   label="Friends"
                   labelClass={sidebarLabelClass}
+                  menu={renderRowMenu("friends", "Friends", activeView === "friends")}
+                  menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
                     setSelectedFriend(null);
@@ -1800,7 +1870,7 @@ export function Sidebar({
                           Beta
                         </span>
                       ) : null}
-                      labelClass={sidebarLabelClass}
+                      labelClass={source.stage === "beta" ? sidebarAdjacentBadgeLabelClass : sidebarLabelClass}
                       menu={renderSourceMenu(source)}
                       menuOpen={openMenuSourceKey === sourceKey(source)}
                       onClick={() => handleSourceClick(source)}
@@ -1946,10 +2016,11 @@ export function Sidebar({
       {!isMobileDevice ? (
       <div
         data-testid="app-sidebar-shell"
-        className="flex flex-none overflow-visible"
+        className="relative flex flex-none overflow-visible"
         style={{
           width: desktopShellWidth,
           paddingTop: desktopShellTopPadding,
+          paddingBottom: desktopShellBottomPadding,
           transition: desktopShellTransition,
         }}
       >
@@ -1967,15 +2038,15 @@ export function Sidebar({
               {sidebarBody}
             </aside>
           ) : null}
-          {resizeHandleVisible ? (
-            <div
-              data-testid="app-sidebar-resize-handle"
-              className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
-              style={{ left: px(sidebarHandleLeftPx) }}
-              onMouseDown={handleDragStart}
-            />
-          ) : null}
         </div>
+        {resizeHandleVisible ? (
+          <div
+            data-testid="app-sidebar-resize-handle"
+            className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
+            style={{ left: px(sidebarHandleLeftPx) }}
+            onMouseDown={handleDragStart}
+          />
+        ) : null}
       </div>
       ) : null}
 
@@ -2044,6 +2115,20 @@ export function Sidebar({
           }
         />
       )}
+
+      {openMenuSourceKey === "friends" && sourceMenuAnchorRect && activeView === "friends" ? (
+        <FriendsContextMenu
+          anchorRect={sourceMenuAnchorRect}
+          anchorElement={sourceMenuAnchorElement}
+          friendCount={friendCount}
+          onClose={() => {
+            setOpenMenuSourceKey(null);
+            setSourceMenuAnchorRect(null);
+            setSourceMenuAnchorElement(null);
+          }}
+          onCopyDiagnostics={requestCopyFriendsDiagnostics}
+        />
+      ) : null}
     </>
   );
 }

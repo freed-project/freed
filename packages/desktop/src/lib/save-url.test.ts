@@ -23,7 +23,7 @@ const stubItem: FeedItem = {
 const mockDocAddStubItem = vi.fn(async () => stubItem);
 const mockEnqueue = vi.fn();
 
-vi.mock("./automerge.js", () => ({
+vi.mock("./library-client.js", () => ({
   docAddStubItem: mockDocAddStubItem,
 }));
 
@@ -82,10 +82,10 @@ describe("saveUrlInDesktop", () => {
   });
 
   it("does not enqueue details when stub persistence fails", async () => {
-    mockDocAddStubItem.mockRejectedValueOnce(new Error("Automerge unavailable"));
+    mockDocAddStubItem.mockRejectedValueOnce(new Error("Library unavailable"));
     const { saveUrlInDesktop } = await import("./save-url.js");
 
-    await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("Automerge unavailable");
+    await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("Library unavailable");
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 });

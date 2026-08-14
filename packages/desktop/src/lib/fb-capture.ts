@@ -961,23 +961,24 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
       result.diag.candidateItems = filteredItems.length;
       result.diag.excludedItems = result.items.length - filteredItems.length;
       const beforeState = useAppStore.getState();
-      const beforeFacebookItems = beforeState.items.filter((i) => i.platform === "facebook");
-      const beforeFacebookIds = new Set(beforeFacebookItems.map((item) => item.globalId));
-      const existingCandidateCount = filteredItems.filter((item) => beforeFacebookIds.has(item.globalId)).length;
-      result.diag.existingItems = existingCandidateCount;
+      const before = beforeState.itemCountByPlatform?.facebook
+        ?? beforeState.items.filter((item) => item.platform === "facebook").length;
       addDebugEvent(
         "change",
-        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded)`,
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${result.diag.excludedItems.toLocaleString()} excluded)`,
       );
-      const before = beforeFacebookItems.length;
       const writeStartedAt = performance.now();
       await store.addItems(filteredItems);
       assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
-      const after = useAppStore
-        .getState()
-        .items.filter((i) => i.platform === "facebook").length;
+      const afterState = useAppStore.getState();
+      const after = afterState.itemCountByPlatform?.facebook
+        ?? afterState.items.filter((item) => item.platform === "facebook").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      result.diag.existingItems = Math.max(
+        0,
+        filteredItems.length - result.diag.itemsAdded,
+      );
       log.info(
         `[FB] store write complete candidates=${filteredItems.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} existing=${result.diag.existingItems.toLocaleString()} excluded=${result.diag.excludedItems.toLocaleString()} duration=${formatSocialCaptureDuration(writeDurationMs)}`,
       );

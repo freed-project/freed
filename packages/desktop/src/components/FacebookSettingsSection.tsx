@@ -6,7 +6,13 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { addDebugEvent, useDebugStore } from "@freed/ui/lib/debug-store";
 import {
@@ -16,7 +22,8 @@ import {
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import { Tooltip } from "@freed/ui/components/Tooltip";
-import type { FbGroupInfo, UserPreferences } from "@freed/shared";
+import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
+import type { FbGroupInfo, FeedItem, UserPreferences } from "@freed/shared";
 import { TrashIcon } from "@freed/ui/components/icons";
 import { useAppStore } from "../lib/store";
 import {
@@ -32,7 +39,10 @@ import {
   verifyFacebookGroupLeave,
 } from "../lib/fb-capture";
 import type { FbSyncDiag } from "../lib/fb-capture";
-import { getFacebookGroupDisplayName } from "../lib/facebook-groups";
+import {
+  facebookGroupNameRepairItems,
+  getFacebookGroupDisplayName,
+} from "../lib/facebook-groups";
 import {
   getFbScraperWindowMode,
   setFbScraperWindowMode,
@@ -47,17 +57,30 @@ import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
-import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import {
+  clearProviderPause,
+  resetProviderPauseState,
+} from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
-import { useFacebookGroupDiscovery } from "../lib/facebook-group-discovery";
+import {
+  getFacebookGroupDiscovery,
+  useFacebookGroupDiscovery,
+} from "../lib/facebook-group-discovery";
+import {
+  isLibraryCoreProviderSettingsReaderDisabled,
+  scanLibraryCoreProviderItems,
+} from "../lib/library-core-provider-settings-runtime";
 
-const FACEBOOK_LEAVE_CHECK_DELAY_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
-const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
+const FACEBOOK_LEAVE_CHECK_DELAY_MS =
+  import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
+const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS =
+  import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
+const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 // =============================================================================
 // Diagnostic Panel
@@ -72,7 +95,9 @@ interface DiagRowProps {
 function DiagRow({ label, value, warn }: DiagRowProps) {
   return (
     <div className="flex justify-between gap-4">
-      <span className={warn ? "text-amber-400" : "text-[#52525b]"}>{label}</span>
+      <span className={warn ? "text-amber-400" : "text-[#52525b]"}>
+        {label}
+      </span>
       <span className={warn ? "text-amber-400 font-medium" : "text-[#71717a]"}>
         {value}
       </span>
@@ -99,7 +124,8 @@ function splitFacebookGroupName(rawName: string): {
 
   return {
     title,
-    lastActiveText: lastActiveText.charAt(0).toUpperCase() + lastActiveText.slice(1),
+    lastActiveText:
+      lastActiveText.charAt(0).toUpperCase() + lastActiveText.slice(1),
   };
 }
 
@@ -145,7 +171,10 @@ function Toggle({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Tooltip
-          label={status ?? (checked ? "Included in future syncs" : "Hidden from future syncs")}
+          label={
+            status ??
+            (checked ? "Included in future syncs" : "Hidden from future syncs")
+          }
           side="left"
         >
           <button
@@ -253,18 +282,33 @@ export function FacebookSettingsSection({
   );
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
-  const items = useAppStore((s) => s.items);
+  const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
+  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
+  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
+  const legacyItems = useAppStore((s) =>
+    useLegacyItems ? s.items : EMPTY_FEED_ITEMS,
+  );
   const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
-  const healthSnapshot = useDebugStore((s) => s.health?.providers.facebook ?? null);
+  const healthSnapshot = useDebugStore(
+    (s) => s.health?.providers.facebook ?? null,
+  );
 
   const [checking, setChecking] = useState(false);
   const [refreshingGroups, setRefreshingGroups] = useState(false);
-  const [refreshingGroupId, setRefreshingGroupId] = useState<string | null>(null);
+  const [refreshingGroupId, setRefreshingGroupId] = useState<string | null>(
+    null,
+  );
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
-  const [checkingLeaveGroupIds, setCheckingLeaveGroupIds] = useState<Record<string, true>>({});
-  const pendingLeaveCheckRef = useRef<{ group: FbGroupInfo; openedAt: number } | null>(null);
+  const [groupRepairUnavailable, setGroupRepairUnavailable] = useState(false);
+  const [checkingLeaveGroupIds, setCheckingLeaveGroupIds] = useState<
+    Record<string, true>
+  >({});
+  const pendingLeaveCheckRef = useRef<{
+    group: FbGroupInfo;
+    openedAt: number;
+  } | null>(null);
   const leaveCheckTimerRef = useRef<number | null>(null);
   const leaveCheckInFlightRef = useRef(false);
   const { openUrl } = usePlatform();
@@ -273,19 +317,28 @@ export function FacebookSettingsSection({
 
   const knownGroups = useFacebookGroupDiscovery();
   const groups = Object.values(knownGroups).sort((a, b) =>
-    getFacebookGroupDisplayName(a).localeCompare(getFacebookGroupDisplayName(b)),
+    getFacebookGroupDisplayName(a).localeCompare(
+      getFacebookGroupDisplayName(b),
+    ),
   );
-  const activeGroupCount = groups.filter((group) => !excludedGroupIds[group.id]).length;
+  const activeGroupCount = groups.filter(
+    (group) => !excludedGroupIds[group.id],
+  ).length;
 
-  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
-    setLastDiag(null);
-    try {
-      const result = await withProviderSyncing("facebook", () => captureFbFeed(trigger));
-      setLastDiag(result.diag);
-    } catch (err) {
-      console.error("Facebook feed capture failed:", err);
-    }
-  }, []);
+  const runSync = useCallback(
+    async (trigger: "manual" | "post_login" = "manual") => {
+      setLastDiag(null);
+      try {
+        const result = await withProviderSyncing("facebook", () =>
+          captureFbFeed(trigger),
+        );
+        setLastDiag(result.diag);
+      } catch (err) {
+        console.error("Facebook feed capture failed:", err);
+      }
+    },
+    [],
+  );
 
   const handleAuthResult = useCallback(
     (loggedIn: boolean) => {
@@ -321,9 +374,48 @@ export function FacebookSettingsSection({
   });
 
   useEffect(() => {
-    if (!fbAuth.isAuthenticated || items.length === 0) return;
-    void repairStoredFacebookGroupNamesFromItems(items);
-  }, [fbAuth.isAuthenticated, items]);
+    if (!fbAuth.isAuthenticated) {
+      setGroupRepairUnavailable(false);
+      return;
+    }
+    if (useLegacyItems && !legacyItemsReady) return;
+
+    const controller = new AbortController();
+    setGroupRepairUnavailable(false);
+    void (async () => {
+      try {
+        if (useLegacyItems) {
+          if (legacyItems.length > 0) {
+            await repairStoredFacebookGroupNamesFromItems(legacyItems);
+          }
+          return;
+        }
+        await scanLibraryCoreProviderItems(
+          "facebook",
+          async (page) => {
+            const repairItems = facebookGroupNameRepairItems(
+              getFacebookGroupDiscovery(),
+              page,
+            );
+            if (repairItems.length === 0) return;
+            await repairStoredFacebookGroupNamesFromItems(repairItems);
+          },
+          { signal: controller.signal },
+        );
+      } catch {
+        if (!controller.signal.aborted) setGroupRepairUnavailable(true);
+      }
+    })();
+    return () => {
+      controller.abort();
+    };
+  }, [
+    fbAuth.isAuthenticated,
+    legacyItems,
+    legacyItemsReady,
+    sourceVersion,
+    useLegacyItems,
+  ]);
 
   const handleLogin = useCallback(async () => {
     log.info(
@@ -339,7 +431,8 @@ export function FacebookSettingsSection({
         log.info("[FB] reconnect login window requested");
       } catch (err) {
         if (!isDesktopProviderAuthAllowed()) return;
-        const message = err instanceof Error ? err.message : "Failed to open login window";
+        const message =
+          err instanceof Error ? err.message : "Failed to open login window";
         log.error(`[FB] reconnect failed: ${message}`);
         addDebugEvent("error", `[FB] reconnect failed: ${message}`);
         setActionError(message);
@@ -354,16 +447,23 @@ export function FacebookSettingsSection({
       try {
         const loggedIn = await checkFbAuth();
         if (!isDesktopProviderAuthAllowed()) return;
-        const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
+        const newState = {
+          isAuthenticated: loggedIn,
+          lastCheckedAt: Date.now(),
+        };
         setFbAuth(newState);
         storeFbAuthState(newState);
 
         if (!loggedIn) {
-          setActionError("Not logged in. Please log in through the Facebook window first.");
+          setActionError(
+            "Not logged in. Please log in through the Facebook window first.",
+          );
         }
       } catch (err) {
         if (!isDesktopProviderAuthAllowed()) return;
-        setActionError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(
+          err instanceof Error ? err.message : "Auth check failed",
+        );
       } finally {
         if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
@@ -433,13 +533,19 @@ export function FacebookSettingsSection({
       }
       await setExcludedGroups(nextExcluded);
     },
-    [excludedGroupIds, groups.length, handleDeselectAllGroups, setExcludedGroups],
+    [
+      excludedGroupIds,
+      groups.length,
+      handleDeselectAllGroups,
+      setExcludedGroups,
+    ],
   );
 
   const runPendingLeaveCheck = useCallback(async () => {
     const pending = pendingLeaveCheckRef.current;
     if (!pending || leaveCheckInFlightRef.current) return;
-    if (Date.now() - pending.openedAt < FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS) return;
+    if (Date.now() - pending.openedAt < FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS)
+      return;
 
     pendingLeaveCheckRef.current = null;
     if (leaveCheckTimerRef.current !== null) {
@@ -448,12 +554,18 @@ export function FacebookSettingsSection({
     }
 
     leaveCheckInFlightRef.current = true;
-    setCheckingLeaveGroupIds((current) => ({ ...current, [pending.group.id]: true }));
+    setCheckingLeaveGroupIds((current) => ({
+      ...current,
+      [pending.group.id]: true,
+    }));
     setActionError(null);
     try {
       await verifyFacebookGroupLeave(pending.group);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to verify Facebook group leave";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to verify Facebook group leave";
       setActionError(message);
       addDebugEvent("error", `[FB] leave check failed: ${message}`);
     } finally {
@@ -512,7 +624,11 @@ export function FacebookSettingsSection({
           }),
         );
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
+        setActionError(
+          err instanceof Error
+            ? err.message
+            : "Failed to refresh Facebook groups",
+        );
       } finally {
         setRefreshingGroups(false);
         setRefreshingGroupId(null);
@@ -532,7 +648,9 @@ export function FacebookSettingsSection({
     setActionError(null);
   }, [setFbAuth]);
 
-  const syncError = fbAuth.isAuthenticated ? fbAuth.lastCaptureError ?? null : null;
+  const syncError = fbAuth.isAuthenticated
+    ? (fbAuth.lastCaptureError ?? null)
+    : null;
   const authError = fbAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
@@ -545,7 +663,8 @@ export function FacebookSettingsSection({
     authError,
     snapshot: healthSnapshot,
   });
-  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
+  const isPaused =
+    !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
   if (fbAuth.isAuthenticated) {
@@ -554,9 +673,7 @@ export function FacebookSettingsSection({
       if (lastDiag.errorStage) return null;
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
-          <p className="text-xs text-[#52525b]">
-            {copy.feedReturnedEmpty}
-          </p>
+          <p className="text-xs text-[#52525b]">{copy.feedReturnedEmpty}</p>
         );
       }
       if (lastDiag.itemsAdded === 0) {
@@ -572,222 +689,253 @@ export function FacebookSettingsSection({
 
     return (
       <>
-      <SyncProviderSectionSurface surface={surface} title="Facebook">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-            <ProviderStatusIndicator
-              tone={statusTone}
-              syncing={syncing}
-              label={statusLabel}
-              testId="provider-status-facebook"
-              size="sm"
-            />
-            <span className="text-sm text-[#a1a1aa]">
-              {statusLabel}
-            </span>
-          </div>
-
-          {postLoginSync.message && (
-            <p className="text-xs text-[#a1a1aa] leading-relaxed">
-              {postLoginSync.message}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <ProviderSyncActionButton
-              onClick={() => {
-                if (needsReconnect) {
-                  void handleLogin();
-                  return;
-                }
-                void confirm(async () => {
-                  postLoginSync.cancel();
-                  if (isPaused) {
-                    await clearProviderPause("facebook");
-                  }
-                  await runSync();
-                });
-              }}
-              busy={syncing}
-              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
-              disabled={
-                (!needsReconnect && (syncing || isLoading)) ||
-                (needsReconnect && isLoading)
-              }
-              testId="provider-sync-action-facebook"
-            >
-              {needsReconnect ? "Reconnect Facebook" : isPaused ? "Resume Now" : "Sync Now"}
-            </ProviderSyncActionButton>
-            <button
-              onClick={handleDisconnect}
-              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-            >
-              Disconnect
-            </button>
-          </div>
-
-          {needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage(copy.label, authError)}
-            </p>
-          )}
-
-          {actionError && !needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
-          )}
-
-          {syncError && !needsReconnect && (
-            <p className="text-xs text-red-400 leading-relaxed">
-              {syncError.includes("timeout")
-                ? copy.timeout
-                : syncError}
-            </p>
-          )}
-
-          <ProviderHealthSectionSummary
-            provider="facebook"
-            showMessages={surface === "debug-card" && !syncError && !actionError}
-          />
-
-          {statusLine}
-
-          {lastDiag && <FbDiagPanel diag={lastDiag} />}
-
-          <MediaVaultSettingsCard
-            provider="facebook"
-            providerLabel="Facebook"
-            items={items}
-            authenticated={fbAuth.isAuthenticated}
-          />
-
-          <SettingsListPanel
-            items={groups}
-            title="Groups"
-            summary={`${activeGroupCount.toLocaleString()} active of ${groups.length.toLocaleString()} total`}
-            searchPlaceholder="Filter groups"
-            ariaLabel="Filter Facebook groups"
-            emptyLabel="No groups found."
-            noMatchesLabel="No groups match that filter."
-            dataTestId="facebook-groups-list"
-            searchDataTestId="facebook-groups-filter"
-            scrollDataTestId="facebook-groups-list-scroll"
-            className="border-white/10 bg-white/5"
-            listClassName="space-y-1"
-            estimateItemSize={36}
-            reserveScrollHeight
-            itemKey={(group) => group.id}
-            getSearchText={(group) => {
-              const { title, lastActiveText } = splitFacebookGroupName(
-                getFacebookGroupDisplayName(group),
-              );
-              return [title, lastActiveText, group.id, group.url, group.name].filter(Boolean).join(" ");
-            }}
-            actions={(shownGroups, query) => {
-              const bulkTargetLabel = query ? "shown" : "all";
-              return (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => { void handleSelectShownGroups(shownGroups); }}
-                    disabled={shownGroups.length === 0}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
-                  >
-                    Activate {bulkTargetLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleDeselectShownGroups(shownGroups); }}
-                    disabled={shownGroups.length === 0}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
-                  >
-                    Deactivate {bulkTargetLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRefreshGroups}
-                    disabled={refreshingGroups}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
-                  >
-                    Refresh groups
-                  </button>
-                </>
-              );
-            }}
-            renderItem={(group) => {
-              const included = !excludedGroupIds[group.id];
-              const checkingLeave = Boolean(checkingLeaveGroupIds[group.id]);
-              const refreshingGroup = refreshingGroupId === group.id;
-              const { title, lastActiveText } = splitFacebookGroupName(
-                getFacebookGroupDisplayName(group),
-              );
-              return (
-                <Toggle
-                  testId={`facebook-group-${group.id}`}
-                  label={title}
-                  checked={included}
-                  onChange={(nextIncluded) => {
-                    void handleToggleGroup(group, nextIncluded);
-                  }}
-                  meta={lastActiveText}
-                  status={included ? "Included in future syncs" : "Hidden from future syncs"}
-                  labelAccessory={
-                    refreshingGroup ? (
-                      <span
-                        aria-label={`Refreshing group: ${title}`}
-                        data-testid={`facebook-group-${group.id}-refreshing`}
-                        className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
-                      />
-                    ) : null
-                  }
-                  trailingAction={
-                    <Tooltip
-                      label={checkingLeave ? "Checking leave status" : "Leave group via Facebook"}
-                      side="left"
-                    >
-                      <button
-                        type="button"
-                        aria-label={
-                          checkingLeave
-                            ? `Checking leave status: ${title}`
-                            : `Leave group via Facebook: ${title}`
-                        }
-                        data-testid={`facebook-group-${group.id}-leave`}
-                        disabled={checkingLeave}
-                        onClick={() => handleLeaveGroupViaFacebook(group)}
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </button>
-                    </Tooltip>
-                  }
-                />
-              );
-            }}
-          />
-
-          <details className="group">
-            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-              Advanced
-            </summary>
-            <div className="mt-3 pl-3 border-l border-white/10">
-              <ScraperWindowModeControl
-                sourceLabel="Facebook"
-                mode={windowMode}
-                onChange={(nextMode) => {
-                  setWindowMode(nextMode);
-                  setFbScraperWindowMode(nextMode);
-                }}
+        <SyncProviderSectionSurface surface={surface} title="Facebook">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+              <ProviderStatusIndicator
+                tone={statusTone}
+                syncing={syncing}
+                label={statusLabel}
+                testId="provider-status-facebook"
+                size="sm"
               />
+              <span className="text-sm text-[#a1a1aa]">{statusLabel}</span>
             </div>
-          </details>
 
-          <p className="text-xs text-[#52525b] leading-relaxed">
-            {copy.connectedInfo}
-          </p>
-        </div>
-      </SyncProviderSectionSurface>
-      {dialog}
+            {postLoginSync.message && (
+              <p className="text-xs text-[#a1a1aa] leading-relaxed">
+                {postLoginSync.message}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <ProviderSyncActionButton
+                onClick={() => {
+                  if (needsReconnect) {
+                    void handleLogin();
+                    return;
+                  }
+                  void confirm(async () => {
+                    postLoginSync.cancel();
+                    if (isPaused) {
+                      await clearProviderPause("facebook");
+                    }
+                    await runSync();
+                  });
+                }}
+                busy={syncing}
+                busyLabel={
+                  needsReconnect
+                    ? "Reconnecting..."
+                    : isPaused
+                      ? "Resuming..."
+                      : "Syncing"
+                }
+                disabled={
+                  (!needsReconnect && (syncing || isLoading)) ||
+                  (needsReconnect && isLoading)
+                }
+                testId="provider-sync-action-facebook"
+              >
+                {needsReconnect
+                  ? "Reconnect Facebook"
+                  : isPaused
+                    ? "Resume Now"
+                    : "Sync Now"}
+              </ProviderSyncActionButton>
+              <button
+                onClick={handleDisconnect}
+                className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
+
+            {needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {formatProviderReconnectMessage(copy.label, authError)}
+              </p>
+            )}
+
+            {actionError && !needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {actionError}
+              </p>
+            )}
+
+            {syncError && !needsReconnect && (
+              <p className="text-xs text-red-400 leading-relaxed">
+                {syncError.includes("timeout") ? copy.timeout : syncError}
+              </p>
+            )}
+
+            <ProviderHealthSectionSummary
+              provider="facebook"
+              showMessages={
+                surface === "debug-card" && !syncError && !actionError
+              }
+            />
+
+            {statusLine}
+
+            {lastDiag && <FbDiagPanel diag={lastDiag} />}
+
+            {groupRepairUnavailable ? (
+              <p className="text-xs leading-relaxed text-amber-400">
+                Saved Facebook group details are temporarily unavailable.
+              </p>
+            ) : null}
+
+            <MediaVaultSettingsCard
+              provider="facebook"
+              providerLabel="Facebook"
+              authenticated={fbAuth.isAuthenticated}
+            />
+
+            <SettingsListPanel
+              items={groups}
+              title="Groups"
+              summary={`${activeGroupCount.toLocaleString()} active of ${groups.length.toLocaleString()} total`}
+              searchPlaceholder="Filter groups"
+              ariaLabel="Filter Facebook groups"
+              emptyLabel="No groups found."
+              noMatchesLabel="No groups match that filter."
+              dataTestId="facebook-groups-list"
+              searchDataTestId="facebook-groups-filter"
+              scrollDataTestId="facebook-groups-list-scroll"
+              className="border-white/10 bg-white/5"
+              listClassName="space-y-1"
+              estimateItemSize={36}
+              reserveScrollHeight
+              itemKey={(group) => group.id}
+              getSearchText={(group) => {
+                const { title, lastActiveText } = splitFacebookGroupName(
+                  getFacebookGroupDisplayName(group),
+                );
+                return [title, lastActiveText, group.id, group.url, group.name]
+                  .filter(Boolean)
+                  .join(" ");
+              }}
+              actions={(shownGroups, query) => {
+                const bulkTargetLabel = query ? "shown" : "all";
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSelectShownGroups(shownGroups);
+                      }}
+                      disabled={shownGroups.length === 0}
+                      className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
+                    >
+                      Activate {bulkTargetLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleDeselectShownGroups(shownGroups);
+                      }}
+                      disabled={shownGroups.length === 0}
+                      className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
+                    >
+                      Deactivate {bulkTargetLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRefreshGroups}
+                      disabled={refreshingGroups}
+                      className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
+                    >
+                      Refresh groups
+                    </button>
+                  </>
+                );
+              }}
+              renderItem={(group) => {
+                const included = !excludedGroupIds[group.id];
+                const checkingLeave = Boolean(checkingLeaveGroupIds[group.id]);
+                const refreshingGroup = refreshingGroupId === group.id;
+                const { title, lastActiveText } = splitFacebookGroupName(
+                  getFacebookGroupDisplayName(group),
+                );
+                return (
+                  <Toggle
+                    testId={`facebook-group-${group.id}`}
+                    label={title}
+                    checked={included}
+                    onChange={(nextIncluded) => {
+                      void handleToggleGroup(group, nextIncluded);
+                    }}
+                    meta={lastActiveText}
+                    status={
+                      included
+                        ? "Included in future syncs"
+                        : "Hidden from future syncs"
+                    }
+                    labelAccessory={
+                      refreshingGroup ? (
+                        <span
+                          aria-label={`Refreshing group: ${title}`}
+                          data-testid={`facebook-group-${group.id}-refreshing`}
+                          className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
+                        />
+                      ) : null
+                    }
+                    trailingAction={
+                      <Tooltip
+                        label={
+                          checkingLeave
+                            ? "Checking leave status"
+                            : "Leave group via Facebook"
+                        }
+                        side="left"
+                      >
+                        <button
+                          type="button"
+                          aria-label={
+                            checkingLeave
+                              ? `Checking leave status: ${title}`
+                              : `Leave group via Facebook: ${title}`
+                          }
+                          data-testid={`facebook-group-${group.id}-leave`}
+                          disabled={checkingLeave}
+                          onClick={() => handleLeaveGroupViaFacebook(group)}
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </Tooltip>
+                    }
+                  />
+                );
+              }}
+            />
+
+            <details className="group">
+              <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+                <span className="group-open:rotate-90 transition-transform inline-block">
+                  ›
+                </span>
+                Advanced
+              </summary>
+              <div className="mt-3 pl-3 border-l border-white/10">
+                <ScraperWindowModeControl
+                  sourceLabel="Facebook"
+                  mode={windowMode}
+                  onChange={(nextMode) => {
+                    setWindowMode(nextMode);
+                    setFbScraperWindowMode(nextMode);
+                  }}
+                />
+              </div>
+            </details>
+
+            <p className="text-xs text-[#52525b] leading-relaxed">
+              {copy.connectedInfo}
+            </p>
+          </div>
+        </SyncProviderSectionSurface>
+        {dialog}
       </>
     );
   }
@@ -796,43 +944,45 @@ export function FacebookSettingsSection({
 
   return (
     <>
-    <SyncProviderSectionSurface surface={surface} title="Facebook">
-      <div className="space-y-4">
-        <p className="text-sm text-[#71717a] leading-relaxed">
-          {needsReconnect
-            ? "Your Facebook session is no longer valid. Sign in again to restore sync."
-            : copy.disconnectedSettings}
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={handleLogin}
-            className="text-sm px-4 py-2 rounded-xl bg-[#1877F2]/15 text-[#1877F2] hover:bg-[#1877F2]/25 transition-colors"
-          >
-            {needsReconnect ? "Reconnect Facebook" : "Log in with Facebook"}
-          </button>
-          <button
-            onClick={handleCheckAuth}
-            disabled={checking}
-            className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
-          >
-            {checking ? "Checking..." : "Check Connection"}
-          </button>
-        </div>
-        {needsReconnect && authError && (
-          <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage(copy.label, authError)}
+      <SyncProviderSectionSurface surface={surface} title="Facebook">
+        <div className="space-y-4">
+          <p className="text-sm text-[#71717a] leading-relaxed">
+            {needsReconnect
+              ? "Your Facebook session is no longer valid. Sign in again to restore sync."
+              : copy.disconnectedSettings}
           </p>
-        )}
-        {actionError && !needsReconnect && (
-          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
-        )}
-        <ProviderHealthSectionSummary
-          provider="facebook"
-          showMessages={surface === "debug-card" && !actionError}
-        />
-      </div>
-    </SyncProviderSectionSurface>
-    {dialog}
+          <div className="flex gap-2">
+            <button
+              onClick={handleLogin}
+              className="text-sm px-4 py-2 rounded-xl bg-[#1877F2]/15 text-[#1877F2] hover:bg-[#1877F2]/25 transition-colors"
+            >
+              {needsReconnect ? "Reconnect Facebook" : "Log in with Facebook"}
+            </button>
+            <button
+              onClick={handleCheckAuth}
+              disabled={checking}
+              className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
+            >
+              {checking ? "Checking..." : "Check Connection"}
+            </button>
+          </div>
+          {needsReconnect && authError && (
+            <p className="text-xs text-amber-400 leading-relaxed">
+              {formatProviderReconnectMessage(copy.label, authError)}
+            </p>
+          )}
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {actionError}
+            </p>
+          )}
+          <ProviderHealthSectionSummary
+            provider="facebook"
+            showMessages={surface === "debug-card" && !actionError}
+          />
+        </div>
+      </SyncProviderSectionSurface>
+      {dialog}
     </>
   );
 }

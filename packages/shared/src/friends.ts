@@ -199,6 +199,69 @@ export function isFriendAuthoredItem(
   return friendForAuthor(friends, item.platform, item.author.id) !== null;
 }
 
+/**
+ * Compiled form of the current Person-first Friends author predicate.
+ *
+ * Account source order matters. The first matching social Account owns the
+ * decision when it resolves an existing Person. Missing or unlinked Persons
+ * retain the legacy Friend-source fallback, and later duplicate Accounts are
+ * ignored exactly as they are by socialAccountForAuthor().
+ */
+export interface CompiledFriendAuthorIndex {
+  has(platform: Platform, authorId: string): boolean;
+}
+
+export function compileFriendAuthorIndex(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  friends: Record<string, Friend>,
+): CompiledFriendAuthorIndex {
+  const includedAuthorIds = new Map<string, Set<string>>();
+  const seenAccountAuthorIds = new Map<string, Set<string>>();
+
+  const authorIdsFor = (
+    index: Map<string, Set<string>>,
+    platform: string,
+  ): Set<string> => {
+    const existing = index.get(platform);
+    if (existing) return existing;
+    const created = new Set<string>();
+    index.set(platform, created);
+    return created;
+  };
+
+  for (const friend of Object.values(friends)) {
+    for (const source of friend.sources) {
+      authorIdsFor(includedAuthorIds, source.platform).add(source.authorId);
+    }
+  }
+
+  for (const account of Object.values(accounts)) {
+    if (account.kind !== "social") continue;
+    const seenAuthorIds = authorIdsFor(
+      seenAccountAuthorIds,
+      account.provider,
+    );
+    if (seenAuthorIds.has(account.externalId)) continue;
+    seenAuthorIds.add(account.externalId);
+
+    const person = account.personId ? persons[account.personId] : undefined;
+    if (!person) continue;
+    const authorIds = authorIdsFor(includedAuthorIds, account.provider);
+    if (person.relationshipStatus === "friend") {
+      authorIds.add(account.externalId);
+    } else {
+      authorIds.delete(account.externalId);
+    }
+  }
+
+  return Object.freeze({
+    has(platform: Platform, authorId: string): boolean {
+      return includedAuthorIds.get(platform)?.has(authorId) ?? false;
+    },
+  });
+}
+
 function legacySourceKeys(friend: Pick<Friend, "sources">): Set<string> {
   return new Set(friend.sources.map((source) => `${source.platform}:${source.authorId}`));
 }

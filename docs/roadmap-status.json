@@ -12,7 +12,11 @@
       "status": "current",
       "source": "docs/PHASE-3-SAVE-FOR-LATER.md"
     },
-    { "id": 4, "status": "current", "source": "docs/PHASE-4-SYNC.md" },
+    {
+      "id": 4,
+      "status": "current",
+      "source": "docs/PHASE-4-SYNC.md"
+    },
     { "id": 5, "status": "current", "source": "docs/PHASE-5-DESKTOP.md" },
     { "id": 6, "status": "complete", "source": "docs/PHASE-6-PWA.md" },
     {

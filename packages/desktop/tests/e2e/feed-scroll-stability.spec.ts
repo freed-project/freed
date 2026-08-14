@@ -48,7 +48,7 @@ async function setCardDensity(page: import("@playwright/test").Page, density: De
 async function injectMixedFeedItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
     async ({ delayedMediaUrl, brokenMediaUrl }) => {
-      const automerge = (window as Record<string, unknown>).__FREED_AUTOMERGE__ as {
+      const automerge = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
         docBatchImportItems: (items: unknown[]) => Promise<unknown>;
       };
       const now = Date.now();

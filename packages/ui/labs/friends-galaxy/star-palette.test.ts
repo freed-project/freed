@@ -72,10 +72,12 @@ describe("Friends Galaxy GPU star palette", () => {
 
   it("selects the active Freed theme and contains unknown stored values", () => {
     expect(Object.keys(GALAXY_LAB_THEMES).sort()).toEqual([
+      "dark-star",
       "ember",
       "midas",
       "neon",
       "scriptorium",
+      "starship",
     ]);
     expect(friendsGalaxyRendererPaletteForTheme("ember")).toBe(
       GALAXY_LAB_THEMES.ember,

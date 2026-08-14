@@ -1,3 +1,5 @@
+import "./test-helpers/lease-archive-python-runtime.mjs";
+
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -816,6 +818,42 @@ test("bounded descriptor-relative list admits zero or one entry and rejects the 
     assert.notEqual(wrongGeneration.status, 0);
     assert.match(String(wrongGeneration.stderr), /descriptor changed generation/);
     assert.deepEqual(wrongGeneration.stdout, Buffer.alloc(0));
+  });
+});
+
+test("bounded batch list returns exact descriptor-relative entries", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-bounded-batch-"));
+  const first = path.join(root, "first");
+  const second = path.join(root, "second");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(first, { mode: 0o700 });
+  mkdirSync(second, { mode: 0o700 });
+  writeFileSync(path.join(first, "alpha"), "", { mode: 0o600 });
+  writeFileSync(path.join(second, "beta"), "", { mode: 0o600 });
+
+  withDescriptors([first, second], (descriptors) => {
+    const result = runHelper(
+      "list-bounded-batch",
+      [
+        2,
+        1,
+        255,
+        ...directoryGeneration(first),
+        1,
+        255,
+        ...directoryGeneration(second),
+      ],
+      descriptors,
+    );
+    assert.equal(result.status, 0, String(result.stderr));
+    const receipt = JSON.parse(String(result.stdout));
+    assert.equal(receipt.protocol, "freed-lease-archive-move-v1");
+    assert.deepEqual(
+      receipt.listings.map((encoded) =>
+        Buffer.from(encoded, "base64").toString("utf8"),
+      ),
+      ["alpha", "beta"],
+    );
   });
 });
 

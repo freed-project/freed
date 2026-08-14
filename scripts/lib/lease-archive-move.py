@@ -19,6 +19,7 @@ MAX_PRIVATE_FILE_BYTES = 1024 * 1024
 MAX_REPAIR_MOVE_BYTES = 128 * 1024 * 1024
 MAX_BOUNDED_LIST_ENTRIES = 100_000
 MAX_BOUNDED_LIST_ENCODED_BYTES = 16 * 1024 * 1024
+MAX_BOUNDED_LIST_BATCH_DIRECTORIES = 16
 MAX_AUTHORITY_INVENTORY_ENTRIES = 100_000
 MAX_AUTHORITY_INVENTORY_ENCODED_BYTES = 128 * 1024 * 1024
 MAX_AUTHORITY_INVENTORY_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
@@ -5829,25 +5830,26 @@ def list_directory(arguments):
     sys.stdout.buffer.write(b"\x00".join(os.fsencode(value) for value in entries))
 
 
-def list_directory_bounded(arguments):
-    if len(arguments) != 4:
-        fail("list-bounded requires two limits and one directory generation")
-    max_entries = integer(arguments[0], "list entry limit")
-    max_encoded_bytes = integer(arguments[1], "list encoded byte limit")
-    expected_device = integer(arguments[2], "directory device")
-    expected_inode = integer(arguments[3], "directory inode")
+def bounded_directory_entries(
+    descriptor,
+    max_entries,
+    max_encoded_bytes,
+    expected_device,
+    expected_inode,
+    label,
+):
     if max_entries > MAX_BOUNDED_LIST_ENTRIES:
         fail("list entry limit exceeds the compiled boundary")
     if max_encoded_bytes > MAX_BOUNDED_LIST_ENCODED_BYTES:
         fail("list encoded byte limit exceeds the compiled boundary")
     admitted = require_directory(
-        3, expected_device, expected_inode, "bounded list directory"
+        descriptor, expected_device, expected_inode, label
     )
     admitted_snapshot = directory_snapshot(admitted)
     entries = []
     encoded_size = 0
     try:
-        with os.scandir(3) as iterator:
+        with os.scandir(descriptor) as iterator:
             for candidate in iterator:
                 value = entry_name(candidate.name, "listed entry")
                 encoded = os.fsencode(value)
@@ -5867,13 +5869,66 @@ def list_directory_bounded(arguments):
         "",
     )
     revalidated = require_directory(
-        3, expected_device, expected_inode, "bounded list directory"
+        descriptor, expected_device, expected_inode, label
     )
     require_directory_snapshot(
-        revalidated, admitted_snapshot, "bounded list directory"
+        revalidated, admitted_snapshot, label
     )
     entries.sort()
-    sys.stdout.buffer.write(b"\x00".join(entries))
+    return b"\x00".join(entries)
+
+
+def list_directory_bounded(arguments):
+    if len(arguments) != 4:
+        fail("list-bounded requires two limits and one directory generation")
+    max_entries = integer(arguments[0], "list entry limit")
+    max_encoded_bytes = integer(arguments[1], "list encoded byte limit")
+    expected_device = integer(arguments[2], "directory device")
+    expected_inode = integer(arguments[3], "directory inode")
+    sys.stdout.buffer.write(
+        bounded_directory_entries(
+            3,
+            max_entries,
+            max_encoded_bytes,
+            expected_device,
+            expected_inode,
+            "bounded list directory",
+        )
+    )
+
+
+def list_directories_bounded_batch(arguments):
+    if not arguments:
+        fail("list-bounded-batch requires a directory count")
+    directory_count = integer(arguments[0], "bounded list batch directory count")
+    if (
+        directory_count == 0
+        or directory_count > MAX_BOUNDED_LIST_BATCH_DIRECTORIES
+        or len(arguments) != 1 + directory_count * 4
+    ):
+        fail("list-bounded-batch has an invalid directory count or argument frame")
+    listings = []
+    for index in range(directory_count):
+        offset = 1 + index * 4
+        listings.append(
+            base64.b64encode(
+                bounded_directory_entries(
+                    3 + index,
+                    integer(arguments[offset], "list entry limit"),
+                    integer(arguments[offset + 1], "list encoded byte limit"),
+                    integer(arguments[offset + 2], "directory device"),
+                    integer(arguments[offset + 3], "directory inode"),
+                    "bounded list batch directory",
+                )
+            ).decode("ascii")
+        )
+    sys.stdout.write(
+        json.dumps(
+            {"protocol": PROTOCOL, "listings": listings},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
 
 
 def require_missing(arguments):
@@ -6066,6 +6121,7 @@ def main():
         "filesystem": filesystem_capacity,
         "list": list_directory,
         "list-bounded": list_directory_bounded,
+        "list-bounded-batch": list_directories_bounded_batch,
         "mkdir": ensure_directory,
         "missing": require_missing,
         "probe": probe,

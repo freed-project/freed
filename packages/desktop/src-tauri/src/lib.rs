@@ -1,21 +1,35 @@
 //! Freed Desktop Application
 //!
-//! Native desktop app that bundles capture, sync relay, and reader UI.
+//! Native desktop app that bundles capture and the reader UI.
 
+mod library_core_actor_enrollment;
+mod library_core_authority_genesis;
+#[cfg_attr(not(test), allow(dead_code))]
+mod library_core_canonical;
+mod library_core_desktop_runtime;
+#[cfg_attr(not(test), allow(dead_code))]
+mod library_core_ed25519;
+mod library_core_hash;
+#[cfg_attr(not(test), allow(dead_code))]
+mod library_core_journal;
+mod library_core_journal_runtime;
+mod library_core_platform_key;
 mod youtube;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use futures_util::{SinkExt, StreamExt};
+use base64::Engine;
+use futures_util::StreamExt;
 use log::{error, info, warn};
-use rand::{Rng, RngCore};
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
 use std::mem::MaybeUninit;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex as StdMutex, RwLock as StdRwLock,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem};
@@ -25,15 +39,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, RwLock};
 use tokio::time::{timeout, Duration};
-use tokio_tungstenite::{
-    accept_hdr_async,
-    tungstenite::{
-        handshake::server::{ErrorResponse, Request as WsRequest, Response as WsResponse},
-        Message,
-    },
-};
 
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
@@ -51,21 +57,17 @@ use objc2_web_kit::WKWebViewConfiguration;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
-const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
-const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
-const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
-const SYNC_RELAY_DOC_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
 const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
-fn sync_relay_port() -> u16 {
-    std::env::var("FREED_SYNC_PORT")
-        .ok()
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .filter(|port| *port > 0)
-        .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
+#[cfg(any(target_os = "macos", test))]
+const MACOS_TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon-macos-template.png");
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(MACOS_TRAY_ICON_BYTES)
 }
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
@@ -117,8 +119,6 @@ const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
 const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
 const DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS: u64 = 45_000;
-const SYNC_RELAY_BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
-const SYNC_RELAY_BIND_MAX_RETRIES: usize = 60;
 /// Only bounds the non-unix single-file fallback; unix installs rotate
 /// runtime-health daily instead (see append_runtime_health_line).
 #[cfg(not(unix))]
@@ -653,10 +653,12 @@ enum WindowDestroyedReason {
     LoginFlow,
     JobComplete,
     StartupRecovery,
+    MapRendererRelease,
 }
 
 static WINDOW_CREATED_AT: std::sync::LazyLock<StdMutex<HashMap<String, Instant>>> =
     std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
+static MAP_RENDERER_RELEASE_PENDING: AtomicBool = AtomicBool::new(false);
 
 /// Record when a tracked webview window was (re)created so kill records can
 /// report the victim's age. Insert-if-absent: ensure-window paths call this
@@ -1005,38 +1007,6 @@ async fn restore_scraper_feed(
     let _ = window.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
     tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Token management
-// ---------------------------------------------------------------------------
-
-/// Generates a cryptographically random 256-bit pairing token encoded as
-/// base64url without padding (43 ASCII characters).
-fn generate_token() -> String {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-/// Loads the pairing token from `data_dir/pairing-token`, or creates and
-/// persists a fresh one if the file is missing or malformed.
-fn load_or_create_token(data_dir: &std::path::Path) -> String {
-    let path = data_dir.join("pairing-token");
-    if let Ok(raw) = std::fs::read_to_string(&path) {
-        let token = raw.trim().to_string();
-        // 32 bytes base64url-no-pad → exactly 43 chars, all URL-safe
-        let looks_valid = token.len() == 43
-            && token
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if looks_valid {
-            return token;
-        }
-    }
-    let token = generate_token();
-    let _ = std::fs::write(&path, &token);
-    token
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -2690,233 +2660,6 @@ fn write_startup_diagnostics_bundle(
     Ok(output_path)
 }
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// mDNS advertisement
-// ---------------------------------------------------------------------------
-
-/// Keeps the mDNS daemon alive for the application lifetime.
-/// The `Drop` impl shuts the daemon down cleanly on exit.
-struct MdnsState(Option<mdns_sd::ServiceDaemon>);
-
-impl Drop for MdnsState {
-    fn drop(&mut self) {
-        if let Some(daemon) = self.0.take() {
-            let _ = daemon.shutdown();
-        }
-    }
-}
-
-/// Register `_freed-sync._tcp.local` so future native clients can discover
-/// the relay without a QR scan.  The pairing token is intentionally absent
-/// from TXT records — discovery reveals the host/port, not the secret.
-fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
-    use mdns_sd::{ServiceDaemon, ServiceInfo};
-
-    let daemon = ServiceDaemon::new()
-        .map_err(|e| error!("[mDNS] Failed to create daemon: {}", e))
-        .ok()?;
-
-    let hostname = hostname::get()
-        .ok()
-        .and_then(|h| h.into_string().ok())
-        .unwrap_or_else(|| "freed-desktop".to_string());
-
-    let fqdn = format!("{}.local.", hostname);
-
-    let mut properties = std::collections::HashMap::new();
-    properties.insert("v".to_string(), "1".to_string());
-    properties.insert("app".to_string(), "freed".to_string());
-
-    // Pass `()` so mdns-sd auto-discovers all local interfaces — avoids
-    // hard-coding the LAN IP and handles multi-homed machines gracefully.
-    let service = ServiceInfo::new(
-        "_freed-sync._tcp.local.",
-        "Freed Desktop",
-        &fqdn,
-        (),
-        port,
-        Some(properties),
-    )
-    .map_err(|e| error!("[mDNS] Failed to build ServiceInfo: {}", e))
-    .ok()?;
-
-    daemon
-        .register(service)
-        .map_err(|e| error!("[mDNS] Failed to register service: {}", e))
-        .ok()?;
-
-    info!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
-    Some(daemon)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SyncRelayBindRetryPolicy {
-    max_retries: usize,
-    retry_delay: Duration,
-}
-
-const DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY: SyncRelayBindRetryPolicy = SyncRelayBindRetryPolicy {
-    max_retries: SYNC_RELAY_BIND_MAX_RETRIES,
-    retry_delay: SYNC_RELAY_BIND_RETRY_DELAY,
-};
-
-fn sync_relay_bind_retry_delay(
-    policy: SyncRelayBindRetryPolicy,
-    error: &std::io::Error,
-    retries_used: usize,
-) -> Option<Duration> {
-    if error.kind() != std::io::ErrorKind::AddrInUse || retries_used >= policy.max_retries {
-        return None;
-    }
-
-    Some(policy.retry_delay)
-}
-
-async fn bind_sync_relay_listener_with_policy(
-    addr: &str,
-    policy: SyncRelayBindRetryPolicy,
-) -> std::io::Result<(TcpListener, usize)> {
-    let mut retries_used = 0;
-    loop {
-        match TcpListener::bind(addr).await {
-            Ok(listener) => return Ok((listener, retries_used)),
-            Err(error) => {
-                let Some(retry_delay) = sync_relay_bind_retry_delay(policy, &error, retries_used)
-                else {
-                    return Err(error);
-                };
-
-                retries_used += 1;
-                warn!(
-                    "[Sync] Relay port is still busy on {}. retry_attempt={}/{} retry_delay_ms={}",
-                    addr,
-                    retries_used,
-                    policy.max_retries,
-                    retry_delay.as_millis()
-                );
-                tokio::time::sleep(retry_delay).await;
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Local snapshot rotation (grandfather-father-son)
-// ---------------------------------------------------------------------------
-
-/// Write a timestamped Automerge snapshot to `{app_data}/snapshots/` and
-/// prune old files using a GFS scheme:
-///   - last 60 minutely  (≤ 1 hour old)
-///   - last 24 hourly    (1–24 hours old)
-///   - last 30 daily     (> 24 hours old)
-#[cfg_attr(feature = "perf", tracing::instrument(skip(doc_bytes), fields(bytes = doc_bytes.len())))]
-fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    if let Err(e) = std::fs::create_dir_all(snapshot_dir) {
-        error!("[Snapshot] Failed to create dir: {}", e);
-        return;
-    }
-
-    let path = snapshot_dir.join(format!("freed-{}.automerge", ts));
-    if let Err(e) = std::fs::write(&path, doc_bytes) {
-        error!("[Snapshot] Failed to write: {}", e);
-        return;
-    }
-
-    prune_snapshots(snapshot_dir, ts);
-}
-
-#[cfg_attr(feature = "perf", tracing::instrument(skip(snapshot_dir)))]
-fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
-    use std::cmp::Reverse;
-
-    let mut entries: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(snapshot_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            let ts: u64 = name
-                .strip_prefix("freed-")?
-                .strip_suffix(".automerge")?
-                .parse()
-                .ok()?;
-            Some((ts, e.path()))
-        })
-        .collect();
-
-    entries.sort_by_key(|(ts, _)| Reverse(*ts));
-
-    let mut kept: HashSet<std::path::PathBuf> = Default::default();
-    let (mut minutely, mut hourly, mut daily) = (0usize, 0usize, 0usize);
-    let mut last_hour_bucket = u64::MAX;
-    let mut last_day_bucket = u64::MAX;
-
-    for (ts, path) in &entries {
-        let age = now_secs.saturating_sub(*ts);
-        if age < 3_600 && minutely < 60 {
-            kept.insert(path.clone());
-            minutely += 1;
-        } else if age < 86_400 {
-            let bucket = age / 3_600;
-            if bucket != last_hour_bucket && hourly < 24 {
-                kept.insert(path.clone());
-                last_hour_bucket = bucket;
-                hourly += 1;
-            }
-        } else {
-            let bucket = age / 86_400;
-            if bucket != last_day_bucket && daily < 30 {
-                kept.insert(path.clone());
-                last_day_bucket = bucket;
-                daily += 1;
-            }
-        }
-    }
-
-    for (_, path) in &entries {
-        if !kept.contains(path) {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
-// Relay state
-// ---------------------------------------------------------------------------
-
-struct SyncRelayState {
-    port: u16,
-    /// Serializes token snapshots and document exchange against relay reset.
-    epoch_gate: RwLock<()>,
-    /// Broadcast channel — sends doc bytes to all connected clients.
-    broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
-    /// Latest doc binary, served to new joiners immediately on connect.
-    current_doc: RwLock<Option<Arc<Vec<u8>>>>,
-    /// Disconnect signal for every connection authenticated before a factory reset.
-    disconnect_tx: broadcast::Sender<u64>,
-    /// Incremented before factory-reset relay state is cleared.
-    generation: std::sync::atomic::AtomicU64,
-    /// Blocks renderer and mobile writes until local document deletion completes.
-    accepting_doc_updates: std::sync::atomic::AtomicBool,
-    /// Live connection count (displayed in tray / sync indicator).
-    client_count: RwLock<usize>,
-    /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
-    ///
-    /// Uses `std::sync::RwLock` (not Tokio's) because it is never held
-    /// across an `.await` point; it is read/written synchronously and the
-    /// guard is dropped before any async work begins.
-    pairing_token: StdRwLock<String>,
-}
-
-type RelayState = Arc<SyncRelayState>;
-
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeMemoryStats {
@@ -2956,6 +2699,8 @@ struct RuntimeMemoryStats {
 #[serde(rename_all = "camelCase")]
 struct WebkitProcessRuntimeStats {
     process_id: u32,
+    started_at_unix_seconds: u64,
+    started_at_unix_micros: Option<u64>,
     resident_bytes: u64,
     footprint_bytes: Option<u64>,
     virtual_bytes: u64,
@@ -3365,7 +3110,7 @@ impl BackgroundRuntimeCoordinator {
 // ---------------------------------------------------------------------------
 
 /// Per-session user agent strings set by TypeScript at platform connect time,
-/// plus a shared rquest HTTP client with persistent connection pooling.
+/// plus a shared wreq HTTP client with persistent connection pooling.
 struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
@@ -3374,18 +3119,18 @@ struct CaptureState {
     medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
-    x_client: rquest::Client,
+    x_client: wreq::Client,
 }
 
 impl CaptureState {
     fn new() -> Self {
-        // rquest 5.x uses rquest_util::Emulation for Chrome TLS fingerprinting.
-        let x_client = rquest::Client::builder()
-            .emulation(rquest_util::Emulation::Chrome131)
+        // wreq 5.x uses wreq_util::Emulation for Chrome TLS fingerprinting.
+        let x_client = wreq::Client::builder()
+            .emulation(wreq_util::Emulation::Chrome131)
             .no_proxy()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to build rquest client");
+            .expect("Failed to build wreq client");
 
         Self {
             fb_user_agent: std::sync::Mutex::new(String::new()),
@@ -5022,13 +4767,29 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+// sha2 0.11 returns a hybrid-array `Array`, which dropped the `LowerHex` impl
+// that `format!("{:x}", ..)` relied on under 0.10. Encode by hand so the string
+// stays exactly what it was: lower case, zero padded, no separators. Both
+// callers compare against digests persisted by earlier builds, so a change in
+// encoding would read as a changed hash and invalidate them.
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    use std::fmt::Write as _;
+
+    let bytes = bytes.as_ref();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 fn hash_desktop_installation_witness(machine_id: &str, user_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"freed-desktop-installation-witness-v1\0");
     hasher.update(machine_id.trim().as_bytes());
     hasher.update(b"\0");
     hasher.update(user_id.trim().as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex_digest(hasher.finalize())
 }
 
 #[cfg(target_os = "macos")]
@@ -5228,11 +4989,33 @@ async fn fetch_url(url: String, max_bytes: Option<usize>) -> Result<String, Stri
     Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
+/// Native HTTP response handed back to the renderer.
+///
+/// `body_b64` is base64 rather than `Vec<u8>` on purpose. Tauri serialises a
+/// `Vec<u8>` field as a JSON array of numbers, so a 38 MB cloud document
+/// crossed the IPC boundary as 38 million boxed JS numbers, roughly 300 MB of
+/// renderer heap plus the JSON string Tauri built to carry it. Because WebKit's
+/// allocator does not return that to the OS promptly, every cloud sync ratcheted
+/// the renderer. One base64 string is ~1.33x the byte length and a single
+/// allocation.
 #[derive(serde::Serialize)]
 struct NativeHttpResponse {
     status: u16,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    #[serde(rename = "bodyB64")]
+    body_b64: String,
+}
+
+/// Encode a response body for IPC. See `NativeHttpResponse` for why.
+fn encode_ipc_body(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Decode a request body received from the renderer over IPC.
+fn decode_ipc_body(encoded: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| format!("Invalid base64 request body: {}", e))
 }
 
 fn response_headers(response: &reqwest::Response) -> Vec<(String, String)> {
@@ -5291,7 +5074,7 @@ async fn google_api_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
@@ -5301,8 +5084,14 @@ async fn google_drive_request(
     url: String,
     method: Option<String>,
     headers: Option<Vec<(String, String)>>,
-    body: Option<Vec<u8>>,
+    #[allow(non_snake_case)] bodyB64: Option<String>,
 ) -> Result<NativeHttpResponse, String> {
+    // Base64 rather than Vec<u8>: see NativeHttpResponse. Uploading a 38 MB
+    // document as a JSON number array cost the renderer ~300 MB per sync.
+    let body: Option<Vec<u8>> = match bodyB64.as_deref() {
+        Some(encoded) => Some(decode_ipc_body(encoded)?),
+        None => None,
+    };
     let parsed =
         url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
     let allowed_path =
@@ -5352,7 +5141,7 @@ async fn google_drive_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
@@ -5415,7 +5204,7 @@ async fn google_oauth_proxy_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
@@ -5459,7 +5248,7 @@ async fn x_api_request(
     headers: Vec<(String, String)>,
     method: Option<String>,
 ) -> Result<String, String> {
-    // Use the shared rquest client (Chrome TLS fingerprint, persistent connection pool).
+    // Use the shared wreq client (Chrome TLS fingerprint, persistent connection pool).
     let client = &capture.x_client;
 
     let req_builder = if method.as_deref() == Some("GET") {
@@ -5491,140 +5280,6 @@ async fn x_api_request(
 // Tauri commands — sync
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-fn get_local_ip() -> Result<String, String> {
-    local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .map_err(|e| e.to_string())
-}
-
-/// Get all non-loopback IPv4 addresses with their interface names.
-/// Useful for diagnosing cases where the primary IP is a VPN tunnel
-/// rather than the Wi-Fi interface the phone is connected to.
-#[tauri::command]
-fn get_all_local_ips() -> Vec<serde_json::Value> {
-    let port = sync_relay_port();
-    match local_ip_address::list_afinet_netifas() {
-        Ok(ifaces) => ifaces
-            .into_iter()
-            .filter(|(_, ip)| {
-                // IPv4 only, skip loopback
-                matches!(ip, std::net::IpAddr::V4(v4) if !v4.is_loopback())
-            })
-            .map(|(name, ip)| {
-                serde_json::json!({
-                    "interface": name,
-                    "ip": ip.to_string(),
-                    "url": format!("ws://{}:{}", ip, port),
-                })
-            })
-            .collect(),
-        Err(_) => vec![],
-    }
-}
-
-/// Returns the full WebSocket pairing URL including the auth token.
-///
-/// Format: `ws://<lan-ip>:<port>?t=<base64url-token>`
-///
-/// This URL is encoded into the QR code shown in the Mobile Sync tab.
-/// Only devices that scan the QR code (i.e. know the token) can connect.
-#[tauri::command]
-async fn get_sync_url(state: tauri::State<'_, RelayState>) -> Result<String, String> {
-    let _epoch = state.epoch_gate.read().await;
-    let port = state.port;
-    let token = state.pairing_token.read().unwrap().clone();
-    let ip = local_ip_address::local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "localhost".to_string());
-    Ok(format!("ws://{}:{}?t={}", ip, port, token))
-}
-
-/// Rotates the pairing token and persists the new value to disk.
-///
-/// In-flight connections are unaffected (they already authenticated).
-/// New connection attempts with the old token will be rejected — devices
-/// must rescan the QR code to reconnect.
-#[tauri::command]
-async fn reset_pairing_token(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-) -> Result<String, String> {
-    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let new_token = generate_token();
-    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
-    let _epoch = state.epoch_gate.write().await;
-    *state.pairing_token.write().unwrap() = new_token.clone();
-    info!("[Sync] Pairing token rotated");
-    Ok(new_token)
-}
-
-async fn factory_reset_sync_relay_in(
-    data_dir: &Path,
-    state: &RelayState,
-) -> Result<String, String> {
-    let new_token = generate_token();
-    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
-
-    let _epoch = state.epoch_gate.write().await;
-    state
-        .accepting_doc_updates
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    let generation = state
-        .generation
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        + 1;
-    *state.current_doc.write().await = None;
-    *state.pairing_token.write().unwrap() = new_token.clone();
-    let _ = state.disconnect_tx.send(generation);
-    Ok(new_token)
-}
-
-async fn wait_for_relay_clients_to_disconnect(
-    state: &RelayState,
-    drain_timeout: Duration,
-) -> Result<(), String> {
-    let deadline = Instant::now() + drain_timeout;
-    loop {
-        let client_count = *state.client_count.read().await;
-        if client_count == 0 {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "sync relay still has {} client(s) after factory reset drain",
-                client_count
-            ));
-        }
-        tokio::time::sleep(FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL).await;
-    }
-}
-
-/// Revoke existing mobile sessions, clear held bytes, and drain old connections.
-#[tauri::command]
-async fn factory_reset_sync_relay(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-) -> Result<String, String> {
-    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let token = factory_reset_sync_relay_in(&data_dir, &state).await?;
-    wait_for_relay_clients_to_disconnect(&state, FACTORY_RESET_RELAY_DRAIN_TIMEOUT).await?;
-    info!("[Sync] Relay reset and old mobile clients drained for factory reset");
-    Ok(token)
-}
-
-/// Resume relay document updates only after the local Automerge document is cleared.
-#[tauri::command]
-async fn resume_sync_relay_after_factory_reset(
-    state: tauri::State<'_, RelayState>,
-) -> Result<(), String> {
-    let _epoch = state.epoch_gate.write().await;
-    state
-        .accepting_doc_updates
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    Ok(())
-}
-
 fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -5633,7 +5288,9 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
     }
 }
 
-fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts_in(
+    data_dir: &Path,
+) -> Result<(), String> {
     let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
         .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
     runtime_health_write_guard.state.active_target = None;
@@ -5669,7 +5326,9 @@ fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn clear_factory_reset_runtime_artifacts(app: tauri::AppHandle) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let data_dir = app
         .path()
         .app_data_dir()
@@ -5706,7 +5365,7 @@ async fn sha256_file(app: tauri::AppHandle, path: String) -> Result<String, Stri
         hasher.update(&buffer[..read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex_digest(hasher.finalize()))
 }
 
 fn validate_local_ai_download_url(raw: &str) -> Result<(), String> {
@@ -5953,11 +5612,6 @@ async fn download_local_ai_model_file(
     );
 
     Ok(request.expected_size_bytes)
-}
-
-#[tauri::command]
-async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<usize, String> {
-    Ok(*state.client_count.read().await)
 }
 
 fn dir_size_bytes(path: &Path) -> Option<u64> {
@@ -6294,8 +5948,48 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn webkit_process_started_after_app_start(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
-    webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+fn unix_micros_from_process_start(seconds: u64, microseconds: u64) -> Option<u64> {
+    if seconds == 0 || microseconds >= 1_000_000 {
+        return None;
+    }
+    seconds
+        .checked_mul(1_000_000)
+        .and_then(|value| value.checked_add(microseconds))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_started_at_unix_micros(pid: u32) -> Option<u64> {
+    let mut info = MaybeUninit::<libc::proc_bsdinfo>::uninit();
+    let expected_size = std::mem::size_of::<libc::proc_bsdinfo>();
+    let result = unsafe {
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            expected_size as libc::c_int,
+        )
+    };
+    if result != expected_size as libc::c_int {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    unix_micros_from_process_start(info.pbi_start_tvsec, info.pbi_start_tvusec)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_process_started_at_unix_micros(_pid: u32) -> Option<u64> {
+    None
+}
+
+fn webkit_process_started_at_or_after_app(
+    webkit_started_at_unix_micros: Option<u64>,
+    app_started_at_unix_micros: Option<u64>,
+) -> bool {
+    matches!(
+        (webkit_started_at_unix_micros, app_started_at_unix_micros),
+        (Some(webkit), Some(app)) if app > 0 && webkit >= app
+    )
 }
 
 fn webkit_process_started_with_app(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
@@ -6318,15 +6012,19 @@ fn webkit_process_matches_renderer_uptime(
 
 fn freed_webkit_process_role(
     has_open_file_under_roots: bool,
+    webkit_started_at_unix_micros: Option<u64>,
+    app_started_at_unix_micros: Option<u64>,
     webkit_age_seconds: u64,
     app_age_seconds: u64,
 ) -> Option<&'static str> {
+    if !webkit_process_started_at_or_after_app(
+        webkit_started_at_unix_micros,
+        app_started_at_unix_micros,
+    ) {
+        return None;
+    }
     if has_open_file_under_roots {
-        if webkit_process_started_after_app_start(webkit_age_seconds, app_age_seconds) {
-            Some("freed-webcontent")
-        } else {
-            None
-        }
+        Some("freed-webcontent")
     } else if webkit_process_started_with_app(webkit_age_seconds, app_age_seconds) {
         Some("freed-webcontent-age-matched")
     } else {
@@ -6358,6 +6056,7 @@ fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
 fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
+    app_started_at_unix_micros: Option<u64>,
     app_age_seconds: u64,
     precise_attribution: bool,
 ) -> WebkitMemoryStats {
@@ -6377,11 +6076,28 @@ fn freed_webkit_memory_stats(
             }
             let pid_u32 = pid.as_u32();
             let age_seconds = process.run_time();
+            let started_at_unix_seconds = process.start_time();
+            let started_at_unix_micros = macos_process_started_at_unix_micros(pid_u32);
+            // A WebKit process older than Freed cannot belong to this app.
+            // Skip it before lsof so precise startup attribution does not scan
+            // every Safari or unrelated WebKit process on the machine.
+            if precise_attribution
+                && !webkit_process_started_at_or_after_app(
+                    started_at_unix_micros,
+                    app_started_at_unix_micros,
+                )
+            {
+                continue;
+            }
             let has_open_file_under_roots =
                 precise_attribution && macos_process_has_open_file_under_roots(pid_u32, roots);
-            let Some(role) =
-                freed_webkit_process_role(has_open_file_under_roots, age_seconds, app_age_seconds)
-            else {
+            let Some(role) = freed_webkit_process_role(
+                has_open_file_under_roots,
+                started_at_unix_micros,
+                app_started_at_unix_micros,
+                age_seconds,
+                app_age_seconds,
+            ) else {
                 continue;
             };
             let resident = process.memory();
@@ -6395,6 +6111,8 @@ fn freed_webkit_memory_stats(
             process_count += 1;
             let stats = WebkitProcessRuntimeStats {
                 process_id: pid_u32,
+                started_at_unix_seconds,
+                started_at_unix_micros,
                 resident_bytes: resident,
                 footprint_bytes: footprint,
                 virtual_bytes,
@@ -6469,6 +6187,7 @@ fn collect_runtime_memory_stats_with_options(
             )
         })
         .unwrap_or((0, 0, 0));
+    let process_started_at_unix_micros = macos_process_started_at_unix_micros(std::process::id());
     let process_footprint_bytes = macos_process_physical_footprint_bytes(std::process::id());
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
@@ -6479,6 +6198,7 @@ fn collect_runtime_memory_stats_with_options(
     let webkit = freed_webkit_memory_stats(
         &system,
         &app_storage_roots(app),
+        process_started_at_unix_micros,
         process_age_seconds,
         options.precise_webkit_attribution,
     );
@@ -6767,9 +6487,11 @@ fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
     }
 }
 
-fn blocked_social_scrape_should_recover_main_renderer(stats: &RuntimeMemoryStats) -> bool {
-    !scrape_webkit_resident_may_start(stats)
-        && stats.webkit_total_resident_bytes >= MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES
+fn blocked_social_scrape_should_recover_main_renderer(_stats: &RuntimeMemoryStats) -> bool {
+    // A blocked preflight runs in the main renderer's command chain. Destroying
+    // that renderer replays startup work and can recursively rearm the same
+    // preflight before its native memory cooldown reaches the caller.
+    false
 }
 
 fn optional_story_memory_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
@@ -7504,23 +7226,13 @@ async fn ensure_social_scrape_memory(
 #[tauri::command]
 async fn get_runtime_memory_stats(
     app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
     include_storage_sizes: Option<bool>,
     precise_webkit_attribution: Option<bool>,
 ) -> Result<RuntimeMemoryStats, String> {
-    let relay_doc_bytes = state
-        .current_doc
-        .read()
-        .await
-        .as_ref()
-        .map(|doc| doc.len() as u64)
-        .unwrap_or(0);
-    let relay_client_count = *state.client_count.read().await as u64;
-
     Ok(collect_runtime_memory_stats_with_options(
         &app,
-        relay_doc_bytes,
-        relay_client_count,
+        0,
+        0,
         RuntimeMemoryStatsOptions {
             include_storage_sizes: include_storage_sizes.unwrap_or(true),
             precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
@@ -7614,26 +7326,16 @@ async fn get_runtime_health_history(
 async fn prepare_social_scrape_memory(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    state: tauri::State<'_, RelayState>,
     provider: String,
     operation: String,
 ) -> Result<ScrapeMemoryPreparation, String> {
-    let relay_doc_bytes = state
-        .current_doc
-        .read()
-        .await
-        .as_ref()
-        .map(|doc| doc.len() as u64)
-        .unwrap_or(0);
-    let relay_client_count = *state.client_count.read().await as u64;
-
     Ok(prepare_social_scrape_memory_internal(
         &app,
         Some(&capture.background_runtime),
         &provider,
         &operation,
-        relay_doc_bytes,
-        relay_client_count,
+        0,
+        0,
         None,
     )
     .await)
@@ -7667,116 +7369,12 @@ async fn get_ai_hardware_profile(
     })
 }
 
-/// Relay broadcast volume counters (stability program P0-03, F07/F10).
-/// Aggregated over ~60 s windows so the counter itself cannot bloat
-/// runtime-health.jsonl at full-doc-per-mutation broadcast rates.
-struct RelayBroadcastAggregate {
-    window_started_at: Instant,
-    count: u64,
-    total_bytes: u64,
-}
-
-static RELAY_BROADCAST_AGGREGATE: StdMutex<Option<RelayBroadcastAggregate>> = StdMutex::new(None);
-const RELAY_BROADCAST_AGGREGATE_WINDOW: Duration = Duration::from_secs(60);
-
-/// Fold one broadcast into the current window. Returns the finished window
-/// to flush when this broadcast starts a new one. The trailing window is
-/// flushed by the first broadcast after it closes; a final partial window
-/// with no successor is dropped (acceptable for a rate counter).
-fn relay_broadcast_aggregate_update(
-    slot: &mut Option<RelayBroadcastAggregate>,
-    now: Instant,
-    doc_bytes: u64,
-) -> Option<RelayBroadcastAggregate> {
-    match slot {
-        Some(aggregate)
-            if now.duration_since(aggregate.window_started_at)
-                < RELAY_BROADCAST_AGGREGATE_WINDOW =>
-        {
-            aggregate.count += 1;
-            aggregate.total_bytes = aggregate.total_bytes.saturating_add(doc_bytes);
-            None
-        }
-        _ => {
-            let finished = slot.take();
-            *slot = Some(RelayBroadcastAggregate {
-                window_started_at: now,
-                count: 1,
-                total_bytes: doc_bytes,
-            });
-            finished
-        }
-    }
-}
-
-fn note_relay_broadcast(app: &tauri::AppHandle, doc_bytes: u64, client_count: u64) {
-    let now = Instant::now();
-    let finished = {
-        let mut slot = RELAY_BROADCAST_AGGREGATE.lock().unwrap();
-        relay_broadcast_aggregate_update(&mut slot, now, doc_bytes)
-    };
-    if let Some(aggregate) = finished {
-        append_runtime_health(
-            app,
-            serde_json::json!({
-                "event": "relay_broadcast_aggregate",
-                "count": aggregate.count,
-                "totalBytes": aggregate.total_bytes,
-                "clientCount": client_count,
-                "windowMs": now.duration_since(aggregate.window_started_at).as_millis(),
-            }),
-        );
-    }
-}
-
-/// Push a document update to all connected clients.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(app, state, doc_bytes), fields(bytes = doc_bytes.len())))]
-#[tauri::command]
-async fn broadcast_doc(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-    doc_bytes: Vec<u8>,
-) -> Result<(), String> {
-    let _epoch = state.epoch_gate.read().await;
-    if !state
-        .accepting_doc_updates
-        .load(std::sync::atomic::Ordering::SeqCst)
-    {
-        return Err("sync relay is being factory reset".to_string());
-    }
-    let byte_len = doc_bytes.len() as u64;
-    let doc_bytes = Arc::new(doc_bytes);
-    {
-        let mut current_doc = state.current_doc.write().await;
-        if !state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err("sync relay is being factory reset".to_string());
-        }
-        *current_doc = Some(doc_bytes.clone());
-    }
-    let _ = state.broadcast_tx.send(doc_bytes);
-    let client_count = *state.client_count.read().await as u64;
-    note_relay_broadcast(&app, byte_len, client_count);
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Tauri commands — mDNS + snapshots
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-fn get_mdns_active(mdns: tauri::State<'_, MdnsState>) -> bool {
-    mdns.0.is_some()
-}
-
 #[tauri::command]
 fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
     let Ok(data_dir) = app.path().app_data_dir() else {
         return vec![];
     };
-    let dir = data_dir.join("snapshots");
+    let dir = data_dir.join("library-backups");
 
     let mut entries: Vec<String> = std::fs::read_dir(&dir)
         .into_iter()
@@ -7784,7 +7382,7 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
-            if name.starts_with("freed-") && name.ends_with(".automerge") {
+            if name.starts_with("sqlite-") && name.ends_with(".sqlite") {
                 Some(name)
             } else {
                 None
@@ -8113,10 +7711,10 @@ async fn close_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
 /// Uses the Box-Muller transform to convert two uniform samples to a normal
 /// variate, which is fast and requires no external crate.
 fn gaussian_ms(mean: f64, std_dev: f64) -> u64 {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let u1: f64 = rng.gen_range(f64::EPSILON..1.0);
-    let u2: f64 = rng.gen_range(0.0..1.0);
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    let u1: f64 = rng.random_range(f64::EPSILON..1.0);
+    let u2: f64 = rng.random_range(0.0..1.0);
     let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
     (mean + z * std_dev).max(400.0) as u64
 }
@@ -8518,12 +8116,12 @@ async fn fb_show_login(
     .title("Connect Facebook — Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -8654,7 +8252,7 @@ async fn fb_check_auth(
 /// Bails early if the story viewer closes (overlay no longer present) or
 /// if `max_frames` have been viewed.
 async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
-    use rand::Rng;
+    use rand::RngExt;
 
     let _ = set_background_scraper_media_guard(wv, true);
     info!("[FB] story scrape start, max_frames={}", max_frames);
@@ -8709,7 +8307,7 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         }
 
         // Pause to let the user "view" this story frame (2-4s normally, ~8% chance of 6-8s)
-        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+        let view_pause = if rand::rng().random_bool(0.08) {
             gaussian_ms(7000.0, 1000.0)
         } else {
             gaussian_ms(3000.0, 700.0)
@@ -8766,7 +8364,7 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
 /// row of circular avatars at the top of the Following feed), then advances
 /// through frames using the right-side click area.
 async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
-    use rand::Rng;
+    use rand::RngExt;
 
     let _ = set_background_scraper_media_guard(wv, true);
     info!("[IG] story scrape start, max_frames={}", max_frames);
@@ -8816,7 +8414,7 @@ async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         }
 
         // "View" pause: 2-4s normally, ~8% chance of 6-8s (lingering on a story)
-        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+        let view_pause = if rand::rng().random_bool(0.08) {
             gaussian_ms(7000.0, 1000.0)
         } else {
             gaussian_ms(3000.0, 600.0)
@@ -9070,16 +8668,16 @@ async fn fb_scrape_feed(
     let skip_stories = scrape_plan.skip_stories
         || !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape")
         || {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.15)
+            use rand::RngExt;
+            rand::rng().random_bool(0.15)
         };
     let stories_first = !skip_stories && {
-        use rand::Rng;
-        rand::thread_rng().gen_bool(0.50)
+        use rand::RngExt;
+        rand::rng().random_bool(0.50)
     };
     let story_frame_cap = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        use rand::RngExt;
+        rand::rng().random_range(2usize..=4)
     };
 
     if stories_first {
@@ -9096,15 +8694,15 @@ async fn fb_scrape_feed(
     // they're near the viewport, and are unmounted when scrolled away.
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
+        use rand::RngExt;
+        rand::rng().random_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
-        use rand::Rng;
+        use rand::RngExt;
         let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
         let lower = 2usize.min(upper);
-        rand::thread_rng().gen_range(lower..=upper)
+        rand::rng().random_range(lower..=upper)
     } else {
         num_passes // all passes in one go
     };
@@ -9124,8 +8722,8 @@ async fn fb_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(280u64..520)
+            use rand::RngExt;
+            rand::rng().random_range(280u64..520)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -9133,12 +8731,12 @@ async fn fb_scrape_feed(
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..250)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..250)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -9147,8 +8745,8 @@ async fn fb_scrape_feed(
 
         // Gaussian pause between scroll passes; ~25% chance of a longer "reading" pause.
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.25)
+            use rand::RngExt;
+            rand::rng().random_bool(0.25)
         } {
             gaussian_ms(6000.0, 1500.0)
         } else {
@@ -9647,12 +9245,12 @@ async fn ig_show_login(
     .title("Connect Instagram — Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -9931,16 +9529,16 @@ async fn ig_scrape_feed(
     let skip_stories = scrape_plan.skip_stories
         || !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape")
         || (!placeholder_feed && {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.15)
+            use rand::RngExt;
+            rand::rng().random_bool(0.15)
         });
     let stories_first = !skip_stories && {
-        use rand::Rng;
-        placeholder_feed || rand::thread_rng().gen_bool(0.50)
+        use rand::RngExt;
+        placeholder_feed || rand::rng().random_bool(0.50)
     };
     let story_frame_cap = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        use rand::RngExt;
+        rand::rng().random_range(2usize..=4)
     };
 
     if stories_first {
@@ -9960,15 +9558,15 @@ async fn ig_scrape_feed(
     // Instagram virtualizes its feed similarly to Facebook. Scroll
     // incrementally, extracting at each position.
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
+        use rand::RngExt;
+        rand::rng().random_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
-        use rand::Rng;
+        use rand::RngExt;
         let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
         let lower = 2usize.min(upper);
-        rand::thread_rng().gen_range(lower..=upper)
+        rand::rng().random_range(lower..=upper)
     } else {
         num_passes
     };
@@ -9998,8 +9596,8 @@ async fn ig_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(380u64..720)
+            use rand::RngExt;
+            rand::rng().random_range(380u64..720)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -10007,12 +9605,12 @@ async fn ig_scrape_feed(
 
         // Micro-backscroll ~12% of the time.
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..250)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..250)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -10021,8 +9619,8 @@ async fn ig_scrape_feed(
 
         // Gaussian pause; ~25% chance of longer "reading" pause.
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.25)
+            use rand::RngExt;
+            rand::rng().random_bool(0.25)
         } {
             gaussian_ms(5500.0, 1500.0)
         } else {
@@ -10373,12 +9971,12 @@ async fn li_show_login(
     .title("Connect LinkedIn with Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -10613,8 +10211,8 @@ async fn li_scrape_feed(
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        use rand::RngExt;
+        rand::rng().random_range(4usize..=8)
     };
 
     // Inject the extract script as a const so we can append done=true on last pass.
@@ -10662,8 +10260,8 @@ async fn li_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(350u64..650)
+            use rand::RngExt;
+            rand::rng().random_range(350u64..650)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -10671,12 +10269,12 @@ async fn li_scrape_feed(
 
         // Occasional micro-backscroll (~12% probability).
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..200)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..200)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -10685,8 +10283,8 @@ async fn li_scrape_feed(
 
         // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.30)
+            use rand::RngExt;
+            rand::rng().random_bool(0.30)
         } {
             gaussian_ms(7000.0, 2000.0)
         } else {
@@ -11219,7 +10817,7 @@ async fn scroll_essay_roster_surface(
         }
     });
 
-    let scroll_ratio = rand::thread_rng().gen_range(0.72f64..1.28f64);
+    let scroll_ratio = rand::rng().random_range(0.72f64..1.28f64);
     let event_name =
         serde_json::to_string(ESSAY_ROSTER_SCROLL_EVENT).map_err(|error| error.to_string())?;
     let script = format!(
@@ -11322,8 +10920,8 @@ async fn show_essay_provider_login(
     .initialization_script(include_str!("webkit-mask.js"))
     .title(provider.login_title)
     .inner_size(
-        500.0 + rand::thread_rng().gen_range(-8.0f64..8.0),
-        720.0 + rand::thread_rng().gen_range(-10.0f64..10.0),
+        500.0 + rand::rng().random_range(-8.0f64..8.0),
+        720.0 + rand::rng().random_range(-10.0f64..10.0),
     )
     .center()
     .visible(true)
@@ -11989,248 +11587,6 @@ async fn medium_scrape_essays(
         window_mode,
     )
     .await
-}
-
-// ---------------------------------------------------------------------------
-// WebSocket relay
-// ---------------------------------------------------------------------------
-
-fn relay_connection_can_exchange_docs(state: &RelayState, connection_generation: u64) -> bool {
-    state
-        .accepting_doc_updates
-        .load(std::sync::atomic::Ordering::SeqCst)
-        && connection_generation == state.generation.load(std::sync::atomic::Ordering::SeqCst)
-}
-
-fn relay_request_token_matches(query: Option<&str>, expected_token: &str) -> bool {
-    query
-        .and_then(|query| {
-            query.split('&').find_map(|pair| {
-                let mut fields = pair.splitn(2, '=');
-                (fields.next() == Some("t"))
-                    .then(|| fields.next())
-                    .flatten()
-            })
-        })
-        .map(|token| token == expected_token)
-        .unwrap_or(false)
-}
-
-async fn store_relay_client_doc_if_current(
-    state: &RelayState,
-    connection_generation: u64,
-    bytes: Arc<Vec<u8>>,
-) -> bool {
-    let _epoch = state.epoch_gate.read().await;
-    let mut current_doc = state.current_doc.write().await;
-    if !relay_connection_can_exchange_docs(state, connection_generation) {
-        return false;
-    }
-    *current_doc = Some(bytes.clone());
-    let _ = state.broadcast_tx.send(bytes);
-    true
-}
-
-/// Authenticate and handle a single WebSocket connection.
-///
-/// The client must include `?t=<token>` in the upgrade URI.  Any connection
-/// that omits the token or presents an incorrect value is rejected with HTTP
-/// 401 before the WebSocket handshake completes. No data is exchanged.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
-async fn handle_connection(
-    stream: TcpStream,
-    addr: SocketAddr,
-    state: RelayState,
-    app: tauri::AppHandle,
-) {
-    info!("[Sync] New connection from: {}", addr);
-
-    let (expected_token, connection_generation) = {
-        let _epoch = state.epoch_gate.read().await;
-        (
-            state.pairing_token.read().unwrap().clone(),
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-        )
-    };
-    let handshake_token = expected_token.clone();
-    let mut disconnect_rx = state.disconnect_tx.subscribe();
-
-    let ws_stream = match accept_hdr_async(
-        stream,
-        move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = relay_request_token_matches(req.uri().query(), &handshake_token);
-
-            if token_ok {
-                Ok(resp)
-            } else {
-                error!("[Sync] Rejected unauthorized connection from {}", addr);
-                Err(tokio_tungstenite::tungstenite::http::Response::builder()
-                    .status(401)
-                    .body(Some("Unauthorized: rescan the QR code to pair".to_owned()))
-                    .unwrap())
-            }
-        },
-    )
-    .await
-    {
-        Ok(ws) => ws,
-        Err(e) => {
-            // 401 rejections are normal; log everything else
-            if !e.to_string().contains("HTTP error") {
-                error!("[Sync] WebSocket handshake failed: {}", e);
-            }
-            return;
-        }
-    };
-
-    let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    let mut broadcast_rx = state.broadcast_tx.subscribe();
-
-    let connected_count = {
-        let _epoch = state.epoch_gate.read().await;
-        let token_is_current =
-            state.pairing_token.read().unwrap().as_str() == expected_token.as_str();
-        if !token_is_current || !relay_connection_can_exchange_docs(&state, connection_generation) {
-            let _ = timeout(
-                SYNC_RELAY_DOC_SEND_TIMEOUT,
-                ws_sender.send(Message::Close(None)),
-            )
-            .await;
-            info!("[Sync] Client {} rejected during relay reset", addr);
-            return;
-        }
-
-        if let Some(doc) = state.current_doc.read().await.clone() {
-            match timeout(
-                SYNC_RELAY_DOC_SEND_TIMEOUT,
-                ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
-            )
-            .await
-            {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    error!("[Sync] Failed to send initial doc: {}", error);
-                    return;
-                }
-                Err(_) => {
-                    error!("[Sync] Timed out sending initial doc to {}", addr);
-                    return;
-                }
-            }
-        }
-
-        let mut count = state.client_count.write().await;
-        *count += 1;
-        *count
-    };
-    info!("[Sync] Client connected. Total: {}", connected_count);
-    let _ = app.emit("sync-client-count", connected_count);
-
-    loop {
-        tokio::select! {
-            msg = ws_receiver.next() => {
-                match msg {
-                    Some(Ok(Message::Binary(data))) => {
-                        // The client pushed a document update. Store and rebroadcast it.
-                        let bytes = Arc::new(data.to_vec());
-                        if !store_relay_client_doc_if_current(
-                            &state,
-                            connection_generation,
-                            bytes,
-                        ).await {
-                            info!("[Sync] Ignored stale client update after relay reset");
-                            break;
-                        }
-                    }
-                    Some(Ok(Message::Close(_))) | None => {
-                        info!("[Sync] Client {} disconnected", addr);
-                        break;
-                    }
-                    Some(Ok(Message::Ping(data))) => {
-                        let _ = ws_sender.send(Message::Pong(data)).await;
-                    }
-                    Some(Err(e)) => {
-                        error!("[Sync] Error from {}: {}", addr, e);
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            broadcast = broadcast_rx.recv() => {
-                if let Ok(doc) = broadcast {
-                    let _epoch = state.epoch_gate.read().await;
-                    if !relay_connection_can_exchange_docs(&state, connection_generation) {
-                        let _ = timeout(
-                            SYNC_RELAY_DOC_SEND_TIMEOUT,
-                            ws_sender.send(Message::Close(None)),
-                        ).await;
-                        info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
-                        break;
-                    }
-                    match timeout(
-                        SYNC_RELAY_DOC_SEND_TIMEOUT,
-                        ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
-                    ).await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => {
-                            error!("[Sync] Failed to send to {}: {}", addr, error);
-                            break;
-                        }
-                        Err(_) => {
-                            error!("[Sync] Timed out sending to {}", addr);
-                            break;
-                        }
-                    }
-                }
-            }
-            reset = disconnect_rx.recv() => {
-                if reset.is_ok() {
-                    let _ = ws_sender.send(Message::Close(None)).await;
-                    info!("[Sync] Client {} disconnected by factory reset", addr);
-                    break;
-                }
-            }
-        }
-    }
-
-    // Decrement client count and notify frontend
-    {
-        let mut count = state.client_count.write().await;
-        *count = count.saturating_sub(1);
-        let new_count = *count;
-        info!("[Sync] Client disconnected. Total: {}", new_count);
-        let _ = app.emit("sync-client-count", new_count);
-    }
-}
-
-async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
-    let addr = format!("0.0.0.0:{}", state.port);
-
-    let (listener, retries_used) =
-        match bind_sync_relay_listener_with_policy(&addr, DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY)
-            .await
-        {
-            Ok(listener) => listener,
-            Err(e) => {
-                error!("[Sync] Failed to bind to {}: {}", addr, e);
-                return;
-            }
-        };
-
-    if retries_used == 0 {
-        info!("[Sync] Relay server listening on {}", addr);
-    } else {
-        info!(
-            "[Sync] Relay server listening on {} after {} retry attempt(s)",
-            addr, retries_used
-        );
-    }
-
-    while let Ok((stream, addr)) = listener.accept().await {
-        let state = state.clone();
-        let app = app.clone();
-        tokio::spawn(handle_connection(stream, addr, state, app));
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -13061,6 +12417,43 @@ fn recover_main_window(
     )
 }
 
+#[tauri::command]
+fn release_main_renderer_memory(app: tauri::AppHandle) -> Result<(), String> {
+    if MAP_RENDERER_RELEASE_PENDING.swap(true, Ordering::AcqRel) {
+        return Ok(());
+    }
+
+    append_runtime_health(
+        &app,
+        serde_json::json!({
+            "event": "map_renderer_memory_release_requested",
+        }),
+    );
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let outcome = recover_main_window(
+            &app,
+            WindowDestroyedReason::MapRendererRelease,
+            "geographic map renderer memory release",
+        );
+        MAP_RENDERER_RELEASE_PENDING.store(false, Ordering::Release);
+
+        if let Err(error) = outcome {
+            warn!("[map] failed to release native renderer memory: {}", error);
+            append_runtime_health(
+                &app,
+                serde_json::json!({
+                    "event": "map_renderer_memory_release_failed",
+                    "error": error,
+                }),
+            );
+        }
+    });
+
+    Ok(())
+}
+
 fn recover_main_window_hidden(
     app: &tauri::AppHandle,
     reason_enum: WindowDestroyedReason,
@@ -13289,8 +12682,7 @@ fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri:
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // When built with --features perf, initialise a JSON tracing subscriber so
-    // span durations for write_snapshot / prune_snapshots / broadcast_doc are
-    // emitted to stderr. Collect with:
+    // instrumented native span durations are emitted to stderr. Collect with:
     //   RUST_LOG=freed_desktop_lib=trace ./freed-desktop 2>trace.jsonl
     #[cfg(feature = "perf")]
     {
@@ -13302,23 +12694,6 @@ pub fn run() {
             .init();
     }
 
-    let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-    let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-
-    let relay_state = Arc::new(SyncRelayState {
-        port: sync_relay_port(),
-        epoch_gate: RwLock::new(()),
-        broadcast_tx,
-        current_doc: RwLock::new(None),
-        disconnect_tx,
-        generation: std::sync::atomic::AtomicU64::new(0),
-        accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-        client_count: RwLock::new(0),
-        // Populated from disk in .setup() before the relay starts accepting connections.
-        pairing_token: StdRwLock::new(String::new()),
-    });
-
-    let relay_state_clone = relay_state.clone();
     let log_plugin = {
         let builder = tauri_plugin_log::Builder::new()
             .level(log::LevelFilter::Info)
@@ -13346,9 +12721,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(relay_state)
         .manage(LocalAIModelDownloadState::default())
-        .manage(CaptureState::new());
+        .manage(CaptureState::new())
+        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -13391,23 +12766,25 @@ pub fn run() {
                 let _ = start_main_window_quietly(&app_handle)?;
             }
 
-            // Load (or generate) the persistent pairing token before the relay
-            // starts accepting connections.
-            let token = load_or_create_token(&data_dir);
-            *relay_state_clone.pairing_token.write().unwrap() = token;
-
             // Build system tray
             let (show_item, quit_item) = build_primary_action_items(app)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().unwrap())
+            let tray_builder = TrayIconBuilder::new();
+            #[cfg(target_os = "macos")]
+            let tray_builder = tray_builder
+                .icon(macos_tray_icon()?)
+                .icon_as_template(true);
+            #[cfg(not(target_os = "macos"))]
+            let tray_builder =
+                tray_builder.icon(app.default_window_icon().cloned().unwrap());
+
+            let _tray = tray_builder
                 .menu(&menu)
                 .tooltip("Freed — Sync running")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    id => {
-                        let _ = handle_primary_menu_action(&app.app_handle(), id);
-                    }
+                .on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    let _ = handle_primary_menu_action(app.app_handle(), id);
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -13417,7 +12794,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        show_primary_window(&app);
+                        show_primary_window(app);
                     }
                 })
                 .build(app)?;
@@ -14445,17 +13822,7 @@ pub fn run() {
                 }
             });
 
-            // Start mDNS advertisement and keep the daemon alive.
-            let mdns_daemon = advertise_mdns(relay_state_clone.port);
-            app.manage(MdnsState(mdns_daemon));
-
-            // Start the relay — token is already set, so new connections are
-            // immediately subject to authentication.
-            let state = relay_state_clone.clone();
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                start_sync_relay(state, app_handle).await;
-            });
+            info!("[library-core] SQLite Desktop build");
 
             // Dev-only: auto-trigger a Facebook scrape on startup so we can
             // iterate without manual clicking. Set FB_AUTO_SCRAPE=1 env var.
@@ -14523,14 +13890,11 @@ pub fn run() {
             google_drive_request,
             fetch_binary_url,
             x_api_request,
-            get_local_ip,
-            get_all_local_ips,
-            get_sync_url,
             sha256_file,
             download_local_ai_model_file,
             cancel_local_ai_model_download,
-            get_sync_client_count,
             get_runtime_memory_stats,
+            release_main_renderer_memory,
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_runtime_health_history,
@@ -14539,16 +13903,41 @@ pub fn run() {
             get_desktop_session_state,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
-            broadcast_doc,
+            library_core_journal_runtime::open_library_core_journal,
+            library_core_journal_runtime::library_core_journal_status,
+            library_core_desktop_runtime::sqlite_library_status,
+            library_core_desktop_runtime::begin_sqlite_library_import,
+            library_core_desktop_runtime::append_sqlite_library_import,
+            library_core_desktop_runtime::finalize_sqlite_library_import,
+            library_core_desktop_runtime::read_sqlite_library_shell,
+            library_core_desktop_runtime::read_sqlite_library_sync_descriptor,
+            library_core_desktop_runtime::bootstrap_sqlite_library_authority,
+            library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
+            library_core_desktop_runtime::accept_pwa_actor_enrollment_request,
+            library_core_desktop_runtime::accept_pwa_intent_transaction,
+            library_core_desktop_runtime::read_pwa_intent_result_outbox,
+            library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
+            library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
+            library_core_desktop_runtime::read_sqlite_library_sync_page,
+            library_core_desktop_runtime::replace_sqlite_library_shell,
+            library_core_desktop_runtime::upsert_sqlite_library_items,
+            library_core_desktop_runtime::mutate_sqlite_library_items,
+            library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
+            library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
+            library_core_desktop_runtime::read_sqlite_library_items,
+            library_core_desktop_runtime::query_sqlite_library_items,
+            library_core_desktop_runtime::search_sqlite_library_items,
+            library_core_desktop_runtime::create_sqlite_library_backup,
+            library_core_desktop_runtime::list_sqlite_library_backups,
+            library_core_desktop_runtime::read_sqlite_library_backup_chunk,
+            library_core_desktop_runtime::restore_sqlite_library_backup,
+            library_core_desktop_runtime::clear_sqlite_library_backups,
+            library_core_desktop_runtime::clear_sqlite_library,
             clear_factory_reset_runtime_artifacts,
-            reset_pairing_token,
-            factory_reset_sync_relay,
-            resume_sync_relay_after_factory_reset,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
             close_x_login_window,
-            get_mdns_active,
             list_snapshots,
             get_recent_logs,
             start_oauth_server,
@@ -14616,6 +14005,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn macos_tray_icon_is_a_small_monochrome_template() {
+        let icon = macos_tray_icon().expect("macOS tray icon should decode");
+        assert_eq!((icon.width(), icon.height()), (36, 36));
+
+        let mut visible_bounds = (icon.width(), icon.height(), 0, 0);
+        for (index, pixel) in icon.rgba().chunks_exact(4).enumerate() {
+            let [red, green, blue, alpha] = pixel else {
+                unreachable!("RGBA chunks always contain four channels");
+            };
+            assert_eq!(red, green, "template pixels must be monochrome");
+            assert_eq!(green, blue, "template pixels must be monochrome");
+            if *alpha == 0 {
+                continue;
+            }
+
+            let x = (index as u32) % icon.width();
+            let y = (index as u32) / icon.width();
+            visible_bounds.0 = visible_bounds.0.min(x);
+            visible_bounds.1 = visible_bounds.1.min(y);
+            visible_bounds.2 = visible_bounds.2.max(x);
+            visible_bounds.3 = visible_bounds.3.max(y);
+        }
+
+        assert_eq!(visible_bounds, (13, 9, 25, 27));
+    }
+
+    #[test]
     fn desktop_installation_witness_is_scoped_to_machine_and_user() {
         let first = hash_desktop_installation_witness("machine-a", "user-a");
         assert_eq!(first.len(), 64);
@@ -14630,6 +14046,20 @@ mod tests {
         assert_ne!(
             first,
             hash_desktop_installation_witness("machine-a", "user-b")
+        );
+    }
+
+    // Pins the digest itself, not just its length. Witnesses are persisted by
+    // earlier builds and compared on later launches, so the hex encoding is
+    // part of the format. The sha2 0.11 upgrade had to replace the `{:x}`
+    // formatting this once relied on, and a silent shift to upper case or a
+    // separator would still have satisfied the length and scoping assertions
+    // above while invalidating every stored witness.
+    #[test]
+    fn desktop_installation_witness_encoding_is_stable() {
+        assert_eq!(
+            hash_desktop_installation_witness("machine-a", "user-a"),
+            "220d7bdd4df1bf6ce110652b6b5ca6f1425c4429f55fb1096be194dd26ac32bb"
         );
     }
 
@@ -14651,7 +14081,6 @@ mod tests {
         let preserved_files = [
             "release-channel.json",
             "desktop-client-registration.json",
-            "pairing-token",
             "scraper-window-preferences.json",
             "user-agent.json",
         ];
@@ -14659,7 +14088,8 @@ mod tests {
             std::fs::write(data_dir.path().join(name), "installation state").unwrap();
         }
 
-        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
+        clear_factory_reset_runtime_artifacts_in(data_dir.path())
+        .unwrap();
 
         for name in cleared_files {
             assert!(
@@ -14673,133 +14103,8 @@ mod tests {
                 "installation state"
             );
         }
-        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
-    }
-
-    #[tokio::test]
-    async fn factory_reset_relay_rejects_old_clients_and_clears_held_document() {
-        let data_dir = tempfile::tempdir().unwrap();
-        std::fs::write(data_dir.path().join("pairing-token"), "old-token").unwrap();
-        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-        let mut disconnect_rx = disconnect_tx.subscribe();
-        let state = Arc::new(SyncRelayState {
-            port: DEFAULT_SYNC_RELAY_PORT,
-            epoch_gate: RwLock::new(()),
-            broadcast_tx,
-            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
-            disconnect_tx,
-            generation: std::sync::atomic::AtomicU64::new(7),
-            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-            client_count: RwLock::new(1),
-            pairing_token: StdRwLock::new("old-token".to_string()),
-        });
-
-        let mut broadcast_rx = state.broadcast_tx.subscribe();
-        assert!(store_relay_client_doc_if_current(&state, 7, Arc::new(vec![4, 5, 6]),).await);
-        assert_eq!(broadcast_rx.recv().await.unwrap().as_slice(), &[4, 5, 6]);
-
-        let epoch = state.epoch_gate.read().await;
-        let reset_state = state.clone();
-        let reset_data_dir = data_dir.path().to_path_buf();
-        let reset = tokio::spawn(async move {
-            factory_reset_sync_relay_in(&reset_data_dir, &reset_state).await
-        });
-        tokio::task::yield_now().await;
-        assert!(!reset.is_finished());
-        drop(epoch);
-        let new_token = reset.await.unwrap().unwrap();
-
-        assert_ne!(new_token, "old-token");
-        assert_eq!(
-            std::fs::read_to_string(data_dir.path().join("pairing-token")).unwrap(),
-            new_token
-        );
-        assert_eq!(state.pairing_token.read().unwrap().as_str(), new_token);
-        assert!(state.current_doc.read().await.is_none());
-        assert_eq!(
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-            8
-        );
-        assert!(!state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst));
-        assert_eq!(disconnect_rx.recv().await.unwrap(), 8);
-
-        assert!(!store_relay_client_doc_if_current(&state, 7, Arc::new(vec![9, 9, 9])).await);
-        assert!(!store_relay_client_doc_if_current(&state, 8, Arc::new(vec![8, 8, 8])).await);
-        assert!(!relay_connection_can_exchange_docs(&state, 7));
-        assert!(!relay_connection_can_exchange_docs(&state, 8));
-        assert!(state.current_doc.read().await.is_none());
-
-        let drain_state = state.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            *drain_state.client_count.write().await = 0;
-        });
-        wait_for_relay_clients_to_disconnect(&state, Duration::from_millis(100))
-            .await
-            .unwrap();
-
-        state
-            .accepting_doc_updates
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        assert!(!relay_connection_can_exchange_docs(&state, 7));
-        assert!(relay_connection_can_exchange_docs(&state, 8));
-        assert!(!relay_request_token_matches(
-            Some("t=old-token"),
-            &new_token
-        ));
-        let new_query = format!("t={new_token}");
-        assert!(relay_request_token_matches(Some(&new_query), &new_token));
-    }
-
-    #[tokio::test]
-    async fn factory_reset_relay_persistence_failure_preserves_state_and_sessions() {
-        let data_dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(data_dir.path().join("pairing-token")).unwrap();
-        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
-        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
-        let mut disconnect_rx = disconnect_tx.subscribe();
-        let state = Arc::new(SyncRelayState {
-            port: DEFAULT_SYNC_RELAY_PORT,
-            epoch_gate: RwLock::new(()),
-            broadcast_tx,
-            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
-            disconnect_tx,
-            generation: std::sync::atomic::AtomicU64::new(7),
-            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
-            client_count: RwLock::new(1),
-            pairing_token: StdRwLock::new("old-token".to_string()),
-        });
-
-        assert!(factory_reset_sync_relay_in(data_dir.path(), &state)
-            .await
-            .is_err());
-
-        assert_eq!(state.pairing_token.read().unwrap().as_str(), "old-token");
-        assert_eq!(
-            state.generation.load(std::sync::atomic::Ordering::SeqCst),
-            7
-        );
-        assert!(state
-            .accepting_doc_updates
-            .load(std::sync::atomic::Ordering::SeqCst));
-        assert_eq!(
-            state
-                .current_doc
-                .read()
-                .await
-                .as_deref()
-                .map(|bytes| bytes.as_slice()),
-            Some(&[1, 2, 3][..])
-        );
-        assert_eq!(*state.client_count.read().await, 1);
-        assert!(relay_connection_can_exchange_docs(&state, 7));
-        assert!(matches!(
-            disconnect_rx.try_recv(),
-            Err(broadcast::error::TryRecvError::Empty)
-        ));
+        clear_factory_reset_runtime_artifacts_in(data_dir.path())
+        .unwrap();
     }
 
     #[cfg(unix)]
@@ -15178,96 +14483,6 @@ mod tests {
         assert!(take_window_age_seconds(label).is_some());
         // The destroy consumed the entry.
         assert_eq!(take_window_age_seconds(label), None);
-    }
-
-    #[test]
-    fn relay_broadcast_aggregate_flushes_on_window_rollover() {
-        let mut slot: Option<RelayBroadcastAggregate> = None;
-        let start = Instant::now();
-
-        assert!(relay_broadcast_aggregate_update(&mut slot, start, 100).is_none());
-        assert!(
-            relay_broadcast_aggregate_update(&mut slot, start + Duration::from_secs(10), 200)
-                .is_none()
-        );
-        {
-            let aggregate = slot.as_ref().unwrap();
-            assert_eq!(aggregate.count, 2);
-            assert_eq!(aggregate.total_bytes, 300);
-        }
-
-        let finished = relay_broadcast_aggregate_update(
-            &mut slot,
-            start + RELAY_BROADCAST_AGGREGATE_WINDOW + Duration::from_secs(1),
-            50,
-        )
-        .expect("window rollover flushes the finished aggregate");
-        assert_eq!(finished.count, 2);
-        assert_eq!(finished.total_bytes, 300);
-
-        let successor = slot.as_ref().unwrap();
-        assert_eq!(successor.count, 1);
-        assert_eq!(successor.total_bytes, 50);
-    }
-
-    #[test]
-    fn sync_relay_bind_retry_delay_only_retries_addr_in_use() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 3,
-            retry_delay: Duration::from_millis(25),
-        };
-
-        let addr_in_use = std::io::Error::new(std::io::ErrorKind::AddrInUse, "busy");
-        assert_eq!(
-            sync_relay_bind_retry_delay(policy, &addr_in_use, 0),
-            Some(Duration::from_millis(25))
-        );
-        assert_eq!(sync_relay_bind_retry_delay(policy, &addr_in_use, 3), None);
-
-        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
-        assert_eq!(
-            sync_relay_bind_retry_delay(policy, &permission_denied, 0),
-            None
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn sync_relay_bind_listener_retries_until_the_port_is_released() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 10,
-            retry_delay: Duration::from_millis(10),
-        };
-        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = occupied.local_addr().unwrap();
-        let addr_string = addr.to_string();
-
-        let release_task = tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(35)).await;
-            drop(occupied);
-        });
-
-        let (listener, retries_used) = bind_sync_relay_listener_with_policy(&addr_string, policy)
-            .await
-            .unwrap();
-        assert!(retries_used > 0);
-        drop(listener);
-        release_task.await.unwrap();
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn sync_relay_bind_listener_stops_after_retry_budget() {
-        let policy = SyncRelayBindRetryPolicy {
-            max_retries: 2,
-            retry_delay: Duration::from_millis(5),
-        };
-        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr_string = occupied.local_addr().unwrap().to_string();
-
-        let error = bind_sync_relay_listener_with_policy(&addr_string, policy)
-            .await
-            .unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
-        drop(occupied);
     }
 
     #[test]
@@ -16505,16 +15720,24 @@ mod tests {
 
     #[test]
     fn webkit_process_filter_excludes_prior_launches() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
-        assert!(webkit_process_started_after_app_start(0, app_age));
-        assert!(webkit_process_started_after_app_start(
-            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
-            app_age
+        assert!(webkit_process_started_at_or_after_app(
+            Some(app_started_at),
+            Some(app_started_at)
         ));
-        assert!(!webkit_process_started_after_app_start(
-            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
-            app_age
+        assert!(webkit_process_started_at_or_after_app(
+            Some(app_started_at + 1),
+            Some(app_started_at)
+        ));
+        assert!(!webkit_process_started_at_or_after_app(
+            Some(app_started_at - 1),
+            Some(app_started_at)
+        ));
+        assert!(!webkit_process_started_at_or_after_app(
+            Some(app_started_at),
+            None
         ));
 
         assert!(webkit_process_started_with_app(app_age, app_age));
@@ -16527,20 +15750,35 @@ mod tests {
 
     #[test]
     fn webkit_process_role_counts_rooted_current_launches() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
         assert_eq!(
-            freed_webkit_process_role(true, app_age, app_age),
-            Some("freed-webcontent")
-        );
-        assert_eq!(
-            freed_webkit_process_role(true, 0, app_age),
+            freed_webkit_process_role(
+                true,
+                Some(app_started_at),
+                Some(app_started_at),
+                app_age,
+                app_age
+            ),
             Some("freed-webcontent")
         );
         assert_eq!(
             freed_webkit_process_role(
                 true,
-                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                Some(app_started_at + 1),
+                Some(app_started_at),
+                0,
+                app_age
+            ),
+            Some("freed-webcontent")
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                true,
+                Some(app_started_at - 1),
+                Some(app_started_at),
+                app_age + 1,
                 app_age
             ),
             None
@@ -16549,24 +15787,44 @@ mod tests {
 
     #[test]
     fn webkit_process_role_keeps_only_app_start_rootless_processes() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
         assert_eq!(
-            freed_webkit_process_role(false, app_age, app_age),
+            freed_webkit_process_role(
+                false,
+                Some(app_started_at),
+                Some(app_started_at),
+                app_age,
+                app_age
+            ),
             Some("freed-webcontent-age-matched")
         );
         assert_eq!(
             freed_webkit_process_role(
                 false,
+                Some(app_started_at + 1),
+                Some(app_started_at),
                 app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
                 app_age
             ),
             Some("freed-webcontent-age-matched")
         );
-        assert_eq!(freed_webkit_process_role(false, 0, app_age), None);
         assert_eq!(
             freed_webkit_process_role(
                 false,
+                Some(app_started_at + 1),
+                Some(app_started_at),
+                0,
+                app_age
+            ),
+            None
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                false,
+                Some(app_started_at - 1),
+                Some(app_started_at),
                 app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
                 app_age
             ),
@@ -16577,6 +15835,8 @@ mod tests {
     fn webkit_process_stats(process_id: u32, resident_bytes: u64) -> WebkitProcessRuntimeStats {
         WebkitProcessRuntimeStats {
             process_id,
+            started_at_unix_seconds: 1_783_000_000,
+            started_at_unix_micros: Some(1_783_000_000_500_000),
             resident_bytes,
             footprint_bytes: Some(resident_bytes),
             virtual_bytes: resident_bytes.saturating_mul(2),
@@ -16800,7 +16060,7 @@ mod tests {
         assert!(!scrape_webkit_resident_may_start(&stats));
         assert!(!scrape_memory_may_proceed(&stats));
         assert_eq!(scrape_memory_pressure_level(&stats), "high");
-        assert!(blocked_social_scrape_should_recover_main_renderer(&stats));
+        assert!(!blocked_social_scrape_should_recover_main_renderer(&stats));
     }
 
     #[test]

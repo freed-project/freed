@@ -2,18 +2,18 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.dirname(SCRIPT_DIRECTORY);
-const SHARDED_TEST_FILES = Object.freeze({
-  "automation-control": "scripts/automation-control.test.mjs",
-  "kernel-guard-cutover": "scripts/automation-kernel-guard-cutover.test.mjs",
-  "outcome-ledger-repair": "scripts/outcome-ledger-repair.test.mjs",
-});
+import { DURATIONS_FILE } from "./lib/tooling-smoke-plan.mjs";
+import {
+  REPO_ROOT,
+  SHARDED_TEST_FILES,
+  generalTestFiles,
+  shellFiles,
+} from "./lib/tooling-smoke-suites.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -184,7 +184,45 @@ function patternsCanOverlap(left, right) {
   return prefixesCompatible && suffixesCompatible;
 }
 
-export function extractTopLevelTestUnits(source, label = "test source") {
+function transparentLocalTestWrapper(node) {
+  if (
+    !ts.isFunctionDeclaration(node) ||
+    node.name?.text !== "test" ||
+    node.parent === undefined ||
+    !ts.isSourceFile(node.parent) ||
+    node.parameters.length === 0 ||
+    !ts.isIdentifier(node.parameters[0].name) ||
+    node.body === undefined
+  ) {
+    return false;
+  }
+  const nameParameter = node.parameters[0].name.text;
+  const delegatedReturns = [];
+  const inspect = (child) => {
+    if (
+      ts.isReturnStatement(child) &&
+      child.expression !== undefined &&
+      ts.isCallExpression(child.expression) &&
+      ts.isIdentifier(child.expression.expression) &&
+      child.expression.expression.text === "nodeTest"
+    ) {
+      delegatedReturns.push(child.expression);
+    }
+    ts.forEachChild(child, inspect);
+  };
+  inspect(node.body);
+  return (
+    delegatedReturns.length === 1 &&
+    ts.isIdentifier(delegatedReturns[0].arguments[0]) &&
+    delegatedReturns[0].arguments[0].text === nameParameter
+  );
+}
+
+export function extractTopLevelTestUnits(
+  source,
+  label = "test source",
+  { allowTransparentLocalWrapper = false } = {},
+) {
   const sourceFile = ts.createSourceFile(
     label,
     source,
@@ -238,7 +276,11 @@ export function extractTopLevelTestUnits(source, label = "test source") {
         (ts.isImportClause(node.parent) && node.parent.name === node) ||
         (ts.isCallExpression(node.parent) && node.parent.expression === node) ||
         (ts.isPropertyAccessExpression(node.parent) &&
-          node.parent.name === node)
+          node.parent.name === node) ||
+        (allowTransparentLocalWrapper &&
+          ts.isFunctionDeclaration(node.parent) &&
+          node.parent.name === node &&
+          transparentLocalTestWrapper(node.parent))
       )
     ) {
       fail(`${label} aliases or passes the top-level test registrar.`);
@@ -330,51 +372,45 @@ export function partitionWeightedTestUnits(units, shardCount) {
   return shards.map(({ units: assignedUnits }) => Object.freeze(assignedUnits));
 }
 
-function generalTestFiles(repoRoot) {
-  const specialFiles = new Set(Object.values(SHARDED_TEST_FILES));
-  const visit = (relativeDirectory) =>
-    readdirSync(path.join(repoRoot, relativeDirectory), {
-      withFileTypes: true,
-    }).flatMap((entry) => {
-      const relativePath = path.posix.join(relativeDirectory, entry.name);
-      if (entry.isDirectory()) return visit(relativePath);
-      if (
-        !entry.isFile() ||
-        !entry.name.endsWith(".test.mjs") ||
-        specialFiles.has(relativePath)
-      ) {
-        return [];
-      }
-      return [relativePath];
-    });
-  return visit("scripts").sort();
+function readRecordedDurations(repoRoot) {
+  try {
+    return JSON.parse(
+      readFileSync(path.join(repoRoot, DURATIONS_FILE), "utf8"),
+    );
+  } catch {
+    return null;
+  }
 }
 
-function shellFiles(repoRoot) {
-  return ["scripts", path.join("scripts", "lib")]
-    .flatMap((relativeDirectory) =>
-      readdirSync(path.join(repoRoot, relativeDirectory), {
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
-        .map((entry) =>
-          path.posix.join(
-            relativeDirectory.split(path.sep).join("/"),
-            entry.name,
-          ),
-        ),
-    )
-    .sort();
+function completeMeasuredUnitWeights(durations, suite, names) {
+  const units = durations?.suites?.[suite]?.units;
+  if (units === null || typeof units !== "object") return null;
+  const weights = new Map();
+  for (const name of names) {
+    const seconds = Number(units?.[name]?.seconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    weights.set(name, seconds);
+  }
+  return weights;
 }
 
 export function buildToolingSmokeShardPlan(
   { suite, shardIndex, shardCount },
-  { repoRoot = REPO_ROOT } = {},
+  { repoRoot = REPO_ROOT, durations = null } = {},
 ) {
+  const recorded = durations ?? readRecordedDurations(repoRoot);
   if (suite === "general") {
-    const generalUnits = generalTestFiles(repoRoot).map((testFile) => ({
+    const testFiles = generalTestFiles(repoRoot);
+    const measuredWeights = completeMeasuredUnitWeights(
+      recorded,
+      suite,
+      testFiles,
+    );
+    const generalUnits = testFiles.map((testFile) => ({
       name: testFile,
-      weight: readFileSync(path.join(repoRoot, testFile), "utf8").length,
+      weight:
+        measuredWeights?.get(testFile) ??
+        readFileSync(path.join(repoRoot, testFile), "utf8").length,
     }));
     const files = partitionWeightedTestUnits(generalUnits, shardCount)[
       shardIndex - 1
@@ -397,7 +433,18 @@ export function buildToolingSmokeShardPlan(
   }
   const testFile = SHARDED_TEST_FILES[suite];
   const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-  const allUnits = extractTopLevelTestUnits(source, testFile);
+  const extractedUnits = extractTopLevelTestUnits(source, testFile, {
+    allowTransparentLocalWrapper: suite === "nightly-self-improve",
+  });
+  const measuredWeights = completeMeasuredUnitWeights(
+    recorded,
+    suite,
+    extractedUnits.map(({ name }) => name),
+  );
+  const allUnits = extractedUnits.map((unit) => ({
+    ...unit,
+    weight: measuredWeights?.get(unit.name) ?? unit.weight,
+  }));
   const selectedUnits = partitionWeightedTestUnits(allUnits, shardCount)[
     shardIndex - 1
   ];
@@ -415,9 +462,11 @@ export function buildToolingSmokeShardPlan(
 }
 
 function runChecked(command, args, repoRoot) {
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
   const result = spawnSync(command, args, {
     cwd: repoRoot,
-    env: process.env,
+    env: childEnvironment,
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -427,11 +476,28 @@ function runChecked(command, args, repoRoot) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+// node --test defaults to no per-test timeout, so one blocked test pins a shard
+// until the job-level timeout kills the whole run with no useful signal. Any
+// tooling test slower than this in a blocking lane is a defect, not a long test.
+export const SHARD_TEST_TIMEOUT_MS = 300_000;
+
 export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
   if (plan.shellFiles.length > 0) {
     runChecked("bash", ["-n", ...plan.shellFiles], repoRoot);
   }
-  const args = ["--test"];
+  const args = ["--test", `--test-timeout=${SHARD_TEST_TIMEOUT_MS}`];
+  const resultsDirectory = path.join(repoRoot, "tooling-smoke-results");
+  mkdirSync(resultsDirectory, { recursive: true });
+  const junitPath = path.join(
+    resultsDirectory,
+    `${plan.suite}-${plan.shardIndex}-of-${plan.shardCount}.xml`,
+  );
+  args.push(
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    "--test-reporter=junit",
+    `--test-reporter-destination=${junitPath}`,
+  );
   if (plan.testNamePattern !== null) {
     args.push(`--test-name-pattern=${plan.testNamePattern}`);
   }

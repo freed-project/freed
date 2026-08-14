@@ -19,7 +19,6 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
-import { CopyIcon } from "../icons.js";
 import {
   friendsGalaxyGraphDescription,
   friendsGalaxyRecoveryAnnouncement,
@@ -32,6 +31,7 @@ import {
 import {
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../lib/friends-galaxy-camera.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import {
   createFriendsGalaxyDiagnosticSnapshot,
   serializeFriendsGalaxyDiagnosticSnapshot,
@@ -122,6 +122,8 @@ interface GraphSurfacePerfSnapshot {
   sceneSyncMs: number;
   labelPassMs: number;
   sceneSyncCount: number;
+  presentationSyncCount: number;
+  activitySyncCount: number;
   contentSyncCount: number;
   transformOnlySyncCount: number;
   edgeRebuildCount: number;
@@ -134,6 +136,11 @@ interface GraphSurfacePerfSnapshot {
   rendererLabelCount: number;
   readyRendererLabelCount: number;
   rendererEdgeCount: number;
+  bufferUploadCount: number;
+  presentationInFlight: boolean;
+  presentationQueued: boolean;
+  activityInFlight: boolean;
+  activityQueued: boolean;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -166,6 +173,8 @@ interface GraphDiagnosticState {
   sourceDurationMs: number;
   sceneSyncMs: number;
   sceneSyncCount: number;
+  presentationSyncCount: number;
+  activitySyncCount: number;
   sourceAdmissionCount: number;
   transformOnlySyncCount: number;
   lastTransform: FriendsGalaxyTransform | null;
@@ -177,6 +186,7 @@ interface GraphDiagnosticState {
 
 const BACKGROUND_STAR_COUNT = 100_000;
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
+const CANVAS_CONTROL_BASE = `${CONTROL_BASE} theme-canvas-control`;
 const MENU_WIDTH = 264;
 const MENU_ESTIMATED_HEIGHT = 376;
 
@@ -196,6 +206,55 @@ function buildSuggestionRecord(
   map: Map<string, FriendCandidateConfidence> | undefined,
 ): Record<string, FriendCandidateConfidence> {
   return map ? Object.fromEntries(map.entries()) : {};
+}
+
+function useStableSuggestionRecord(
+  map: Map<string, FriendCandidateConfidence> | undefined,
+): Record<string, FriendCandidateConfidence> {
+  const next = buildSuggestionRecord(map);
+  const stable = useRef(next);
+  const nextKeys = Object.keys(next);
+  const current = stable.current;
+  if (
+    nextKeys.length !== Object.keys(current).length ||
+    nextKeys.some((key) => current[key] !== next[key])
+  ) {
+    stable.current = next;
+  }
+  return stable.current;
+}
+
+function sameGraphSourceValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => sameGraphSourceValue(entry, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  return leftKeys.length === Object.keys(rightRecord).length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        sameGraphSourceValue(leftRecord[key], rightRecord[key]),
+    );
+}
+
+function useStableGraphSourceValue<T>(value: T): T {
+  const stable = useRef(value);
+  if (!sameGraphSourceValue(stable.current, value)) stable.current = value;
+  return stable.current;
 }
 
 function accountLabel(account: Account): string {
@@ -412,6 +471,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     sourceDurationMs: 0,
     sceneSyncMs: 0,
     sceneSyncCount: 0,
+    presentationSyncCount: 0,
+    activitySyncCount: 0,
     sourceAdmissionCount: 0,
     transformOnlySyncCount: 0,
     lastTransform: null,
@@ -420,27 +481,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     activityPatchNodeCount: 0,
     unknownActivitySourceCount: 0,
   });
+  const sourcePersons = useStableGraphSourceValue(persons);
+  const sourceAccounts = useStableGraphSourceValue(accounts);
+  const sourceFeeds = useStableGraphSourceValue(feeds);
   const personsById = useMemo(
-    () => new Map(persons.map((person) => [person.id, person])),
-    [persons],
+    () => new Map(sourcePersons.map((person) => [person.id, person])),
+    [sourcePersons],
   );
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
     [activitySummariesProp, feedItems],
   );
-  const personSuggestionRecord = useMemo(
-    () => buildSuggestionRecord(friendSuggestionStrengthByPerson),
-    [friendSuggestionStrengthByPerson],
+  const personSuggestionRecord = useStableSuggestionRecord(
+    friendSuggestionStrengthByPerson,
   );
-  const accountSuggestionRecord = useMemo(
-    () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
-    [friendSuggestionStrengthByAccount],
+  const accountSuggestionRecord = useStableSuggestionRecord(
+    friendSuggestionStrengthByAccount,
   );
-  const personCount = persons.length;
+  const personCount = sourcePersons.length;
   const channelCount = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "social").length +
-      Object.values(feeds).filter((feed) => feed.enabled !== false).length,
-    [accounts, feeds],
+    () => Object.values(sourceAccounts).filter((account) => account.kind === "social").length +
+      Object.values(sourceFeeds).filter((feed) => feed.enabled !== false).length,
+    [sourceAccounts, sourceFeeds],
   );
   const linkCount = useMemo(() => {
     const visiblePersonIds = new Set(
@@ -461,6 +523,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const copyDiagnosticsRequestId = useCommandSurfaceStore(
+    (state) => state.copyFriendsDiagnosticsRequestId,
+  );
+  const handledCopyDiagnosticsRequestIdRef = useRef(copyDiagnosticsRequestId);
   const graphDescriptionId = useId();
   const graphAnnouncementId = useId();
 
@@ -513,6 +579,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const selectNodeRef = useRef(selectNode);
   selectNodeRef.current = selectNode;
   const contextResolverRef = useRef<(target: FriendsGalaxyContextTarget | null) => void>(() => undefined);
+  const publishDiagnosticsRef = useRef<() => void>(() => undefined);
 
   const requestActivityDiff = useCallback((
     previous: IdentityGraphActivitySummaries,
@@ -539,10 +606,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (requestId !== null) {
       diagnosticsRef.current.activityPatchKeyCount = patches.length;
       lastAppliedActivityRef.current = next;
+      publishDiagnosticsRef.current();
     }
   }, []);
 
-  const publishDiagnosticsRef = useRef<() => void>(() => undefined);
   const publishDiagnostics = useCallback(() => {
     const viewport = viewportRef.current;
     const engine = engineRef.current;
@@ -580,6 +647,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       sceneSyncMs: diagnostic.sceneSyncMs,
       labelPassMs: 0,
       sceneSyncCount: diagnostic.sceneSyncCount,
+      presentationSyncCount: diagnostic.presentationSyncCount,
+      activitySyncCount: diagnostic.activitySyncCount,
       contentSyncCount: diagnostic.sourceAdmissionCount,
       transformOnlySyncCount: diagnostic.transformOnlySyncCount,
       edgeRebuildCount: renderer?.contextualEdgeCount ?? 0,
@@ -592,6 +661,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       rendererLabelCount: renderer?.labelCount ?? 0,
       readyRendererLabelCount: renderer?.labelCount ?? 0,
       rendererEdgeCount: renderer?.contextualEdgeCount ?? 0,
+      bufferUploadCount: renderer?.bufferUploadCount ?? 0,
+      presentationInFlight: engine.presentationInFlight,
+      presentationQueued: engine.presentationQueued,
+      activityInFlight: engine.activityInFlight,
+      activityQueued: engine.activityQueued,
       denseRenderMode: residentNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: residentNodeCount >= 1_200,
       denseInteractionNodeCount: qualityMode === "interactive" ? visibleNodeCount : 0,
@@ -697,7 +771,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   presentationReadyRef.current = (response) => {
     const diagnostic = diagnosticsRef.current;
     diagnostic.presentationAtlas = response.atlas;
-    diagnostic.sceneSyncCount += 1;
+    diagnostic.presentationSyncCount += 1;
     diagnostic.sceneSyncMs = 0;
     controllerRef.current?.wake();
     publishDiagnosticsRef.current();
@@ -708,6 +782,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   ) => void>(() => undefined);
   activityReadyRef.current = (response) => {
     const diagnostic = diagnosticsRef.current;
+    diagnostic.activitySyncCount += 1;
     diagnostic.activityPatchNodeCount = response.scenePatches.nodeIndices.length;
     diagnostic.unknownActivitySourceCount = response.scenePatches.unknownSources.length;
     publishDiagnosticsRef.current();
@@ -913,9 +988,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     setGraphError(null);
     const geometry = controller.geometry;
     const source: BuildIdentityGraphAtlasModelInput = {
-      persons,
-      accounts,
-      feeds,
+      persons: sourcePersons,
+      accounts: sourceAccounts,
+      feeds: sourceFeeds,
       activitySummaries: baseline,
       mode,
       width: 1_400,
@@ -934,16 +1009,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         selectedAccountId,
       },
       backgroundStarCount: BACKGROUND_STAR_COUNT,
-      backgroundSeed: `freed-friends-${mode}-${persons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
+      backgroundSeed: `freed-friends-${mode}-${sourcePersons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
     });
   }, [
     accountSuggestionRecord,
-    accounts,
+    sourceAccounts,
     channelCount,
-    feeds,
+    sourceFeeds,
     mode,
     personSuggestionRecord,
-    persons,
+    sourcePersons,
     sourceRetry,
   ]);
 
@@ -1058,6 +1133,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       setGraphStatus("Clipboard unavailable");
     }
   }, [activitySummaries, channelCount, personCount, themeId]);
+
+  useEffect(() => {
+    if (copyDiagnosticsRequestId === handledCopyDiagnosticsRequestIdRef.current) return;
+    handledCopyDiagnosticsRequestIdRef.current = copyDiagnosticsRequestId;
+    void handleCopyDiagnostics();
+  }, [copyDiagnosticsRequestId, handleCopyDiagnostics]);
 
   const handleOpenContextDetails = useCallback(() => {
     if (!contextMenu) return;
@@ -1286,18 +1367,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         data-graph-gesture-ignore="true"
         className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4"
       >
-        <button type="button" className={CONTROL_BASE} onClick={fitAll}>
+        <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all
-        </button>
-        <button
-          type="button"
-          className={`${CONTROL_BASE} inline-flex items-center gap-1.5 px-2 sm:px-3`}
-          onClick={() => void handleCopyDiagnostics()}
-          aria-label="Copy diagnostics"
-          title="Copy diagnostics"
-        >
-          <CopyIcon className="h-4 w-4" />
-          <span className="hidden sm:inline">Copy diagnostics</span>
         </button>
       </div>
     </div>

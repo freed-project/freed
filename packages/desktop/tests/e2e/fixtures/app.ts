@@ -167,7 +167,7 @@ export class AppFixture {
     await this.page.evaluate(
       async ({ count, feedUrl }) => {
         const w = window as Record<string, unknown>;
-        const automerge = w.__FREED_AUTOMERGE__ as {
+        const automerge = w.__FREED_LIBRARY_CORE__ as {
           docBatchImportItems: (items: unknown[]) => Promise<unknown>;
         };
 
@@ -207,13 +207,29 @@ export class AppFixture {
       { count, feedUrl },
     );
 
-    // Wait for the store to hydrate the new items into the UI.
+    // SQLite keeps the corpus out of Zustand. Wait for either the SQLite mock
+    // row store or the legacy fallback store, depending on the active engine.
     await this.page.waitForFunction(
       (expectedCount: number) => {
         const w = window as Record<string, unknown>;
-        const store = w.__FREED_STORE__ as
-          | { getState: () => { items: unknown[] } }
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+          | { active?: boolean; items?: Record<string, { __deleted?: boolean }> }
           | undefined;
+        const store = w.__FREED_STORE__ as
+          | {
+              getState: () => {
+                itemCountByPlatform: Record<string, number>;
+                items: unknown[];
+              };
+            }
+          | undefined;
+        if (sqlite?.active) {
+          return (
+            Object.values(sqlite.items ?? {}).filter((item) => !item.__deleted)
+              .length >= expectedCount &&
+            (store?.getState().itemCountByPlatform.rss ?? 0) >= expectedCount
+          );
+        }
         return (store?.getState().items.length ?? 0) >= expectedCount;
       },
       count,
@@ -224,7 +240,7 @@ export class AppFixture {
   async seedFriendLocation(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docAddPerson: (person: unknown) => Promise<void>;
         docAddAccount: (account: unknown) => Promise<void>;
         docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -306,7 +322,17 @@ export class AppFixture {
           }
           if (Date.now() - startedAt > 5_000) {
             clearInterval(interval);
-            reject(new Error("seed timeout"));
+            const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+              | { active?: boolean; items?: Record<string, unknown>; shell?: Record<string, unknown> }
+              | undefined;
+            reject(new Error(`seed timeout ${JSON.stringify({
+              storeItems: state.items.length,
+              friends: Object.keys(state.friends),
+              accounts: Object.keys(state.accounts),
+              sqliteActive: sqlite?.active,
+              sqliteItems: Object.keys(sqlite?.items ?? {}),
+              sqliteShellKeys: Object.keys(sqlite?.shell ?? {}),
+            })}`));
           }
         }, 50);
       });
@@ -316,7 +342,7 @@ export class AppFixture {
   async seedAllContentLocationsWithoutFriends(): Promise<void> {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
+      const automerge = w.__FREED_LIBRARY_CORE__ as {
         docAddFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
