@@ -47,12 +47,15 @@ describe("background runtime coordinator", () => {
     });
 
     coordinator.noteRendererHeartbeat(heartbeat(2));
-    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({ ok: true });
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: true,
+    });
   });
 
   it("prevents overlapping background jobs", async () => {
     const coordinator = await loadCoordinator();
-    const { useBackgroundActivityStore } = await import("@freed/ui/lib/background-activity-store");
+    const { useBackgroundActivityStore } =
+      await import("@freed/ui/lib/background-activity-store");
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
     coordinator.noteRendererHeartbeat(heartbeat(1));
     coordinator.noteRendererHeartbeat(heartbeat(2));
@@ -61,13 +64,18 @@ describe("background runtime coordinator", () => {
     const first = coordinator.runBackgroundJob({
       kind: "content-fetch",
       source: "test-fetch",
-      run: () => new Promise<void>((resolve) => {
-        releaseFirst = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
     });
 
     await Promise.resolve();
-    expect(useBackgroundActivityStore.getState().active["job:content-fetch:test-fetch"]).toMatchObject({
+    expect(
+      useBackgroundActivityStore.getState().active[
+        "job:content-fetch:test-fetch"
+      ],
+    ).toMatchObject({
       jobKind: "content-fetch",
       source: "test-fetch",
       label: "Article fetch",
@@ -82,7 +90,11 @@ describe("background runtime coordinator", () => {
 
     releaseFirst();
     await first;
-    expect(useBackgroundActivityStore.getState().active["job:content-fetch:test-fetch"]).toBeUndefined();
+    expect(
+      useBackgroundActivityStore.getState().active[
+        "job:content-fetch:test-fetch"
+      ],
+    ).toBeUndefined();
     expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
       level: "success",
       jobKind: "content-fetch",
@@ -104,7 +116,9 @@ describe("background runtime coordinator", () => {
       "active:semantic-classifier:content-signals",
     );
 
-    expect(message).toBe("Freed is finishing local indexing. Try again in a moment.");
+    expect(message).toBe(
+      "Freed is finishing local indexing. Try again in a moment.",
+    );
     expect(message).not.toContain("active:");
     expect(message).not.toContain("semantic-classifier");
     expect(message).not.toContain("content-signals");
@@ -120,9 +134,10 @@ describe("background runtime coordinator", () => {
     const scrape = coordinator.runBackgroundJob({
       kind: "social-scrape",
       source: "facebook:feed",
-      run: () => new Promise<void>((resolve) => {
-        releaseScrape = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseScrape = resolve;
+        }),
     });
 
     await Promise.resolve();
@@ -149,9 +164,10 @@ describe("background runtime coordinator", () => {
       kind: "semantic-classifier",
       source: "content-signals",
       blocking: false,
-      run: () => new Promise<void>((resolve) => {
-        releaseSemantic = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseSemantic = resolve;
+        }),
     });
 
     await Promise.resolve();
@@ -180,9 +196,10 @@ describe("background runtime coordinator", () => {
     const scrape = coordinator.runBackgroundJob({
       kind: "social-scrape",
       source: "instagram:feed",
-      run: () => new Promise<void>((resolve) => {
-        releaseScrape = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseScrape = resolve;
+        }),
     });
 
     await Promise.resolve();
@@ -209,9 +226,10 @@ describe("background runtime coordinator", () => {
     const outbox = coordinator.runBackgroundJob({
       kind: "outbox",
       source: "outbox",
-      run: () => new Promise<void>((resolve) => {
-        releaseOutbox = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseOutbox = resolve;
+        }),
     });
 
     await Promise.resolve();
@@ -246,9 +264,10 @@ describe("background runtime coordinator", () => {
     const first = coordinator.runBackgroundJob({
       kind: "social-scrape",
       source: "facebook:feed",
-      run: () => new Promise<void>((resolve) => {
-        releaseScrape = resolve;
-      }),
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseScrape = resolve;
+        }),
     });
 
     await Promise.resolve();
@@ -264,6 +283,45 @@ describe("background runtime coordinator", () => {
 
     releaseScrape();
     await first;
+  });
+
+  it("retains Meta job ownership after timeout until native work settles", async () => {
+    vi.useFakeTimers();
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests();
+
+    let releaseNativeWork: () => void = () => {};
+    const timedOut = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      timeoutMs: 100,
+      retainUntilSettledAfterTimeout: true,
+      run: () =>
+        new Promise<void>((resolve) => {
+          releaseNativeWork = resolve;
+        }),
+    });
+    const observedTimeout = timedOut.catch((error) => error);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(coordinator.getBackgroundRuntimeStatus()).toMatchObject({
+      activeJob: "social-scrape",
+      activeSource: "facebook:feed",
+    });
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "social-scrape",
+        source: "instagram:feed",
+        run: () => undefined,
+      }),
+    ).rejects.toMatchObject({ reason: "active:social-scrape:facebook:feed" });
+
+    releaseNativeWork();
+    await expect(observedTimeout).resolves.toMatchObject({
+      message: expect.stringContaining("job timed out"),
+    });
+    expect(coordinator.getBackgroundRuntimeStatus().activeJob).toBeNull();
   });
 
   it("pauses jobs during memory pressure cooldown", async () => {
@@ -340,7 +398,9 @@ describe("background runtime coordinator", () => {
       ...baseSnapshot,
       pressureLevel: "normal",
     });
-    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({ ok: true });
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: true,
+    });
   });
 
   it("pauses non-snapshot jobs during renderer safe mode", async () => {
@@ -363,7 +423,9 @@ describe("background runtime coordinator", () => {
     });
     coordinator.noteRendererHeartbeat(heartbeat(3));
     coordinator.noteRendererHeartbeat(heartbeat(4));
-    expect(coordinator.getBackgroundRuntimeStatus().safeModeUntil).toEqual(expect.any(Number));
+    expect(coordinator.getBackgroundRuntimeStatus().safeModeUntil).toEqual(
+      expect.any(Number),
+    );
     expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
       ok: false,
       reason: expect.stringContaining("renderer_safe_mode:"),
@@ -377,7 +439,9 @@ describe("background runtime coordinator", () => {
     ).resolves.toBe("snapshotted");
 
     await vi.advanceTimersByTimeAsync(600_001);
-    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({ ok: true });
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: true,
+    });
   });
 
   it("bridges native renderer recovery events into a cooldown", async () => {
@@ -415,7 +479,9 @@ describe("background runtime coordinator", () => {
     coordinator.noteRendererHeartbeat(heartbeat(3));
     coordinator.noteRendererHeartbeat(heartbeat(4));
 
-    expect(coordinator.canStartBackgroundJob("social-scrape")).toEqual({ ok: true });
+    expect(coordinator.canStartBackgroundJob("social-scrape")).toEqual({
+      ok: true,
+    });
     await expect(
       coordinator.runBackgroundJob({
         kind: "social-scrape",

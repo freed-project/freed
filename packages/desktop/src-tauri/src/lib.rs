@@ -5288,9 +5288,7 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
     }
 }
 
-fn clear_factory_reset_runtime_artifacts_in(
-    data_dir: &Path,
-) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
     let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
         .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
     runtime_health_write_guard.state.active_target = None;
@@ -5326,9 +5324,7 @@ fn clear_factory_reset_runtime_artifacts_in(
 }
 
 #[tauri::command]
-fn clear_factory_reset_runtime_artifacts(
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+fn clear_factory_reset_runtime_artifacts(app: tauri::AppHandle) -> Result<(), String> {
     let data_dir = app
         .path()
         .app_data_dir()
@@ -7795,12 +7791,26 @@ struct IgFeedStatePayload {
 }
 
 impl IgFeedStatePayload {
+    fn content_bearing_without_layout(&self) -> bool {
+        self.article_count > 0
+            && self.ready_article_count == 0
+            && self.tiny_article_count > 0
+            && self.first_article_height == 0
+            && (self.first_article_text_length > 15 || self.first_article_media_count > 0)
+            && self.main_found
+            && !self.login_chrome
+    }
+
     fn placeholders_only(&self) -> bool {
-        self.article_count > 0 && self.ready_article_count == 0 && self.tiny_article_count > 0
+        self.article_count > 0
+            && self.ready_article_count == 0
+            && self.tiny_article_count > 0
+            && !self.content_bearing_without_layout()
     }
 
     fn feed_ready(&self) -> bool {
-        self.ready_article_count > 0 && !self.login_chrome
+        (self.ready_article_count > 0 || self.content_bearing_without_layout())
+            && !self.login_chrome
     }
 
     fn diagnostic_summary(&self) -> String {
@@ -14090,8 +14100,7 @@ mod tests {
             std::fs::write(data_dir.path().join(name), "installation state").unwrap();
         }
 
-        clear_factory_reset_runtime_artifacts_in(data_dir.path())
-        .unwrap();
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
 
         for name in cleared_files {
             assert!(
@@ -14105,8 +14114,7 @@ mod tests {
                 "installation state"
             );
         }
-        clear_factory_reset_runtime_artifacts_in(data_dir.path())
-        .unwrap();
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
     }
 
     #[cfg(unix)]
@@ -14665,6 +14673,25 @@ mod tests {
             ..state
         }
         .placeholders_only());
+
+        let hidden_content_feed = IgFeedStatePayload {
+            logged_in_cookie: false,
+            article_count: 2,
+            ready_article_count: 0,
+            tiny_article_count: 2,
+            first_article_height: 0,
+            first_article_text_length: 228,
+            first_article_media_count: 1,
+            scroll_height: 1199,
+            document_ready_state: "complete".to_string(),
+            login_chrome: false,
+            main_found: true,
+            url: "https://www.instagram.com/?variant=following".to_string(),
+            title: "Instagram".to_string(),
+        };
+        assert!(hidden_content_feed.content_bearing_without_layout());
+        assert!(hidden_content_feed.feed_ready());
+        assert!(!hidden_content_feed.placeholders_only());
     }
 
     #[test]

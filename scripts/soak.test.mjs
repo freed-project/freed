@@ -1954,9 +1954,7 @@ test("request-surface summaries group events and enforce hard retry budgets", ()
   assert.equal(assertions[0].violations.length, 2);
   assert.equal(assertions[1].violations[0].line, 5);
 
-  const withinBudget = events.filter(
-    ({ line }) => line !== 2 && line !== 5,
-  );
+  const withinBudget = events.filter(({ line }) => line !== 2 && line !== 5);
   assert.deepEqual(
     assertRequestSurfaceContracts(withinBudget, "runtime-health.jsonl").map(
       ({ status }) => status,
@@ -2534,7 +2532,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 7);
+  assert.equal(verdict.metricRegistryVersion, 8);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
@@ -2573,10 +2571,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(byId.main_footprint_slope, "pass");
   assert.equal(byId.startup_repair_upload_budget, "pass");
   assert.equal(byId.social_outbox_retry_budget, "pass");
-  assert.equal(
-    verdict.eventSummaries.requestSurface.rssPullAttempts.total,
-    0,
-  );
+  assert.equal(verdict.eventSummaries.requestSurface.rssPullAttempts.total, 0);
   assert.equal(byId.renderer_recoveries, "pass");
   assert.equal(byId.stale_heartbeats, "pass");
   assert.equal(byId.worker_init_rate, "pass");

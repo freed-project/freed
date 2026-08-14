@@ -4,12 +4,15 @@ type ProviderStage = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
 
 const mocks = vi.hoisted(() => {
   const state = {
-    feeds: {} as Record<string, {
-      url: string;
-      title: string;
-      enabled: boolean;
-      trackUnread: boolean;
-    }>,
+    feeds: {} as Record<
+      string,
+      {
+        url: string;
+        title: string;
+        enabled: boolean;
+        trackUnread: boolean;
+      }
+    >,
     items: [] as unknown[],
     xAuth: { isAuthenticated: false, cookies: null as unknown },
     fbAuth: { isAuthenticated: false },
@@ -48,10 +51,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent: vi.fn() }));
 vi.mock("@freed/ui/lib/factory-reset", () => ({
-  captureFactoryResetWriteEpoch: () => mocks.resetActive ? null : 0,
-  isFactoryResetWriteAllowed: (epoch: number | null) => !mocks.resetActive && epoch === 0,
+  captureFactoryResetWriteEpoch: () => (mocks.resetActive ? null : 0),
+  isFactoryResetWriteAllowed: (epoch: number | null) =>
+    !mocks.resetActive && epoch === 0,
   isFactoryResetInProgress: () => mocks.resetActive,
-  trackFactoryResetSensitiveOperation: <T,>(operation: Promise<T>) => operation,
+  trackFactoryResetSensitiveOperation: <T>(operation: Promise<T>) => operation,
 }));
 vi.mock("./library-client", () => ({
   docBatchRefreshFeeds: mocks.docBatchRefreshFeeds,
@@ -155,9 +159,10 @@ describe("capture factory reset boundary", () => {
   it("rejects late RSS subscription data without restoring a feed or items", async () => {
     let resolveFetch!: (xml: string) => void;
     mocks.invoke.mockImplementation(
-      () => new Promise<string>((resolve) => {
-        resolveFetch = resolve;
-      }),
+      () =>
+        new Promise<string>((resolve) => {
+          resolveFetch = resolve;
+        }),
     );
 
     const { addRssFeed } = await import("./capture");
@@ -193,13 +198,17 @@ describe("capture factory reset boundary", () => {
     const pendingFetches: Array<(html: string) => void> = [];
     mocks.invoke.mockImplementation((command: string) => {
       if (command === "query_sqlite_library_items") {
-        return Promise.resolve({ itemsJson: [], nextOffset: null, totalCount: 0 });
+        return Promise.resolve({
+          itemsJson: [],
+          nextOffset: null,
+          totalCount: 0,
+        });
       }
       return new Promise<string>((resolve) => pendingFetches.push(resolve));
     });
 
-    const { refreshAllFeeds } = await import("./capture");
-    const refreshing = refreshAllFeeds();
+    const { refreshScheduledNonMetaFeeds } = await import("./capture");
+    const refreshing = refreshScheduledNonMetaFeeds();
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(5));
 
     mocks.resetActive = true;
@@ -217,10 +226,13 @@ describe("capture factory reset boundary", () => {
     expect(mocks.captureYouTube).not.toHaveBeenCalled();
   });
 
-  it.each<ProviderStage>(["x", "facebook", "instagram", "linkedin"])(
+  it.each<ProviderStage>(["x", "linkedin"])(
     "does not start the provider after %s when reset begins",
     async (pausedStage) => {
-      mocks.state.xAuth = { isAuthenticated: true, cookies: [{ name: "auth_token" }] };
+      mocks.state.xAuth = {
+        isAuthenticated: true,
+        cookies: [{ name: "auth_token" }],
+      };
       mocks.state.fbAuth = { isAuthenticated: true };
       mocks.state.igAuth = { isAuthenticated: true };
       mocks.state.liAuth = { isAuthenticated: true };
@@ -228,20 +240,27 @@ describe("capture factory reset boundary", () => {
 
       let releaseStage!: (value: unknown) => void;
       captureMock(pausedStage).mockImplementationOnce(
-        () => new Promise<unknown>((resolve) => {
-          releaseStage = resolve;
-        }),
+        () =>
+          new Promise<unknown>((resolve) => {
+            releaseStage = resolve;
+          }),
       );
 
-      const { refreshAllFeeds } = await import("./capture");
-      const refreshing = refreshAllFeeds();
-      await vi.waitFor(() => expect(captureMock(pausedStage)).toHaveBeenCalledOnce());
+      const { refreshScheduledNonMetaFeeds } = await import("./capture");
+      const refreshing = refreshScheduledNonMetaFeeds();
+      await vi.waitFor(() =>
+        expect(captureMock(pausedStage)).toHaveBeenCalledOnce(),
+      );
 
       mocks.resetActive = true;
       releaseStage(socialResult(pausedStage));
       await refreshing;
 
-      const stages: ProviderStage[] = ["x", "facebook", "instagram", "linkedin", "youtube"];
+      const stages: ProviderStage[] = [
+        "x",
+        "linkedin",
+        "youtube",
+      ];
       const laterStages = stages.slice(stages.indexOf(pausedStage) + 1);
       for (const provider of laterStages) {
         expect(captureMock(provider)).not.toHaveBeenCalled();

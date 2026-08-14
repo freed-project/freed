@@ -25,12 +25,18 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
+import {
+  recordScrapeOutcome,
+  type SocialScrapeTrigger,
+} from "./runtime-health-events";
 import {
   formatScrapeMemoryPressureDetails,
   prepareSocialScrapeMemory,
 } from "./memory-monitor";
-import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
+import {
+  archiveRecentProviderMedia,
+  upsertMediaVaultRosterFromItems,
+} from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import { log } from "./logger";
@@ -90,28 +96,24 @@ export interface IgSyncDiag {
   };
   lastExtractionStrategy: string | null;
   lastCandidateCount: number | null;
-  lastRejected:
-    | {
-        suggestedOrSponsored?: number;
-        missingContent?: number;
-        duplicate?: number;
-        tinyOrInvisible?: number;
-      }
-    | null;
+  lastRejected: {
+    suggestedOrSponsored?: number;
+    missingContent?: number;
+    duplicate?: number;
+    tinyOrInvisible?: number;
+  } | null;
   lastScrollY: number | null;
   maxScrollY: number | null;
-  lastPageState:
-    | {
-        articleCount?: number;
-        mainFound?: boolean;
-        loggedInCookie?: boolean;
-        loginChrome?: boolean;
-        feedLike?: boolean;
-        scrollHeight?: number;
-        url?: string;
-        title?: string;
-      }
-    | null;
+  lastPageState: {
+    articleCount?: number;
+    mainFound?: boolean;
+    loggedInCookie?: boolean;
+    loginChrome?: boolean;
+    feedLike?: boolean;
+    scrollHeight?: number;
+    url?: string;
+    title?: string;
+  } | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -165,7 +167,9 @@ function formatInstagramEmptySyncMessage(diag: IgSyncDiag): string {
     details.push(`scrollY ${diag.lastScrollY.toLocaleString()}`);
   }
   if (typeof diag.lastPageState?.scrollHeight === "number") {
-    details.push(`scrollHeight ${diag.lastPageState.scrollHeight.toLocaleString()}`);
+    details.push(
+      `scrollHeight ${diag.lastPageState.scrollHeight.toLocaleString()}`,
+    );
   }
   if (diag.lastPageState?.loginChrome) {
     details.push("login chrome visible");
@@ -195,7 +199,10 @@ function errorMessageFromUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function applyInstagramPlaceholderDiag(diag: IgSyncDiag, error: unknown): boolean {
+function applyInstagramPlaceholderDiag(
+  diag: IgSyncDiag,
+  error: unknown,
+): boolean {
   const message = errorMessageFromUnknown(error);
   if (!message.startsWith("placeholder_feed:")) return false;
   diag.errorStage = "placeholder_feed";
@@ -227,7 +234,10 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
     return { items: [], diag };
   }
 
-  const memoryPrep = await prepareSocialScrapeMemory("instagram", "feed scrape");
+  const memoryPrep = await prepareSocialScrapeMemory(
+    "instagram",
+    "feed scrape",
+  );
   if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
@@ -258,13 +268,25 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
       strategy?: string;
       pageState?: IgSyncDiag["lastPageState"];
     }>("ig-feed-data", (event) => {
-      const { posts, error, candidateCount, pageState, rejected, scrollY, strategy } = event.payload;
+      const {
+        posts,
+        error,
+        candidateCount,
+        pageState,
+        rejected,
+        scrollY,
+        strategy,
+      } = event.payload;
 
       diag.extractionPasses += 1;
       diag.lastExtractionStrategy = strategy ?? diag.lastExtractionStrategy;
-      diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : diag.lastCandidateCount;
+      diag.lastCandidateCount =
+        typeof candidateCount === "number"
+          ? candidateCount
+          : diag.lastCandidateCount;
       diag.totalCandidateCount += candidateCount ?? 0;
-      diag.lastScrollY = typeof scrollY === "number" ? scrollY : diag.lastScrollY;
+      diag.lastScrollY =
+        typeof scrollY === "number" ? scrollY : diag.lastScrollY;
       diag.maxScrollY =
         typeof scrollY === "number"
           ? Math.max(diag.maxScrollY ?? 0, scrollY)
@@ -272,7 +294,8 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
       diag.lastPageState = pageState ?? diag.lastPageState;
       if (rejected) {
         diag.lastRejected = rejected;
-        diag.totalRejected.suggestedOrSponsored += rejected.suggestedOrSponsored ?? 0;
+        diag.totalRejected.suggestedOrSponsored +=
+          rejected.suggestedOrSponsored ?? 0;
         diag.totalRejected.missingContent += rejected.missingContent ?? 0;
         diag.totalRejected.duplicate += rejected.duplicate ?? 0;
         diag.totalRejected.tinyOrInvisible += rejected.tinyOrInvisible ?? 0;
@@ -290,7 +313,10 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
 
       // Deduplicate across passes using shortcode or url as key
       for (const post of posts) {
-        const key = post.shortcode ?? post.url ?? `${post.authorHandle}:${(post.caption ?? "").slice(0, 60)}`;
+        const key =
+          post.shortcode ??
+          post.url ??
+          `${post.authorHandle}:${(post.caption ?? "").slice(0, 60)}`;
         if (key && !seenIds.has(key)) {
           seenIds.add(key);
           allRawPosts.push(post);
@@ -303,9 +329,11 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
       kind: "social-scrape",
       source: "instagram:feed",
       timeoutMs: 600_000,
+      retainUntilSettledAfterTimeout: true,
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
-      run: () => invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
+      run: () =>
+        invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
     });
     assertFactoryResetEpoch(resetEpoch);
 
@@ -330,7 +358,10 @@ async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
   }
 
   diag.postsExtracted = allRawPosts.length;
-  addDebugEvent("change", `[IG] extraction complete: ${allRawPosts.length} unique posts across all passes`);
+  addDebugEvent(
+    "change",
+    `[IG] extraction complete: ${allRawPosts.length} unique posts across all passes`,
+  );
 
   if (diag.extractionPasses === 0) {
     diag.errorStage = "extract_silent";
@@ -400,12 +431,17 @@ export function captureIgFeed(
   });
 }
 
-async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
+async function captureIgFeedInternal(
+  resetEpoch: number,
+): Promise<IgSyncResult> {
   assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("instagram");
   if (providerPause) {
-    addDebugEvent("change", `[IG] paused until ${formatClockTime(providerPause.pausedUntil)}`);
+    addDebugEvent(
+      "change",
+      `[IG] paused until ${formatClockTime(providerPause.pausedUntil)}`,
+    );
     const diag = createEmptyIgSyncDiag();
     diag.errorStage = "provider_rate_limit";
     diag.errorMessage = providerPause.pauseReason;
@@ -466,7 +502,11 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
       }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
-        const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+        const errState = {
+          ...useAppStore.getState().igAuth,
+          lastCaptureError:
+            result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        };
         store.setIgAuth(errState);
         storeIgAuthState(errState);
       }
@@ -475,7 +515,8 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
         provider: "instagram",
         outcome: "error",
         stage: result.diag.errorStage,
-        reason: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        reason:
+          result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
         startedAt,
         finishedAt: Date.now(),
         itemsSeen: result.diag.postsExtracted,
@@ -490,15 +531,17 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
         "change",
         `[IG] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
-      const before = store.itemCountByPlatform?.instagram
-        ?? store.items.filter((item) => item.platform === "instagram").length;
+      const before =
+        store.itemCountByPlatform?.instagram ??
+        store.items.filter((item) => item.platform === "instagram").length;
       const writeStartedAt = performance.now();
       await store.addItems(result.items);
       assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const afterState = useAppStore.getState();
-      const after = afterState.itemCountByPlatform?.instagram
-        ?? afterState.items.filter((item) => item.platform === "instagram").length;
+      const after =
+        afterState.itemCountByPlatform?.instagram ??
+        afterState.items.filter((item) => item.platform === "instagram").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       log.info(
         `[IG] store write complete candidates=${result.items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} duration=${formatSocialCaptureDuration(writeDurationMs)}`,
@@ -531,7 +574,11 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
     }
 
     // Persist success timestamp so the sync dropdown shows "Synced X ago"
-    const successState = { ...useAppStore.getState().igAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
+    const successState = {
+      ...useAppStore.getState().igAuth,
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
+    };
     store.setIgAuth(successState);
     storeIgAuthState(successState);
     assertFactoryResetEpoch(resetEpoch);
@@ -550,10 +597,15 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
   } catch (error) {
     if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
-      error instanceof Error ? error.message : "Failed to capture Instagram feed";
+      error instanceof Error
+        ? error.message
+        : "Failed to capture Instagram feed";
     store.setError(message);
     addDebugEvent("error", `[IG] captureIgFeed threw: ${message}`);
-    const errState = { ...useAppStore.getState().igAuth, lastCaptureError: message };
+    const errState = {
+      ...useAppStore.getState().igAuth,
+      lastCaptureError: message,
+    };
     store.setIgAuth(errState);
     storeIgAuthState(errState);
     await recordProviderHealthEvent({

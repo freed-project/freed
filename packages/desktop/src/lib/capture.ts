@@ -339,7 +339,15 @@ function handleSocialResult(
   provider: RetriableSocialProvider,
   stage: string | null,
   retryAfterMs?: number,
+  trigger: SocialScrapeTrigger = "unknown",
 ): void {
+  if (
+    trigger === "scheduled" &&
+    (provider === "facebook" || provider === "instagram")
+  ) {
+    clearSocialDeferredRetry(provider);
+    return;
+  }
   if (shouldRetrySocialStage(stage)) {
     scheduleSocialDeferredRetry(provider, stage ?? "deferred", retryAfterMs);
   } else {
@@ -396,14 +404,24 @@ export async function refreshSocialProvider(
       const result = await withProviderSyncing("facebook", () =>
         captureFbFeed(trigger),
       );
-      handleSocialResult("facebook", result.diag.errorStage);
+      handleSocialResult(
+        "facebook",
+        result.diag.errorStage,
+        undefined,
+        trigger,
+      );
       return summarizeSocialRefreshResult("facebook", result.diag);
     }
     if (provider === "instagram" && store.igAuth.isAuthenticated) {
       const result = await withProviderSyncing("instagram", () =>
         captureIgFeed(trigger),
       );
-      handleSocialResult("instagram", result.diag.errorStage);
+      handleSocialResult(
+        "instagram",
+        result.diag.errorStage,
+        undefined,
+        trigger,
+      );
       return summarizeSocialRefreshResult("instagram", result.diag);
     }
     if (provider === "linkedin" && store.liAuth.isAuthenticated) {
@@ -735,9 +753,9 @@ export async function refreshRssFeeds(
 }
 
 /**
- * Refresh all subscribed RSS feeds and authenticated social providers.
+ * Refresh subscribed RSS feeds and authenticated non-Meta providers.
  */
-export async function refreshAllFeeds(
+export async function refreshScheduledNonMetaFeeds(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
   if (isFactoryResetInProgress()) return;
@@ -761,8 +779,6 @@ export async function refreshAllFeeds(
   const hasNativeSocialRefresh =
     tauriAvailable &&
     (store.xAuth.isAuthenticated ||
-      store.fbAuth.isAuthenticated ||
-      store.igAuth.isAuthenticated ||
       store.liAuth.isAuthenticated ||
       store.ytAuth.isAuthenticated);
 
@@ -800,10 +816,6 @@ export async function refreshAllFeeds(
       }
     }
 
-    if (isFactoryResetInProgress()) return;
-    await refreshSocialProvider("facebook", "scheduled");
-    if (isFactoryResetInProgress()) return;
-    await refreshSocialProvider("instagram", "scheduled");
     if (isFactoryResetInProgress()) return;
     await refreshSocialProvider("linkedin", "scheduled");
     if (isFactoryResetInProgress()) return;

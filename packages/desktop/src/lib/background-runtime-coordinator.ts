@@ -53,6 +53,7 @@ export interface BackgroundRuntimeTask<T> {
   timeoutMs?: number;
   waitForActiveJobMs?: number;
   waitForActiveJobKinds?: readonly BackgroundJobKind[];
+  retainUntilSettledAfterTimeout?: boolean;
   run: () => Promise<T> | T;
 }
 
@@ -113,10 +114,16 @@ export function formatBackgroundRuntimeDeferredReason(reason: string): string {
   if (reason.startsWith("waiting_for_renderer_heartbeat:")) {
     return "Freed is waiting for the app window to report healthy. Try again in a moment.";
   }
-  if (reason.startsWith("renderer_safe_mode:") || reason.startsWith("cooldown:")) {
+  if (
+    reason.startsWith("renderer_safe_mode:") ||
+    reason.startsWith("cooldown:")
+  ) {
     return "Freed paused background work while the app recovers. Try again in a moment.";
   }
-  if (reason === "high_memory_pressure" || reason === "critical_memory_pressure") {
+  if (
+    reason === "high_memory_pressure" ||
+    reason === "critical_memory_pressure"
+  ) {
     return "Freed paused background work because memory is high. Try again after memory settles.";
   }
   return "Freed deferred background work. Try again in a moment.";
@@ -135,7 +142,10 @@ function shouldWaitForActiveJob<T>(
   if (!task.waitForActiveJobMs || task.waitForActiveJobMs <= 0) return false;
   const activeKind = activeKindFromReason(reason);
   if (!activeKind) return false;
-  return !task.waitForActiveJobKinds || task.waitForActiveJobKinds.includes(activeKind);
+  return (
+    !task.waitForActiveJobKinds ||
+    task.waitForActiveJobKinds.includes(activeKind)
+  );
 }
 
 function notifyActiveJobWaiters(): void {
@@ -175,7 +185,9 @@ function markCooldown(durationMs: number, reason: string): void {
 }
 
 function isMemoryCooldownReason(reason: string | null): boolean {
-  return reason === "critical_memory_pressure" || reason === "high_memory_pressure";
+  return (
+    reason === "critical_memory_pressure" || reason === "high_memory_pressure"
+  );
 }
 
 export function noteRendererHeartbeat(_payload: RendererHeartbeatNote): void {
@@ -196,7 +208,9 @@ export function noteRendererRecovery(reason: string): void {
   markCooldown(CRITICAL_PRESSURE_COOLDOWN_MS, `renderer_recovery:${reason}`);
 }
 
-export function noteRendererRecoveryState(event: RendererRecoveryStateEvent): void {
+export function noteRendererRecoveryState(
+  event: RendererRecoveryStateEvent,
+): void {
   lastRecoveryPhase = event.phase;
   lastRecoveryReason = event.reason ?? null;
 
@@ -205,16 +219,29 @@ export function noteRendererRecoveryState(event: RendererRecoveryStateEvent): vo
     return;
   }
 
-  if (event.phase === "stale" || event.phase === "recovery_attempt" || event.phase === "safe_mode") {
+  if (
+    event.phase === "stale" ||
+    event.phase === "recovery_attempt" ||
+    event.phase === "safe_mode"
+  ) {
     healthyHeartbeats = 0;
     const reason = event.reason ?? event.phase;
-    markCooldown(CRITICAL_PRESSURE_COOLDOWN_MS, `renderer_${event.phase}:${reason}`);
+    markCooldown(
+      CRITICAL_PRESSURE_COOLDOWN_MS,
+      `renderer_${event.phase}:${reason}`,
+    );
   }
 
   if (event.safeModeActive || event.phase === "safe_mode") {
-    const durationMs = Math.max(event.safeModeRemainingMs ?? CRITICAL_PRESSURE_COOLDOWN_MS, CRITICAL_PRESSURE_COOLDOWN_MS);
+    const durationMs = Math.max(
+      event.safeModeRemainingMs ?? CRITICAL_PRESSURE_COOLDOWN_MS,
+      CRITICAL_PRESSURE_COOLDOWN_MS,
+    );
     safeModeUntil = Math.max(safeModeUntil, nowMs() + durationMs);
-    markCooldown(durationMs, `renderer_safe_mode:${event.reason ?? "repeated_recovery"}`);
+    markCooldown(
+      durationMs,
+      `renderer_safe_mode:${event.reason ?? "repeated_recovery"}`,
+    );
   }
 }
 
@@ -234,7 +261,9 @@ export function getBackgroundRuntimeStatus(): BackgroundRuntimeStatus {
   const activeAgeMs = activeJob ? nowMs() - activeJob.startedAt : null;
   return {
     healthyHeartbeats,
-    rendererReady: !requireRendererHealth || healthyHeartbeats >= REQUIRED_HEALTHY_HEARTBEATS,
+    rendererReady:
+      !requireRendererHealth ||
+      healthyHeartbeats >= REQUIRED_HEALTHY_HEARTBEATS,
     cooldownUntil: cooldownUntil > nowMs() ? cooldownUntil : null,
     pressureLevel,
     safeModeUntil: safeModeUntil > nowMs() ? safeModeUntil : null,
@@ -246,8 +275,13 @@ export function getBackgroundRuntimeStatus(): BackgroundRuntimeStatus {
   };
 }
 
-export function canStartBackgroundJob(kind: BackgroundJobKind): { ok: true } | { ok: false; reason: string } {
-  if (requireRendererHealth && healthyHeartbeats < REQUIRED_HEALTHY_HEARTBEATS) {
+export function canStartBackgroundJob(
+  kind: BackgroundJobKind,
+): { ok: true } | { ok: false; reason: string } {
+  if (
+    requireRendererHealth &&
+    healthyHeartbeats < REQUIRED_HEALTHY_HEARTBEATS
+  ) {
     return {
       ok: false,
       reason: `waiting_for_renderer_heartbeat:${healthyHeartbeats.toLocaleString()}`,
@@ -279,13 +313,18 @@ export function canStartBackgroundJob(kind: BackgroundJobKind): { ok: true } | {
   }
 
   if (activeJob) {
-    return { ok: false, reason: `active:${activeJob.kind}:${activeJob.source}` };
+    return {
+      ok: false,
+      reason: `active:${activeJob.kind}:${activeJob.source}`,
+    };
   }
 
   return { ok: true };
 }
 
-export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promise<T> {
+export async function runBackgroundJob<T>(
+  task: BackgroundRuntimeTask<T>,
+): Promise<T> {
   let gate = canStartBackgroundJob(task.kind);
   if (!gate.ok && shouldWaitForActiveJob(task, gate.reason)) {
     const deadline = nowMs() + (task.waitForActiveJobMs ?? 0);
@@ -320,25 +359,42 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     message: `${jobLabel} started.`,
   });
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let timeoutError: Error | null = null;
+  const execution = Promise.resolve().then(task.run);
   try {
     const timeoutMs = task.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const result = await Promise.race([
-      Promise.resolve().then(task.run),
+      execution,
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
-          reject(
-            new Error(
-              `[background-runtime] job timed out kind=${task.kind} source=${task.source} timeout_ms=${timeoutMs.toLocaleString()}`,
-            ),
+          timeoutError = new Error(
+            `[background-runtime] job timed out kind=${task.kind} source=${task.source} timeout_ms=${timeoutMs.toLocaleString()}`,
           );
+          reject(timeoutError);
         }, timeoutMs);
       }),
     ]);
     finishBackgroundActivity(activityId, "success", `${jobLabel} finished.`);
     return result;
   } catch (error) {
+    if (
+      timeoutError !== null &&
+      error === timeoutError &&
+      task.retainUntilSettledAfterTimeout
+    ) {
+      try {
+        await execution;
+      } catch {
+        // The timeout remains the caller-visible error. The underlying failure
+        // is already attributable to this job and must settle before release.
+      }
+    }
     const message = error instanceof Error ? error.message : String(error);
-    finishBackgroundActivity(activityId, "error", `${jobLabel} failed: ${message}`);
+    finishBackgroundActivity(
+      activityId,
+      "error",
+      `${jobLabel} failed: ${message}`,
+    );
     throw error;
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -349,7 +405,9 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
   }
 }
 
-export function resetBackgroundRuntimeForTests(options?: { requireRendererHealth?: boolean }): void {
+export function resetBackgroundRuntimeForTests(options?: {
+  requireRendererHealth?: boolean;
+}): void {
   healthyHeartbeats = 0;
   cooldownUntil = 0;
   cooldownReason = null;

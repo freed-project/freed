@@ -1,15 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const refreshAllFeeds = vi.fn();
+const refreshScheduledNonMetaFeeds = vi.fn();
 const addDebugEvent = vi.fn();
 const runBackgroundJob = vi.fn();
+const startMetaSyncScheduler = vi.fn();
+const stopMetaSyncScheduler = vi.fn();
+const stopMetaSyncSchedulerAndDrain = vi.fn(async () => {});
 const isBackgroundRuntimeDeferredError = vi.fn(
   (error: unknown) =>
     typeof error === "object" && error !== null && "reason" in error,
 );
 
 vi.mock("./capture", () => ({
-  refreshAllFeeds,
+  refreshScheduledNonMetaFeeds,
+}));
+
+vi.mock("./meta-sync-scheduler", () => ({
+  startMetaSyncScheduler,
+  stopMetaSyncScheduler,
+  stopMetaSyncSchedulerAndDrain,
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
@@ -41,7 +50,10 @@ async function loadPoller() {
 describe("rss poller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    refreshAllFeeds.mockReset();
+    refreshScheduledNonMetaFeeds.mockReset();
+    startMetaSyncScheduler.mockReset();
+    stopMetaSyncScheduler.mockReset();
+    stopMetaSyncSchedulerAndDrain.mockClear();
     addDebugEvent.mockReset();
     runBackgroundJob.mockReset();
     isBackgroundRuntimeDeferredError.mockClear();
@@ -92,7 +104,7 @@ describe("rss poller", () => {
       releaseRefresh = resolve;
     });
     const refreshSettled = vi.fn();
-    refreshAllFeeds.mockImplementationOnce(async () => {
+    refreshScheduledNonMetaFeeds.mockImplementationOnce(async () => {
       await refreshGate;
       refreshSettled();
     });
@@ -101,7 +113,7 @@ describe("rss poller", () => {
     const poller = await loadPoller();
     poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
     await vi.runAllTicks();
-    expect(refreshAllFeeds).toHaveBeenCalledOnce();
+    expect(refreshScheduledNonMetaFeeds).toHaveBeenCalledOnce();
 
     const cleanupStarted = vi.fn();
     const draining = poller.stopRssPollerAndDrain().then(cleanupStarted);
@@ -135,7 +147,7 @@ describe("rss poller", () => {
     );
     const task = runBackgroundJob.mock.calls[0]?.[0];
     await task.run();
-    expect(refreshAllFeeds).toHaveBeenCalledWith({
+    expect(refreshScheduledNonMetaFeeds).toHaveBeenCalledWith({
       maxFeeds: 80,
       staleAfterMs: 2 * 60 * 60 * 1000,
     });

@@ -16,7 +16,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 7);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 8);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -567,8 +567,14 @@ test("historical selected-window regressions count main rebuilds that the old as
     },
   ];
 
-  assert.equal(summarizeRendererRecoverySequences(july7SelectedWindow).count, 1);
-  assert.equal(summarizeRendererRecoverySequences(july8SelectedWindow).count, 1);
+  assert.equal(
+    summarizeRendererRecoverySequences(july7SelectedWindow).count,
+    1,
+  );
+  assert.equal(
+    summarizeRendererRecoverySequences(july8SelectedWindow).count,
+    1,
+  );
 });
 
 test("shared comparison windows accept only the inclusive 0.8 through 1.25 ratio", () => {

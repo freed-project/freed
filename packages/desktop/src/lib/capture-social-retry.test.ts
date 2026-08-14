@@ -151,7 +151,7 @@ describe("scheduled social capture retries", () => {
     vi.useRealTimers();
   });
 
-  it("retries a Facebook memory deferral before the next scheduled poll", async () => {
+  it("leaves scheduled Facebook deferrals to the durable Meta scheduler", async () => {
     mocks.captureFbFeed
       .mockResolvedValueOnce({
         items: [],
@@ -169,23 +169,11 @@ describe("scheduled social capture retries", () => {
         },
       });
 
-    await captureModule.refreshAllFeeds();
+    await captureModule.refreshSocialProvider("facebook", "scheduled");
 
     expect(mocks.captureFbFeed).toHaveBeenCalledTimes(1);
-    expect(mocks.addDebugEvent).toHaveBeenCalledWith(
-      "change",
-      "[FB] retry scheduled in 120s after memory_pressure",
-    );
-
-    await vi.advanceTimersByTimeAsync(119_999);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(mocks.captureFbFeed).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(mocks.captureFbFeed).toHaveBeenCalledTimes(2);
-    expect(mocks.withProviderSyncing).toHaveBeenLastCalledWith(
-      "facebook",
-      expect.any(Function),
-    );
   });
 
   it("does not contact providers after another Desktop becomes the writer", async () => {
@@ -196,7 +184,7 @@ describe("scheduled social capture retries", () => {
       "facebook",
       "scheduled",
     );
-    await captureModule.refreshAllFeeds();
+    await captureModule.refreshScheduledNonMetaFeeds();
 
     expect(result).toMatchObject({
       status: "ignored",

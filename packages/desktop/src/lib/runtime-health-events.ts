@@ -33,7 +33,8 @@ export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   };
 }
 
-export type CloudUploadCause = "subscriber" | "manual" | "poll" | "startup-repair";
+export type CloudUploadCause =
+  "subscriber" | "manual" | "poll" | "startup-repair";
 
 export type SocialScrapeTrigger =
   | "manual"
@@ -116,6 +117,29 @@ export function recordScrapeOutcome(input: {
   recordRuntimeHealthEvent({ event: "scrape_outcome", ...input });
 }
 
+/** One start record for each device-ledger-owned Facebook or Instagram run. */
+export function recordMetaSyncScheduleAttempt(input: {
+  provider: "facebook" | "instagram";
+  attemptId: string;
+  overdueMs: number;
+  coalescedIntervals: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "meta_sync_schedule_attempt", ...input });
+}
+
+/** One terminal record for each device-ledger-owned Facebook or Instagram run. */
+export function recordMetaSyncScheduleOutcome(input: {
+  provider: "facebook" | "instagram";
+  attemptId: string;
+  status: "success" | "empty" | "deferred" | "error" | "ignored";
+  stage: string | null;
+  overdueMs: number;
+  coalescedIntervals: number;
+  durationMs: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "meta_sync_schedule_outcome", ...input });
+}
+
 /**
  * One line immediately before a social outbox provider action runs. The event
  * deliberately excludes item IDs, content, URLs, account identifiers, and
@@ -138,7 +162,10 @@ export function recordFacebookGroupDiscoveryUpdate(input: {
   changedCount: number;
   removedCount: number;
 }): void {
-  recordRuntimeHealthEvent({ event: "facebook_group_discovery_update", ...input });
+  recordRuntimeHealthEvent({
+    event: "facebook_group_discovery_update",
+    ...input,
+  });
 }
 
 /** One privacy-safe event immediately before each RSS HTTP pull. */
