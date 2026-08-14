@@ -504,8 +504,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsOverlayRef = useRef<HTMLDivElement>(null);
-  const settingsShellRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -638,8 +637,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
-    delete settingsShellRef.current?.dataset.moving;
-    delete settingsOverlayRef.current?.dataset.moving;
+    delete scrollRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
@@ -658,8 +656,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (scrollOptimizationTimerRef.current) {
         clearTimeout(scrollOptimizationTimerRef.current);
       }
-      delete settingsShellRef.current?.dataset.moving;
-      delete settingsOverlayRef.current?.dataset.moving;
+      delete scrollRef.current?.dataset.moving;
     };
   }, []);
 
@@ -675,22 +672,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 5000);
   }, [hasCoarsePointer]);
 
-  const suppressSettingsChromeDuringScroll = useCallback(() => {
-    const shell = settingsShellRef.current;
-    if (shell && shell.dataset.moving !== "true") {
-      shell.dataset.moving = "true";
-    }
-    const overlay = settingsOverlayRef.current;
-    if (overlay && overlay.dataset.moving !== "true") {
-      overlay.dataset.moving = "true";
+  const suppressSettingsScrollportDescendantsDuringScroll = useCallback(() => {
+    // The overlay and shell are static visual frames. Keep moving state on the
+    // scrollport so performance CSS cannot drop their blur or shadow again.
+    const scrollport = scrollRef.current;
+    if (scrollport && scrollport.dataset.moving !== "true") {
+      scrollport.dataset.moving = "true";
     }
 
     if (scrollOptimizationTimerRef.current) {
       clearTimeout(scrollOptimizationTimerRef.current);
     }
     scrollOptimizationTimerRef.current = setTimeout(() => {
-      delete settingsShellRef.current?.dataset.moving;
-      delete settingsOverlayRef.current?.dataset.moving;
+      delete scrollRef.current?.dataset.moving;
       scrollOptimizationTimerRef.current = null;
     }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
   }, []);
@@ -961,7 +955,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const [scrollportHeight, setScrollportHeight] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const activeSectionBreadcrumb = useMemo(() => {
     const section = allSections.find((candidate) => candidate.id === activeSection);
     if (!section) return ["Freed Settings"];
@@ -1223,7 +1216,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
 
     const scheduleActiveSectionUpdate = () => {
-      suppressSettingsChromeDuringScroll();
+      suppressSettingsScrollportDescendantsDuringScroll();
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {
         if (isScrollingProgrammatically.current) {
@@ -1247,7 +1240,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         root.removeEventListener("scrollend", updateActiveSectionFromScroll);
       }
     };
-  }, [isMobile, mobileView, open, searchLower, suppressSettingsChromeDuringScroll, updateScrollAnchorFromPosition]);
+  }, [
+    isMobile,
+    mobileView,
+    open,
+    searchLower,
+    suppressSettingsScrollportDescendantsDuringScroll,
+    updateScrollAnchorFromPosition,
+  ]);
 
   useEffect(() => {
     if (!open || isMobile || searchLower) {
@@ -2028,14 +2028,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
-        ref={settingsShellRef}
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
