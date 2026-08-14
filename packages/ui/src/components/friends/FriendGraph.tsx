@@ -19,7 +19,6 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
-import { CopyIcon } from "../icons.js";
 import {
   friendsGalaxyGraphDescription,
   friendsGalaxyRecoveryAnnouncement,
@@ -32,6 +31,7 @@ import {
 import {
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../lib/friends-galaxy-camera.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import {
   createFriendsGalaxyDiagnosticSnapshot,
   serializeFriendsGalaxyDiagnosticSnapshot,
@@ -523,6 +523,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const copyDiagnosticsRequestId = useCommandSurfaceStore(
+    (state) => state.copyFriendsDiagnosticsRequestId,
+  );
+  const handledCopyDiagnosticsRequestIdRef = useRef(copyDiagnosticsRequestId);
   const graphDescriptionId = useId();
   const graphAnnouncementId = useId();
 
@@ -1130,6 +1134,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
   }, [activitySummaries, channelCount, personCount, themeId]);
 
+  useEffect(() => {
+    if (copyDiagnosticsRequestId === handledCopyDiagnosticsRequestIdRef.current) return;
+    handledCopyDiagnosticsRequestIdRef.current = copyDiagnosticsRequestId;
+    void handleCopyDiagnostics();
+  }, [copyDiagnosticsRequestId, handleCopyDiagnostics]);
+
   const handleOpenContextDetails = useCallback(() => {
     if (!contextMenu) return;
     selectNode(contextMenu.node.id);
@@ -1359,16 +1369,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       >
         <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all
-        </button>
-        <button
-          type="button"
-          className={`${CANVAS_CONTROL_BASE} inline-flex items-center gap-1.5 px-2 sm:px-3`}
-          onClick={() => void handleCopyDiagnostics()}
-          aria-label="Copy diagnostics"
-          title="Copy diagnostics"
-        >
-          <CopyIcon className="h-4 w-4" />
-          <span className="hidden sm:inline">Copy diagnostics</span>
         </button>
       </div>
     </div>

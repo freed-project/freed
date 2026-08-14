@@ -636,7 +636,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     .getByTestId("friend-graph-controls")
     .locator("button")
     .evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).backgroundColor));
-  expect(controlBackgrounds).toHaveLength(2);
+  expect(controlBackgrounds).toHaveLength(1);
   for (const background of controlBackgrounds) {
     expect(background).not.toBe("transparent");
     expect(background).not.toBe("rgba(0, 0, 0, 0)");
@@ -646,4 +646,14 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     "data-graph-renderer",
     /^(raw-webgpu|current-webgl2)$/,
   );
+
+  await expect(page.getByRole("button", { name: "Copy diagnostics" })).toHaveCount(0);
+  await page.context().grantPermissions(["clipboard-write"]);
+  await page.getByTestId("source-row-friends").hover();
+  await page.getByTestId("source-menu-trigger-friends").click();
+  await expect(page.getByTestId("friends-context-menu")).toBeVisible();
+  await expect(page.getByTestId("friends-menu-copy-diagnostics")).toHaveText("Copy diagnostics");
+  await page.getByTestId("friends-menu-copy-diagnostics").click();
+  await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
+  await expect(page.getByText("Diagnostics copied", { exact: true })).toBeVisible();
 });
