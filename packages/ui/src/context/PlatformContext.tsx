@@ -16,9 +16,11 @@ import {
 import type {
   BaseAppState,
   ContactSyncState,
+  ContentSignal,
   BugReportDraft,
   BugReportIssueType,
   FeedItem,
+  FilterOptions,
   GeneratedBugReportBundle,
   PrivateVulnerabilityReportPayload,
   PrivateVulnerabilityReportResult,
@@ -28,11 +30,15 @@ import type {
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   ReportPrivacyTier,
+  SavedContentSortMode,
   StoryWallManifest,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
-import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
+import type {
+  ImportSummary,
+  ProgressFn,
+} from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
 
@@ -48,8 +54,13 @@ export const MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y = 18;
  * Both `create<PwaState>()` and `create<DesktopState>()` satisfy this
  * as long as their state types extend BaseAppState.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AppStoreHook = <U>(selector: (state: any) => U) => U;
+interface AppStoreHook {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  <U>(selector: (state: any) => U): U;
+  // Platform stores extend the shared contract with platform-specific actions.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getState(): any;
+}
 
 /**
  * Live state of an in-progress update download, surfaced in the Settings card.
@@ -64,6 +75,204 @@ export interface AvailableUpdateInfo {
   version: string;
   channel: ReleaseChannel;
 }
+
+export type BoundedFeedPageDirection = "next" | "previous";
+
+export interface BoundedFeedPage {
+  readonly items: readonly FeedItem[];
+  /**
+   * Opaque edges for resuming traversal on either side of this page.
+   *
+   * `null` proves that side is terminal. A non-null edge only proves the page
+   * filled its limit, so a read from it may still return no rows.
+   */
+  readonly nextCursor: string | null;
+  readonly previousCursor: string | null;
+}
+
+export interface BoundedFeedReader {
+  readonly totalCount: number;
+  readNext(): Promise<readonly FeedItem[]>;
+  /**
+   * Read one bounded page in either direction from an opaque edge cursor.
+   *
+   * Present only on readers whose platform contract supports reverse paging.
+   * A reader that offers it lets shared UI evict pages on both sides of the
+   * scroll window instead of growing one resident list until it must fall back.
+   */
+  readPage?(
+    cursor: string | null,
+    direction: BoundedFeedPageDirection,
+  ): Promise<BoundedFeedPage>;
+  close(): Promise<void>;
+}
+
+export type LibraryItemScanDecision = "continue" | "stop";
+
+/**
+ * Visit one bounded page of lossless Library items at a time.
+ *
+ * Desktop serves this from its authenticated selected SQLite generation. The
+ * callback must not retain pages after it resolves. Returning stop closes
+ * the native reader without traversing the rest of the Library.
+ */
+export type ScanLibraryItems = (
+  visit: (
+    items: readonly FeedItem[],
+  ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
+) => Promise<void>;
+
+export interface ScoredLibraryItem {
+  readonly item: FeedItem;
+  readonly score: number;
+}
+
+/**
+ * Stream scored matches from a platform-owned persistent search projection.
+ *
+ * The platform keeps the corpus and index outside React memory. Shared UI may
+ * retain a bounded result set, but must not collect every match.
+ */
+export type SearchLibraryItems = (
+  query: string,
+  searchCorpusVersion: number,
+  visit: (
+    matches: readonly ScoredLibraryItem[],
+  ) => LibraryItemScanDecision,
+) => Promise<void>;
+
+export interface LibraryFacetSummary {
+  readonly archivedCount: number;
+  readonly sampleItemCount: number;
+  readonly savedArchivedCount: number;
+  readonly savedCount: number;
+  readonly savedPlatformCount: number;
+  readonly tags: readonly string[];
+  readonly totalCount: number;
+}
+
+export interface LibraryFriendsSource {
+  readonly platform: string;
+  readonly authorId: string;
+}
+
+export interface LibraryFriendsRecentWindow {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export interface LibraryFriendsGraphRequest {
+  readonly sources: readonly LibraryFriendsSource[];
+  readonly rssFeedUrls: readonly string[];
+  readonly recentWindow: LibraryFriendsRecentWindow;
+}
+
+export interface LibraryFriendsGraphSampleItem {
+  readonly globalId: string;
+  readonly publishedAt: number;
+}
+
+export interface LibraryFriendsGraphSignalCount {
+  readonly label: ContentSignal;
+  readonly count: number;
+}
+
+export interface LibraryFriendsGraphLocationCandidate {
+  readonly effectiveAt: number;
+  readonly globalId: string;
+  readonly publishedAt: number;
+}
+
+export interface LibraryFriendsGraphSocialActivity {
+  readonly platform: string;
+  readonly authorId: string;
+  readonly itemCount: number;
+  readonly latestActivityAt: number;
+  readonly hasLocation: boolean;
+  readonly locationCandidateCount: number;
+  readonly locationCandidates: readonly LibraryFriendsGraphLocationCandidate[];
+  readonly avatarGlobalId: string | null;
+  readonly avatarPublishedAt: number | null;
+  readonly avatarUrl: string | null;
+  readonly sampleItems: readonly LibraryFriendsGraphSampleItem[];
+  readonly recentCount: number;
+  readonly signalCounts: readonly LibraryFriendsGraphSignalCount[];
+}
+
+export interface LibraryFriendsGraphRssActivity {
+  readonly feedUrl: string;
+  readonly itemCount: number;
+  readonly latestActivityAt: number;
+  readonly hasLocation: boolean;
+  readonly locationCandidateCount: number;
+  readonly locationCandidates: readonly LibraryFriendsGraphLocationCandidate[];
+  readonly avatarGlobalId: string | null;
+  readonly avatarPublishedAt: number | null;
+  readonly avatarUrl: string | null;
+  readonly sampleItems: readonly LibraryFriendsGraphSampleItem[];
+}
+
+export interface LibraryFriendsGraph {
+  readonly sourceToken: string;
+  readonly totalItemCount: number;
+  readonly social: readonly LibraryFriendsGraphSocialActivity[];
+  readonly rss: readonly LibraryFriendsGraphRssActivity[];
+}
+
+export type LibraryFriendsLocationOwner =
+  | {
+      readonly kind: "social";
+      readonly platform: string;
+      readonly authorId: string;
+    }
+  | {
+      readonly kind: "rss";
+      readonly feedUrl: string;
+    };
+
+export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLocationCandidate {
+  readonly owner: LibraryFriendsLocationOwner;
+  readonly referenceTimeMs: number;
+  readonly sourceToken: string;
+}
+
+export interface LibraryPersonTimelineRequest {
+  readonly sources: readonly LibraryFriendsSource[];
+  readonly limit?: number;
+  readonly cursor?: string | null;
+}
+
+export interface LibraryPersonTimelinePage {
+  readonly items: readonly FeedItem[];
+  readonly totalCount: number;
+  readonly nextCursor: string | null;
+}
+
+export interface LibrarySavedAnalyticsWindow {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export interface LibrarySavedAnalyticsRequest {
+  readonly dailyWindows: readonly LibrarySavedAnalyticsWindow[];
+  readonly hourlyWindows: readonly LibrarySavedAnalyticsWindow[];
+}
+
+export interface LibrarySavedAnalyticsCount {
+  readonly label: string;
+  readonly count: number;
+}
+
+export interface LibrarySavedAnalytics {
+  readonly totalCount: number;
+  readonly latestSavedAt: number | null;
+  readonly dailyCounts: readonly number[];
+  readonly hourlyCounts: readonly number[];
+  readonly sourceCounts: readonly LibrarySavedAnalyticsCount[];
+  readonly contentMix: readonly LibrarySavedAnalyticsCount[];
+}
+
+export type LibrarySurface = "map" | "story_wall";
 
 export interface ChangelogPreviewRelease {
   version: string;
@@ -179,7 +388,9 @@ export interface YouTubeOfflinePlaylistResult {
 
 export interface YouTubeControls {
   /** Add one deliberate video selection to the user's private Freed Offline playlist. */
-  addToOfflinePlaylist: (videoUrl: string) => Promise<YouTubeOfflinePlaylistResult>;
+  addToOfflinePlaylist: (
+    videoUrl: string,
+  ) => Promise<YouTubeOfflinePlaylistResult>;
 }
 
 export interface LocalAIModelDownloadProgress {
@@ -248,6 +459,12 @@ export interface PlatformConfig {
    * Desktop only.
    */
   startWindowDrag?: () => Promise<void>;
+
+  /**
+   * Rebuild the native main WebView after leaving the geographic map so WebKit
+   * releases MapLibre's high-water GPU and tile allocations. Desktop only.
+   */
+  releaseMapRendererMemory?: () => Promise<void>;
 
   // -- Layout slot components (null = not rendered) --
 
@@ -375,6 +592,81 @@ export interface PlatformConfig {
    */
   openUrl?: (url: string) => void;
 
+  /**
+   * Open one source-pinned, paged feed reader backed by platform-local row
+   * storage. Shared UI falls back to its current in-memory feed when absent or
+   * when the reader rejects stale source identity.
+   */
+  openBoundedFeedReader?: (
+    filter: FilterOptions,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
+
+  /**
+   * Open one source-pinned Friends-only feed reader. The platform computes
+   * membership from the exact Person, Account, and legacy Friend source bound
+   * to the selected local generation.
+   */
+  openBoundedFriendsFeedReader?: (
+    filter: FilterOptions,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
+
+  /**
+   * Open one source-pinned Saved reader in the selected device-local order.
+   * Shared UI keeps at most two reader pages resident while it traverses the
+   * complete Saved result set.
+   */
+  openBoundedSavedFeedReader?: (
+    filter: FilterOptions,
+    sortMode: SavedContentSortMode,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
+
+  /** Stream the selected local Library generation without hydrating a corpus array. */
+  scanLibraryItems?: ScanLibraryItems;
+
+  /** Search a persistent local projection without building an in-memory corpus index. */
+  searchLibraryItems?: SearchLibraryItems;
+
+  /**
+   * Temporarily acquire the legacy full item projection for a surface that has
+   * not yet moved to bounded row-store reads. Releasing the final lease evicts
+   * that projection from the renderer again.
+   */
+  acquireLegacyLibraryItems?: () => Promise<() => void>;
+
+  /** Exact corpus-wide counts and tags computed inside the local row store. */
+  readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
+
+  /** One exact source-fenced item row from platform-local Library storage. */
+  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
+
+  /** One bounded, row-store-filtered candidate set for a secondary surface. */
+  readLibrarySurfaceItems?: (
+    surface: LibrarySurface,
+  ) => Promise<readonly FeedItem[]>;
+
+  /** Exact Saved overview aggregates computed inside the local row store. */
+  readLibrarySavedAnalytics?: (
+    request: LibrarySavedAnalyticsRequest,
+  ) => Promise<LibrarySavedAnalytics>;
+
+  /** Compact Friends activity aggregates computed inside the local row store. */
+  readLibraryFriendsGraph?: (
+    request: LibraryFriendsGraphRequest,
+  ) => Promise<LibraryFriendsGraph>;
+
+  /** One bounded source-keyed Friends timeline page from the local row store. */
+  readLibraryPersonTimeline?: (
+    request: LibraryPersonTimelineRequest,
+  ) => Promise<LibraryPersonTimelinePage>;
+
+  /** One lossless Friends location item bound to a graph reader source. */
+  readLibraryFriendsLocationItem?: (
+    request: LibraryFriendsLocationItemRequest,
+  ) => Promise<FeedItem | null>;
+
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;
 
@@ -407,13 +699,19 @@ export interface PlatformConfig {
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.
    */
-  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<SaveUrlResult>;
+  saveUrl?: (
+    url: string,
+    options?: { tags?: string[] },
+  ) => Promise<SaveUrlResult>;
 
   /**
    * Import Freed Markdown archive files into the library.
    * Desktop only -- the PWA has no filesystem access.
    */
-  importMarkdown?: (files: FileList, onProgress: ProgressFn) => Promise<ImportSummary>;
+  importMarkdown?: (
+    files: FileList,
+    onProgress: ProgressFn,
+  ) => Promise<ImportSummary>;
 
   /**
    * Export the entire library as a zipped Freed Markdown archive.
@@ -437,7 +735,9 @@ export interface PlatformConfig {
   syncSourceNow?: (sourceId: string) => Promise<void>;
 
   /** Return the current status summary for a source row in the sidebar. */
-  getSourceStatus?: (sourceId: string | undefined) => SidebarSourceStatusSummary | null;
+  getSourceStatus?: (
+    sourceId: string | undefined,
+  ) => SidebarSourceStatusSummary | null;
 
   /**
    * Retrieve cached article HTML for a globalId from the device-local store.
@@ -464,13 +764,17 @@ export interface PlatformConfig {
   checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;
 
   /** Import an Instagram Accounts Center export into the device-local media vault. */
-  importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;
+  importInstagramStoryWallArchive?: (
+    files: FileList,
+  ) => Promise<StoryWallImportSummary>;
 
   /** Return media vault summaries used by StoryWall (beta). */
   getStoryWallArchiveSummaries?: () => Promise<StoryWallArchiveSummary[]>;
 
   /** Publish the generated StoryWall (beta) site to a static host. */
-  publishStoryWall?: (request: StoryWallPublishRequest) => Promise<StoryWallPublishResult>;
+  publishStoryWall?: (
+    request: StoryWallPublishRequest,
+  ) => Promise<StoryWallPublishResult>;
 
   /**
    * Google Contacts API integration.
@@ -483,7 +787,10 @@ export interface PlatformConfig {
     /** Start or refresh the Google OAuth flow so contacts scope is granted. */
     connect: (options?: GoogleContactsConnectOptions) => Promise<void>;
     /** Fetch Google Contacts through the platform's network layer when needed. */
-    fetchContacts?: (accessToken: string, syncToken?: string | null) => Promise<GoogleContactsResult>;
+    fetchContacts?: (
+      accessToken: string,
+      syncToken?: string | null,
+    ) => Promise<GoogleContactsResult>;
   };
 
   /**
@@ -523,9 +830,7 @@ export function PlatformProvider({
   value: PlatformConfig;
   children: ReactNode;
 }) {
-  return (
-    <PlatformCtx.Provider value={value}>{children}</PlatformCtx.Provider>
-  );
+  return <PlatformCtx.Provider value={value}>{children}</PlatformCtx.Provider>;
 }
 
 /** Access the full platform config (capture functions + layout slots). */

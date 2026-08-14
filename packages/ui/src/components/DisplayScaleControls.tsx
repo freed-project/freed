@@ -138,7 +138,7 @@ export function InterfaceZoomSlider({
 
   return (
     <Tooltip
-      label={`Interface zoom: ${zoomLabel}`}
+      label={`Zoom: ${zoomLabel}`}
       className={fullWidth ? "w-full" : undefined}
       triggerStyle={triggerStyle}
     >
@@ -164,7 +164,7 @@ export function InterfaceZoomSlider({
           step={INTERFACE_ZOOM_STEP}
           value={value}
           onChange={handleChange}
-          aria-label="Interface zoom"
+          aria-label="Zoom"
           aria-valuemin={INTERFACE_ZOOM_MIN}
           aria-valuemax={INTERFACE_ZOOM_MAX}
           aria-valuetext={zoomLabel}

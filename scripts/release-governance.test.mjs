@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,16 @@ const releaseWorkflow = readFileSync(
 );
 const ciWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "ci.yml"),
+  "utf8",
+);
+const mainReleaseValidationWorkflow = readFileSync(
+  path.join(
+    scriptsDir,
+    "..",
+    ".github",
+    "workflows",
+    "main-release-validation.yml",
+  ),
   "utf8",
 );
 
@@ -84,18 +94,16 @@ test("release publication delegates one exact tag to the trusted App publisher",
     /validate-release-tag-authority\.mjs --repo=freed-project\/freed/,
   );
   assert.match(
+    releasePublish,
+    /validate-dev-integration-receipt\.mjs[\s\S]*--sha="\$\{LOCAL_RELEASE_SHA\}"[\s\S]*--branch=dev[\s\S]*--workflow=ci\.yml/,
+  );
+  assert.match(
     releasePrep,
     /FREED_PROMOTED_DEV_COMMIT_SHA="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
   );
   assert.match(releaseWorkflow, /EXPECTED_BRANCH="main"/);
-  assert.match(
-    releaseWorkflow,
-    /TAG" == \*-dev[\s\S]*EXPECTED_BRANCH="dev"/,
-  );
-  assert.match(
-    releaseWorkflow,
-    /--branch-ref="origin\/\$\{EXPECTED_BRANCH\}"/,
-  );
+  assert.match(releaseWorkflow, /TAG" == \*-dev[\s\S]*EXPECTED_BRANCH="dev"/);
+  assert.match(releaseWorkflow, /--branch-ref="origin\/\$\{EXPECTED_BRANCH\}"/);
   assert.doesNotMatch(releaseWorkflow, /GITHUB_SHA" != "\$EXPECTED_SHA"/);
   assert.match(
     releaseWorkflow,
@@ -113,9 +121,110 @@ test("release publication delegates one exact tag to the trusted App publisher",
   );
 });
 
+test("release identity lanes receive authenticated pull request read access", () => {
+  const promotionJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  promotion:"),
+    releaseWorkflow.indexOf("\n  notes:"),
+  );
+  const featureJob = ciWorkflow.slice(
+    ciWorkflow.indexOf("\n  feature:"),
+    ciWorkflow.indexOf("\n  dev:"),
+  );
+
+  assert.match(promotionJob, /pull-requests:\s*read/);
+  assert.match(promotionJob, /GH_TOKEN:\s*\$\{\{ github\.token \}\}/);
+  assert.match(featureJob, /pull-requests:\s*read/);
+  assert.doesNotMatch(featureJob, /pull-requests:\s*write/);
+  assert.match(featureJob, /GH_TOKEN:\s*\$\{\{ github\.token \}\}/);
+  assert.doesNotMatch(featureJob, /post-perf-comment\.mjs/);
+  assert.match(
+    featureJob,
+    /- name: Print perf comparison\s+if: always\(\) && hashFiles\('perf-comparison\.md'\) != ''\s+run: \|\s+cat perf-comparison\.md\s+cat perf-comparison\.md >> "\$GITHUB_STEP_SUMMARY"/,
+  );
+  assert.equal(
+    existsSync(path.join(scriptsDir, "post-perf-comment.mjs")),
+    false,
+  );
+  assert.equal(
+    existsSync(path.join(scriptsDir, "post-perf-comment.test.mjs")),
+    false,
+  );
+  assert.match(mainReleaseValidationWorkflow, /pull-requests:\s*read/);
+  assert.match(
+    mainReleaseValidationWorkflow,
+    /GH_TOKEN:\s*\$\{\{ github\.token \}\}/,
+  );
+  for (const workflow of [
+    ciWorkflow,
+    mainReleaseValidationWorkflow,
+    releaseWorkflow,
+  ]) {
+    assert.doesNotMatch(workflow, /--library-core-review-draft/);
+    assert.doesNotMatch(workflow, /--historical-release-note-correction/);
+  }
+});
+
+test("dev tag validation inherits the exact successful dev integration receipt", () => {
+  const validationJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  validation:"),
+    releaseWorkflow.indexOf("\n  create-release:"),
+  );
+
+  assert.match(validationJob, /actions:\s*read/);
+  assert.match(
+    validationJob,
+    /validate-dev-integration-receipt\.mjs[\s\S]*--sha="\$GITHUB_SHA"[\s\S]*--branch=dev[\s\S]*--workflow=ci\.yml/,
+  );
+  assert.doesNotMatch(
+    validationJob,
+    /release_channel \}\}" == "dev"[\s\S]*npm run validate:dev/,
+  );
+  assert.match(validationJob, /release_channel != 'dev'/);
+  assert.match(validationJob, /npm run validate:production/);
+});
+
+test("draft release assets and publication use the exact release ID", () => {
+  const updaterJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  updater-manifest:"),
+    releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
+  );
+  const publishJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish:"),
+    releaseWorkflow.indexOf("\n  # Redeploy the public marketing site"),
+  );
+
+  assert.match(
+    updaterJob,
+    /releases\/\$\{RELEASE_ID\}/,
+  );
+  assert.match(
+    updaterJob,
+    /releases\/assets\/\$\{asset_id\}/,
+  );
+  assert.match(
+    updaterJob,
+    /uploads\.github\.com\/repos\/\$\{\{ github\.repository \}\}\/releases\/\$\{RELEASE_ID\}\/assets\?name=latest\.json/,
+  );
+  assert.doesNotMatch(updaterJob, /gh release download/);
+  assert.doesNotMatch(updaterJob, /gh release upload/);
+  assert.match(
+    publishJob,
+    /releases\/\$\{\{ needs\.create-release\.outputs\.release_id \}\}/,
+  );
+  assert.match(
+    publishJob,
+    /needs:\s*\[updater-manifest, create-release\]/,
+    "publish must directly depend on create-release before reading its output",
+  );
+  assert.doesNotMatch(publishJob, /gh release edit/);
+});
+
 test("release failure triage binds GitHub CLI to the triggering repository", () => {
   const triageJobStart = releaseWorkflow.indexOf("\n  triage-on-failure:");
-  assert.ok(triageJobStart >= 0, "release workflow should define failure triage");
+  assert.ok(
+    triageJobStart >= 0,
+    "release workflow should define failure triage",
+  );
   const triageJob = releaseWorkflow.slice(triageJobStart);
 
   assert.match(triageJob, /GH_REPO:\s*\$\{\{ github\.repository \}\}/);
@@ -135,7 +244,10 @@ test("main PR validation inspects the actual PR head instead of the synthetic me
     ciWorkflow,
     /--head-ref="\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
   );
-  assert.doesNotMatch(ciWorkflow, /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/);
+  assert.doesNotMatch(
+    ciWorkflow,
+    /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/,
+  );
 });
 
 test("release preparation validates canonical CalVer before mutating version files", () => {
@@ -146,13 +258,16 @@ test("release preparation validates canonical CalVer before mutating version fil
   assert.ok(validationIndex >= 0);
   assert.ok(firstMutationIndex > validationIndex);
   assert.match(releaseVersion, /no leading-zero segments/);
-  assert.match(releaseVersion, /Windows installers require a major no greater than 255/);
+  assert.match(
+    releaseVersion,
+    /Windows installers require a major no greater than 255/,
+  );
   assert.doesNotMatch(releasePrep, /-\[a-zA-Z0-9\.\]\+/);
 });
 
 test("release preparation refreshes and stages the Rust lockfile", () => {
   const cargoTomlMutationIndex = releasePrep.indexOf(
-    "' \"${CARGO_TOML}\" > \"${CARGO_TOML}.tmp\"",
+    '\' "${CARGO_TOML}" > "${CARGO_TOML}.tmp"',
   );
   const cargoLockRefreshIndex = releasePrep.indexOf(
     'cargo update -p freed-desktop --precise "${APP_VERSION}" --offline --manifest-path "${CARGO_TOML}"',
@@ -176,9 +291,10 @@ test("release preparation refreshes and stages the Rust lockfile", () => {
 
 test("historical backfill uses the explicit immutable published-tag receipt mode", () => {
   assert.match(releaseNotesBackfill, /--historical-published-tag/);
+  assert.match(releaseNotesPrep, /--historical-published-tag requires --force/);
+  assert.match(releaseNotesPrep, /rev-parse", `\$\{tag\}\^\{commit\}`/);
   assert.match(
     releaseNotesPrep,
-    /--historical-published-tag requires --force/,
+    /withReleaseArtifactWriteLock\(releaseFile\.json/,
   );
-  assert.match(releaseNotesPrep, /rev-parse", `\$\{tag\}\^\{commit\}`/);
 });

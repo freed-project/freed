@@ -1,6 +1,6 @@
 # Freed Technical Architecture
 
-Accurate as of 2026-07-13 (`dev` @ v26.7.1301-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
+Accurate as of 2026-07-23. This document describes the system as shipped, not as aspired to. GitHub Issues carrying the `debt` label are the sole canonical backlog for known defects and program-tracked limitations. Durable stability policy lives in [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
 
 ## What Freed is
 
@@ -27,7 +27,7 @@ npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.
 
 Tauri 2 (Rust backend, WKWebView renderer on macOS). Two runtime halves:
 
-**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, `substack-capture.ts`, `medium-capture.ts`, `youtube-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
+**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, `substack-capture.ts`, `medium-capture.ts`, `youtube-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job. Issue #1071 tracks recovery settlement, and issues #1080 and #1081 track scheduler and job settlement.
 
 **Rust (`src-tauri/src/lib.rs`) owns native substrate:** window management including hidden scraper WebViews, the LAN sync relay, the renderer watchdog and memory recovery, `runtime-health.jsonl` telemetry, the dev sync trigger watcher, tray/updater/global-shortcut plumbing, and utility commands such as `fetch_binary_url`.
 
@@ -54,13 +54,13 @@ Capture uses provider-specific transports. Anything that would change provider-v
 - **Save-for-later:** URL/clipboard capture through `capture-save` (Readability extraction); also used by the PWA.
 - Facebook, Instagram, and LinkedIn social scrapes are currently nested inside
   the `rss-poll` job, which serializes them behind a Rust mutex and causes the
-  recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
+  recurring "job timed out kind=rss-poll" cycle. Issue #1080 tracks un-nesting.
   Substack and Medium use their dedicated scheduler and do not enter that nested
   path.
 
 ### Auth state
 
-Session cookies live in the scraper WebViews' data stores. Known misclassifications tracked by the program: X 401/403 is treated as transport and retried forever (F15); logged-out IG/LI sessions are never classified as auth failures and keep spinning full scrapes (F16). Wave 4 addresses both.
+Session cookies live in the scraper WebViews' data stores. Issue #1077 tracks X 401/403 responses that are treated as transport failures and retried. Issue #1078 tracks logged-out Instagram and LinkedIn sessions that are not classified as authentication failures.
 
 ## Data model and sync
 
@@ -77,19 +77,19 @@ RSS subscriptions and the last successful content refresh time sync. Retry windo
 Graph pin coordinates are migrated once from legacy Person and Account fields into a versioned local layout store. Current person and account mutations strip those fields at the store, optimistic projection, and schema boundaries. Rendering removes any stale synchronized coordinates before overlaying the current device's layout.
 
 - **Worker ownership:** each app runs the document inside a dedicated worker (`automerge.worker.ts` in desktop and PWA). Mutations go through worker messages; `STATE_UPDATE` fans hydrated state back to subscribers. Persistence is IndexedDB with incremental appends plus periodic snapshots (`automerge-persistence.ts`, `snapshots.ts`).
-- **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection. Phone-to-desktop convergence over LAN does not exist yet and rides on cloud sync instead (F02/F23; Wave 3 builds the inbound path).
-- **Cloud sync:** full-document snapshots to the user's Google Drive or Dropbox with download-merge-upload (`sync/src/cloud/`). The shipped desktop P1-01 heads guard suppresses merge-back upload echoes while preserving genuine mutations. The matching PWA damper remains P1-02, and the GDrive changes poll still needs the P1-03 self-write filter. CRDT merge work still runs on the main renderer thread (F14).
-- **Transport cost:** every synced mutation ships the whole document binary as a boxed `number[]` through two JS heaps plus JSON Tauri IPC (~16-20x document size transient, F07/F10), history grows without bound (F08), and archive pruning, the only automatic eviction, is disabled whenever cloud credentials exist (F09). Wave 5 is the demand-side fix (raw-bytes transport, worker lifecycle, eviction re-enable).
+- **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection. Phone-to-desktop convergence over LAN does not exist yet and rides on cloud sync instead. Issue #1072 owns the inbound path.
+- **Cloud sync:** full-document snapshots to the user's Google Drive or Dropbox with download, merge, and upload behavior in `sync/src/cloud/`. The shipped Freed Desktop heads guard suppresses merge-back upload echoes while preserving genuine mutations. Issue #1066 owns bounded re-verification, issue #1068 owns the matching PWA damper, issue #1069 owns Google Drive self-write filtering, and issue #1076 owns moving CRDT merge work off the main renderer thread.
+- **Transport cost:** every synced mutation ships the whole document binary as a boxed `number[]` through two JavaScript heaps plus JSON Tauri IPC. Issue #1087 owns raw binary transport. Issue #1082 owns unbounded history and cloud-safe eviction.
 
 ## Watchdog and recovery
 
-The Rust watchdog supervises the renderer via heartbeats (`renderer-heartbeat.ts` to `renderer_heartbeat` events), native memory samples, and WebKit process telemetry. P0-04 now writes daily runtime-health files on Unix, keeps a stable `runtime-health.jsonl` symlink for readers, and retains recent history. Non-Unix builds retain the bounded single-file fallback. Recovery actions include renderer restart and scraper-window recycling.
+The Rust watchdog supervises the renderer via heartbeats (`renderer-heartbeat.ts` to `renderer_heartbeat` events), native memory samples, and WebKit process telemetry. Runtime health now writes daily files on Unix, keeps a stable `runtime-health.jsonl` symlink for readers, and retains recent history. Non-Unix builds retain the bounded single-file fallback. Recovery actions include renderer restart and scraper-window recycling.
 
-Known limitations (verified, frozen by program rule until Wave 6): WebKit process attribution is a heuristic that cannot distinguish the main renderer from scrapers. WebKit XPC processes are children of launchd, not the app (F27); `cpu_usage` is always 0.0 so CPU-gated recovery paths are dead code (F28); diagnostics run un-timed subprocesses under the renderer-health write lock (F25); post-scrape recovery can destroy the renderer before a scrape invoke returns (F03/F26); the memory preflight recycles scraper windows without an active-session check (F04/F30). **Do not tune watchdog thresholds**; every threshold change re-opens the fix treadmill the stability program exists to stop.
+Known limitations are tracked in issues #1089 through #1091, #1071, and #1070. They cover diagnostics under the renderer-health lock, WebKit process attribution, invalid CPU gates, recovery before scrape settlement, and scraper recycling without an active-session check. **Do not tune watchdog thresholds** while those measurement and demand-side issues remain open.
 
 ## PWA reader
 
-Vite + React + `vite-plugin-pwa` (Workbox) at `app.freed.wtf` (Vercel). Imports `@freed/ui`, `@freed/shared`, `@freed/sync`, and `@freed/capture-save`. Runs its own Automerge worker and IndexedDB persistence, connects to the desktop relay over LAN (QR pairing), and can sync against the same cloud snapshot. Its P1-02 cloud-loop damper remains separate from the shipped desktop guard (F06/F22).
+Vite + React + `vite-plugin-pwa` (Workbox) at `app.freed.wtf` (Vercel). Imports `@freed/ui`, `@freed/shared`, `@freed/sync`, and `@freed/capture-save`. Runs its own Automerge worker and IndexedDB persistence, connects to the Freed Desktop relay over LAN through QR pairing, and can sync against the same cloud snapshot. Issue #1068 tracks its cloud-loop damper, and issue #1086 tracks its full-document save, hydration, and merge work.
 
 ## Website
 
@@ -152,6 +152,7 @@ Three long-lived branches: `dev` (product work, default), `main` (production rel
 - `.agents/skills/` contains the governed operational workflows.
   `scripts/validate-skills.mjs` checks safe invocation, referenced commands,
   local links, and agent metadata.
-- The stability program (docs/STABILITY-PROGRAM.md) is the active engineering
-  queue. Continuous actors reconcile its tasks through the control plane rather
-  than inventing a parallel backlog.
+- GitHub Issues carrying the `debt` label are the sole canonical engineering
+  debt backlog. Continuous actors reconcile eligible issues through the control
+  plane. The active execution manifest references each issue and never becomes
+  a parallel backlog.

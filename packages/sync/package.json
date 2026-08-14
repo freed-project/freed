@@ -7,22 +7,20 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./storage/filesystem": "./src/storage/filesystem.ts",
-    "./storage/indexeddb": "./src/storage/indexeddb.ts",
-    "./cloud": "./src/cloud/index.ts"
+    "./types": "./src/types.ts",
+    "./cloud": "./src/cloud/index.ts",
+    "./cloud/library-core": "./src/cloud/library-core.ts"
   },
   "scripts": {
     "build": "tsc",
+    "test": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@freed/shared": "*",
-    "@automerge/automerge": "^2.2.8",
-    "@automerge/automerge-repo": "^1.2.1",
-    "ws": "^8.21.0"
+    "@freed/shared": "*"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.10",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
   }
 }

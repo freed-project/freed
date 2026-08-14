@@ -26,6 +26,10 @@ import {
   inspectRootOwnedRecord as sharedInspectRootOwnedRecord,
   inspectRootOwnedRuntimeFile as sharedInspectRootOwnedRuntimeFile,
 } from "./lib/automation-actor-readiness.mjs";
+import {
+  AUTOMATION_HOST_PROFILE_PATH,
+  inspectAutomationHostAssignment,
+} from "./lib/automation-host-identity.mjs";
 
 export {
   sharedActorLauncherReadiness as actorLauncherReadiness,
@@ -751,6 +755,14 @@ export function auditSavedAutomations({
   launcherRecordRoot = ACTOR_LAUNCHER_RECORD_ROOT,
   runtimeFileInspector = sharedInspectRootOwnedRuntimeFile,
   runtimeRoot = ACTOR_RUNTIME_ROOT,
+  hostAssignmentInspector = inspectAutomationHostAssignment,
+  hostAssignmentPath = path.join(
+    repoRoot,
+    "automation",
+    "host-assignments.json",
+  ),
+  hostProfilePath = AUTOMATION_HOST_PROFILE_PATH,
+  trustedUid = 0,
 }) {
   const modelCatalog = authoritativeModelCatalog(
     codexHome,
@@ -843,6 +855,22 @@ export function auditSavedAutomations({
         ),
       );
     }
+    let hostAssignment = null;
+    if (spec.id === "freed-nightly-runner") {
+      hostAssignment = hostAssignmentInspector({
+        assignmentPath: hostAssignmentPath,
+        profilePath: hostProfilePath,
+        requiredUid: trustedUid,
+      });
+      if (status === "ACTIVE" && !hostAssignment.ready) {
+        issues.push(
+          issue(
+            "active-on-nonprimary-host",
+            `ACTIVE nightly executor must be paused because ${hostAssignment.reason}`,
+          ),
+        );
+      }
+    }
 
     records.push({
       id: spec.id,
@@ -851,6 +879,7 @@ export function auditSavedAutomations({
       status: status || "PAUSED",
       launcher,
       handoffReady: launcher.ready,
+      hostAssignment,
       issues,
     });
   }
@@ -863,6 +892,7 @@ export function auditSavedAutomations({
       reason: modelCatalog.reason,
       callableModels: [...modelCatalog.models.keys()].sort(),
     },
+    hostAssignmentPath,
   };
 }
 

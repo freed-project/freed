@@ -1,0 +1,88 @@
+{
+  "tag": "v26.8.1102-dev",
+  "version": "26.8.1102-dev",
+  "channel": "dev",
+  "dayKey": "26.8.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-12T02:08:54.861Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1101-dev",
+    "previousPublishedDayTag": "v26.8.1004-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "7b56fa09a19ed7c1f46917433a42cfa43ac3e8ce",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1101-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "ddb7d90fb552532e8c0145e47ddeb09877b94c0e",
+        "toInclusiveProductCommitSha": "7b56fa09a19ed7c1f46917433a42cfa43ac3e8ce"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a",
+        "currentDigest": "sha256:163fb60ad9ff7c5e27b5b48c06475122235aee37237c2168a14504099bcfb07a"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:5e33b8d0d9ad3994415126d566e30b4111703007356682c7b76f36759bc7a5a9",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev",
+      "v26.8.1102-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1100-dev",
+      "v26.8.1101-dev",
+      "v26.8.1102-dev"
+    ],
+    "prNumbers": [
+      1395,
+      1396,
+      1397,
+      1398,
+      1400,
+      1401,
+      1402,
+      1403
+    ],
+    "commitSubjects": [
+      "fix: restore Desktop cloud merge type import (#1403)",
+      "perf: keep Automerge dormant in the PWA (#1402)",
+      "fix: reject unsafe entity map keys (#1401)",
+      "perf: index map location candidates (#1400)",
+      "release: v26.8.1101-dev (#1399)",
+      "perf: move Desktop library search into SQLite (#1398)",
+      "perf: move PWA library search into IndexedDB (#1397)",
+      "chore: prepare v26.8.1100-dev (#1396)",
+      "fix: preserve Unicode during SQLite import (#1395)"
+    ]
+  },
+  "release": {
+    "deck": "SQLite keeps the full Library out of browser memory",
+    "features": [
+      "Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit",
+      "The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory",
+      "The normal PWA startup no longer loads the legacy Automerge worker or its WebAssembly runtime"
+    ],
+    "fixes": [
+      "Reject unsafe entity map keys",
+      "Preserve Unicode during SQLite import"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1102-dev\n\nSQLite keeps the full Library out of browser memory\n\n### Features\n\n- Freed Desktop now searches the active SQLite Library in bounded native pages instead of rebuilding a full-library search heap in WebKit\n- The PWA now keeps its disposable search index in IndexedDB and streams bounded result pages, so large synchronized libraries stay searchable without living in JavaScript memory\n- The normal PWA startup no longer loads the legacy Automerge worker or its WebAssembly runtime\n\n### Fixes\n\n- Reject unsafe entity map keys\n- Preserve Unicode during SQLite import\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

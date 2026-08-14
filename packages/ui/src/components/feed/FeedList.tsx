@@ -1,4 +1,12 @@
-import { useRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import {
+  useRef,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
@@ -47,7 +55,12 @@ function storyHeightRatio(numCols: number): number {
 
 type FeedRow =
   | { type: "item"; item: FeedItemType; itemIndex: number }
-  | { type: "stories"; items: FeedItemType[]; itemIndices: number[]; numCols: number };
+  | {
+      type: "stories";
+      items: FeedItemType[];
+      itemIndices: number[];
+      numCols: number;
+    };
 
 /**
  * Collapse consecutive story items into grid rows of up to `maxCols` wide,
@@ -125,6 +138,27 @@ interface FeedListProps {
   isSearching?: boolean;
   /** The active search query text — used in the empty state message */
   searchQuery?: string;
+  /** Request the next bounded row page when the virtual window nears its tail. */
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  onLoadPrevious?: () => void;
+  hasPrevious?: boolean;
+  /** Absolute source-row offset for a rolling bounded reader window. */
+  boundedWindowStartIndex?: number;
+  markItemsAsReadOverride?: (ids: string[]) => Promise<void>;
+}
+
+interface BoundedWindowAnchor {
+  readonly itemId: string;
+  readonly offset: number;
+  readonly source: "element" | "window";
+  readonly windowStartIndex: number;
+}
+
+interface AnchorVirtualRow {
+  readonly index: number;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -163,18 +197,33 @@ const FeedItemRow = memo(function FeedItemRow({
   onOpenCommentUrl,
   fixedHeight,
 }: FeedItemRowProps) {
-  const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
-  const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
+  const handleClick = useCallback(
+    () => onItemClick?.(item),
+    [item, onItemClick],
+  );
+  const handleMouseEnter = useCallback(
+    () => onFocusChange?.(index),
+    [index, onFocusChange],
+  );
   const handleSave = useCallback(
-    (e: React.MouseEvent) => { e.stopPropagation(); onItemSave?.(item); },
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onItemSave?.(item);
+    },
     [item, onItemSave],
   );
   const handleArchive = useCallback(
-    (e: React.MouseEvent) => { e.stopPropagation(); onItemArchive?.(item); },
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onItemArchive?.(item);
+    },
     [item, onItemArchive],
   );
   const handleLike = useCallback(
-    (e: React.MouseEvent) => { e.stopPropagation(); onItemLike?.(item); },
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onItemLike?.(item);
+    },
     [item, onItemLike],
   );
 
@@ -225,7 +274,10 @@ const StoryGroupRow = memo(function StoryGroupRow({
   return (
     <div
       className="grid"
-      style={{ gap: `${TILE_GAP}px`, gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
+      style={{
+        gap: `${TILE_GAP}px`,
+        gridTemplateColumns: `repeat(${numCols}, 1fr)`,
+      }}
     >
       {storyItems.map((item) => (
         <FeedItem
@@ -237,8 +289,22 @@ const StoryGroupRow = memo(function StoryGroupRow({
           showReadInGrayscale={showReadInGrayscale}
           density={density}
           storyHeight={tileHeight}
-          onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(item); } : undefined}
-          onArchive={onItemArchive ? (e) => { e.stopPropagation(); onItemArchive(item); } : undefined}
+          onSave={
+            onItemSave
+              ? (e) => {
+                  e.stopPropagation();
+                  onItemSave(item);
+                }
+              : undefined
+          }
+          onArchive={
+            onItemArchive
+              ? (e) => {
+                  e.stopPropagation();
+                  onItemArchive(item);
+                }
+              : undefined
+          }
         />
       ))}
     </div>
@@ -259,10 +325,18 @@ export function FeedList({
   onOpenCommentUrl,
   isSearching = false,
   searchQuery = "",
+  onLoadMore,
+  hasMore = false,
+  onLoadPrevious,
+  hasPrevious = false,
+  boundedWindowStartIndex = 0,
+  markItemsAsReadOverride,
 }: FeedListProps) {
   // Desktop in-element scroll container
   const parentRef = useRef<HTMLDivElement>(null);
-  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const setParentElement = useCallback((node: HTMLDivElement | null) => {
     parentRef.current = node;
     setScrollElement(node);
@@ -294,7 +368,8 @@ export function FeedList({
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
+  const storeMarkItemsAsRead = useAppStore((s) => s.markItemsAsRead);
+  const markItemsAsRead = markItemsAsReadOverride ?? storeMarkItemsAsRead;
   const markReadOnScroll = useAppStore(
     (s) => s.preferences.display.reading.markReadOnScroll,
   );
@@ -302,7 +377,8 @@ export function FeedList({
     (s) => s.preferences.display.reading.showReadInGrayscale,
   );
   const [cardDensity] = useFeedCardDensity();
-  const desktopFeedCardHeight = DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY[cardDensity];
+  const desktopFeedCardHeight =
+    DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY[cardDensity];
 
   // Track scroll container width so story group rows are sized correctly.
   // 600 is a safe non-zero starting guess; the ResizeObserver corrects it
@@ -324,12 +400,20 @@ export function FeedList({
   // Max grid columns based on current container width (capped at 3).
   // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
-    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
-    return Math.max(1, Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))));
+    const inner = Math.max(
+      Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2,
+      0,
+    );
+    return Math.max(
+      1,
+      Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))),
+    );
   }, [containerWidth, feedCardHorizontalGutter]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
   const rows = useMemo(() => buildRows(items, maxCols), [items, maxCols]);
+  const pendingBoundedAnchorRef = useRef<BoundedWindowAnchor | null>(null);
+  const previousBoundedWindowStartRef = useRef(boundedWindowStartIndex);
 
   // Map item index → row index for focusedIndex highlighting.
   const itemIndexToRowIndex = useMemo(() => {
@@ -346,7 +430,9 @@ export function FeedList({
 
   const estimateDesktopRowSize = useCallback(
     (index: number) =>
-      desktopFeedCardHeight + FEED_CARD_GAP + (index === 0 ? DESKTOP_FIRST_ROW_TOP_PADDING : 0),
+      desktopFeedCardHeight +
+      FEED_CARD_GAP +
+      (index === 0 ? DESKTOP_FIRST_ROW_TOP_PADDING : 0),
     [desktopFeedCardHeight],
   );
 
@@ -356,33 +442,63 @@ export function FeedList({
     (index: number) => {
       if (!isMobile) return estimateDesktopRowSize(index);
       const row = rows[index];
-      if (!row || row.type !== "stories") return ITEM_ROW_ESTIMATE_BY_DENSITY[cardDensity];
-      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
+      if (!row || row.type !== "stories")
+        return ITEM_ROW_ESTIMATE_BY_DENSITY[cardDensity];
+      const inner = Math.max(
+        Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2,
+        0,
+      );
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-      const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]);
-      return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
+      const tileHeight = Math.min(
+        tileWidth * storyHeightRatio(nc),
+        MAX_TILE_H_BY_DENSITY[cardDensity],
+      );
+      return Math.round(
+        tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0),
+      );
     },
-    [cardDensity, estimateDesktopRowSize, isMobile, rows, containerWidth, feedCardHorizontalGutter],
+    [
+      cardDensity,
+      estimateDesktopRowSize,
+      isMobile,
+      rows,
+      containerWidth,
+      feedCardHorizontalGutter,
+    ],
   );
 
   const listKey = useMemo(
-    () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
-    [activeFilter, searchQuery],
+    () =>
+      JSON.stringify({
+        activeFilter,
+        boundedWindowStartIndex,
+        searchQuery: searchQuery.trim(),
+      }),
+    [activeFilter, boundedWindowStartIndex, searchQuery],
   );
-  const getReadScrollMetrics = useCallback((scrollSource: "element" | "window", virtualizer: {
-    options?: { scrollMargin?: number };
-  }) => ({
-    rawScrollTop: scrollSource === "window"
-      ? window.scrollY
-      : (parentRef.current?.scrollTop ?? 0),
-    viewportHeight: scrollSource === "window"
-      ? window.innerHeight
-      : (parentRef.current?.clientHeight ?? 0),
-    scrollMargin: scrollSource === "window"
-      ? (virtualizer.options?.scrollMargin ?? 0)
-      : 0,
-  }), []);
+  const getReadScrollMetrics = useCallback(
+    (
+      scrollSource: "element" | "window",
+      virtualizer: {
+        options?: { scrollMargin?: number };
+      },
+    ) => ({
+      rawScrollTop:
+        scrollSource === "window"
+          ? window.scrollY
+          : (parentRef.current?.scrollTop ?? 0),
+      viewportHeight:
+        scrollSource === "window"
+          ? window.innerHeight
+          : (parentRef.current?.clientHeight ?? 0),
+      scrollMargin:
+        scrollSource === "window"
+          ? (virtualizer.options?.scrollMargin ?? 0)
+          : 0,
+    }),
+    [],
+  );
   const processReadOnScroll = useReadOnScrollTracker({
     surface: isMobile ? "mobile-feed" : "primary-feed",
     listKey,
@@ -392,6 +508,69 @@ export function FeedList({
     getScrollMetrics: getReadScrollMetrics,
     markItemsAsRead,
   });
+  const captureBoundedWindowAnchor = useCallback(
+    (
+      virtualItems: readonly AnchorVirtualRow[],
+      source: "element" | "window",
+      virtualizer: { options?: { scrollMargin?: number } },
+    ) => {
+      if (virtualItems.length === 0) return;
+      const metrics = getReadScrollMetrics(source, virtualizer);
+      const scrollTop = Math.max(
+        0,
+        metrics.rawScrollTop -
+          (metrics.scrollMargin ?? virtualizer.options?.scrollMargin ?? 0),
+      );
+      const firstVisible =
+        virtualItems.find((virtualRow) => virtualRow.end > scrollTop) ??
+        virtualItems[0];
+      const row = rows[firstVisible.index];
+      const itemId =
+        row?.type === "item" ? row.item.globalId : row?.items[0]?.globalId;
+      if (!itemId) return;
+      pendingBoundedAnchorRef.current = {
+        itemId,
+        offset: Math.max(0, scrollTop - firstVisible.start),
+        source,
+        windowStartIndex: boundedWindowStartIndex,
+      };
+    },
+    [boundedWindowStartIndex, getReadScrollMetrics, rows],
+  );
+  const requestBoundedWindowShift = useCallback(
+    (
+      virtualItems: readonly AnchorVirtualRow[],
+      source: "element" | "window",
+      virtualizer: { options?: { scrollMargin?: number } },
+    ) => {
+      if (rows.length === 0 || virtualItems.length === 0) return;
+      const finalVisible = virtualItems[virtualItems.length - 1];
+      if (
+        hasMore &&
+        onLoadMore &&
+        finalVisible &&
+        finalVisible.index >= Math.max(0, rows.length - 5)
+      ) {
+        captureBoundedWindowAnchor(virtualItems, source, virtualizer);
+        onLoadMore();
+        return;
+      }
+      // Near the leading edge, restore the page the window evicted behind us.
+      const firstRendered = virtualItems[0];
+      if (hasPrevious && onLoadPrevious && firstRendered.index <= 4) {
+        captureBoundedWindowAnchor(virtualItems, source, virtualizer);
+        onLoadPrevious();
+      }
+    },
+    [
+      captureBoundedWindowAnchor,
+      hasMore,
+      hasPrevious,
+      onLoadMore,
+      onLoadPrevious,
+      rows.length,
+    ],
+  );
 
   const elementVirtualizer = useVirtualizer({
     count: isMobile ? 0 : rows.length,
@@ -399,7 +578,14 @@ export function FeedList({
     estimateSize: estimateRowSize,
     overscan: 5,
     onChange: (instance) => {
-      if (!isMobile) processReadOnScroll(instance, "element");
+      if (!isMobile) {
+        processReadOnScroll(instance, "element");
+        requestBoundedWindowShift(
+          instance.getVirtualItems(),
+          "element",
+          instance,
+        );
+      }
     },
   });
 
@@ -411,7 +597,14 @@ export function FeedList({
     // header so items are offset correctly as window.scrollY changes.
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
     onChange: (instance) => {
-      if (isMobile) processReadOnScroll(instance, "window");
+      if (isMobile) {
+        processReadOnScroll(instance, "window");
+        requestBoundedWindowShift(
+          instance.getVirtualItems(),
+          "window",
+          instance,
+        );
+      }
     },
   });
 
@@ -419,6 +612,43 @@ export function FeedList({
     elementVirtualizer.measure();
     windowVirtualizer.measure();
   }, [cardDensity]);
+
+  useLayoutEffect(() => {
+    const previousWindowStart = previousBoundedWindowStartRef.current;
+    previousBoundedWindowStartRef.current = boundedWindowStartIndex;
+    if (boundedWindowStartIndex === previousWindowStart) return;
+
+    const anchor = pendingBoundedAnchorRef.current;
+    pendingBoundedAnchorRef.current = null;
+    if (!anchor || anchor.windowStartIndex !== previousWindowStart) return;
+    const anchorRowIndex = rows.findIndex((row) =>
+      row.type === "item"
+        ? row.item.globalId === anchor.itemId
+        : row.items.some((item) => item.globalId === anchor.itemId),
+    );
+    if (anchorRowIndex < 0) return;
+
+    if (anchor.source === "window" && isMobile) {
+      windowVirtualizer.measure();
+      windowVirtualizer.scrollToIndex(anchorRowIndex, { align: "start" });
+      if (anchor.offset > 0) window.scrollBy({ top: anchor.offset });
+      return;
+    }
+
+    if (anchor.source === "element" && !isMobile) {
+      elementVirtualizer.measure();
+      elementVirtualizer.scrollToIndex(anchorRowIndex, { align: "start" });
+      if (anchor.offset > 0) {
+        parentRef.current?.scrollBy({ top: anchor.offset });
+      }
+    }
+  }, [
+    boundedWindowStartIndex,
+    elementVirtualizer,
+    isMobile,
+    rows,
+    windowVirtualizer,
+  ]);
 
   useLayoutEffect(() => {
     if (isMobile || focusMoveDirection === 0 || focusedIndex < 0) return;
@@ -484,8 +714,13 @@ export function FeedList({
           }}
         >
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-            <div key={i} style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}>
-              <FeedItemSkeleton fixedHeight={isMobile ? undefined : desktopFeedCardHeight} />
+            <div
+              key={i}
+              style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}
+            >
+              <FeedItemSkeleton
+                fixedHeight={isMobile ? undefined : desktopFeedCardHeight}
+              />
             </div>
           ))}
         </div>
@@ -499,14 +734,40 @@ export function FeedList({
       return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
           <div className="theme-icon-well-info mb-4 flex h-16 w-16 items-center justify-center rounded-full border bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.12),rgb(var(--theme-accent-secondary-rgb)/0.1))]">
-            <svg className="theme-icon-action h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              className="theme-icon-action h-7 w-7"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </div>
           <p className="text-lg font-medium mb-2">No results</p>
           <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">
-            Nothing matched{searchQuery ? <> &ldquo;<span className="text-[var(--theme-text-secondary)]">{searchQuery}</span>&rdquo;</> : ""}.
-            Try a different term, or switch to <span className="text-[var(--theme-text-secondary)]">All Sources</span> in the sidebar to search everywhere.
+            Nothing matched
+            {searchQuery ? (
+              <>
+                {" "}
+                &ldquo;
+                <span className="text-[var(--theme-text-secondary)]">
+                  {searchQuery}
+                </span>
+                &rdquo;
+              </>
+            ) : (
+              ""
+            )}
+            . Try a different term, or switch to{" "}
+            <span className="text-[var(--theme-text-secondary)]">
+              All Sources
+            </span>{" "}
+            in the sidebar to search everywhere.
           </p>
         </div>
       );
@@ -528,7 +789,9 @@ export function FeedList({
         {hasFeedsSubscribed ? (
           <>
             <p className="text-lg font-medium mb-2">All caught up!</p>
-            <p className="text-sm text-[var(--theme-text-muted)]">No new items to show.</p>
+            <p className="text-sm text-[var(--theme-text-muted)]">
+              No new items to show.
+            </p>
           </>
         ) : (
           <>
@@ -541,8 +804,18 @@ export function FeedList({
                 onClick={onAddFeed}
                 className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
                 Add your first feed
               </button>
@@ -562,7 +835,10 @@ export function FeedList({
       // safe-area-inset-bottom covers the home indicator in standalone mode.
       <div
         ref={windowListRef}
-        style={{ paddingBottom: 'calc(100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
+        style={{
+          paddingBottom:
+            "calc(100lvh - 100dvh + env(safe-area-inset-bottom, 0px))",
+        }}
       >
         <div
           style={{ height: windowVirtualizer.getTotalSize() }}
@@ -592,33 +868,51 @@ export function FeedList({
                   style={{
                     paddingInline: `${feedCardHorizontalGutter}px`,
                     paddingBottom: `${FEED_CARD_GAP}px`,
-                    paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                    paddingTop:
+                      virtualItem.index === 0
+                        ? `${FEED_CARD_GAP}px`
+                        : undefined,
                   }}
                 >
-                  {row.type === "stories" ? (() => {
-                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
-                    const nc = row.numCols;
-                    const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-                    const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]));
-                    return (
-                      <StoryGroupRow
-                        storyItems={row.items}
-                        itemIndices={row.itemIndices}
-                        numCols={nc}
-                        tileHeight={th}
-                        showEngagement={showEngagementCounts}
-                        showReadInGrayscale={showReadInGrayscale}
-                        density={cardDensity}
-                        onItemClick={onItemClick}
-                        onItemSave={onItemSave}
-                        onItemArchive={onItemArchive}
-                      />
-                    );
-                  })() : (
+                  {row.type === "stories" ? (
+                    (() => {
+                      const inner = Math.max(
+                        Math.min(containerWidth, MAX_CONTENT_W) -
+                          feedCardHorizontalGutter * 2,
+                        0,
+                      );
+                      const nc = row.numCols;
+                      const tw =
+                        nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
+                      const th = Math.round(
+                        Math.min(
+                          tw * storyHeightRatio(nc),
+                          MAX_TILE_H_BY_DENSITY[cardDensity],
+                        ),
+                      );
+                      return (
+                        <StoryGroupRow
+                          storyItems={row.items}
+                          itemIndices={row.itemIndices}
+                          numCols={nc}
+                          tileHeight={th}
+                          showEngagement={showEngagementCounts}
+                          showReadInGrayscale={showReadInGrayscale}
+                          density={cardDensity}
+                          onItemClick={onItemClick}
+                          onItemSave={onItemSave}
+                          onItemArchive={onItemArchive}
+                        />
+                      );
+                    })()
+                  ) : (
                     <FeedItemRow
                       item={row.item}
                       index={row.itemIndex}
-                      focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
+                      focused={
+                        itemIndexToRowIndex.get(focusedIndex) ===
+                        virtualItem.index
+                      }
                       showEngagement={showEngagementCounts}
                       showReadInGrayscale={showReadInGrayscale}
                       density={cardDensity}
@@ -670,29 +964,37 @@ export function FeedList({
                 style={{
                   paddingInline: `${feedCardHorizontalGutter}px`,
                   paddingBottom: `${FEED_CARD_GAP}px`,
-                  paddingTop: virtualItem.index === 0 ? `${DESKTOP_FIRST_ROW_TOP_PADDING}px` : undefined,
+                  paddingTop:
+                    virtualItem.index === 0
+                      ? `${DESKTOP_FIRST_ROW_TOP_PADDING}px`
+                      : undefined,
                 }}
               >
-                {row.type === "stories" ? (() => {
-                  return (
-                    <StoryGroupRow
-                      storyItems={row.items}
-                      itemIndices={row.itemIndices}
-                      numCols={row.numCols}
-                      tileHeight={desktopFeedCardHeight}
-                      showEngagement={showEngagementCounts}
-                      showReadInGrayscale={showReadInGrayscale}
-                      density={cardDensity}
-                      onItemClick={onItemClick}
-                      onItemSave={onItemSave}
-                      onItemArchive={onItemArchive}
-                    />
-                  );
-                })() : (
+                {row.type === "stories" ? (
+                  (() => {
+                    return (
+                      <StoryGroupRow
+                        storyItems={row.items}
+                        itemIndices={row.itemIndices}
+                        numCols={row.numCols}
+                        tileHeight={desktopFeedCardHeight}
+                        showEngagement={showEngagementCounts}
+                        showReadInGrayscale={showReadInGrayscale}
+                        density={cardDensity}
+                        onItemClick={onItemClick}
+                        onItemSave={onItemSave}
+                        onItemArchive={onItemArchive}
+                      />
+                    );
+                  })()
+                ) : (
                   <FeedItemRow
                     item={row.item}
                     index={row.itemIndex}
-                    focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
+                    focused={
+                      itemIndexToRowIndex.get(focusedIndex) ===
+                      virtualItem.index
+                    }
                     showEngagement={showEngagementCounts}
                     showReadInGrayscale={showReadInGrayscale}
                     density={cardDensity}

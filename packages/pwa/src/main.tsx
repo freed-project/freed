@@ -14,13 +14,27 @@ if (previewLabel) {
 }
 
 if (import.meta.env.DEV) {
-  Promise.all([import("./lib/store"), import("./lib/automerge")]).then(
-    ([store, automerge]) => {
-      const w = window as unknown as Record<string, unknown>
-      w.__FREED_STORE__ = store.useAppStore
-      w.__FREED_AUTOMERGE__ = automerge
-    },
-  )
+  void Promise.all([
+    import("./lib/store"),
+    import("./lib/library-core-runtime"),
+  ]).then(([store, libraryCore]) => {
+    const w = window as unknown as Record<string, unknown>
+    w.__FREED_STORE__ = store.useAppStore
+    const run = async (action: () => Promise<void>) => {
+      await libraryCore.ensurePwaLibraryCoreFeaturePreviewState()
+      await action()
+    }
+    w.__FREED_LIBRARY_CORE__ = {
+      addFriend: (friend: unknown) =>
+        run(() => store.useAppStore.getState().addFriend(friend as never)),
+      addAccount: (account: unknown) =>
+        run(() => store.useAppStore.getState().addAccount(account as never)),
+      addItems: (items: unknown) =>
+        run(() => store.useAppStore.getState().addItems(items as never)),
+      addFeed: (feed: unknown) =>
+        run(() => store.useAppStore.getState().addFeed(feed as never)),
+    }
+  })
 }
 
 // Keep viewport CSS variables in sync with the actual visible area.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Library Core"
+  short_description: "Build and activate Freed Library Core safely"
+  default_prompt: "Use $freed-library-core to build or migrate Freed Library Core through bounded queries, transactional operations, verified epochs, and deterministic replay."

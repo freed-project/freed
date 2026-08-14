@@ -309,6 +309,17 @@ function fixture(t) {
       status: "",
     }),
     pinnedNodeResolver: () => pinnedNodePath,
+    hostAssignmentInspector: () => ({
+      ready: true,
+      reason: "assigned primary automation host",
+      hostId: "b7c5b98e-3f78-435a-b734-8fef4f457549",
+    }),
+    hostAssignmentPath: path.join(
+      repoRoot,
+      "automation",
+      "host-assignments.json",
+    ),
+    hostProfilePath: path.join(root, "automation-host.json"),
   };
   dependencies.launcherAttestor = (request, { timeoutMs }) => {
     const args = [
@@ -1910,6 +1921,35 @@ test("acquire validates the public binding and invokes its exact launcher", (t) 
   assert.equal(launcherCall.options.timeoutMs, 380_000);
   assert.equal(launcherCall.options.killSignal, "SIGKILL");
   assert.equal(launcherCall.options.stdin, "ignore");
+});
+
+test("nightly acquire fails before launcher invocation on a nonprimary host", (t) => {
+  const value = fixture(t);
+  const actor = "freed-nightly-runner";
+  const binding = writeAcquisitionBinding(value, actor);
+  value.dependencies.hostAssignmentInspector = () => ({
+    ready: false,
+    reason: "root-owned host profile is missing",
+  });
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "acquire", actor, stateRoot: value.stateRoot },
+        value.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError &&
+      error.code === "primary_host_required",
+  );
+  assert.equal(
+    value.calls.some(
+      (call) =>
+        call.executable === binding.launcherPath &&
+        call.args[0] === "--acquire-lease",
+    ),
+    false,
+  );
 });
 
 test("acquire fails closed when the installed launcher exceeds its outer bound", (t) => {

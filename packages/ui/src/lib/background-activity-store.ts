@@ -17,6 +17,7 @@ export type BackgroundActivityJobKind =
   | "cloud-sync"
   | "content-fetch"
   | "content-signal-backfill"
+  | "library-projection"
   | "outbox"
   | "rss-poll"
   | "semantic-classifier"
@@ -117,6 +118,7 @@ export const BACKGROUND_JOB_LABELS: Record<BackgroundActivityJobKind, string> = 
   "cloud-sync": "Cloud sync",
   "content-fetch": "Article fetch",
   "content-signal-backfill": "Content indexing",
+  "library-projection": "Library optimization",
   outbox: "Outbox",
   "rss-poll": "Feed polling",
   "semantic-classifier": "Semantic indexing",
@@ -147,7 +149,6 @@ const DEBUG_JOB_PATTERNS: Array<[RegExp, BackgroundActivityJobKind]> = [
   [/^\[Fetcher\]/, "content-fetch"],
   [/^\[Semantic classifier\]/, "semantic-classifier"],
   [/^\[background-runtime\]/, "runtime-gated"],
-  [/^\[automerge-worker\]/, "snapshot"],
 ];
 
 function activityId(input: StartBackgroundActivityInput): string {

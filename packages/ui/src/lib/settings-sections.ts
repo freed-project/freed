@@ -56,7 +56,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     id: "appearance",
     label: "Appearance",
     keywords: [
-      "theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look",
+      "theme", "appearance", "style", "starship", "dark star", "midas", "neon", "ember", "scriptorium", "look",
       "engagement", "counts", "likes", "reposts", "views",
       "focus", "focus mode", "bionic", "bold", "reading speed",
       "intensity", "light", "normal", "strong", "mark read", "scroll",

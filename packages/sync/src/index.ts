@@ -1,13 +1,12 @@
-/**
- * @freed/sync - Cross-device sync for Freed
- */
+/** Shared contracts for immutable Library Core synchronization. */
 
-export { FilesystemStorage } from "./storage/filesystem.js";
-export { IndexedDBStorage } from "./storage/indexeddb.js";
-export { LocalRelay } from "./network/local-relay.js";
+export * from "./cloud/library-core.js";
 export type {
   SyncStatus,
   SyncConfig,
+  RevisionedStorageAdapter,
+  RevisionedStorageValue,
+  StorageRevision,
   StorageAdapter,
   SyncStatusListener,
 } from "./types.js";

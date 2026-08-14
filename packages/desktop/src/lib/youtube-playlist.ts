@@ -1,7 +1,7 @@
 import { parseYouTubeVideoUrl } from "@freed/shared";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { getSavedYouTubeVideoUrls } from "./automerge";
+import { getSavedYouTubeVideoUrls } from "./library-client";
 import { safeUnlisten } from "./safe-unlisten";
 import { recordRuntimeHealthEvent } from "./runtime-health-events";
 import {

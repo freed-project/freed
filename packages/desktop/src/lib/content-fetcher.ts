@@ -22,7 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe } from "./automerge.js";
+import { docUpdateFeedItem, subscribe } from "./library-client";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
@@ -43,6 +43,7 @@ import {
   isFactoryResetInProgress,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
+import { scanLibraryCoreItems } from "./library-core-item-detail-runtime.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -252,10 +253,16 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
   return trackResetSensitiveOperation(pinReaderItemInternal(item));
 }
 
-function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
+function maybeScanLibraryItems(_items: FeedItem[], docItemCount: number): void {
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
-  enqueue(items);
+  void scanLibraryCoreItems((page) => enqueue([...page])).catch((error) => {
+    log.error(
+      `[content-fetcher] bounded SQLite scan unavailable; background fetch remains paused: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  });
 }
 
 type ProcessOutcome = "success" | "skipped" | "backoff" | "deferred" | "idle";
@@ -644,10 +651,9 @@ export function start(options: ContentFetcherOptions = {}): void {
   // churn across the whole library. Only rescan when the document item count
   // changes, which is the common case for newly imported or relayed items.
   unsubscribeDoc = subscribe((state) => {
-    // state.items contains non-hidden, ranked items from DocState.
-    // Stub items we care about are not hidden or archived, so the visible list
-    // is sufficient when the library grows or shrinks.
-    maybeScanVisibleItems(state.items, state.docItemCount);
+    // SQLite is the bounded primary scan. The renderer array is only a rollback
+    // fallback and is usually empty in the compact Desktop shell.
+    maybeScanLibraryItems(state.items, state.docItemCount);
   });
 
   log.info("[content-fetcher] started");
