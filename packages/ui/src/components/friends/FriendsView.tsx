@@ -82,7 +82,7 @@ import {
   setDevicePersonGraphPosition,
   useDeviceGraphLayout,
 } from "../../lib/device-graph-layout.js";
-import { useThemePreference } from "../../lib/theme.js";
+import { useAppliedThemeId } from "../../lib/theme.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -630,7 +630,7 @@ export function FriendsView({
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const deviceGraphLayout = useDeviceGraphLayout();
-  const [themeId] = useThemePreference();
+  const themeId = useAppliedThemeId();
   const friendSuggestionPreferences = useAppStore(
     (s) => s.preferences.friendSuggestions,
   );
