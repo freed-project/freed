@@ -373,6 +373,15 @@ test("PWA-only provider-visible changes stay in the PWA validation lane", () => 
   );
 
   assert.ok(labels.includes("pwa production build"));
+
+  assert.ok(
+    !labels.includes("root build"),
+    "the production promotion must not fan out into the separate website lane",
+  );
+  assert.ok(
+    !labels.includes("website tests"),
+    "the production promotion must not test the separate website lane",
+  );
   assert.ok(labels.includes("pwa unit tests"));
   assert.ok(!labels.includes("desktop social provider unit tests"));
   assert.ok(!labels.includes("desktop social provider e2e"));
