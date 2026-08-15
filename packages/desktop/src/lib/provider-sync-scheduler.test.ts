@@ -7,12 +7,15 @@ const getNativeBackgroundRuntimeOperationStatus = vi.fn();
 const initializeProviderSchedules = vi.fn();
 const listDueProviderSchedules = vi.fn();
 const getProviderScheduleSnapshot = vi.fn();
+const getAutomaticProviderSyncEnabled = vi.fn();
 const claimProviderSchedule = vi.fn();
 const deferProviderScheduleLocally = vi.fn();
 const markProviderContactIssued = vi.fn();
 const reconcileProviderScheduleOwnership = vi.fn();
 const settleProviderSchedule = vi.fn();
 const recordProviderScheduleEvent = vi.fn();
+const getProviderSyncRuntimeEligibility = vi.fn();
+const replaceNativeProviderScheduleWake = vi.fn();
 
 const record: ProviderScheduleRecord = {
   provider: "facebook",
@@ -36,6 +39,7 @@ vi.mock("./background-runtime-coordinator", () => ({
 }));
 vi.mock("./provider-sync-schedule-state", () => ({
   initializeProviderSchedules,
+  getAutomaticProviderSyncEnabled,
   listDueProviderSchedules,
   getProviderScheduleSnapshot,
   claimProviderSchedule,
@@ -44,12 +48,20 @@ vi.mock("./provider-sync-schedule-state", () => ({
   reconcileProviderScheduleOwnership,
   settleProviderSchedule,
 }));
+vi.mock("./provider-sync-native-wake", () => ({
+  getProviderSyncRuntimeEligibility,
+  replaceNativeProviderScheduleWake,
+}));
 vi.mock("./runtime-health-events", () => ({ recordProviderScheduleEvent }));
 vi.mock("@freed/ui/lib/debug-store", () => ({ addDebugEvent: vi.fn() }));
 
 async function loadScheduler() {
   vi.resetModules();
   return import("./provider-sync-scheduler");
+}
+
+async function flushScheduler(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 describe("provider sync scheduler", () => {
@@ -61,6 +73,13 @@ describe("provider sync scheduler", () => {
       value: "visible",
     });
     initializeProviderSchedules.mockReturnValue({ initialized: [], blocked: [] });
+    getAutomaticProviderSyncEnabled.mockReturnValue(true);
+    getProviderSyncRuntimeEligibility.mockResolvedValue({
+      available: true,
+      eligible: true,
+      reason: null,
+    });
+    replaceNativeProviderScheduleWake.mockResolvedValue(undefined);
     listDueProviderSchedules.mockReturnValue([
       { provider: "facebook", dueAt: 1_000, dueAgeMs: 9_000, normalizedOverdue: 2 },
       { provider: "instagram", dueAt: 1_000, dueAgeMs: 9_000, normalizedOverdue: 1 },
@@ -159,6 +178,29 @@ describe("provider sync scheduler", () => {
     scheduler.stopProviderSyncScheduler();
   });
 
+  it("replaces the native deadline and cancels it when the global kill switch is disabled", async () => {
+    listDueProviderSchedules.mockReturnValue([]);
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await flushScheduler();
+
+    expect(replaceNativeProviderScheduleWake).toHaveBeenCalledWith({
+      provider: "facebook",
+      deadlineAtMs: 1_000,
+    });
+
+    replaceNativeProviderScheduleWake.mockClear();
+    getAutomaticProviderSyncEnabled.mockReturnValue(false);
+    window.dispatchEvent(new Event("freed-provider-sync-schedule-change"));
+    await flushScheduler();
+
+    expect(replaceNativeProviderScheduleWake).toHaveBeenLastCalledWith(null);
+    scheduler.stopProviderSyncScheduler();
+  });
+
   it("records local deferral without claiming or contacting a provider", async () => {
     canStartBackgroundJob.mockReturnValue({
       ok: false,
@@ -170,6 +212,7 @@ describe("provider sync scheduler", () => {
       random: { uniform: () => 0.5, id: () => "attempt" },
     });
     await vi.runAllTicks();
+    await flushScheduler();
 
     expect(deferProviderScheduleLocally).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -226,10 +269,7 @@ describe("provider sync scheduler", () => {
     expect(markProviderContactIssued).toHaveBeenCalledOnce();
 
     releaseProvider();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushScheduler();
 
     expect(listDueProviderSchedules).toHaveBeenCalledTimes(2);
     expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
@@ -252,13 +292,13 @@ describe("provider sync scheduler", () => {
       random: { uniform: () => 0.5, id: () => "attempt" },
     });
     await vi.runAllTicks();
+    await flushScheduler();
 
     expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
 
     scheduler.wakeProviderSyncScheduler();
     await vi.runAllTicks();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushScheduler();
 
     expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
     expect(recordProviderScheduleEvent).toHaveBeenCalledWith(
@@ -289,6 +329,58 @@ describe("provider sync scheduler", () => {
     await vi.runAllTicks();
 
     expect(listDueProviderSchedules).toHaveBeenCalledOnce();
+    expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+    scheduler.stopProviderSyncScheduler();
+  });
+
+  it("runs one coalesced opportunity from a native deadline while hidden", async () => {
+    listDueProviderSchedules.mockReturnValueOnce([]).mockReturnValueOnce([
+      {
+        provider: "facebook",
+        dueAt: 1_000,
+        dueAgeMs: 9_000,
+        normalizedOverdue: 2,
+      },
+    ]).mockReturnValue([]);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await vi.runAllTicks();
+
+    scheduler.wakeProviderSyncSchedulerFromNative();
+    scheduler.wakeProviderSyncSchedulerFromNative();
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
+    expect(markProviderContactIssued).toHaveBeenCalledOnce();
+    scheduler.stopProviderSyncScheduler();
+  });
+
+  it("fails closed before choosing or contacting a provider while the Mac is locked", async () => {
+    getProviderSyncRuntimeEligibility.mockResolvedValue({
+      available: true,
+      eligible: false,
+      reason: "screen_locked",
+    });
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await vi.runAllTicks();
+    await Promise.resolve();
+
+    expect(listDueProviderSchedules).not.toHaveBeenCalled();
+    expect(claimProviderSchedule).not.toHaveBeenCalled();
     expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
     scheduler.stopProviderSyncScheduler();
   });

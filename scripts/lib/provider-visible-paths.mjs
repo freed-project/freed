@@ -68,6 +68,7 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/provider-health.ts",
   "packages/desktop/src/lib/provider-sync-adapters.ts",
   "packages/desktop/src/lib/provider-sync-cadence.ts",
+  "packages/desktop/src/lib/provider-sync-native-wake.ts",
   "packages/desktop/src/lib/provider-sync-schedule-state.ts",
   "packages/desktop/src/lib/provider-sync-scheduler.ts",
   "packages/desktop/src/lib/reader-hydration.ts",
@@ -319,6 +320,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ],
   [
     "packages/desktop/src/lib/provider-sync-cadence.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-sync-native-wake.ts",
     ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   [

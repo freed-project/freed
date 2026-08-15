@@ -41,6 +41,7 @@ import {
   stopProviderSyncScheduler,
   stopProviderSyncSchedulerAndDrain,
   wakeProviderSyncScheduler,
+  wakeProviderSyncSchedulerFromNative,
 } from "./lib/provider-sync-scheduler";
 import { wasDesktopClientRegistrationCreatedThisLaunch } from "./lib/desktop-client-registration";
 import {
@@ -701,6 +702,11 @@ function App() {
     listen("tauri://resume", () => {
       log.info("[app] system resume (wake)");
       wakeProviderSyncScheduler();
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    listen("provider-schedule-native-wake", () => {
+      log.info("[provider-sync] native deadline wake");
+      wakeProviderSyncSchedulerFromNative();
     }).then((unlisten) => cleanups.push(unlisten));
 
     listen<RendererRecoveryStateEvent>("renderer-recovery-state", (event) => {

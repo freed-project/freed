@@ -88,6 +88,8 @@ describe("provider sync cadence", () => {
     expect(report.concurrentAutomaticViolations).toBe(0);
     expect(report.starvationRate).toBe(0);
     expect(report.rendererRestartDeadlineViolations).toBe(0);
+    expect(report.hiddenDeadlineViolations).toBe(0);
+    expect(report.lockedContactViolations).toBe(0);
     expect(report.localDeferralIntervalConsumptionViolations).toBe(0);
     expect(report.sharedProviderStateViolations).toBe(0);
     expect(report.logicalCaptureContactGrowthViolations).toBe(0);
@@ -109,6 +111,6 @@ describe("provider sync cadence", () => {
     expect(report.changePointRatio).toBeGreaterThan(0.95);
     expect(report.changePointRatio).toBeLessThan(1.05);
     expect(report.endpointDensity).toBeLessThan(0.01);
-    expect(Object.keys(report.scenarios)).toHaveLength(11);
+    expect(Object.keys(report.scenarios)).toHaveLength(13);
   }, 60_000);
 });
