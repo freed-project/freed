@@ -27,7 +27,7 @@ use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex as StdMutex, RwLock as StdRwLock,
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -344,6 +344,35 @@ struct DesktopSessionState {
     error: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderSyncRuntimeEligibility {
+    available: bool,
+    eligible: bool,
+    reason: Option<&'static str>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderScheduleWakeRequest {
+    provider: String,
+    deadline_at_ms: u64,
+}
+
+struct ProviderScheduleWakeState {
+    generation: Arc<AtomicU64>,
+    task: StdMutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+}
+
+impl Default for ProviderScheduleWakeState {
+    fn default() -> Self {
+        Self {
+            generation: Arc::new(AtomicU64::new(0)),
+            task: StdMutex::new(None),
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
     let locked_key = "<key>CGSSessionScreenIsLocked</key>";
@@ -623,6 +652,130 @@ fn get_desktop_session_state() -> DesktopSessionState {
             screen_locked,
             error: None,
         }
+    }
+}
+
+#[tauri::command]
+fn get_provider_sync_runtime_eligibility() -> ProviderSyncRuntimeEligibility {
+    #[cfg(not(target_os = "macos"))]
+    {
+        ProviderSyncRuntimeEligibility {
+            available: false,
+            eligible: true,
+            reason: None,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        provider_sync_runtime_eligibility(&get_desktop_session_state())
+    }
+}
+
+fn provider_sync_runtime_eligibility(
+    session: &DesktopSessionState,
+) -> ProviderSyncRuntimeEligibility {
+    if !session.available {
+        return ProviderSyncRuntimeEligibility {
+            available: false,
+            eligible: false,
+            reason: Some("session_state_unavailable"),
+        };
+    }
+    ProviderSyncRuntimeEligibility {
+        available: true,
+        eligible: !session.screen_locked,
+        reason: session.screen_locked.then_some("screen_locked"),
+    }
+}
+
+fn provider_schedule_wake_request_valid(request: &ProviderScheduleWakeRequest) -> bool {
+    matches!(
+        request.provider.as_str(),
+        "x" | "facebook" | "instagram" | "linkedin" | "youtube" | "substack" | "medium"
+    )
+}
+
+#[tauri::command]
+fn replace_provider_schedule_wake(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ProviderScheduleWakeState>,
+    wake: Option<ProviderScheduleWakeRequest>,
+) -> Result<(), String> {
+    let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Some(task) = state
+        .task
+        .lock()
+        .map_err(|_| "Provider schedule wake state lock poisoned".to_string())?
+        .take()
+    {
+        task.abort();
+    }
+
+    let Some(wake) = wake else {
+        return Ok(());
+    };
+    if !provider_schedule_wake_request_valid(&wake) {
+        return Err("Unsupported provider schedule wake request".to_string());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        let _ = generation;
+        let _ = wake;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let generation_counter = state.generation.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            tokio::time::sleep(Duration::from_millis(
+                wake.deadline_at_ms.saturating_sub(now_ms),
+            ))
+            .await;
+
+            loop {
+                if generation_counter.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let eligibility =
+                    tauri::async_runtime::spawn_blocking(get_provider_sync_runtime_eligibility)
+                        .await
+                        .unwrap_or(ProviderSyncRuntimeEligibility {
+                            available: false,
+                            eligible: false,
+                            reason: Some("session_state_unavailable"),
+                        });
+                if eligibility.eligible {
+                    let actual_at_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    let _ = app.emit(
+                        "provider-schedule-native-wake",
+                        serde_json::json!({
+                            "provider": wake.provider,
+                            "scheduledAt": wake.deadline_at_ms,
+                            "actualAt": actual_at_ms,
+                            "wakeContext": true
+                        }),
+                    );
+                    return;
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+        });
+        *state
+            .task
+            .lock()
+            .map_err(|_| "Provider schedule wake state lock poisoned".to_string())? = Some(task);
+        Ok(())
     }
 }
 
@@ -12757,6 +12910,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
+        .manage(ProviderScheduleWakeState::default())
         .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
 
     #[cfg(target_os = "macos")]
@@ -13936,6 +14090,8 @@ pub fn run() {
             record_runtime_health_event,
             get_ai_hardware_profile,
             get_desktop_session_state,
+            get_provider_sync_runtime_eligibility,
+            replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             library_core_journal_runtime::open_library_core_journal,
@@ -16642,6 +16798,55 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn provider_schedule_wake_accepts_only_supported_social_providers() {
+        assert!(provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "facebook".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+        assert!(provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "instagram".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+        assert!(!provider_schedule_wake_request_valid(
+            &ProviderScheduleWakeRequest {
+                provider: "rss".to_string(),
+                deadline_at_ms: 123,
+            }
+        ));
+    }
+
+    #[test]
+    fn provider_schedule_runtime_fails_closed_when_locked_or_unknown() {
+        let locked = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: true,
+            screen_locked: true,
+            error: None,
+        });
+        assert!(!locked.eligible);
+        assert_eq!(locked.reason, Some("screen_locked"));
+
+        let unknown = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: false,
+            screen_locked: false,
+            error: Some("unavailable".to_string()),
+        });
+        assert!(!unknown.eligible);
+        assert_eq!(unknown.reason, Some("session_state_unavailable"));
+
+        let unlocked = provider_sync_runtime_eligibility(&DesktopSessionState {
+            available: true,
+            screen_locked: false,
+            error: None,
+        });
+        assert!(unlocked.eligible);
+        assert_eq!(unlocked.reason, None);
     }
 
     #[cfg(target_os = "macos")]

@@ -578,6 +578,22 @@ const handlers: Record<string, Handler> = {
       screenLocked: false,
       error: null,
     },
+  get_provider_sync_runtime_eligibility: () => {
+    const session = handlers.get_desktop_session_state({}) as {
+      available: boolean;
+      screenLocked: boolean;
+    };
+    return {
+      available: session.available,
+      eligible: !session.available || !session.screenLocked,
+      reason: session.available && session.screenLocked ? "screen_locked" : null,
+    };
+  },
+  replace_provider_schedule_wake: (args: Record<string, unknown>) => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_PROVIDER_SCHEDULE_WAKE__ =
+      args.wake ?? null;
+    return null;
+  },
   get_background_runtime_active_operation: () => ({
     operation: null,
     ageMs: null,

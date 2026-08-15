@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.8.14",
   "date": "2026-08-14",
-  "preferredDeck": "Durable background sync, safer wake recovery, and faster Friends and Map views",
+  "preferredDeck": "Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-08-14T19:40:39.825Z"
+  "editorialNotes": [
+    "Approved v26.8.1406-dev after exact-head feature validation and provider behavior review."
+  ],
+  "updatedAt": "2026-08-15T01:59:53.893Z"
 }
