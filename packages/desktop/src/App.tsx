@@ -40,6 +40,7 @@ import {
   startProviderSyncScheduler,
   stopProviderSyncScheduler,
   stopProviderSyncSchedulerAndDrain,
+  wakeProviderSyncScheduler,
 } from "./lib/provider-sync-scheduler";
 import { wasDesktopClientRegistrationCreatedThisLaunch } from "./lib/desktop-client-registration";
 import {
@@ -689,7 +690,7 @@ function App() {
   useEffect(() => {
     if (!legalAccepted) return;
     log.info("[app] desktop app started");
-    if (!isTauri()) return;
+    if (!tauriRuntimeAvailable) return;
 
     const cleanups: Array<() => void> = [];
 
@@ -699,6 +700,7 @@ function App() {
 
     listen("tauri://resume", () => {
       log.info("[app] system resume (wake)");
+      wakeProviderSyncScheduler();
     }).then((unlisten) => cleanups.push(unlisten));
 
     listen<RendererRecoveryStateEvent>("renderer-recovery-state", (event) => {
@@ -723,7 +725,7 @@ function App() {
     }).then((unlisten) => cleanups.push(unlisten));
 
     return () => cleanups.forEach((fn, index) => safeUnlisten(fn, `app-lifecycle:${index.toLocaleString()}`));
-  }, [legalAccepted]);
+  }, [legalAccepted, tauriRuntimeAvailable]);
 
   useEffect(() => {
     const hasTauriMock = "__TAURI_INTERNALS__" in window;

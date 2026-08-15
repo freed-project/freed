@@ -58,9 +58,19 @@ export function base64ToBytes(encoded: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function bodyToBase64(body?: BodyInit | null): string | undefined {
+async function bodyToBase64(body?: BodyInit | null): Promise<string | undefined> {
   if (!body) return undefined;
+  // Yield before encoding. Drive publication is fire-and-forget from parts of
+  // the UI, and even an async caller would otherwise run the conversion
+  // synchronously until its first await.
+  await Promise.resolve();
   if (typeof body === "string") return bytesToBase64(new TextEncoder().encode(body));
+  if (body instanceof URLSearchParams) {
+    return bytesToBase64(new TextEncoder().encode(body.toString()));
+  }
+  if (body instanceof Blob) {
+    return bytesToBase64(new Uint8Array(await body.arrayBuffer()));
+  }
   if (body instanceof Uint8Array) return bytesToBase64(body);
   if (body instanceof ArrayBuffer) return bytesToBase64(new Uint8Array(body));
   throw new Error("Google Drive native requests only support string and binary bodies.");
@@ -77,7 +87,7 @@ export async function googleDriveFetchViaTauri(
     url,
     method: init.method ?? "GET",
     headers: headersToEntries(init.headers),
-    bodyB64: bodyToBase64(init.body),
+    bodyB64: await bodyToBase64(init.body),
   });
 
   throwIfAborted(init.signal);

@@ -63,6 +63,38 @@ describe("desktop Google Drive platform fetch", () => {
     expect(response.ok).toBe(true);
   });
 
+  it("serializes multipart Blob uploads before invoking the native request", async () => {
+    invokeMock.mockResolvedValueOnce({
+      status: 200,
+      headers: [],
+      bodyB64: "",
+    });
+
+    const { googleDriveFetchViaTauri } = await import("./google-drive");
+    const multipartBody = new Blob(["metadata\r\n", new Uint8Array([1, 2, 3])], {
+      type: "multipart/related; boundary=freed-test",
+    });
+    const expectedBodyB64 = btoa(
+      String.fromCharCode(...new Uint8Array(await multipartBody.arrayBuffer())),
+    );
+
+    await googleDriveFetchViaTauri(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+      {
+        method: "POST",
+        headers: { "Content-Type": multipartBody.type },
+        body: multipartBody,
+      },
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("google_drive_request", {
+      url: "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+      method: "POST",
+      headers: [["Content-Type", "multipart/related; boundary=freed-test"]],
+      bodyB64: expectedBodyB64,
+    });
+  });
+
   it("supports empty 204 Drive responses", async () => {
     invokeMock.mockResolvedValueOnce({
       status: 204,

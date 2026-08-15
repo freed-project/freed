@@ -237,6 +237,62 @@ describe("provider sync scheduler", () => {
     scheduler.stopProviderSyncScheduler();
   });
 
+  it("runs one due opportunity when the desktop resumes", async () => {
+    listDueProviderSchedules.mockReturnValueOnce([]).mockReturnValueOnce([
+      {
+        provider: "facebook",
+        dueAt: 1_000,
+        dueAgeMs: 9_000,
+        normalizedOverdue: 2,
+      },
+    ]);
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await vi.runAllTicks();
+
+    expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+
+    scheduler.wakeProviderSyncScheduler();
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(runScheduledProviderAdapter).toHaveBeenCalledOnce();
+    expect(recordProviderScheduleEvent).toHaveBeenCalledWith(
+      "provider_schedule_decision",
+      expect.objectContaining({
+        provider: "facebook",
+        trigger: "wake",
+        wakeContext: true,
+      }),
+    );
+    scheduler.stopProviderSyncScheduler();
+  });
+
+  it("keeps a due opportunity pending while the desktop session is hidden", async () => {
+    listDueProviderSchedules.mockReturnValue([]);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    const scheduler = await loadScheduler();
+    scheduler.startProviderSyncScheduler({
+      now: () => 10_000,
+      random: { uniform: () => 0.5, id: () => "attempt" },
+    });
+    await vi.runAllTicks();
+
+    scheduler.wakeProviderSyncScheduler();
+    await vi.runAllTicks();
+
+    expect(listDueProviderSchedules).toHaveBeenCalledOnce();
+    expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+    scheduler.stopProviderSyncScheduler();
+  });
+
   it.each([
     { operation: "fb_scrape_feed", provider: "facebook" },
     { operation: "ig_scrape_feed", provider: "instagram" },
