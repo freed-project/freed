@@ -37,14 +37,12 @@ const TOKEN_REFRESH_SKEW_MS = 60_000;
 const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1_000;
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
   "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com";
-const DEFAULT_GDRIVE_TOKEN_PROXY_URL =
-  "https://app.freed.wtf/api/oauth/google";
+const DEFAULT_GDRIVE_TOKEN_PROXY_URL = "https://app.freed.wtf/api/oauth/google";
 const GDRIVE_CLIENT_ID =
   import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID ||
   DEFAULT_GDRIVE_DESKTOP_CLIENT_ID;
 const GDRIVE_TOKEN_PROXY_URL =
-  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ||
-  DEFAULT_GDRIVE_TOKEN_PROXY_URL;
+  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL || DEFAULT_GDRIVE_TOKEN_PROXY_URL;
 
 let googleDriveFetch: GoogleDriveFetch | undefined;
 let acceptingDesktopOAuth = true;
@@ -82,7 +80,9 @@ interface NativeGoogleOAuthResponse {
 
 export type CloudConflictWinner = "local" | "cloud";
 
-export function setGoogleDriveFetch(fetcher: GoogleDriveFetch | undefined): void {
+export function setGoogleDriveFetch(
+  fetcher: GoogleDriveFetch | undefined,
+): void {
   googleDriveFetch = fetcher;
 }
 
@@ -96,7 +96,9 @@ function advanceGeneration(provider: CloudProvider): number {
   return next;
 }
 
-export function captureCloudLifecycle(provider: CloudProvider): CloudLifecycleGuard {
+export function captureCloudLifecycle(
+  provider: CloudProvider,
+): CloudLifecycleGuard {
   const generation = currentGeneration(provider);
   return { isCurrent: () => generation === currentGeneration(provider) };
 }
@@ -125,7 +127,9 @@ function decodeTokenMetadata(raw: string): CloudTokenBundle | null {
   }
 }
 
-function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+function readCloudTokenBundle(
+  provider: CloudProvider,
+): CloudTokenBundle | null {
   const metadata = localStorage.getItem(CLOUD_TOKEN_META_KEY(provider));
   if (metadata !== null) return decodeTokenMetadata(metadata);
   const accessToken = localStorage.getItem(CLOUD_TOKEN_KEY(provider));
@@ -267,7 +271,9 @@ export async function forceRefreshCloudToken(
 ): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
-  return provider === "gdrive" ? refreshGoogleToken(bundle) : bundle.accessToken;
+  return provider === "gdrive"
+    ? refreshGoogleToken(bundle)
+    : bundle.accessToken;
 }
 
 export function getActiveProviders(): CloudProvider[] {
@@ -343,7 +349,9 @@ export function initiateDesktopOAuth(
   return operation;
 }
 
-async function initiateGoogleOAuth(signal: AbortSignal): Promise<CloudTokenBundle> {
+async function initiateGoogleOAuth(
+  signal: AbortSignal,
+): Promise<CloudTokenBundle> {
   throwIfOAuthCanceled(signal);
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
@@ -387,7 +395,9 @@ async function initiateGoogleOAuth(signal: AbortSignal): Promise<CloudTokenBundl
       (event) => {
         finish();
         if (event.payload.state !== state) {
-          reject(new Error("OAuth state mismatch. Please try connecting again."));
+          reject(
+            new Error("OAuth state mismatch. Please try connecting again."),
+          );
         } else if (!event.payload.code) {
           reject(new Error("OAuth callback did not include a code."));
         } else {
@@ -450,7 +460,9 @@ export async function startCloudSync(
     throw new Error("The SQLite Library currently requires Google Drive.");
   }
   if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
-    throw new Error("SQLite Library cloud sync is disabled on this Freed Desktop.");
+    throw new Error(
+      "SQLite Library cloud sync is disabled on this Freed Desktop.",
+    );
   }
   if (hasFactoryResetCloudCleanupBarrier()) return;
   stopCloudSync(provider);
@@ -464,29 +476,59 @@ export async function startCloudSync(
     statusMessage: "Publishing the SQLite Library checkpoint.",
     pendingReason: "Building bounded immutable checkpoint pages.",
   });
-  const result = await startSqliteLibraryGoogleDriveSync({
-    accessToken: token,
-    googleFetch: googleDriveFetch,
-    resolveAccessToken: async () => {
-      if (
-        controller.signal.aborted ||
-        generation !== currentGeneration(provider)
-      ) {
-        throw new Error("SQLite Library sync stopped.");
-      }
-      const accessToken = await getValidCloudToken(provider);
-      if (!accessToken) throw new Error("Reconnect Google Drive to resume sync.");
-      return accessToken;
-    },
-  });
-  if (controller.signal.aborted || generation !== currentGeneration(provider)) return;
+  let result: Awaited<ReturnType<typeof startSqliteLibraryGoogleDriveSync>>;
+  try {
+    result = await startSqliteLibraryGoogleDriveSync({
+      accessToken: token,
+      googleFetch: googleDriveFetch,
+      resolveAccessToken: async () => {
+        if (
+          controller.signal.aborted ||
+          generation !== currentGeneration(provider)
+        ) {
+          throw new Error("SQLite Library sync stopped.");
+        }
+        const accessToken = await getValidCloudToken(provider);
+        if (!accessToken)
+          throw new Error("Reconnect Google Drive to resume sync.");
+        return accessToken;
+      },
+    });
+  } catch (error) {
+    if (
+      controller.signal.aborted ||
+      generation !== currentGeneration(provider)
+    ) {
+      return;
+    }
+    const message =
+      error instanceof Error ? error.message : "SQLite Library sync failed.";
+    updateCloudProvider(provider, {
+      status: "error",
+      stage: "idle",
+      error: message,
+      statusMessage: "SQLite Library sync needs attention.",
+      pendingReason:
+        "Try Sync now again. Reconnect Google Drive if the problem continues.",
+    });
+    recordCloudProviderEvent(provider, {
+      kind: "error",
+      stage: "idle",
+      message,
+    });
+    throw error;
+  }
+  if (controller.signal.aborted || generation !== currentGeneration(provider))
+    return;
   if (result.status === "ownership_required") {
     updateCloudProvider(provider, {
       status: "error",
       stage: "idle",
       error: "Another Freed Desktop currently owns writes for this Library.",
-      statusMessage: "This Freed Desktop is read-only until ownership is transferred.",
-      pendingReason: "Use Make This Freed Desktop the Writer to transfer ownership.",
+      statusMessage:
+        "This Freed Desktop is read-only until ownership is transferred.",
+      pendingReason:
+        "Use Make This Freed Desktop the Writer to transfer ownership.",
     });
     return;
   }
@@ -532,24 +574,31 @@ export async function syncCloudProviderNow(
     signal: cloudAborts.get(provider)?.signal,
   });
   if (result.status === "ownership_required") {
-    throw new Error("Another Freed Desktop currently owns writes for this Library.");
+    throw new Error(
+      "Another Freed Desktop currently owns writes for this Library.",
+    );
   }
   markConnected(result.status === "published");
 }
 
 export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> {
   const accessToken = await getValidCloudToken("gdrive");
-  if (!accessToken) throw new Error("Reconnect Google Drive to transfer ownership.");
+  if (!accessToken)
+    throw new Error("Reconnect Google Drive to transfer ownership.");
   const result = await makeThisSqliteLibraryDesktopWriter({
     accessToken,
     googleFetch: googleDriveFetch,
     signal: cloudAborts.get("gdrive")?.signal,
   });
   if (result.status === "bootstrap_required") {
-    throw new Error("Download the current cloud Library before taking ownership.");
+    throw new Error(
+      "Download the current cloud Library before taking ownership.",
+    );
   }
   if (result.status === "ownership_required") {
-    throw new Error("Library ownership changed. Review the current owner and try again.");
+    throw new Error(
+      "Library ownership changed. Review the current owner and try again.",
+    );
   }
   await reloadSqliteLibraryState();
   await startCloudSync("gdrive", accessToken);
@@ -570,7 +619,9 @@ export async function deleteCloudFile(
   _provider: CloudProvider,
   _token: string,
 ): Promise<void> {
-  throw new Error("Factory reset cannot delete the active SQLite Library authority.");
+  throw new Error(
+    "Factory reset cannot delete the active SQLite Library authority.",
+  );
 }
 
 export async function clearStoredCloudDataForFactoryReset(

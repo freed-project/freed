@@ -36,6 +36,8 @@ import {
 import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
 import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
+import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
+import { log } from "./logger";
 import {
   appendPortableSqliteLibraryItems,
   acknowledgePwaIntentResultOutbox,
@@ -68,6 +70,7 @@ const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
 const LOCAL_REVISION_POLL_MS = 15_000;
 const INBOUND_ACTOR_POLL_MS = 60_000;
+const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
 
 interface LocalLibraryCoreCloudStateV1 {
@@ -116,19 +119,22 @@ export function isSqliteLibraryGoogleDriveSyncEnabled(): boolean {
 function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<LocalLibraryCoreCloudStateV1>;
-  return candidate.version === 1
-    && typeof candidate.libraryId === "string"
-    && typeof candidate.sourceDigest === "string"
-    && typeof candidate.storageEpoch === "string"
-    && typeof candidate.writerId === "string"
-    && (candidate.controlFileId === null || typeof candidate.controlFileId === "string")
-    && (candidate.lastPublishedRevision === null
-      || (typeof candidate.lastPublishedRevision === "number"
-        && Number.isSafeInteger(candidate.lastPublishedRevision)
-        && candidate.lastPublishedRevision >= 0))
-    && (candidate.lastPublishedActorDigest === undefined
-      || candidate.lastPublishedActorDigest === null
-      || /^[a-f0-9]{64}$/.test(candidate.lastPublishedActorDigest));
+  return (
+    candidate.version === 1 &&
+    typeof candidate.libraryId === "string" &&
+    typeof candidate.sourceDigest === "string" &&
+    typeof candidate.storageEpoch === "string" &&
+    typeof candidate.writerId === "string" &&
+    (candidate.controlFileId === null ||
+      typeof candidate.controlFileId === "string") &&
+    (candidate.lastPublishedRevision === null ||
+      (typeof candidate.lastPublishedRevision === "number" &&
+        Number.isSafeInteger(candidate.lastPublishedRevision) &&
+        candidate.lastPublishedRevision >= 0)) &&
+    (candidate.lastPublishedActorDigest === undefined ||
+      candidate.lastPublishedActorDigest === null ||
+      /^[a-f0-9]{64}$/.test(candidate.lastPublishedActorDigest))
+  );
 }
 
 async function loadOrCreateCloudState(
@@ -143,7 +149,9 @@ async function loadOrCreateCloudState(
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
-      throw new Error("The saved Library Core cloud identity belongs to another Library");
+      throw new Error(
+        "The saved Library Core cloud identity belongs to another Library",
+      );
     }
     return {
       state: Object.freeze({
@@ -168,7 +176,9 @@ async function loadOrCreateCloudState(
   return { state, currentWriterId, bootstrap };
 }
 
-async function persistCloudState(state: LocalLibraryCoreCloudStateV1): Promise<void> {
+async function persistCloudState(
+  state: LocalLibraryCoreCloudStateV1,
+): Promise<void> {
   await writeNativeJsonValue(
     STATE_FILE,
     STATE_KEY,
@@ -208,16 +218,18 @@ function exactBytes(bytes: Uint8Array): Uint8Array {
   return copy;
 }
 
-function parseControl(read: LibraryCoreControlReadV1): LibraryCoreControlPointerV1 | null {
+function parseControl(
+  read: LibraryCoreControlReadV1,
+): LibraryCoreControlPointerV1 | null {
   if (read.bytes === null) {
     throw new Error("Library Core control file has no bytes");
   }
   const value = decodeLibraryCoreCanonicalValue(exactBytes(read.bytes));
   if (
-    value !== null
-    && typeof value === "object"
-    && !Array.isArray(value)
-    && Object.keys(value).length === 0
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
   ) {
     return null;
   }
@@ -256,6 +268,43 @@ async function sha256Bytes(bytes: Uint8Array): Promise<string> {
 
 function canonicalValue(value: unknown): LibraryCoreCanonicalValue {
   return value as LibraryCoreCanonicalValue;
+}
+
+async function tracedPublicationStage<T>(
+  label: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const startedAt = performance.now();
+  log.info(`[library-core-cloud] ${label} started`);
+  recordCloudProviderEvent("gdrive", {
+    kind: "started",
+    stage: "upload",
+    message: `${label} started.`,
+  });
+  try {
+    const result = await work();
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    log.info(
+      `[library-core-cloud] ${label} completed in ${elapsedMs.toLocaleString()} ms`,
+    );
+    recordCloudProviderEvent("gdrive", {
+      kind: "success",
+      stage: "upload",
+      message: `${label} completed in ${elapsedMs.toLocaleString()} ms.`,
+    });
+    return result;
+  } catch (error) {
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    log.warn(
+      `[library-core-cloud] ${label} failed after ${elapsedMs.toLocaleString()} ms: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    recordCloudProviderEvent("gdrive", {
+      kind: "error",
+      stage: "upload",
+      message: `${label} failed after ${elapsedMs.toLocaleString()} ms.`,
+    });
+    throw error;
+  }
 }
 
 async function* checkpointEntries(
@@ -327,18 +376,24 @@ async function checkpointHeader(
   actorCount: number,
   preservedFrontierDigest?: string,
 ): Promise<LibraryCorePortableCheckpointHeaderV1> {
-  const frontierDigest = preservedFrontierDigest ?? await sha256Text([
-      state.libraryId,
-      state.storageEpoch,
-      String(descriptor.revision),
-      descriptor.materializedDigest,
-    ].join("\n"));
+  const frontierDigest =
+    preservedFrontierDigest ??
+    (await sha256Text(
+      [
+        state.libraryId,
+        state.storageEpoch,
+        String(descriptor.revision),
+        descriptor.materializedDigest,
+      ].join("\n"),
+    ));
   return {
     kind: "logical_checkpoint_header",
     format: "freed_logical_checkpoint_v1",
-    library_id: state.libraryId as LibraryCorePortableCheckpointHeaderV1["library_id"],
+    library_id:
+      state.libraryId as LibraryCorePortableCheckpointHeaderV1["library_id"],
     epoch: bootstrap.authority.epoch,
-    epoch_id: state.storageEpoch as LibraryCorePortableCheckpointHeaderV1["epoch_id"],
+    epoch_id:
+      state.storageEpoch as LibraryCorePortableCheckpointHeaderV1["epoch_id"],
     schema_version: 2,
     field_registry_version: 1,
     canonical_codec_version: 1,
@@ -349,9 +404,11 @@ async function checkpointHeader(
     transition_candidate_anchor: null,
     promoted_receipt_digests: [],
     materializer_position: {
-      frontier_digest: frontierDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["frontier_digest"],
+      frontier_digest:
+        frontierDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["frontier_digest"],
       ingest_sequence: descriptor.revision,
-      materialized_digest: descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
+      materialized_digest:
+        descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
     },
     collection_counts: {
       accepted_frontier: 0,
@@ -452,7 +509,9 @@ async function acceptPendingPwaActorEnrollments(input: {
 
 function canonicalIntentTransactions(
   entries: readonly Readonly<{
-    readonly canonical_envelope: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+    readonly canonical_envelope: Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >;
   }>[],
 ): readonly (readonly string[])[] {
   const transactions: string[][] = [];
@@ -461,12 +520,12 @@ function canonicalIntentTransactions(
     const transactionId = first.transaction_id;
     const memberCount = first.transaction_member_count;
     if (
-      typeof transactionId !== "string"
-      || !Number.isSafeInteger(memberCount)
-      || typeof memberCount !== "number"
-      || memberCount < 1
-      || index + memberCount > entries.length
-      || first.transaction_member_index !== 0
+      typeof transactionId !== "string" ||
+      !Number.isSafeInteger(memberCount) ||
+      typeof memberCount !== "number" ||
+      memberCount < 1 ||
+      index + memberCount > entries.length ||
+      first.transaction_member_index !== 0
     ) {
       throw new Error("PWA intent segment splits a canonical transaction");
     }
@@ -474,23 +533,27 @@ function canonicalIntentTransactions(
     for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
       const envelope = members[memberIndex]!.canonical_envelope;
       if (
-        envelope.transaction_id !== transactionId
-        || envelope.transaction_member_count !== memberCount
-        || envelope.transaction_member_index !== memberIndex
+        envelope.transaction_id !== transactionId ||
+        envelope.transaction_member_count !== memberCount ||
+        envelope.transaction_member_index !== memberIndex
       ) {
         throw new Error("PWA intent transaction members are reordered");
       }
     }
-    transactions.push(members.map((member) =>
-      new TextDecoder("utf-8", { fatal: true }).decode(
-        encodeLibraryCoreCanonicalValue(
-          member.canonical_envelope as LibraryCoreCanonicalValue,
+    transactions.push(
+      members.map((member) =>
+        new TextDecoder("utf-8", { fatal: true }).decode(
+          encodeLibraryCoreCanonicalValue(
+            member.canonical_envelope as LibraryCoreCanonicalValue,
+          ),
         ),
-      )
-    ));
+      ),
+    );
     index += memberCount;
   }
-  return Object.freeze(transactions.map((transaction) => Object.freeze(transaction)));
+  return Object.freeze(
+    transactions.map((transaction) => Object.freeze(transaction)),
+  );
 }
 
 async function acceptPendingPwaReadIntents(input: {
@@ -545,20 +608,21 @@ async function acceptPendingPwaReadIntents(input: {
       const segment = segments[index]!;
       const previous = segments[index - 1];
       if (
-        segment.firstIntentSequence !== (previous?.lastIntentSequence ?? 0) + 1
-        || segment.lastIntentSequence >= head.head.next_intent_sequence
+        segment.firstIntentSequence !==
+          (previous?.lastIntentSequence ?? 0) + 1 ||
+        segment.lastIntentSequence >= head.head.next_intent_sequence
       ) {
         throw new Error("PWA intent segment chain has a gap or overlap");
       }
     }
     const latest = segments.at(-1)!;
     if (
-      latest.lastIntentSequence !== publishedThrough
-      || latest.reference.descriptor.contentDigest !==
-        head.head.latest_segment.descriptor.contentDigest
-      || latest.reference.descriptor.objectKey !==
-        head.head.latest_segment.descriptor.objectKey
-      || latest.reference.transportObjectId !==
+      latest.lastIntentSequence !== publishedThrough ||
+      latest.reference.descriptor.contentDigest !==
+        head.head.latest_segment.descriptor.contentDigest ||
+      latest.reference.descriptor.objectKey !==
+        head.head.latest_segment.descriptor.objectKey ||
+      latest.reference.transportObjectId !==
         head.head.latest_segment.transportObjectId
     ) {
       throw new Error("PWA intent segments do not match the actor head");
@@ -611,19 +675,23 @@ function resultEntryMatches(
     status: "accepted" | "provider_completed" | "provider_failed";
   }>,
 ): boolean {
-  return local.actorId === remote.actor_id
-    && local.intentOperationId === remote.intent_operation_id
-    && local.intentSequence === remote.intent_sequence
-    && local.providerReceiptDigest === remote.provider_receipt_digest
-    && local.resultOperationId === remote.result_operation_id
-    && local.resultSequence === remote.result_sequence
-    && local.status === remote.status;
+  return (
+    local.actorId === remote.actor_id &&
+    local.intentOperationId === remote.intent_operation_id &&
+    local.intentSequence === remote.intent_sequence &&
+    local.providerReceiptDigest === remote.provider_receipt_digest &&
+    local.resultOperationId === remote.result_operation_id &&
+    local.resultSequence === remote.result_sequence &&
+    local.status === remote.status
+  );
 }
 
 async function verifyPublishedResultPrefix(input: {
   readonly accessToken: string;
   readonly actorId: string;
-  readonly adapter: ReturnType<typeof createGoogleDriveLibraryCoreResultAdapterV1>;
+  readonly adapter: ReturnType<
+    typeof createGoogleDriveLibraryCoreResultAdapterV1
+  >;
   readonly epochId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly head: LibraryCoreResultHeadV1;
@@ -664,7 +732,9 @@ async function verifyPublishedResultPrefix(input: {
           for (const remote of entries) {
             const local = pendingBySequence.get(remote.result_sequence);
             if (local && !resultEntryMatches(local, remote)) {
-              throw new Error("published PWA result differs from the durable SQLite receipt");
+              throw new Error(
+                "published PWA result differs from the durable SQLite receipt",
+              );
             }
             if (local) confirmed.add(local.resultOperationId);
           }
@@ -676,17 +746,19 @@ async function verifyPublishedResultPrefix(input: {
     if (nextSequence >= input.head.next_result_sequence) break;
   }
   if (
-    nextSequence !== input.head.next_result_sequence
-    || previousDigest !== input.head.latest_segment_digest
+    nextSequence !== input.head.next_result_sequence ||
+    previousDigest !== input.head.latest_segment_digest
   ) {
     throw new Error("PWA result objects do not match the actor result head");
   }
   for (const local of input.pending) {
     if (
-      local.resultSequence < input.head.next_result_sequence
-      && !confirmed.has(local.resultOperationId)
+      local.resultSequence < input.head.next_result_sequence &&
+      !confirmed.has(local.resultOperationId)
     ) {
-      throw new Error("published PWA result head omits a durable SQLite receipt");
+      throw new Error(
+        "published PWA result head omits a durable SQLite receipt",
+      );
     }
   }
   return Object.freeze([...confirmed]);
@@ -701,10 +773,13 @@ async function flushPwaIntentResultOutbox(input: {
   readonly signal?: AbortSignal;
 }): Promise<void> {
   for (let page = 0; page < 100; page += 1) {
-    const pending = await readPwaIntentResultOutbox({
-      epochId: input.epochId,
-      libraryId: input.libraryId,
-    }, 256);
+    const pending = await readPwaIntentResultOutbox(
+      {
+        epochId: input.epochId,
+        libraryId: input.libraryId,
+      },
+      256,
+    );
     if (pending.length === 0) return;
     const actorIds = [...new Set(pending.map((entry) => entry.actorId))].sort();
     for (const actorId of actorIds) {
@@ -770,7 +845,9 @@ async function flushPwaIntentResultOutbox(input: {
       );
       if (unpublished.length === 0) continue;
       if (unpublished[0]!.resultSequence !== head.next_result_sequence) {
-        throw new Error("durable PWA result outbox does not extend the cloud result head");
+        throw new Error(
+          "durable PWA result outbox does not extend the cloud result head",
+        );
       }
       await publishLibraryCoreResultEntriesV1({
         adapter,
@@ -781,8 +858,13 @@ async function flushPwaIntentResultOutbox(input: {
         unpublished.map((entry) => entry.resultOperationId),
       );
       head = (await adapter.readResultHead()).head;
-      if (head.next_result_sequence !== unpublished.at(-1)!.resultSequence + 1) {
-        throw new Error("PWA result head did not advance through published receipts");
+      if (
+        head.next_result_sequence !==
+        unpublished.at(-1)!.resultSequence + 1
+      ) {
+        throw new Error(
+          "PWA result head did not advance through published receipts",
+        );
       }
     }
   }
@@ -823,9 +905,10 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
   readonly sourceDigest: string;
 }): Promise<SqliteLibrarySyncDescriptor> {
   const previousStatus = await sqliteLibraryStatus();
-  const backup = previousStatus?.active === true
-    ? await createSqliteLibraryBackup("manual")
-    : null;
+  const backup =
+    previousStatus?.active === true
+      ? await createSqliteLibraryBackup("manual")
+      : null;
   let nativeImportStarted = false;
   let importedHeader: LibraryCorePortableCheckpointHeaderV1 | null = null;
   try {
@@ -843,23 +926,39 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
         async appendPage(pageIndex, records) {
           const feedItems: unknown[] = [];
           if (!nativeImportStarted) {
-            if (pageIndex !== 0 || records[0]?.kind !== "logical_checkpoint_header") {
-              throw new Error("SQLite cloud import did not begin with its logical header");
+            if (
+              pageIndex !== 0 ||
+              records[0]?.kind !== "logical_checkpoint_header"
+            ) {
+              throw new Error(
+                "SQLite cloud import did not begin with its logical header",
+              );
             }
             const header = records[0];
-            const unsupportedCount = Object.entries(header.collection_counts)
-              .some(([collection, count]) =>
-                collection !== "materialized_rows"
-                && collection !== "actor_states"
-                && count !== 0,
-              );
+            const unsupportedCount = Object.entries(
+              header.collection_counts,
+            ).some(
+              ([collection, count]) =>
+                collection !== "materialized_rows" &&
+                collection !== "actor_states" &&
+                count !== 0,
+            );
             if (unsupportedCount) {
-              throw new Error("SQLite cloud import contains unsupported Library collections");
+              throw new Error(
+                "SQLite cloud import contains unsupported Library collections",
+              );
             }
-            const rows = records.slice(1).map(materializedRow).filter((row) => row !== null);
-            const shell = rows.find((row) => row.registryKey === "00_library_shell");
+            const rows = records
+              .slice(1)
+              .map(materializedRow)
+              .filter((row) => row !== null);
+            const shell = rows.find(
+              (row) => row.registryKey === "00_library_shell",
+            );
             if (shell === undefined) {
-              throw new Error("SQLite cloud import is missing the Library shell");
+              throw new Error(
+                "SQLite cloud import is missing the Library shell",
+              );
             }
             await beginPortableSqliteLibraryImport({
               expectedItemCount: header.collection_counts.materialized_rows - 1,
@@ -873,23 +972,29 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
             for (const row of rows) {
               if (row.registryKey === "10_feed_items") feedItems.push(row.row);
               else if (row.registryKey !== "00_library_shell") {
-                throw new Error(`SQLite cloud import does not support ${row.registryKey}`);
+                throw new Error(
+                  `SQLite cloud import does not support ${row.registryKey}`,
+                );
               }
             }
           } else {
             for (const record of records) {
               if (
-                record.kind === "logical_checkpoint_entry"
-                && record.collection === "actor_states"
+                record.kind === "logical_checkpoint_entry" &&
+                record.collection === "actor_states"
               ) {
                 continue;
               }
               const row = materializedRow(record);
               if (row === null) {
-                throw new Error("SQLite cloud import repeats its logical header");
+                throw new Error(
+                  "SQLite cloud import repeats its logical header",
+                );
               }
               if (row.registryKey !== "10_feed_items") {
-                throw new Error(`SQLite cloud import does not support ${row.registryKey}`);
+                throw new Error(
+                  `SQLite cloud import does not support ${row.registryKey}`,
+                );
               }
               feedItems.push(row.row);
             }
@@ -898,7 +1003,9 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
         },
         async finalizeImport({ header, manifest }) {
           if (!nativeImportStarted || importedHeader === null) {
-            throw new Error("SQLite cloud import never initialized native staging");
+            throw new Error(
+              "SQLite cloud import never initialized native staging",
+            );
           }
           await finalizePortableSqliteLibraryImport();
           const descriptor = await readSqliteLibrarySyncDescriptor();
@@ -906,7 +1013,8 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
             frontierDigest: header.materializer_position.frontier_digest,
             ingestSequence: header.materializer_position.ingest_sequence,
             libraryId: header.library_id,
-            materializedDigest: descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
+            materializedDigest:
+              descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
             recordCount: manifest.totalRecordCount,
             storageEpoch: header.epoch_id,
           };
@@ -942,7 +1050,10 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     signal: input.signal,
   });
   if (state.controlFileId !== provisioned.controlFileId) {
-    state = Object.freeze({ ...state, controlFileId: provisioned.controlFileId });
+    state = Object.freeze({
+      ...state,
+      controlFileId: provisioned.controlFileId,
+    });
     await persistCloudState(state);
   }
   const adapter = createGoogleDriveLibraryCoreAdapterV1({
@@ -964,9 +1075,9 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
       revision: controlRead.revision,
     });
     if (
-      state.writerId !== pointer.writerId
-      || state.storageEpoch !== pointer.storageEpoch
-      || state.lastPublishedRevision !== descriptor.revision
+      state.writerId !== pointer.writerId ||
+      state.storageEpoch !== pointer.storageEpoch ||
+      state.lastPublishedRevision !== descriptor.revision
     ) {
       state = Object.freeze({
         ...state,
@@ -979,9 +1090,9 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     return { status: "current", revision: descriptor.revision };
   }
   if (
-    state.lastPublishedRevision !== descriptor.revision
-    || pointer.storageEpoch !== state.storageEpoch
-    || pointer.writerId !== state.writerId
+    state.lastPublishedRevision !== descriptor.revision ||
+    pointer.storageEpoch !== state.storageEpoch ||
+    pointer.writerId !== state.writerId
   ) {
     descriptor = await bootstrapCloudCheckpointIntoSqlite({
       adapter,
@@ -997,8 +1108,12 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     await persistCloudState(state);
   }
 
-  const canonicalSourceControlJson = new TextDecoder("utf-8", { fatal: true }).decode(
-    encodeLibraryCoreCanonicalValue(pointer as unknown as LibraryCoreCanonicalValue),
+  const canonicalSourceControlJson = new TextDecoder("utf-8", {
+    fatal: true,
+  }).decode(
+    encodeLibraryCoreCanonicalValue(
+      pointer as unknown as LibraryCoreCanonicalValue,
+    ),
   );
   const reassigned = await reassignSqliteLibraryWriterEpoch({
     canonicalSourceControlJson,
@@ -1050,11 +1165,13 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
       localWriterId: loaded.currentWriterId,
     };
   }
-  await persistCloudState(Object.freeze({
-    ...targetState,
-    lastPublishedActorDigest: await actorStateDigest(actors),
-    lastPublishedRevision: descriptor.revision,
-  }));
+  await persistCloudState(
+    Object.freeze({
+      ...targetState,
+      lastPublishedActorDigest: await actorStateDigest(actors),
+      lastPublishedRevision: descriptor.revision,
+    }),
+  );
   await setSqliteLibraryCloudWriterAdmission({
     localWriterId: loaded.currentWriterId,
     activeWriterId: loaded.currentWriterId,
@@ -1069,8 +1186,14 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
-  const descriptor = await readSqliteLibrarySyncDescriptor();
-  const loaded = await loadOrCreateCloudState(descriptor);
+  const descriptor = await tracedPublicationStage(
+    "read local SQLite revision",
+    readSqliteLibrarySyncDescriptor,
+  );
+  const loaded = await tracedPublicationStage(
+    "load local writer authority",
+    () => loadOrCreateCloudState(descriptor),
+  );
   let state = loaded.state;
   if (state.writerId !== loaded.currentWriterId) {
     await setSqliteLibraryCloudWriterAdmission({
@@ -1085,14 +1208,21 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       localWriterId: loaded.currentWriterId,
     };
   }
-  const provisioned = await provisionGoogleDriveLibraryCoreControlV1({
-    accessToken: input.accessToken,
-    libraryId: state.libraryId,
-    googleFetch: input.googleFetch,
-    signal: input.signal,
-  });
+  const provisioned = await tracedPublicationStage(
+    "discover Drive control",
+    () =>
+      provisionGoogleDriveLibraryCoreControlV1({
+        accessToken: input.accessToken,
+        libraryId: state.libraryId,
+        googleFetch: input.googleFetch,
+        signal: input.signal,
+      }),
+  );
   if (state.controlFileId !== provisioned.controlFileId) {
-    state = Object.freeze({ ...state, controlFileId: provisioned.controlFileId });
+    state = Object.freeze({
+      ...state,
+      controlFileId: provisioned.controlFileId,
+    });
     await persistCloudState(state);
   }
   const adapter = createGoogleDriveLibraryCoreAdapterV1({
@@ -1102,7 +1232,9 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     googleFetch: input.googleFetch,
     signal: input.signal,
   });
-  const controlRead = await adapter.readControl();
+  const controlRead = await tracedPublicationStage("read Drive control", () =>
+    adapter.readControl(),
+  );
   const pointer = parseControl(controlRead);
   if (pointer !== null && pointer.writerId !== state.writerId) {
     if (controlRead.revision === null) {
@@ -1219,21 +1351,75 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   return { status: "published", revision: updatedDescriptor.revision };
 }
 
-let publicationChain: Promise<void> = Promise.resolve();
+function publicationAbortError(message: string): Error {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * Bound one publication attempt to its owning UI lifecycle.
+ *
+ * Native SQLite and Keychain commands cannot be interrupted after Tauri has
+ * accepted them. Their result is still safe to ignore because every cloud
+ * mutation below rechecks the supplied signal before the request and Drive
+ * publication ends in an exact control CAS. A canceled native invoke must not
+ * remain the head of a module-wide queue and wedge every later sync attempt.
+ */
+async function runBoundedPublication(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<LibraryCoreCloudPublishResult> {
+  if (input.signal?.aborted) {
+    throw publicationAbortError("SQLite Library publication was canceled.");
+  }
+  const timeoutController = new AbortController();
+  const combinedController = new AbortController();
+  const abortCombined = () => combinedController.abort();
+  input.signal?.addEventListener("abort", abortCombined, { once: true });
+  timeoutController.signal.addEventListener("abort", abortCombined, {
+    once: true,
+  });
+  const timer = window.setTimeout(
+    () => timeoutController.abort(),
+    PUBLICATION_TIMEOUT_MS,
+  );
+  const canceled = new Promise<never>((_resolve, reject) => {
+    combinedController.signal.addEventListener(
+      "abort",
+      () => {
+        reject(
+          publicationAbortError(
+            timeoutController.signal.aborted
+              ? "SQLite Library publication timed out. Try Sync now again."
+              : "SQLite Library publication was canceled.",
+          ),
+        );
+      },
+      { once: true },
+    );
+  });
+  try {
+    return await Promise.race([
+      publishCurrentSqliteLibraryToGoogleDriveInternal({
+        ...input,
+        signal: combinedController.signal,
+      }),
+      canceled,
+    ]);
+  } finally {
+    window.clearTimeout(timer);
+    input.signal?.removeEventListener("abort", abortCombined);
+  }
+}
 
 export function publishCurrentSqliteLibraryToGoogleDrive(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
-  const result = publicationChain.then(() =>
-    publishCurrentSqliteLibraryToGoogleDriveInternal(input),
-  );
-  publicationChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return runBoundedPublication(input);
 }
 
 export async function startSqliteLibraryGoogleDriveSync(input: {
@@ -1245,7 +1431,9 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   resetSqliteLibraryDriveBackupMirror();
   const abortController = new AbortController();
   running = { abortController, timer: null };
-  const publish = async (accessToken: string): Promise<LibraryCoreCloudPublishResult> =>
+  const publish = async (
+    accessToken: string,
+  ): Promise<LibraryCoreCloudPublishResult> =>
     publishCurrentSqliteLibraryToGoogleDrive({
       accessToken,
       googleFetch: input.googleFetch,
@@ -1259,16 +1447,20 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   let lastInboundActorPollAt = Date.now();
 
   const poll = async (): Promise<void> => {
-    if (running?.abortController !== abortController || abortController.signal.aborted) return;
+    if (
+      running?.abortController !== abortController ||
+      abortController.signal.aborted
+    )
+      return;
     try {
       const status = await sqliteLibraryStatus();
       const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
       const now = Date.now();
       if (
-        status?.active === true
-        && isCloudState(state)
-        && (state.lastPublishedRevision !== status.revision
-          || now - lastInboundActorPollAt >= INBOUND_ACTOR_POLL_MS)
+        status?.active === true &&
+        isCloudState(state) &&
+        (state.lastPublishedRevision !== status.revision ||
+          now - lastInboundActorPollAt >= INBOUND_ACTOR_POLL_MS)
       ) {
         lastInboundActorPollAt = now;
         const result = await publish(await input.resolveAccessToken());
@@ -1278,12 +1470,21 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
         }
       }
     } finally {
-      if (running?.abortController === abortController && !abortController.signal.aborted) {
-        running.timer = setTimeout(() => void poll().catch(console.error), LOCAL_REVISION_POLL_MS);
+      if (
+        running?.abortController === abortController &&
+        !abortController.signal.aborted
+      ) {
+        running.timer = setTimeout(
+          () => void poll().catch(console.error),
+          LOCAL_REVISION_POLL_MS,
+        );
       }
     }
   };
-  running.timer = setTimeout(() => void poll().catch(console.error), LOCAL_REVISION_POLL_MS);
+  running.timer = setTimeout(
+    () => void poll().catch(console.error),
+    LOCAL_REVISION_POLL_MS,
+  );
   return initial;
 }
 
