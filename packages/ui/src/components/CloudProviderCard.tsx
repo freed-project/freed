@@ -148,6 +148,12 @@ export function CloudProviderCard({
                 : "theme-accent-tag"
           }`}
         >
+          {isConnecting && (
+            <span
+              aria-hidden="true"
+              className="mr-1.5 inline-block h-3 w-3 align-[-0.125rem] animate-spin rounded-full border border-current border-t-transparent"
+            />
+          )}
           {isComingSoon
             ? "Coming soon"
             : isConnecting

@@ -131,6 +131,30 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
   });
 
+  it("shows honest activity feedback while Drive publication is running", async () => {
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "connecting",
+          stage: "upload",
+          statusMessage: "Publishing the SQLite Library checkpoint.",
+          pendingReason: "Publishing immutable Library objects now.",
+        },
+      },
+    });
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const status = container.querySelector("[data-testid='cloud-sync-status-message']");
+    expect(status?.getAttribute("aria-busy")).toBe("true");
+    expect(status?.getAttribute("role")).toBe("status");
+    expect(status?.textContent).toContain("Publishing the SQLite Library checkpoint.");
+    expect(container.querySelector("[data-testid='cloud-sync-activity-spinner']")).not.toBeNull();
+  });
+
   it("warns when the synced library has multiple Freed Desktop clients", async () => {
     useAppStore.setState({
       desktopClientIds: ["desktop-current", "desktop-other"],
