@@ -3,7 +3,7 @@
   "version": "26.8.1407",
   "channel": "production",
   "dayKey": "26.8.14",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-15T03:06:03.746Z",
   "model": "heuristic",
@@ -406,7 +406,7 @@
     ]
   },
   "release": {
-    "deck": "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory, reader, feed, and header polish, and task-scoped factory claims",
+    "deck": "Ships the native SQLite Library across Freed Desktop and bounded IndexedDB storage in the PWA, with repaired Google Drive synchronization on both clients",
     "features": [
       "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory",
       "Moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization",
@@ -414,24 +414,19 @@
     ],
     "fixes": [
       "Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library",
-      "Release build and type-safety cleanup",
       "Repairs Google Drive authentication and automatic cloud-sync startup on Freed Desktop",
+      "Uploads browser Blob request bodies correctly through the native Google Drive bridge",
       "Restores authenticated Google Drive synchronization in the PWA by binding browser requests correctly",
       "Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token",
-      "Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts",
-      "SQLite and PWA Google Drive sync, including disconnect and token recovery restored"
+      "Returns from the PWA OAuth callback reliably after a successful connection",
+      "Keeps automatic social sync durable across sleep, hidden windows, locks, and renderer restarts"
     ],
     "followUps": [
-      "Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use",
-      "Continue profiling explicit fuzzy search on unusually broad queries",
       "Continue hardening cross-device immutable synchronization and recovery",
       "Reduce the remaining control-plane test runtime outside the product release path",
-      "Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views",
       "Verify multi-day Facebook and Instagram cadence with the hourly automation custodian",
-      "Continue measurement-guided provider reliability and performance work",
-      "Compare the installed build against matched historical runtime windows",
-      "Tappable zoom step controls"
+      "Compare the installed build against matched historical runtime windows"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1407\n\nMoves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory, reader, feed, and header polish, and task-scoped factory claims\n\n### Features\n\n- Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory\n- Moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization\n- Adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics\n\n### Fixes\n\n- Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library\n- Release build and type-safety cleanup\n- Repairs Google Drive authentication and automatic cloud-sync startup on Freed Desktop\n- Restores authenticated Google Drive synchronization in the PWA by binding browser requests correctly\n- Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token\n- Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts\n- SQLite and PWA Google Drive sync, including disconnect and token recovery restored\n\n### Follow-ups\n\n- Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use\n- Continue profiling explicit fuzzy search on unusually broad queries\n- Continue hardening cross-device immutable synchronization and recovery\n- Reduce the remaining control-plane test runtime outside the product release path\n- Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views\n- Verify multi-day Facebook and Instagram cadence with the hourly automation custodian\n- Continue measurement-guided provider reliability and performance work\n- Compare the installed build against matched historical runtime windows\n- Tappable zoom step controls\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1407\n\nShips the native SQLite Library across Freed Desktop and bounded IndexedDB storage in the PWA, with repaired Google Drive synchronization on both clients\n\n### Features\n\n- Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory\n- Moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization\n- Adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics\n\n### Fixes\n\n- Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library\n- Repairs Google Drive authentication and automatic cloud-sync startup on Freed Desktop\n- Uploads browser Blob request bodies correctly through the native Google Drive bridge\n- Restores authenticated Google Drive synchronization in the PWA by binding browser requests correctly\n- Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token\n- Returns from the PWA OAuth callback reliably after a successful connection\n- Keeps automatic social sync durable across sleep, hidden windows, locks, and renderer restarts\n\n### Follow-ups\n\n- Continue hardening cross-device immutable synchronization and recovery\n- Reduce the remaining control-plane test runtime outside the product release path\n- Verify multi-day Facebook and Instagram cadence with the hourly automation custodian\n- Compare the installed build against matched historical runtime windows\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
