@@ -155,6 +155,8 @@ Every general automation actor now requires lease acquisition through a trusted 
 
 An expired trusted-launcher acquisition stranded after its lease state commits can now be completed through one exact current-task owner confirmation. Recovery admits only the pending operation ID, actor, canonical lease, committed phase, retained token digest, and trusted-launcher provenance named by the confirmation. It rejects live leases and prepared or mismatched transactions, never returns the retained token, and preserves the original lease event and transaction receipt. This runtime-neutral control-plane repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
+A stranded task-manifest predecessor witness now has one owner-governed repair path instead of a manual file-edit escape hatch. The read-only planner proves the exact canonical and witness generations, healthy task and event history, one unique retired transaction lineage, and no active owner. The task-bound apply command appends one reserved authorization event before exact-generation retirement, never rewrites `current-tasks.json`, and recovers without duplicate events or retirements after response loss. Changed, pending, ambiguous, or foreign generations fail closed. This runtime-neutral control-plane repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
+
 Lease transaction cleanup now uses one pinned cross-platform helper and held file and directory descriptors for exclusive archive moves. Darwin uses `renameatx_np(RENAME_EXCL)` and Linux uses `renameat2(RENAME_NOREPLACE)`. Destination readback and the final exact archive-set rescan stay relative to the held directories, and destination durability is established before source removal durability. The general actor runtime copies and digests the helper. Strict preflight reports current and projected archive count, bytes, oldest age, local filesystem identity, and free-space headroom before new staging. The projection reserves three maximum-size transaction artifacts plus the largest stale receipt-pruning set that one canonical lease operation could retire. Count, byte, age, and headroom limits stop new transactions instead of compacting audit history without a separate owner-authorized lifecycle. This local control-plane hardening adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
 Current-task owner confirmation is now a supported cooperative fallback for one exact lifecycle operation when the owner explicitly approves it in the active task. The private confirmation binds the owner name, current-task reference, task ID, canonical operation intent, approval time, and expiry to a short `freed-owner` lease. Every different operation needs a different intent record. The audit event preserves the confirmation digest and reference. This path does not authenticate the owner, contact a provider, or replace provider behavior approval or repository CODEOWNER requirements. Unknown metric IDs in stability artifacts now fail validation before a release handoff can depend on them.
@@ -429,17 +431,17 @@ Reward security researchers for responsible disclosure.
 
 ### UX Polish
 
-| Task  | Description                        | Complexity |
-| ----- | ---------------------------------- | ---------- |
-| 10.1  | Onboarding wizard                  | Medium     |
-| 10.2  | Statistics dashboard               | Medium     |
-| 10.3  | Export to JSON                     | Low        |
-| 10.4  | Export to CSV                      | Low        |
-| 10.5  | Keyboard shortcuts                 | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
-| 10.6  | Screen reader support              | Medium     |
-| 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
-| 10.8  | Color contrast audit               | Low        |
-| 10.9  | Native Liquid Glass buttons        | High       |
+| Task  | Description                       | Complexity |
+| ----- | --------------------------------- | ---------- |
+| 10.1  | Onboarding wizard                 | Medium     |
+| 10.2  | Statistics dashboard              | Medium     |
+| 10.3  | Export to JSON                    | Low        |
+| 10.4  | Export to CSV                     | Low        |
+| 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
+| 10.6  | Screen reader support             | Medium     |
+| 10.7  | Reduced motion support            | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
+| 10.8  | Color contrast audit              | Low        |
+| 10.9  | Native Liquid Glass buttons       | High       |
 | 10.24 | Command bar: full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)      |
 
 ### AI Features
@@ -474,6 +476,7 @@ Reward security researchers for responsible disclosure.
 | 10.22 | Documentation site                       | Medium     |
 | 10.28 | Primary automation host and task custody | Medium     | ✓ Complete (reviewed opaque host assignment, root-owned enrollment, nightly primary-host gate, one custodian heartbeat contract, and conservative external no-op archival)                                                              |
 | 10.29 | Task-scoped factory execution claims     | Medium     | ✓ Complete (single-manifest claims, exact retry receipts, conflict fencing, heartbeat custody, checkpoint-backed epoch transfer, exact release, and runtime-neutral draft-only pilot authority)                                         |
+| 10.30 | Stranded authority witness repair        | Medium     | ✓ Complete (read-only immutable planning, task-bound owner intent, reserved audit event, exact-generation retirement, response-loss recovery, and fail-closed drift checks)                                                             |
 
 ### Resilience
 
@@ -517,6 +520,7 @@ Reward security researchers for responsible disclosure.
 - [x] Stability status reduces the current read-only evidence surfaces into one deterministic model, rejects unsafe artifact shapes, reports foreign records without treating them as canonical evidence, and chooses one next action without network or state mutation.
 - [x] One reviewed primary host owns the single nightly executor, while one custodian heartbeat validates saved actors, enforces models from current callable capability data, and archives only confirmed no-op automation tasks.
 - [x] One trusted nightly coordinator can hold multiple task-scoped factory claims without giving workers permanent leases. Each claim remains inside the atomic task authority manifest, preserves exact custody across retries and crashes, and permits only runtime-neutral, provider-forbidden, draft-only pilot work.
+- [x] A stranded task-manifest predecessor witness can be planned without mutation and retired only through one exact task-bound owner intent, reserved audit event, and response-loss-safe native authority retirement.
 - [ ] Documentation site live
 
 ### Resilience
