@@ -95,6 +95,7 @@ class FakeGoogleDrive {
   nextId = 1;
   uploadFixture: ReturnType<typeof operationObject> | null = null;
   intentHeadFixture: ReturnType<typeof emptyIntentHead> | null = null;
+  exposeMediaEtag = true;
 
   addControl(
     id = "control-1",
@@ -276,7 +277,7 @@ class FakeGoogleDrive {
       if (parsed.searchParams.get("alt") === "media") {
         return new Response(file.bytes.slice(), {
           headers: {
-            ETag: file.etag,
+            ...(this.exposeMediaEtag ? { ETag: file.etag } : {}),
             "Content-Length": String(file.bytes.byteLength),
           },
         });
@@ -367,6 +368,7 @@ describe("Google Drive Library Core immutable adapter", () => {
 
   it("discovers a fresh PWA library identity from the sole published control", async () => {
     const fake = new FakeGoogleDrive();
+    fake.exposeMediaEtag = false;
     const manifestDigest = "22".repeat(32);
     fake.addControl(
       "control-1",
@@ -406,7 +408,6 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(discovered).toMatchObject({
       controlFileId: "control-1",
       libraryId: "library-1",
-      control: { revision: '"control-revision-1"' },
     });
     expect(discovered?.control.bytes.byteLength).toBeGreaterThan(0);
     const query = new URL(fake.requests[0]?.url ?? "").searchParams.get("q");
@@ -441,6 +442,7 @@ describe("Google Drive Library Core immutable adapter", () => {
 
   it("uploads one bounded immutable object and verifies exact stored bytes", async () => {
     const fake = new FakeGoogleDrive();
+    fake.exposeMediaEtag = false;
     fake.addControl();
     const fixture = operationObject();
     fake.uploadFixture = fixture;

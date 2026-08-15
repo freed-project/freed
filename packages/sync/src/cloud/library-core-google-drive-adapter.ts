@@ -87,7 +87,6 @@ export interface PublishedGoogleDriveLibraryCoreControlV1
   extends GoogleDriveLibraryCoreControlLocatorV1 {
   readonly control: {
     readonly bytes: Uint8Array;
-    readonly revision: string;
   };
   readonly libraryId: string;
 }
@@ -538,7 +537,7 @@ async function listDriveFilesByProperties(input: {
   );
 }
 
-async function readDriveFile(input: {
+async function readDriveFileWithRevision(input: {
   readonly accessToken: string;
   readonly fileId: string;
   readonly googleFetch: GoogleDriveFetch;
@@ -564,6 +563,25 @@ async function readDriveFile(input: {
       input.label,
     ),
   };
+}
+
+async function readDriveFileBytes(input: {
+  readonly accessToken: string;
+  readonly fileId: string;
+  readonly googleFetch: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly maxBytes: number;
+  readonly label: string;
+}): Promise<Uint8Array> {
+  const response = await input.googleFetch(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(input.fileId)}?alt=media`,
+    {
+      headers: authorizationHeaders(input.accessToken),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) throw await responseError(input.label, response);
+  return readBoundedResponseBytes(response, input.maxBytes, input.label);
 }
 
 async function readDriveFileMetadata(input: {
@@ -680,7 +698,7 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
   });
   const file = files[0];
   if (file === undefined) return null;
-  const control = await readDriveFile({
+  const controlBytes = await readDriveFileBytes({
     accessToken: input.accessToken,
     fileId: file.id,
     googleFetch,
@@ -689,12 +707,12 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     label: "Library Core Drive control discovery",
   });
   const decoded = JSON.parse(
-    new TextDecoder("utf-8", { fatal: true }).decode(control.bytes),
+    new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
   );
   const pointer = parseLibraryCoreControlPointerV1(decoded);
   return Object.freeze({
     controlFileId: file.id,
-    control: Object.freeze(control),
+    control: Object.freeze({ bytes: controlBytes }),
     libraryId: pointer.libraryId,
   });
 }
@@ -760,7 +778,7 @@ async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
       expectedProperties,
       `actor ${kind} ${descriptor.objectKey}`,
     );
-    const stored = await readDriveFile({
+    const storedBytes = await readDriveFileBytes({
       accessToken: input.accessToken,
       fileId: file.id,
       googleFetch,
@@ -769,14 +787,14 @@ async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
       label: `actor ${kind} ${descriptor.objectKey}`,
     });
     if (
-      stored.bytes.byteLength !== descriptor.byteLength ||
-      (await sha256Hex(stored.bytes)) !== descriptor.contentDigest
+      storedBytes.byteLength !== descriptor.byteLength ||
+      (await sha256Hex(storedBytes)) !== descriptor.contentDigest
     ) {
       throw new Error(`actor ${kind} bytes are corrupt`);
     }
     discovered.push(
       Object.freeze({
-        bytes: stored.bytes,
+        bytes: storedBytes,
         reference: Object.freeze({
           descriptor,
           transportObjectId: file.id,
@@ -1232,7 +1250,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
       await expectedPropertiesPromise,
       "Library Core Drive intent head",
     );
-    const stored = await readDriveFile({
+    const stored = await readDriveFileWithRevision({
       accessToken: options.accessToken,
       fileId: options.intentHeadFileId,
       googleFetch,
@@ -1417,7 +1435,7 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       googleFetch, signal: options.signal,
     });
     assertExpectedProperties(metadata.appProperties, await expectedPropertiesPromise, "Library Core Drive result head");
-    const stored = await readDriveFile({
+    const stored = await readDriveFileWithRevision({
       accessToken: options.accessToken, fileId: options.resultHeadFileId,
       googleFetch, signal: options.signal, maxBytes: MAX_RESULT_HEAD_BYTES,
       label: "Library Core Drive result-head read failed",
@@ -1536,7 +1554,7 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       expectedProperties,
       `immutable Drive object ${descriptor.objectKey}`,
     );
-    const stored = await readDriveFile({
+    const storedBytes = await readDriveFileBytes({
       accessToken: options.accessToken,
       fileId,
       googleFetch,
@@ -1544,19 +1562,19 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       maxBytes: descriptor.byteLength,
       label: `immutable Drive object ${descriptor.objectKey}`,
     });
-    if (stored.bytes.byteLength !== descriptor.byteLength) {
+    if (storedBytes.byteLength !== descriptor.byteLength) {
       throw new Error(
         `immutable Drive byte length mismatch for ${descriptor.objectKey}`,
       );
     }
-    const storedDigest = await sha256Hex(stored.bytes);
+    const storedDigest = await sha256Hex(storedBytes);
     if (storedDigest !== descriptor.contentDigest) {
       throw new Error(
         `immutable Drive digest mismatch for ${descriptor.objectKey}`,
       );
     }
     return Object.freeze({
-      bytes: stored.bytes,
+      bytes: storedBytes,
       descriptor,
     });
   }
@@ -1569,7 +1587,7 @@ export function createGoogleDriveLibraryCoreAdapterV1(
   }
 
   const readControl = async (): Promise<LibraryCoreControlReadV1> => {
-    const stored = await readDriveFile({
+    const stored = await readDriveFileWithRevision({
       accessToken: options.accessToken,
       fileId: options.controlFileId,
       googleFetch,
