@@ -115,6 +115,12 @@ const DEFAULT_CLAIM_LEASE_MS = 15 * 60 * 1_000;
 const LOCAL_DEFERRAL_MIN_MS = 45 * 1_000;
 const LOCAL_DEFERRAL_MAX_MS = 2 * 60 * 1_000;
 const MAX_FAILURE_BACKOFF_MS = 48 * 60 * 60 * 1_000;
+const SCHEDULE_CHANGE_EVENT = "freed-provider-sync-schedule-change";
+
+function notifyScheduleChange(changed: boolean): boolean {
+  if (changed) window.dispatchEvent(new Event(SCHEDULE_CHANGE_EVENT));
+  return changed;
+}
 
 interface LegacyMetaRecord {
   nextDueAt: number;
@@ -537,9 +543,11 @@ export function getAutomaticProviderSyncEnabled(): boolean {
 export function setAutomaticProviderSyncEnabled(enabled: boolean): boolean {
   const state = readVersionedLocalStorage(GLOBAL_KEY, GLOBAL_CODEC);
   if (state.status === "corrupt" || state.status === "unsupported") return false;
-  return writeVersionedLocalStorage(GLOBAL_KEY, GLOBAL_CODEC, {
-    automaticEnabled: enabled,
-  });
+  return notifyScheduleChange(
+    writeVersionedLocalStorage(GLOBAL_KEY, GLOBAL_CODEC, {
+      automaticEnabled: enabled,
+    }),
+  );
 }
 
 export function updateProviderCadenceBounds(
@@ -549,7 +557,7 @@ export function updateProviderCadenceBounds(
   if (validateProviderCadenceBounds(bounds)) return false;
   const state = readRecord(provider);
   if (state.status !== "supported") return false;
-  return writeRecord({ ...state.value, bounds });
+  return notifyScheduleChange(writeRecord({ ...state.value, bounds }));
 }
 
 export function setProviderAutomaticPaused(
@@ -558,7 +566,7 @@ export function setProviderAutomaticPaused(
 ): boolean {
   const state = readRecord(provider);
   if (state.status !== "supported") return false;
-  return writeRecord({ ...state.value, automaticPaused });
+  return notifyScheduleChange(writeRecord({ ...state.value, automaticPaused }));
 }
 
 export function resetProviderCadenceDefaults(
@@ -577,7 +585,7 @@ export function resetProviderCadenceDefaults(
     yieldFactor: 1,
     random,
   });
-  return writeRecord({
+  return notifyScheduleChange(writeRecord({
     ...state.value,
     bounds,
     regime,
@@ -585,7 +593,7 @@ export function resetProviderCadenceDefaults(
     consecutiveFailures: 0,
     previousBackoffMs: 0,
     nextDueAt: Math.max(state.value.nextDueAt, now + delay),
-  });
+  }));
 }
 
 export function listDueProviderSchedules(now = Date.now()): ProviderScheduleCandidate[] {
@@ -894,7 +902,7 @@ export function rescheduleProviderAfterExternalSettlement(input: {
     yieldFactor: record.yieldFactor,
     random,
   });
-  return writeRecord({
+  return notifyScheduleChange(writeRecord({
     ...record,
     phase:
       record.phase === "blocked" && !input.unblockAuth ? "blocked" : "waiting",
@@ -904,7 +912,7 @@ export function rescheduleProviderAfterExternalSettlement(input: {
       record.phase === "blocked" && !input.unblockAuth
         ? record.blockedReason
         : undefined,
-  });
+  }));
 }
 
 export function clearProviderScheduleStateForFactoryReset(): boolean {
