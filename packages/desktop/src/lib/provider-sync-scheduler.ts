@@ -7,6 +7,7 @@ import {
 } from "./background-runtime-coordinator";
 import { runScheduledProviderAdapter } from "./provider-sync-adapters";
 import {
+  AUTOMATIC_SYNC_PROVIDERS,
   createCryptoRandomSource,
   type AutomaticSyncProvider,
   type RandomSource,
@@ -14,6 +15,7 @@ import {
 import {
   claimProviderSchedule,
   deferProviderScheduleLocally,
+  getAutomaticProviderSyncEnabled,
   getProviderScheduleSnapshot,
   initializeProviderSchedules,
   listDueProviderSchedules,
@@ -23,9 +25,14 @@ import {
   type ProviderScheduleRecord,
 } from "./provider-sync-schedule-state";
 import { recordProviderScheduleEvent } from "./runtime-health-events";
+import {
+  getProviderSyncRuntimeEligibility,
+  replaceNativeProviderScheduleWake,
+} from "./provider-sync-native-wake";
 
 const DEFAULT_TICK_MS = 60 * 1_000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 15 * 60 * 1_000;
+const SCHEDULE_CHANGE_EVENT = "freed-provider-sync-schedule-change";
 
 export interface ProviderSyncSchedulerOptions {
   tickMs?: number;
@@ -40,8 +47,70 @@ let tickInFlight: Promise<void> | null = null;
 let wakePending = false;
 let activeRandom: RandomSource | null = null;
 let nowSource: () => number = Date.now;
+let nativeMirrorInFlight: Promise<void> | null = null;
+let nativeMirrorPending = false;
+let nativeMirrorFailureReported = false;
 const activeOperations = new Set<Promise<unknown>>();
 const reportedStorageBlocks = new Set<AutomaticSyncProvider>();
+
+function nextNativeWake(): {
+  provider: AutomaticSyncProvider;
+  deadlineAtMs: number;
+} | null {
+  if (!getAutomaticProviderSyncEnabled()) return null;
+  const candidates: Array<{
+    provider: AutomaticSyncProvider;
+    deadlineAtMs: number;
+  }> = [];
+  for (const provider of AUTOMATIC_SYNC_PROVIDERS) {
+    const snapshot = getProviderScheduleSnapshot(provider);
+    if (snapshot.status !== "supported" || !snapshot.record) continue;
+    const record = snapshot.record;
+    if (record.automaticPaused || record.phase === "blocked") continue;
+    candidates.push({
+      provider,
+      deadlineAtMs: record.attempt
+        ? record.attempt.leaseUntil
+        : Math.max(
+            record.nextDueAt,
+            record.activationAt,
+            record.localEligibilityRetryAt ?? 0,
+          ),
+    });
+  }
+  return candidates.sort(
+    (left, right) =>
+      left.deadlineAtMs - right.deadlineAtMs ||
+      left.provider.localeCompare(right.provider),
+  )[0] ?? null;
+}
+
+function requestNativeWakeMirror(): void {
+  if (!acceptingWork) return;
+  if (nativeMirrorInFlight) {
+    nativeMirrorPending = true;
+    return;
+  }
+  const wake = nextNativeWake();
+  nativeMirrorInFlight = replaceNativeProviderScheduleWake(wake)
+    .catch((error) => {
+      if (nativeMirrorFailureReported) return;
+      nativeMirrorFailureReported = true;
+      addDebugEvent(
+        "error",
+        `[Sync] Native provider deadline scheduling is unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    })
+    .finally(() => {
+      nativeMirrorInFlight = null;
+      if (nativeMirrorPending && acceptingWork) {
+        nativeMirrorPending = false;
+        requestNativeWakeMirror();
+      }
+    });
+}
 
 function multiplierBucket(multiplier: number): string {
   if (multiplier < 0.75) return "faster";
@@ -140,6 +209,8 @@ async function runOne(wakeContext: boolean): Promise<void> {
   if (!acceptingWork || !activeRandom) return;
   const random = activeRandom;
   const decisionAt = nowSource();
+  const runtimeEligibility = await getProviderSyncRuntimeEligibility();
+  if (!runtimeEligibility.eligible) return;
   const nativeOperation = await getNativeBackgroundRuntimeOperationStatus();
   const ownership = reconcileProviderScheduleOwnership({
     now: decisionAt,
@@ -344,6 +415,7 @@ function triggerTick(wakeContext = false): void {
   tracked = runOne(wakeContext).finally(() => {
     tickInFlight = null;
     activeOperations.delete(tracked);
+    requestNativeWakeMirror();
     if (wakePending && acceptingWork) {
       wakePending = false;
       triggerTick(true);
@@ -357,6 +429,15 @@ export function wakeProviderSyncScheduler(): void {
   if (document.visibilityState === "visible") triggerTick(true);
 }
 
+export function wakeProviderSyncSchedulerFromNative(): void {
+  triggerTick(true);
+}
+
+function refreshProviderSyncSchedule(): void {
+  requestNativeWakeMirror();
+  if (document.visibilityState === "visible") triggerTick(false);
+}
+
 export function startProviderSyncScheduler(
   options: ProviderSyncSchedulerOptions = {},
 ): void {
@@ -365,22 +446,28 @@ export function startProviderSyncScheduler(
   activeRandom = options.random ?? createCryptoRandomSource();
   nowSource = options.now ?? Date.now;
   reportedStorageBlocks.clear();
+  nativeMirrorFailureReported = false;
   initialize(nowSource(), activeRandom, options.existingInstall ?? false);
+  requestNativeWakeMirror();
   timer = setInterval(() => triggerTick(false), options.tickMs ?? DEFAULT_TICK_MS);
   document.addEventListener("visibilitychange", wakeProviderSyncScheduler);
   window.addEventListener("focus", wakeProviderSyncScheduler);
   window.addEventListener("online", wakeProviderSyncScheduler);
+  window.addEventListener(SCHEDULE_CHANGE_EVENT, refreshProviderSyncSchedule);
   triggerTick(false);
 }
 
 export function stopProviderSyncScheduler(): void {
   acceptingWork = false;
   wakePending = false;
+  nativeMirrorPending = false;
   if (timer) clearInterval(timer);
   timer = null;
   document.removeEventListener("visibilitychange", wakeProviderSyncScheduler);
   window.removeEventListener("focus", wakeProviderSyncScheduler);
   window.removeEventListener("online", wakeProviderSyncScheduler);
+  window.removeEventListener(SCHEDULE_CHANGE_EVENT, refreshProviderSyncSchedule);
+  void replaceNativeProviderScheduleWake(null).catch(() => {});
 }
 
 export async function stopProviderSyncSchedulerAndDrain(): Promise<void> {

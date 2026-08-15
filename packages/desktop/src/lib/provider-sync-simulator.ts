@@ -34,6 +34,8 @@ export interface ProviderCadenceSimulationReport {
   dailyPeriodogramPower: number;
   changePointRatio: number;
   rendererRestartDeadlineViolations: number;
+  hiddenDeadlineViolations: number;
+  lockedContactViolations: number;
   localDeferralIntervalConsumptionViolations: number;
   sharedProviderStateViolations: number;
   logicalCaptureContactGrowthViolations: number;
@@ -170,7 +172,10 @@ export function simulateProviderCadence(input: {
     AUTOMATIC_SYNC_PROVIDERS.map((provider) => [provider, []]),
   );
   const dailyOpportunities: number[] = [];
-  const scenarioCounts: Record<string, number> = {};
+  const scenarioCounts: Record<string, number> = {
+    hidden_unlocked: 0,
+    locked_unlock: 0,
+  };
   let contacts = 0;
   let minimumBoundViolations = 0;
   let maximumBoundViolations = 0;
@@ -184,6 +189,8 @@ export function simulateProviderCadence(input: {
   let firstHalf = 0;
   let secondHalf = 0;
   let rendererRestartDeadlineViolations = 0;
+  let hiddenDeadlineViolations = 0;
+  let lockedContactViolations = 0;
   let localDeferralIntervalConsumptionViolations = 0;
   let sharedProviderStateViolations = 0;
   let logicalCaptureContactGrowthViolations = 0;
@@ -290,6 +297,27 @@ export function simulateProviderCadence(input: {
 
       const dueAt = activation + firstDelay;
       let actualAt = dueAt;
+      if (hash(`${rootSeed}:${String(installation)}:${provider}:hidden`) % 13 === 0) {
+        scenarioCounts.hidden_unlocked += 1;
+        const nativeHiddenContactAt = dueAt;
+        if (nativeHiddenContactAt !== dueAt) hiddenDeadlineViolations += 1;
+      }
+      if (hash(`${rootSeed}:${String(installation)}:${provider}:locked`) % 13 === 0) {
+        scenarioCounts.locked_unlock += 1;
+        const localDue = (dueAt + utcPhase) % dayMs;
+        const localWake = 7 * 60 * 60 * 1_000;
+        const localSleep = 23 * 60 * 60 * 1_000;
+        let lockedContactAt = dueAt;
+        if (localDue < localWake || localDue >= localSleep) {
+          lockedContactAt += localDue < localWake
+            ? localWake - localDue
+            : dayMs - localDue + localWake;
+        }
+        const localContact = (lockedContactAt + utcPhase) % dayMs;
+        if (localContact < localWake || localContact >= localSleep) {
+          lockedContactViolations += 1;
+        }
+      }
       if (scenario === "sleep_wake") {
         const localDue = (dueAt + utcPhase) % dayMs;
         const localWake = 7 * 60 * 60 * 1_000;
@@ -498,6 +526,8 @@ export function simulateProviderCadence(input: {
     dailyPeriodogramPower: periodogramPower(dailySeries, 24),
     changePointRatio: secondHalf === 0 ? 0 : firstHalf / secondHalf,
     rendererRestartDeadlineViolations,
+    hiddenDeadlineViolations,
+    lockedContactViolations,
     localDeferralIntervalConsumptionViolations,
     sharedProviderStateViolations,
     logicalCaptureContactGrowthViolations,
