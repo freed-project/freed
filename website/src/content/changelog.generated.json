@@ -1,10 +1,10 @@
 [
   {
-    "version": "26.8.1404",
-    "tagName": "v26.8.1404",
+    "version": "26.8.1407",
+    "tagName": "v26.8.1407",
     "channel": "production",
-    "date": "2026-08-14T22:35:49Z",
-    "deck": "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory, adds bounded native queries for feeds, Friends, Saved, Map, search, settings, counts, and analytics, and moves the PWA to bounded IndexedDB storage with immutable Google Drive checkpoints, operation segments, and intent synchronization",
+    "date": "2026-08-15T04:24:02Z",
+    "deck": "Ships the native SQLite Library across Freed Desktop and bounded IndexedDB storage in the PWA, with repaired Google Drive synchronization on both clients",
     "features": [
       {
         "text": "Moves Freed Desktop's library from the legacy Automerge engine to native SQLite and keeps the complete corpus out of renderer memory"
@@ -18,51 +18,42 @@
     ],
     "fixes": [
       {
-        "text": "Loads the first 65 feed items from a 20,099-item installed library in under one millisecond in the measured default query, down from about 2.4 seconds for the former full scan"
-      },
-      {
-        "text": "Shows an honest loading state during feed transitions instead of briefly claiming that every item is read"
-      },
-      {
         "text": "Makes Library mutations update exact changed rows instead of repeatedly reloading the complete library"
-      },
-      {
-        "text": "Strengthens migration rollback, daily backups, corruption checks, release validation, and installed-build identity"
       },
       {
         "text": "Repairs Google Drive authentication and automatic cloud-sync startup on Freed Desktop"
       },
       {
-        "text": "Keeps PWA connection status truthful, restores sample-data setup, and replaces stale service workers automatically"
-      },
-      {
-        "text": "Stabilizes geographic map panels, map markers, and background loading across Freed Desktop and the PWA"
+        "text": "Uploads browser Blob request bodies correctly through the native Google Drive bridge"
       },
       {
         "text": "Restores authenticated Google Drive synchronization in the PWA by binding browser requests correctly"
       },
       {
-        "text": "Returns from the Google authorization callback to the feed instead of leaving the connection screen stuck"
+        "text": "Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token"
       },
       {
-        "text": "Refreshes and retries Google Drive synchronization once when Drive unexpectedly rejects an expired PWA access token"
+        "text": "Returns from the PWA OAuth callback reliably after a successful connection"
+      },
+      {
+        "text": "Keeps automatic social sync durable across sleep, hidden windows, locks, and renderer restarts"
       }
     ],
     "followUps": [
-      {
-        "text": "Rebuilds Freed's library around native SQLite on Freed Desktop and bounded IndexedDB storage in the PWA, with faster first results and dramatically lower memory use"
-      },
-      {
-        "text": "Continue profiling explicit fuzzy search on unusually broad queries"
-      },
       {
         "text": "Continue hardening cross-device immutable synchronization and recovery"
       },
       {
         "text": "Reduce the remaining control-plane test runtime outside the product release path"
+      },
+      {
+        "text": "Verify multi-day Facebook and Instagram cadence with the hourly automation custodian"
+      },
+      {
+        "text": "Compare the installed build against matched historical runtime windows"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1404",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1407",
     "prNumbers": [
       990,
       991,
@@ -343,13 +334,66 @@
       1458,
       1459,
       1461,
-      1485
+      1463,
+      1464,
+      1466,
+      1468,
+      1471,
+      1473,
+      1474,
+      1475,
+      1478,
+      1480,
+      1482,
+      1484,
+      1485,
+      1486,
+      1489,
+      1491,
+      1492,
+      1493,
+      1494,
+      1495,
+      1496,
+      1498,
+      1500,
+      1502,
+      1503,
+      1504,
+      1505,
+      1506,
+      1508,
+      1509,
+      1510,
+      1511,
+      1513,
+      1516,
+      1517,
+      1518,
+      1520,
+      1521,
+      1522,
+      1523,
+      1524,
+      1525,
+      1527,
+      1528,
+      1529,
+      1531,
+      1532,
+      1533,
+      1534,
+      1535,
+      1536,
+      1538
     ],
     "builds": [
       "26.8.1400",
       "26.8.1401",
       "26.8.1403",
-      "26.8.1404"
+      "26.8.1404",
+      "26.8.1405",
+      "26.8.1407"
     ],
     "buildLinks": [
       {
@@ -371,6 +415,74 @@
         "version": "26.8.1404",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1404",
         "channel": "production"
+      },
+      {
+        "version": "26.8.1405",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1405",
+        "channel": "production"
+      },
+      {
+        "version": "26.8.1407",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1407",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.8.1406-dev",
+    "tagName": "v26.8.1406-dev",
+    "channel": "dev",
+    "date": "2026-08-15T03:02:59Z",
+    "deck": "Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views",
+    "features": [
+      {
+        "text": "Tappable zoom step controls"
+      },
+      {
+        "text": "Task-scoped factory claims"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts"
+      },
+      {
+        "text": "Restore SQLite and PWA Google Drive sync, including disconnect and token recovery"
+      },
+      {
+        "text": "Clarify provider empty states and unlinked identity labels"
+      },
+      {
+        "text": "Stabilize Map panels, markers, Friends navigation, and graph controls"
+      },
+      {
+        "text": "Reduce SQLite full-corpus UI scans and Friends rendering work"
+      },
+      {
+        "text": "Harden release and authority-witness recovery contracts"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Verify multi-day Facebook and Instagram cadence with the hourly automation custodian"
+      },
+      {
+        "text": "Continue measurement-guided provider reliability and performance work"
+      },
+      {
+        "text": "Compare the installed build against matched historical runtime windows"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1406-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.8.1406-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.1406-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1406-dev",
+        "channel": "dev"
       }
     ]
   },
