@@ -353,7 +353,7 @@ function triggerTick(wakeContext = false): void {
   activeOperations.add(tracked);
 }
 
-function wake(): void {
+export function wakeProviderSyncScheduler(): void {
   if (document.visibilityState === "visible") triggerTick(true);
 }
 
@@ -367,9 +367,9 @@ export function startProviderSyncScheduler(
   reportedStorageBlocks.clear();
   initialize(nowSource(), activeRandom, options.existingInstall ?? false);
   timer = setInterval(() => triggerTick(false), options.tickMs ?? DEFAULT_TICK_MS);
-  document.addEventListener("visibilitychange", wake);
-  window.addEventListener("focus", wake);
-  window.addEventListener("online", wake);
+  document.addEventListener("visibilitychange", wakeProviderSyncScheduler);
+  window.addEventListener("focus", wakeProviderSyncScheduler);
+  window.addEventListener("online", wakeProviderSyncScheduler);
   triggerTick(false);
 }
 
@@ -378,9 +378,9 @@ export function stopProviderSyncScheduler(): void {
   wakePending = false;
   if (timer) clearInterval(timer);
   timer = null;
-  document.removeEventListener("visibilitychange", wake);
-  window.removeEventListener("focus", wake);
-  window.removeEventListener("online", wake);
+  document.removeEventListener("visibilitychange", wakeProviderSyncScheduler);
+  window.removeEventListener("focus", wakeProviderSyncScheduler);
+  window.removeEventListener("online", wakeProviderSyncScheduler);
 }
 
 export async function stopProviderSyncSchedulerAndDrain(): Promise<void> {
