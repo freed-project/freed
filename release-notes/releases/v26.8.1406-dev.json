@@ -3,8 +3,10 @@
   "version": "26.8.1406-dev",
   "channel": "dev",
   "dayKey": "26.8.14",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after exact-head feature validation and provider behavior review."
+  ],
   "generatedAt": "2026-08-15T01:59:53.892Z",
   "model": "heuristic",
   "source": {
@@ -130,25 +132,24 @@
     ]
   },
   "release": {
-    "deck": "Durable background sync, safer wake recovery, and faster Friends and Map views",
+    "deck": "Durable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views",
     "features": [
       "Tappable zoom step controls",
       "Task-scoped factory claims"
     ],
     "fixes": [
-      "Keep provider sync alive while hidden",
-      "Reader, feed, and header polish",
-      "PWA Google Drive sync are now more stable",
-      "Make provider sync scheduling durable",
-      "Release build and type-safety cleanup",
-      "Friends dust test control removed"
+      "Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts",
+      "Restore SQLite and PWA Google Drive sync, including disconnect and token recovery",
+      "Clarify provider empty states and unlinked identity labels",
+      "Stabilize Map panels, markers, Friends navigation, and graph controls",
+      "Reduce SQLite full-corpus UI scans and Friends rendering work",
+      "Harden release and authority-witness recovery contracts"
     ],
     "followUps": [
-      "Reverse integrate v26.8.1405 into dev",
-      "Prepare v26.8.1402-dev",
-      "Streamline Friends Galaxy startup and navigation",
-      "Eliminate SQLite full-corpus UI scans"
+      "Verify multi-day Facebook and Instagram cadence with the hourly automation custodian",
+      "Continue measurement-guided provider reliability and performance work",
+      "Compare the installed build against matched historical runtime windows"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1406-dev\n\nDurable background sync, safer wake recovery, and faster Friends and Map views\n\n### Features\n\n- Tappable zoom step controls\n- Task-scoped factory claims\n\n### Fixes\n\n- Keep provider sync alive while hidden\n- Reader, feed, and header polish\n- PWA Google Drive sync are now more stable\n- Make provider sync scheduling durable\n- Release build and type-safety cleanup\n- Friends dust test control removed\n\n### Follow-ups\n\n- Reverse integrate v26.8.1405 into dev\n- Prepare v26.8.1402-dev\n- Streamline Friends Galaxy startup and navigation\n- Eliminate SQLite full-corpus UI scans\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1406-dev\n\nDurable provider sync across sleep and hidden windows, safer Drive recovery, and faster Friends and Map views\n\n### Features\n\n- Tappable zoom step controls\n- Task-scoped factory claims\n\n### Fixes\n\n- Keep automatic social sync durable across sleep, hidden windows, locks, and renderer restarts\n- Restore SQLite and PWA Google Drive sync, including disconnect and token recovery\n- Clarify provider empty states and unlinked identity labels\n- Stabilize Map panels, markers, Friends navigation, and graph controls\n- Reduce SQLite full-corpus UI scans and Friends rendering work\n- Harden release and authority-witness recovery contracts\n\n### Follow-ups\n\n- Verify multi-day Facebook and Instagram cadence with the hourly automation custodian\n- Continue measurement-guided provider reliability and performance work\n- Compare the installed build against matched historical runtime windows\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
