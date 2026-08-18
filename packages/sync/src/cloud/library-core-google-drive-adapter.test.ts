@@ -282,7 +282,9 @@ class FakeGoogleDrive {
           },
         });
       }
-      return Response.json(this.metadata(file));
+      return Response.json(this.metadata(file), {
+        headers: { ETag: file.etag },
+      });
     }
 
     return new Response(`unhandled ${method} ${url}`, { status: 500 });
@@ -559,8 +561,9 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
-  it("updates control only with the exact ETag and verifies readback", async () => {
+  it("uses the metadata ETag for an exact control update when media omits it", async () => {
     const fake = new FakeGoogleDrive();
+    fake.exposeMediaEtag = false;
     fake.addControl();
     const nextControl = bytes('{"next":true}');
 
