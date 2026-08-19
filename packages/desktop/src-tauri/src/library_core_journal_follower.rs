@@ -23,6 +23,15 @@ fn invalid(field: &'static str) -> JournalError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct VerifiedFollowerCheckpointActor {
+    pub(crate) actor_id: String,
+    pub(crate) accepted_sequence: i64,
+    pub(crate) accepted_operation_id: Option<String>,
+    pub(crate) accepted_chain_digest: String,
+    pub(crate) enrollment_certificate_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct VerifiedFollowerAnchor {
     pub(crate) authority: AcceptedAuthorityState,
     pub(crate) manifest_object_key: String,
@@ -32,6 +41,7 @@ pub(crate) struct VerifiedFollowerAnchor {
     pub(crate) remote_materialized_digest: String,
     pub(crate) writer_id: String,
     pub(crate) control_revision: String,
+    pub(crate) checkpoint_actor: Option<VerifiedFollowerCheckpointActor>,
     pub(crate) installed_at_ms: i64,
 }
 
@@ -204,6 +214,22 @@ fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<Strin
     String::from_utf8(bytes).map_err(|_| invalid("follower_anchor.observed_frontier"))
 }
 
+fn validate_checkpoint_actor(actor: &VerifiedFollowerCheckpointActor) -> JournalResult<()> {
+    if !is_lower_hex(&actor.actor_id, 32)
+        || !(0..=MAX_SAFE_INTEGER).contains(&actor.accepted_sequence)
+        || (actor.accepted_sequence == 0) != actor.accepted_operation_id.is_none()
+        || actor
+            .accepted_operation_id
+            .as_ref()
+            .is_some_and(|operation_id| operation_id.is_empty() || operation_id.len() > 128)
+        || !is_lower_hex(&actor.accepted_chain_digest, 32)
+        || !is_lower_hex(&actor.enrollment_certificate_digest, 32)
+    {
+        return Err(invalid("follower_anchor.checkpoint_actor"));
+    }
+    Ok(())
+}
+
 fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
     let authority = &anchor.authority;
     if !is_lower_hex(&authority.library_id, 32)
@@ -223,6 +249,9 @@ fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
         || !(0..=MAX_SAFE_INTEGER).contains(&anchor.installed_at_ms)
     {
         return Err(invalid("follower_anchor"));
+    }
+    if let Some(actor) = &anchor.checkpoint_actor {
+        validate_checkpoint_actor(actor)?;
     }
     canonical_frontier(authority)
 }
@@ -268,6 +297,42 @@ fn parse_frontier(value: &str) -> JournalResult<Vec<super::VerifiedCausalTip>> {
         });
     }
     Ok(tips)
+}
+
+fn checkpoint_actor_from_storage(
+    actor_id: Option<String>,
+    accepted_sequence: Option<i64>,
+    accepted_operation_id: Option<String>,
+    accepted_chain_digest: Option<String>,
+    enrollment_certificate_digest: Option<String>,
+) -> JournalResult<Option<VerifiedFollowerCheckpointActor>> {
+    match (
+        actor_id,
+        accepted_sequence,
+        accepted_operation_id,
+        accepted_chain_digest,
+        enrollment_certificate_digest,
+    ) {
+        (None, None, None, None, None) => Ok(None),
+        (
+            Some(actor_id),
+            Some(accepted_sequence),
+            accepted_operation_id,
+            Some(accepted_chain_digest),
+            Some(enrollment_certificate_digest),
+        ) => {
+            let actor = VerifiedFollowerCheckpointActor {
+                actor_id,
+                accepted_sequence,
+                accepted_operation_id,
+                accepted_chain_digest,
+                enrollment_certificate_digest,
+            };
+            validate_checkpoint_actor(&actor)?;
+            Ok(Some(actor))
+        }
+        _ => Err(invalid("follower_anchor.checkpoint_actor")),
+    }
 }
 
 impl LibraryCoreJournal {
@@ -375,7 +440,11 @@ impl LibraryCoreJournal {
                         authorityPublicKey, observedFrontierJson,
                         manifestObjectKey, manifestContentDigest, generation,
                         remoteIngestSequence, remoteMaterializedDigest,
-                        writerId, controlRevision, installedAtMs
+                        writerId, controlRevision, checkpointActorId,
+                        checkpointAcceptedSequence,
+                        checkpointAcceptedOperationId,
+                        checkpointAcceptedChainDigest,
+                        checkpointEnrollmentCertificateDigest, installedAtMs
                  FROM library_core_follower_anchor WHERE singletonId = 1;",
                 [],
                 |row| {
@@ -393,7 +462,12 @@ impl LibraryCoreJournal {
                         row.get::<_, String>(10)?,
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
-                        row.get::<_, i64>(13)?,
+                        row.get::<_, Option<String>>(13)?,
+                        row.get::<_, Option<i64>>(14)?,
+                        row.get::<_, Option<String>>(15)?,
+                        row.get::<_, Option<String>>(16)?,
+                        row.get::<_, Option<String>>(17)?,
+                        row.get::<_, i64>(18)?,
                     ))
                 },
             )
@@ -417,7 +491,10 @@ impl LibraryCoreJournal {
             remote_materialized_digest: stored.10,
             writer_id: stored.11,
             control_revision: stored.12,
-            installed_at_ms: stored.13,
+            checkpoint_actor: checkpoint_actor_from_storage(
+                stored.13, stored.14, stored.15, stored.16, stored.17,
+            )?,
+            installed_at_ms: stored.18,
         };
         let canonical = validate(&anchor)?;
         if canonical != stored.5 {
@@ -1006,6 +1083,48 @@ impl LibraryCoreJournal {
                 revision_advanced: false,
             });
         };
+        let checkpoint_accepted_sequence = match &anchor.checkpoint_actor {
+            Some(checkpoint_actor)
+                if checkpoint_actor.actor_id == actor.actor_id
+                    && checkpoint_actor.enrollment_certificate_digest
+                        == actor.enrollment_certificate_digest =>
+            {
+                if checkpoint_actor.accepted_sequence == 0 {
+                    if checkpoint_actor.accepted_chain_digest != actor.actor_chain_genesis {
+                        return Err(invalid("follower_overlay.checkpoint_actor_tip"));
+                    }
+                } else {
+                    let local_tip = self
+                        .connection
+                        .query_row(
+                            "SELECT operationId, actorChainDigest
+                             FROM library_core_follower_intent_operation
+                             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+                               AND intentSequence = ?4;",
+                            params![
+                                actor.library_id,
+                                actor.epoch_id,
+                                actor.actor_id,
+                                checkpoint_actor.accepted_sequence,
+                            ],
+                            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                        )
+                        .optional()?;
+                    let Some((operation_id, chain_digest)) = local_tip else {
+                        return Err(invalid("follower_overlay.checkpoint_actor_tip"));
+                    };
+                    if checkpoint_actor.accepted_operation_id.as_deref()
+                        != Some(operation_id.as_str())
+                        || checkpoint_actor.accepted_chain_digest != chain_digest
+                    {
+                        return Err(invalid("follower_overlay.checkpoint_actor_tip"));
+                    }
+                }
+                checkpoint_actor.accepted_sequence
+            }
+            Some(_) => return Err(invalid("follower_overlay.checkpoint_actor")),
+            None => 0,
+        };
         let imported_source = self
             .connection
             .query_row(
@@ -1021,14 +1140,8 @@ impl LibraryCoreJournal {
         }
         let mut statement = self.connection.prepare(
             "SELECT intent_tx.transactionId, intent_tx.operationCount,
-                    intent_tx.enqueuedAtMs,
-                    EXISTS(
-                      SELECT 1
-                      FROM library_core_follower_intent_operation AS intent_op
-                      JOIN library_core_follower_intent_result AS intent_result
-                        ON intent_result.intentOperationId = intent_op.operationId
-                      WHERE intent_op.transactionId = intent_tx.transactionId
-                    ) AS hasCanonicalResult
+                    intent_tx.enqueuedAtMs, intent_tx.firstIntentSequence,
+                    intent_tx.lastIntentSequence
              FROM library_core_follower_intent_transaction AS intent_tx
              WHERE intent_tx.libraryId = ?1
                AND intent_tx.epochId = ?2
@@ -1044,6 +1157,7 @@ impl LibraryCoreJournal {
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
                         row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
                     ))
                 },
             )?
@@ -1051,13 +1165,19 @@ impl LibraryCoreJournal {
         drop(statement);
 
         let mut replay = Vec::new();
-        for (transaction_id, operation_count, enqueued_at_ms, has_canonical_result) in candidates {
-            // The authority admits each transaction atomically. One verified
-            // canonical result therefore proves that every member is already
-            // represented by the imported checkpoint, even when bounded
-            // result transport has not delivered the other receipts yet.
-            if has_canonical_result != 0 {
+        for (
+            transaction_id,
+            operation_count,
+            enqueued_at_ms,
+            first_intent_sequence,
+            last_intent_sequence,
+        ) in candidates
+        {
+            if last_intent_sequence <= checkpoint_accepted_sequence {
                 continue;
+            }
+            if first_intent_sequence <= checkpoint_accepted_sequence {
+                return Err(invalid("follower_overlay.checkpoint_actor_split"));
             }
             let mut statement = self.connection.prepare(
                 "SELECT canonicalEnvelopeJson
@@ -1672,6 +1792,26 @@ impl LibraryCoreJournal {
         anchor: &VerifiedFollowerAnchor,
     ) -> JournalResult<VerifiedFollowerAnchor> {
         let observed_frontier_json = validate(anchor)?;
+        let checkpoint_actor_id = anchor
+            .checkpoint_actor
+            .as_ref()
+            .map(|actor| actor.actor_id.as_str());
+        let checkpoint_accepted_sequence = anchor
+            .checkpoint_actor
+            .as_ref()
+            .map(|actor| actor.accepted_sequence);
+        let checkpoint_accepted_operation_id = anchor
+            .checkpoint_actor
+            .as_ref()
+            .and_then(|actor| actor.accepted_operation_id.as_deref());
+        let checkpoint_accepted_chain_digest = anchor
+            .checkpoint_actor
+            .as_ref()
+            .map(|actor| actor.accepted_chain_digest.as_str());
+        let checkpoint_enrollment_certificate_digest = anchor
+            .checkpoint_actor
+            .as_ref()
+            .map(|actor| actor.enrollment_certificate_digest.as_str());
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1679,7 +1819,11 @@ impl LibraryCoreJournal {
             .query_row(
                 "SELECT libraryId, epoch, epochId, manifestObjectKey,
                         manifestContentDigest, generation, remoteIngestSequence,
-                        remoteMaterializedDigest, writerId
+                        remoteMaterializedDigest, writerId, checkpointActorId,
+                        checkpointAcceptedSequence,
+                        checkpointAcceptedOperationId,
+                        checkpointAcceptedChainDigest,
+                        checkpointEnrollmentCertificateDigest
                  FROM library_core_follower_anchor WHERE singletonId = 1;",
                 [],
                 |row| {
@@ -1693,12 +1837,24 @@ impl LibraryCoreJournal {
                         row.get::<_, i64>(6)?,
                         row.get::<_, String>(7)?,
                         row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                        row.get::<_, Option<i64>>(10)?,
+                        row.get::<_, Option<String>>(11)?,
+                        row.get::<_, Option<String>>(12)?,
+                        row.get::<_, Option<String>>(13)?,
                     ))
                 },
             )
             .optional()?;
 
         if let Some(existing) = existing.as_ref() {
+            let existing_checkpoint_actor = checkpoint_actor_from_storage(
+                existing.9.clone(),
+                existing.10,
+                existing.11.clone(),
+                existing.12.clone(),
+                existing.13.clone(),
+            )?;
             if existing.0 != anchor.authority.library_id {
                 return Err(invalid("follower_anchor.library_id"));
             }
@@ -1722,6 +1878,28 @@ impl LibraryCoreJournal {
                 {
                     return Err(invalid("follower_anchor.checkpoint_identity"));
                 }
+                match (&existing_checkpoint_actor, &anchor.checkpoint_actor) {
+                    (None, _) => {}
+                    (Some(_), None) => {
+                        return Err(invalid("follower_anchor.checkpoint_actor_order"));
+                    }
+                    (Some(existing_actor), Some(next_actor)) => {
+                        if next_actor.actor_id != existing_actor.actor_id
+                            || next_actor.enrollment_certificate_digest
+                                != existing_actor.enrollment_certificate_digest
+                            || next_actor.accepted_sequence < existing_actor.accepted_sequence
+                            || (next_actor.accepted_sequence == existing_actor.accepted_sequence
+                                && next_actor != existing_actor)
+                        {
+                            return Err(invalid("follower_anchor.checkpoint_actor_order"));
+                        }
+                    }
+                }
+                if anchor.generation == existing.5
+                    && anchor.checkpoint_actor != existing_checkpoint_actor
+                {
+                    return Err(invalid("follower_anchor.checkpoint_identity"));
+                }
             } else {
                 let actor_count: i64 = transaction.query_row(
                     "SELECT COUNT(*) FROM library_core_follower_actor;",
@@ -1739,7 +1917,12 @@ impl LibraryCoreJournal {
                      manifestObjectKey = ?6, manifestContentDigest = ?7,
                      generation = ?8, remoteIngestSequence = ?9,
                      remoteMaterializedDigest = ?10, writerId = ?11,
-                     controlRevision = ?12, installedAtMs = ?13
+                     controlRevision = ?12, checkpointActorId = ?13,
+                     checkpointAcceptedSequence = ?14,
+                     checkpointAcceptedOperationId = ?15,
+                     checkpointAcceptedChainDigest = ?16,
+                     checkpointEnrollmentCertificateDigest = ?17,
+                     installedAtMs = ?18
                  WHERE singletonId = 1;",
                 params![
                     anchor.authority.epoch,
@@ -1754,6 +1937,11 @@ impl LibraryCoreJournal {
                     anchor.remote_materialized_digest,
                     anchor.writer_id,
                     anchor.control_revision,
+                    checkpoint_actor_id,
+                    checkpoint_accepted_sequence,
+                    checkpoint_accepted_operation_id,
+                    checkpoint_accepted_chain_digest,
+                    checkpoint_enrollment_certificate_digest,
                     anchor.installed_at_ms,
                 ],
             )?;
@@ -1764,9 +1952,12 @@ impl LibraryCoreJournal {
                    authorityPublicKey, observedFrontierJson, manifestObjectKey,
                    manifestContentDigest, generation, remoteIngestSequence,
                    remoteMaterializedDigest, writerId, controlRevision,
-                   installedAtMs
+                   checkpointActorId, checkpointAcceptedSequence,
+                   checkpointAcceptedOperationId,
+                   checkpointAcceptedChainDigest,
+                   checkpointEnrollmentCertificateDigest, installedAtMs
                  ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                           ?11, ?12, ?13, ?14);",
+                           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19);",
                 params![
                     anchor.authority.library_id,
                     anchor.authority.epoch,
@@ -1781,6 +1972,11 @@ impl LibraryCoreJournal {
                     anchor.remote_materialized_digest,
                     anchor.writer_id,
                     anchor.control_revision,
+                    checkpoint_actor_id,
+                    checkpoint_accepted_sequence,
+                    checkpoint_accepted_operation_id,
+                    checkpoint_accepted_chain_digest,
+                    checkpoint_enrollment_certificate_digest,
                     anchor.installed_at_ms,
                 ],
             )?;
@@ -1827,6 +2023,7 @@ mod tests {
             },
             writer_id: "5".repeat(64),
             control_revision: format!("revision-{generation}"),
+            checkpoint_actor: None,
             installed_at_ms: 1_000 + generation,
         }
     }
@@ -1883,6 +2080,39 @@ mod tests {
         let mut changed_replay = anchor(2, 20);
         changed_replay.manifest_content_digest = "9".repeat(64);
         assert!(journal.install_follower_anchor(&changed_replay).is_err());
+    }
+
+    #[test]
+    fn checkpoint_anchor_never_regresses_or_rewrites_an_actor_tip() {
+        let mut journal = LibraryCoreJournal::open_in_memory().unwrap();
+        journal.install_follower_anchor(&anchor(1, 10)).unwrap();
+        let mut accepted = anchor(2, 20);
+        accepted.checkpoint_actor = Some(VerifiedFollowerCheckpointActor {
+            actor_id: "6".repeat(64),
+            accepted_sequence: 2,
+            accepted_operation_id: Some("operation-2".to_string()),
+            accepted_chain_digest: "5".repeat(64),
+            enrollment_certificate_digest: "8".repeat(64),
+        });
+        journal.install_follower_anchor(&accepted).unwrap();
+
+        let mut rewritten = accepted.clone();
+        rewritten
+            .checkpoint_actor
+            .as_mut()
+            .unwrap()
+            .accepted_chain_digest = "9".repeat(64);
+        assert!(journal.install_follower_anchor(&rewritten).is_err());
+
+        let mut regressed = anchor(3, 30);
+        regressed.checkpoint_actor = Some(VerifiedFollowerCheckpointActor {
+            actor_id: "6".repeat(64),
+            accepted_sequence: 1,
+            accepted_operation_id: Some("operation-1".to_string()),
+            accepted_chain_digest: "1".repeat(64),
+            enrollment_certificate_digest: "8".repeat(64),
+        });
+        assert!(journal.install_follower_anchor(&regressed).is_err());
     }
 
     #[test]
@@ -2091,7 +2321,7 @@ mod tests {
     }
 
     #[test]
-    fn checkpoint_import_replays_only_intents_without_canonical_acceptance() {
+    fn checkpoint_import_replays_only_operations_beyond_checkpoint_actor_tip() {
         let mut journal = journal_with_enqueued_intent();
         replace_projection_with_checkpoint_fixture(&journal);
 
@@ -2128,7 +2358,35 @@ mod tests {
         assert_eq!(
             journal
                 .replay_pending_follower_overlay_with(|_, _| {
-                    panic!("accepted transactions must not be replayed")
+                    Ok(verified_intent("transaction-1"))
+                })
+                .unwrap()
+                .transaction_count,
+            1
+        );
+
+        let mut next_anchor = anchor(2, 20);
+        next_anchor.checkpoint_actor = Some(VerifiedFollowerCheckpointActor {
+            actor_id: "6".repeat(64),
+            accepted_sequence: 2,
+            accepted_operation_id: Some("operation-2".to_string()),
+            accepted_chain_digest: "5".repeat(64),
+            enrollment_certificate_digest: "8".repeat(64),
+        });
+        journal.install_follower_anchor(&next_anchor).unwrap();
+        replace_projection_with_checkpoint_fixture(&journal);
+        journal
+            .connection_for_test()
+            .execute(
+                "UPDATE library_core_desktop_state SET sourceRevision = 20
+                 WHERE singletonId = 1;",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            journal
+                .replay_pending_follower_overlay_with(|_, _| {
+                    panic!("checkpointed transactions must not be replayed")
                 })
                 .unwrap(),
             FollowerOverlayReplayReceipt {
@@ -2148,6 +2406,70 @@ mod tests {
             )
             .unwrap();
         assert_eq!(read_at, None);
+    }
+
+    #[test]
+    fn checkpoint_import_rejects_an_actor_tip_that_splits_a_transaction() {
+        let mut journal = journal_with_enqueued_intent();
+        let mut next_anchor = anchor(2, 20);
+        next_anchor.checkpoint_actor = Some(VerifiedFollowerCheckpointActor {
+            actor_id: "6".repeat(64),
+            accepted_sequence: 1,
+            accepted_operation_id: Some("operation-1".to_string()),
+            accepted_chain_digest: "1".repeat(64),
+            enrollment_certificate_digest: "8".repeat(64),
+        });
+        journal.install_follower_anchor(&next_anchor).unwrap();
+        replace_projection_with_checkpoint_fixture(&journal);
+        journal
+            .connection_for_test()
+            .execute(
+                "UPDATE library_core_desktop_state SET sourceRevision = 20
+                 WHERE singletonId = 1;",
+                [],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            journal.replay_pending_follower_overlay_with(|_, _| {
+                panic!("split transactions must not be verified or replayed")
+            }),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "follower_overlay.checkpoint_actor_split"
+            })
+        ));
+    }
+
+    #[test]
+    fn checkpoint_import_rejects_an_actor_tip_that_mismatches_the_local_chain() {
+        let mut journal = journal_with_enqueued_intent();
+        let mut next_anchor = anchor(2, 20);
+        next_anchor.checkpoint_actor = Some(VerifiedFollowerCheckpointActor {
+            actor_id: "6".repeat(64),
+            accepted_sequence: 2,
+            accepted_operation_id: Some("operation-2".to_string()),
+            accepted_chain_digest: "9".repeat(64),
+            enrollment_certificate_digest: "8".repeat(64),
+        });
+        journal.install_follower_anchor(&next_anchor).unwrap();
+        replace_projection_with_checkpoint_fixture(&journal);
+        journal
+            .connection_for_test()
+            .execute(
+                "UPDATE library_core_desktop_state SET sourceRevision = 20
+                 WHERE singletonId = 1;",
+                [],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            journal.replay_pending_follower_overlay_with(|_, _| {
+                panic!("mismatched actor tips must not be verified or replayed")
+            }),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "follower_overlay.checkpoint_actor_tip"
+            })
+        ));
     }
 
     #[test]

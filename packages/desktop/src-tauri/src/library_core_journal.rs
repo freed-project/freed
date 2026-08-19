@@ -30,16 +30,16 @@ pub(crate) use follower::{
     FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt,
     FollowerOverlayReplayReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
     FollowerRuntimeStatus, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedFollowerAnchor, VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult,
-    VerifiedFollowerResultSegment,
+    VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor, VerifiedFollowerIntentPublication,
+    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 8;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 6] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 7] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -63,6 +63,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 6] = [
     (
         7,
         include_str!("../../../shared/src/library-core/authoritative-migration-007.sql"),
+    ),
+    (
+        8,
+        include_str!("../../../shared/src/library-core/authoritative-migration-008.sql"),
     ),
 ];
 
@@ -3265,6 +3269,57 @@ mod tests {
         assert_eq!(timeline_indexes, 6);
         assert_eq!(follower_tables, 7);
         assert_eq!(sentinel, 42);
+    }
+
+    #[test]
+    fn upgrades_v7_follower_anchor_without_inventing_a_checkpoint_actor_tip() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let mut connection = Connection::open(&path).expect("create v7 database");
+        {
+            let transaction = connection.transaction().expect("begin v7 schema");
+            apply_schema_range(&transaction, 0, 7).expect("apply v7 schema");
+            transaction
+                .execute(
+                    "INSERT INTO library_core_follower_anchor (
+                       singletonId, libraryId, epoch, epochId, authorityKeyId,
+                       authorityPublicKey, observedFrontierJson,
+                       manifestObjectKey, manifestContentDigest, generation,
+                       remoteIngestSequence, remoteMaterializedDigest,
+                       writerId, controlRevision, installedAtMs
+                     ) VALUES (1, ?1, 3, ?2, ?3, ?4, '[]', 'manifest-1',
+                               ?5, 1, 10, ?6, ?7, 'revision-1', 1000);",
+                    params![
+                        "a".repeat(64),
+                        "b".repeat(64),
+                        "c".repeat(64),
+                        "d".repeat(64),
+                        "1".repeat(64),
+                        "2".repeat(64),
+                        "3".repeat(64),
+                    ],
+                )
+                .expect("write v7 follower anchor");
+            transaction.commit().expect("commit v7 schema");
+        }
+        drop(connection);
+
+        let journal = LibraryCoreJournal::open(&path).expect("upgrade v7 journal");
+        let stored: (String, Option<String>, Option<i64>) = journal
+            .connection
+            .query_row(
+                "SELECT manifestObjectKey, checkpointActorId,
+                        checkpointAcceptedSequence
+                 FROM library_core_follower_anchor WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read upgraded follower anchor");
+        assert_eq!(stored, ("manifest-1".to_string(), None, None));
+        assert_eq!(
+            journal.follower_anchor().unwrap().unwrap().checkpoint_actor,
+            None
+        );
     }
 
     #[test]

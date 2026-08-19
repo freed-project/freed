@@ -29,8 +29,8 @@ use super::library_core_journal::{
     FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
     FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
     LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerIntentPublication,
-    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
+    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 use super::library_core_journal_runtime::journal_path;
 
@@ -246,7 +246,18 @@ pub(super) struct InstallFollowerAnchorRequest {
     remote_materialized_digest: String,
     writer_id: String,
     control_revision: String,
+    checkpoint_actor: Option<DesktopLibraryFollowerCheckpointActor>,
     installed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub(super) struct DesktopLibraryFollowerCheckpointActor {
+    actor_id: String,
+    accepted_sequence: i64,
+    accepted_operation_id: Option<String>,
+    accepted_chain_digest: String,
+    enrollment_certificate_digest: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -261,6 +272,7 @@ pub(super) struct DesktopLibraryFollowerAnchor {
     remote_materialized_digest: String,
     writer_id: String,
     control_revision: String,
+    checkpoint_actor: Option<DesktopLibraryFollowerCheckpointActor>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1368,6 +1380,15 @@ pub(super) fn install_sqlite_library_follower_anchor(
             remote_materialized_digest: request.remote_materialized_digest,
             writer_id: request.writer_id,
             control_revision: request.control_revision,
+            checkpoint_actor: request.checkpoint_actor.map(|actor| {
+                VerifiedFollowerCheckpointActor {
+                    actor_id: actor.actor_id,
+                    accepted_sequence: actor.accepted_sequence,
+                    accepted_operation_id: actor.accepted_operation_id,
+                    accepted_chain_digest: actor.accepted_chain_digest,
+                    enrollment_certificate_digest: actor.enrollment_certificate_digest,
+                }
+            }),
             installed_at_ms: request.installed_at_ms,
         })
         .map_err(|error| format!("SQLite Library could not install follower anchor: {error}"))?;
@@ -1381,6 +1402,15 @@ pub(super) fn install_sqlite_library_follower_anchor(
         remote_materialized_digest: anchor.remote_materialized_digest,
         writer_id: anchor.writer_id,
         control_revision: anchor.control_revision,
+        checkpoint_actor: anchor.checkpoint_actor.map(|actor| {
+            DesktopLibraryFollowerCheckpointActor {
+                actor_id: actor.actor_id,
+                accepted_sequence: actor.accepted_sequence,
+                accepted_operation_id: actor.accepted_operation_id,
+                accepted_chain_digest: actor.accepted_chain_digest,
+                enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            }
+        }),
     })
 }
 

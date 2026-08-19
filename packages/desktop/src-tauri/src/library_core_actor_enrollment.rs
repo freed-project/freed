@@ -789,6 +789,7 @@ mod tests {
                     remote_materialized_digest: "2".repeat(64),
                     writer_id: "3".repeat(64),
                     control_revision: "revision-1".to_string(),
+                    checkpoint_actor: None,
                     installed_at_ms: 1_900,
                 },
             )
