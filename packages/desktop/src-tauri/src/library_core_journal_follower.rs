@@ -146,6 +146,19 @@ pub(crate) struct FollowerResultImportReceipt {
     pub(crate) status: &'static str,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerRuntimeStatus {
+    pub(crate) state: &'static str,
+    pub(crate) library_id: Option<String>,
+    pub(crate) epoch_id: Option<String>,
+    pub(crate) actor_id: Option<String>,
+    pub(crate) checkpoint_generation: Option<i64>,
+    pub(crate) remote_ingest_sequence: Option<i64>,
+    pub(crate) pending_intent_count: i64,
+    pub(crate) published_intent_count: i64,
+    pub(crate) imported_result_count: i64,
+}
+
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
@@ -250,6 +263,102 @@ fn parse_frontier(value: &str) -> JournalResult<Vec<super::VerifiedCausalTip>> {
 }
 
 impl LibraryCoreJournal {
+    pub(crate) fn follower_runtime_status(&self) -> JournalResult<FollowerRuntimeStatus> {
+        let Some(anchor) = self.follower_anchor()? else {
+            return Ok(FollowerRuntimeStatus {
+                state: "awaiting_checkpoint",
+                library_id: None,
+                epoch_id: None,
+                actor_id: None,
+                checkpoint_generation: None,
+                remote_ingest_sequence: None,
+                pending_intent_count: 0,
+                published_intent_count: 0,
+                imported_result_count: 0,
+            });
+        };
+        let actor = self
+            .connection
+            .query_row(
+                "SELECT actor.actorId,
+                        actor.enrollmentCertificateDigest IS NOT NULL,
+                        intent.nextIntentSequence,
+                        intent.publishedThroughIntentSequence,
+                        intent.nextResultSequence
+                 FROM library_core_follower_actor AS actor
+                 LEFT JOIN library_core_follower_intent_actor AS intent
+                   ON intent.libraryId = actor.libraryId
+                  AND intent.epochId = actor.epochId
+                  AND intent.actorId = actor.actorId
+                 WHERE actor.libraryId = ?1 AND actor.epochId = ?2;",
+                params![anchor.authority.library_id, anchor.authority.epoch_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, bool>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let common = |state, actor_id, pending, published, imported| FollowerRuntimeStatus {
+            state,
+            library_id: Some(anchor.authority.library_id.clone()),
+            epoch_id: Some(anchor.authority.epoch_id.clone()),
+            actor_id,
+            checkpoint_generation: Some(anchor.generation),
+            remote_ingest_sequence: Some(anchor.remote_ingest_sequence),
+            pending_intent_count: pending,
+            published_intent_count: published,
+            imported_result_count: imported,
+        };
+        let Some((actor_id, enrolled, next_intent, published_through, next_result)) = actor else {
+            return Ok(common("awaiting_enrollment", None, 0, 0, 0));
+        };
+        if !enrolled {
+            if next_intent.is_some() || published_through.is_some() || next_result.is_some() {
+                return Err(invalid("follower_status.unenrolled_intent_state"));
+            }
+            return Ok(common("enrollment_pending", Some(actor_id), 0, 0, 0));
+        }
+        let (next_intent, published_through, next_result) =
+            match (next_intent, published_through, next_result) {
+                (Some(next_intent), Some(published_through), Some(next_result)) => {
+                    (next_intent, published_through, next_result)
+                }
+                _ => return Err(invalid("follower_status.enrolled_intent_state")),
+            };
+        let pending = next_intent
+            .checked_sub(published_through + 1)
+            .ok_or_else(|| invalid("follower_status.intent_tip"))?;
+        let imported = next_result
+            .checked_sub(1)
+            .ok_or_else(|| invalid("follower_status.result_tip"))?;
+        let stored_results: i64 = self.connection.query_row(
+            "SELECT COUNT(*)
+             FROM library_core_follower_intent_result
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+            params![
+                anchor.authority.library_id,
+                anchor.authority.epoch_id,
+                actor_id
+            ],
+            |row| row.get(0),
+        )?;
+        if stored_results != imported {
+            return Err(invalid("follower_status.result_count"));
+        }
+        Ok(common(
+            "active",
+            Some(actor_id),
+            pending,
+            published_through,
+            imported,
+        ))
+    }
+
     pub(crate) fn follower_anchor(&self) -> JournalResult<Option<VerifiedFollowerAnchor>> {
         let stored = self
             .connection
@@ -1572,6 +1681,20 @@ mod tests {
             .unwrap();
         assert_eq!(writer_admission, 0);
         assert_eq!(authority_epochs, 0);
+        assert_eq!(
+            journal.follower_runtime_status().unwrap(),
+            FollowerRuntimeStatus {
+                state: "awaiting_enrollment",
+                library_id: Some("a".repeat(64)),
+                epoch_id: Some("b".repeat(64)),
+                actor_id: None,
+                checkpoint_generation: Some(1),
+                remote_ingest_sequence: Some(10),
+                pending_intent_count: 0,
+                published_intent_count: 0,
+                imported_result_count: 0,
+            }
+        );
     }
 
     #[test]
@@ -1613,6 +1736,10 @@ mod tests {
                 .follower_actor_request(&"a".repeat(64), &"b".repeat(64))
                 .unwrap(),
             Some(request.clone())
+        );
+        assert_eq!(
+            journal.follower_runtime_status().unwrap().state,
+            "enrollment_pending"
         );
 
         let mut changed = request;
@@ -1754,6 +1881,20 @@ mod tests {
     #[test]
     fn follower_outbox_publication_and_result_import_are_exact_and_replay_safe() {
         let mut journal = journal_with_enqueued_intent();
+        assert_eq!(
+            journal.follower_runtime_status().unwrap(),
+            FollowerRuntimeStatus {
+                state: "active",
+                library_id: Some("a".repeat(64)),
+                epoch_id: Some("b".repeat(64)),
+                actor_id: Some("6".repeat(64)),
+                checkpoint_generation: Some(1),
+                remote_ingest_sequence: Some(10),
+                pending_intent_count: 2,
+                published_intent_count: 0,
+                imported_result_count: 0,
+            }
+        );
         assert!(journal
             .follower_intent_outbox_candidate(1, 4_194_304)
             .is_err());
@@ -1794,6 +1935,9 @@ mod tests {
             .follower_intent_outbox_candidate(1_000, 4_194_304)
             .unwrap()
             .is_none());
+        let published_status = journal.follower_runtime_status().unwrap();
+        assert_eq!(published_status.pending_intent_count, 0);
+        assert_eq!(published_status.published_intent_count, 2);
 
         assert_eq!(
             journal
@@ -1835,6 +1979,13 @@ mod tests {
                 .unwrap()
                 .status,
             "already_imported"
+        );
+        assert_eq!(
+            journal
+                .follower_runtime_status()
+                .unwrap()
+                .imported_result_count,
+            1
         );
         let mut changed_replay = result_segment;
         changed_replay.segment_digest = "e".repeat(64);

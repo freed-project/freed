@@ -147,6 +147,22 @@ export interface SqliteLibraryFollowerIntentContext {
   readonly previousChainDigest: string;
 }
 
+export interface SqliteLibraryFollowerRuntimeStatus {
+  readonly state:
+    | "awaiting_checkpoint"
+    | "awaiting_enrollment"
+    | "enrollment_pending"
+    | "active";
+  readonly libraryId: string | null;
+  readonly epochId: string | null;
+  readonly actorId: string | null;
+  readonly checkpointGeneration: number | null;
+  readonly remoteIngestSequence: number | null;
+  readonly pendingIntentCount: number;
+  readonly publishedIntentCount: number;
+  readonly importedResultCount: number;
+}
+
 export interface SqliteLibraryFollowerOperationSignature {
   readonly actorId: string;
   readonly operationSigningBodyDigest: string;
@@ -164,6 +180,12 @@ export interface SqliteLibraryFollowerIntentReceipt {
 export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibraryFollowerIntentContext | null> {
   return invoke<SqliteLibraryFollowerIntentContext | null>(
     "sqlite_library_follower_intent_context",
+  );
+}
+
+export async function readSqliteLibraryFollowerRuntimeStatus(): Promise<SqliteLibraryFollowerRuntimeStatus> {
+  return invoke<SqliteLibraryFollowerRuntimeStatus>(
+    "sqlite_library_follower_runtime_status",
   );
 }
 

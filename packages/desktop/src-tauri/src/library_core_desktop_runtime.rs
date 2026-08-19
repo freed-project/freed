@@ -27,9 +27,10 @@ use super::library_core_authority_genesis::{
 use super::library_core_journal::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
     FollowerIntentPublicationReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
-    IntentResultOutboxEntry, LibraryCoreJournal, StoredFollowerActorEnrollment,
-    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
-    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    FollowerRuntimeStatus, IntentResultOutboxEntry, LibraryCoreJournal,
+    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedCausalTip,
+    VerifiedFollowerAnchor, VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult,
+    VerifiedFollowerResultSegment,
 };
 use super::library_core_journal_runtime::journal_path;
 
@@ -341,6 +342,20 @@ pub(super) struct DesktopLibraryFollowerIntentContext {
     next_intent_sequence: i64,
     previous_operation_id: Option<String>,
     previous_chain_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerRuntimeStatus {
+    state: &'static str,
+    library_id: Option<String>,
+    epoch_id: Option<String>,
+    actor_id: Option<String>,
+    checkpoint_generation: Option<i64>,
+    remote_ingest_sequence: Option<i64>,
+    pending_intent_count: i64,
+    published_intent_count: i64,
+    imported_result_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1589,6 +1604,44 @@ pub(super) fn sqlite_library_follower_intent_context(
         previous_operation_id: actor.previous_operation_id,
         previous_chain_digest: actor.previous_chain_digest,
     }))
+}
+
+/// Report the local follower checkpoint, enrollment, outbox, and result state
+/// without reading or mutating any cloud transport.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_runtime_status(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFollowerRuntimeStatus, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let FollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    } = journal
+        .follower_runtime_status()
+        .map_err(|error| format!("SQLite Library refused follower diagnostics: {error}"))?;
+    Ok(DesktopLibraryFollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    })
 }
 
 fn follower_intent_outbox_response(

@@ -14110,6 +14110,7 @@ pub fn run() {
             library_core_desktop_runtime::sign_sqlite_library_follower_operation,
             library_core_desktop_runtime::enqueue_sqlite_library_follower_intent,
             library_core_desktop_runtime::sqlite_library_follower_intent_context,
+            library_core_desktop_runtime::sqlite_library_follower_runtime_status,
             library_core_desktop_runtime::read_sqlite_library_follower_intent_outbox_candidate,
             library_core_desktop_runtime::record_sqlite_library_follower_intent_publication,
             library_core_desktop_runtime::read_sqlite_library_follower_result_import_cursor,

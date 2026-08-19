@@ -25,6 +25,17 @@ const mocks = vi.hoisted(() => ({
       error: undefined as string | undefined,
     },
   },
+  followerStatus: {
+    state: "active" as const,
+    libraryId: "a".repeat(64),
+    epochId: "b".repeat(64),
+    actorId: "c".repeat(64),
+    checkpointGeneration: 12,
+    remoteIngestSequence: 345,
+    pendingIntentCount: 6,
+    publishedIntentCount: 7,
+    importedResultCount: 8,
+  },
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -53,6 +64,12 @@ vi.mock("../lib/sync", () => ({
   syncCloudProviderNow: mocks.syncCloudProviderNow,
   transferSqliteLibraryWriterToThisDesktop:
     mocks.transferSqliteLibraryWriterToThisDesktop,
+}));
+
+vi.mock("../lib/sqlite-library", () => ({
+  readSqliteLibraryFollowerRuntimeStatus: vi.fn(
+    async () => mocks.followerStatus,
+  ),
 }));
 
 vi.mock("./DesktopSnapshotsSection", () => ({
@@ -162,6 +179,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(follower?.disabled).toBe(false);
     await act(async () => {
       follower?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
     });
 
     expect(readLibraryCoreDesktopRole()).toBe("follower");
@@ -169,6 +187,19 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(roleControl?.textContent).toContain(
       "Authority publication is blocked on this installation.",
     );
+    const diagnostics = container.querySelector(
+      "[data-testid='library-core-follower-diagnostics']",
+    );
+    expect(diagnostics?.textContent).toContain(
+      "Follower journal is active.",
+    );
+    expect(diagnostics?.textContent).toContain("Queued edits");
+    expect(diagnostics?.textContent).toContain("6");
+    expect(diagnostics?.textContent).toContain("Published edits");
+    expect(diagnostics?.textContent).toContain("7");
+    expect(diagnostics?.textContent).toContain("Imported receipts");
+    expect(diagnostics?.textContent).toContain("8");
+    expect(diagnostics?.textContent).toContain("...cccccccc");
   });
 
   it("shows honest activity feedback while Drive publication is running", async () => {

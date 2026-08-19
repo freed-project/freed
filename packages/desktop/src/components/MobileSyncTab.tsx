@@ -24,6 +24,10 @@ import {
   writeLibraryCoreDesktopRole,
   type LibraryCoreDesktopRole,
 } from "../lib/library-core-desktop-role";
+import {
+  readSqliteLibraryFollowerRuntimeStatus,
+  type SqliteLibraryFollowerRuntimeStatus,
+} from "../lib/sqlite-library";
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number") return "-";
@@ -71,6 +75,21 @@ function isWriterOwnershipWarning(message?: string | null): boolean {
   return message?.includes("Another Freed Desktop currently owns writes") ?? false;
 }
 
+function describeFollowerState(
+  state: SqliteLibraryFollowerRuntimeStatus["state"],
+): string {
+  switch (state) {
+    case "awaiting_checkpoint":
+      return "Waiting for the primary Library checkpoint.";
+    case "awaiting_enrollment":
+      return "Checkpoint installed. Waiting to create this follower's actor.";
+    case "enrollment_pending":
+      return "Waiting for the primary source to accept this follower.";
+    case "active":
+      return "Follower journal is active.";
+  }
+}
+
 export function MobileSyncTab() {
   const docSnapshot = useDebugStore((state) => state.docSnapshot);
   const cloudProviders = useDebugStore((state) => state.cloudProviders);
@@ -86,6 +105,11 @@ export function MobileSyncTab() {
   const [manualError, setManualError] = useState<string | null>(null);
   const [desktopRole, setDesktopRole] = useState<LibraryCoreDesktopRole>(() =>
     readLibraryCoreDesktopRole(),
+  );
+  const [followerStatus, setFollowerStatus] =
+    useState<SqliteLibraryFollowerRuntimeStatus | null>(null);
+  const [followerStatusError, setFollowerStatusError] = useState<string | null>(
+    null,
   );
   const driveState = cloudProviders?.gdrive ?? null;
   const driveCardState = driveState === null
@@ -113,6 +137,38 @@ export function MobileSyncTab() {
   useEffect(() => {
     setWarningDismissed(isDesktopClientWarningAcknowledged(warningSignature));
   }, [warningSignature]);
+
+  useEffect(() => {
+    if (desktopRole !== "follower") {
+      setFollowerStatus(null);
+      setFollowerStatusError(null);
+      return;
+    }
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const status = await readSqliteLibraryFollowerRuntimeStatus();
+        if (!disposed) {
+          setFollowerStatus(status);
+          setFollowerStatusError(null);
+        }
+      } catch (error) {
+        if (!disposed) {
+          setFollowerStatusError(
+            error instanceof Error
+              ? error.message
+              : "Follower diagnostics are unavailable.",
+          );
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [desktopRole]);
 
   const dismissWarning = useCallback(() => {
     acknowledgeDesktopClientWarning(warningSignature);
@@ -250,14 +306,69 @@ export function MobileSyncTab() {
               })}
             </div>
             {desktopRole === "follower" && (
-              <p
-                role="status"
-                className="mt-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]"
-              >
-                Authority publication is blocked on this installation. Follower
-                Drive transport remains disabled in this candidate until its
-                approval gate is complete.
-              </p>
+              <>
+                <p
+                  role="status"
+                  className="mt-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]"
+                >
+                  Authority publication is blocked on this installation.
+                  Follower Drive transport remains disabled in this candidate
+                  until its approval gate is complete.
+                </p>
+                {followerStatusError && (
+                  <p className="theme-feedback-text-danger mt-3 break-words text-xs">
+                    {followerStatusError}
+                  </p>
+                )}
+                {followerStatus && (
+                  <div
+                    data-testid="library-core-follower-diagnostics"
+                    className="mt-3"
+                  >
+                    <p className="mb-2 text-xs text-[var(--theme-text-secondary)]">
+                      {describeFollowerState(followerStatus.state)}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <DiagnosticCell
+                        label="Checkpoint"
+                        value={
+                          followerStatus.checkpointGeneration === null
+                            ? "-"
+                            : followerStatus.checkpointGeneration.toLocaleString()
+                        }
+                      />
+                      <DiagnosticCell
+                        label="Remote revision"
+                        value={
+                          followerStatus.remoteIngestSequence === null
+                            ? "-"
+                            : followerStatus.remoteIngestSequence.toLocaleString()
+                        }
+                      />
+                      <DiagnosticCell
+                        label="Queued edits"
+                        value={followerStatus.pendingIntentCount.toLocaleString()}
+                      />
+                      <DiagnosticCell
+                        label="Published edits"
+                        value={followerStatus.publishedIntentCount.toLocaleString()}
+                      />
+                      <DiagnosticCell
+                        label="Imported receipts"
+                        value={followerStatus.importedResultCount.toLocaleString()}
+                      />
+                      <DiagnosticCell
+                        label="Follower actor"
+                        value={
+                          followerStatus.actorId === null
+                            ? "-"
+                            : `...${followerStatus.actorId.slice(-8)}`
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

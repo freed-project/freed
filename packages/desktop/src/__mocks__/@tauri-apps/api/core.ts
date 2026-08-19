@@ -546,6 +546,17 @@ const handlers: Record<string, Handler> = {
       verifiedAtMs: null,
     },
   sqlite_library_follower_intent_context: () => null,
+  sqlite_library_follower_runtime_status: () => ({
+    state: "awaiting_checkpoint",
+    libraryId: null,
+    epochId: null,
+    actorId: null,
+    checkpointGeneration: null,
+    remoteIngestSequence: null,
+    pendingIntentCount: 0,
+    publishedIntentCount: 0,
+    importedResultCount: 0,
+  }),
   read_sqlite_library_follower_intent_outbox_candidate: () => null,
   record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
     const request = (args.request ?? {}) as Record<string, unknown>;
