@@ -201,8 +201,10 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
     /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
   );
   assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
-  assert.match(aptSourceSanitizer, /http:\/\/azure\.archive\.ubuntu\.com\/ubuntu/);
-  assert.match(aptSourceSanitizer, /https:\/\/archive\.ubuntu\.com\/ubuntu/);
+  assert.ok(
+    aptSourceSanitizer.includes("http://azure.archive.ubuntu.com/ubuntu"),
+  );
+  assert.ok(aptSourceSanitizer.includes("https://archive.ubuntu.com/ubuntu"));
 
   for (const [name, workflow, expectedCount] of [
     ["CI", ciWorkflow, 2],
