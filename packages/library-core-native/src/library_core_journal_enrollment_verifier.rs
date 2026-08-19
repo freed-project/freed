@@ -24,11 +24,36 @@ const CERTIFICATE_KEYS: [&str; 3] = [
     "certificate_digest",
     "authority_signature",
 ];
-const CERTIFICATE_BODY_KEYS: [&str; 3] = [
+const CERTIFICATE_BODY_V1_KEYS: [&str; 3] = [
     "actor_enrollment_body",
     "enrollment_body_digest",
     "actor_proof",
 ];
+const CERTIFICATE_BODY_V2_KEYS: [&str; 5] = [
+    "actor_enrollment_body",
+    "enrollment_body_digest",
+    "actor_proof",
+    "actor_capability_body",
+    "actor_capability_body_digest",
+];
+const CAPABILITY_BODY_V2_KEYS: [&str; 14] = [
+    "format",
+    "library_id",
+    "epoch",
+    "epoch_id",
+    "authority_key_id",
+    "actor_id",
+    "actor_public_key",
+    "actor_class",
+    "allowed_operation_types",
+    "scope",
+    "issuance_identity",
+    "retirement_identity",
+    "issued_at_ms",
+    "signature_algorithm",
+];
+const LIBRARY_WIDE_SCOPE_KEYS: [&str; 1] = ["mode"];
+const BOUNDED_SCOPE_KEYS: [&str; 3] = ["mode", "scope_kind", "scope_id"];
 const ENROLLMENT_BODY_KEYS: [&str; 15] = [
     "operation_id",
     "operation_type",
@@ -158,7 +183,10 @@ fn parse_causal_tips(value: &Value) -> JournalResult<Vec<VerifiedCausalTip>> {
             operation_id.clone(),
             chain_digest.clone(),
         );
-        if previous.as_ref().is_some_and(|prior| prior >= &key) {
+        if previous
+            .as_ref()
+            .is_some_and(|prior| prior.0 == actor_id || prior >= &key)
+        {
             return Err(invalid("observed_frontier"));
         }
         previous = Some(key);
@@ -206,22 +234,145 @@ fn validate_authority(authority: &AcceptedAuthorityState) -> JournalResult<()> {
             || !is_operation_id(&tip.operation_id)
             || !is_lower_hex(&tip.chain_digest, 32)
             || index > 0
-                && (
-                    authority.observed_frontier[index - 1].actor_id.as_str(),
-                    authority.observed_frontier[index - 1].sequence,
-                    authority.observed_frontier[index - 1].operation_id.as_str(),
-                    authority.observed_frontier[index - 1].chain_digest.as_str(),
-                ) >= (
-                    tip.actor_id.as_str(),
-                    tip.sequence,
-                    tip.operation_id.as_str(),
-                    tip.chain_digest.as_str(),
-                )
+                && (authority.observed_frontier[index - 1].actor_id == tip.actor_id
+                    || (
+                        authority.observed_frontier[index - 1].actor_id.as_str(),
+                        authority.observed_frontier[index - 1].sequence,
+                        authority.observed_frontier[index - 1].operation_id.as_str(),
+                        authority.observed_frontier[index - 1].chain_digest.as_str(),
+                    ) >= (
+                        tip.actor_id.as_str(),
+                        tip.sequence,
+                        tip.operation_id.as_str(),
+                        tip.chain_digest.as_str(),
+                    ))
         {
             return Err(invalid("authority.observed_frontier"));
         }
     }
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_capability_body_v2(
+    certificate_body: &Map<String, Value>,
+    enrollment_body_digest: &str,
+    library_id: &str,
+    epoch: i64,
+    epoch_id: &str,
+    authority_key_id: &str,
+    actor_id: &str,
+    actor_public_key: &str,
+    created_at_ms: i64,
+) -> JournalResult<super::actor_capability::ActorCapabilityState> {
+    let capability_value = certificate_body
+        .get("actor_capability_body")
+        .ok_or_else(|| invalid("actor_capability_body"))?;
+    let capability = exact_object(
+        capability_value,
+        &CAPABILITY_BODY_V2_KEYS,
+        "actor_capability_body",
+    )?;
+    require_literal(
+        capability,
+        "format",
+        "freed_library_core_actor_capability_v2",
+    )?;
+    require_literal(capability, "signature_algorithm", "ed25519")?;
+    if required_string(capability, "library_id")? != library_id
+        || positive_safe_integer(capability, "epoch")? != epoch
+        || required_string(capability, "epoch_id")? != epoch_id
+        || required_string(capability, "authority_key_id")? != authority_key_id
+        || required_string(capability, "actor_id")? != actor_id
+        || required_string(capability, "actor_public_key")? != actor_public_key
+        || safe_integer(capability, "issued_at_ms")? != created_at_ms
+    {
+        return Err(invalid("actor_capability_binding"));
+    }
+    let actor_class = required_string(capability, "actor_class")?;
+    if !matches!(actor_class.as_str(), "editor" | "scraper" | "agent") {
+        return Err(invalid("actor_class"));
+    }
+    let operations = capability
+        .get("allowed_operation_types")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid("allowed_operation_types"))?
+        .iter()
+        .map(|operation| {
+            operation
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| invalid("allowed_operation_types"))
+        })
+        .collect::<JournalResult<Vec<_>>>()?;
+    super::actor_capability::validate_allowed_operation_types(&actor_class, &operations)
+        .map_err(invalid)?;
+
+    let scope_value = capability.get("scope").ok_or_else(|| invalid("scope"))?;
+    let scope_object = scope_value.as_object().ok_or_else(|| invalid("scope"))?;
+    let scope = match scope_object.get("mode").and_then(Value::as_str) {
+        Some("library_wide") => {
+            exact_object(scope_value, &LIBRARY_WIDE_SCOPE_KEYS, "scope")?;
+            super::actor_capability::ActorCapabilityScope::LibraryWide
+        }
+        Some("bounded") => {
+            let scope = exact_object(scope_value, &BOUNDED_SCOPE_KEYS, "scope")?;
+            let kind = required_string(scope, "scope_kind")?;
+            if !matches!(kind.as_str(), "provider" | "source") {
+                return Err(invalid("scope_kind"));
+            }
+            let scope_id = required_string(scope, "scope_id")?;
+            if scope_id.is_empty() || scope_id.len() > 4_096 {
+                return Err(invalid("scope_id"));
+            }
+            super::actor_capability::ActorCapabilityScope::Bounded { kind, scope_id }
+        }
+        _ => return Err(invalid("scope")),
+    };
+
+    let issuance_identity = required_string(capability, "issuance_identity")?;
+    let retirement_identity = required_string(capability, "retirement_identity")?;
+    require_hex(&issuance_identity, 32, "issuance_identity")?;
+    require_hex(&retirement_identity, 32, "retirement_identity")?;
+    let expected_issuance = digest_hex(
+        "actor-capability-issuance",
+        &json!({
+            "library_id": library_id,
+            "epoch_id": epoch_id,
+            "authority_key_id": authority_key_id,
+            "actor_id": actor_id,
+            "enrollment_body_digest": enrollment_body_digest,
+        }),
+    )?;
+    let expected_retirement = digest_hex(
+        "actor-capability-retirement",
+        &json!({
+            "library_id": library_id,
+            "epoch_id": epoch_id,
+            "actor_id": actor_id,
+            "issuance_identity": expected_issuance,
+        }),
+    )?;
+    if issuance_identity != expected_issuance || retirement_identity != expected_retirement {
+        return Err(invalid("actor_capability_identity"));
+    }
+    let capability_body_digest = required_string(certificate_body, "actor_capability_body_digest")?;
+    require_hex(&capability_body_digest, 32, "actor_capability_body_digest")?;
+    if capability_body_digest != digest_hex("actor-capability-body", capability_value)? {
+        return Err(invalid("actor_capability_body_digest"));
+    }
+    Ok(super::actor_capability::ActorCapabilityState {
+        certificate_version: 2,
+        actor_class,
+        allowed_operation_types: operations,
+        scope,
+        issuance_identity: Some(issuance_identity),
+        retirement_identity: Some(retirement_identity),
+        capability_certificate_digest: String::new(),
+        issued_at_ms: created_at_ms,
+        retired: false,
+        retirement_certificate_digest: None,
+    })
 }
 
 pub(super) fn verify_actor_enrollment(
@@ -236,8 +387,25 @@ pub(super) fn verify_actor_enrollment(
     let certificate_body = certificate_object
         .get("certificate_body")
         .ok_or_else(|| invalid("certificate_body"))?;
-    let certificate_body_object =
-        exact_object(certificate_body, &CERTIFICATE_BODY_KEYS, "certificate_body")?;
+    let raw_certificate_body = certificate_body
+        .as_object()
+        .ok_or_else(|| invalid("certificate_body"))?;
+    let certificate_version = if raw_certificate_body.len() == CERTIFICATE_BODY_V1_KEYS.len()
+        && CERTIFICATE_BODY_V1_KEYS
+            .iter()
+            .all(|key| raw_certificate_body.contains_key(*key))
+    {
+        1
+    } else if raw_certificate_body.len() == CERTIFICATE_BODY_V2_KEYS.len()
+        && CERTIFICATE_BODY_V2_KEYS
+            .iter()
+            .all(|key| raw_certificate_body.contains_key(*key))
+    {
+        2
+    } else {
+        return Err(invalid("certificate_body"));
+    };
+    let certificate_body_object = raw_certificate_body;
     let actor_body = certificate_body_object
         .get("actor_enrollment_body")
         .ok_or_else(|| invalid("actor_enrollment_body"))?;
@@ -334,16 +502,42 @@ pub(super) fn verify_actor_enrollment(
         return Err(invalid("actor_proof"));
     }
 
+    let mut capability = if certificate_version == 1 {
+        None
+    } else {
+        Some(verify_capability_body_v2(
+            certificate_body_object,
+            &enrollment_body_digest,
+            &library_id,
+            epoch,
+            &epoch_id,
+            &authority_key_id,
+            &actor_id,
+            &actor_public_key,
+            created_at_ms,
+        )?)
+    };
+
     let certificate_digest = required_string(certificate_object, "certificate_digest")?;
     require_hex(&certificate_digest, 32, "certificate_digest")?;
-    let expected_certificate_digest = digest_hex("actor-enrollment-certificate", certificate_body)?;
+    let certificate_digest_domain = if certificate_version == 1 {
+        "actor-enrollment-certificate"
+    } else {
+        "actor-capability-certificate"
+    };
+    let expected_certificate_digest = digest_hex(certificate_digest_domain, certificate_body)?;
     if certificate_digest != expected_certificate_digest {
         return Err(invalid("certificate_digest"));
     }
     let authority_signature = required_string(certificate_object, "authority_signature")?;
     require_hex(&authority_signature, 64, "authority_signature")?;
+    let authority_signature_domain = if certificate_version == 1 {
+        "actor-enrollment-authority"
+    } else {
+        "actor-capability-authority"
+    };
     let authority_signature_input = encode_signature_input(
-        "actor-enrollment-authority",
+        authority_signature_domain,
         &json!({ "certificate_digest": certificate_digest }),
         MAX_TRANSACTION_ENVELOPE_BYTES,
     )
@@ -366,6 +560,20 @@ pub(super) fn verify_actor_enrollment(
             "epoch_id": epoch_id,
         }),
     )?;
+    let capability = capability.take().unwrap_or_else(|| {
+        super::actor_capability::ActorCapabilityState::legacy_editor(
+            certificate_digest.clone(),
+            created_at_ms,
+        )
+    });
+    let capability = if certificate_version == 2 {
+        super::actor_capability::ActorCapabilityState {
+            capability_certificate_digest: certificate_digest.clone(),
+            ..capability
+        }
+    } else {
+        capability
+    };
     Ok(VerifiedActorEnrollment {
         library_id,
         epoch,
@@ -379,6 +587,7 @@ pub(super) fn verify_actor_enrollment(
             .to_owned(),
         actor_chain_genesis,
         enrolled_at_ms: created_at_ms,
+        capability,
     })
 }
 
@@ -388,6 +597,29 @@ mod tests {
     use super::*;
     use crate::library_core_canonical::encode_canonical_value;
     use ring::signature::{Ed25519KeyPair, KeyPair};
+
+    fn capability_vectors() -> Value {
+        serde_json::from_str(include_str!(
+            "../../shared/src/library-core/actor-capability-certificate-v2-vectors.json"
+        ))
+        .expect("cross-runtime actor capability vectors must parse")
+    }
+
+    fn vector_authority(vector: &Value) -> AcceptedAuthorityState {
+        let authority = vector["authority_state"]
+            .as_object()
+            .expect("vector authority state");
+        AcceptedAuthorityState {
+            library_id: required_string(authority, "library_id").expect("library ID"),
+            epoch: positive_safe_integer(authority, "epoch").expect("epoch"),
+            epoch_id: required_string(authority, "epoch_id").expect("epoch ID"),
+            authority_key_id: required_string(authority, "authority_key_id")
+                .expect("authority key ID"),
+            authority_public_key: required_string(authority, "authority_public_key")
+                .expect("authority public key"),
+            observed_frontier: Vec::new(),
+        }
+    }
 
     fn hex(bytes: &[u8]) -> String {
         let mut encoded = String::with_capacity(bytes.len() * 2);
@@ -542,6 +774,190 @@ mod tests {
             )
             .expect("row counts");
         assert_eq!(rows, (1, 1));
+    }
+
+    #[test]
+    fn matches_and_enrolls_the_cross_runtime_v2_capability_vector() {
+        let vectors = capability_vectors();
+        assert_eq!(vectors["schema_version"], 1);
+        assert_eq!(vectors["format"], "freed_library_core_actor_capability_v2");
+        let vector = &vectors["vectors"][0];
+        let authority = vector_authority(vector);
+        let certificate =
+            encode_canonical_value(&vector["certificate"], MAX_TRANSACTION_ENVELOPE_BYTES)
+                .expect("canonical cross-runtime certificate");
+        let verified = verify_actor_enrollment(&certificate, &authority)
+            .expect("verify cross-runtime v2 capability");
+        assert_eq!(
+            verified.actor_id,
+            vector["certificate"]["certificate_body"]["actor_enrollment_body"]["actor_id"]
+        );
+        assert_eq!(
+            verified.enrollment_certificate_digest,
+            vector["certificate"]["certificate_digest"]
+        );
+        assert_eq!(verified.actor_chain_genesis, vector["actor_chain_genesis"]);
+        assert_eq!(verified.capability.certificate_version, 2);
+        assert_eq!(verified.capability.actor_class, "agent");
+        assert_eq!(
+            verified.capability.allowed_operation_types,
+            [
+                "feed_item_read_assignment".to_owned(),
+                "feed_item_saved_assignment".to_owned(),
+            ]
+        );
+        assert!(matches!(
+            verified.capability.scope,
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide
+        ));
+
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_authority(&mut journal, &authority);
+        journal
+            .verify_and_enroll_actor(&certificate, &authority.library_id)
+            .expect("enroll v2 actor");
+        let stored: (i64, String, String, String, String, String) = journal
+            .connection
+            .query_row(
+                "SELECT certificateVersion, actorClass, allowedOperationTypesJson,
+                        scopeMode, issuanceIdentity, retirementIdentity
+                   FROM library_core_actor_capability_state
+                  WHERE actorId = ?1;",
+                [&verified.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("stored capability");
+        assert_eq!(stored.0, 2);
+        assert_eq!(stored.1, "agent");
+        assert_eq!(
+            stored.2,
+            "[\"feed_item_read_assignment\",\"feed_item_saved_assignment\"]"
+        );
+        assert_eq!(stored.3, "library_wide");
+        assert_eq!(
+            stored.4,
+            vector["certificate"]["certificate_body"]["actor_capability_body"]["issuance_identity"]
+        );
+        assert_eq!(
+            stored.5,
+            vector["certificate"]["certificate_body"]["actor_capability_body"]
+                ["retirement_identity"]
+        );
+    }
+
+    #[test]
+    fn enrollment_and_authority_frontiers_reject_two_tips_for_one_actor() {
+        let actor_id = "1".repeat(64);
+        let tips = json!([
+            {
+                "actor_id": actor_id,
+                "sequence": 1,
+                "operation_id": "op:frontier:one",
+                "chain_digest": "2".repeat(64),
+            },
+            {
+                "actor_id": actor_id,
+                "sequence": 2,
+                "operation_id": "op:frontier:two",
+                "chain_digest": "3".repeat(64),
+            }
+        ]);
+        assert!(matches!(
+            parse_causal_tips(&tips),
+            Err(JournalError::EnrollmentVerification {
+                field: "observed_frontier"
+            })
+        ));
+
+        let authority_key =
+            Ed25519KeyPair::from_seed_unchecked(&[14_u8; 32]).expect("authority key");
+        let mut accepted = authority(&authority_key);
+        accepted.observed_frontier = vec![
+            VerifiedCausalTip {
+                actor_id: actor_id.clone(),
+                sequence: 1,
+                operation_id: "op:frontier:one".to_owned(),
+                chain_digest: "2".repeat(64),
+            },
+            VerifiedCausalTip {
+                actor_id,
+                sequence: 2,
+                operation_id: "op:frontier:two".to_owned(),
+                chain_digest: "3".repeat(64),
+            },
+        ];
+        assert!(matches!(
+            validate_authority(&accepted),
+            Err(JournalError::EnrollmentVerification {
+                field: "authority.observed_frontier"
+            })
+        ));
+    }
+
+    #[test]
+    fn v2_capability_rejects_changed_scope_operations_and_stale_epoch() {
+        let vectors = capability_vectors();
+        let vector = &vectors["vectors"][0];
+        let authority = vector_authority(vector);
+        let mut changed = vector["certificate"].clone();
+        changed["certificate_body"]["actor_capability_body"]["allowed_operation_types"] =
+            json!(["feed_item_remove"]);
+        let changed = encode_canonical_value(&changed, MAX_TRANSACTION_ENVELOPE_BYTES)
+            .expect("changed capability certificate");
+        assert!(matches!(
+            verify_actor_enrollment(&changed, &authority),
+            Err(JournalError::EnrollmentVerification {
+                field: "actor_capability_body_digest"
+            })
+        ));
+
+        let mut missing_scope = vector["certificate"].clone();
+        missing_scope["certificate_body"]["actor_capability_body"]
+            .as_object_mut()
+            .expect("capability body")
+            .remove("scope");
+        let missing_scope = encode_canonical_value(&missing_scope, MAX_TRANSACTION_ENVELOPE_BYTES)
+            .expect("missing scope certificate");
+        assert!(matches!(
+            verify_actor_enrollment(&missing_scope, &authority),
+            Err(JournalError::EnrollmentVerification {
+                field: "actor_capability_body"
+            })
+        ));
+
+        let mut scraper_escape = vector["certificate"].clone();
+        scraper_escape["certificate_body"]["actor_capability_body"]["actor_class"] =
+            json!("scraper");
+        let scraper_escape =
+            encode_canonical_value(&scraper_escape, MAX_TRANSACTION_ENVELOPE_BYTES)
+                .expect("scraper escape certificate");
+        assert!(matches!(
+            verify_actor_enrollment(&scraper_escape, &authority),
+            Err(JournalError::EnrollmentVerification {
+                field: "allowed_operation_types"
+            })
+        ));
+
+        let certificate =
+            encode_canonical_value(&vector["certificate"], MAX_TRANSACTION_ENVELOPE_BYTES)
+                .expect("canonical certificate");
+        let mut stale = authority.clone();
+        stale.epoch += 1;
+        assert!(matches!(
+            verify_actor_enrollment(&certificate, &stale),
+            Err(JournalError::EnrollmentVerification {
+                field: "authority_binding"
+            })
+        ));
     }
 
     #[test]

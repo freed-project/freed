@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, and local process lease have landed; the service host, actor capabilities, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, local process lease, and actor capability enforcement have landed; the service host, production v2 issuance and retirement, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -77,6 +77,11 @@ The current product already provides the protocol foundation:
   schema and migrations, actor enrollment, authority epochs, exact product
   projection, and process lease without importing Tauri or selecting a
   credential backend.
+- Native schema v12 binds every actor to an explicit operation capability.
+  Existing v1 actors receive one fixed 14-operation legacy editor policy. New
+  v2 editor, scraper, and agent certificates bind an exact operation subset,
+  explicit scope, issuance identity, and retirement identity to the authority
+  signature.
 - Freed Desktop preserves its existing command DTOs and behavior through thin
   data-root and platform-vault adapters around that reusable native package.
 
@@ -218,6 +223,35 @@ Retirement requires a signed authority action, durable propagation through a
 checkpoint, and denial on every replay path. Editing a local cache is not a
 retirement mechanism.
 
+The reusable native journal now enforces v2 certificates before ingestion and
+rechecks the exact signed capability under the immediate commit transaction.
+The frozen v1 legacy editor list does not grow when the canonical operation
+registry grows. Scraper certificates can name only FeedItem capture. A bounded
+provider or source scope fails closed because the current operation envelope
+has no canonical scope field, and the verifier never infers scope from entity
+payloads. Same-actor causal tips, stale epochs, retired actors, missing
+capabilities, changed or conflicting replays, and operations outside the
+signed set all fail without an authoritative write. An exact response-loss
+retry may retrieve its old receipt only while the local writer remains
+admitted, the epoch is active, the actor is not retired, and its exact signed
+capability remains unchanged and authorizes every operation. Those conditions
+are rechecked under the immediate commit transaction before the receipt is
+returned, and retrieval creates no new outbox result.
+
+Production v2 issuance remains dormant. Task 11.4 must expose a consumed
+service API, and the PWA importer must persist and verify v2 before any v2
+certificate enters production sync. Authority-signed retirement application
+and checkpoint propagation remain task 11.9. These activation blockers do not
+weaken native admission for a v2 certificate presented to the journal.
+
+Schema v12 also has an installed release prerequisite. Once the authoritative
+Primary migrates a Library, the v26.8.1900 schema v11 binary cannot reopen it.
+Every participating Freed Desktop installation must first run a schema v12
+capable release. Rollback after migration is forward-only through another
+schema v12 capable release. Task 11.8 completion records the dormant source and
+validation slice. It does not claim that the upgrade, migration, or installed
+activation has happened.
+
 ---
 
 ## Agent and capture boundary
@@ -321,7 +355,7 @@ review before implementation.
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | Open | Add exact checkpoint import, status, doctor, backup, and structured receipts |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
-| 11.8 | In progress | Enforce actor capability certificates and fixed legacy editor policy |
+| 11.8 | Complete | Enforce actor capability certificates and fixed legacy editor policy |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
 | 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
@@ -352,9 +386,11 @@ review before implementation.
 - [ ] A real-size Library with at least 19,000 items preserves exact item count,
   materialized digest, actor frontier, and bounded memory through migration.
 - [ ] Two processes against one data root produce exactly one lease holder.
-- [ ] Missing admission, stale epochs, retired actors, replays, changed
-  envelopes, oversized batches, and operations outside a capability all fail
-  with zero writes.
+- [ ] Missing admission, stale epochs, retired actors, changed or conflicting
+  replays, oversized batches, and operations outside a capability all fail
+  with zero writes. An exact response-loss retry returns the old receipt only
+  for a currently admitted writer, active epoch, active actor, and unchanged
+  capability, with zero new writes or results.
 - [ ] Crash and response-loss injection covers SQLite commit, object upload,
   manifest upload, control compare and swap, result publication, and backup.
 - [ ] Secret scans find no key or token in arguments, environment values, logs,

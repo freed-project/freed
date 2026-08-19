@@ -17,6 +17,8 @@ use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
+#[path = "library_core_actor_capability.rs"]
+mod actor_capability;
 #[path = "library_core_journal_authority.rs"]
 mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
@@ -26,6 +28,8 @@ mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
+use actor_capability::ActorCapabilityState;
+
 pub use follower::{
     FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentOutboxEntry,
     FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
@@ -34,12 +38,12 @@ pub use follower::{
     VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 11;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 12;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 10] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 11] = [
     (
         2,
         include_str!("../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -79,6 +83,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 10] = [
     (
         11,
         include_str!("../../shared/src/library-core/authoritative-migration-011.sql"),
+    ),
+    (
+        12,
+        include_str!("../../shared/src/library-core/authoritative-migration-012.sql"),
     ),
 ];
 
@@ -185,7 +193,6 @@ pub enum JournalError {
     OperationVerification { index: usize, field: &'static str },
     EnrollmentVerification { field: &'static str },
 }
-
 /// What the runtime can say about an opened journal.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,6 +315,7 @@ pub struct ActorState {
     pub next_sequence: i64,
     pub previous_operation_id: Option<String>,
     pub previous_chain_digest: String,
+    pub(crate) capability: ActorCapabilityState,
 }
 
 #[derive(Debug, Clone)]
@@ -322,6 +330,39 @@ struct VerifiedActorEnrollment {
     canonical_enrollment_certificate_json: String,
     actor_chain_genesis: String,
     enrolled_at_ms: i64,
+    capability: ActorCapabilityState,
+}
+
+#[derive(Debug)]
+struct StoredActorRow {
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_operation_id: String,
+    enrollment_certificate_digest: String,
+    canonical_enrollment_certificate_json: String,
+    actor_chain_genesis: String,
+    next_sequence: i64,
+    previous_operation_id: Option<String>,
+    previous_chain_digest: String,
+}
+
+#[derive(Debug)]
+struct StoredActorCapabilityRow {
+    certificate_version: i64,
+    actor_class: String,
+    allowed_operation_types_json: String,
+    scope_mode: String,
+    scope_kind: Option<String>,
+    scope_id: Option<String>,
+    issuance_identity: Option<String>,
+    retirement_identity: Option<String>,
+    capability_certificate_digest: String,
+    issued_at_ms: i64,
+    retired: i64,
+    retirement_certificate_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -396,6 +437,7 @@ struct VerifiedOperationTransaction {
     epoch: i64,
     epoch_id: String,
     actor_id: String,
+    actor_capability: ActorCapabilityState,
     canonical_envelope_bytes: usize,
     members: Vec<VerifiedOperation>,
 }
@@ -552,6 +594,17 @@ fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalRes
             field: "enrolled_at_ms",
         });
     }
+    actor_capability::validate_capability_state(&enrollment.capability)
+        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+    if enrollment.capability.capability_certificate_digest
+        != enrollment.enrollment_certificate_digest
+        || enrollment.capability.issued_at_ms != enrollment.enrolled_at_ms
+        || enrollment.capability.retired
+    {
+        return Err(JournalError::InvalidVerifiedInput {
+            field: "actor_capability",
+        });
+    }
     Ok(())
 }
 
@@ -580,6 +633,8 @@ fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalRe
     if !is_lower_hex(&transaction.actor_id, 32) {
         return Err(JournalError::InvalidVerifiedInput { field: "actor_id" });
     }
+    actor_capability::validate_capability_state(&transaction.actor_capability)
+        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
     if transaction.members.is_empty() || transaction.members.len() > MAX_TRANSACTION_MEMBERS {
         return Err(JournalError::InvalidVerifiedInput { field: "members" });
     }
@@ -1225,13 +1280,13 @@ impl LibraryCoreJournal {
         Ok(())
     }
 
-    fn actor_state_in(
-        transaction: &Transaction<'_>,
+    fn stored_actor_at(
+        connection: &Connection,
         library_id: &str,
         epoch_id: &str,
         actor_id: &str,
-    ) -> SqlResult<Option<ActorState>> {
-        transaction
+    ) -> SqlResult<Option<StoredActorRow>> {
+        connection
             .query_row(
                 "SELECT libraryId, epoch, epochId, actorId, actorPublicKey, \
                  enrollmentOperationId, enrollmentCertificateDigest,
@@ -1241,7 +1296,7 @@ impl LibraryCoreJournal {
                  WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
                 params![library_id, epoch_id, actor_id],
                 |row| {
-                    Ok(ActorState {
+                    Ok(StoredActorRow {
                         library_id: row.get(0)?,
                         epoch: row.get(1)?,
                         epoch_id: row.get(2)?,
@@ -1260,6 +1315,155 @@ impl LibraryCoreJournal {
             .optional()
     }
 
+    fn stored_actor_capability_at(
+        connection: &Connection,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> SqlResult<Option<StoredActorCapabilityRow>> {
+        connection
+            .query_row(
+                "SELECT certificateVersion, actorClass,
+                        allowedOperationTypesJson, scopeMode, scopeKind, scopeId,
+                        issuanceIdentity, retirementIdentity,
+                        capabilityCertificateDigest, issuedAtMs, retired,
+                        retirementCertificateDigest
+                 FROM library_core_actor_capability_state
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![library_id, epoch_id, actor_id],
+                |row| {
+                    Ok(StoredActorCapabilityRow {
+                        certificate_version: row.get(0)?,
+                        actor_class: row.get(1)?,
+                        allowed_operation_types_json: row.get(2)?,
+                        scope_mode: row.get(3)?,
+                        scope_kind: row.get(4)?,
+                        scope_id: row.get(5)?,
+                        issuance_identity: row.get(6)?,
+                        retirement_identity: row.get(7)?,
+                        capability_certificate_digest: row.get(8)?,
+                        issued_at_ms: row.get(9)?,
+                        retired: row.get(10)?,
+                        retirement_certificate_digest: row.get(11)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    fn actor_state_at(
+        connection: &Connection,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<ActorState>> {
+        let Some(actor) = Self::stored_actor_at(connection, library_id, epoch_id, actor_id)? else {
+            return Ok(None);
+        };
+        let capability = Self::stored_actor_capability_at(
+            connection, library_id, epoch_id, actor_id,
+        )?
+        .ok_or(JournalError::InvalidVerifiedInput {
+            field: "actor_capability_missing",
+        })?;
+        let capability = actor_capability::parse_stored_capability(
+            capability.certificate_version,
+            capability.actor_class,
+            capability.allowed_operation_types_json,
+            capability.scope_mode,
+            capability.scope_kind,
+            capability.scope_id,
+            capability.issuance_identity,
+            capability.retirement_identity,
+            capability.capability_certificate_digest,
+            capability.issued_at_ms,
+            capability.retired,
+            capability.retirement_certificate_digest,
+        )
+        .map_err(|field| JournalError::InvalidVerifiedInput { field })?;
+        if capability.capability_certificate_digest != actor.enrollment_certificate_digest {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_digest",
+            });
+        }
+        Ok(Some(ActorState {
+            library_id: actor.library_id,
+            epoch: actor.epoch,
+            epoch_id: actor.epoch_id,
+            actor_id: actor.actor_id,
+            actor_public_key: actor.actor_public_key,
+            enrollment_operation_id: actor.enrollment_operation_id,
+            enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
+            actor_chain_genesis: actor.actor_chain_genesis,
+            next_sequence: actor.next_sequence,
+            previous_operation_id: actor.previous_operation_id,
+            previous_chain_digest: actor.previous_chain_digest,
+            capability,
+        }))
+    }
+
+    fn actor_state_with_signed_capability_at(
+        connection: &Connection,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<ActorState>> {
+        let Some(actor) = Self::actor_state_at(connection, library_id, epoch_id, actor_id)? else {
+            return Ok(None);
+        };
+        // The older journal unit fixtures predate the native certificate
+        // verifier. Production builds never carry this exact marker and always
+        // reverify both v1 and v2 canonical enrollment bytes below.
+        #[cfg(test)]
+        if actor.canonical_enrollment_certificate_json == "{\"certificate\":\"fixture\"}" {
+            if actor.capability.certificate_version != 1 {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "actor_capability_signed_cache",
+                });
+            }
+            return Ok(Some(actor));
+        }
+        let authority =
+            authority::authority_epoch_state(connection, library_id, actor.epoch, &actor.epoch_id)?
+                .ok_or_else(|| JournalError::AuthorityNotFound {
+                    library_id: library_id.to_owned(),
+                })?;
+        let signed = enrollment_verifier::verify_actor_enrollment(
+            actor.canonical_enrollment_certificate_json.as_bytes(),
+            &authority,
+        )?;
+        let mut stored_signed_capability = actor.capability.clone();
+        stored_signed_capability.retired = false;
+        stored_signed_capability.retirement_certificate_digest = None;
+        if actor.library_id != signed.library_id
+            || actor.epoch != signed.epoch
+            || actor.epoch_id != signed.epoch_id
+            || actor.actor_id != signed.actor_id
+            || actor.actor_public_key != signed.actor_public_key
+            || actor.enrollment_operation_id != signed.enrollment_operation_id
+            || actor.enrollment_certificate_digest != signed.enrollment_certificate_digest
+            || actor.canonical_enrollment_certificate_json
+                != signed.canonical_enrollment_certificate_json
+            || actor.actor_chain_genesis != signed.actor_chain_genesis
+            || stored_signed_capability != signed.capability
+        {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_signed_cache",
+            });
+        }
+        Ok(Some(actor))
+    }
+
+    fn actor_state_in(
+        transaction: &Transaction<'_>,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<ActorState>> {
+        Self::actor_state_at(transaction, library_id, epoch_id, actor_id)
+    }
+
     /// The stored actor, if this library, epoch and actor are already
     /// enrolled.
     ///
@@ -1273,70 +1477,32 @@ impl LibraryCoreJournal {
         epoch_id: &str,
         actor_id: &str,
     ) -> JournalResult<Option<ActorState>> {
-        Ok(self
-            .connection
-            .query_row(
-                "SELECT libraryId, epoch, epochId, actorId, actorPublicKey, \
-                 enrollmentOperationId, enrollmentCertificateDigest,
-                 canonicalEnrollmentCertificateJson, actorChainGenesis,
-                 nextSequence, previousOperationId, previousChainDigest
-                 FROM library_core_actors
-                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
-                params![library_id, epoch_id, actor_id],
-                |row| {
-                    Ok(ActorState {
-                        library_id: row.get(0)?,
-                        epoch: row.get(1)?,
-                        epoch_id: row.get(2)?,
-                        actor_id: row.get(3)?,
-                        actor_public_key: row.get(4)?,
-                        enrollment_operation_id: row.get(5)?,
-                        enrollment_certificate_digest: row.get(6)?,
-                        canonical_enrollment_certificate_json: row.get(7)?,
-                        actor_chain_genesis: row.get(8)?,
-                        next_sequence: row.get(9)?,
-                        previous_operation_id: row.get(10)?,
-                        previous_chain_digest: row.get(11)?,
-                    })
-                },
-            )
-            .optional()?)
+        Self::actor_state_at(&self.connection, library_id, epoch_id, actor_id)
     }
 
     /// Return the bounded actor set for one exact authority epoch in binary
     /// actor-id order so checkpoint construction is deterministic.
     pub fn actor_states(&self, library_id: &str, epoch_id: &str) -> JournalResult<Vec<ActorState>> {
         let mut statement = self.connection.prepare(
-            "SELECT libraryId, epoch, epochId, actorId, actorPublicKey,
-                    enrollmentOperationId, enrollmentCertificateDigest,
-                    canonicalEnrollmentCertificateJson, actorChainGenesis,
-                    nextSequence, previousOperationId, previousChainDigest
-             FROM library_core_actors
+            "SELECT actorId FROM library_core_actors
              WHERE libraryId = ?1 AND epochId = ?2
              ORDER BY actorId COLLATE BINARY
              LIMIT 1001;",
         )?;
-        let rows = statement.query_map(params![library_id, epoch_id], |row| {
-            Ok(ActorState {
-                library_id: row.get(0)?,
-                epoch: row.get(1)?,
-                epoch_id: row.get(2)?,
-                actor_id: row.get(3)?,
-                actor_public_key: row.get(4)?,
-                enrollment_operation_id: row.get(5)?,
-                enrollment_certificate_digest: row.get(6)?,
-                canonical_enrollment_certificate_json: row.get(7)?,
-                actor_chain_genesis: row.get(8)?,
-                next_sequence: row.get(9)?,
-                previous_operation_id: row.get(10)?,
-                previous_chain_digest: row.get(11)?,
-            })
-        })?;
-        let actors = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-        if actors.len() > 1_000 {
+        let actor_ids = statement
+            .query_map(params![library_id, epoch_id], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if actor_ids.len() > 1_000 {
             return Err(JournalError::InvalidVerifiedInput {
                 field: "actor_state_count",
             });
+        }
+        let mut actors = Vec::with_capacity(actor_ids.len());
+        for actor_id in actor_ids {
+            actors.push(
+                Self::actor_state_at(&self.connection, library_id, epoch_id, &actor_id)?
+                    .ok_or(JournalError::ActorNotFound { actor_id })?,
+            );
         }
         Ok(actors)
     }
@@ -1346,10 +1512,15 @@ impl LibraryCoreJournal {
         canonical_envelopes: &[Vec<u8>],
     ) -> JournalResult<VerifiedOperationTransaction> {
         operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
-            self.actor_state(&identity.library_id, &identity.epoch_id, &identity.actor_id)?
-                .ok_or_else(|| JournalError::ActorNotFound {
-                    actor_id: identity.actor_id.clone(),
-                })
+            Self::actor_state_with_signed_capability_at(
+                &self.connection,
+                &identity.library_id,
+                &identity.epoch_id,
+                &identity.actor_id,
+            )?
+            .ok_or_else(|| JournalError::ActorNotFound {
+                actor_id: identity.actor_id.clone(),
+            })
         })
     }
 
@@ -1445,6 +1616,35 @@ impl LibraryCoreJournal {
                 enrollment.enrolled_at_ms,
             ],
         )?;
+        let (scope_mode, scope_kind, scope_id) = enrollment.capability.stored_scope();
+        transaction.execute(
+            "INSERT INTO library_core_actor_capability_state (
+               libraryId, epoch, epochId, actorId, certificateVersion,
+               actorClass, allowedOperationTypesJson, scopeMode, scopeKind,
+               scopeId, issuanceIdentity, retirementIdentity,
+               capabilityCertificateDigest, issuedAtMs, retired,
+               retirementCertificateDigest
+             ) VALUES (
+               ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+               ?13, ?14, 0, NULL
+             );",
+            params![
+                enrollment.library_id,
+                enrollment.epoch,
+                enrollment.epoch_id,
+                enrollment.actor_id,
+                enrollment.capability.certificate_version,
+                enrollment.capability.actor_class,
+                enrollment.capability.allowed_operation_types_json(),
+                scope_mode,
+                scope_kind,
+                scope_id,
+                enrollment.capability.issuance_identity,
+                enrollment.capability.retirement_identity,
+                enrollment.capability.capability_certificate_digest,
+                enrollment.capability.issued_at_ms,
+            ],
+        )?;
         let state = Self::actor_state_in(
             transaction,
             &enrollment.library_id,
@@ -1468,6 +1668,7 @@ impl LibraryCoreJournal {
             && existing.canonical_enrollment_certificate_json
                 == enrollment.canonical_enrollment_certificate_json
             && existing.actor_chain_genesis == enrollment.actor_chain_genesis
+            && existing.capability == enrollment.capability
     }
 
     fn enroll_actor_under_authority(
@@ -1646,10 +1847,10 @@ impl LibraryCoreJournal {
     }
 
     fn transaction_receipt_in(
-        transaction: &Transaction<'_>,
+        connection: &Connection,
         transaction_id: &str,
     ) -> SqlResult<Option<TransactionReceipt>> {
-        transaction
+        connection
             .query_row(
                 "SELECT transactionId, transactionDigest, actorId, memberCount,
                  firstSequence, lastSequence, committedOperationId,
@@ -1763,19 +1964,6 @@ impl LibraryCoreJournal {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if let Some(receipt) = Self::transaction_receipt_in(&transaction, &verified.transaction_id)?
-        {
-            if receipt.transaction_digest == verified.transaction_digest
-                && receipt.actor_id == verified.actor_id
-                && receipt.member_count == verified.members.len()
-            {
-                transaction.commit()?;
-                return Ok(receipt);
-            }
-            return Err(JournalError::TransactionReplayConflict {
-                transaction_id: verified.transaction_id.clone(),
-            });
-        }
         Self::require_cloud_writer_admission(&transaction, &verified.library_id)?;
         authority::require_active_epoch(
             &transaction,
@@ -1792,6 +1980,44 @@ impl LibraryCoreJournal {
         .ok_or_else(|| JournalError::ActorNotFound {
             actor_id: verified.actor_id.clone(),
         })?;
+        if actor.capability != verified.actor_capability {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_changed",
+            });
+        }
+        for member in &verified.members {
+            if actor.capability.retired {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "actor_capability_retired",
+                });
+            }
+            if matches!(
+                &actor.capability.scope,
+                actor_capability::ActorCapabilityScope::Bounded { .. }
+            ) {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "actor_capability_scope",
+                });
+            }
+            if !actor.capability.allows_operation(&member.operation_type) {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "actor_capability_operation",
+                });
+            }
+        }
+        if let Some(receipt) = Self::transaction_receipt_in(&transaction, &verified.transaction_id)?
+        {
+            if receipt.transaction_digest == verified.transaction_digest
+                && receipt.actor_id == verified.actor_id
+                && receipt.member_count == verified.members.len()
+            {
+                transaction.commit()?;
+                return Ok(receipt);
+            }
+            return Err(JournalError::TransactionReplayConflict {
+                transaction_id: verified.transaction_id.clone(),
+            });
+        }
         let first = &verified.members[0];
         if actor.epoch != verified.epoch
             || actor.next_sequence != first.actor_sequence
@@ -3020,19 +3246,25 @@ mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_string(),
             actor_chain_genesis: digest("6"),
             enrolled_at_ms: 1_000,
+            capability: actor_capability::ActorCapabilityState::legacy_editor(digest("5"), 1_000),
         }
     }
 
     fn actor_variant(hex_digit: &str, operation_suffix: &str) -> VerifiedActorEnrollment {
+        let certificate_digest = digest(hex_digit);
         VerifiedActorEnrollment {
             actor_id: digest(hex_digit),
             actor_public_key: digest(if hex_digit == "f" { "e" } else { "f" }),
             enrollment_operation_id: format!("op:actor:enroll:{operation_suffix}"),
-            enrollment_certificate_digest: digest(hex_digit),
+            enrollment_certificate_digest: certificate_digest.clone(),
             canonical_enrollment_certificate_json: format!(
                 "{{\"certificate\":\"{operation_suffix}\"}}"
             ),
             actor_chain_genesis: digest(if hex_digit == "b" { "a" } else { "b" }),
+            capability: actor_capability::ActorCapabilityState::legacy_editor(
+                certificate_digest,
+                1_000,
+            ),
             ..actor()
         }
     }
@@ -3102,6 +3334,7 @@ mod tests {
             epoch: enrollment.epoch,
             epoch_id: enrollment.epoch_id,
             actor_id: enrollment.actor_id,
+            actor_capability: enrollment.capability,
             canonical_envelope_bytes,
             members,
         }
@@ -3276,6 +3509,45 @@ mod tests {
     }
 
     #[test]
+    fn authority_epoch_rejects_two_frontier_tips_for_one_actor() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let actor_id = digest("1");
+        let epoch = VerifiedAuthorityEpoch {
+            authority: AcceptedAuthorityState {
+                library_id: digest("2"),
+                epoch: 1,
+                epoch_id: digest("3"),
+                authority_key_id: digest("4"),
+                authority_public_key: digest("5"),
+                observed_frontier: vec![
+                    VerifiedCausalTip {
+                        actor_id: actor_id.clone(),
+                        sequence: 1,
+                        operation_id: "op:frontier:one".to_owned(),
+                        chain_digest: digest("6"),
+                    },
+                    VerifiedCausalTip {
+                        actor_id,
+                        sequence: 2,
+                        operation_id: "op:frontier:two".to_owned(),
+                        chain_digest: digest("7"),
+                    },
+                ],
+            },
+            transition_certificate_digest: digest("8"),
+            canonical_transition_certificate_json: "{\"transition\":\"fixture\"}".to_owned(),
+            accepted_at_ms: 900,
+        };
+
+        assert!(matches!(
+            journal.install_authority_epoch(&epoch),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "authority.observed_frontier"
+            })
+        ));
+    }
+
+    #[test]
     fn upgrades_the_installed_v3_schema_to_current_without_resetting_the_database() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("library-core.sqlite");
@@ -3369,6 +3641,110 @@ mod tests {
         assert_eq!(follower_tables, 7);
         assert!(native_authority_protocol_table_exists);
         assert_eq!(sentinel, 42);
+    }
+
+    #[test]
+    fn v11_actor_migration_installs_exact_legacy_policy_and_missing_state_fails_closed() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let mut connection = Connection::open(&path).expect("create v11 database");
+        let library_id = "1".repeat(64);
+        let epoch_id = "2".repeat(64);
+        let actor_id = "3".repeat(64);
+        let certificate_digest = "4".repeat(64);
+        {
+            let transaction = connection.transaction().expect("begin v11 schema");
+            apply_schema_range(&transaction, 0, 11).expect("apply v11 schema");
+            transaction
+                .execute(
+                    "INSERT INTO library_core_authority_epochs (
+                       libraryId, epoch, epochId, transitionCertificateDigest,
+                       canonicalTransitionCertificateJson, authorityKeyId,
+                       authorityPublicKey, acceptedAtMs
+                     ) VALUES (?1, 1, ?2, ?3, '{}', ?4, ?5, 900);",
+                    params![
+                        &library_id,
+                        &epoch_id,
+                        "5".repeat(64),
+                        "6".repeat(64),
+                        "7".repeat(64),
+                    ],
+                )
+                .expect("insert authority");
+            transaction
+                .execute(
+                    "INSERT INTO library_core_actors (
+                       libraryId, epoch, epochId, actorId, actorPublicKey,
+                       enrollmentOperationId, enrollmentCertificateDigest,
+                       canonicalEnrollmentCertificateJson, actorChainGenesis,
+                       nextSequence, previousOperationId, previousChainDigest,
+                       enrolledAtMs
+                     ) VALUES (?1, 1, ?2, ?3, ?4, 'op:legacy:migration', ?5,
+                               '{}', ?6, 1, NULL, ?6, 1000);",
+                    params![
+                        &library_id,
+                        &epoch_id,
+                        &actor_id,
+                        "8".repeat(64),
+                        &certificate_digest,
+                        "9".repeat(64),
+                    ],
+                )
+                .expect("insert v11 actor");
+            transaction.commit().expect("commit v11 database");
+        }
+        drop(connection);
+
+        let journal = LibraryCoreJournal::open(&path).expect("upgrade v11 journal");
+        let stored: (i64, String, String, String, String, i64) = journal
+            .connection
+            .query_row(
+                "SELECT certificateVersion, actorClass, allowedOperationTypesJson,
+                        scopeMode, capabilityCertificateDigest, issuedAtMs
+                   FROM library_core_actor_capability_state
+                  WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![&library_id, &epoch_id, &actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("read migrated legacy policy");
+        assert_eq!(stored.0, 1);
+        assert_eq!(stored.1, "legacy_editor");
+        assert_eq!(
+            stored.2,
+            "[\"account_remove\",\"account_upsert\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"person_remove_and_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_upsert\"]"
+        );
+        assert!(!stored.2.contains("future_operation"));
+        assert_eq!(stored.3, "legacy_editor");
+        assert_eq!(stored.4, certificate_digest);
+        assert_eq!(stored.5, 1_000);
+        assert!(journal
+            .actor_state(&library_id, &epoch_id, &actor_id)
+            .expect("read migrated actor")
+            .is_some());
+
+        journal
+            .connection
+            .execute(
+                "DELETE FROM library_core_actor_capability_state
+                  WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![&library_id, &epoch_id, &actor_id],
+            )
+            .expect("remove capability fixture");
+        assert!(matches!(
+            journal.actor_state(&library_id, &epoch_id, &actor_id),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_missing"
+            })
+        ));
     }
 
     #[test]
@@ -4342,6 +4718,145 @@ mod tests {
     }
 
     #[test]
+    fn capability_change_after_verification_is_rechecked_before_any_commit_write() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        let verified = transaction(
+            "tx:read:capability-race",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:capability-race", 900)],
+        );
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET retired = 1, retirementCertificateDigest = ?1
+                  WHERE actorId = ?2;",
+                params![digest("9"), enrollment.actor_id],
+            )
+            .expect("retire actor after verification");
+
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_changed"
+            })
+        ));
+        let state: (i64, i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("unchanged authoritative state");
+        assert_eq!(state, (0, 0, 0, 0, 1, 0));
+    }
+
+    #[test]
+    fn capability_retirement_after_exact_replay_verification_denies_receipt() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        let verified = transaction(
+            "tx:read:capability-replay-race",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:capability-replay-race", 900)],
+        );
+        journal
+            .commit_read_transaction(&verified, 1_100)
+            .expect("commit before retirement");
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET retired = 1, retirementCertificateDigest = ?1
+                  WHERE actorId = ?2;",
+                params![digest("9"), enrollment.actor_id],
+            )
+            .expect("retire actor after exact replay verification");
+        let state_before: (i64, i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("state before denied receipt retrieval");
+
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 9_999),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_changed"
+            })
+        ));
+        let state_after: (i64, i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("state after denied receipt retrieval");
+        assert_eq!(state_after, state_before);
+    }
+
+    #[test]
     fn missing_cloud_writer_admission_cannot_enroll_or_commit() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         let enrollment = actor();
@@ -4727,6 +5242,13 @@ mod tests {
         foreign_library_enrollment.enrollment_operation_id =
             "op:actor:enroll:foreign-library".to_string();
         foreign_library_enrollment.enrollment_certificate_digest = digest("c");
+        foreign_library_enrollment.capability =
+            actor_capability::ActorCapabilityState::legacy_editor(
+                foreign_library_enrollment
+                    .enrollment_certificate_digest
+                    .clone(),
+                foreign_library_enrollment.enrolled_at_ms,
+            );
         journal
             .install_fixture_authority(
                 &foreign_library_enrollment.library_id,
@@ -4745,6 +5267,8 @@ mod tests {
             &[("rss:item:foreign-library", 900)],
         );
         foreign_library_transaction.library_id = foreign_library_enrollment.library_id.clone();
+        foreign_library_transaction.actor_capability =
+            foreign_library_enrollment.capability.clone();
         journal
             .commit_read_transaction(&foreign_library_transaction, 1_100)
             .expect("commit foreign-library transaction");
@@ -4793,6 +5317,12 @@ mod tests {
         foreign_epoch_enrollment.enrollment_operation_id =
             "op:actor:enroll:foreign-epoch".to_string();
         foreign_epoch_enrollment.enrollment_certificate_digest = digest("e");
+        foreign_epoch_enrollment.capability = actor_capability::ActorCapabilityState::legacy_editor(
+            foreign_epoch_enrollment
+                .enrollment_certificate_digest
+                .clone(),
+            foreign_epoch_enrollment.enrolled_at_ms,
+        );
         epoch_journal
             .install_fixture_authority(
                 &foreign_epoch_enrollment.library_id,
@@ -4812,6 +5342,7 @@ mod tests {
         );
         epoch_two_transaction.epoch = foreign_epoch_enrollment.epoch;
         epoch_two_transaction.epoch_id = foreign_epoch_enrollment.epoch_id;
+        epoch_two_transaction.actor_capability = foreign_epoch_enrollment.capability.clone();
         let epoch_one_member = &epoch_one_transaction.members[0];
         epoch_two_transaction.members[0]
             .causal_tips
@@ -4855,6 +5386,7 @@ mod tests {
             enrollment_certificate_digest: digest("9"),
             actor_chain_genesis: digest("a"),
             enrolled_at_ms: 1_200,
+            capability: actor_capability::ActorCapabilityState::legacy_editor(digest("9"), 1_200),
             ..first_enrollment
         };
         journal
@@ -4870,6 +5402,7 @@ mod tests {
         let second_transaction = VerifiedOperationTransaction {
             epoch: second_enrollment.epoch,
             epoch_id: second_enrollment.epoch_id.clone(),
+            actor_capability: second_enrollment.capability.clone(),
             ..transaction(
                 "tx:read:epoch-two",
                 1,

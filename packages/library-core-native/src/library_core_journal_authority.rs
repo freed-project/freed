@@ -61,7 +61,7 @@ fn validate_authority_state(authority: &AcceptedAuthorityState) -> JournalResult
             tip.operation_id.as_str(),
             tip.chain_digest.as_str(),
         );
-        if previous.is_some_and(|prior| prior >= current) {
+        if previous.is_some_and(|prior| prior.0 == current.0 || prior >= current) {
             return Err(invalid("authority.observed_frontier"));
         }
         previous = Some(current);
@@ -160,6 +160,39 @@ pub(crate) fn active_authority(
                     active.transitionCertificateDigest
              WHERE active.libraryId = ?1;",
             [library_id],
+            |row| {
+                Ok(AcceptedAuthorityState {
+                    library_id: row.get(0)?,
+                    epoch: row.get(1)?,
+                    epoch_id: row.get(2)?,
+                    authority_key_id: row.get(3)?,
+                    authority_public_key: row.get(4)?,
+                    observed_frontier: Vec::new(),
+                })
+            },
+        )
+        .optional()?;
+    let Some(mut authority) = row else {
+        return Ok(None);
+    };
+    authority.observed_frontier =
+        observed_frontier(connection, &authority.library_id, &authority.epoch_id)?;
+    validate_authority_state(&authority)?;
+    Ok(Some(authority))
+}
+
+pub(super) fn authority_epoch_state(
+    connection: &Connection,
+    library_id: &str,
+    epoch: i64,
+    epoch_id: &str,
+) -> JournalResult<Option<AcceptedAuthorityState>> {
+    let row = connection
+        .query_row(
+            "SELECT libraryId, epoch, epochId, authorityKeyId, authorityPublicKey
+             FROM library_core_authority_epochs
+             WHERE libraryId = ?1 AND epoch = ?2 AND epochId = ?3;",
+            params![library_id, epoch, epoch_id],
             |row| {
                 Ok(AcceptedAuthorityState {
                     library_id: row.get(0)?,
