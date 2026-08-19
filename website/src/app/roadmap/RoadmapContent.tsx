@@ -732,7 +732,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and Google Drive sync are working, with health diagnostics, retries, manual sync, activity timelines, and desktop snapshots. Freed Desktop has begun the bounded-memory Library Core transition: its ordinary all-content feed can read source-bound, paged cards from a verified SQLite projection while Automerge remains authoritative and supplies the fallback. Dropbox remains gated while its provider work finishes. iCloud remains open. Large offline media will use a separate future transport outside the synced Freed document.",
+      `The Library Core sync path is in active release validation. Freed Desktop keeps ${Number(24).toLocaleString()} closed SQLite backups on the device that created them. Google Drive carries immutable logical checkpoints and never receives SQLite, WAL, SHM, or rollback journal files. Complete off-device backup is still in progress and will combine logical checkpoints with content-addressed media. Dropbox remains gated while its provider work finishes, and iCloud remains open.`,
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
