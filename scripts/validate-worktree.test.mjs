@@ -15,6 +15,7 @@ import {
   isReleasePublisherToolingPath,
   isReleaseAdmissionPath,
   isRepositoryConfigPath,
+  isRetiredAutomergeRuntimeGuardPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   isStabilityStatusPath,
@@ -328,6 +329,23 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   assert.deepEqual(labels, ["validation runner tests"]);
 });
 
+test("retired Automerge runtime guard changes run the focused contract", () => {
+  const paths = [
+    "scripts/lib/retired-automerge-runtime.d.mts",
+    "scripts/lib/retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.mjs",
+    "scripts/validate-retired-automerge-runtime.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isRetiredAutomergeRuntimeGuardPath(filePath), true, filePath);
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(
+      labels.includes("retired Automerge runtime guard tests"),
+      filePath,
+    );
+  }
+});
+
 test("feature plan for release admission changes runs only its contract tests", () => {
   const paths = [
     ".github/workflows/main-release-validation.yml",
@@ -589,6 +607,7 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(labels.includes("shared unit tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  assert.ok(labels.includes("retired Automerge release artifact guard"));
   assert.ok(!labels.includes("desktop e2e full"));
 });
 
@@ -603,6 +622,7 @@ test("production plan includes dev desktop gates without duplicating shipped bui
 
   // The PWA is not otherwise built by the release workflow, so it stays.
   assert.ok(labels.includes("pwa production build"));
+  assert.ok(labels.includes("retired Automerge release artifact guard"));
 
   assert.ok(
     !labels.includes("root build"),
@@ -632,8 +652,13 @@ test("production plan includes dev desktop gates without duplicating shipped bui
     "desktop frontend context build",
   );
   const nativeClippyIndex = labels.indexOf("native rust clippy");
+  const pwaBuildIndex = labels.indexOf("pwa production build");
+  const artifactGuardIndex = labels.indexOf(
+    "retired Automerge release artifact guard",
+  );
   assert.ok(frontendContextIndex >= 0);
   assert.ok(nativeClippyIndex > frontendContextIndex);
+  assert.ok(artifactGuardIndex > pwaBuildIndex);
 
   // The website ships from `www` through publish-website against the reviewed
   // marketing branch. Building it in the Desktop release lane couples two

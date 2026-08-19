@@ -6,6 +6,7 @@ import { realpathSync } from "fs";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
+import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -58,20 +59,8 @@ const libraryClientTestAliases: Record<string, string> = {};
 
 const rejectRetiredDesktopLibraryAssets = {
   name: "reject-retired-desktop-library-assets",
-  generateBundle(_options: unknown, bundle: Record<string, unknown>) {
-    const retiredAssets = Object.keys(bundle).filter((fileName) => {
-      const normalized = fileName.toLowerCase();
-      return (
-        normalized.includes("automerge") ||
-        normalized.includes("cloud-merge") ||
-        normalized.endsWith(".wasm")
-      );
-    });
-    if (retiredAssets.length > 0) {
-      throw new Error(
-        `The retired Desktop document runtime leaked into the production bundle: ${retiredAssets.join(", ")}`,
-      );
-    }
+  generateBundle(_options: unknown, bundle: unknown) {
+    assertNoRetiredAutomergeRollupBundle(bundle, "desktop");
   },
 };
 

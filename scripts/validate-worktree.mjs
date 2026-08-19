@@ -167,6 +167,20 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
+const RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS = new Set([
+  "packages/desktop/vite.config.js",
+  "packages/desktop/vite.config.ts",
+  "packages/pwa/package.json",
+  "packages/pwa/vite.config.ts",
+  "packages/shared/src/library-core/index.ts",
+  "scripts/lib/retired-automerge-runtime.d.mts",
+  "scripts/lib/retired-automerge-runtime.mjs",
+  "scripts/validate-retired-automerge-runtime.mjs",
+  "scripts/validate-retired-automerge-runtime.test.mjs",
+  "scripts/vercel-deploy-preview.sh",
+  "scripts/vercel-deploy-production.sh",
+]);
+
 export function normalizeRepoPath(filePath) {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
@@ -496,6 +510,10 @@ export function isToolingSmokeRunnerPath(filePath) {
   return TOOLING_SMOKE_RUNNER_PATHS.has(filePath);
 }
 
+export function isRetiredAutomergeRuntimeGuardPath(filePath) {
+  return RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS.has(filePath);
+}
+
 export function isSocialScrapeLoopPath(filePath) {
   return (
     filePath === "scripts/social-scrape-loop.mjs" ||
@@ -520,6 +538,13 @@ function stabilityStatusTestsCommand() {
     "--test",
     path.join("scripts", "stability-status.test.mjs"),
     path.join("scripts", "stability-artifact.test.mjs"),
+  ]);
+}
+
+function retiredAutomergeRuntimeGuardTestsCommand() {
+  return nodeCommand("retired Automerge runtime guard tests", [
+    "--test",
+    path.join("scripts", "validate-retired-automerge-runtime.test.mjs"),
   ]);
 }
 
@@ -865,7 +890,14 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
       ...nativeRustChecks(),
+      nodeCommand("retired Automerge release artifact guard", [
+        path.join("scripts", "validate-retired-automerge-runtime.mjs"),
+        "all",
+      ]),
     ];
+    if (changedFiles.some(isRetiredAutomergeRuntimeGuardPath)) {
+      addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
+    }
     if (changedFiles.some(isStabilityStatusPath)) {
       addCommand(plan, stabilityStatusTestsCommand());
     }
@@ -882,6 +914,7 @@ export function buildValidationPlan(mode, changedFiles) {
               "root typecheck",
               "root lint",
               "website tests",
+              "retired Automerge release artifact guard",
             ].includes(item.label),
         )
         .flatMap((item) =>
@@ -911,6 +944,10 @@ export function buildValidationPlan(mode, changedFiles) {
       // validation builds only the frontend context required by Tauri's
       // generate_context! macro before native clippy and tests.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
+      nodeCommand("retired Automerge release artifact guard", [
+        path.join("scripts", "validate-retired-automerge-runtime.mjs"),
+        "all",
+      ]),
     ];
 
     const releaseArtifacts = collectReleaseArtifactsToValidate(
@@ -1010,6 +1047,9 @@ export function buildValidationPlan(mode, changedFiles) {
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
+  const retiredAutomergeRuntimeGuardChanged = changedFiles.some(
+    isRetiredAutomergeRuntimeGuardPath,
+  );
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const stabilityStatusChanged = changedFiles.some(isStabilityStatusPath);
   const captureWorkspaces = unique(
@@ -1265,6 +1305,10 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
+  }
+
+  if (retiredAutomergeRuntimeGuardChanged) {
+    addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
   }
 
   if (validateRunnerChanged) {
