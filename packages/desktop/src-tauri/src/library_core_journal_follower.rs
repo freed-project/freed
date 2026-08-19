@@ -661,22 +661,6 @@ impl LibraryCoreJournal {
         )?;
         let frontier = parse_frontier(&frontier_json)?;
         for (member_index, member) in verified.members.iter().enumerate() {
-            if member.item_json.is_some()
-                || member.rss_feed_json.is_some()
-                || member.preferences_patch_json.is_some()
-                || member.person_json.is_some()
-                || member.account_json.is_some()
-                || member.removed_at_ms.is_some()
-                || (member.read_at_ms.is_none()
-                    && !matches!(
-                        member.operation_type.as_str(),
-                        "feed_item_saved_assignment"
-                            | "feed_item_archive_assignment"
-                            | "feed_item_like_assignment"
-                    ))
-            {
-                return Err(invalid("follower_intent.unsupported_materialization"));
-            }
             for tip in &member.causal_tips {
                 let in_anchor = frontier.iter().any(|candidate| candidate == tip);
                 let in_current = verified.members[..member_index].iter().any(|candidate| {
@@ -746,80 +730,21 @@ impl LibraryCoreJournal {
         }
         let mut materialized_rows = 0usize;
         for member in &verified.members {
-            let exists: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM library_core_feed_items
-                   WHERE globalId = ?1 AND deletedAt IS NULL
-                 );",
-                [&member.entity_id],
-                |row| row.get(0),
-            )?;
-            if !exists {
-                return Err(invalid("follower_intent.entity"));
-            }
-            materialized_rows += if let Some(read_at_ms) = member.read_at_ms {
-                transaction.execute(
-                    "UPDATE library_core_feed_items
-                     SET readAt = ?1,
-                         payloadJson = json_set(payloadJson, '$.userState.readAt', ?1),
-                         updatedAtMs = ?2
-                     WHERE globalId = ?3 AND deletedAt IS NULL
-                       AND (readAt IS NULL OR ?1 < readAt);",
-                    params![read_at_ms, enqueued_at_ms, member.entity_id],
-                )?
-            } else {
-                let assigned = i64::from(member.assigned.expect("verified assignment"));
-                let assigned_at_ms = member
-                    .assigned_at_ms
-                    .expect("verified assignment timestamp");
-                match member.operation_type.as_str() {
-                    "feed_item_saved_assignment" => transaction.execute(
-                        "UPDATE library_core_feed_items SET
-                           saved = ?1,
-                           archived = CASE WHEN ?1 = 1 THEN 0 ELSE archived END,
-                           archivedAt = CASE WHEN ?1 = 1 THEN NULL ELSE archivedAt END,
-                           payloadJson = CASE WHEN ?1 = 0
-                             THEN json_remove(json_set(payloadJson, '$.userState.saved', json('false')), '$.userState.savedAt')
-                             ELSE json_remove(json_set(payloadJson,
-                               '$.userState.saved', json('true'), '$.userState.savedAt', ?2,
-                               '$.userState.archived', json('false')), '$.userState.archivedAt')
-                           END,
-                           updatedAtMs = ?3
-                         WHERE globalId = ?4 AND deletedAt IS NULL
-                           AND (saved IS NOT ?1 OR (?1 = 1 AND archived IS 1));",
-                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
-                    )?,
-                    "feed_item_archive_assignment" => transaction.execute(
-                        "UPDATE library_core_feed_items SET
-                           archived = ?1,
-                           archivedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
-                           payloadJson = CASE WHEN ?1 = 0
-                             THEN json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt')
-                             ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?2)
-                           END,
-                           updatedAtMs = ?3
-                         WHERE globalId = ?4 AND deletedAt IS NULL
-                           AND archived IS NOT ?1
-                           AND (?1 = 0 OR saved IS NOT 1);",
-                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
-                    )?,
-                    "feed_item_like_assignment" => transaction.execute(
-                        "UPDATE library_core_feed_items SET
-                           liked = ?1,
-                           likedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
-                           likedSyncedAt = NULL,
-                           payloadJson = CASE WHEN ?1 = 0
-                             THEN json_remove(json_set(payloadJson, '$.userState.liked', json('false')), '$.userState.likedAt', '$.userState.likedSyncedAt')
-                             ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?2), '$.userState.likedSyncedAt')
-                           END,
-                           updatedAtMs = ?3
-                         WHERE globalId = ?4 AND deletedAt IS NULL
-                           AND liked IS NOT ?1;",
-                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
-                    )?,
-                    _ => return Err(invalid("follower_intent.operation_type")),
+            if member.entity_type == "FeedItem" && member.item_json.is_none() {
+                let exists: bool = transaction.query_row(
+                    "SELECT EXISTS(
+                       SELECT 1 FROM library_core_feed_items
+                       WHERE globalId = ?1 AND deletedAt IS NULL
+                     );",
+                    [&member.entity_id],
+                    |row| row.get(0),
+                )?;
+                if !exists {
+                    return Err(invalid("follower_intent.entity"));
                 }
-            };
+            }
+            materialized_rows +=
+                Self::materialize_product_member(&transaction, member, enqueued_at_ms)?;
         }
         if materialized_rows > 0 {
             let updated = transaction.execute(
@@ -1099,31 +1024,59 @@ mod tests {
             epoch: 3,
             epoch_id: "b".repeat(64),
             actor_id: "6".repeat(64),
-            canonical_envelope_bytes: 2,
-            members: vec![VerifiedOperation {
-                operation_id: "operation-1".to_string(),
-                actor_sequence: 1,
-                previous_actor_operation_id: None,
-                previous_actor_chain_digest: "0".repeat(64),
-                actor_chain_digest: "1".repeat(64),
-                member_digest: "2".repeat(64),
-                signing_body_digest: "3".repeat(64),
-                envelope_digest: "4".repeat(64),
-                entity_id: "item-1".to_string(),
-                entity_type: "feed_item".to_string(),
-                operation_type: "feed_item_read_assigned".to_string(),
-                item_json: None,
-                rss_feed_json: None,
-                preferences_patch_json: None,
-                person_json: None,
-                account_json: None,
-                read_at_ms: Some(1),
-                assigned: Some(true),
-                assigned_at_ms: None,
-                removed_at_ms: None,
-                canonical_envelope_json: "{}".to_string(),
-                causal_tips: Vec::new(),
-            }],
+            canonical_envelope_bytes: 4,
+            members: vec![
+                VerifiedOperation {
+                    operation_id: "operation-1".to_string(),
+                    actor_sequence: 1,
+                    previous_actor_operation_id: None,
+                    previous_actor_chain_digest: "0".repeat(64),
+                    actor_chain_digest: "1".repeat(64),
+                    member_digest: "2".repeat(64),
+                    signing_body_digest: "3".repeat(64),
+                    envelope_digest: "4".repeat(64),
+                    entity_id: "item-1".to_string(),
+                    entity_type: "FeedItem".to_string(),
+                    operation_type: "feed_item_read_assignment".to_string(),
+                    item_json: None,
+                    rss_feed_json: None,
+                    preferences_patch_json: None,
+                    person_json: None,
+                    account_json: None,
+                    read_at_ms: Some(1),
+                    assigned: None,
+                    assigned_at_ms: None,
+                    removed_at_ms: None,
+                    canonical_envelope_json: "{}".to_string(),
+                    causal_tips: Vec::new(),
+                },
+                VerifiedOperation {
+                    operation_id: "operation-2".to_string(),
+                    actor_sequence: 2,
+                    previous_actor_operation_id: Some("operation-1".to_string()),
+                    previous_actor_chain_digest: "1".repeat(64),
+                    actor_chain_digest: "5".repeat(64),
+                    member_digest: "6".repeat(64),
+                    signing_body_digest: "7".repeat(64),
+                    envelope_digest: "8".repeat(64),
+                    entity_id: "https://example.com/feed".to_string(),
+                    entity_type: "RssFeed".to_string(),
+                    operation_type: "rss_feed_upsert".to_string(),
+                    item_json: None,
+                    rss_feed_json: Some(
+                        "{\"title\":\"Example\",\"url\":\"https://example.com/feed\"}".to_string(),
+                    ),
+                    preferences_patch_json: None,
+                    person_json: None,
+                    account_json: None,
+                    read_at_ms: None,
+                    assigned: None,
+                    assigned_at_ms: None,
+                    removed_at_ms: None,
+                    canonical_envelope_json: "{}".to_string(),
+                    causal_tips: Vec::new(),
+                },
+            ],
         }
     }
 
@@ -1213,7 +1166,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(queued, 1);
+        assert_eq!(queued, 2);
         let (read_at, revision): (i64, i64) = journal
             .connection_for_test()
             .query_row(
@@ -1226,6 +1179,19 @@ mod tests {
             )
             .unwrap();
         assert_eq!((read_at, revision), (1, 2));
+        let shell_json: String = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT shellJson FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let shell: serde_json::Value = serde_json::from_str(&shell_json).unwrap();
+        assert_eq!(
+            shell["feeds"]["https://example.com/feed"]["title"],
+            "Example"
+        );
 
         let stale = verified_intent("transaction-2");
         assert!(journal
