@@ -34,12 +34,12 @@ pub(crate) use follower::{
     VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 10;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 11;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 9] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 10] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -75,6 +75,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 9] = [
     (
         10,
         include_str!("../../../shared/src/library-core/authoritative-migration-010.sql"),
+    ),
+    (
+        11,
+        include_str!("../../../shared/src/library-core/authoritative-migration-011.sql"),
     ),
 ];
 
@@ -172,6 +176,8 @@ pub(super) enum JournalError {
     ActorEnrollmentConflict { actor_id: String },
     ActorNotFound { actor_id: String },
     AuthorityNotFound { library_id: String },
+    AuthorityConflict,
+    AuthorityProtocolConflict { library_id: String },
     StaleAuthority { library_id: String },
     StaleActorTip { actor_id: String },
     TransactionReplayConflict { transaction_id: String },
@@ -239,6 +245,15 @@ impl fmt::Display for JournalError {
                 write!(
                     formatter,
                     "active authority not found for library {library_id}"
+                )
+            }
+            Self::AuthorityConflict => {
+                formatter.write_str("more than one local authority is active")
+            }
+            Self::AuthorityProtocolConflict { library_id } => {
+                write!(
+                    formatter,
+                    "native authority protocol conflicts for library {library_id}"
                 )
             }
             Self::StaleAuthority { library_id } => {
@@ -332,6 +347,18 @@ pub(crate) struct VerifiedAuthorityEpoch {
     pub(crate) authority: AcceptedAuthorityState,
     pub(crate) transition_certificate_digest: String,
     pub(crate) canonical_transition_certificate_json: String,
+    pub(crate) accepted_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedAuthorityProtocolTransition {
+    pub(crate) library_id: String,
+    pub(crate) source_epoch: i64,
+    pub(crate) source_epoch_id: String,
+    pub(crate) source_transition_certificate_digest: String,
+    pub(crate) protocol_transition_certificate_digest: String,
+    pub(crate) canonical_protocol_transition_certificate_json: String,
+    pub(crate) source_manifest_digest: String,
     pub(crate) accepted_at_ms: i64,
 }
 
@@ -1451,6 +1478,7 @@ impl LibraryCoreJournal {
         &mut self,
         enrollment: &VerifiedActorEnrollment,
         expected_authority: &AcceptedAuthorityState,
+        allow_missing_admission_for_first_actor: bool,
     ) -> JournalResult<ActorState> {
         validate_actor_enrollment(enrollment)?;
         if enrollment.library_id != expected_authority.library_id
@@ -1478,7 +1506,34 @@ impl LibraryCoreJournal {
                 actor_id: enrollment.actor_id.clone(),
             });
         }
-        Self::require_cloud_writer_admission(&transaction, &enrollment.library_id)?;
+        let admission_exists = transaction.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM library_core_cloud_writer_admission
+               WHERE singletonId = 1
+             );",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if admission_exists {
+            Self::require_cloud_writer_admission(&transaction, &enrollment.library_id)?;
+        } else if allow_missing_admission_for_first_actor {
+            let actor_exists = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM library_core_actors WHERE libraryId = ?1
+                 );",
+                [&enrollment.library_id],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if actor_exists {
+                return Err(JournalError::StaleAuthority {
+                    library_id: enrollment.library_id.clone(),
+                });
+            }
+        } else {
+            return Err(JournalError::StaleAuthority {
+                library_id: enrollment.library_id.clone(),
+            });
+        }
         authority::require_active_authority(&transaction, expected_authority)?;
         let state = Self::enroll_actor_in(&transaction, enrollment)?;
         transaction.commit()?;
@@ -1491,7 +1546,7 @@ impl LibraryCoreJournal {
             .ok_or_else(|| JournalError::AuthorityNotFound {
                 library_id: enrollment.library_id.clone(),
             })?;
-        self.enroll_actor_under_authority(enrollment, &authority)
+        self.enroll_actor_under_authority(enrollment, &authority, false)
     }
 
     fn verify_actor_enrollment(
@@ -1519,7 +1574,26 @@ impl LibraryCoreJournal {
                 }
             })?;
         let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
-        self.enroll_actor_under_authority(&enrollment, &authority)
+        self.enroll_actor_under_authority(&enrollment, &authority, false)
+    }
+
+    /// Enroll the first native Desktop actor before a cloud control tuple can
+    /// exist. This grants no operation admission. Once any actor exists, or a
+    /// cloud admission row exists, the ordinary fail-closed admission fence
+    /// applies. Exact replay still returns the stored actor first.
+    pub(crate) fn verify_and_enroll_initial_desktop_actor(
+        &mut self,
+        canonical_certificate: &[u8],
+        library_id: &str,
+    ) -> JournalResult<ActorState> {
+        let authority =
+            authority::active_authority(&self.connection, library_id)?.ok_or_else(|| {
+                JournalError::AuthorityNotFound {
+                    library_id: library_id.to_owned(),
+                }
+            })?;
+        let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
+        self.enroll_actor_under_authority(&enrollment, &authority, true)
     }
 
     /// Verify and install the authority-countersigned certificate for this
@@ -1544,7 +1618,7 @@ impl LibraryCoreJournal {
         epoch: i64,
         epoch_id: &str,
     ) -> JournalResult<AcceptedAuthorityState> {
-        self.install_authority_epoch(&VerifiedAuthorityEpoch {
+        let authority = self.install_authority_epoch(&VerifiedAuthorityEpoch {
             authority: AcceptedAuthorityState {
                 library_id: library_id.to_owned(),
                 epoch,
@@ -1558,7 +1632,21 @@ impl LibraryCoreJournal {
                 "{{\"transition\":\"fixture-{epoch}\"}}"
             ),
             accepted_at_ms: 900,
-        })
+        })?;
+        self.connection.execute(
+            "INSERT INTO library_core_cloud_writer_admission (
+               singletonId, localWriterId, activeWriterId, storageEpoch,
+               controlRevision, verifiedAtMs
+             ) VALUES (1, ?1, ?1, ?2, 'fixture-admission', 1)
+             ON CONFLICT(singletonId) DO UPDATE SET
+               localWriterId = excluded.localWriterId,
+               activeWriterId = excluded.activeWriterId,
+               storageEpoch = excluded.storageEpoch,
+               controlRevision = excluded.controlRevision,
+               verifiedAtMs = excluded.verifiedAtMs;",
+            params!["8".repeat(64), epoch_id],
+        )?;
+        Ok(authority)
     }
 
     fn transaction_receipt_in(
@@ -1656,7 +1744,7 @@ impl LibraryCoreJournal {
             .optional()?;
         if writer_ids
             .as_ref()
-            .is_some_and(|(local_writer_id, active_writer_id)| local_writer_id != active_writer_id)
+            .is_none_or(|(local_writer_id, active_writer_id)| local_writer_id != active_writer_id)
         {
             return Err(JournalError::StaleAuthority {
                 library_id: library_id.to_owned(),
@@ -3263,6 +3351,16 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read isolated follower tables");
+        let native_authority_protocol_table_exists: bool = journal
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema
+                 WHERE type = 'table'
+                   AND name = 'library_core_native_authority_protocol');",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read native authority protocol catalog entry");
         let sentinel: i64 = journal
             .connection
             .query_row(
@@ -3276,6 +3374,7 @@ mod tests {
         assert!(admission_table_exists);
         assert_eq!(timeline_indexes, 6);
         assert_eq!(follower_tables, 7);
+        assert!(native_authority_protocol_table_exists);
         assert_eq!(sentinel, 42);
     }
 
@@ -4189,7 +4288,13 @@ mod tests {
                 "INSERT INTO library_core_cloud_writer_admission (
                    singletonId, localWriterId, activeWriterId, storageEpoch,
                    controlRevision, verifiedAtMs
-                 ) VALUES (1, ?1, ?2, ?3, ?4, ?5);",
+                 ) VALUES (1, ?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(singletonId) DO UPDATE SET
+                   localWriterId = excluded.localWriterId,
+                   activeWriterId = excluded.activeWriterId,
+                   storageEpoch = excluded.storageEpoch,
+                   controlRevision = excluded.controlRevision,
+                   verifiedAtMs = excluded.verifiedAtMs;",
                 params![digest("8"), digest("9"), digest("a"), "etag-retired", 1_000],
             )
             .expect("record retired writer admission");
@@ -4241,6 +4346,63 @@ mod tests {
             )
             .expect("authoritative row counts");
         assert_eq!(counts, (0, 0, 0));
+    }
+
+    #[test]
+    fn missing_cloud_writer_admission_cannot_enroll_or_commit() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = actor();
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority without admission");
+        journal
+            .connection
+            .execute("DELETE FROM library_core_cloud_writer_admission;", [])
+            .expect("remove fixture admission");
+
+        assert!(matches!(
+            journal.enroll_actor(&enrollment),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?1, ?2, 'temporary-admission', 1);",
+                params![digest("8"), enrollment.epoch_id],
+            )
+            .expect("install temporary admission");
+        journal
+            .enroll_actor(&enrollment)
+            .expect("enroll admitted actor");
+        journal
+            .connection
+            .execute("DELETE FROM library_core_cloud_writer_admission;", [])
+            .expect("remove admission");
+        let verified = transaction(
+            "tx:read:missing-admission",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:missing-admission", 900)],
+        );
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        let operation_count: i64 = journal
+            .connection
+            .query_row("SELECT COUNT(*) FROM library_core_operations;", [], |row| {
+                row.get(0)
+            })
+            .expect("count operations");
+        assert_eq!(operation_count, 0);
     }
 
     #[test]

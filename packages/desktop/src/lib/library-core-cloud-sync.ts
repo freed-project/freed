@@ -17,6 +17,7 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createLibraryCorePrimaryCoordinatorV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
@@ -78,10 +79,6 @@ import {
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 import {
-  mirrorSqliteLibraryBackupsToGoogleDrive,
-  resetSqliteLibraryDriveBackupMirror,
-} from "./library-core-drive-backups";
-import {
   readLibraryCoreDesktopRole,
   requireFollowerLibraryCoreDesktopRole,
   requirePrimaryLibraryCoreDesktopRole,
@@ -89,8 +86,6 @@ import {
 
 const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
-const LOCAL_REVISION_POLL_MS = 15_000;
-const INBOUND_ACTOR_POLL_MS = 60_000;
 const FOLLOWER_SYNC_POLL_MS = 60_000;
 const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
@@ -136,6 +131,7 @@ interface RunningLibraryCoreCloudSync {
 }
 
 let running: RunningLibraryCoreCloudSync | null = null;
+let runningPrimaryCoordinator: { stop(): void } | null = null;
 
 /**
  * Immutable Drive sync is the production SQLite Library transport.
@@ -157,11 +153,17 @@ function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
   return (
     candidate.version === 1 &&
     typeof candidate.libraryId === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.libraryId) &&
     typeof candidate.sourceDigest === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.sourceDigest) &&
     typeof candidate.storageEpoch === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.storageEpoch) &&
     typeof candidate.writerId === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.writerId) &&
     (candidate.controlFileId === null ||
-      typeof candidate.controlFileId === "string") &&
+      (typeof candidate.controlFileId === "string" &&
+        candidate.controlFileId.length > 0 &&
+        candidate.controlFileId.length <= 1_024)) &&
     (candidate.lastPublishedRevision === null ||
       (typeof candidate.lastPublishedRevision === "number" &&
         Number.isSafeInteger(candidate.lastPublishedRevision) &&
@@ -241,9 +243,11 @@ async function loadOrCreateCloudState(
   readonly currentWriterId: string;
   readonly bootstrap: SqliteLibraryAuthorityBootstrap;
 }> {
-  const bootstrap = await bootstrapSqliteLibraryAuthority();
-  const currentWriterId = bootstrap.actor.actor_id;
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+  if (stored !== null && stored !== undefined && !isCloudState(stored)) {
+    throw new Error("The saved Library Core cloud identity is invalid");
+  }
+  let reusableState: LocalLibraryCoreCloudStateV1 | null = null;
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
       if (
@@ -255,16 +259,36 @@ async function loadOrCreateCloudState(
         );
       }
     } else {
-      return {
-        state: Object.freeze({
-          ...stored,
-          lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
-          lastPublishedCheckpoint: checkpointReceiptForState(stored),
-        }),
-        currentWriterId,
-        bootstrap,
-      };
+      reusableState = Object.freeze({
+        ...stored,
+        lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+        lastPublishedCheckpoint: checkpointReceiptForState(stored),
+      });
     }
+  }
+  const bootstrap = await bootstrapSqliteLibraryAuthority({
+    descriptor,
+    persistedCloudIdentity:
+      reusableState === null
+        ? null
+        : {
+            libraryId: reusableState.libraryId,
+            storageEpoch: reusableState.storageEpoch,
+            writerId: reusableState.writerId,
+            sourceDigest: reusableState.sourceDigest,
+          },
+  });
+  const currentWriterId = bootstrap.actor.actor_id;
+  if (reusableState !== null) {
+    if (
+      reusableState.libraryId !== bootstrap.authority.library_id ||
+      reusableState.storageEpoch !== bootstrap.authority.epoch_id
+    ) {
+      throw new Error(
+        "The saved Library Core cloud identity conflicts with accepted authority",
+      );
+    }
+    return { state: reusableState, currentWriterId, bootstrap };
   }
   const state: LocalLibraryCoreCloudStateV1 = Object.freeze({
     version: 1,
@@ -330,31 +354,6 @@ function checkpointStoredByteLength(input: {
     throw new Error("Library Core checkpoint byte total is invalid");
   }
   return total;
-}
-
-let backupMirrorChain: Promise<void> = Promise.resolve();
-
-function scheduleClosedSqliteBackupMirror(input: {
-  readonly accessToken: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly libraryId: string;
-  readonly signal?: AbortSignal;
-}): void {
-  backupMirrorChain = backupMirrorChain.then(async () => {
-    try {
-      const result = await mirrorSqliteLibraryBackupsToGoogleDrive({
-        ...input,
-        googleFetch: input.googleFetch ?? fetch,
-      });
-      if (result.uploaded > 0 || result.removed > 0) {
-        console.info(
-          `[library-core-backups] mirrored ${result.uploaded.toLocaleString()} and removed ${result.removed.toLocaleString()} old Drive generations`,
-        );
-      }
-    } catch (error) {
-      console.error("[library-core-backups] Drive mirror failed", error);
-    }
-  });
 }
 
 function exactBytes(bytes: Uint8Array): Uint8Array {
@@ -546,8 +545,14 @@ async function checkpointHeader(
     canonical_codec_version: 1,
     anchor_kind: "accepted_authority",
     accepted_authority: bootstrap.authority,
-    source_transition_digest: null,
-    source_manifest_digest: null,
+    source_transition_digest:
+      bootstrap.protocol
+        .transition_certificate_digest as LibraryCorePortableCheckpointHeaderV1["source_transition_digest"],
+    source_manifest_digest:
+      (checkpointReceiptForState(state)?.controlPointer.manifest.descriptor
+        .contentDigest ??
+        bootstrap.protocol
+          .source_manifest_digest) as LibraryCorePortableCheckpointHeaderV1["source_manifest_digest"],
     transition_candidate_anchor: null,
     promoted_receipt_digests: [],
     materializer_position: {
@@ -1516,12 +1521,6 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     state.lastPublishedRevision === updatedDescriptor.revision &&
     state.lastPublishedActorDigest === publishedActorDigest
   ) {
-    scheduleClosedSqliteBackupMirror({
-      accessToken: input.accessToken,
-      googleFetch: input.googleFetch,
-      libraryId: state.libraryId,
-      signal: input.signal,
-    });
     return { status: "current", revision: updatedDescriptor.revision };
   }
   await publishActorEnrollmentCertificates({
@@ -1568,12 +1567,6 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     lastPublishedRevision: updatedDescriptor.revision,
   });
   await persistCloudState(state);
-  scheduleClosedSqliteBackupMirror({
-    accessToken: input.accessToken,
-    googleFetch: input.googleFetch,
-    libraryId: state.libraryId,
-    signal: input.signal,
-  });
   return { status: "published", revision: updatedDescriptor.revision };
 }
 
@@ -2050,7 +2043,6 @@ export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
   stopSqliteLibraryCloudSync();
-  resetSqliteLibraryDriveBackupMirror();
   const abortController = new AbortController();
   running = { abortController, timer: null };
   const sync = (accessToken: string) =>
@@ -2103,71 +2095,68 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
   stopSqliteLibraryCloudSync();
-  resetSqliteLibraryDriveBackupMirror();
-  const abortController = new AbortController();
-  running = { abortController, timer: null };
-  const publish = async (
-    accessToken: string,
-  ): Promise<LibraryCoreCloudPublishResult> =>
-    publishCurrentSqliteLibraryToGoogleDrive({
-      accessToken,
-      googleFetch: input.googleFetch,
-      signal: abortController.signal,
-    });
-  const initial = await publish(input.accessToken);
-  if (initial.status === "ownership_required") {
-    stopSqliteLibraryCloudSync();
-    return initial;
-  }
-  let lastInboundActorPollAt = Date.now();
-
-  const poll = async (): Promise<void> => {
-    if (
-      running?.abortController !== abortController ||
-      abortController.signal.aborted
-    )
-      return;
-    if (readLibraryCoreDesktopRole() !== "primary") {
-      stopSqliteLibraryCloudSync();
-      return;
-    }
-    try {
-      const status = await sqliteLibraryStatus();
-      const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
-      const now = Date.now();
-      if (
-        status?.active === true &&
-        isCloudState(state) &&
-        (state.lastPublishedRevision !== status.revision ||
-          now - lastInboundActorPollAt >= INBOUND_ACTOR_POLL_MS)
-      ) {
-        lastInboundActorPollAt = now;
-        const result = await publish(await input.resolveAccessToken());
-        if (result.status === "ownership_required") {
-          stopSqliteLibraryCloudSync();
-          return;
+  const coordinator = createLibraryCorePrimaryCoordinatorV1<
+    LibraryCoreCloudPublishResult,
+    ReturnType<typeof setTimeout>
+  >({
+    authority: {
+      assertPrimary: requirePrimaryLibraryCoreDesktopRole,
+      isPrimary: () => readLibraryCoreDesktopRole() === "primary",
+    },
+    durableState: {
+      async read() {
+        const status = await sqliteLibraryStatus();
+        const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+        if (status?.active !== true || !isCloudState(state)) return null;
+        return {
+          active: true,
+          localRevision: status.revision,
+          lastPublishedRevision: state.lastPublishedRevision,
+        };
+      },
+    },
+    credentials: {
+      initialAccessToken: input.accessToken,
+      resolveAccessToken: input.resolveAccessToken,
+    },
+    clock: { nowMs: Date.now },
+    scheduler: {
+      schedule(callback, delayMs) {
+        return setTimeout(() => void callback(), delayMs);
+      },
+      cancel: clearTimeout,
+    },
+    fetch: { googleFetch: input.googleFetch },
+    diagnostics: {
+      record(event) {
+        if (
+          event.kind === "failed" &&
+          event.errorClass === "scheduled_poll_failed"
+        ) {
+          console.error(
+            `[library-core-primary] ${event.errorClass}: ${event.safeDetail}`,
+          );
         }
-      }
-    } finally {
-      if (
-        running?.abortController === abortController &&
-        !abortController.signal.aborted
-      ) {
-        running.timer = setTimeout(
-          () => void poll().catch(console.error),
-          LOCAL_REVISION_POLL_MS,
-        );
-      }
-    }
-  };
-  running.timer = setTimeout(
-    () => void poll().catch(console.error),
-    LOCAL_REVISION_POLL_MS,
-  );
-  return initial;
+      },
+    },
+    publication: {
+      publish({ accessToken, googleFetch, signal }) {
+        return publishCurrentSqliteLibraryToGoogleDrive({
+          accessToken,
+          googleFetch,
+          signal,
+        });
+      },
+    },
+  });
+  runningPrimaryCoordinator = coordinator;
+  return coordinator.start();
 }
 
 export function stopSqliteLibraryCloudSync(): void {
+  const primaryCoordinator = runningPrimaryCoordinator;
+  runningPrimaryCoordinator = null;
+  primaryCoordinator?.stop();
   const current = running;
   running = null;
   current?.abortController.abort();

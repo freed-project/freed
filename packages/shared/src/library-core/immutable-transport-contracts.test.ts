@@ -103,11 +103,6 @@ describe("Library Core immutable transport contract", () => {
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
-        kind: "blob",
-        libraryId: LIBRARY_ID,
-        digest: DIGEST,
-      }),
-      createLibraryCoreImmutableObjectKey({
         kind: "backup_manifest",
         libraryId: LIBRARY_ID,
         backupId: "backup-2026-07-30",
@@ -126,7 +121,6 @@ describe("Library Core immutable transport contract", () => {
       `freed-v2-search-delta~library-1~eepoch-1~s129-256~${DIGEST}.fidx.gz`,
       `freed-v2-intents~library-1~eepoch-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
       `freed-v2-results~library-1~eepoch-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
-      `freed-v2-blob~library-1~${DIGEST}`,
       `freed-v2-backup~library-1~backup-2026-07-30~${DIGEST}.json`,
     ]);
     expect(keys.every(isLibraryCoreImmutableObjectKey)).toBe(true);

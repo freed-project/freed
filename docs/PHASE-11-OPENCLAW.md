@@ -1,6 +1,6 @@
 # Phase 11: Power User Integrations (OpenClaw + Omi)
 
-> **Status:** Future  
+> **Status:** 🚧 In Progress (provider-neutral Primary coordinator foundation landed; headless host and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -36,16 +36,23 @@ Two power-user integrations that extend Freed beyond its Desktop App:
 │                              │                                  │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Automerge Document                       │   │
+│  │                 SQLite Library Core                       │   │
 │  │                   (filesystem storage)                    │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │              ┌───────────────┴───────────────┐                  │
 │              ▼                               ▼                  │
-│       Local Relay                      Cloud Backup             │
-│       (for PWA sync)                   (GDrive/iCloud)          │
+│   Primary Coordinator            Logical Cloud Library         │
+│    (injected ports)              (Drive checkpoints/ops)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+The shared `@freed/sync` Primary coordinator now owns the behavior-preserving
+publication lifecycle used by Freed Desktop. Authority, durable revision
+state, credentials, clock, scheduler, fetch, publication, and bounded safe
+diagnostics are host ports. This is the first reusable headless boundary. It
+does not export a Desktop credential, start a server process, contact a social
+provider, or create a second Library authority.
 
 ---
 
@@ -367,6 +374,7 @@ export async function pushReadingContextToOmi(
 
 ### OpenClaw
 
+- [x] Provider-neutral Primary Drive coordinator is shared from `@freed/sync`, consumed by Freed Desktop, and covered with offline fake authority, state, credential, clock, scheduler, fetch, publication, and diagnostics ports
 - [ ] All capture layers have OpenClaw skill wrappers
 - [ ] Scheduled captures run on cron
 - [ ] Custom ranking rules load from YAML

@@ -27,7 +27,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const GENERATIONS_STORE = "generations";
 const ROWS_STORE = "feed_rows";
 const BATCHES_STORE = "generation_batches";
@@ -425,11 +425,10 @@ function snapshotBrowseRows(
 }
 
 /**
- * Dormant row-oriented browser implementation of `feed_page_v1`.
+ * Row-oriented browser implementation of `feed_page_v1`.
  *
- * The Automerge worker can populate it only through an explicit dormant
- * materialization request. No product reader calls that request or this
- * runtime yet, so Automerge remains authoritative until governed read cutover.
+ * The PWA populates query-specific generations from its selected portable
+ * checkpoint. Reader sessions stay bounded and source-fenced in IndexedDB.
  */
 class PwaLibraryCoreFeedReaderRuntime {
   readonly #databaseName: string;
@@ -1403,8 +1402,25 @@ class PwaLibraryCoreFeedReaderRuntime {
             browseRows.createIndex(
               "browse_generation_source_sequence",
               ["generationId", "sourceSequence"],
-              { unique: true },
+              { unique: false },
             );
+          } else {
+            const browseRows = request.transaction!.objectStore(
+              BROWSE_ROWS_STORE,
+            );
+            if (
+              browseRows.indexNames.contains(
+                "browse_generation_source_sequence",
+              ) &&
+              browseRows.index("browse_generation_source_sequence").unique
+            ) {
+              browseRows.deleteIndex("browse_generation_source_sequence");
+              browseRows.createIndex(
+                "browse_generation_source_sequence",
+                ["generationId", "sourceSequence"],
+                { unique: false },
+              );
+            }
           }
           if (!database.objectStoreNames.contains(BROWSE_BATCHES_STORE)) {
             database.createObjectStore(BROWSE_BATCHES_STORE, {

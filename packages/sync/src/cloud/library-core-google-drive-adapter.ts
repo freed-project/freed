@@ -1,5 +1,6 @@
 import {
   createLibraryCoreImmutableObjectKey,
+  createLibraryCoreMediaBlobDigestStateV1,
   createLibraryCoreIntentHeadObjectKey,
   createLibraryCoreResultHeadObjectKey,
   decodeLibraryCoreCanonicalValue,
@@ -7,14 +8,23 @@ import {
   isLibraryCoreOperationInstanceId,
   parseLibraryCoreControlPointerV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
+  parseLibraryCoreMediaBlobDescriptorV1,
+  parseLibraryCoreMediaBlobReferenceV1,
   parseLibraryCoreIntentHeadV1,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
   type LibraryCoreImmutableObjectReferenceV1,
+  type LibraryCoreMediaBlobDescriptorV1,
+  type LibraryCoreMediaBlobReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreMediaBlobAdapterV1,
+  LibraryCoreMediaBlobSourceV1,
+  LibraryCorePreparedMediaBlobV1,
+} from "./library-core-media-blob.js";
 import type {
   LibraryCoreControlCompareAndSwapResultV1,
   LibraryCoreControlReadV1,
@@ -48,6 +58,9 @@ const MAX_RESULT_HEAD_BYTES = 65_536;
 const MAX_DRIVE_JSON_BYTES = 262_144;
 const MAX_DRIVE_ERROR_BYTES = 4_096;
 const MAX_CONSISTENT_MUTABLE_READ_ATTEMPTS = 3;
+const MAX_RESUMABLE_SESSION_URL_BYTES = 8_192;
+const MAX_RESUMABLE_SESSION_RESTARTS = 3;
+const MAX_RESUMABLE_CHUNK_RECOVERIES = 3;
 
 export type GoogleDriveFetch = typeof fetch;
 
@@ -61,6 +74,7 @@ function defaultGoogleDriveFetch(): GoogleDriveFetch {
  * content-addressed blob path.
  */
 export const LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT = 5_000_000;
+export const LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES = 1_048_576;
 
 const textEncoder = new TextEncoder();
 
@@ -117,6 +131,13 @@ export interface GoogleDriveLibraryCoreAdapterOptionsV1 {
   readonly accessToken: string;
   readonly libraryId: string;
   readonly controlFileId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}
+
+export interface GoogleDriveLibraryCoreMediaBlobAdapterOptionsV1 {
+  readonly accessToken: string;
+  readonly libraryId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }
@@ -394,6 +415,21 @@ function immutableAppProperties(
     freedObjectKind: driveObjectKind(descriptor.objectKey),
     freedObjectKeyDigest: keyDigest,
     freedContentDigest: descriptor.contentDigest,
+  });
+}
+
+function mediaBlobAppProperties(
+  libraryDigest: string,
+  descriptor: LibraryCoreMediaBlobDescriptorV1,
+  keyDigest: string,
+): Readonly<Record<string, string>> {
+  return Object.freeze({
+    freedProtocol: PROTOCOL_PROPERTY,
+    freedLibraryDigest: libraryDigest,
+    freedObjectKind: "blob",
+    freedObjectKeyDigest: keyDigest,
+    freedContentDigest: descriptor.blobContentDigest,
+    freedDigestDomain: "blob-content",
   });
 }
 
@@ -1540,6 +1576,585 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       const readBack = await readResultHead();
       if (!bytesEqual(readBack.bytes, input.bytes)) throw new Error("Library Core Drive result-head readback did not match committed bytes");
       return Object.freeze({ status: "committed" as const });
+    },
+  });
+}
+
+function isExactUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]" &&
+    (value as Uint8Array).BYTES_PER_ELEMENT === 1
+  );
+}
+
+function parseGoogleDriveResumableSessionUrl(value: unknown): string {
+  assertBoundedText(
+    value,
+    "Google Drive resumable session URL",
+    MAX_RESUMABLE_SESSION_URL_BYTES,
+  );
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new TypeError("Google Drive resumable session URL is invalid");
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "www.googleapis.com" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    parsed.hash !== "" ||
+    !/^\/(?:resumable\/)?upload\/drive\/v3\/files(?:\/[^/]*)?$/u.test(
+      parsed.pathname,
+    )
+  ) {
+    throw new TypeError(
+      "Google Drive resumable session URL is outside the trusted Drive upload endpoint",
+    );
+  }
+  return parsed.href;
+}
+
+function parseResumableAcknowledgedOffset(
+  response: Response,
+  totalByteLength: number,
+  maximumAcknowledgedOffset: number,
+): number {
+  const range = response.headers.get("Range");
+  if (range === null) return 0;
+  const match = /^bytes=0-(0|[1-9][0-9]*)$/u.exec(range);
+  if (match === null) {
+    throw new Error("Google Drive resumable response has an invalid Range");
+  }
+  const lastByte = Number(match[1]);
+  const nextOffset = lastByte + 1;
+  if (
+    !Number.isSafeInteger(lastByte) ||
+    nextOffset > totalByteLength ||
+    nextOffset > maximumAcknowledgedOffset
+  ) {
+    throw new Error(
+      "Google Drive resumable response acknowledges impossible bytes",
+    );
+  }
+  return nextOffset;
+}
+
+async function parseDriveUploadMetadata(
+  response: Response,
+  label: string,
+): Promise<DriveFileMetadataV1> {
+  const responseBytes = await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    label,
+  );
+  return parseDriveFileMetadata(
+    JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(responseBytes),
+    ),
+  );
+}
+
+async function readMediaBlobRange(input: {
+  readonly accessToken: string;
+  readonly fileId: string;
+  readonly googleFetch: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly offset: number;
+  readonly byteLength: number;
+  readonly totalByteLength: number;
+}): Promise<Uint8Array> {
+  const end = input.offset + input.byteLength - 1;
+  const response = await input.googleFetch(
+    `${DRIVE_FILES_URL}/${encodeURIComponent(input.fileId)}?alt=media`,
+    {
+      headers: {
+        ...authorizationHeaders(input.accessToken),
+        Range: `bytes=${input.offset.toLocaleString("en-US", {
+          useGrouping: false,
+        })}-${end.toLocaleString("en-US", { useGrouping: false })}`,
+      },
+      signal: input.signal,
+    },
+  );
+  const wholeBoundedObject =
+    response.status === 200 &&
+    input.offset === 0 &&
+    input.byteLength === input.totalByteLength;
+  if (response.status !== 206 && !wholeBoundedObject) {
+    if (!response.ok) {
+      throw await responseError("Library Core Drive media read failed", response);
+    }
+    throw new Error("Google Drive ignored a bounded media range request");
+  }
+  if (response.status === 206) {
+    const contentRange = response.headers.get("Content-Range");
+    const expected = `bytes ${input.offset.toLocaleString("en-US", {
+      useGrouping: false,
+    })}-${end.toLocaleString("en-US", {
+      useGrouping: false,
+    })}/${input.totalByteLength.toLocaleString("en-US", {
+      useGrouping: false,
+    })}`;
+    if (contentRange !== expected) {
+      throw new Error("Google Drive media range identity is incorrect");
+    }
+  }
+  const bytes = await readBoundedResponseBytes(
+    response,
+    input.byteLength,
+    "Library Core Drive media range",
+  );
+  if (bytes.byteLength !== input.byteLength) {
+    throw new Error("Google Drive media range byte length is incorrect");
+  }
+  return bytes;
+}
+
+async function readMediaBlobDigest(input: {
+  readonly accessToken: string;
+  readonly fileId: string;
+  readonly googleFetch: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly byteLength: number;
+}): Promise<string> {
+  const digest = createLibraryCoreMediaBlobDigestStateV1();
+  if (input.byteLength === 0) {
+    const bytes = await readDriveFileBytes({
+      accessToken: input.accessToken,
+      fileId: input.fileId,
+      googleFetch: input.googleFetch,
+      signal: input.signal,
+      maxBytes: 0,
+      label: "Library Core Drive empty media blob",
+    });
+    if (bytes.byteLength !== 0) {
+      throw new Error("Google Drive empty media blob contains bytes");
+    }
+    return digest.digestLowerHex();
+  }
+  for (let offset = 0; offset < input.byteLength; ) {
+    const byteLength = Math.min(
+      LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
+      input.byteLength - offset,
+    );
+    const bytes = await readMediaBlobRange({
+      ...input,
+      offset,
+      byteLength,
+      totalByteLength: input.byteLength,
+    });
+    digest.update(bytes);
+    offset += byteLength;
+  }
+  return digest.digestLowerHex();
+}
+
+async function readExactMediaBlobSourceRange(
+  source: LibraryCoreMediaBlobSourceV1,
+  offset: number,
+  byteLength: number,
+): Promise<Uint8Array> {
+  const bytes = await source.readRange({ offset, byteLength });
+  if (!isExactUint8Array(bytes)) {
+    throw new TypeError("media blob source range must be a Uint8Array");
+  }
+  if (bytes.byteLength !== byteLength) {
+    throw new Error("media blob source returned the wrong byte length");
+  }
+  return bytes;
+}
+
+async function verifyLocalMediaBlobSource(
+  descriptor: LibraryCoreMediaBlobDescriptorV1,
+  source: LibraryCoreMediaBlobSourceV1,
+): Promise<void> {
+  if (
+    source === null ||
+    typeof source !== "object" ||
+    !Number.isSafeInteger(source.byteLength) ||
+    source.byteLength < 0 ||
+    typeof source.readRange !== "function"
+  ) {
+    throw new TypeError("media blob source is invalid");
+  }
+  if (source.byteLength !== descriptor.byteLength) {
+    throw new Error("media blob source byte length is incorrect");
+  }
+  const digest = createLibraryCoreMediaBlobDigestStateV1();
+  for (let offset = 0; offset < descriptor.byteLength; ) {
+    const byteLength = Math.min(
+      LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
+      descriptor.byteLength - offset,
+    );
+    digest.update(
+      await readExactMediaBlobSourceRange(source, offset, byteLength),
+    );
+    offset += byteLength;
+  }
+  if (digest.digestLowerHex() !== descriptor.blobContentDigest) {
+    throw new Error("media blob source digest is incorrect");
+  }
+}
+
+/**
+ * Create the provider-neutral, dormant Google Drive media blob boundary.
+ *
+ * Callers supply a replayable random-access source. The adapter validates it
+ * locally, uploads exact 1 MiB resumable chunks, and streams an exact remote
+ * readback before accepting the provider receipt. It owns no timer, token
+ * acquisition, product caller, content-provider fetch, or deletion policy.
+ * No production entry point invokes this factory.
+ */
+export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
+  options: GoogleDriveLibraryCoreMediaBlobAdapterOptionsV1,
+): LibraryCoreMediaBlobAdapterV1 {
+  assertBoundedText(
+    options.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  assertLibraryId(options.libraryId);
+  const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
+  const libraryDigestPromise = libraryIdentityDigest(options.libraryId);
+
+  async function mediaBlobProperties(
+    descriptor: LibraryCoreMediaBlobDescriptorV1,
+  ): Promise<Readonly<Record<string, string>>> {
+    return mediaBlobAppProperties(
+      await libraryDigestPromise,
+      descriptor,
+      await objectKeyDigest(descriptor.objectKey),
+    );
+  }
+
+  async function verifyMediaBlobAtFile(
+    descriptorInput: LibraryCoreMediaBlobDescriptorV1,
+    fileId: string,
+  ): Promise<LibraryCoreMediaBlobDescriptorV1> {
+    const descriptor = parseLibraryCoreMediaBlobDescriptorV1(descriptorInput);
+    assertBoundedText(
+      fileId,
+      "media blob Drive file id",
+      MAX_DRIVE_FILE_ID_BYTES,
+    );
+    if (!objectKeyBelongsToLibrary(descriptor.objectKey, options.libraryId)) {
+      throw new TypeError("media blob does not belong to this library");
+    }
+    const expectedProperties = await mediaBlobProperties(descriptor);
+    const metadata = await readDriveFileMetadata({
+      accessToken: options.accessToken,
+      fileId,
+      googleFetch,
+      signal: options.signal,
+    });
+    if (metadata.id !== fileId || metadata.size !== descriptor.byteLength) {
+      throw new Error(
+        `media blob Drive metadata mismatch for ${descriptor.objectKey}`,
+      );
+    }
+    assertExpectedProperties(
+      metadata.appProperties,
+      expectedProperties,
+      `media blob Drive object ${descriptor.objectKey}`,
+    );
+    const storedDigest = await readMediaBlobDigest({
+      accessToken: options.accessToken,
+      fileId,
+      googleFetch,
+      signal: options.signal,
+      byteLength: descriptor.byteLength,
+    });
+    if (storedDigest !== descriptor.blobContentDigest) {
+      throw new Error(
+        `media blob Drive digest mismatch for ${descriptor.objectKey}`,
+      );
+    }
+    return descriptor;
+  }
+
+  async function discoverVerifiedMediaBlob(
+    descriptor: LibraryCoreMediaBlobDescriptorV1,
+    properties: Readonly<Record<string, string>>,
+  ): Promise<string | null> {
+    const existing = await listDriveFilesByProperties({
+      accessToken: options.accessToken,
+      properties,
+      googleFetch,
+      signal: options.signal,
+      maxFiles: MAX_DUPLICATE_IMMUTABLE_OBJECTS,
+    });
+    if (existing.length === 0) return null;
+    const ordered = [...existing].sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+    for (const candidate of ordered) {
+      await verifyMediaBlobAtFile(descriptor, candidate.id);
+    }
+    return ordered[0]?.id ?? null;
+  }
+
+  async function initiateResumableSession(
+    descriptor: LibraryCoreMediaBlobDescriptorV1,
+    properties: Readonly<Record<string, string>>,
+  ): Promise<string> {
+    const response = await googleFetch(
+      `${DRIVE_UPLOAD_URL}?uploadType=resumable&fields=id,name,size,appProperties`,
+      {
+        method: "POST",
+        headers: {
+          ...authorizationHeaders(options.accessToken),
+          "Content-Type": "application/json; charset=UTF-8",
+          "X-Upload-Content-Type": "application/octet-stream",
+          "X-Upload-Content-Length": descriptor.byteLength.toLocaleString(
+            "en-US",
+            { useGrouping: false },
+          ),
+        },
+        body: JSON.stringify({
+          name: descriptor.objectKey,
+          parents: ["appDataFolder"],
+          appProperties: properties,
+        }),
+        redirect: "error",
+        signal: options.signal,
+      },
+    );
+    if (!response.ok) {
+      throw await responseError(
+        `media blob Drive session failed for ${descriptor.objectKey}`,
+        response,
+      );
+    }
+    return parseGoogleDriveResumableSessionUrl(
+      response.headers.get("Location"),
+    );
+  }
+
+  async function acceptCompletedUpload(
+    response: Response,
+    descriptor: LibraryCoreMediaBlobDescriptorV1,
+  ): Promise<string> {
+    const metadata = await parseDriveUploadMetadata(
+      response,
+      "media blob Drive upload response",
+    );
+    await verifyMediaBlobAtFile(descriptor, metadata.id);
+    return metadata.id;
+  }
+
+  return Object.freeze({
+    async putMediaBlob(
+      blob: LibraryCorePreparedMediaBlobV1,
+    ): Promise<{ readonly transportObjectId: string }> {
+      const descriptor = parseLibraryCoreMediaBlobDescriptorV1(
+        blob.descriptor,
+      );
+      if (!objectKeyBelongsToLibrary(descriptor.objectKey, options.libraryId)) {
+        throw new TypeError("media blob does not belong to this library");
+      }
+      await verifyLocalMediaBlobSource(descriptor, blob.source);
+      const properties = await mediaBlobProperties(descriptor);
+      const existing = await discoverVerifiedMediaBlob(
+        descriptor,
+        properties,
+      );
+      if (existing !== null) {
+        return Object.freeze({ transportObjectId: existing });
+      }
+
+      for (
+        let sessionAttempt = 0;
+        sessionAttempt <= MAX_RESUMABLE_SESSION_RESTARTS;
+        sessionAttempt += 1
+      ) {
+        const sessionUrl = await initiateResumableSession(
+          descriptor,
+          properties,
+        );
+        let offset = 0;
+        let consecutiveChunkRecoveries = 0;
+        for (;;) {
+          const byteLength =
+            descriptor.byteLength === 0
+              ? 0
+              : Math.min(
+                  LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
+                  descriptor.byteLength - offset,
+                );
+          const endOffset = offset + byteLength;
+          const finalRequest = endOffset === descriptor.byteLength;
+          const sourceBytes =
+            byteLength === 0
+              ? new Uint8Array()
+              : await readExactMediaBlobSourceRange(
+                  blob.source,
+                  offset,
+                  byteLength,
+                );
+          let response: Response;
+          let responseFromStatusQuery = false;
+          try {
+            response = await googleFetch(sessionUrl, {
+              method: "PUT",
+              headers: {
+                ...authorizationHeaders(options.accessToken),
+                "Content-Type": "application/octet-stream",
+                "Content-Range":
+                  descriptor.byteLength === 0
+                    ? "bytes */0"
+                    : `bytes ${offset.toLocaleString("en-US", {
+                        useGrouping: false,
+                      })}-${(endOffset - 1).toLocaleString("en-US", {
+                        useGrouping: false,
+                      })}/${descriptor.byteLength.toLocaleString("en-US", {
+                        useGrouping: false,
+                      })}`,
+              },
+              body: exactArrayBuffer(sourceBytes),
+              redirect: "error",
+              signal: options.signal,
+            });
+          } catch (uploadError) {
+            const recovered = await discoverVerifiedMediaBlob(
+              descriptor,
+              properties,
+            );
+            if (recovered !== null) {
+              return Object.freeze({ transportObjectId: recovered });
+            }
+            try {
+              responseFromStatusQuery = true;
+              response = await googleFetch(sessionUrl, {
+                method: "PUT",
+                headers: {
+                  ...authorizationHeaders(options.accessToken),
+                  "Content-Range": `bytes */${descriptor.byteLength.toLocaleString(
+                    "en-US",
+                    { useGrouping: false },
+                  )}`,
+                },
+                body: new ArrayBuffer(0),
+                redirect: "error",
+                signal: options.signal,
+              });
+            } catch {
+              throw uploadError;
+            }
+          }
+
+          if (response.ok) {
+            if (!finalRequest && !responseFromStatusQuery) {
+              throw new Error(
+                "Google Drive completed a resumable upload before all blob bytes",
+              );
+            }
+            try {
+              return Object.freeze({
+                transportObjectId: await acceptCompletedUpload(
+                  response,
+                  descriptor,
+                ),
+              });
+            } catch (completionError) {
+              const recovered = await discoverVerifiedMediaBlob(
+                descriptor,
+                properties,
+              );
+              if (recovered !== null) {
+                return Object.freeze({ transportObjectId: recovered });
+              }
+              throw completionError;
+            }
+          }
+          if (response.status === 308) {
+            const nextOffset = parseResumableAcknowledgedOffset(
+              response,
+              descriptor.byteLength,
+              endOffset,
+            );
+            if (nextOffset === descriptor.byteLength) {
+              const recovered = await discoverVerifiedMediaBlob(
+                descriptor,
+                properties,
+              );
+              if (recovered !== null) {
+                return Object.freeze({ transportObjectId: recovered });
+              }
+              throw new Error(
+                "Google Drive acknowledged the complete blob without a discoverable object",
+              );
+            }
+            if (
+              descriptor.byteLength === 0 ||
+              nextOffset < offset
+            ) {
+              throw new Error(
+                "Google Drive resumable upload did not make valid progress",
+              );
+            }
+            if (nextOffset === offset) {
+              if (!responseFromStatusQuery || sourceBytes.byteLength === 0) {
+                throw new Error(
+                  "Google Drive resumable upload did not make valid progress",
+                );
+              }
+              consecutiveChunkRecoveries += 1;
+              if (
+                consecutiveChunkRecoveries > MAX_RESUMABLE_CHUNK_RECOVERIES
+              ) {
+                throw new Error(
+                  "Google Drive resumable upload exhausted chunk response recovery",
+                );
+              }
+              continue;
+            }
+            consecutiveChunkRecoveries = 0;
+            offset = nextOffset;
+            continue;
+          }
+          if (response.status === 404 || response.status === 410) {
+            const recovered = await discoverVerifiedMediaBlob(
+              descriptor,
+              properties,
+            );
+            if (recovered !== null) {
+              return Object.freeze({ transportObjectId: recovered });
+            }
+            break;
+          }
+          if (finalRequest) {
+            const recovered = await discoverVerifiedMediaBlob(
+              descriptor,
+              properties,
+            );
+            if (recovered !== null) {
+              return Object.freeze({ transportObjectId: recovered });
+            }
+          }
+          throw await responseError(
+            `media blob Drive upload failed for ${descriptor.objectKey}`,
+            response,
+          );
+        }
+      }
+      throw new Error(
+        `media blob Drive upload exhausted ${MAX_RESUMABLE_SESSION_RESTARTS.toLocaleString()} session restarts`,
+      );
+    },
+
+    async verifyMediaBlob(
+      reference: LibraryCoreMediaBlobReferenceV1,
+    ): Promise<LibraryCoreMediaBlobDescriptorV1> {
+      const parsed = parseLibraryCoreMediaBlobReferenceV1(reference);
+      return verifyMediaBlobAtFile(
+        parsed.descriptor,
+        parsed.transportObjectId,
+      );
     },
   });
 }

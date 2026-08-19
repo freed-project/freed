@@ -100,6 +100,26 @@ export interface SqliteLibraryAuthorityBootstrap {
     readonly canonical_enrollment_certificate_json: string;
     readonly actor_chain_genesis: string;
   }>;
+  readonly protocol: SqliteLibraryAuthorityProtocol;
+}
+
+export interface SqliteLibraryAuthorityProtocol {
+  readonly format: "freed_library_core_native_authority_protocol_v1";
+  readonly active_engine: "library_core_v1";
+  readonly schema_version: 11;
+  readonly replication_protocol: "op_segments_v1";
+  readonly checkpoint_format: "freed_logical_checkpoint_v1";
+  readonly transition_certificate_digest: string;
+  readonly native_protocol_certificate_digest: string;
+  readonly prior_transition_certificate_digest: string | null;
+  readonly source_manifest_digest: string;
+}
+
+export interface SqliteLibraryPersistedCloudIdentity {
+  readonly libraryId: string;
+  readonly storageEpoch: string;
+  readonly writerId: string;
+  readonly sourceDigest: string;
 }
 
 export interface SqliteLibraryWriterEpochReassignment extends SqliteLibraryAuthorityBootstrap {
@@ -1196,24 +1216,93 @@ export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySy
 }
 
 /** Establish and read the active SQLite Library's signed authority and Desktop actor. */
-export async function bootstrapSqliteLibraryAuthority(): Promise<SqliteLibraryAuthorityBootstrap> {
+const HEX_64 = /^[a-f0-9]{64}$/;
+
+/** Close and validate the signed native protocol receipt returned by Rust. */
+export function parseSqliteLibraryAuthorityProtocol(
+  value: unknown,
+): SqliteLibraryAuthorityProtocol {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Freed Desktop returned an invalid authority protocol");
+  }
+  const record = value as Record<string, unknown>;
+  const expectedKeys = [
+    "active_engine",
+    "checkpoint_format",
+    "format",
+    "native_protocol_certificate_digest",
+    "prior_transition_certificate_digest",
+    "replication_protocol",
+    "schema_version",
+    "source_manifest_digest",
+    "transition_certificate_digest",
+  ].sort();
+  const keys = Object.keys(record).sort();
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key, index) => key !== expectedKeys[index]) ||
+    record.format !== "freed_library_core_native_authority_protocol_v1" ||
+    record.active_engine !== "library_core_v1" ||
+    record.schema_version !== 11 ||
+    record.replication_protocol !== "op_segments_v1" ||
+    record.checkpoint_format !== "freed_logical_checkpoint_v1" ||
+    typeof record.transition_certificate_digest !== "string" ||
+    !HEX_64.test(record.transition_certificate_digest) ||
+    typeof record.native_protocol_certificate_digest !== "string" ||
+    !HEX_64.test(record.native_protocol_certificate_digest) ||
+    (record.prior_transition_certificate_digest !== null &&
+      (typeof record.prior_transition_certificate_digest !== "string" ||
+        !HEX_64.test(record.prior_transition_certificate_digest))) ||
+    typeof record.source_manifest_digest !== "string" ||
+    !HEX_64.test(record.source_manifest_digest)
+  ) {
+    throw new TypeError("Freed Desktop returned an invalid authority protocol");
+  }
+  return Object.freeze({
+    format: record.format,
+    active_engine: record.active_engine,
+    schema_version: record.schema_version,
+    replication_protocol: record.replication_protocol,
+    checkpoint_format: record.checkpoint_format,
+    transition_certificate_digest: record.transition_certificate_digest,
+    native_protocol_certificate_digest:
+      record.native_protocol_certificate_digest,
+    prior_transition_certificate_digest:
+      record.prior_transition_certificate_digest,
+    source_manifest_digest: record.source_manifest_digest,
+  });
+}
+
+export async function bootstrapSqliteLibraryAuthority(input: {
+  readonly descriptor: SqliteLibrarySyncDescriptor;
+  readonly persistedCloudIdentity: SqliteLibraryPersistedCloudIdentity | null;
+}): Promise<SqliteLibraryAuthorityBootstrap> {
   const installationWitness = await invoke<string>(
     "get_desktop_installation_witness",
   );
-  if (!/^[a-f0-9]{64}$/.test(installationWitness)) {
+  if (!HEX_64.test(installationWitness)) {
     throw new TypeError(
       "Freed Desktop returned an invalid installation witness",
     );
   }
-  return invoke<SqliteLibraryAuthorityBootstrap>(
+  const bootstrap = await invoke<SqliteLibraryAuthorityBootstrap>(
     "bootstrap_sqlite_library_authority",
     {
       request: {
         installationWitness,
         acceptedAtMs: Date.now(),
+        revision: input.descriptor.revision,
+        itemCount: input.descriptor.itemCount,
+        sourceDigest: input.descriptor.sourceDigest,
+        materializedDigest: input.descriptor.materializedDigest,
+        persistedCloudIdentity: input.persistedCloudIdentity,
       },
     },
   );
+  return Object.freeze({
+    ...bootstrap,
+    protocol: parseSqliteLibraryAuthorityProtocol(bootstrap.protocol),
+  });
 }
 
 /** Create or replay the signed native epoch used by one exact writer CAS. */

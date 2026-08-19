@@ -16,7 +16,7 @@ const {
   mockRecordSocialOutboxAttempt: vi.fn(),
   mockSqliteLibraryCloudWriterAdmissionStatus: vi.fn(async () => ({
     configured: false,
-    allowed: true,
+    allowed: false,
     localWriterId: null as string | null,
     activeWriterId: null as string | null,
     storageEpoch: null as string | null,
@@ -115,7 +115,7 @@ describe("outbox processor", () => {
     mockIsSqliteLibraryActive.mockReset().mockReturnValue(false);
     mockSqliteLibraryCloudWriterAdmissionStatus.mockReset().mockResolvedValue({
       configured: false,
-      allowed: true,
+      allowed: false,
       localWriterId: null,
       activeWriterId: null,
       storageEpoch: null,
@@ -173,17 +173,17 @@ describe("outbox processor", () => {
     teardown();
   });
 
-  it("makes no provider attempt when another Desktop owns Library writes", async () => {
+  it("makes no provider attempt before writer admission exists", async () => {
     vi.useFakeTimers();
     mockIsSqliteLibraryActive.mockReturnValue(true);
     mockSqliteLibraryCloudWriterAdmissionStatus.mockResolvedValue({
-      configured: true,
+      configured: false,
       allowed: false,
-      localWriterId: "1".repeat(64),
-      activeWriterId: "2".repeat(64),
-      storageEpoch: "3".repeat(64),
-      controlRevision: "etag-retired",
-      verifiedAtMs: 1_000,
+      localWriterId: null,
+      activeWriterId: null,
+      storageEpoch: null,
+      controlRevision: null,
+      verifiedAtMs: null,
     });
     const like = vi.fn(async () => true);
     const markSeen = vi.fn(async () => true);
