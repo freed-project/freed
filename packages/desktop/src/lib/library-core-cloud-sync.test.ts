@@ -127,8 +127,7 @@ vi.mock("./sqlite-library", () => ({
   acknowledgePwaIntentResultOutbox: mocks.acknowledgeIntentResults,
   acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
   appendPortableSqliteLibraryItems: mocks.appendPortableItems,
-  appendSqliteLibraryFollowerResultSegment:
-    mocks.appendFollowerResultSegment,
+  appendSqliteLibraryFollowerResultSegment: mocks.appendFollowerResultSegment,
   beginPortableSqliteLibraryImport: mocks.beginPortableImport,
   bootstrapSqliteLibraryAuthority: mocks.bootstrapNative.mockImplementation(
     async () => mocks.bootstrapAuthority,
@@ -154,12 +153,10 @@ vi.mock("./sqlite-library", () => ({
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readSqliteLibrarySyncPage: mocks.readPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
-  prepareSqliteLibraryFollowerActorRequest:
-    mocks.prepareFollowerActorRequest,
+  prepareSqliteLibraryFollowerActorRequest: mocks.prepareFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate:
     mocks.readFollowerIntentCandidate,
-  readSqliteLibraryFollowerResultImportCursor:
-    mocks.readFollowerResultCursor,
+  readSqliteLibraryFollowerResultImportCursor: mocks.readFollowerResultCursor,
   readSqliteLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
   recordSqliteLibraryFollowerIntentPublication:
     mocks.recordFollowerIntentPublication,
@@ -386,11 +383,14 @@ import {
   makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
   readSqliteLibraryGoogleDrivePublicationReceipt,
+  startSqliteLibraryGoogleDriveSync,
+  stopSqliteLibraryCloudSync,
   syncSqliteLibraryFollowerGoogleDriveOnce,
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
   beforeEach(() => {
+    stopSqliteLibraryCloudSync();
     window.localStorage.clear();
     mocks.nativeState = null;
     mocks.controlRead = {
@@ -433,9 +433,11 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.discoverResultHead.mockReset().mockResolvedValue(null);
     mocks.discoverResultSegments.mockReset().mockResolvedValue([]);
     mocks.importFollowerResult.mockReset();
-    mocks.prepareFollowerIntent.mockReset().mockImplementation(
-      async (request: Record<string, unknown>) => ({ body: request }),
-    );
+    mocks.prepareFollowerIntent
+      .mockReset()
+      .mockImplementation(async (request: Record<string, unknown>) => ({
+        body: request,
+      }));
     mocks.readResultHead.mockReset();
     mocks.readDescriptor.mockReset().mockResolvedValue({
       revision: 7,
@@ -461,6 +463,57 @@ describe("SQLite Library Google Drive production wiring", () => {
       "0",
     );
     expect(isSqliteLibraryGoogleDriveSyncEnabled()).toBe(false);
+  });
+
+  it("starts the shared Primary coordinator through the stable Desktop API", async () => {
+    const resolveAccessToken = vi.fn(async () => "refreshed-token");
+
+    await expect(
+      startSqliteLibraryGoogleDriveSync({
+        accessToken: "initial-token",
+        resolveAccessToken,
+      }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(resolveAccessToken).not.toHaveBeenCalled();
+    stopSqliteLibraryCloudSync();
+  });
+
+  it("replaces a failed initial Primary coordinator without leaving a stale timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const initialFailure = new Error("Bearer secret-credential-value");
+      mocks.publish.mockRejectedValueOnce(initialFailure);
+
+      await expect(
+        startSqliteLibraryGoogleDriveSync({
+          accessToken: "initial-token",
+          resolveAccessToken: async () => "refreshed-token",
+        }),
+      ).rejects.toBe(initialFailure);
+      expect(vi.getTimerCount()).toBe(0);
+
+      stopSqliteLibraryCloudSync();
+      expect(vi.getTimerCount()).toBe(0);
+
+      await expect(
+        startSqliteLibraryGoogleDriveSync({
+          accessToken: "replacement-token",
+          resolveAccessToken: async () => "replacement-refreshed-token",
+        }),
+      ).resolves.toEqual({ status: "published", revision: 7 });
+      expect(mocks.publish).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(1);
+
+      stopSqliteLibraryCloudSync();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mocks.publish).toHaveBeenCalledTimes(2);
+    } finally {
+      stopSqliteLibraryCloudSync();
+      vi.useRealTimers();
+    }
   });
 
   it("rechecks the Desktop role before any publication work begins", async () => {

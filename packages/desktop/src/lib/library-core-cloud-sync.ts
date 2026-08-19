@@ -17,6 +17,7 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createLibraryCorePrimaryCoordinatorV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
@@ -85,8 +86,6 @@ import {
 
 const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
-const LOCAL_REVISION_POLL_MS = 15_000;
-const INBOUND_ACTOR_POLL_MS = 60_000;
 const FOLLOWER_SYNC_POLL_MS = 60_000;
 const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
@@ -132,6 +131,7 @@ interface RunningLibraryCoreCloudSync {
 }
 
 let running: RunningLibraryCoreCloudSync | null = null;
+let runningPrimaryCoordinator: { stop(): void } | null = null;
 
 /**
  * Immutable Drive sync is the production SQLite Library transport.
@@ -2095,70 +2095,68 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
   stopSqliteLibraryCloudSync();
-  const abortController = new AbortController();
-  running = { abortController, timer: null };
-  const publish = async (
-    accessToken: string,
-  ): Promise<LibraryCoreCloudPublishResult> =>
-    publishCurrentSqliteLibraryToGoogleDrive({
-      accessToken,
-      googleFetch: input.googleFetch,
-      signal: abortController.signal,
-    });
-  const initial = await publish(input.accessToken);
-  if (initial.status === "ownership_required") {
-    stopSqliteLibraryCloudSync();
-    return initial;
-  }
-  let lastInboundActorPollAt = Date.now();
-
-  const poll = async (): Promise<void> => {
-    if (
-      running?.abortController !== abortController ||
-      abortController.signal.aborted
-    )
-      return;
-    if (readLibraryCoreDesktopRole() !== "primary") {
-      stopSqliteLibraryCloudSync();
-      return;
-    }
-    try {
-      const status = await sqliteLibraryStatus();
-      const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
-      const now = Date.now();
-      if (
-        status?.active === true &&
-        isCloudState(state) &&
-        (state.lastPublishedRevision !== status.revision ||
-          now - lastInboundActorPollAt >= INBOUND_ACTOR_POLL_MS)
-      ) {
-        lastInboundActorPollAt = now;
-        const result = await publish(await input.resolveAccessToken());
-        if (result.status === "ownership_required") {
-          stopSqliteLibraryCloudSync();
-          return;
+  const coordinator = createLibraryCorePrimaryCoordinatorV1<
+    LibraryCoreCloudPublishResult,
+    ReturnType<typeof setTimeout>
+  >({
+    authority: {
+      assertPrimary: requirePrimaryLibraryCoreDesktopRole,
+      isPrimary: () => readLibraryCoreDesktopRole() === "primary",
+    },
+    durableState: {
+      async read() {
+        const status = await sqliteLibraryStatus();
+        const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+        if (status?.active !== true || !isCloudState(state)) return null;
+        return {
+          active: true,
+          localRevision: status.revision,
+          lastPublishedRevision: state.lastPublishedRevision,
+        };
+      },
+    },
+    credentials: {
+      initialAccessToken: input.accessToken,
+      resolveAccessToken: input.resolveAccessToken,
+    },
+    clock: { nowMs: Date.now },
+    scheduler: {
+      schedule(callback, delayMs) {
+        return setTimeout(() => void callback(), delayMs);
+      },
+      cancel: clearTimeout,
+    },
+    fetch: { googleFetch: input.googleFetch },
+    diagnostics: {
+      record(event) {
+        if (
+          event.kind === "failed" &&
+          event.errorClass === "scheduled_poll_failed"
+        ) {
+          console.error(
+            `[library-core-primary] ${event.errorClass}: ${event.safeDetail}`,
+          );
         }
-      }
-    } finally {
-      if (
-        running?.abortController === abortController &&
-        !abortController.signal.aborted
-      ) {
-        running.timer = setTimeout(
-          () => void poll().catch(console.error),
-          LOCAL_REVISION_POLL_MS,
-        );
-      }
-    }
-  };
-  running.timer = setTimeout(
-    () => void poll().catch(console.error),
-    LOCAL_REVISION_POLL_MS,
-  );
-  return initial;
+      },
+    },
+    publication: {
+      publish({ accessToken, googleFetch, signal }) {
+        return publishCurrentSqliteLibraryToGoogleDrive({
+          accessToken,
+          googleFetch,
+          signal,
+        });
+      },
+    },
+  });
+  runningPrimaryCoordinator = coordinator;
+  return coordinator.start();
 }
 
 export function stopSqliteLibraryCloudSync(): void {
+  const primaryCoordinator = runningPrimaryCoordinator;
+  runningPrimaryCoordinator = null;
+  primaryCoordinator?.stop();
   const current = running;
   running = null;
   current?.abortController.abort();
