@@ -24,6 +24,8 @@ const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) =>
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
 const LIBRARY_CORE_REFRESH_INTERVAL_MS = 60_000;
+const MISSING_PUBLISHED_LIBRARY_ERROR =
+  "No published SQLite Library was found in Google Drive";
 
 type StatusListener = (connected: boolean) => void;
 
@@ -189,13 +191,18 @@ async function syncGoogleDriveOnce(
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
+    const isWaitingForPrimary = message === MISSING_PUBLISHED_LIBRARY_ERROR;
     updateCloudProvider("gdrive", {
       status: "error",
       stage: "download",
       error: message,
       lastErrorAt: Date.now(),
-      statusMessage: "SQLite Library sync failed.",
-      pendingReason: "Fix the error, then use Sync now to retry.",
+      statusMessage: isWaitingForPrimary
+        ? "Waiting for the Primary Freed Desktop to publish its first Library checkpoint."
+        : "SQLite Library sync failed.",
+      pendingReason: isWaitingForPrimary
+        ? "Your Google Drive connection is working. No remote Library has been published yet."
+        : "Fix the error, then use Sync now to retry.",
     });
     recordCloudProviderEvent("gdrive", {
       kind: "error",

@@ -38,12 +38,14 @@ import {
   loadSqliteLibraryState,
   querySqliteItems,
   readSqliteItems,
+  recoverSqliteLibraryFollowerOverlay,
   sqliteLibraryStatus,
 } from "./sqlite-library";
 import {
   hasLegacyLibraryData,
   shouldBlockForLegacyLibrary,
 } from "./legacy-library-presence";
+import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
 
 export type { DocChangeEvent, DocState } from "./library-types";
 
@@ -130,6 +132,9 @@ async function ensureInitialized(): Promise<DocState> {
     );
   }
   if (!status?.active) await initializeEmptySqliteLibrary();
+  if (readLibraryCoreDesktopRole() === "follower") {
+    await recoverSqliteLibraryFollowerOverlay();
+  }
   const state = await loadSqliteLibraryState();
   lastState = state;
   registerSqliteDebugAccessors();
