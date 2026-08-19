@@ -80,6 +80,8 @@ const RELEASE_ADMISSION_PATHS = new Set([
   ".github/workflows/ci.yml",
   ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
+  ".github/workflows/tooling-nightly.yml",
+  "scripts/ci-sanitize-apt-sources.sh",
   "scripts/post-perf-comment.mjs",
   "scripts/post-perf-comment.test.mjs",
   "scripts/release-governance.test.mjs",
