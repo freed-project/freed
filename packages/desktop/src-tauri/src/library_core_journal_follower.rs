@@ -35,6 +35,17 @@ pub(crate) struct VerifiedFollowerAnchor {
     pub(crate) installed_at_ms: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StoredFollowerActorRequest {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_request_digest: String,
+    pub(crate) canonical_enrollment_request_json: String,
+    pub(crate) created_at_ms: i64,
+}
+
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
@@ -95,7 +106,226 @@ fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
     canonical_frontier(authority)
 }
 
+fn parse_frontier(value: &str) -> JournalResult<Vec<super::VerifiedCausalTip>> {
+    let parsed: Value =
+        serde_json::from_str(value).map_err(|_| invalid("follower_anchor.observed_frontier"))?;
+    let entries = parsed
+        .as_array()
+        .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?;
+    let mut tips = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let object = entry
+            .as_object()
+            .filter(|object| {
+                object.len() == 4
+                    && object.contains_key("actor_id")
+                    && object.contains_key("sequence")
+                    && object.contains_key("operation_id")
+                    && object.contains_key("chain_digest")
+            })
+            .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?;
+        tips.push(super::VerifiedCausalTip {
+            actor_id: object
+                .get("actor_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?
+                .to_string(),
+            sequence: object
+                .get("sequence")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?,
+            operation_id: object
+                .get("operation_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?
+                .to_string(),
+            chain_digest: object
+                .get("chain_digest")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("follower_anchor.observed_frontier"))?
+                .to_string(),
+        });
+    }
+    Ok(tips)
+}
+
 impl LibraryCoreJournal {
+    pub(crate) fn follower_anchor(&self) -> JournalResult<Option<VerifiedFollowerAnchor>> {
+        let stored = self
+            .connection
+            .query_row(
+                "SELECT libraryId, epoch, epochId, authorityKeyId,
+                        authorityPublicKey, observedFrontierJson,
+                        manifestObjectKey, manifestContentDigest, generation,
+                        remoteIngestSequence, remoteMaterializedDigest,
+                        writerId, controlRevision, installedAtMs
+                 FROM library_core_follower_anchor WHERE singletonId = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, i64>(8)?,
+                        row.get::<_, i64>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, i64>(13)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some(stored) = stored else {
+            return Ok(None);
+        };
+        let anchor = VerifiedFollowerAnchor {
+            authority: AcceptedAuthorityState {
+                library_id: stored.0,
+                epoch: stored.1,
+                epoch_id: stored.2,
+                authority_key_id: stored.3,
+                authority_public_key: stored.4,
+                observed_frontier: parse_frontier(&stored.5)?,
+            },
+            manifest_object_key: stored.6,
+            manifest_content_digest: stored.7,
+            generation: stored.8,
+            remote_ingest_sequence: stored.9,
+            remote_materialized_digest: stored.10,
+            writer_id: stored.11,
+            control_revision: stored.12,
+            installed_at_ms: stored.13,
+        };
+        let canonical = validate(&anchor)?;
+        if canonical != stored.5 {
+            return Err(invalid("follower_anchor.observed_frontier"));
+        }
+        Ok(Some(anchor))
+    }
+
+    pub(crate) fn follower_actor_request(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+    ) -> JournalResult<Option<StoredFollowerActorRequest>> {
+        self.connection
+            .query_row(
+                "SELECT libraryId, epochId, actorId, actorPublicKey,
+                        enrollmentRequestDigest,
+                        canonicalEnrollmentRequestJson, createdAtMs
+                 FROM library_core_follower_actor
+                 WHERE libraryId = ?1 AND epochId = ?2;",
+                params![library_id, epoch_id],
+                |row| {
+                    Ok(StoredFollowerActorRequest {
+                        library_id: row.get(0)?,
+                        epoch_id: row.get(1)?,
+                        actor_id: row.get(2)?,
+                        actor_public_key: row.get(3)?,
+                        enrollment_request_digest: row.get(4)?,
+                        canonical_enrollment_request_json: row.get(5)?,
+                        created_at_ms: row.get(6)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn store_follower_actor_request(
+        &mut self,
+        request: &StoredFollowerActorRequest,
+    ) -> JournalResult<StoredFollowerActorRequest> {
+        if !is_lower_hex(&request.library_id, 32)
+            || !is_lower_hex(&request.epoch_id, 32)
+            || !is_lower_hex(&request.actor_id, 32)
+            || !is_lower_hex(&request.actor_public_key, 32)
+            || !is_lower_hex(&request.enrollment_request_digest, 32)
+            || request.canonical_enrollment_request_json.is_empty()
+            || request.canonical_enrollment_request_json.len() > 65_536
+            || !(0..=MAX_SAFE_INTEGER).contains(&request.created_at_ms)
+        {
+            return Err(invalid("follower_actor_request"));
+        }
+        let parsed: Value = serde_json::from_str(&request.canonical_enrollment_request_json)
+            .map_err(|_| invalid("follower_actor_request.canonical_json"))?;
+        let canonical = encode_canonical_value(&parsed, 65_536)
+            .map_err(|_| invalid("follower_actor_request.canonical_json"))?;
+        if canonical != request.canonical_enrollment_request_json.as_bytes() {
+            return Err(invalid("follower_actor_request.canonical_json"));
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let anchor_matches: bool = transaction.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM library_core_follower_anchor
+               WHERE singletonId = 1 AND libraryId = ?1 AND epochId = ?2
+             );",
+            params![request.library_id, request.epoch_id],
+            |row| row.get(0),
+        )?;
+        if !anchor_matches {
+            return Err(invalid("follower_actor_request.anchor"));
+        }
+        let existing = transaction
+            .query_row(
+                "SELECT actorId, actorPublicKey, enrollmentRequestDigest,
+                        canonicalEnrollmentRequestJson, createdAtMs
+                 FROM library_core_follower_actor
+                 WHERE libraryId = ?1 AND epochId = ?2;",
+                params![request.library_id, request.epoch_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some(existing) = existing {
+            if existing
+                != (
+                    request.actor_id.clone(),
+                    request.actor_public_key.clone(),
+                    request.enrollment_request_digest.clone(),
+                    request.canonical_enrollment_request_json.clone(),
+                    request.created_at_ms,
+                )
+            {
+                return Err(invalid("follower_actor_request.replay"));
+            }
+        } else {
+            transaction.execute(
+                "INSERT INTO library_core_follower_actor (
+                   libraryId, epochId, actorId, actorPublicKey,
+                   enrollmentRequestDigest, canonicalEnrollmentRequestJson,
+                   createdAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+                params![
+                    request.library_id,
+                    request.epoch_id,
+                    request.actor_id,
+                    request.actor_public_key,
+                    request.enrollment_request_digest,
+                    request.canonical_enrollment_request_json,
+                    request.created_at_ms,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(request.clone())
+    }
+
     /// Install or advance one verified immutable-checkpoint anchor.
     ///
     /// A different Library is never adopted implicitly. An epoch transition is
@@ -301,5 +531,36 @@ mod tests {
         let mut changed_replay = anchor(2, 20);
         changed_replay.manifest_content_digest = "9".repeat(64);
         assert!(journal.install_follower_anchor(&changed_replay).is_err());
+    }
+
+    #[test]
+    fn actor_request_is_durable_and_changed_response_loss_replay_is_refused() {
+        let mut journal = LibraryCoreJournal::open_in_memory().unwrap();
+        let expected_anchor = anchor(1, 10);
+        journal.install_follower_anchor(&expected_anchor).unwrap();
+        assert_eq!(journal.follower_anchor().unwrap(), Some(expected_anchor));
+        let request = StoredFollowerActorRequest {
+            library_id: "a".repeat(64),
+            epoch_id: "b".repeat(64),
+            actor_id: "6".repeat(64),
+            actor_public_key: "7".repeat(64),
+            enrollment_request_digest: "8".repeat(64),
+            canonical_enrollment_request_json: "{}".to_string(),
+            created_at_ms: 2_000,
+        };
+        assert_eq!(
+            journal.store_follower_actor_request(&request).unwrap(),
+            request
+        );
+        assert_eq!(
+            journal
+                .follower_actor_request(&"a".repeat(64), &"b".repeat(64))
+                .unwrap(),
+            Some(request.clone())
+        );
+
+        let mut changed = request;
+        changed.created_at_ms += 1;
+        assert!(journal.store_follower_actor_request(&changed).is_err());
     }
 }

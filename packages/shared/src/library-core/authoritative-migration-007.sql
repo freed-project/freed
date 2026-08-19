@@ -82,6 +82,7 @@ CREATE TABLE library_core_follower_actor (
     OR enrolledAtMs BETWEEN createdAtMs AND 9007199254740991
   ),
   PRIMARY KEY (libraryId, epochId, actorId),
+  UNIQUE (libraryId, epochId),
   FOREIGN KEY (libraryId, epochId)
     REFERENCES library_core_follower_anchor (libraryId, epochId)
     ON DELETE CASCADE,

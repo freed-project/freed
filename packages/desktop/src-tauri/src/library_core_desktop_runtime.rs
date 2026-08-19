@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 use super::library_core_actor_enrollment::{
-    countersign_pwa_actor_enrollment_request, enroll_desktop_actor, EnrollmentAuthority,
-    PlatformActorKeyStore,
+    countersign_pwa_actor_enrollment_request, enroll_desktop_actor,
+    prepare_follower_actor_enrollment_request, EnrollmentAuthority, PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
     establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
@@ -25,7 +25,7 @@ use super::library_core_authority_genesis::{
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, IntentResultOutboxEntry, LibraryCoreJournal,
-    VerifiedCausalTip, VerifiedFollowerAnchor,
+    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
 };
 use super::library_core_journal_runtime::journal_path;
 
@@ -256,6 +256,24 @@ pub(super) struct DesktopLibraryFollowerAnchor {
     remote_materialized_digest: String,
     writer_id: String,
     control_revision: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareFollowerActorRequest {
+    created_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_request_digest: String,
+    canonical_enrollment_request_json: String,
+    created_at_ms: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1166,6 +1184,76 @@ pub(super) fn install_sqlite_library_follower_anchor(
         writer_id: anchor.writer_id,
         control_revision: anchor.control_revision,
     })
+}
+
+fn follower_actor_request_response(
+    request: StoredFollowerActorRequest,
+) -> DesktopLibraryFollowerActorRequest {
+    DesktopLibraryFollowerActorRequest {
+        library_id: request.library_id,
+        epoch_id: request.epoch_id,
+        actor_id: request.actor_id,
+        actor_public_key: request.actor_public_key,
+        enrollment_request_digest: request.enrollment_request_digest,
+        canonical_enrollment_request_json: request.canonical_enrollment_request_json,
+        created_at_ms: request.created_at_ms,
+    }
+}
+
+/// Prepare one stable actor proof for the active follower anchor.
+///
+/// The exact request is committed before it is returned. A response-loss retry
+/// returns those same bytes rather than signing a second request with a new
+/// timestamp. No authority signature, writer admission, or provider I/O is
+/// available on this path.
+#[tauri::command]
+pub(super) fn prepare_sqlite_library_follower_actor_request(
+    app: tauri::AppHandle,
+    request: PrepareFollowerActorRequest,
+) -> Result<DesktopLibraryFollowerActorRequest, String> {
+    if request.created_at_ms < 0 {
+        return Err("SQLite Library follower actor request time is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let anchor = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library has no verified follower anchor".to_string())?;
+    if let Some(existing) = journal
+        .follower_actor_request(&anchor.authority.library_id, &anchor.authority.epoch_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(follower_actor_request_response(existing));
+    }
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    let prepared = prepare_follower_actor_enrollment_request(
+        &EnrollmentAuthority {
+            library_id: anchor.authority.library_id.clone(),
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id.clone(),
+            authority_key_id: anchor.authority.authority_key_id,
+            installation_witness,
+        },
+        &PlatformActorKeyStore,
+        request.created_at_ms,
+    )?;
+    let stored = journal
+        .store_follower_actor_request(&StoredFollowerActorRequest {
+            library_id: anchor.authority.library_id,
+            epoch_id: anchor.authority.epoch_id,
+            actor_id: prepared.actor_id,
+            actor_public_key: prepared.actor_public_key,
+            enrollment_request_digest: prepared.enrollment_request_digest,
+            canonical_enrollment_request_json: prepared.canonical_enrollment_request_json,
+            created_at_ms: request.created_at_ms,
+        })
+        .map_err(|error| format!("SQLite Library could not store follower actor: {error}"))?;
+    Ok(follower_actor_request_response(stored))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.

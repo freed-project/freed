@@ -155,6 +155,14 @@ struct ActorIdentity {
     actor_incarnation_nonce: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreparedActorEnrollmentRequest {
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_request_digest: String,
+    pub(crate) canonical_enrollment_request_json: String,
+}
+
 fn actor_identity(
     authority: &EnrollmentAuthority,
     key_pair: &Ed25519KeyPair,
@@ -182,13 +190,12 @@ fn actor_identity(
 /// The shape is fixed by `library_core_journal_enrollment_verifier`, which
 /// rejects any object with an unexpected or missing key, so this is written to
 /// match it exactly rather than to be convenient.
-fn build_certificate(
+fn build_certificate_body(
     authority: &EnrollmentAuthority,
     identity: &ActorIdentity,
     actor_key_pair: &Ed25519KeyPair,
-    authority_key_pair: &Ed25519KeyPair,
     created_at_ms: i64,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Value, String), String> {
     if created_at_ms < 0 {
         return Err("Library Core enrollment time is invalid".to_string());
     }
@@ -227,6 +234,18 @@ fn build_certificate(
     });
 
     let certificate_digest = digest_value("actor-enrollment-certificate", &certificate_body)?;
+    Ok((certificate_body, certificate_digest))
+}
+
+fn build_certificate(
+    authority: &EnrollmentAuthority,
+    identity: &ActorIdentity,
+    actor_key_pair: &Ed25519KeyPair,
+    authority_key_pair: &Ed25519KeyPair,
+    created_at_ms: i64,
+) -> Result<Vec<u8>, String> {
+    let (certificate_body, certificate_digest) =
+        build_certificate_body(authority, identity, actor_key_pair, created_at_ms)?;
     let authority_signature_input = encode_signature_input(
         "actor-enrollment-authority",
         &json!({ "certificate_digest": certificate_digest }),
@@ -244,6 +263,36 @@ fn build_certificate(
 
     encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES)
         .map_err(|_| "Library Core enrollment certificate is not canonically encodable".to_string())
+}
+
+/// Mint or replay the proof-only request for a non-authoritative follower.
+///
+/// The actor key never leaves the platform vault. This request proves key
+/// possession only. It cannot enroll itself, grant writer admission, or make a
+/// canonical change until the remote authority countersigns it.
+pub(crate) fn prepare_follower_actor_enrollment_request(
+    authority: &EnrollmentAuthority,
+    actor_store: &dyn ActorKeyStore,
+    created_at_ms: i64,
+) -> Result<PreparedActorEnrollmentRequest, String> {
+    let actor_key_pair = load_or_create_actor_key_pair(actor_store, &authority.library_id)?;
+    let identity = actor_identity(authority, &actor_key_pair)?;
+    let (certificate_body, certificate_digest) =
+        build_certificate_body(authority, &identity, &actor_key_pair, created_at_ms)?;
+    let request = json!({
+        "certificate_body": certificate_body,
+        "certificate_digest": certificate_digest,
+    });
+    let canonical = encode_canonical_value(&request, MAX_CERTIFICATE_BYTES)
+        .map_err(|_| "Library Core actor enrollment request is not canonical".to_string())?;
+    let canonical_enrollment_request_json = String::from_utf8(canonical)
+        .map_err(|_| "Library Core actor enrollment request is not UTF-8".to_string())?;
+    Ok(PreparedActorEnrollmentRequest {
+        actor_id: identity.actor_id,
+        actor_public_key: identity.actor_public_key,
+        enrollment_request_digest: certificate_digest,
+        canonical_enrollment_request_json,
+    })
 }
 
 /// Where the actor signing key is kept. Production is the platform vault;
@@ -638,6 +687,26 @@ mod tests {
             lower_hex(second.public_key().as_ref())
         );
         assert_eq!(*store.stored.borrow(), minted);
+    }
+
+    #[test]
+    fn follower_request_proves_actor_possession_without_granting_authority() {
+        let (_directory, _journal, authority) = journal_with_authority();
+        let store = MemoryActorKeyStore::default();
+
+        let prepared =
+            prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
+        let value: Value =
+            serde_json::from_str(&prepared.canonical_enrollment_request_json).unwrap();
+
+        assert_eq!(
+            value.get("certificate_digest").and_then(Value::as_str),
+            Some(prepared.enrollment_request_digest.as_str())
+        );
+        assert!(value.get("certificate_body").is_some());
+        assert!(value.get("authority_signature").is_none());
+        assert!(is_lower_sha256(&prepared.actor_public_key));
+        assert!(is_lower_sha256(&prepared.actor_id));
     }
 
     #[test]
