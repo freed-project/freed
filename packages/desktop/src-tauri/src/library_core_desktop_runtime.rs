@@ -17,7 +17,8 @@ use tauri::Manager;
 
 use super::library_core_actor_enrollment::{
     countersign_pwa_actor_enrollment_request, enroll_desktop_actor,
-    prepare_follower_actor_enrollment_request, EnrollmentAuthority, PlatformActorKeyStore,
+    prepare_follower_actor_enrollment_request, sign_follower_operation_digest,
+    EnrollmentAuthority, PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
     establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
@@ -293,6 +294,23 @@ pub(super) struct DesktopLibraryFollowerActorEnrollment {
     enrollment_certificate_digest: String,
     actor_chain_genesis: String,
     enrolled_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SignFollowerOperationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    operation_signing_body_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerOperationSignature {
+    actor_id: String,
+    operation_signing_body_digest: String,
+    signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1315,6 +1333,43 @@ pub(super) fn install_sqlite_library_follower_actor_enrollment(
         )
         .map_err(|error| format!("SQLite Library refused follower enrollment: {error}"))?;
     Ok(follower_actor_enrollment_response(enrollment))
+}
+
+/// Sign one finalized follower operation body digest with the native actor key.
+///
+/// The caller still has to submit the complete canonical transaction to the
+/// native outbox, where sequence, chain, schema, and operation semantics are
+/// reverified before anything becomes durable.
+#[tauri::command]
+pub(super) fn sign_sqlite_library_follower_operation(
+    app: tauri::AppHandle,
+    request: SignFollowerOperationRequest,
+) -> Result<DesktopLibraryFollowerOperationSignature, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let enrollment = journal
+        .follower_actor_enrollment(
+            &request.library_id,
+            &request.epoch_id,
+            &request.actor_id,
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library follower actor is not enrolled".to_string())?;
+    let signature = sign_follower_operation_digest(
+        &PlatformActorKeyStore,
+        &request.library_id,
+        &enrollment.actor_public_key,
+        &request.operation_signing_body_digest,
+    )?;
+    Ok(DesktopLibraryFollowerOperationSignature {
+        actor_id: request.actor_id,
+        operation_signing_body_digest: request.operation_signing_body_digest,
+        signature,
+    })
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.

@@ -24,7 +24,8 @@
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_authority_genesis::load_established_authority_key_pair;
 use crate::library_core_canonical::{
-    encode_canonical_value, encode_operation_digest_input, encode_signature_input,
+    encode_canonical_value, encode_operation_digest_input, encode_operation_signature_input,
+    encode_signature_input,
 };
 use crate::library_core_journal::{ActorState, LibraryCoreJournal};
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
@@ -337,6 +338,46 @@ fn load_or_create_actor_key_pair(
     }
     Ed25519KeyPair::from_pkcs8(&readback)
         .map_err(|_| "Library Core actor signing key readback is corrupt".to_string())
+}
+
+fn load_actor_key_pair(
+    store: &dyn ActorKeyStore,
+    library_id: &str,
+) -> Result<Ed25519KeyPair, String> {
+    let bytes = store
+        .load(library_id)?
+        .ok_or_else(|| "Library Core actor signing key is missing".to_string())?;
+    Ed25519KeyPair::from_pkcs8(&bytes)
+        .map_err(|_| "Library Core actor signing key is corrupt".to_string())
+}
+
+/// Sign one already-canonicalized operation body digest for this follower.
+///
+/// The native key is opened only for its exact Library and must still match
+/// the enrolled public key. The returned signature is domain-separated for a
+/// Library Core operation envelope and grants no cloud publication by itself.
+pub(crate) fn sign_follower_operation_digest(
+    store: &dyn ActorKeyStore,
+    library_id: &str,
+    expected_actor_public_key: &str,
+    operation_signing_body_digest: &str,
+) -> Result<String, String> {
+    if !is_lower_sha256(library_id)
+        || !is_lower_sha256(expected_actor_public_key)
+        || !is_lower_sha256(operation_signing_body_digest)
+    {
+        return Err("Library Core follower operation signing request is invalid".to_string());
+    }
+    let key_pair = load_actor_key_pair(store, library_id)?;
+    if lower_hex(key_pair.public_key().as_ref()) != expected_actor_public_key {
+        return Err("Library Core follower actor signing key changed".to_string());
+    }
+    let input = encode_operation_signature_input(
+        &json!({ "operation_signing_body_digest": operation_signing_body_digest }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core follower operation signature input is invalid".to_string())?;
+    Ok(lower_hex(key_pair.sign(&input).as_ref()))
 }
 
 fn enroll_with_key_pairs(
@@ -707,6 +748,26 @@ mod tests {
         assert!(value.get("authority_signature").is_none());
         assert!(is_lower_sha256(&prepared.actor_public_key));
         assert!(is_lower_sha256(&prepared.actor_id));
+
+        let digest = "9".repeat(64);
+        let signature = sign_follower_operation_digest(
+            &store,
+            &authority.library_id,
+            &prepared.actor_public_key,
+            &digest,
+        )
+        .unwrap();
+        let signature_input = encode_operation_signature_input(
+            &json!({ "operation_signing_body_digest": digest }),
+            MAX_CERTIFICATE_BYTES,
+        )
+        .unwrap();
+        assert!(crate::library_core_ed25519::verify_library_core_ed25519(
+            &prepared.actor_public_key,
+            &signature,
+            &signature_input,
+        )
+        .unwrap());
     }
 
     #[test]

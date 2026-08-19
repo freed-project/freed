@@ -250,6 +250,39 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
+    pub(crate) fn follower_actor_enrollment(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<StoredFollowerActorEnrollment>> {
+        self.connection
+            .query_row(
+                "SELECT libraryId, epochId, actorId, actorPublicKey,
+                        enrollmentCertificateDigest,
+                        canonicalEnrollmentCertificateJson, actorChainGenesis,
+                        enrolledAtMs
+                 FROM library_core_follower_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+                   AND enrollmentCertificateDigest IS NOT NULL;",
+                params![library_id, epoch_id, actor_id],
+                |row| {
+                    Ok(StoredFollowerActorEnrollment {
+                        library_id: row.get(0)?,
+                        epoch_id: row.get(1)?,
+                        actor_id: row.get(2)?,
+                        actor_public_key: row.get(3)?,
+                        enrollment_certificate_digest: row.get(4)?,
+                        canonical_enrollment_certificate_json: row.get(5)?,
+                        actor_chain_genesis: row.get(6)?,
+                        enrolled_at_ms: row.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub(crate) fn store_follower_actor_request(
         &mut self,
         request: &StoredFollowerActorRequest,
