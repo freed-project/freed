@@ -163,6 +163,35 @@ export interface SqliteLibraryFollowerRuntimeStatus {
   readonly importedResultCount: number;
 }
 
+export interface SqliteLibraryFollowerCheckpointActor {
+  readonly actor_id: string;
+  readonly accepted_sequence: number;
+  readonly accepted_operation_id: string | null;
+  readonly accepted_chain_digest: string;
+  readonly enrollment_certificate_digest: string;
+}
+
+export interface SqliteLibraryFollowerAnchorInput {
+  readonly authority: SqliteLibraryAcceptedAuthority;
+  readonly manifestObjectKey: string;
+  readonly manifestTransportObjectId: string;
+  readonly manifestContentDigest: string;
+  readonly generation: number;
+  readonly remoteIngestSequence: number;
+  readonly remoteMaterializedDigest: string;
+  readonly writerId: string;
+  readonly controlRevision: string;
+  readonly checkpointActor: SqliteLibraryFollowerCheckpointActor | null;
+  readonly installedAtMs: number;
+}
+
+export interface SqliteLibraryFollowerOverlayReplayReceipt {
+  readonly transactionCount: number;
+  readonly operationCount: number;
+  readonly materializedRowCount: number;
+  readonly revisionAdvanced: boolean;
+}
+
 export interface SqliteLibraryFollowerOperationSignature {
   readonly actorId: string;
   readonly operationSigningBodyDigest: string;
@@ -186,6 +215,12 @@ export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibrar
 export async function readSqliteLibraryFollowerRuntimeStatus(): Promise<SqliteLibraryFollowerRuntimeStatus> {
   return invoke<SqliteLibraryFollowerRuntimeStatus>(
     "sqlite_library_follower_runtime_status",
+  );
+}
+
+export async function recoverSqliteLibraryFollowerOverlay(): Promise<SqliteLibraryFollowerOverlayReplayReceipt> {
+  return invoke<SqliteLibraryFollowerOverlayReplayReceipt>(
+    "recover_sqlite_library_follower_overlay",
   );
 }
 
@@ -849,6 +884,11 @@ export async function sqliteLibraryCloudWriterAdmissionStatus(): Promise<SqliteL
 export interface PortableSqliteLibraryImportRequest {
   expectedItemCount: number;
   shell: unknown;
+  sourceCheckpoint?: Readonly<{
+    objectKey: string;
+    contentDigest: string;
+    transportObjectId: string;
+  }>;
   sourceDigest: string;
   sourceGeneration: number;
   sourceRevision: number;
@@ -1169,6 +1209,10 @@ export async function beginPortableSqliteLibraryImport(
       expectedItemCount: request.expectedItemCount,
       shellJson: encodeJson(request.shell),
       sourceDigest: request.sourceDigest,
+      sourceCheckpointObjectKey: request.sourceCheckpoint?.objectKey,
+      sourceCheckpointContentDigest: request.sourceCheckpoint?.contentDigest,
+      sourceCheckpointTransportObjectId:
+        request.sourceCheckpoint?.transportObjectId,
       sourceGeneration: request.sourceGeneration,
       sourceRevision: request.sourceRevision,
       startedAtMs: Date.now(),
@@ -1196,9 +1240,12 @@ export async function appendPortableSqliteLibraryItems(
   }
 }
 
-export async function finalizePortableSqliteLibraryImport(): Promise<SqliteStatus> {
+export async function finalizePortableSqliteLibraryImport(
+  followerAnchor?: SqliteLibraryFollowerAnchorInput,
+): Promise<SqliteStatus> {
   const status = await invoke<SqliteStatus>("finalize_sqlite_library_import", {
     activatedAtMs: Date.now(),
+    followerAnchor,
   });
   sqliteActive = status.active;
   return status;

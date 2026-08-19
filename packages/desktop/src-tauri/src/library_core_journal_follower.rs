@@ -11,7 +11,7 @@ use super::{
     MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use crate::library_core_canonical::encode_canonical_value;
-use rusqlite::{params, OptionalExtension, Result as SqlResult, TransactionBehavior};
+use rusqlite::{params, OptionalExtension, Result as SqlResult, Transaction, TransactionBehavior};
 use serde_json::{json, Value};
 
 const MAX_CONTROL_REVISION_BYTES: usize = 512;
@@ -35,6 +35,7 @@ pub(crate) struct VerifiedFollowerCheckpointActor {
 pub(crate) struct VerifiedFollowerAnchor {
     pub(crate) authority: AcceptedAuthorityState,
     pub(crate) manifest_object_key: String,
+    pub(crate) manifest_transport_object_id: String,
     pub(crate) manifest_content_digest: String,
     pub(crate) generation: i64,
     pub(crate) remote_ingest_sequence: i64,
@@ -239,6 +240,8 @@ fn validate(anchor: &VerifiedFollowerAnchor) -> JournalResult<String> {
         || !is_lower_hex(&authority.authority_public_key, 32)
         || anchor.manifest_object_key.is_empty()
         || anchor.manifest_object_key.len() > MAX_MANIFEST_OBJECT_KEY_BYTES
+        || anchor.manifest_transport_object_id.is_empty()
+        || anchor.manifest_transport_object_id.len() > MAX_MANIFEST_OBJECT_KEY_BYTES
         || !is_lower_hex(&anchor.manifest_content_digest, 32)
         || !(0..=MAX_SAFE_INTEGER).contains(&anchor.generation)
         || !(0..=MAX_SAFE_INTEGER).contains(&anchor.remote_ingest_sequence)
@@ -438,7 +441,8 @@ impl LibraryCoreJournal {
             .query_row(
                 "SELECT libraryId, epoch, epochId, authorityKeyId,
                         authorityPublicKey, observedFrontierJson,
-                        manifestObjectKey, manifestContentDigest, generation,
+                        manifestObjectKey, manifestTransportObjectId,
+                        manifestContentDigest, generation,
                         remoteIngestSequence, remoteMaterializedDigest,
                         writerId, controlRevision, checkpointActorId,
                         checkpointAcceptedSequence,
@@ -456,23 +460,27 @@ impl LibraryCoreJournal {
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
                         row.get::<_, String>(6)?,
-                        row.get::<_, String>(7)?,
-                        row.get::<_, i64>(8)?,
+                        row.get::<_, Option<String>>(7)?,
+                        row.get::<_, String>(8)?,
                         row.get::<_, i64>(9)?,
-                        row.get::<_, String>(10)?,
+                        row.get::<_, i64>(10)?,
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
-                        row.get::<_, Option<String>>(13)?,
-                        row.get::<_, Option<i64>>(14)?,
-                        row.get::<_, Option<String>>(15)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, Option<String>>(14)?,
+                        row.get::<_, Option<i64>>(15)?,
                         row.get::<_, Option<String>>(16)?,
                         row.get::<_, Option<String>>(17)?,
-                        row.get::<_, i64>(18)?,
+                        row.get::<_, Option<String>>(18)?,
+                        row.get::<_, i64>(19)?,
                     ))
                 },
             )
             .optional()?;
         let Some(stored) = stored else {
+            return Ok(None);
+        };
+        let Some(manifest_transport_object_id) = stored.7 else {
             return Ok(None);
         };
         let anchor = VerifiedFollowerAnchor {
@@ -485,16 +493,17 @@ impl LibraryCoreJournal {
                 observed_frontier: parse_frontier(&stored.5)?,
             },
             manifest_object_key: stored.6,
-            manifest_content_digest: stored.7,
-            generation: stored.8,
-            remote_ingest_sequence: stored.9,
-            remote_materialized_digest: stored.10,
-            writer_id: stored.11,
-            control_revision: stored.12,
+            manifest_transport_object_id,
+            manifest_content_digest: stored.8,
+            generation: stored.9,
+            remote_ingest_sequence: stored.10,
+            remote_materialized_digest: stored.11,
+            writer_id: stored.12,
+            control_revision: stored.13,
             checkpoint_actor: checkpoint_actor_from_storage(
-                stored.13, stored.14, stored.15, stored.16, stored.17,
+                stored.14, stored.15, stored.16, stored.17, stored.18,
             )?,
-            installed_at_ms: stored.18,
+            installed_at_ms: stored.19,
         };
         let canonical = validate(&anchor)?;
         if canonical != stored.5 {
@@ -1791,6 +1800,18 @@ impl LibraryCoreJournal {
         &mut self,
         anchor: &VerifiedFollowerAnchor,
     ) -> JournalResult<VerifiedFollowerAnchor> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        Self::install_follower_anchor_in_transaction(&transaction, anchor)?;
+        transaction.commit()?;
+        Ok(anchor.clone())
+    }
+
+    pub(crate) fn install_follower_anchor_in_transaction(
+        transaction: &Transaction<'_>,
+        anchor: &VerifiedFollowerAnchor,
+    ) -> JournalResult<()> {
         let observed_frontier_json = validate(anchor)?;
         let checkpoint_actor_id = anchor
             .checkpoint_actor
@@ -1812,13 +1833,11 @@ impl LibraryCoreJournal {
             .checkpoint_actor
             .as_ref()
             .map(|actor| actor.enrollment_certificate_digest.as_str());
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let existing = transaction
             .query_row(
                 "SELECT libraryId, epoch, epochId, manifestObjectKey,
-                        manifestContentDigest, generation, remoteIngestSequence,
+                        manifestTransportObjectId, manifestContentDigest,
+                        generation, remoteIngestSequence,
                         remoteMaterializedDigest, writerId, checkpointActorId,
                         checkpointAcceptedSequence,
                         checkpointAcceptedOperationId,
@@ -1832,16 +1851,17 @@ impl LibraryCoreJournal {
                         row.get::<_, i64>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, i64>(5)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, String>(5)?,
                         row.get::<_, i64>(6)?,
-                        row.get::<_, String>(7)?,
+                        row.get::<_, i64>(7)?,
                         row.get::<_, String>(8)?,
-                        row.get::<_, Option<String>>(9)?,
-                        row.get::<_, Option<i64>>(10)?,
-                        row.get::<_, Option<String>>(11)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, Option<String>>(10)?,
+                        row.get::<_, Option<i64>>(11)?,
                         row.get::<_, Option<String>>(12)?,
                         row.get::<_, Option<String>>(13)?,
+                        row.get::<_, Option<String>>(14)?,
                     ))
                 },
             )
@@ -1849,11 +1869,11 @@ impl LibraryCoreJournal {
 
         if let Some(existing) = existing.as_ref() {
             let existing_checkpoint_actor = checkpoint_actor_from_storage(
-                existing.9.clone(),
-                existing.10,
-                existing.11.clone(),
+                existing.10.clone(),
+                existing.11,
                 existing.12.clone(),
                 existing.13.clone(),
+                existing.14.clone(),
             )?;
             if existing.0 != anchor.authority.library_id {
                 return Err(invalid("follower_anchor.library_id"));
@@ -1864,17 +1884,20 @@ impl LibraryCoreJournal {
                 return Err(invalid("follower_anchor.epoch"));
             }
             if anchor.authority.epoch == existing.1 {
-                if anchor.writer_id != existing.8
-                    || anchor.generation < existing.5
-                    || anchor.remote_ingest_sequence < existing.6
+                if anchor.writer_id != existing.9
+                    || anchor.generation < existing.6
+                    || anchor.remote_ingest_sequence < existing.7
                 {
                     return Err(invalid("follower_anchor.checkpoint_order"));
                 }
-                if anchor.generation == existing.5
+                if anchor.generation == existing.6
                     && (anchor.manifest_object_key != existing.3
-                        || anchor.manifest_content_digest != existing.4
-                        || anchor.remote_ingest_sequence != existing.6
-                        || anchor.remote_materialized_digest != existing.7)
+                        || existing.4.as_deref().is_some_and(|object_id| {
+                            object_id != anchor.manifest_transport_object_id
+                        })
+                        || anchor.manifest_content_digest != existing.5
+                        || anchor.remote_ingest_sequence != existing.7
+                        || anchor.remote_materialized_digest != existing.8)
                 {
                     return Err(invalid("follower_anchor.checkpoint_identity"));
                 }
@@ -1895,7 +1918,7 @@ impl LibraryCoreJournal {
                         }
                     }
                 }
-                if anchor.generation == existing.5
+                if anchor.generation == existing.6
                     && anchor.checkpoint_actor != existing_checkpoint_actor
                 {
                     return Err(invalid("follower_anchor.checkpoint_identity"));
@@ -1914,15 +1937,16 @@ impl LibraryCoreJournal {
                 "UPDATE library_core_follower_anchor
                  SET epoch = ?1, epochId = ?2, authorityKeyId = ?3,
                      authorityPublicKey = ?4, observedFrontierJson = ?5,
-                     manifestObjectKey = ?6, manifestContentDigest = ?7,
-                     generation = ?8, remoteIngestSequence = ?9,
-                     remoteMaterializedDigest = ?10, writerId = ?11,
-                     controlRevision = ?12, checkpointActorId = ?13,
-                     checkpointAcceptedSequence = ?14,
-                     checkpointAcceptedOperationId = ?15,
-                     checkpointAcceptedChainDigest = ?16,
-                     checkpointEnrollmentCertificateDigest = ?17,
-                     installedAtMs = ?18
+                     manifestObjectKey = ?6, manifestTransportObjectId = ?7,
+                     manifestContentDigest = ?8, generation = ?9,
+                     remoteIngestSequence = ?10,
+                     remoteMaterializedDigest = ?11, writerId = ?12,
+                     controlRevision = ?13, checkpointActorId = ?14,
+                     checkpointAcceptedSequence = ?15,
+                     checkpointAcceptedOperationId = ?16,
+                     checkpointAcceptedChainDigest = ?17,
+                     checkpointEnrollmentCertificateDigest = ?18,
+                     installedAtMs = ?19
                  WHERE singletonId = 1;",
                 params![
                     anchor.authority.epoch,
@@ -1931,6 +1955,7 @@ impl LibraryCoreJournal {
                     anchor.authority.authority_public_key,
                     observed_frontier_json,
                     anchor.manifest_object_key,
+                    anchor.manifest_transport_object_id,
                     anchor.manifest_content_digest,
                     anchor.generation,
                     anchor.remote_ingest_sequence,
@@ -1950,14 +1975,14 @@ impl LibraryCoreJournal {
                 "INSERT INTO library_core_follower_anchor (
                    singletonId, libraryId, epoch, epochId, authorityKeyId,
                    authorityPublicKey, observedFrontierJson, manifestObjectKey,
-                   manifestContentDigest, generation, remoteIngestSequence,
+                   manifestTransportObjectId, manifestContentDigest, generation, remoteIngestSequence,
                    remoteMaterializedDigest, writerId, controlRevision,
                    checkpointActorId, checkpointAcceptedSequence,
                    checkpointAcceptedOperationId,
                    checkpointAcceptedChainDigest,
                    checkpointEnrollmentCertificateDigest, installedAtMs
                  ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-                           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19);",
+                           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20);",
                 params![
                     anchor.authority.library_id,
                     anchor.authority.epoch,
@@ -1966,6 +1991,7 @@ impl LibraryCoreJournal {
                     anchor.authority.authority_public_key,
                     observed_frontier_json,
                     anchor.manifest_object_key,
+                    anchor.manifest_transport_object_id,
                     anchor.manifest_content_digest,
                     anchor.generation,
                     anchor.remote_ingest_sequence,
@@ -1981,8 +2007,7 @@ impl LibraryCoreJournal {
                 ],
             )?;
         }
-        transaction.commit()?;
-        Ok(anchor.clone())
+        Ok(())
     }
 }
 
@@ -2009,6 +2034,7 @@ mod tests {
                 }],
             },
             manifest_object_key: format!("manifest-{generation}"),
+            manifest_transport_object_id: format!("drive-object-{generation}"),
             manifest_content_digest: if generation == 1 {
                 "1".repeat(64)
             } else {

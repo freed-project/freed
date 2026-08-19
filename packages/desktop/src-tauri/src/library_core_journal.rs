@@ -34,12 +34,12 @@ pub(crate) use follower::{
     VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 9;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 10;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 8] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 9] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -71,6 +71,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 8] = [
     (
         9,
         include_str!("../../../shared/src/library-core/authoritative-migration-009.sql"),
+    ),
+    (
+        10,
+        include_str!("../../../shared/src/library-core/authoritative-migration-010.sql"),
     ),
 ];
 
@@ -3276,7 +3280,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_v7_follower_anchor_without_inventing_a_checkpoint_actor_tip() {
+    fn upgrades_v7_follower_anchor_without_inventing_checkpoint_receipts() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("library-core.sqlite");
         let mut connection = Connection::open(&path).expect("create v7 database");
@@ -3309,21 +3313,19 @@ mod tests {
         drop(connection);
 
         let journal = LibraryCoreJournal::open(&path).expect("upgrade v7 journal");
-        let stored: (String, Option<String>, Option<i64>) = journal
+        let stored: (String, Option<String>, Option<String>, Option<i64>) = journal
             .connection
             .query_row(
-                "SELECT manifestObjectKey, checkpointActorId,
+                "SELECT manifestObjectKey, manifestTransportObjectId,
+                        checkpointActorId,
                         checkpointAcceptedSequence
                  FROM library_core_follower_anchor WHERE singletonId = 1;",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .expect("read upgraded follower anchor");
-        assert_eq!(stored, ("manifest-1".to_string(), None, None));
-        assert_eq!(
-            journal.follower_anchor().unwrap().unwrap().checkpoint_actor,
-            None
-        );
+        assert_eq!(stored, ("manifest-1".to_string(), None, None, None));
+        assert_eq!(journal.follower_anchor().unwrap(), None);
     }
 
     #[test]

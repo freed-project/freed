@@ -783,6 +783,7 @@ mod tests {
                 &crate::library_core_journal::VerifiedFollowerAnchor {
                     authority: accepted,
                     manifest_object_key: "manifest".to_string(),
+                    manifest_transport_object_id: "drive-object".to_string(),
                     manifest_content_digest: "1".repeat(64),
                     generation: 1,
                     remote_ingest_sequence: 0,

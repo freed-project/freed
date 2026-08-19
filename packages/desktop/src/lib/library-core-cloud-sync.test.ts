@@ -606,6 +606,11 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.beginPortableImport).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedItemCount: 2,
+        sourceCheckpoint: {
+          objectKey: expect.stringContaining("freed-v2-manifest"),
+          contentDigest: "56".repeat(32),
+          transportObjectId: "manifest-9",
+        },
         sourceDigest: "ab".repeat(32),
         sourceRevision: 9,
       }),

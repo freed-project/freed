@@ -972,6 +972,11 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
             await beginPortableSqliteLibraryImport({
               expectedItemCount: header.collection_counts.materialized_rows - 1,
               shell: shell.row,
+              sourceCheckpoint: {
+                objectKey: input.pointer.manifest.descriptor.objectKey,
+                contentDigest: input.pointer.manifest.descriptor.contentDigest,
+                transportObjectId: input.pointer.manifest.transportObjectId,
+              },
               sourceDigest: input.sourceDigest,
               sourceGeneration: header.epoch,
               sourceRevision: header.materializer_position.ingest_sequence,

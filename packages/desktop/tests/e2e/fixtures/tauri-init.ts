@@ -272,6 +272,12 @@ export function tauriInitScript(): string {
           sourceDigest: state.sourceDigest,
         };
       },
+      recover_sqlite_library_follower_overlay: () => ({
+        transactionCount: 0,
+        operationCount: 0,
+        materializedRowCount: 0,
+        revisionAdvanced: false,
+      }),
       read_sqlite_library_shell: () => {
         // Scale benchmarks keep the corpus in mock SQLite while forcing the
         // shell projection to match production's empty renderer item array.

@@ -392,6 +392,12 @@ const handlers: Record<string, Handler> = {
       sourceDigest: state.sourceDigest,
     };
   },
+  recover_sqlite_library_follower_overlay: () => ({
+    transactionCount: 0,
+    operationCount: 0,
+    materializedRowCount: 0,
+    revisionAdvanced: false,
+  }),
   read_sqlite_library_shell: sqliteShellResult,
   read_sqlite_library_counts: sqliteCountsResult,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
