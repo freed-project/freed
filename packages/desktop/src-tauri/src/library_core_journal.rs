@@ -24,12 +24,12 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 6;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 5] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 6] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -49,6 +49,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 5] = [
     (
         6,
         include_str!("../../../shared/src/library-core/authoritative-migration-006.sql"),
+    ),
+    (
+        7,
+        include_str!("../../../shared/src/library-core/authoritative-migration-007.sql"),
     ),
 ];
 
@@ -3169,6 +3173,24 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read bounded timeline indexes");
+        let follower_tables: i64 = journal
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type = 'table'
+                   AND name IN (
+                     'library_core_follower_anchor',
+                     'library_core_follower_actor',
+                     'library_core_follower_enrollment_publication',
+                     'library_core_follower_intent_actor',
+                     'library_core_follower_intent_transaction',
+                     'library_core_follower_intent_operation',
+                     'library_core_follower_intent_result'
+                   );",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read isolated follower tables");
         let sentinel: i64 = journal
             .connection
             .query_row(
@@ -3181,6 +3203,7 @@ mod tests {
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
         assert!(admission_table_exists);
         assert_eq!(timeline_indexes, 6);
+        assert_eq!(follower_tables, 7);
         assert_eq!(sentinel, 42);
     }
 
