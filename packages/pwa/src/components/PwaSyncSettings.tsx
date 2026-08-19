@@ -547,6 +547,16 @@ export function PwaSyncSettings() {
             value={selectedCheckpoint?.totalRecordCount.toLocaleString() ?? "-"}
           />
           <SyncDiagnosticCell
+            label="Receipt items"
+            value={selectedCheckpoint?.itemCount?.toLocaleString() ?? "-"}
+          />
+          <SyncDiagnosticCell
+            label="Checkpoint bytes"
+            value={formatBytes(
+              selectedCheckpoint?.checkpointStoredByteLength ?? undefined,
+            )}
+          />
+          <SyncDiagnosticCell
             label="Selection"
             value={
               selectedCheckpoint?.selectionSequence.toLocaleString() ?? "-"

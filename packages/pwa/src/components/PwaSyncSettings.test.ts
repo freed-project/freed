@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
     },
     importedThroughIngestSequence: 7,
     totalRecordCount: 19_003,
+    itemCount: 19_000,
+    checkpointStoredByteLength: 1_536,
   })),
 }));
 
@@ -168,6 +170,8 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     );
     expect(diagnostics?.textContent).toContain("Manifest records");
     expect(diagnostics?.textContent).toContain("19,003");
+    expect(diagnostics?.textContent).toContain("19,000");
+    expect(diagnostics?.textContent).toContain("1.5 KB");
     expect(diagnostics?.textContent).toContain("...67676767");
     expect(diagnostics?.textContent).toContain("...12345678");
     const manifestDigest = Array.from(

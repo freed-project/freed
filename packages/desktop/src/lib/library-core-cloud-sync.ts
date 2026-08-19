@@ -89,6 +89,8 @@ interface LocalLibraryCoreCloudStateV1 {
 export interface LibraryCorePublishedCheckpointReceiptV1 {
   readonly version: 1;
   readonly localRevision: number;
+  readonly itemCount: number;
+  readonly checkpointStoredByteLength: number;
   readonly controlRevision: string;
   readonly publishedAt: number;
   readonly controlPointer: LibraryCoreControlPointerV1;
@@ -157,6 +159,12 @@ function parsePublishedCheckpointReceipt(
     typeof candidate.localRevision !== "number" ||
     !Number.isSafeInteger(candidate.localRevision) ||
     candidate.localRevision < 0 ||
+    typeof candidate.itemCount !== "number" ||
+    !Number.isSafeInteger(candidate.itemCount) ||
+    candidate.itemCount < 0 ||
+    typeof candidate.checkpointStoredByteLength !== "number" ||
+    !Number.isSafeInteger(candidate.checkpointStoredByteLength) ||
+    candidate.checkpointStoredByteLength < 0 ||
     typeof candidate.controlRevision !== "string" ||
     candidate.controlRevision.length === 0 ||
     candidate.controlRevision.length > 1_024 ||
@@ -174,6 +182,8 @@ function parsePublishedCheckpointReceipt(
     return Object.freeze({
       version: 1,
       localRevision: candidate.localRevision,
+      itemCount: candidate.itemCount,
+      checkpointStoredByteLength: candidate.checkpointStoredByteLength,
       controlRevision: candidate.controlRevision,
       publishedAt: candidate.publishedAt,
       controlPointer,
@@ -267,16 +277,36 @@ export async function readSqliteLibraryGoogleDrivePublicationReceipt(): Promise<
 
 function checkpointPublicationReceipt(input: {
   readonly localRevision: number;
+  readonly itemCount: number;
+  readonly checkpointStoredByteLength: number;
   readonly controlRevision: string;
   readonly controlPointer: LibraryCoreControlPointerV1;
 }): LibraryCorePublishedCheckpointReceiptV1 {
   return Object.freeze({
     version: 1,
     localRevision: input.localRevision,
+    itemCount: input.itemCount,
+    checkpointStoredByteLength: input.checkpointStoredByteLength,
     controlRevision: input.controlRevision,
     publishedAt: Date.now(),
     controlPointer: input.controlPointer,
   });
+}
+
+function checkpointStoredByteLength(input: {
+  readonly dependencies: readonly {
+    readonly descriptor: { readonly byteLength: number };
+  }[];
+  readonly manifest: { readonly descriptor: { readonly byteLength: number } };
+}): number {
+  const total = input.dependencies.reduce(
+    (sum, dependency) => sum + dependency.descriptor.byteLength,
+    input.manifest.descriptor.byteLength,
+  );
+  if (!Number.isSafeInteger(total) || total < 0) {
+    throw new Error("Library Core checkpoint byte total is invalid");
+  }
+  return total;
 }
 
 let backupMirrorChain: Promise<void> = Promise.resolve();
@@ -1271,6 +1301,8 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
       lastPublishedActorDigest: await actorStateDigest(actors),
       lastPublishedCheckpoint: checkpointPublicationReceipt({
         localRevision: descriptor.revision,
+        itemCount: descriptor.itemCount,
+        checkpointStoredByteLength: checkpointStoredByteLength(result),
         controlRevision: result.revision,
         controlPointer: result.controlPointer,
       }),
@@ -1446,6 +1478,8 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     lastPublishedActorDigest: publishedActorDigest,
     lastPublishedCheckpoint: checkpointPublicationReceipt({
       localRevision: updatedDescriptor.revision,
+      itemCount: updatedDescriptor.itemCount,
+      checkpointStoredByteLength: checkpointStoredByteLength(result),
       controlRevision: result.revision,
       controlPointer: result.controlPointer,
     }),

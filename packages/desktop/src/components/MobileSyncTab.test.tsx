@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   publicationReceipt: {
     version: 1 as const,
     localRevision: 7,
+    itemCount: 19_003,
+    checkpointStoredByteLength: 1_536,
     controlRevision: '"control-revision-12345678"',
     publishedAt: 1_787_139_200_000,
     controlPointer: {
@@ -184,6 +186,9 @@ describe("MobileSyncTab cloud diagnostics", () => {
     );
     expect(diagnostics?.textContent).toContain("SQLite revision");
     expect(diagnostics?.textContent).toContain("7");
+    expect(diagnostics?.textContent).toContain("Receipt items");
+    expect(diagnostics?.textContent).toContain("19,003");
+    expect(diagnostics?.textContent).toContain("1.5 KB");
     expect(diagnostics?.textContent).toContain("...12345678");
     expect(diagnostics?.textContent).toContain("...67676767");
     const controlReceipt = Array.from(

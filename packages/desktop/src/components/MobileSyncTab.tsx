@@ -569,6 +569,16 @@ export function MobileSyncTab() {
                 }
               />
               <DiagnosticCell
+                label="Receipt items"
+                value={publicationReceipt?.itemCount.toLocaleString() ?? "-"}
+              />
+              <DiagnosticCell
+                label="Checkpoint bytes"
+                value={formatBytes(
+                  publicationReceipt?.checkpointStoredByteLength,
+                )}
+              />
+              <DiagnosticCell
                 label="Checkpoint"
                 value={
                   publicationReceipt?.controlPointer.generation.toLocaleString() ??

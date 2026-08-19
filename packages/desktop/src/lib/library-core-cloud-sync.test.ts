@@ -385,6 +385,8 @@ describe("SQLite Library Google Drive production wiring", () => {
       lastPublishedCheckpoint: {
         version: 1,
         localRevision: 7,
+        itemCount: 2,
+        checkpointStoredByteLength: 123,
         controlRevision: '"etag-2"',
         controlPointer: {
           generation: 0,
@@ -399,6 +401,8 @@ describe("SQLite Library Google Drive production wiring", () => {
       readSqliteLibraryGoogleDrivePublicationReceipt(),
     ).resolves.toMatchObject({
       localRevision: 7,
+      itemCount: 2,
+      checkpointStoredByteLength: 123,
       controlRevision: '"etag-2"',
       controlPointer: {
         generation: 0,
@@ -418,6 +422,8 @@ describe("SQLite Library Google Drive production wiring", () => {
       readSqliteLibraryGoogleDrivePublicationReceipt(),
     ).resolves.toMatchObject({
       localRevision: 7,
+      itemCount: 2,
+      checkpointStoredByteLength: 123,
       controlRevision: '"etag-2"',
       controlPointer: {
         generation: 0,

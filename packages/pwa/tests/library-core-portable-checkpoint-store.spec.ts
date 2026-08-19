@@ -199,6 +199,30 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       manifestReference,
     });
     await store.quiesce();
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(databaseName);
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction(
+          "portable_generations",
+          "readwrite",
+        );
+        const generations = transaction.objectStore("portable_generations");
+        const read = generations.get(generationDigest);
+        read.onsuccess = () => {
+          const legacy = read.result as Record<string, unknown>;
+          delete legacy.itemCount;
+          delete legacy.checkpointStoredByteLength;
+          generations.put(legacy);
+        };
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
 
     let nowMs = 1_783_100_000_000;
     const reopened = createPwaLibraryCorePortableCheckpointStore({
@@ -207,6 +231,10 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       keyRange: IDBKeyRange,
       now: () => nowMs,
       subtle: crypto.subtle,
+    });
+    const legacyReceiptBackfill = await reopened.beginImport({
+      manifest,
+      manifestReference,
     });
     const reopenedEnrollment =
       await reopened.preparePwaActorEnrollmentRequest();
@@ -361,6 +389,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
           }
         : null,
       incompleteFinalizeRejected,
+      legacyReceiptBackfill,
       receipt,
       reopenedPage,
       resumedBegin,
@@ -424,6 +453,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       stableAfterReopen: true,
     },
     incompleteFinalizeRejected: true,
+    legacyReceiptBackfill: "already_complete",
     receipt: {
       frontierDigest: "11".repeat(32),
       ingestSequence: 0,
@@ -444,6 +474,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     selectedCheckpointReceipt: {
       generationId: "aa".repeat(32),
       importedThroughIngestSequence: 0,
+      itemCount: 2,
       libraryId: "01".repeat(32),
       manifest: {
         descriptor: {
@@ -456,6 +487,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       selectionSequence: 1,
       storageEpoch: "02".repeat(32),
       totalRecordCount: 3,
+      checkpointStoredByteLength: 3,
     },
     selectedAfterAbort: {
       entries: [{ ordinal: 0 }, { ordinal: 1 }],
