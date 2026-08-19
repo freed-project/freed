@@ -36,6 +36,7 @@
     "./lib/background-activity-store": "./src/lib/background-activity-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",
     "./lib/build-info": "./src/lib/build-info.ts",
+    "./lib/clipboard": "./src/lib/clipboard.ts",
     "./lib/command-surface-store": "./src/lib/command-surface-store.ts",
     "./lib/date-format": "./src/lib/date-format.ts",
     "./lib/device-ai-preferences": "./src/lib/device-ai-preferences.ts",

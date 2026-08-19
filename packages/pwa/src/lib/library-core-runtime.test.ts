@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
+  readSelectedCheckpointReceipt: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
@@ -36,6 +37,7 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedMaterializedPage: mocks.readSelectedMaterializedPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
+    readSelectedCheckpointReceipt: mocks.readSelectedCheckpointReceipt,
   }),
 }));
 
@@ -63,6 +65,7 @@ import {
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   initializePwaLibraryCoreState,
   readPwaLibraryCoreItemDetail,
+  readPwaLibraryCoreSelectedCheckpointReceipt,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
 
@@ -102,6 +105,7 @@ describe("PWA Library Core bounded scanner", () => {
       },
     );
     mocks.readSelectedMaterializedRow.mockReset();
+    mocks.readSelectedCheckpointReceipt.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemCaptures.mockReset();
@@ -119,6 +123,21 @@ describe("PWA Library Core bounded scanner", () => {
     expect(isPwaLibraryCoreEnabled()).toBe(true);
     localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
     expect(isPwaLibraryCoreEnabled()).toBe(true);
+  });
+
+  it("reads the exact selected IndexedDB checkpoint receipt", async () => {
+    const receipt = {
+      generationId: "67".repeat(32),
+      manifest: {
+        descriptor: { contentDigest: "67".repeat(32) },
+        transportObjectId: "drive-manifest-4",
+      },
+    };
+    mocks.readSelectedCheckpointReceipt.mockResolvedValue(receipt);
+
+    await expect(readPwaLibraryCoreSelectedCheckpointReceipt()).resolves.toBe(
+      receipt,
+    );
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {

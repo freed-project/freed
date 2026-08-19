@@ -121,6 +121,7 @@ describe("scheduled social capture retries", () => {
   });
 
   beforeEach(() => {
+    window.localStorage.clear();
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
     mocks.addDebugEvent.mockClear();
@@ -354,6 +355,26 @@ describe("scheduled social capture retries", () => {
       provider: "facebook",
       status: "ignored",
       stage: "paused",
+    });
+  });
+
+  it("refuses every social capture before provider contact in follower mode", async () => {
+    window.localStorage.setItem(
+      "freed.libraryCore.desktopRoleV1",
+      "follower",
+    );
+
+    const result = await captureModule.refreshSocialProvider(
+      "facebook",
+      "scheduled",
+    );
+
+    expect(mocks.captureFbFeed).not.toHaveBeenCalled();
+    expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      provider: "facebook",
+      status: "ignored",
+      stage: "retired_writer",
     });
   });
 

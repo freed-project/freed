@@ -161,7 +161,9 @@ interface PortableGenerationRecord {
   readonly manifestObjectKey: string;
   readonly manifestPageCount: number;
   readonly manifestStoredByteLength: number;
+  readonly checkpointStoredByteLength?: number;
   readonly totalRecordCount: number;
+  readonly itemCount?: number;
   readonly frontierDigest: LibraryCoreLowercaseHex64;
   readonly checkpointFrontierDigest: LibraryCoreLowercaseHex64;
   readonly importedThroughIngestSequence: number;
@@ -536,6 +538,19 @@ export interface PwaLibraryCoreReadState {
   readonly sourceOperationId: string;
 }
 
+export interface PwaLibraryCoreSelectedCheckpointReceiptV1 {
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly selectionSequence: number;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly storageEpoch: LibraryCoreOperationInstanceId;
+  readonly manifestGeneration: number;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly importedThroughIngestSequence: number;
+  readonly totalRecordCount: number;
+  readonly itemCount: number | null;
+  readonly checkpointStoredByteLength: number | null;
+}
+
 export type PwaLibraryCorePortableFeedReaderErrorCode =
   | "RUNTIME_INACTIVE"
   | "CURSOR_STALE"
@@ -582,9 +597,26 @@ function generationMatches(
     generation.manifestPageCount === manifest.pages.length &&
     generation.manifestStoredByteLength === reference.descriptor.byteLength &&
     generation.manifestTransportObjectId === reference.transportObjectId &&
+    (generation.checkpointStoredByteLength === undefined ||
+      generation.checkpointStoredByteLength ===
+        checkpointStoredByteLengthForManifest(manifest, reference)) &&
     generation.totalRecordCount === manifest.totalRecordCount &&
     generation.checkpointFrontierDigest === manifest.causalFrontierDigest
   );
+}
+
+function checkpointStoredByteLengthForManifest(
+  manifest: LibraryCoreCheckpointManifestV1,
+  reference: LibraryCoreImmutableObjectReferenceV1,
+): number {
+  const total = manifest.pages.reduce(
+    (sum, page) => sum + page.object.descriptor.byteLength,
+    reference.descriptor.byteLength,
+  );
+  if (!Number.isSafeInteger(total) || total < 0) {
+    throw new TypeError("portable checkpoint byte total is invalid");
+  }
+  return total;
 }
 
 function assertManifestReference(
@@ -1083,6 +1115,51 @@ class PwaLibraryCorePortableCheckpointStore
     return generation.header.accepted_authority;
   }
 
+  async readSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, CONTROL_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      generationId: generation.generationId,
+      selectionSequence: selected.selectionSequence,
+      libraryId: generation.libraryId,
+      storageEpoch: generation.storageEpoch,
+      manifestGeneration: generation.manifestGeneration,
+      manifest: snapshotReference({
+        descriptor: {
+          byteLength: generation.manifestStoredByteLength,
+          contentDigest: generation.generationId,
+          objectKey: generation.manifestObjectKey,
+        },
+        transportObjectId: generation.manifestTransportObjectId,
+      }),
+      importedThroughIngestSequence: generation.importedThroughIngestSequence,
+      totalRecordCount: generation.totalRecordCount,
+      itemCount: generation.itemCount ?? null,
+      checkpointStoredByteLength: generation.checkpointStoredByteLength ?? null,
+    });
+  }
+
   /**
    * Create one isolated local authority for the feature preview.
    *
@@ -1280,9 +1357,7 @@ class PwaLibraryCorePortableCheckpointStore
       PWA_ACTOR_IDENTITIES_STORE,
       "readwrite",
     );
-    identityTransaction
-      .objectStore(PWA_ACTOR_IDENTITIES_STORE)
-      .add(identity);
+    identityTransaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).add(identity);
     await transactionDone(identityTransaction);
     await this.installActorEnrollment({
       acceptedAuthorityState: authority,
@@ -1677,14 +1752,18 @@ class PwaLibraryCorePortableCheckpointStore
     );
     assertManifestReference(manifest, reference);
     const generationId = reference.descriptor.contentDigest;
+    const checkpointStoredByteLength = checkpointStoredByteLengthForManifest(
+      manifest,
+      reference,
+    );
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, CONTROL_STORE],
+      [GENERATIONS_STORE, CONTROL_STORE, MATERIALIZED_ROWS_STORE],
       "readwrite",
     );
     const generations = transaction.objectStore(GENERATIONS_STORE);
     const control = transaction.objectStore(CONTROL_STORE);
-    const existing = (await requestResult(generations.get(generationId))) as
+    let existing = (await requestResult(generations.get(generationId))) as
       PortableGenerationRecord | undefined;
     if (existing) {
       if (!generationMatches(existing, manifest, reference)) {
@@ -1706,25 +1785,53 @@ class PwaLibraryCorePortableCheckpointStore
             "portable checkpoint selection sequence is inconsistent",
           );
         }
+        const selectionSequence =
+          selected?.generationId === generationId
+            ? selected.selectionSequence
+            : (selected?.selectionSequence ?? 0) + 1;
         if (selected?.generationId !== generationId) {
-          const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
           if (!Number.isSafeInteger(selectionSequence)) {
             transaction.abort();
             throw new Error("portable checkpoint selection sequence exhausted");
           }
-          generations.put({
-            ...existing,
-            selectionSequence,
-          } satisfies PortableGenerationRecord);
           control.put({
             key: SELECTED_GENERATION_KEY,
             generationId,
             selectionSequence,
           } satisfies SelectedPortableGenerationRecord);
         }
+        const itemCount =
+          existing.itemCount ??
+          ((await requestResult(
+            transaction
+              .objectStore(MATERIALIZED_ROWS_STORE)
+              .count(
+                this.#keyRange.bound(
+                  [generationId, "10_feed_items"],
+                  [generationId, "10_feed_items", []],
+                ),
+              ),
+          )) as number);
+        if (
+          existing.selectionSequence !== selectionSequence ||
+          existing.itemCount === undefined ||
+          existing.checkpointStoredByteLength === undefined
+        ) {
+          existing = {
+            ...existing,
+            checkpointStoredByteLength,
+            itemCount,
+            selectionSequence,
+          };
+          generations.put(existing);
+        }
         await transactionDone(transaction);
         this.#activeGenerationId = null;
         return "already_complete";
+      }
+      if (existing.checkpointStoredByteLength === undefined) {
+        existing = { ...existing, checkpointStoredByteLength };
+        generations.put(existing);
       }
       await transactionDone(transaction);
       this.#activeGenerationId = generationId;
@@ -1744,6 +1851,7 @@ class PwaLibraryCorePortableCheckpointStore
       authenticatedFrontierDigest: manifest.causalFrontierDigest,
       authenticatedThroughIngestSequence: 0,
       checkpointFrontierDigest: manifest.causalFrontierDigest,
+      checkpointStoredByteLength,
       frontierDigest: manifest.causalFrontierDigest,
       generationId,
       header: null,
@@ -2026,11 +2134,21 @@ class PwaLibraryCorePortableCheckpointStore
           collectionRange(this.#keyRange, generationId, collection),
         ),
       );
-    const [entryCount, pageCount, collectionCounts] = await Promise.all([
-      requestResult(entryCountRequest),
-      requestResult(pageCountRequest),
-      Promise.all(collectionCountRequests.map(requestResult)),
-    ]);
+    const itemCountRequest = transaction
+      .objectStore(MATERIALIZED_ROWS_STORE)
+      .count(
+        this.#keyRange.bound(
+          [generationId, "10_feed_items"],
+          [generationId, "10_feed_items", []],
+        ),
+      );
+    const [entryCount, pageCount, collectionCounts, itemCount] =
+      await Promise.all([
+        requestResult(entryCountRequest),
+        requestResult(pageCountRequest),
+        Promise.all(collectionCountRequests.map(requestResult)),
+        requestResult(itemCountRequest),
+      ]);
     if (
       entryCount !== generation.totalRecordCount - 1 ||
       pageCount !== generation.manifestPageCount ||
@@ -2063,6 +2181,7 @@ class PwaLibraryCorePortableCheckpointStore
         header.materializer_position.ingest_sequence,
       importedThroughIngestSequence:
         header.materializer_position.ingest_sequence,
+      itemCount,
       latestAuthenticatedSegmentDigest: null,
       latestOperationSegmentDigest: null,
       selectionSequence,
@@ -2945,7 +3064,9 @@ class PwaLibraryCorePortableCheckpointStore
           delete persons[member.envelope.entity_id];
           const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
           for (const [accountId, account] of Object.entries(accounts)) {
-            if (canonicalObject(account)?.personId === member.envelope.entity_id) {
+            if (
+              canonicalObject(account)?.personId === member.envelope.entity_id
+            ) {
               delete accounts[accountId];
             }
           }
@@ -3868,7 +3989,9 @@ class PwaLibraryCorePortableCheckpointStore
     return receipt;
   }
 
-  async #applySelectedAccountUpserts(accounts: readonly Account[]): Promise<void> {
+  async #applySelectedAccountUpserts(
+    accounts: readonly Account[],
+  ): Promise<void> {
     await this.#mutateSelectedAccounts((current) => {
       const next = { ...current };
       for (const account of accounts) {
@@ -4651,10 +4774,7 @@ class PwaLibraryCorePortableCheckpointStore
       };
       materializedRows.put(stored);
       const projected = projectPortableFeedRow(selected.generationId, stored);
-      if (
-        previousFeedRow &&
-        previousFeedRow.orderKey !== projected?.orderKey
-      ) {
+      if (previousFeedRow && previousFeedRow.orderKey !== projected?.orderKey) {
         feedRows.delete([selected.generationId, previousFeedRow.orderKey]);
       }
       if (projected) {
@@ -5501,12 +5621,14 @@ class PwaLibraryCorePortableCheckpointStore
         false,
       );
       const totalCount = await requestResult(
-        transaction.objectStore(FEED_ROWS_STORE).count(
-          this.#keyRange.bound(
-            [generation.generationId],
-            [generation.generationId, []],
+        transaction
+          .objectStore(FEED_ROWS_STORE)
+          .count(
+            this.#keyRange.bound(
+              [generation.generationId],
+              [generation.generationId, []],
+            ),
           ),
-        ),
       );
       const rows: LibraryCoreFeedCardV1[] = [];
       let cursor = await requestResult(
@@ -6060,11 +6182,13 @@ class PwaLibraryCorePortableCheckpointStore
     let lastKey: readonly [string, string] | null = null;
     while (cursor && entries.length < input.limit) {
       const stored = cursor.value as PortableMaterializedRowRecord;
-      entries.push(Object.freeze({
-        primaryKey: stored.primaryKey,
-        registryKey: stored.registryKey,
-        row: stored.row,
-      }));
+      entries.push(
+        Object.freeze({
+          primaryKey: stored.primaryKey,
+          registryKey: stored.registryKey,
+          row: stored.row,
+        }),
+      );
       lastKey = [stored.registryKey, stored.primaryKey];
       cursor.continue();
       cursor = await requestResult(cursor.request);

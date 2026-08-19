@@ -48,6 +48,7 @@ import {
   PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
   PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
+  type PwaLibraryCoreSelectedCheckpointReceiptV1,
 } from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
 
@@ -88,6 +89,10 @@ function getSearchIndex(): PwaLibraryCoreSearchIndex {
     keyRange: globalThis.IDBKeyRange,
   });
   return searchIndex;
+}
+
+export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
+  return getPortableStore().readSelectedCheckpointReceipt();
 }
 
 function emptyState(): LibraryState {
@@ -187,7 +192,8 @@ async function readSelectedState(): Promise<LibraryState | null> {
         } else if (!item.userState.saved) {
           totalArchivableCount += 1;
           bump(archivableCountByPlatform, item.platform);
-          if (item.rssSource) bump(archivableFeedCounts, item.rssSource.feedUrl);
+          if (item.rssSource)
+            bump(archivableFeedCounts, item.rssSource.feedUrl);
         }
       }
     }
