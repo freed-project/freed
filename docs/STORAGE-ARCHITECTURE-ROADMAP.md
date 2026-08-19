@@ -13,10 +13,11 @@ of preserving a bridge. Desktop and PWA production entry points no longer load
 an Automerge worker, package, WASM asset, mutable cloud document, LAN relay, or
 legacy snapshot. Freed Desktop reads and writes native SQLite directly, keeps
 large media outside the row store, publishes immutable Library Core objects,
-and retains 24 closed SQLite backups. The PWA uses IndexedDB through bounded
-logical pages, intents, results, and search state. Exact-head validation, the
-dev release, installation, and runtime evidence remain before this candidate
-becomes the verified shipped boundary. Further corpus fault injection, media
+and retains 24 closed SQLite backups on their originating device. Drive never
+receives SQLite, WAL, SHM, or rollback-journal files. The PWA uses IndexedDB
+through bounded logical pages, intents, results, and search state. Exact-head
+validation, the dev release, installation, and runtime evidence remain before
+this candidate becomes the verified shipped boundary. Further corpus fault injection, media
 transport, retired-writer review, restore coverage, source cleanup, cursor
 optimization, and bundle splitting are recorded in issues #1446 through #1453
 instead of delaying the first manually testable SQLite build.
