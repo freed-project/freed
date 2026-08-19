@@ -302,15 +302,17 @@ async function tracedPublicationStage<T>(
     return result;
   } catch (error) {
     const elapsedMs = Math.round(performance.now() - startedAt);
+    const detail = error instanceof Error ? error.message : String(error);
     log.warn(
-      `[library-core-cloud] ${label} failed after ${elapsedMs.toLocaleString()} ms: ${error instanceof Error ? error.message : String(error)}`,
+      `[library-core-cloud] ${label} failed after ${elapsedMs.toLocaleString()} ms: ${detail}`,
     );
     recordCloudProviderEvent("gdrive", {
       kind: "error",
       stage: "upload",
-      message: `${label} failed after ${elapsedMs.toLocaleString()} ms.`,
+      message: `${label} failed after ${elapsedMs.toLocaleString()} ms: ${detail}`,
     });
-    throw error;
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new Error(`${label} failed: ${detail}`);
   }
 }
 

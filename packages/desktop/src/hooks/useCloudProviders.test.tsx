@@ -212,4 +212,31 @@ describe("useCloudProviders", () => {
     expect(mocks.storeCloudToken).not.toHaveBeenCalled();
     expect(mocks.startCloudSync).not.toHaveBeenCalled();
   });
+
+  it("shows native string failures instead of a generic connection error", async () => {
+    mocks.captureCloudLifecycle.mockReturnValue({ isCurrent: () => true });
+    mocks.initiateDesktopOAuth.mockResolvedValue({ accessToken: "token" });
+    mocks.startCloudSync.mockRejectedValue(
+      "load local writer authority failed: Library Core could not read its authority key",
+    );
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    const connectButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Connect Google Drive",
+    );
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.updateCloudProvider).toHaveBeenLastCalledWith("gdrive", {
+        status: "error",
+        error:
+          "load local writer authority failed: Library Core could not read its authority key",
+      });
+    });
+  });
 });

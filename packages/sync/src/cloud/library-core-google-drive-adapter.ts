@@ -39,6 +39,7 @@ const MAX_ACCESS_TOKEN_BYTES = 16_384;
 const MAX_DRIVE_FILE_ID_BYTES = 1_024;
 const MAX_LIST_PAGES = 16;
 const MAX_DUPLICATE_IMMUTABLE_OBJECTS = 8;
+const MAX_CONTROL_DISCOVERY_CANDIDATES = 16;
 const MAX_ACTOR_ENROLLMENT_REQUESTS = 256;
 const MAX_INTENT_SEGMENTS = 1_500;
 const MAX_CONTROL_BYTES = 65_536;
@@ -723,35 +724,53 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
+  const expectedProperties = Object.freeze({
+    freedProtocol: PROTOCOL_PROPERTY,
+    freedObjectKind: "control",
+  });
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
-    properties: Object.freeze({
-      freedProtocol: PROTOCOL_PROPERTY,
-      freedObjectKind: "control",
-    }),
+    properties: expectedProperties,
     googleFetch,
     signal: input.signal,
-    maxFiles: 1,
+    maxFiles: MAX_CONTROL_DISCOVERY_CANDIDATES,
   });
-  const file = files[0];
-  if (file === undefined) return null;
-  const controlBytes = await readDriveFileBytes({
-    accessToken: input.accessToken,
-    fileId: file.id,
-    googleFetch,
-    signal: input.signal,
-    maxBytes: MAX_CONTROL_BYTES,
-    label: "Library Core Drive control discovery",
-  });
-  const decoded = JSON.parse(
-    new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
-  );
-  const pointer = parseLibraryCoreControlPointerV1(decoded);
-  return Object.freeze({
-    controlFileId: file.id,
-    control: Object.freeze({ bytes: controlBytes }),
-    libraryId: pointer.libraryId,
-  });
+  let discovered: PublishedGoogleDriveLibraryCoreControlV1 | null = null;
+  for (const file of files) {
+    assertExpectedProperties(
+      file.appProperties,
+      expectedProperties,
+      "Library Core Drive control discovery",
+    );
+    // Provisioning writes the canonical empty object as exactly two bytes.
+    // appDataFolder is private to this app, so its authenticated object kind
+    // and exact stored size are enough to ignore an abandoned placeholder
+    // without downloading it on every PWA refresh.
+    if (file.size === 2) continue;
+    const controlBytes = await readDriveFileBytes({
+      accessToken: input.accessToken,
+      fileId: file.id,
+      googleFetch,
+      signal: input.signal,
+      maxBytes: MAX_CONTROL_BYTES,
+      label: "Library Core Drive control discovery",
+    });
+    const decoded: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
+    );
+    const pointer = parseLibraryCoreControlPointerV1(decoded);
+    if (discovered !== null) {
+      throw new Error(
+        "Drive contains more than one published Library Core control",
+      );
+    }
+    discovered = Object.freeze({
+      controlFileId: file.id,
+      control: Object.freeze({ bytes: controlBytes }),
+      libraryId: pointer.libraryId,
+    });
+  }
+  return discovered;
 }
 
 /**

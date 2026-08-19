@@ -393,10 +393,22 @@ describe("SQLite Library Google Drive production wiring", () => {
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).rejects.toThrow(
-      "The saved Library Core cloud identity belongs to another Library",
+      "load local writer authority failed: The saved Library Core cloud identity belongs to another Library",
     );
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.writeNative).not.toHaveBeenCalled();
+  });
+
+  it("preserves a native string rejection with its publication stage", async () => {
+    mocks.readDescriptor.mockRejectedValueOnce(
+      "SQLite Library could not read its authority key",
+    );
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow(
+      "read local SQLite revision failed: SQLite Library could not read its authority key",
+    );
   });
 
   it("does not queue a fresh publication behind an abandoned native command", async () => {
