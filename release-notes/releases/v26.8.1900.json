@@ -3,7 +3,7 @@
   "version": "26.8.1900",
   "channel": "production",
   "dayKey": "26.8.19",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-19T19:19:14.920Z",
   "model": "heuristic",
@@ -53,10 +53,23 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Editable Freed Desktop followers now synchronize through bounded, immutable Google Drive Library checkpoints",
+    "features": [
+      "Adds an editable follower role for Freed Desktop that imports the Primary Library, applies local edits immediately, and exchanges signed intents and canonical results without taking writer authority",
+      "Runs one bounded follower sync immediately and every 60 seconds for checkpoint refreshes, actor enrollment, signed intent publication, and exact result imports",
+      "Shows copyable Desktop publication and PWA IndexedDB import receipts with exact revisions, manifest identities, Drive object IDs, item counts, and byte totals"
+    ],
+    "fixes": [
+      "Recovers a successful Google Drive control update after a lost response by verifying the exact committed control pointer instead of reporting a generic connection failure",
+      "Blocks manual, scheduled, and deferred RSS and social capture on follower installations before any provider request can begin",
+      "Keeps follower checkpoint activation crash-safe and reapplies only local edits beyond the checkpoint's accepted actor tip",
+      "Refreshes rejected PWA Drive tokens and retries authenticated immutable checkpoint discovery after a 401 response",
+      "Removes unstable Linux package sources before release runners perform their first dependency update"
+    ],
+    "followUps": [
+      "A Primary must publish an immutable checkpoint and the authenticated PWA must import the exact same manifest before Google Drive repair is accepted",
+      "Freed never synchronizes SQLite, WAL, or SHM files through the active Library transport"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1900\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1900\n\nEditable Freed Desktop followers now synchronize through bounded, immutable Google Drive Library checkpoints\n\n### Features\n\n- Adds an editable follower role for Freed Desktop that imports the Primary Library, applies local edits immediately, and exchanges signed intents and canonical results without taking writer authority\n- Runs one bounded follower sync immediately and every 60 seconds for checkpoint refreshes, actor enrollment, signed intent publication, and exact result imports\n- Shows copyable Desktop publication and PWA IndexedDB import receipts with exact revisions, manifest identities, Drive object IDs, item counts, and byte totals\n\n### Fixes\n\n- Recovers a successful Google Drive control update after a lost response by verifying the exact committed control pointer instead of reporting a generic connection failure\n- Blocks manual, scheduled, and deferred RSS and social capture on follower installations before any provider request can begin\n- Keeps follower checkpoint activation crash-safe and reapplies only local edits beyond the checkpoint's accepted actor tip\n- Refreshes rejected PWA Drive tokens and retries authenticated immutable checkpoint discovery after a 401 response\n- Removes unstable Linux package sources before release runners perform their first dependency update\n\n### Follow-ups\n\n- A Primary must publish an immutable checkpoint and the authenticated PWA must import the exact same manifest before Google Drive repair is accepted\n- Freed never synchronizes SQLite, WAL, or SHM files through the active Library transport\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
