@@ -23,7 +23,10 @@ use super::library_core_authority_genesis::{
     establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
     reassign_writer_epoch, LegacySourceRevision,
 };
-use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
+use super::library_core_journal::{
+    AcceptedAuthorityState, IntentResultOutboxEntry, LibraryCoreJournal,
+    VerifiedCausalTip, VerifiedFollowerAnchor,
+};
 use super::library_core_journal_runtime::journal_path;
 
 const BACKUP_DIRECTORY: &str = "library-backups";
@@ -177,7 +180,7 @@ pub(super) struct CloudWriterAdmissionStatus {
     verified_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryCausalTip {
     actor_id: String,
@@ -186,7 +189,7 @@ pub(super) struct DesktopLibraryCausalTip {
     chain_digest: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryAcceptedAuthority {
     library_id: String,
@@ -225,6 +228,34 @@ pub(super) struct DesktopLibraryActorCheckpointState {
 pub(super) struct DesktopLibraryAuthorityBootstrap {
     authority: DesktopLibraryAcceptedAuthority,
     actor: DesktopLibraryActorEnrollment,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerAnchorRequest {
+    authority: DesktopLibraryAcceptedAuthority,
+    manifest_object_key: String,
+    manifest_content_digest: String,
+    generation: i64,
+    remote_ingest_sequence: i64,
+    remote_materialized_digest: String,
+    writer_id: String,
+    control_revision: String,
+    installed_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerAnchor {
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    manifest_content_digest: String,
+    generation: i64,
+    remote_ingest_sequence: i64,
+    remote_materialized_digest: String,
+    writer_id: String,
+    control_revision: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1075,6 +1106,65 @@ pub(super) fn read_sqlite_library_sync_descriptor(
         source_digest,
         shell_json,
         materialized_digest,
+    })
+}
+
+/// Persist one authenticated remote checkpoint as a non-authoritative follower.
+///
+/// This command never writes the active authority epoch or cloud-writer
+/// admission. It can make the imported materialization usable by the follower
+/// runtime, but it cannot turn this installation into a canonical writer.
+#[tauri::command]
+pub(super) fn install_sqlite_library_follower_anchor(
+    app: tauri::AppHandle,
+    request: InstallFollowerAnchorRequest,
+) -> Result<DesktopLibraryFollowerAnchor, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let anchor = journal
+        .install_follower_anchor(&VerifiedFollowerAnchor {
+            authority: AcceptedAuthorityState {
+                library_id: request.authority.library_id,
+                epoch: request.authority.epoch,
+                epoch_id: request.authority.epoch_id,
+                authority_key_id: request.authority.authority_key_id,
+                authority_public_key: request.authority.authority_public_key,
+                observed_frontier: request
+                    .authority
+                    .observed_frontier
+                    .into_iter()
+                    .map(|tip| VerifiedCausalTip {
+                        actor_id: tip.actor_id,
+                        sequence: tip.sequence,
+                        operation_id: tip.operation_id,
+                        chain_digest: tip.chain_digest,
+                    })
+                    .collect(),
+            },
+            manifest_object_key: request.manifest_object_key,
+            manifest_content_digest: request.manifest_content_digest,
+            generation: request.generation,
+            remote_ingest_sequence: request.remote_ingest_sequence,
+            remote_materialized_digest: request.remote_materialized_digest,
+            writer_id: request.writer_id,
+            control_revision: request.control_revision,
+            installed_at_ms: request.installed_at_ms,
+        })
+        .map_err(|error| format!("SQLite Library could not install follower anchor: {error}"))?;
+    Ok(DesktopLibraryFollowerAnchor {
+        library_id: anchor.authority.library_id,
+        epoch: anchor.authority.epoch,
+        epoch_id: anchor.authority.epoch_id,
+        manifest_content_digest: anchor.manifest_content_digest,
+        generation: anchor.generation,
+        remote_ingest_sequence: anchor.remote_ingest_sequence,
+        remote_materialized_digest: anchor.remote_materialized_digest,
+        writer_id: anchor.writer_id,
+        control_revision: anchor.control_revision,
     })
 }
 

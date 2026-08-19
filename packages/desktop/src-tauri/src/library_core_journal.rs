@@ -21,8 +21,12 @@ use std::time::Duration;
 mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
 mod enrollment_verifier;
+#[path = "library_core_journal_follower.rs"]
+mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
+
+pub(crate) use follower::VerifiedFollowerAnchor;
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
