@@ -974,6 +974,10 @@ pub(super) fn begin_sqlite_library_import(
     app: tauri::AppHandle,
     request: BeginImportRequest,
 ) -> Result<(), String> {
+    begin_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn begin_sqlite_library_import_at(root: &Path, request: BeginImportRequest) -> Result<(), String> {
     if !validate_hex_digest(&request.source_digest)
         || !(0..=1_000_000).contains(&request.expected_item_count)
         || request.source_generation < 0
@@ -983,31 +987,27 @@ pub(super) fn begin_sqlite_library_import(
         return Err("invalid SQLite Library import identity".into());
     }
     validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let mut connection = open_database(&app)?;
+    let mut connection = open_database_at(root)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
     transaction
-        .execute("DELETE FROM library_core_feed_items;", [])
+        .execute("DELETE FROM library_core_import_item_stage;", [])
         .map_err(|error| error.to_string())?;
     transaction
         .execute(
-            "INSERT INTO library_core_desktop_state (
-               singletonId, active, revision, sourceGeneration, sourceRevision,
-               sourceDigest, expectedItemCount, importedItemCount, shellJson,
-               startedAtMs, activatedAtMs
-             ) VALUES (1, 0, 0, ?1, ?2, ?3, ?4, 0, ?5, ?6, NULL)
+            "INSERT INTO library_core_import_stage (
+               singletonId, sourceGeneration, sourceRevision, sourceDigest,
+               expectedItemCount, importedItemCount, shellJson, startedAtMs
+             ) VALUES (1, ?1, ?2, ?3, ?4, 0, ?5, ?6)
              ON CONFLICT(singletonId) DO UPDATE SET
-               active = 0,
-               revision = 0,
                sourceGeneration = excluded.sourceGeneration,
                sourceRevision = excluded.sourceRevision,
                sourceDigest = excluded.sourceDigest,
                expectedItemCount = excluded.expectedItemCount,
                importedItemCount = 0,
                shellJson = excluded.shellJson,
-               startedAtMs = excluded.startedAtMs,
-               activatedAtMs = NULL;",
+               startedAtMs = excluded.startedAtMs;",
             params![
                 request.source_generation,
                 request.source_revision,
@@ -1026,31 +1026,58 @@ pub(super) fn append_sqlite_library_import(
     app: tauri::AppHandle,
     request: AppendImportRequest,
 ) -> Result<i64, String> {
+    append_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn append_sqlite_library_import_at(
+    root: &Path,
+    request: AppendImportRequest,
+) -> Result<i64, String> {
     if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library import batch must contain 1 through 1,000 items".into());
     }
-    let mut connection = open_database(&app)?;
+    if request.updated_at_ms < 0 {
+        return Err("SQLite Library import time is invalid".into());
+    }
+    let mut connection = open_database_at(root)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
     for encoded in &request.items_base64 {
         let item = decode_base64_json(encoded)?;
-        upsert_item(&transaction, &item, request.updated_at_ms)?;
+        let parsed = validate_json_object(&item, MAX_ITEM_BYTES)?;
+        let global_id = string_at(&parsed, &["globalId"])
+            .filter(|value| !value.is_empty() && value.len() <= 4_096)
+            .ok_or_else(|| "feed item globalId is missing or invalid".to_string())?;
+        transaction
+            .execute(
+                "INSERT INTO library_core_import_item_stage (
+                   globalId, itemJson, updatedAtMs
+                 ) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(globalId) DO UPDATE SET
+                   itemJson = excluded.itemJson,
+                   updatedAtMs = excluded.updatedAtMs;",
+                params![global_id, item, request.updated_at_ms],
+            )
+            .map_err(|error| error.to_string())?;
     }
     let count: i64 = transaction
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            "SELECT COUNT(*) FROM library_core_import_item_stage;",
             [],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    transaction
+    let updated = transaction
         .execute(
-            "UPDATE library_core_desktop_state SET importedItemCount = ?1
-             WHERE singletonId = 1 AND active = 0;",
+            "UPDATE library_core_import_stage SET importedItemCount = ?1
+             WHERE singletonId = 1;",
             [count],
         )
         .map_err(|error| error.to_string())?;
+    if updated != 1 {
+        return Err("SQLite Library has no active staged import".into());
+    }
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(count)
 }
@@ -1060,18 +1087,60 @@ pub(super) fn finalize_sqlite_library_import(
     app: tauri::AppHandle,
     activated_at_ms: i64,
 ) -> Result<DesktopLibraryStatus, String> {
-    let mut connection = open_database(&app)?;
-    let (expected, imported): (i64, i64) = connection
+    let root = app_root(&app)?;
+    finalize_sqlite_library_import_at(&root, activated_at_ms)?;
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let replay: FollowerOverlayReplayReceipt = journal
+        .replay_pending_follower_overlay()
+        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))?;
+    if replay.transaction_count > 0 {
+        log::info!(
+            "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
+            replay.transaction_count,
+            replay.operation_count,
+            replay.materialized_row_count,
+            replay.revision_advanced
+        );
+    }
+    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+}
+
+fn finalize_sqlite_library_import_at(root: &Path, activated_at_ms: i64) -> Result<(), String> {
+    if activated_at_ms < 0 {
+        return Err("SQLite Library activation time is invalid".into());
+    }
+    let mut connection = open_database_at(root)?;
+    let (
+        source_generation,
+        source_revision,
+        source_digest,
+        expected,
+        imported,
+        shell_json,
+        started_at_ms,
+    ): (i64, i64, String, i64, i64, String, i64) = connection
         .query_row(
-            "SELECT expectedItemCount, importedItemCount
-             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 0;",
+            "SELECT sourceGeneration, sourceRevision, sourceDigest,
+                    expectedItemCount, importedItemCount, shellJson, startedAtMs
+             FROM library_core_import_stage WHERE singletonId = 1;",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| format!("SQLite Library has no complete staged import: {error}"))?;
     let actual: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            "SELECT COUNT(*) FROM library_core_import_item_stage;",
             [],
             |row| row.get(0),
         )
@@ -1093,31 +1162,60 @@ pub(super) fn finalize_sqlite_library_import(
         .transaction()
         .map_err(|error| error.to_string())?;
     transaction
+        .execute("DELETE FROM library_core_feed_items;", [])
+        .map_err(|error| error.to_string())?;
+    {
+        let mut statement = transaction
+            .prepare(
+                "SELECT itemJson, updatedAtMs
+                 FROM library_core_import_item_stage
+                 ORDER BY globalId COLLATE BINARY;",
+            )
+            .map_err(|error| error.to_string())?;
+        let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+        while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+            let item_json = row.get::<_, String>(0).map_err(|error| error.to_string())?;
+            let updated_at_ms = row.get::<_, i64>(1).map_err(|error| error.to_string())?;
+            upsert_item(&transaction, &item_json, updated_at_ms)?;
+        }
+    }
+    transaction
         .execute(
-            "UPDATE library_core_desktop_state
-             SET active = 1, activatedAtMs = ?1, revision = 1
-             WHERE singletonId = 1 AND active = 0;",
-            [activated_at_ms],
+            "INSERT INTO library_core_desktop_state (
+               singletonId, active, revision, sourceGeneration, sourceRevision,
+               sourceDigest, expectedItemCount, importedItemCount, shellJson,
+               startedAtMs, activatedAtMs
+             ) VALUES (1, 1, 1, ?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)
+             ON CONFLICT(singletonId) DO UPDATE SET
+               active = 1,
+               revision = 1,
+               sourceGeneration = excluded.sourceGeneration,
+               sourceRevision = excluded.sourceRevision,
+               sourceDigest = excluded.sourceDigest,
+               expectedItemCount = excluded.expectedItemCount,
+               importedItemCount = excluded.importedItemCount,
+               shellJson = excluded.shellJson,
+               startedAtMs = excluded.startedAtMs,
+               activatedAtMs = excluded.activatedAtMs;",
+            params![
+                source_generation,
+                source_revision,
+                source_digest,
+                expected,
+                shell_json,
+                started_at_ms,
+                activated_at_ms,
+            ],
         )
         .map_err(|error| error.to_string())?;
+    transaction
+        .execute("DELETE FROM library_core_import_item_stage;", [])
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute("DELETE FROM library_core_import_stage;", [])
+        .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
-    drop(connection);
-    let root = app_root(&app)?;
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
-    let replay: FollowerOverlayReplayReceipt = journal
-        .replay_pending_follower_overlay()
-        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))?;
-    if replay.transaction_count > 0 {
-        log::info!(
-            "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
-            replay.transaction_count,
-            replay.operation_count,
-            replay.materialized_row_count,
-            replay.revision_advanced
-        );
-    }
-    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+    Ok(())
 }
 
 #[tauri::command]
@@ -3883,6 +3981,188 @@ mod tests {
         }
         assert_eq!(seen.len(), 125);
         assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    fn seed_active_import_test_library(root: &Path) {
+        let mut connection = open_database_at(root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 2, ?1, 1, 1, '{}', 100, 200);",
+                ["a".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin item insert");
+        upsert_item(
+            &transaction,
+            r#"{"globalId":"rss:old","platform":"rss","userState":{"saved":true}}"#,
+            250,
+        )
+        .expect("insert old item");
+        transaction.commit().expect("commit old item");
+    }
+
+    fn begin_staged_import(root: &Path, expected_item_count: i64) {
+        begin_sqlite_library_import_at(
+            root,
+            BeginImportRequest {
+                source_generation: 3,
+                source_revision: 9,
+                source_digest: "b".repeat(64),
+                expected_item_count,
+                shell_json: r#"{"feeds":{}}"#.to_string(),
+                started_at_ms: 300,
+            },
+        )
+        .expect("begin staged import");
+    }
+
+    fn append_staged_import_item(root: &Path) {
+        append_sqlite_library_import_at(
+            root,
+            AppendImportRequest {
+                items_base64: vec![BASE64_STANDARD.encode(
+                    r#"{"globalId":"rss:new","platform":"rss","userState":{"saved":false}}"#,
+                )],
+                updated_at_ms: 350,
+            },
+        )
+        .expect("append staged item");
+    }
+
+    #[test]
+    fn staged_import_items_require_an_active_import_identity() {
+        let root = temporary_root("sqlite-staged-import-identity");
+        fs::create_dir_all(&root).expect("create temporary root");
+        drop(open_database_at(&root).expect("create Library database"));
+        let error = append_sqlite_library_import_at(
+            &root,
+            AppendImportRequest {
+                items_base64: vec![
+                    BASE64_STANDARD.encode(r#"{"globalId":"rss:unbound","platform":"rss"}"#)
+                ],
+                updated_at_ms: 350,
+            },
+        )
+        .expect_err("reject item without staged import identity");
+        assert!(error.contains("no active staged import"), "{error}");
+        let connection = open_database_at(&root).expect("reopen Library database");
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rolled back staged items");
+        assert_eq!(staged_item_count, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_import_keeps_the_previous_library_until_atomic_activation() {
+        let root = temporary_root("sqlite-staged-import-activation");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+
+        let connection = open_database_at(&root).expect("reopen during staged import");
+        let active_state: (i64, i64) = connection
+            .query_row(
+                "SELECT active, revision FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read active state during import");
+        assert_eq!(active_state, (1, 7));
+        let old_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_feed_items WHERE globalId = 'rss:old';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read old item during import");
+        assert_eq!(old_item_count, 1);
+        drop(connection);
+
+        append_staged_import_item(&root);
+        finalize_sqlite_library_import_at(&root, 400).expect("activate staged import");
+
+        let connection = open_database_at(&root).expect("open activated Library");
+        let activated_state: (i64, i64, i64, i64, String) = connection
+            .query_row(
+                "SELECT active, revision, sourceGeneration, sourceRevision, sourceDigest
+                 FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read activated state");
+        assert_eq!(activated_state, (1, 1, 3, 9, "b".repeat(64)));
+        let item_ids = connection
+            .prepare("SELECT globalId FROM library_core_feed_items ORDER BY globalId;")
+            .expect("prepare activated item query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query activated items")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect activated items");
+        assert_eq!(item_ids, vec!["rss:new"]);
+        let staged_rows: i64 = connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM library_core_import_stage)
+                      + (SELECT COUNT(*) FROM library_core_import_item_stage);",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cleared staging rows");
+        assert_eq!(staged_rows, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn incomplete_staged_import_cannot_damage_the_active_library() {
+        let root = temporary_root("sqlite-staged-import-rejection");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 2);
+        append_staged_import_item(&root);
+
+        let error = finalize_sqlite_library_import_at(&root, 400)
+            .expect_err("reject incomplete staged import");
+        assert!(error.contains("import count mismatch"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT state.active, state.revision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old')
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read preserved Library");
+        assert_eq!(preserved, (1, 7, 1));
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read retryable staged item");
+        assert_eq!(staged_item_count, 1);
         drop(connection);
         fs::remove_dir_all(root).expect("remove temporary root");
     }

@@ -34,12 +34,12 @@ pub(crate) use follower::{
     VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 8;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 9;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 7] = [
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 8] = [
     (
         2,
         include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
@@ -67,6 +67,10 @@ const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 7] = [
     (
         8,
         include_str!("../../../shared/src/library-core/authoritative-migration-008.sql"),
+    ),
+    (
+        9,
+        include_str!("../../../shared/src/library-core/authoritative-migration-009.sql"),
     ),
 ];
 

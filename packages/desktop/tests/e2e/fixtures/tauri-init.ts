@@ -142,6 +142,20 @@ export function tauriInitScript(): string {
       persistSqliteState();
       return null;
     }
+    function sqliteAppendImportItems(args) {
+      var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+      if (!stage) throw new Error('SQLite Library has no active staged import');
+      var request = args && args.request ? args.request : {};
+      (request.itemsBase64 || []).forEach(function(encoded) {
+        var binary = atob(encoded);
+        var bytes = Uint8Array.from(binary, function(character) {
+          return character.charCodeAt(0);
+        });
+        var item = JSON.parse(new TextDecoder().decode(bytes));
+        stage.items[item.globalId] = item;
+      });
+      return null;
+    }
     function sqliteMutateItems(args) {
       var state = sqliteState();
       var request = args && args.request ? args.request : {};
@@ -227,9 +241,7 @@ export function tauriInitScript(): string {
       },
       begin_sqlite_library_import: (args) => {
         var request = args.request;
-        window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
-          active: false,
-          revision: 0,
+        window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
           sourceGeneration: request.sourceGeneration,
           sourceRevision: request.sourceRevision,
           sourceDigest: request.sourceDigest,
@@ -239,10 +251,16 @@ export function tauriInitScript(): string {
         };
         return null;
       },
-      append_sqlite_library_import: sqliteUpsertItems,
+      append_sqlite_library_import: sqliteAppendImportItems,
       finalize_sqlite_library_import: () => {
+        var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+        if (!stage) throw new Error('SQLite Library has no complete staged import');
+        if (Object.keys(stage.items).length !== stage.expectedItemCount) {
+          throw new Error('SQLite Library import count mismatch');
+        }
         var state = sqliteState();
-        state.active = true;
+        Object.assign(state, stage, { active: true, revision: 1 });
+        delete window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
         persistSqliteState();
         return {
           active: true,
