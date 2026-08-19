@@ -84,9 +84,11 @@ describe("SQLite editable follower mutations", () => {
         };
       }
       if (command === "sign_sqlite_library_follower_operation") {
-        const request = (args as {
-          request: { actorId: string; operationSigningBodyDigest: string };
-        }).request;
+        const request = (
+          args as {
+            request: { actorId: string; operationSigningBodyDigest: string };
+          }
+        ).request;
         return {
           actorId: request.actorId,
           operationSigningBodyDigest: request.operationSigningBodyDigest,
@@ -94,9 +96,11 @@ describe("SQLite editable follower mutations", () => {
         };
       }
       if (command === "enqueue_sqlite_library_follower_intent") {
-        const request = (args as {
-          request: { canonicalEnvelopeJson: string[] };
-        }).request;
+        const request = (
+          args as {
+            request: { canonicalEnvelopeJson: string[] };
+          }
+        ).request;
         mocks.enqueuedEnvelopes = request.canonicalEnvelopeJson;
         return {
           transactionId: "desktop-follower-read:test",
@@ -122,6 +126,16 @@ describe("SQLite editable follower mutations", () => {
       }
       if (command === "read_sqlite_library_items") {
         return [JSON.stringify(item(1_000))];
+      }
+      if (command === "query_sqlite_library_items") {
+        return {
+          itemsJson: [
+            JSON.stringify(item()),
+            JSON.stringify({ ...item(), globalId: "rss:follower-item-2" }),
+          ],
+          nextOffset: null,
+          totalCount: 2,
+        };
       }
       throw new Error(`Unexpected native command: ${command}`);
     });
@@ -170,6 +184,57 @@ describe("SQLite editable follower mutations", () => {
       payload: { assigned: true },
     });
     expect(parsed[0].payload.assigned_at_ms).toEqual(expect.any(Number));
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "mutate_sqlite_library_items",
+      expect.anything(),
+    );
+  });
+
+  it("routes RSS edits through a signed intent without replacing the shell", async () => {
+    const feed = {
+      url: "https://example.com/feed.xml",
+      title: "Example",
+      siteUrl: "https://example.com",
+      enabled: true,
+      lastFetched: 1,
+      trackUnread: true,
+    };
+    const result = await dispatchSqliteMutation(
+      { reqId: 3, type: "ADD_RSS_FEED", feed },
+      state(),
+    );
+
+    const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      operation_type: "rss_feed_upsert",
+      entity_id: feed.url,
+      payload: { feed },
+    });
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "replace_sqlite_library_shell",
+      expect.anything(),
+    );
+    expect(result.state.feeds[feed.url]).toEqual(feed);
+  });
+
+  it("expands a bulk read action into one signed transaction", async () => {
+    await dispatchSqliteMutation(
+      { reqId: 4, type: "MARK_ALL_AS_READ", platform: "rss" },
+      state(),
+    );
+
+    const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
+    expect(parsed).toHaveLength(2);
+    expect(parsed.map((value) => value.entity_id)).toEqual([
+      ITEM_ID,
+      "rss:follower-item-2",
+    ]);
+    expect(
+      parsed.every(
+        (value) => value.operation_type === "feed_item_read_assignment",
+      ),
+    ).toBe(true);
     expect(mocks.invoke).not.toHaveBeenCalledWith(
       "mutate_sqlite_library_items",
       expect.anything(),
