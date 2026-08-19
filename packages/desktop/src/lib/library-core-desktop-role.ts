@@ -5,9 +5,16 @@ const STORAGE_KEY = "freed.libraryCore.desktopRoleV1";
 export class LibraryCoreFollowerTransportInactiveError extends Error {
   constructor() {
     super(
-      "Editable follower sync is not active in this candidate yet. This Freed Desktop did not publish or replace the cloud Library.",
+      "This follower Freed Desktop cannot publish or replace the Primary cloud Library.",
     );
     this.name = "LibraryCoreFollowerTransportInactiveError";
+  }
+}
+
+export class LibraryCoreFollowerTransportRequiredError extends Error {
+  constructor() {
+    super("This Google Drive operation is available only to a follower Freed Desktop.");
+    this.name = "LibraryCoreFollowerTransportRequiredError";
   }
 }
 
@@ -37,3 +44,8 @@ export function requirePrimaryLibraryCoreDesktopRole(): void {
   }
 }
 
+export function requireFollowerLibraryCoreDesktopRole(): void {
+  if (readLibraryCoreDesktopRole() !== "follower") {
+    throw new LibraryCoreFollowerTransportRequiredError();
+  }
+}

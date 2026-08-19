@@ -49,29 +49,35 @@ describe("desktop hot-path contract", () => {
     expect(syncSource).not.toContain("freed.automerge");
   });
 
-  it("fences every authority action behind the local Desktop role", () => {
+  it("routes cloud sync by role and keeps writer transfer Primary-only", () => {
     const syncSource = readFileSync(join(LIB_DIR, "sync.ts"), "utf8");
-    const authorityFunctions = [
-      "export async function startCloudSync",
-      "export async function syncCloudProviderNow",
-      "export async function transferSqliteLibraryWriterToThisDesktop",
-    ];
+    const startCloud = syncSource.slice(
+      syncSource.indexOf("export async function startCloudSync"),
+      syncSource.indexOf("function stopCloudSync"),
+    );
+    expect(startCloud).toContain("readLibraryCoreDesktopRole()");
+    expect(startCloud).toContain("startSqliteLibraryGoogleDriveFollowerSync");
+    expect(startCloud).toContain("startSqliteLibraryGoogleDriveSync");
 
-    for (const [index, marker] of authorityFunctions.entries()) {
-      const start = syncSource.indexOf(marker);
-      const end =
-        index + 1 < authorityFunctions.length
-          ? syncSource.indexOf(authorityFunctions[index + 1]!, start)
-          : syncSource.indexOf(
-              "export async function resolveCloudSyncConflict",
-              start,
-            );
-      const functionSource = syncSource.slice(start, end);
-      expect(start).toBeGreaterThanOrEqual(0);
-      expect(functionSource).toContain(
-        "requirePrimaryLibraryCoreDesktopRole();",
-      );
-    }
+    const syncNow = syncSource.slice(
+      syncSource.indexOf("export async function syncCloudProviderNow"),
+      syncSource.indexOf(
+        "export async function transferSqliteLibraryWriterToThisDesktop",
+      ),
+    );
+    expect(syncNow).toContain("readLibraryCoreDesktopRole()");
+    expect(syncNow).toContain("syncSqliteLibraryFollowerGoogleDriveOnce");
+    expect(syncNow).toContain("publishCurrentSqliteLibraryToGoogleDrive");
+
+    const transfer = syncSource.slice(
+      syncSource.indexOf(
+        "export async function transferSqliteLibraryWriterToThisDesktop",
+      ),
+      syncSource.indexOf(
+        "export async function resolveCloudSyncConflict",
+      ),
+    );
+    expect(transfer).toContain("requirePrimaryLibraryCoreDesktopRole();");
   });
 
   it("keeps provider outbox drains wired to Library mutation metadata", () => {

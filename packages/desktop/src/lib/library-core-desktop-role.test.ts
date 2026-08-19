@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   LibraryCoreFollowerTransportInactiveError,
+  LibraryCoreFollowerTransportRequiredError,
   readLibraryCoreDesktopRole,
+  requireFollowerLibraryCoreDesktopRole,
   requirePrimaryLibraryCoreDesktopRole,
   writeLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
@@ -12,6 +14,9 @@ describe("Library Core Desktop role", () => {
   it("keeps existing installations primary by default", () => {
     expect(readLibraryCoreDesktopRole()).toBe("primary");
     expect(() => requirePrimaryLibraryCoreDesktopRole()).not.toThrow();
+    expect(() => requireFollowerLibraryCoreDesktopRole()).toThrow(
+      LibraryCoreFollowerTransportRequiredError,
+    );
   });
 
   it("persists follower mode and fails closed before an authority path", () => {
@@ -21,6 +26,7 @@ describe("Library Core Desktop role", () => {
     expect(() => requirePrimaryLibraryCoreDesktopRole()).toThrow(
       LibraryCoreFollowerTransportInactiveError,
     );
+    expect(() => requireFollowerLibraryCoreDesktopRole()).not.toThrow();
   });
 
   it("restores primary mode explicitly", () => {
@@ -31,4 +37,3 @@ describe("Library Core Desktop role", () => {
     expect(() => requirePrimaryLibraryCoreDesktopRole()).not.toThrow();
   });
 });
-

@@ -206,6 +206,141 @@ export interface SqliteLibraryFollowerIntentReceipt {
   readonly status: "enqueued" | "already_enqueued";
 }
 
+export interface SqliteLibraryFollowerActorRequest {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly actorPublicKey: string;
+  readonly enrollmentRequestDigest: string;
+  readonly canonicalEnrollmentRequestJson: string;
+  readonly createdAtMs: number;
+}
+
+export interface SqliteLibraryFollowerActorEnrollment {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly actorPublicKey: string;
+  readonly enrollmentCertificateDigest: string;
+  readonly actorChainGenesis: string;
+  readonly enrolledAtMs: number;
+}
+
+export interface SqliteLibraryFollowerIntentOutboxCandidate {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly schemaVersion: number;
+  readonly firstIntentSequence: number;
+  readonly lastIntentSequence: number;
+  readonly previousSegmentDigest: string | null;
+  readonly canonicalEnvelopeBytes: number;
+  readonly transactionCount: number;
+  readonly entries: readonly Readonly<{
+    operationId: string;
+    intentSequence: number;
+    canonicalEnvelopeJson: string;
+  }>[];
+}
+
+export interface SqliteLibraryFollowerIntentPublicationReceipt {
+  readonly firstIntentSequence: number;
+  readonly lastIntentSequence: number;
+  readonly operationCount: number;
+  readonly publishedSegmentDigest: string;
+  readonly status: "recorded" | "already_recorded";
+}
+
+export interface SqliteLibraryFollowerResultImportCursor {
+  readonly nextResultSequence: number;
+  readonly latestSegmentDigest: string | null;
+}
+
+export interface SqliteLibraryFollowerResultImportReceipt {
+  readonly firstResultSequence: number;
+  readonly lastResultSequence: number;
+  readonly resultCount: number;
+  readonly segmentDigest: string;
+  readonly status: "imported" | "already_imported";
+}
+
+export async function prepareSqliteLibraryFollowerActorRequest(): Promise<SqliteLibraryFollowerActorRequest> {
+  return invoke<SqliteLibraryFollowerActorRequest>(
+    "prepare_sqlite_library_follower_actor_request",
+    { request: { createdAtMs: Date.now() } },
+  );
+}
+
+export async function installSqliteLibraryFollowerActorEnrollment(
+  canonicalEnrollmentCertificateJson: string,
+): Promise<SqliteLibraryFollowerActorEnrollment> {
+  return invoke<SqliteLibraryFollowerActorEnrollment>(
+    "install_sqlite_library_follower_actor_enrollment",
+    { request: { canonicalEnrollmentCertificateJson } },
+  );
+}
+
+export async function readSqliteLibraryFollowerIntentOutboxCandidate(): Promise<SqliteLibraryFollowerIntentOutboxCandidate | null> {
+  return invoke<SqliteLibraryFollowerIntentOutboxCandidate | null>(
+    "read_sqlite_library_follower_intent_outbox_candidate",
+    {
+      request: {
+        maximumOperations: 1_000,
+        maximumCanonicalEnvelopeBytes: 4_194_304,
+      },
+    },
+  );
+}
+
+export async function recordSqliteLibraryFollowerIntentPublication(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly firstIntentSequence: number;
+  readonly lastIntentSequence: number;
+  readonly previousSegmentDigest: string | null;
+  readonly publishedSegmentDigest: string;
+}): Promise<SqliteLibraryFollowerIntentPublicationReceipt> {
+  return invoke<SqliteLibraryFollowerIntentPublicationReceipt>(
+    "record_sqlite_library_follower_intent_publication",
+    { request: input },
+  );
+}
+
+export async function readSqliteLibraryFollowerResultImportCursor(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+}): Promise<SqliteLibraryFollowerResultImportCursor | null> {
+  return invoke<SqliteLibraryFollowerResultImportCursor | null>(
+    "read_sqlite_library_follower_result_import_cursor",
+    { request: input },
+  );
+}
+
+export async function appendSqliteLibraryFollowerResultSegment(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly firstResultSequence: number;
+  readonly lastResultSequence: number;
+  readonly previousSegmentDigest: string | null;
+  readonly segmentDigest: string;
+  readonly entries: readonly Readonly<{
+    readonly resultOperationId: string;
+    readonly resultSequence: number;
+    readonly intentOperationId: string;
+    readonly intentSequence: number;
+    readonly status: "accepted" | "provider_completed" | "provider_failed";
+    readonly providerReceiptDigest: string | null;
+  }>[];
+}): Promise<SqliteLibraryFollowerResultImportReceipt> {
+  return invoke<SqliteLibraryFollowerResultImportReceipt>(
+    "append_sqlite_library_follower_result_segment",
+    { request: { ...input, entries: [...input.entries], importedAtMs: Date.now() } },
+  );
+}
+
 export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibraryFollowerIntentContext | null> {
   return invoke<SqliteLibraryFollowerIntentContext | null>(
     "sqlite_library_follower_intent_context",

@@ -68,6 +68,24 @@ const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   reassign: vi.fn(),
   importCheckpoint: vi.fn(),
+  discoverPublishedControl: vi.fn(),
+  discoverActorEnrollments: vi.fn(async () => []),
+  followerRuntimeStatus: vi.fn(),
+  prepareFollowerActorRequest: vi.fn(),
+  installFollowerActorEnrollment: vi.fn(),
+  readFollowerIntentCandidate: vi.fn(async (): Promise<unknown> => null),
+  recordFollowerIntentPublication: vi.fn(),
+  readFollowerResultCursor: vi.fn(async (): Promise<unknown> => null),
+  appendFollowerResultSegment: vi.fn(),
+  discoverIntentHead: vi.fn(),
+  provisionIntentHead: vi.fn(),
+  readIntentHead: vi.fn(),
+  publishFollowerIntent: vi.fn(),
+  discoverResultHead: vi.fn(async (): Promise<unknown> => null),
+  discoverResultSegments: vi.fn(async (): Promise<unknown[]> => []),
+  importFollowerResult: vi.fn(),
+  prepareFollowerIntent: vi.fn(),
+  readResultHead: vi.fn(),
 }));
 
 vi.mock("./native-json-store", () => ({
@@ -83,11 +101,15 @@ vi.mock("./sqlite-library", () => ({
   acknowledgePwaIntentResultOutbox: mocks.acknowledgeIntentResults,
   acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
   appendPortableSqliteLibraryItems: mocks.appendPortableItems,
+  appendSqliteLibraryFollowerResultSegment:
+    mocks.appendFollowerResultSegment,
   beginPortableSqliteLibraryImport: mocks.beginPortableImport,
   bootstrapSqliteLibraryAuthority: vi.fn(async () => mocks.bootstrapAuthority),
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   createSqliteLibraryBackup: mocks.createBackup,
   finalizePortableSqliteLibraryImport: mocks.finalizePortableImport,
+  installSqliteLibraryFollowerActorEnrollment:
+    mocks.installFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments: vi.fn(async () => [
     {
       actor_id: mocks.bootstrapAuthority.actor.actor_id,
@@ -104,6 +126,15 @@ vi.mock("./sqlite-library", () => ({
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readSqliteLibrarySyncPage: mocks.readPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
+  prepareSqliteLibraryFollowerActorRequest:
+    mocks.prepareFollowerActorRequest,
+  readSqliteLibraryFollowerIntentOutboxCandidate:
+    mocks.readFollowerIntentCandidate,
+  readSqliteLibraryFollowerResultImportCursor:
+    mocks.readFollowerResultCursor,
+  readSqliteLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
+  recordSqliteLibraryFollowerIntentPublication:
+    mocks.recordFollowerIntentPublication,
   reassignSqliteLibraryWriterEpoch: mocks.reassignNative,
   restoreSqliteLibraryBackup: mocks.restoreBackup,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
@@ -163,6 +194,24 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1: vi.fn(
       async () => [],
     ),
+    discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
+      mocks.discoverActorEnrollments,
+    discoverPublishedGoogleDriveLibraryCoreControlV1:
+      mocks.discoverPublishedControl,
+    discoverGoogleDriveLibraryCoreIntentHeadV1: mocks.discoverIntentHead,
+    provisionGoogleDriveLibraryCoreIntentHeadV1: mocks.provisionIntentHead,
+    createGoogleDriveLibraryCoreIntentAdapterV1: vi.fn(() => ({
+      readIntentHead: mocks.readIntentHead,
+    })),
+    publishLibraryCoreIntentCandidateV1: mocks.publishFollowerIntent,
+    prepareLibraryCoreIntentSegmentV1: mocks.prepareFollowerIntent,
+    discoverGoogleDriveLibraryCoreResultHeadV1: mocks.discoverResultHead,
+    discoverGoogleDriveLibraryCoreResultSegmentsV1:
+      mocks.discoverResultSegments,
+    createGoogleDriveLibraryCoreResultAdapterV1: vi.fn(() => ({
+      readResultHead: mocks.readResultHead,
+    })),
+    importLibraryCoreResultSegmentV1: mocks.importFollowerResult,
     provisionGoogleDriveLibraryCoreControlV1: vi.fn(async () => ({
       controlFileId: "control-1",
       created: true,
@@ -205,7 +254,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
             field_registry_version: 1,
             canonical_codec_version: 1,
             anchor_kind: "accepted_authority",
-            accepted_authority: null,
+            accepted_authority: mocks.bootstrapAuthority.authority,
             source_transition_digest: null,
             source_manifest_digest: null,
             transition_candidate_anchor: null,
@@ -307,6 +356,7 @@ import {
   makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
   readSqliteLibraryGoogleDrivePublicationReceipt,
+  syncSqliteLibraryFollowerGoogleDriveOnce,
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
@@ -331,6 +381,26 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
     mocks.setWriterAdmission.mockClear();
+    mocks.discoverPublishedControl.mockReset();
+    mocks.discoverActorEnrollments.mockReset().mockResolvedValue([]);
+    mocks.followerRuntimeStatus.mockReset();
+    mocks.prepareFollowerActorRequest.mockReset();
+    mocks.installFollowerActorEnrollment.mockReset();
+    mocks.readFollowerIntentCandidate.mockReset().mockResolvedValue(null);
+    mocks.recordFollowerIntentPublication.mockReset();
+    mocks.readFollowerResultCursor.mockReset().mockResolvedValue(null);
+    mocks.appendFollowerResultSegment.mockReset();
+    mocks.discoverIntentHead.mockReset();
+    mocks.provisionIntentHead.mockReset();
+    mocks.readIntentHead.mockReset();
+    mocks.publishFollowerIntent.mockReset();
+    mocks.discoverResultHead.mockReset().mockResolvedValue(null);
+    mocks.discoverResultSegments.mockReset().mockResolvedValue([]);
+    mocks.importFollowerResult.mockReset();
+    mocks.prepareFollowerIntent.mockReset().mockImplementation(
+      async (request: Record<string, unknown>) => ({ body: request }),
+    );
+    mocks.readResultHead.mockReset();
     mocks.readDescriptor.mockReset().mockResolvedValue({
       revision: 7,
       itemCount: 2,
@@ -362,10 +432,342 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     expect(() =>
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).toThrow("Editable follower sync is not active");
+    ).toThrow("cannot publish or replace the Primary cloud Library");
 
     expect(mocks.readDescriptor).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("imports the Primary checkpoint and publishes one stable follower enrollment request", async () => {
+    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    const libraryId = mocks.bootstrapAuthority.authority.library_id;
+    const epochId = mocks.bootstrapAuthority.authority.epoch_id;
+    const manifestDigest = "56".repeat(32) as LibraryCoreLowercaseHex64;
+    const pointer = {
+      activeTransport: "google_drive_app_data_v1",
+      causalFrontierDigest: "ef".repeat(32),
+      generation: 9,
+      libraryId,
+      manifest: {
+        descriptor: {
+          byteLength: 123,
+          contentDigest: manifestDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            digest: manifestDigest,
+            epochId,
+            generation: 9,
+            kind: "checkpoint_manifest",
+            libraryId,
+          }),
+        },
+        transportObjectId: "manifest-9",
+      },
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch: epochId,
+      writerId: mocks.bootstrapAuthority.actor.actor_id,
+    };
+    const controlBytes = encodeLibraryCoreCanonicalValue(pointer);
+    mocks.controlRead = {
+      bytes: new Uint8Array(controlBytes),
+      revision: '"etag-follower"',
+    };
+    mocks.discoverPublishedControl.mockResolvedValue({
+      control: { bytes: controlBytes },
+      controlFileId: "control-1",
+      libraryId,
+    });
+    mocks.followerRuntimeStatus
+      .mockResolvedValueOnce({
+        state: "awaiting_checkpoint",
+        libraryId: null,
+        epochId: null,
+        actorId: null,
+        checkpointGeneration: null,
+        remoteIngestSequence: null,
+        pendingIntentCount: 0,
+        publishedIntentCount: 0,
+        importedResultCount: 0,
+      })
+      .mockResolvedValueOnce({
+        state: "awaiting_enrollment",
+        libraryId,
+        epochId,
+        actorId: null,
+        checkpointGeneration: 9,
+        remoteIngestSequence: 9,
+        pendingIntentCount: 0,
+        publishedIntentCount: 0,
+        importedResultCount: 0,
+      });
+    mocks.prepareFollowerActorRequest.mockResolvedValue({
+      libraryId,
+      epochId,
+      actorId: "78".repeat(32),
+      actorPublicKey: "89".repeat(32),
+      enrollmentRequestDigest: "90".repeat(32),
+      canonicalEnrollmentRequestJson: "{}",
+      createdAtMs: 1,
+    });
+
+    await expect(
+      syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+
+    expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mocks.finalizePortableImport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        controlRevision: '"etag-follower"',
+        generation: 9,
+        manifestContentDigest: manifestDigest,
+        manifestTransportObjectId: "manifest-9",
+        writerId: mocks.bootstrapAuthority.actor.actor_id,
+      }),
+    );
+    expect(mocks.prepareFollowerActorRequest).toHaveBeenCalledTimes(1);
+    expect(mocks.discoverActorEnrollments).toHaveBeenCalledWith(
+      expect.objectContaining({ epochId, libraryId }),
+    );
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it("publishes a transaction-complete follower intent and records its exact immutable digest", async () => {
+    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    const libraryId = mocks.bootstrapAuthority.authority.library_id;
+    const epochId = mocks.bootstrapAuthority.authority.epoch_id;
+    const actorId = "78".repeat(32);
+    const manifestDigest = "56".repeat(32) as LibraryCoreLowercaseHex64;
+    const segmentDigest = "90".repeat(32) as LibraryCoreLowercaseHex64;
+    const pointer = {
+      activeTransport: "google_drive_app_data_v1",
+      causalFrontierDigest: "ef".repeat(32),
+      generation: 9,
+      libraryId,
+      manifest: {
+        descriptor: {
+          byteLength: 123,
+          contentDigest: manifestDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            digest: manifestDigest,
+            epochId,
+            generation: 9,
+            kind: "checkpoint_manifest",
+            libraryId,
+          }),
+        },
+        transportObjectId: "manifest-9",
+      },
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch: epochId,
+      writerId: mocks.bootstrapAuthority.actor.actor_id,
+    };
+    mocks.controlRead = {
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(pointer)),
+      revision: '"etag-follower"',
+    };
+    mocks.discoverPublishedControl.mockResolvedValue({
+      control: { bytes: mocks.controlRead.bytes },
+      controlFileId: "control-1",
+      libraryId,
+    });
+    const activeStatus = {
+      state: "active",
+      libraryId,
+      epochId,
+      actorId,
+      checkpointGeneration: 9,
+      remoteIngestSequence: 9,
+      pendingIntentCount: 1,
+      publishedIntentCount: 0,
+      importedResultCount: 0,
+    };
+    mocks.followerRuntimeStatus.mockResolvedValue(activeStatus);
+    mocks.readFollowerIntentCandidate
+      .mockResolvedValueOnce({
+        libraryId,
+        epochId,
+        actorId,
+        schemaVersion: 1,
+        firstIntentSequence: 1,
+        lastIntentSequence: 1,
+        previousSegmentDigest: null,
+        canonicalEnvelopeBytes: 2,
+        transactionCount: 1,
+        entries: [
+          {
+            operationId: "follower-operation-1",
+            intentSequence: 1,
+            canonicalEnvelopeJson: "{}",
+          },
+        ],
+      })
+      .mockResolvedValueOnce(null);
+    mocks.discoverIntentHead.mockResolvedValue({
+      intentHeadFileId: "intent-head-1",
+    });
+    mocks.readIntentHead.mockResolvedValue({
+      bytes: new Uint8Array(),
+      revision: '"intent-etag-1"',
+      head: {
+        actor_id: actorId,
+        epoch_id: epochId,
+        latest_segment: null,
+        library_id: libraryId,
+        next_intent_sequence: 1,
+        protocol: "intent_head_v1",
+        protocol_version: 1,
+        schema_version: 1,
+      },
+    });
+    mocks.publishFollowerIntent.mockResolvedValue({
+      status: "committed",
+      segmentReference: {
+        descriptor: { contentDigest: segmentDigest },
+      },
+    });
+
+    await expect(
+      syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+
+    expect(mocks.publishFollowerIntent).toHaveBeenCalledTimes(1);
+    expect(mocks.recordFollowerIntentPublication).toHaveBeenCalledWith({
+      actorId,
+      epochId,
+      firstIntentSequence: 1,
+      lastIntentSequence: 1,
+      libraryId,
+      previousSegmentDigest: null,
+      publishedSegmentDigest: segmentDigest,
+    });
+    expect(mocks.importCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("imports the exact follower result chain into the native durable cursor", async () => {
+    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    const libraryId = mocks.bootstrapAuthority.authority.library_id;
+    const epochId = mocks.bootstrapAuthority.authority.epoch_id;
+    const actorId = "78".repeat(32);
+    const manifestDigest = "56".repeat(32) as LibraryCoreLowercaseHex64;
+    const segmentDigest = "91".repeat(32) as LibraryCoreLowercaseHex64;
+    const pointer = {
+      activeTransport: "google_drive_app_data_v1",
+      causalFrontierDigest: "ef".repeat(32),
+      generation: 9,
+      libraryId,
+      manifest: {
+        descriptor: {
+          byteLength: 123,
+          contentDigest: manifestDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            digest: manifestDigest,
+            epochId,
+            generation: 9,
+            kind: "checkpoint_manifest",
+            libraryId,
+          }),
+        },
+        transportObjectId: "manifest-9",
+      },
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch: epochId,
+      writerId: mocks.bootstrapAuthority.actor.actor_id,
+    };
+    mocks.controlRead = {
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(pointer)),
+      revision: '"etag-follower"',
+    };
+    mocks.discoverPublishedControl.mockResolvedValue({
+      control: { bytes: mocks.controlRead.bytes },
+      controlFileId: "control-1",
+      libraryId,
+    });
+    mocks.followerRuntimeStatus.mockResolvedValue({
+      state: "active",
+      libraryId,
+      epochId,
+      actorId,
+      checkpointGeneration: 9,
+      remoteIngestSequence: 9,
+      pendingIntentCount: 0,
+      publishedIntentCount: 1,
+      importedResultCount: 0,
+    });
+    mocks.discoverResultHead.mockResolvedValue({
+      resultHeadFileId: "result-head-1",
+    });
+    mocks.readResultHead.mockResolvedValue({
+      head: {
+        next_result_sequence: 2,
+        latest_segment_digest: segmentDigest,
+      },
+    });
+    mocks.readFollowerResultCursor.mockResolvedValue({
+      nextResultSequence: 1,
+      latestSegmentDigest: null,
+    });
+    const reference = {
+      descriptor: { contentDigest: segmentDigest },
+      transportObjectId: "result-segment-1",
+    };
+    mocks.discoverResultSegments.mockResolvedValue([
+      {
+        firstResultSequence: 1,
+        lastResultSequence: 1,
+        reference,
+      },
+    ]);
+    mocks.importFollowerResult.mockImplementation(
+      async (request: Record<string, unknown>) => {
+        const writer = request.writer as {
+          appendResultSegment(input: Record<string, unknown>): Promise<void>;
+        };
+        await writer.appendResultSegment({
+          entries: [
+            {
+              intent_operation_id: "follower-operation-1",
+              intent_sequence: 1,
+              provider_receipt_digest: null,
+              result_operation_id: "result-operation-1",
+              result_sequence: 1,
+              status: "accepted",
+            },
+          ],
+          header: {
+            first_result_sequence: 1,
+            last_result_sequence: 1,
+            previous_segment_digest: null,
+          },
+          reference,
+        });
+      },
+    );
+
+    await expect(
+      syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+
+    expect(mocks.appendFollowerResultSegment).toHaveBeenCalledWith({
+      actorId,
+      entries: [
+        {
+          intentOperationId: "follower-operation-1",
+          intentSequence: 1,
+          providerReceiptDigest: null,
+          resultOperationId: "result-operation-1",
+          resultSequence: 1,
+          status: "accepted",
+        },
+      ],
+      epochId,
+      firstResultSequence: 1,
+      lastResultSequence: 1,
+      libraryId,
+      previousSegmentDigest: null,
+      segmentDigest,
+    });
   });
 
   it("streams the exact SQLite revision into one immutable checkpoint publication", async () => {
