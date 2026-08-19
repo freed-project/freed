@@ -50,6 +50,7 @@ jobs:
 
       - name: Install native Linux dependencies
         run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
@@ -64,7 +65,6 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
           npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
