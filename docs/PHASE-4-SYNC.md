@@ -437,6 +437,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.145 | Separate content-addressed media blob descriptor with zero-byte support, streaming `DB("blob-content", raw_bytes)` identity, and a dormant Google Drive adapter using verified 1 MiB resumable upload and readback windows | ✓ | High |
 | 4.146 | Native SQLite authority genesis and signed legacy protocol correction with exact source-manifest and checkpoint fields, preserved Library and epoch state, response-loss replay, source-lineage fencing, split-head refusal, and fail-closed absent writer admission | ✓ | High |
 | 4.147 | Retired Automerge JavaScript bundle boundary with the PWA `/sync` NetworkFirst cache route removed, obsolete Library Core census and registry exports closed, Vercel staging inputs repaired, and Desktop plus PWA release artifact inspection that permits only historical verification and the required loss fence | ✓ | High |
+| 4.148 | Process-lifetime OS-backed Library Core data-root lease acquired before SQLite startup, with one bounded attributable refusal record, exact single-holder enforcement, clean release, killed-process recovery, and no database-file transport | ✓ | High |
 
 ---
 

@@ -94,6 +94,22 @@ or a simultaneous two-machine session. A lost-machine restore uses the same
 owner-confirmed transition. The previous installation becomes read-only when
 it next refreshes authority.
 
+Cloud writer authority is separate from local process exclusion. Before a
+Freed Desktop process or future headless service opens any SQLite authority
+database, it must acquire one nonblocking, operating-system-backed exclusive
+lease on the exact canonical Library Core data root. The process holds that
+handle for its full lifetime. A second process targeting the same root fails
+closed and records the requesting PID, current holder PID when readable, data
+root, lock path, executable, package, version, and refusal time in one bounded
+`process-last-refusal.json` record that each later refusal overwrites. The
+diagnostic PID stored in `process.lock` does not grant authority and is never
+used to decide whether a stale process is alive. A clean release truncates that
+PID. If a process is killed, the operating system releases the lock and the
+next holder replaces the stale diagnostic value. The lock file remains in
+place so ordinary shutdown never creates an unlocked replacement inode. This
+lease neither chooses the cloud writer nor transports SQLite, WAL, SHM, or
+rollback-journal files.
+
 An offline installation may resume local work only when its last durably
 verified control tuple names it as writer, and it must show that cloud authority
 has not been refreshed. Before cloud publication or provider execution resumes,
