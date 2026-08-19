@@ -166,10 +166,42 @@ matching object verifies. Control updates send the exact previously read ETag
 as `If-Match`, classify `412` as a race, and read back exact bytes and the new
 ETag before reporting commit. All response bodies are bounded while reading.
 The same exact-file path can return verified immutable bytes to a dormant
-checkpoint consumer. Control bootstrap and large resumable blobs remain
-separate. The adapter has no timer, caller, OAuth acquisition, product
-registration, or activation path, and the existing Automerge Drive
-implementation remains untouched.
+checkpoint consumer. Control bootstrap remains separate. The adapter has no
+timer, caller, OAuth acquisition, product registration, or activation path.
+
+Media blobs use a separate closed descriptor:
+
+```text
+media_blob_descriptor_v1 = {
+  objectKey,
+  blobContentDigest,
+  byteLength
+}
+
+blobContentDigest = DB("blob-content", raw_bytes)
+objectKey = "freed-v2-blob~" || library_id || "~" || blobContentDigest
+```
+
+This descriptor cannot pass ordinary immutable-object validation.
+`byteLength` is a nonnegative safe integer no greater than
+67,108,864,000,000, so the domain-separated digest of an empty byte stream is
+one valid blob identity. Ordinary immutable objects retain their positive
+stored-byte length, raw stored-byte SHA-256, and multipart path below 5 MB.
+
+The dormant Google Drive media adapter accepts a replayable random-access byte
+source, verifies the complete local `DB("blob-content", raw_bytes)` identity in
+1 MiB windows before a Drive request, then creates a resumable session only at
+an authenticated `https://www.googleapis.com` Drive upload endpoint. Uploads
+use exact 1 MiB chunks except for the final remainder. Strict `308` ranges
+select the next offset. A lost chunk response is settled by a zero-byte session
+status query. A `404` or `410` session is restarted from the same verified
+source with a bounded retry count. A lost final response first discovers the
+exact content-addressed object by private properties. Every completion and
+deduplicated retry streams an exact Drive readback in at most 1 MiB ranges and
+recomputes the blob digest before accepting the file ID. The boundary has no
+timer, OAuth acquisition, product caller, content-provider fetch, retention
+action, SQLite upload, or CRDT bridge. Its canonical tests inject a fake Drive
+transport and make no live request.
 
 The adapter-neutral logical-checkpoint importer starts from one exact immutable
 manifest receipt. It verifies the manifest provider object ID, locator, stored

@@ -1,6 +1,11 @@
 /** Browser-safe immutable Library Core synchronization primitives. */
 
 export * from "./library-core.js";
+export type {
+  LibraryCoreMediaBlobAdapterV1,
+  LibraryCoreMediaBlobSourceV1,
+  LibraryCorePreparedMediaBlobV1,
+} from "./library-core-media-blob.js";
 export {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
@@ -88,9 +93,11 @@ export {
   type PrepareLibraryCoreOperationSegmentRequestV1,
 } from "./library-core-operation-segments.js";
 export {
+  LIBRARY_CORE_GOOGLE_DRIVE_RESUMABLE_CHUNK_BYTES,
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  createGoogleDriveLibraryCoreMediaBlobAdapterV1,
   createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
@@ -107,6 +114,7 @@ export {
   type GoogleDriveLibraryCoreControlLocatorV1,
   type GoogleDriveLibraryCoreIntentAdapterOptionsV1,
   type GoogleDriveLibraryCoreIntentHeadLocatorV1,
+  type GoogleDriveLibraryCoreMediaBlobAdapterOptionsV1,
   type DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1,
   type DiscoveredGoogleDriveLibraryCoreActorEnrollmentV1,
   type DiscoveredGoogleDriveLibraryCoreIntentSegmentV1,

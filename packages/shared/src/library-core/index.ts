@@ -13,6 +13,7 @@ export * from "./feed-recommendation-order-contract.js";
 export * from "./field-registry.js";
 export * from "./fractional-number-codec.js";
 export * from "./immutable-transport-contracts.js";
+export * from "./media-blob-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
 export * from "./result-segment-contracts.js";
 export * from "./local-authority-registry.js";
