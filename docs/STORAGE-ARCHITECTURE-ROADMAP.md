@@ -309,6 +309,22 @@ noninteractive platform vault. The next active milestone is
 conversion of the remaining compatibility surfaces and worker-corpus eviction,
 followed by complete elected migration authority admission.
 
+### Process lifetime data-root exclusion
+
+Every native Library Core runtime now takes one operating-system-backed
+exclusive lease on its canonical data root before SQLite can open. Freed
+Desktop holds the lease in process-managed state until exit. A future headless
+service must use the same primitive for the same root. A contender fails
+closed with both process IDs when the holder PID is readable, plus the exact
+data root, lock path, executable, package, version, and refusal time. Each
+failure overwrites one bounded `process-last-refusal.json` file, so diagnostics
+remain available when a release Windows app has no console without accumulating
+one file per launch. Clean exit releases the kernel lock and truncates its
+diagnostic PID. A killed process can leave stale PID text, but the kernel
+releases the actual lock and the next process replaces that text after it
+acquires the handle. The persistent `process.lock` file is local control state,
+not cloud authority or a database transport object.
+
 ## What the evidence establishes
 
 On the owner's 15,846-item production document, the current Automerge and
