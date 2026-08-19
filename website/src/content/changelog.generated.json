@@ -1,5 +1,101 @@
 [
   {
+    "version": "26.8.1800",
+    "tagName": "v26.8.1800",
+    "channel": "production",
+    "date": "2026-08-19T06:22:34Z",
+    "deck": "Google Drive Library setup now handles abandoned empty controls safely and reports precise Freed Desktop sync failures",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Lets the authenticated PWA ignore a bounded set of exact empty Google Drive control placeholders left by interrupted setup while still failing closed on conflicting published controls"
+      },
+      {
+        "text": "Preserves the exact native Google Drive failure stage in Freed Desktop instead of replacing it with a generic connection failed error"
+      },
+      {
+        "text": "Keeps Google Drive control discovery bounded and avoids downloading known empty provisioning placeholders"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Freed moves immutable Library objects through Google Drive and never uploads SQLite, WAL, or SHM files"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1800",
+    "prNumbers": [
+      1556
+    ],
+    "builds": [
+      "26.8.1800"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.1800",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1800",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.8.1501",
+    "tagName": "v26.8.1501",
+    "channel": "production",
+    "date": "2026-08-15T12:32:27Z",
+    "deck": "Freed now runs its Library on bounded SQLite storage across Freed Desktop and the PWA, with repaired Google Drive sync and substantially lower memory demand",
+    "features": [
+      {
+        "text": "Moves Freed Desktop and the PWA to the SQLite-first Library Core and removes the legacy Automerge runtime"
+      },
+      {
+        "text": "Publishes immutable SQLite Library checkpoints through Google Drive so the PWA can import the synchronized Library"
+      },
+      {
+        "text": "Adds responsive settings controls and tappable map zoom controls across supported screen sizes"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Prevents Google Drive publication from remaining stuck behind an abandoned native request and reports the exact failed sync stage"
+      },
+      {
+        "text": "Repairs PWA Google Drive authentication, disconnect, token refresh, and synchronized state reporting"
+      },
+      {
+        "text": "Eliminates full-corpus SQLite UI scans and bounds Friends and map rendering memory"
+      },
+      {
+        "text": "Stabilizes map panels, markers, provider scheduling, wake recovery, and hidden-window sync"
+      },
+      {
+        "text": "Lets the PWA import immutable Google Drive Library checkpoints when browsers do not expose response ETags"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Google Drive sync remains intentionally local-first: SQLite files stay on each device while immutable Library objects move through the user's Drive"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1501",
+    "prNumbers": [],
+    "builds": [
+      "26.8.1500",
+      "26.8.1501"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.1500",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1500",
+        "channel": "production"
+      },
+      {
+        "version": "26.8.1501",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1501",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.8.1407",
     "tagName": "v26.8.1407",
     "channel": "production",
