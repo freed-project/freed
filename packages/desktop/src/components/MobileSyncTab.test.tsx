@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
+import { readLibraryCoreDesktopRole } from "../lib/library-core-desktop-role";
 import { MobileSyncTab } from "./MobileSyncTab";
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +18,13 @@ const mocks = vi.hoisted(() => ({
   resolveCloudSyncConflict: vi.fn(async () => {}),
   syncCloudProviderNow: vi.fn(async () => {}),
   transferSqliteLibraryWriterToThisDesktop: vi.fn(async () => {}),
+  providers: {
+    dropbox: { status: "idle" as const },
+    gdrive: {
+      status: "connected" as "connected" | "error",
+      error: undefined as string | undefined,
+    },
+  },
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -29,10 +37,7 @@ vi.mock("@freed/ui/context", () => ({
 
 vi.mock("../hooks/useCloudProviders", () => ({
   useCloudProviders: () => ({
-    providers: {
-      dropbox: { status: "idle" },
-      gdrive: { status: "connected" },
-    },
+    providers: mocks.providers,
     connect: mocks.connect,
     cancelConnect: mocks.cancelConnect,
     disconnect: mocks.disconnect,
@@ -61,6 +66,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    mocks.providers.gdrive = { status: "connected", error: undefined };
     window.localStorage.clear();
     useAppStore.setState({ desktopClientIds: ["desktop-current"] });
     useDebugStore.setState({
@@ -122,6 +128,10 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(container.querySelector("[data-testid='multiple-desktop-client-warning']")).toBeNull();
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
+    const follower = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("[role='radio']"),
+    ).find((button) => button.textContent?.includes("Editable follower"));
+    expect(follower?.disabled).toBe(true);
 
     await act(async () => {
       syncNow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -129,6 +139,36 @@ describe("MobileSyncTab cloud diagnostics", () => {
     });
 
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
+  });
+
+  it("persists follower mode only while the Drive connection is inactive", async () => {
+    mocks.providers.gdrive = {
+      status: "error",
+      error: "Connection failed.",
+    };
+    useDebugStore.setState({ cloudProviders: null });
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const roleControl = container.querySelector(
+      "[data-testid='library-core-desktop-role']",
+    );
+    const follower = Array.from(
+      roleControl?.querySelectorAll<HTMLButtonElement>("[role='radio']") ?? [],
+    ).find((button) => button.textContent?.includes("Editable follower"));
+
+    expect(follower?.disabled).toBe(false);
+    await act(async () => {
+      follower?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(readLibraryCoreDesktopRole()).toBe("follower");
+    expect(follower?.getAttribute("aria-checked")).toBe("true");
+    expect(roleControl?.textContent).toContain(
+      "Authority publication is blocked on this installation.",
+    );
   });
 
   it("shows honest activity feedback while Drive publication is running", async () => {

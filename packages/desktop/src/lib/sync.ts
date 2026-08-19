@@ -25,6 +25,9 @@ import {
 } from "./library-core-cloud-sync";
 import { reloadSqliteLibraryState } from "./library-client";
 import { base64ToBytes } from "./google-drive";
+import {
+  requirePrimaryLibraryCoreDesktopRole,
+} from "./library-core-desktop-role";
 import { safeUnlisten } from "./safe-unlisten";
 
 export type { CloudProvider };
@@ -464,6 +467,7 @@ export async function startCloudSync(
       "SQLite Library cloud sync is disabled on this Freed Desktop.",
     );
   }
+  requirePrimaryLibraryCoreDesktopRole();
   if (hasFactoryResetCloudCleanupBarrier()) return;
   stopCloudSync(provider);
   persistCloudToken(provider, token);
@@ -565,6 +569,7 @@ export async function syncCloudProviderNow(
   if (provider !== "gdrive") {
     throw new Error("The SQLite Library currently requires Google Drive.");
   }
+  requirePrimaryLibraryCoreDesktopRole();
   const accessToken = await getValidCloudToken(provider);
   if (!accessToken) throw new Error("Reconnect Google Drive to resume sync.");
   const result = await publishCurrentSqliteLibraryToGoogleDrive({
@@ -581,6 +586,7 @@ export async function syncCloudProviderNow(
 }
 
 export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> {
+  requirePrimaryLibraryCoreDesktopRole();
   const accessToken = await getValidCloudToken("gdrive");
   if (!accessToken)
     throw new Error("Reconnect Google Drive to transfer ownership.");

@@ -19,6 +19,11 @@ import {
   desktopClientWarningSignature,
   isDesktopClientWarningAcknowledged,
 } from "../lib/desktop-client-warning";
+import {
+  readLibraryCoreDesktopRole,
+  writeLibraryCoreDesktopRole,
+  type LibraryCoreDesktopRole,
+} from "../lib/library-core-desktop-role";
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number") return "-";
@@ -79,6 +84,9 @@ export function MobileSyncTab() {
   const [syncing, setSyncing] = useState(false);
   const [transferringWriter, setTransferringWriter] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [desktopRole, setDesktopRole] = useState<LibraryCoreDesktopRole>(() =>
+    readLibraryCoreDesktopRole(),
+  );
   const driveState = cloudProviders?.gdrive ?? null;
   const driveCardState = driveState === null
     ? providers.gdrive
@@ -88,6 +96,19 @@ export function MobileSyncTab() {
   const connected = driveCardState.status === "connected";
   const diagnosticError = driveState?.error ?? manualError;
   const publishing = driveState?.stage === "upload" || syncing;
+  const roleLocked =
+    driveCardState.status === "connected" ||
+    driveCardState.status === "connecting";
+
+  const chooseDesktopRole = useCallback(
+    (role: LibraryCoreDesktopRole) => {
+      if (roleLocked) return;
+      writeLibraryCoreDesktopRole(role);
+      setDesktopRole(role);
+      setManualError(null);
+    },
+    [roleLocked],
+  );
 
   useEffect(() => {
     setWarningDismissed(isDesktopClientWarningAcknowledged(warningSignature));
@@ -157,6 +178,88 @@ export function MobileSyncTab() {
               </button>
             </div>
           )}
+
+          <div
+            data-testid="library-core-desktop-role"
+            className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4"
+          >
+            <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
+              This installation's role
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-soft)]">
+              Choose before connecting Google Drive. Disconnect first to change
+              an active connection.
+            </p>
+            <div
+              role="radiogroup"
+              aria-label="Freed Desktop Library role"
+              className="mt-3 grid gap-2 sm:grid-cols-2"
+            >
+              {([
+                {
+                  role: "primary" as const,
+                  label: "Primary source",
+                  blurb: "Runs capture and publishes the canonical Library.",
+                },
+                {
+                  role: "follower" as const,
+                  label: "Editable follower",
+                  blurb:
+                    "Imports the primary Library and sends edits back for acceptance.",
+                },
+              ]).map((option) => {
+                const active = desktopRole === option.role;
+                return (
+                  <button
+                    key={option.role}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={roleLocked}
+                    onClick={() => chooseDesktopRole(option.role)}
+                    className={`w-full rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      active
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.12)]"
+                        : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] hover:bg-[var(--theme-bg-card)]"
+                    }`}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span
+                        className={
+                          active
+                            ? "text-sm font-medium text-[var(--theme-text-primary)]"
+                            : "text-sm font-medium text-[var(--theme-text-secondary)]"
+                        }
+                      >
+                        {option.label}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          active
+                            ? "bg-[var(--theme-accent-secondary)]"
+                            : "bg-[var(--theme-border-quiet)]"
+                        }`}
+                      />
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-[var(--theme-text-muted)]">
+                      {option.blurb}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {desktopRole === "follower" && (
+              <p
+                role="status"
+                className="mt-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]"
+              >
+                Authority publication is blocked on this installation. Follower
+                Drive transport remains disabled in this candidate until its
+                approval gate is complete.
+              </p>
+            )}
+          </div>
 
           <CloudProviderCard
             provider="gdrive"

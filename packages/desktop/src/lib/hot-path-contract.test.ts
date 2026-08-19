@@ -49,6 +49,31 @@ describe("desktop hot-path contract", () => {
     expect(syncSource).not.toContain("freed.automerge");
   });
 
+  it("fences every authority action behind the local Desktop role", () => {
+    const syncSource = readFileSync(join(LIB_DIR, "sync.ts"), "utf8");
+    const authorityFunctions = [
+      "export async function startCloudSync",
+      "export async function syncCloudProviderNow",
+      "export async function transferSqliteLibraryWriterToThisDesktop",
+    ];
+
+    for (const [index, marker] of authorityFunctions.entries()) {
+      const start = syncSource.indexOf(marker);
+      const end =
+        index + 1 < authorityFunctions.length
+          ? syncSource.indexOf(authorityFunctions[index + 1]!, start)
+          : syncSource.indexOf(
+              "export async function resolveCloudSyncConflict",
+              start,
+            );
+      const functionSource = syncSource.slice(start, end);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(functionSource).toContain(
+        "requirePrimaryLibraryCoreDesktopRole();",
+      );
+    }
+  });
+
   it("keeps provider outbox drains wired to Library mutation metadata", () => {
     const storeSource = readFileSync(join(LIB_DIR, "store.ts"), "utf8");
     const outboxSource = readFileSync(join(LIB_DIR, "outbox.ts"), "utf8");
