@@ -142,6 +142,20 @@ export function tauriInitScript(): string {
       persistSqliteState();
       return null;
     }
+    function sqliteAppendImportItems(args) {
+      var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+      if (!stage) throw new Error('SQLite Library has no active staged import');
+      var request = args && args.request ? args.request : {};
+      (request.itemsBase64 || []).forEach(function(encoded) {
+        var binary = atob(encoded);
+        var bytes = Uint8Array.from(binary, function(character) {
+          return character.charCodeAt(0);
+        });
+        var item = JSON.parse(new TextDecoder().decode(bytes));
+        stage.items[item.globalId] = item;
+      });
+      return null;
+    }
     function sqliteMutateItems(args) {
       var state = sqliteState();
       var request = args && args.request ? args.request : {};
@@ -227,9 +241,7 @@ export function tauriInitScript(): string {
       },
       begin_sqlite_library_import: (args) => {
         var request = args.request;
-        window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
-          active: false,
-          revision: 0,
+        window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
           sourceGeneration: request.sourceGeneration,
           sourceRevision: request.sourceRevision,
           sourceDigest: request.sourceDigest,
@@ -239,10 +251,16 @@ export function tauriInitScript(): string {
         };
         return null;
       },
-      append_sqlite_library_import: sqliteUpsertItems,
+      append_sqlite_library_import: sqliteAppendImportItems,
       finalize_sqlite_library_import: () => {
+        var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
+        if (!stage) throw new Error('SQLite Library has no complete staged import');
+        if (Object.keys(stage.items).length !== stage.expectedItemCount) {
+          throw new Error('SQLite Library import count mismatch');
+        }
         var state = sqliteState();
-        state.active = true;
+        Object.assign(state, stage, { active: true, revision: 1 });
+        delete window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
         persistSqliteState();
         return {
           active: true,
@@ -254,6 +272,12 @@ export function tauriInitScript(): string {
           sourceDigest: state.sourceDigest,
         };
       },
+      recover_sqlite_library_follower_overlay: () => ({
+        transactionCount: 0,
+        operationCount: 0,
+        materializedRowCount: 0,
+        revisionAdvanced: false,
+      }),
       read_sqlite_library_shell: () => {
         // Scale benchmarks keep the corpus in mock SQLite while forcing the
         // shell projection to match production's empty renderer item array.
@@ -297,6 +321,40 @@ export function tauriInitScript(): string {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      sqlite_library_follower_intent_context: () => null,
+      sqlite_library_follower_runtime_status: () => ({
+        state: 'awaiting_checkpoint',
+        libraryId: null,
+        epochId: null,
+        actorId: null,
+        checkpointGeneration: null,
+        remoteIngestSequence: null,
+        pendingIntentCount: 0,
+        publishedIntentCount: 0,
+        importedResultCount: 0,
+      }),
+      read_sqlite_library_follower_intent_outbox_candidate: () => null,
+      record_sqlite_library_follower_intent_publication: (args) => {
+        var request = args.request || {};
+        return {
+          firstIntentSequence: request.firstIntentSequence,
+          lastIntentSequence: request.lastIntentSequence,
+          operationCount: request.lastIntentSequence - request.firstIntentSequence + 1,
+          publishedSegmentDigest: request.publishedSegmentDigest,
+          status: 'recorded',
+        };
+      },
+      read_sqlite_library_follower_result_import_cursor: () => null,
+      append_sqlite_library_follower_result_segment: (args) => {
+        var request = args.request || {};
+        return {
+          firstResultSequence: request.firstResultSequence,
+          lastResultSequence: request.lastResultSequence,
+          resultCount: (request.entries || []).length,
+          segmentDigest: request.segmentDigest,
+          status: 'imported',
+        };
+      },
       read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
         var item = sqliteState().items[id];
         return item && !item.__deleted ? JSON.stringify(item) : null;

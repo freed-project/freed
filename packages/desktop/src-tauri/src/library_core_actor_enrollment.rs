@@ -24,7 +24,8 @@
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_authority_genesis::load_established_authority_key_pair;
 use crate::library_core_canonical::{
-    encode_canonical_value, encode_operation_digest_input, encode_signature_input,
+    encode_canonical_value, encode_operation_digest_input, encode_operation_signature_input,
+    encode_signature_input,
 };
 use crate::library_core_journal::{ActorState, LibraryCoreJournal};
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
@@ -155,6 +156,14 @@ struct ActorIdentity {
     actor_incarnation_nonce: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreparedActorEnrollmentRequest {
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_request_digest: String,
+    pub(crate) canonical_enrollment_request_json: String,
+}
+
 fn actor_identity(
     authority: &EnrollmentAuthority,
     key_pair: &Ed25519KeyPair,
@@ -182,13 +191,12 @@ fn actor_identity(
 /// The shape is fixed by `library_core_journal_enrollment_verifier`, which
 /// rejects any object with an unexpected or missing key, so this is written to
 /// match it exactly rather than to be convenient.
-fn build_certificate(
+fn build_certificate_body(
     authority: &EnrollmentAuthority,
     identity: &ActorIdentity,
     actor_key_pair: &Ed25519KeyPair,
-    authority_key_pair: &Ed25519KeyPair,
     created_at_ms: i64,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Value, String), String> {
     if created_at_ms < 0 {
         return Err("Library Core enrollment time is invalid".to_string());
     }
@@ -227,6 +235,18 @@ fn build_certificate(
     });
 
     let certificate_digest = digest_value("actor-enrollment-certificate", &certificate_body)?;
+    Ok((certificate_body, certificate_digest))
+}
+
+fn build_certificate(
+    authority: &EnrollmentAuthority,
+    identity: &ActorIdentity,
+    actor_key_pair: &Ed25519KeyPair,
+    authority_key_pair: &Ed25519KeyPair,
+    created_at_ms: i64,
+) -> Result<Vec<u8>, String> {
+    let (certificate_body, certificate_digest) =
+        build_certificate_body(authority, identity, actor_key_pair, created_at_ms)?;
     let authority_signature_input = encode_signature_input(
         "actor-enrollment-authority",
         &json!({ "certificate_digest": certificate_digest }),
@@ -244,6 +264,36 @@ fn build_certificate(
 
     encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES)
         .map_err(|_| "Library Core enrollment certificate is not canonically encodable".to_string())
+}
+
+/// Mint or replay the proof-only request for a non-authoritative follower.
+///
+/// The actor key never leaves the platform vault. This request proves key
+/// possession only. It cannot enroll itself, grant writer admission, or make a
+/// canonical change until the remote authority countersigns it.
+pub(crate) fn prepare_follower_actor_enrollment_request(
+    authority: &EnrollmentAuthority,
+    actor_store: &dyn ActorKeyStore,
+    created_at_ms: i64,
+) -> Result<PreparedActorEnrollmentRequest, String> {
+    let actor_key_pair = load_or_create_actor_key_pair(actor_store, &authority.library_id)?;
+    let identity = actor_identity(authority, &actor_key_pair)?;
+    let (certificate_body, certificate_digest) =
+        build_certificate_body(authority, &identity, &actor_key_pair, created_at_ms)?;
+    let request = json!({
+        "certificate_body": certificate_body,
+        "certificate_digest": certificate_digest,
+    });
+    let canonical = encode_canonical_value(&request, MAX_CERTIFICATE_BYTES)
+        .map_err(|_| "Library Core actor enrollment request is not canonical".to_string())?;
+    let canonical_enrollment_request_json = String::from_utf8(canonical)
+        .map_err(|_| "Library Core actor enrollment request is not UTF-8".to_string())?;
+    Ok(PreparedActorEnrollmentRequest {
+        actor_id: identity.actor_id,
+        actor_public_key: identity.actor_public_key,
+        enrollment_request_digest: certificate_digest,
+        canonical_enrollment_request_json,
+    })
 }
 
 /// Where the actor signing key is kept. Production is the platform vault;
@@ -288,6 +338,46 @@ fn load_or_create_actor_key_pair(
     }
     Ed25519KeyPair::from_pkcs8(&readback)
         .map_err(|_| "Library Core actor signing key readback is corrupt".to_string())
+}
+
+fn load_actor_key_pair(
+    store: &dyn ActorKeyStore,
+    library_id: &str,
+) -> Result<Ed25519KeyPair, String> {
+    let bytes = store
+        .load(library_id)?
+        .ok_or_else(|| "Library Core actor signing key is missing".to_string())?;
+    Ed25519KeyPair::from_pkcs8(&bytes)
+        .map_err(|_| "Library Core actor signing key is corrupt".to_string())
+}
+
+/// Sign one already-canonicalized operation body digest for this follower.
+///
+/// The native key is opened only for its exact Library and must still match
+/// the enrolled public key. The returned signature is domain-separated for a
+/// Library Core operation envelope and grants no cloud publication by itself.
+pub(crate) fn sign_follower_operation_digest(
+    store: &dyn ActorKeyStore,
+    library_id: &str,
+    expected_actor_public_key: &str,
+    operation_signing_body_digest: &str,
+) -> Result<String, String> {
+    if !is_lower_sha256(library_id)
+        || !is_lower_sha256(expected_actor_public_key)
+        || !is_lower_sha256(operation_signing_body_digest)
+    {
+        return Err("Library Core follower operation signing request is invalid".to_string());
+    }
+    let key_pair = load_actor_key_pair(store, library_id)?;
+    if lower_hex(key_pair.public_key().as_ref()) != expected_actor_public_key {
+        return Err("Library Core follower actor signing key changed".to_string());
+    }
+    let input = encode_operation_signature_input(
+        &json!({ "operation_signing_body_digest": operation_signing_body_digest }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core follower operation signature input is invalid".to_string())?;
+    Ok(lower_hex(key_pair.sign(&input).as_ref()))
 }
 
 fn enroll_with_key_pairs(
@@ -638,6 +728,122 @@ mod tests {
             lower_hex(second.public_key().as_ref())
         );
         assert_eq!(*store.stored.borrow(), minted);
+    }
+
+    #[test]
+    fn follower_request_proves_actor_possession_without_granting_authority() {
+        let (_directory, _journal, authority) = journal_with_authority();
+        let store = MemoryActorKeyStore::default();
+
+        let prepared =
+            prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
+        let value: Value =
+            serde_json::from_str(&prepared.canonical_enrollment_request_json).unwrap();
+
+        assert_eq!(
+            value.get("certificate_digest").and_then(Value::as_str),
+            Some(prepared.enrollment_request_digest.as_str())
+        );
+        assert!(value.get("certificate_body").is_some());
+        assert!(value.get("authority_signature").is_none());
+        assert!(is_lower_sha256(&prepared.actor_public_key));
+        assert!(is_lower_sha256(&prepared.actor_id));
+
+        let digest = "9".repeat(64);
+        let signature = sign_follower_operation_digest(
+            &store,
+            &authority.library_id,
+            &prepared.actor_public_key,
+            &digest,
+        )
+        .unwrap();
+        let signature_input = encode_operation_signature_input(
+            &json!({ "operation_signing_body_digest": digest }),
+            MAX_CERTIFICATE_BYTES,
+        )
+        .unwrap();
+        assert!(crate::library_core_ed25519::verify_library_core_ed25519(
+            &prepared.actor_public_key,
+            &signature,
+            &signature_input,
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn countersigned_follower_actor_stays_out_of_canonical_writer_state() {
+        let (_directory, mut journal, authority) = journal_with_authority();
+        let accepted = journal
+            .active_authority_epoch(&authority.library_id)
+            .unwrap()
+            .unwrap()
+            .authority;
+        journal
+            .install_follower_anchor(
+                &crate::library_core_journal::VerifiedFollowerAnchor {
+                    authority: accepted,
+                    manifest_object_key: "manifest".to_string(),
+                    manifest_transport_object_id: "drive-object".to_string(),
+                    manifest_content_digest: "1".repeat(64),
+                    generation: 1,
+                    remote_ingest_sequence: 0,
+                    remote_materialized_digest: "2".repeat(64),
+                    writer_id: "3".repeat(64),
+                    control_revision: "revision-1".to_string(),
+                    checkpoint_actor: None,
+                    installed_at_ms: 1_900,
+                },
+            )
+            .unwrap();
+        let store = MemoryActorKeyStore::default();
+        let request =
+            prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
+        journal
+            .store_follower_actor_request(
+                &crate::library_core_journal::StoredFollowerActorRequest {
+                    library_id: authority.library_id.clone(),
+                    epoch_id: authority.epoch_id.clone(),
+                    actor_id: request.actor_id.clone(),
+                    actor_public_key: request.actor_public_key.clone(),
+                    enrollment_request_digest: request.enrollment_request_digest.clone(),
+                    canonical_enrollment_request_json: request
+                        .canonical_enrollment_request_json,
+                    created_at_ms: 2_000,
+                },
+            )
+            .unwrap();
+        let actor_key = Ed25519KeyPair::from_pkcs8(
+            store.stored.borrow().as_ref().expect("stored actor key"),
+        )
+        .unwrap();
+        let identity = actor_identity(&authority, &actor_key).unwrap();
+        let certificate = build_certificate(
+            &authority,
+            &identity,
+            &actor_key,
+            &authority_key_pair(),
+            2_000,
+        )
+        .unwrap();
+
+        let installed = journal
+            .verify_and_install_follower_actor(&certificate)
+            .unwrap();
+        assert_eq!(installed.actor_id, request.actor_id);
+        let canonical_actor_count: i64 = journal
+            .connection_for_test()
+            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| row.get(0))
+            .unwrap();
+        let follower_actor_count: i64 = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_follower_intent_actor;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(canonical_actor_count, 0);
+        assert_eq!(follower_actor_count, 1);
     }
 
     #[test]
