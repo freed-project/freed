@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     bytes: new TextEncoder().encode("{}"),
   },
   publishRequest: null as Record<string, unknown> | null,
+  publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
   readDescriptor: vi.fn(),
   readPage: vi.fn(),
@@ -112,6 +113,51 @@ vi.mock("./sqlite-library", () => ({
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@freed/sync/cloud/library-core")>();
+  const publicationResult = (
+    request: Record<string, unknown>,
+    entries: readonly unknown[],
+  ) => {
+    const header = request.header as Record<string, unknown>;
+    const generation = Number(request.generation);
+    const libraryId = String(header.library_id);
+    const storageEpoch = String(header.epoch_id);
+    const digest = "67".repeat(32) as LibraryCoreLowercaseHex64;
+    const manifest = {
+      descriptor: {
+        byteLength: 123,
+        contentDigest: digest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          digest,
+          epochId: storageEpoch,
+          generation,
+          kind: "checkpoint_manifest",
+          libraryId,
+        }),
+      },
+      transportObjectId: `manifest-${generation.toLocaleString("en-US")}`,
+    };
+    return {
+      status: mocks.publishStatus,
+      revision: '"etag-2"',
+      dependencies: [],
+      manifest,
+      controlPointer: {
+        activeTransport: "google_drive_app_data_v1",
+        causalFrontierDigest: String(
+          (header.materializer_position as Record<string, unknown>)
+            .frontier_digest,
+        ),
+        generation,
+        libraryId,
+        manifest,
+        protocolVersion: 1,
+        schemaVersion: 1,
+        storageEpoch,
+        writerId: String(request.writerId),
+      },
+      entries,
+    };
+  };
   return {
     ...actual,
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1: vi.fn(
@@ -135,14 +181,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
         for await (const entry of request.entries as AsyncIterable<unknown>) {
           entries.push(entry);
         }
-        return {
-          status: "committed",
-          revision: '"etag-2"',
-          dependencies: [],
-          manifest: {},
-          controlPointer: {},
-          entries,
-        };
+        return publicationResult(request, entries);
       },
     ),
     importLibraryCorePortableCheckpointV1:
@@ -257,14 +296,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
         for await (const entry of request.entries as AsyncIterable<unknown>) {
           entries.push(entry);
         }
-        return {
-          status: "committed",
-          revision: '"etag-2"',
-          dependencies: [],
-          manifest: {},
-          controlPointer: {},
-          entries,
-        };
+        return publicationResult(request, entries);
       },
     ),
   };
@@ -274,6 +306,7 @@ import {
   isSqliteLibraryGoogleDriveSyncEnabled,
   makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
+  readSqliteLibraryGoogleDrivePublicationReceipt,
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
@@ -285,6 +318,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       bytes: new TextEncoder().encode("{}"),
     };
     mocks.publishRequest = null;
+    mocks.publishStatus = "committed";
     mocks.reassignRequest = null;
     mocks.publish.mockClear();
     mocks.reassign.mockClear();
@@ -348,7 +382,69 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.nativeState).toMatchObject({
       controlFileId: "control-1",
       lastPublishedRevision: 7,
+      lastPublishedCheckpoint: {
+        version: 1,
+        localRevision: 7,
+        controlRevision: '"etag-2"',
+        controlPointer: {
+          generation: 0,
+          manifest: {
+            descriptor: { contentDigest: "67".repeat(32) },
+            transportObjectId: "manifest-0",
+          },
+        },
+      },
     });
+    await expect(
+      readSqliteLibraryGoogleDrivePublicationReceipt(),
+    ).resolves.toMatchObject({
+      localRevision: 7,
+      controlRevision: '"etag-2"',
+      controlPointer: {
+        generation: 0,
+        manifest: { transportObjectId: "manifest-0" },
+      },
+    });
+  });
+
+  it("persists the exact receipt after a lost Drive commit response is recovered", async () => {
+    mocks.publishStatus = "recovered_after_response_loss";
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+
+    await expect(
+      readSqliteLibraryGoogleDrivePublicationReceipt(),
+    ).resolves.toMatchObject({
+      localRevision: 7,
+      controlRevision: '"etag-2"',
+      controlPointer: {
+        generation: 0,
+        manifest: {
+          descriptor: { contentDigest: "67".repeat(32) },
+          transportObjectId: "manifest-0",
+        },
+      },
+    });
+  });
+
+  it("rejects a stored receipt that is not bound to its local revision", async () => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
+    const stored = mocks.nativeState as {
+      lastPublishedCheckpoint: Record<string, unknown>;
+    };
+    mocks.nativeState = {
+      ...(mocks.nativeState as Record<string, unknown>),
+      lastPublishedCheckpoint: {
+        ...stored.lastPublishedCheckpoint,
+        localRevision: 8,
+      },
+    };
+
+    await expect(
+      readSqliteLibraryGoogleDrivePublicationReceipt(),
+    ).resolves.toBeNull();
   });
 
   it("replaces an unpublished synthetic empty cloud identity after Library recovery", async () => {

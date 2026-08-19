@@ -28,6 +28,10 @@ import {
   readSqliteLibraryFollowerRuntimeStatus,
   type SqliteLibraryFollowerRuntimeStatus,
 } from "../lib/sqlite-library";
+import {
+  readSqliteLibraryGoogleDrivePublicationReceipt,
+  type LibraryCorePublishedCheckpointReceiptV1,
+} from "../lib/library-core-cloud-sync";
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number") return "-";
@@ -49,30 +53,48 @@ function formatRelativeTime(timestamp?: number): string {
   return `${Math.floor(hours / 24).toLocaleString()}d ago`;
 }
 
-function DiagnosticCell({ label, value }: { label: string; value: string }) {
+function DiagnosticCell({
+  label,
+  value,
+  title = value,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+}) {
   return (
     <div className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
         {label}
       </p>
-      <p className="mt-1 truncate font-mono text-xs tabular-nums text-[var(--theme-text-secondary)]">
+      <p
+        title={title}
+        className="mt-1 truncate font-mono text-xs tabular-nums text-[var(--theme-text-secondary)]"
+      >
         {value}
       </p>
     </div>
   );
 }
 
+function formatIdentityTail(value: string): string {
+  return value.length <= 8 ? value : `...${value.slice(-8)}`;
+}
+
 function describeUploadGap(state: CloudProviderDebugState | null): string {
   if (!state) return "Connect Google Drive to start SQLite Library sync.";
   if (state.error) return "Sync needs attention before the next publication.";
-  if (state.stage === "upload") return "Publishing immutable Library objects now.";
+  if (state.stage === "upload")
+    return "Publishing immutable Library objects now.";
   if (state.pendingReason) return state.pendingReason;
   if (state.lastUploadAt) return "Waiting for the next local SQLite revision.";
   return "Use Sync now to publish the current SQLite Library revision.";
 }
 
 function isWriterOwnershipWarning(message?: string | null): boolean {
-  return message?.includes("Another Freed Desktop currently owns writes") ?? false;
+  return (
+    message?.includes("Another Freed Desktop currently owns writes") ?? false
+  );
 }
 
 function describeFollowerState(
@@ -99,7 +121,9 @@ export function MobileSyncTab() {
     isDesktopClientWarningAcknowledged(warningSignature),
   );
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
-  const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
+  const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(
+    null,
+  );
   const [syncing, setSyncing] = useState(false);
   const [transferringWriter, setTransferringWriter] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
@@ -111,12 +135,21 @@ export function MobileSyncTab() {
   const [followerStatusError, setFollowerStatusError] = useState<string | null>(
     null,
   );
+  const [publicationReceipt, setPublicationReceipt] =
+    useState<LibraryCorePublishedCheckpointReceiptV1 | null>(null);
+  const [publicationReceiptError, setPublicationReceiptError] = useState<
+    string | null
+  >(null);
   const driveState = cloudProviders?.gdrive ?? null;
-  const driveCardState = driveState === null
-    ? providers.gdrive
-    : driveState.status === "error"
-      ? { status: "error" as const, error: driveState.error ?? "Cloud sync failed." }
-      : { status: driveState.status };
+  const driveCardState =
+    driveState === null
+      ? providers.gdrive
+      : driveState.status === "error"
+        ? {
+            status: "error" as const,
+            error: driveState.error ?? "Cloud sync failed.",
+          }
+        : { status: driveState.status };
   const connected = driveCardState.status === "connected";
   const diagnosticError = driveState?.error ?? manualError;
   const publishing = driveState?.stage === "upload" || syncing;
@@ -170,6 +203,30 @@ export function MobileSyncTab() {
     };
   }, [desktopRole]);
 
+  const refreshPublicationReceipt = useCallback(async () => {
+    try {
+      setPublicationReceipt(
+        await readSqliteLibraryGoogleDrivePublicationReceipt(),
+      );
+      setPublicationReceiptError(null);
+    } catch (error) {
+      setPublicationReceiptError(
+        error instanceof Error
+          ? error.message
+          : "Checkpoint receipt is unavailable.",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPublicationReceipt();
+    const timer = window.setInterval(
+      () => void refreshPublicationReceipt(),
+      15_000,
+    );
+    return () => window.clearInterval(timer);
+  }, [refreshPublicationReceipt]);
+
   const dismissWarning = useCallback(() => {
     acknowledgeDesktopClientWarning(warningSignature);
     setWarningDismissed(true);
@@ -181,25 +238,33 @@ export function MobileSyncTab() {
     setManualError(null);
     try {
       await syncCloudProviderNow("gdrive");
+      await refreshPublicationReceipt();
     } catch (error) {
-      setManualError(error instanceof Error ? error.message : "Cloud sync failed.");
+      setManualError(
+        error instanceof Error ? error.message : "Cloud sync failed.",
+      );
     } finally {
       setSyncing(false);
     }
-  }, [connected, syncing]);
+  }, [connected, refreshPublicationReceipt, syncing]);
 
   const transferWriter = useCallback(async () => {
     if (transferringWriter) return;
-    if (!window.confirm(
-      "Make this Freed Desktop the writer? The previous installation becomes read-only when it next checks Google Drive.",
-    )) return;
+    if (
+      !window.confirm(
+        "Make this Freed Desktop the writer? The previous installation becomes read-only when it next checks Google Drive.",
+      )
+    )
+      return;
     setTransferringWriter(true);
     setManualError(null);
     try {
       await transferSqliteLibraryWriterToThisDesktop();
     } catch (error) {
       setManualError(
-        error instanceof Error ? error.message : "Library ownership transfer failed.",
+        error instanceof Error
+          ? error.message
+          : "Library ownership transfer failed.",
       );
     } finally {
       setTransferringWriter(false);
@@ -223,7 +288,9 @@ export function MobileSyncTab() {
                 Multiple Freed Desktop clients detected
               </p>
               <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-secondary)]">
-                {desktopClientIds.length.toLocaleString()} Freed Desktop clients are registered with this Library. Only the current writer may publish SQLite Library revisions or provider results.
+                {desktopClientIds.length.toLocaleString()} Freed Desktop clients
+                are registered with this Library. Only the current writer may
+                publish SQLite Library revisions or provider results.
               </p>
               <button
                 type="button"
@@ -251,7 +318,7 @@ export function MobileSyncTab() {
               aria-label="Freed Desktop Library role"
               className="mt-3 grid gap-2 sm:grid-cols-2"
             >
-              {([
+              {[
                 {
                   role: "primary" as const,
                   label: "Primary source",
@@ -263,7 +330,7 @@ export function MobileSyncTab() {
                   blurb:
                     "Imports the primary Library and sends edits back for acceptance.",
                 },
-              ]).map((option) => {
+              ].map((option) => {
                 const active = desktopRole === option.role;
                 return (
                   <button
@@ -380,7 +447,8 @@ export function MobileSyncTab() {
             onDisconnect={disconnect}
           />
           <p className="text-center text-xs text-[var(--theme-text-muted)]">
-            Google Drive carries immutable Library checkpoints and PWA intents. SQLite stays local to each device.
+            Google Drive carries immutable Library checkpoints and PWA intents.
+            SQLite stays local to each device.
           </p>
 
           <div
@@ -413,7 +481,14 @@ export function MobileSyncTab() {
               </p>
             )}
 
-            {(transferringWriter || isWriterOwnershipWarning(diagnosticError)) && (
+            {publicationReceiptError && (
+              <p className="theme-feedback-text-danger mb-3 break-words text-xs">
+                {publicationReceiptError}
+              </p>
+            )}
+
+            {(transferringWriter ||
+              isWriterOwnershipWarning(diagnosticError)) && (
               <div
                 data-testid="sqlite-writer-transfer"
                 className="mb-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-3"
@@ -463,13 +538,81 @@ export function MobileSyncTab() {
             <div className="grid grid-cols-2 gap-2">
               <DiagnosticCell
                 label="Local items"
-                value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"}
+                value={
+                  docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"
+                }
               />
-              <DiagnosticCell label="Local size" value={formatBytes(docSnapshot?.binarySize)} />
-              <DiagnosticCell label="Last upload" value={formatRelativeTime(driveState?.lastUploadAt)} />
-              <DiagnosticCell label="Uploaded bytes" value={formatBytes(driveState?.lastUploadedBytes)} />
-              <DiagnosticCell label="Last download" value={formatRelativeTime(driveState?.lastDownloadAt)} />
-              <DiagnosticCell label="Remote bytes" value={formatBytes(driveState?.lastRemoteBytes)} />
+              <DiagnosticCell
+                label="Local size"
+                value={formatBytes(docSnapshot?.binarySize)}
+              />
+              <DiagnosticCell
+                label="Last upload"
+                value={formatRelativeTime(driveState?.lastUploadAt)}
+              />
+              <DiagnosticCell
+                label="Uploaded bytes"
+                value={formatBytes(driveState?.lastUploadedBytes)}
+              />
+              <DiagnosticCell
+                label="Last download"
+                value={formatRelativeTime(driveState?.lastDownloadAt)}
+              />
+              <DiagnosticCell
+                label="Remote bytes"
+                value={formatBytes(driveState?.lastRemoteBytes)}
+              />
+              <DiagnosticCell
+                label="SQLite revision"
+                value={
+                  publicationReceipt?.localRevision.toLocaleString() ?? "-"
+                }
+              />
+              <DiagnosticCell
+                label="Checkpoint"
+                value={
+                  publicationReceipt?.controlPointer.generation.toLocaleString() ??
+                  "-"
+                }
+              />
+              <DiagnosticCell
+                label="Control receipt"
+                title={publicationReceipt?.controlRevision}
+                value={
+                  publicationReceipt
+                    ? formatIdentityTail(publicationReceipt.controlRevision)
+                    : "-"
+                }
+              />
+              <DiagnosticCell
+                label="Manifest digest"
+                title={
+                  publicationReceipt?.controlPointer.manifest.descriptor
+                    .contentDigest
+                }
+                value={
+                  publicationReceipt
+                    ? formatIdentityTail(
+                        publicationReceipt.controlPointer.manifest.descriptor
+                          .contentDigest,
+                      )
+                    : "-"
+                }
+              />
+              <DiagnosticCell
+                label="Drive object"
+                title={
+                  publicationReceipt?.controlPointer.manifest.transportObjectId
+                }
+                value={
+                  publicationReceipt
+                    ? formatIdentityTail(
+                        publicationReceipt.controlPointer.manifest
+                          .transportObjectId,
+                      )
+                    : "-"
+                }
+              />
             </div>
           </div>
         </div>
@@ -483,11 +626,15 @@ export function MobileSyncTab() {
           aria-labelledby="cloud-provider-cancel-title"
         >
           <div className="theme-dialog-panel w-full max-w-sm rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4 shadow-2xl">
-            <h2 id="cloud-provider-cancel-title" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            <h2
+              id="cloud-provider-cancel-title"
+              className="text-sm font-semibold text-[color:var(--theme-text-primary)]"
+            >
               Cancel Google Drive connection?
             </h2>
             <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-              The browser sign-in attempt will stop. You can reconnect from settings.
+              The browser sign-in attempt will stop. You can reconnect from
+              settings.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button

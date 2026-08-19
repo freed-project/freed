@@ -83,6 +83,15 @@ interface LocalLibraryCoreCloudStateV1 {
   readonly controlFileId: string | null;
   readonly lastPublishedRevision: number | null;
   readonly lastPublishedActorDigest: string | null;
+  readonly lastPublishedCheckpoint?: LibraryCorePublishedCheckpointReceiptV1 | null;
+}
+
+export interface LibraryCorePublishedCheckpointReceiptV1 {
+  readonly version: 1;
+  readonly localRevision: number;
+  readonly controlRevision: string;
+  readonly publishedAt: number;
+  readonly controlPointer: LibraryCoreControlPointerV1;
 }
 
 export type LibraryCoreCloudPublishResult =
@@ -138,6 +147,60 @@ function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
   );
 }
 
+function parsePublishedCheckpointReceipt(
+  value: unknown,
+): LibraryCorePublishedCheckpointReceiptV1 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<LibraryCorePublishedCheckpointReceiptV1>;
+  if (
+    candidate.version !== 1 ||
+    typeof candidate.localRevision !== "number" ||
+    !Number.isSafeInteger(candidate.localRevision) ||
+    candidate.localRevision < 0 ||
+    typeof candidate.controlRevision !== "string" ||
+    candidate.controlRevision.length === 0 ||
+    candidate.controlRevision.length > 1_024 ||
+    typeof candidate.publishedAt !== "number" ||
+    !Number.isSafeInteger(candidate.publishedAt) ||
+    candidate.publishedAt < 0 ||
+    candidate.controlPointer === undefined
+  ) {
+    return null;
+  }
+  try {
+    const controlPointer = parseLibraryCoreControlPointerV1(
+      candidate.controlPointer,
+    );
+    return Object.freeze({
+      version: 1,
+      localRevision: candidate.localRevision,
+      controlRevision: candidate.controlRevision,
+      publishedAt: candidate.publishedAt,
+      controlPointer,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function checkpointReceiptForState(
+  state: LocalLibraryCoreCloudStateV1,
+): LibraryCorePublishedCheckpointReceiptV1 | null {
+  const receipt = parsePublishedCheckpointReceipt(
+    state.lastPublishedCheckpoint,
+  );
+  if (
+    receipt === null ||
+    state.lastPublishedRevision !== receipt.localRevision ||
+    state.libraryId !== receipt.controlPointer.libraryId ||
+    state.storageEpoch !== receipt.controlPointer.storageEpoch ||
+    state.writerId !== receipt.controlPointer.writerId
+  ) {
+    return null;
+  }
+  return receipt;
+}
+
 async function loadOrCreateCloudState(
   descriptor: SqliteLibrarySyncDescriptor,
 ): Promise<{
@@ -163,6 +226,7 @@ async function loadOrCreateCloudState(
         state: Object.freeze({
           ...stored,
           lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+          lastPublishedCheckpoint: checkpointReceiptForState(stored),
         }),
         currentWriterId,
         bootstrap,
@@ -178,6 +242,7 @@ async function loadOrCreateCloudState(
     controlFileId: null,
     lastPublishedRevision: null,
     lastPublishedActorDigest: null,
+    lastPublishedCheckpoint: null,
   });
   await persistCloudState(state);
   return { state, currentWriterId, bootstrap };
@@ -192,6 +257,26 @@ async function persistCloudState(
     state,
     "library-core-cloud-sync",
   );
+}
+
+export async function readSqliteLibraryGoogleDrivePublicationReceipt(): Promise<LibraryCorePublishedCheckpointReceiptV1 | null> {
+  const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+  if (!isCloudState(stored)) return null;
+  return checkpointReceiptForState(stored);
+}
+
+function checkpointPublicationReceipt(input: {
+  readonly localRevision: number;
+  readonly controlRevision: string;
+  readonly controlPointer: LibraryCoreControlPointerV1;
+}): LibraryCorePublishedCheckpointReceiptV1 {
+  return Object.freeze({
+    version: 1,
+    localRevision: input.localRevision,
+    controlRevision: input.controlRevision,
+    publishedAt: Date.now(),
+    controlPointer: input.controlPointer,
+  });
 }
 
 let backupMirrorChain: Promise<void> = Promise.resolve();
@@ -1137,6 +1222,7 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
   const targetStorageEpoch = reassigned.authority.epoch_id;
   const targetState: LocalLibraryCoreCloudStateV1 = Object.freeze({
     ...state,
+    lastPublishedCheckpoint: null,
     lastPublishedRevision: null,
     storageEpoch: targetStorageEpoch,
     writerId: loaded.currentWriterId,
@@ -1183,6 +1269,11 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     Object.freeze({
       ...targetState,
       lastPublishedActorDigest: await actorStateDigest(actors),
+      lastPublishedCheckpoint: checkpointPublicationReceipt({
+        localRevision: descriptor.revision,
+        controlRevision: result.revision,
+        controlPointer: result.controlPointer,
+      }),
       lastPublishedRevision: descriptor.revision,
     }),
   );
@@ -1341,7 +1432,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     subtle: crypto.subtle,
     writerId: state.writerId,
   });
-  if (result.status !== "committed") {
+  if (result.status === "conflict") {
     throw new Error("Library Core cloud authority changed during publication");
   }
   await setSqliteLibraryCloudWriterAdmission({
@@ -1353,6 +1444,11 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   state = Object.freeze({
     ...state,
     lastPublishedActorDigest: publishedActorDigest,
+    lastPublishedCheckpoint: checkpointPublicationReceipt({
+      localRevision: updatedDescriptor.revision,
+      controlRevision: result.revision,
+      controlPointer: result.controlPointer,
+    }),
     lastPublishedRevision: updatedDescriptor.revision,
   });
   await persistCloudState(state);
