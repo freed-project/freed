@@ -990,6 +990,14 @@ impl LibraryCoreJournal {
             &[Vec<u8>],
         ) -> JournalResult<super::VerifiedOperationTransaction>,
     {
+        let Some(anchor) = self.follower_anchor()? else {
+            return Ok(FollowerOverlayReplayReceipt {
+                transaction_count: 0,
+                operation_count: 0,
+                materialized_row_count: 0,
+                revision_advanced: false,
+            });
+        };
         let Some(actor) = self.active_follower_actor_state()? else {
             return Ok(FollowerOverlayReplayReceipt {
                 transaction_count: 0,
@@ -998,6 +1006,19 @@ impl LibraryCoreJournal {
                 revision_advanced: false,
             });
         };
+        let imported_source = self
+            .connection
+            .query_row(
+                "SELECT sourceGeneration, sourceRevision
+                 FROM library_core_desktop_state
+                 WHERE singletonId = 1 AND active = 1;",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()?;
+        if imported_source != Some((anchor.authority.epoch, anchor.remote_ingest_sequence)) {
+            return Err(invalid("follower_overlay.checkpoint_anchor"));
+        }
         let mut statement = self.connection.prepare(
             "SELECT intent_tx.transactionId, intent_tx.operationCount,
                     intent_tx.enqueuedAtMs,
@@ -1973,7 +1994,7 @@ mod tests {
                    singletonId, active, revision, sourceGeneration,
                    sourceRevision, sourceDigest, expectedItemCount,
                    importedItemCount, shellJson, startedAtMs, activatedAtMs
-                 ) VALUES (1, 1, 1, 1, 1, ?1, 1, 1, '{}', 1, 1);",
+                 ) VALUES (1, 1, 1, 3, 10, ?1, 1, 1, '{}', 1, 1);",
                 ["d".repeat(64)],
             )
             .unwrap();
@@ -2117,6 +2138,39 @@ mod tests {
                 revision_advanced: false,
             }
         );
+        let read_at: Option<i64> = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT readAt FROM library_core_feed_items
+                 WHERE globalId = 'item-1';",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(read_at, None);
+    }
+
+    #[test]
+    fn checkpoint_import_refuses_overlay_from_a_stale_anchor() {
+        let mut journal = journal_with_enqueued_intent();
+        replace_projection_with_checkpoint_fixture(&journal);
+        journal
+            .connection_for_test()
+            .execute(
+                "UPDATE library_core_desktop_state SET sourceRevision = 11
+                 WHERE singletonId = 1;",
+                [],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            journal.replay_pending_follower_overlay_with(|_, _| {
+                panic!("stale-anchor operations must not be verified or replayed")
+            }),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "follower_overlay.checkpoint_anchor"
+            })
+        ));
         let read_at: Option<i64> = journal
             .connection_for_test()
             .query_row(
