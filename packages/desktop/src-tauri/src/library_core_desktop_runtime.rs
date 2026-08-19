@@ -25,7 +25,8 @@ use super::library_core_authority_genesis::{
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, IntentResultOutboxEntry, LibraryCoreJournal,
-    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
+    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedCausalTip,
+    VerifiedFollowerAnchor,
 };
 use super::library_core_journal_runtime::journal_path;
 
@@ -274,6 +275,24 @@ pub(super) struct DesktopLibraryFollowerActorRequest {
     enrollment_request_digest: String,
     canonical_enrollment_request_json: String,
     created_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerActorEnrollmentRequest {
+    canonical_enrollment_certificate_json: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorEnrollment {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_certificate_digest: String,
+    actor_chain_genesis: String,
+    enrolled_at_ms: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1254,6 +1273,48 @@ pub(super) fn prepare_sqlite_library_follower_actor_request(
         })
         .map_err(|error| format!("SQLite Library could not store follower actor: {error}"))?;
     Ok(follower_actor_request_response(stored))
+}
+
+fn follower_actor_enrollment_response(
+    enrollment: StoredFollowerActorEnrollment,
+) -> DesktopLibraryFollowerActorEnrollment {
+    DesktopLibraryFollowerActorEnrollment {
+        library_id: enrollment.library_id,
+        epoch_id: enrollment.epoch_id,
+        actor_id: enrollment.actor_id,
+        actor_public_key: enrollment.actor_public_key,
+        enrollment_certificate_digest: enrollment.enrollment_certificate_digest,
+        actor_chain_genesis: enrollment.actor_chain_genesis,
+        enrolled_at_ms: enrollment.enrolled_at_ms,
+    }
+}
+
+/// Verify and install the exact authority-countersigned follower certificate.
+///
+/// Successful verification initializes only the isolated follower intent
+/// chain. It never enrolls the actor into the canonical writer journal.
+#[tauri::command]
+pub(super) fn install_sqlite_library_follower_actor_enrollment(
+    app: tauri::AppHandle,
+    request: InstallFollowerActorEnrollmentRequest,
+) -> Result<DesktopLibraryFollowerActorEnrollment, String> {
+    if request.canonical_enrollment_certificate_json.is_empty()
+        || request.canonical_enrollment_certificate_json.len() > 65_536
+    {
+        return Err("SQLite Library follower enrollment certificate size is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let enrollment = journal
+        .verify_and_install_follower_actor(
+            request.canonical_enrollment_certificate_json.as_bytes(),
+        )
+        .map_err(|error| format!("SQLite Library refused follower enrollment: {error}"))?;
+    Ok(follower_actor_enrollment_response(enrollment))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.

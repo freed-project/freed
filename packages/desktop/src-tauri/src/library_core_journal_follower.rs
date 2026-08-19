@@ -46,6 +46,18 @@ pub(crate) struct StoredFollowerActorRequest {
     pub(crate) created_at_ms: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StoredFollowerActorEnrollment {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_certificate_digest: String,
+    pub(crate) canonical_enrollment_certificate_json: String,
+    pub(crate) actor_chain_genesis: String,
+    pub(crate) enrolled_at_ms: i64,
+}
+
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
@@ -324,6 +336,114 @@ impl LibraryCoreJournal {
         }
         transaction.commit()?;
         Ok(request.clone())
+    }
+
+    pub(super) fn install_verified_follower_actor_enrollment(
+        &mut self,
+        enrollment: &super::VerifiedActorEnrollment,
+    ) -> JournalResult<StoredFollowerActorEnrollment> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let request = transaction
+            .query_row(
+                "SELECT actorPublicKey, enrollmentRequestDigest,
+                        enrollmentCertificateDigest,
+                        canonicalEnrollmentCertificateJson, actorChainGenesis,
+                        enrolledAtMs
+                 FROM library_core_follower_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![
+                    enrollment.library_id,
+                    enrollment.epoch_id,
+                    enrollment.actor_id
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| invalid("follower_actor_enrollment.request"))?;
+        if request.0 != enrollment.actor_public_key
+            || request.1 != enrollment.enrollment_certificate_digest
+        {
+            return Err(invalid("follower_actor_enrollment.request_binding"));
+        }
+        let existing = (request.2, request.3, request.4, request.5);
+        let candidate = (
+            Some(enrollment.enrollment_certificate_digest.clone()),
+            Some(enrollment.canonical_enrollment_certificate_json.clone()),
+            Some(enrollment.actor_chain_genesis.clone()),
+            Some(enrollment.enrolled_at_ms),
+        );
+        if existing == (None, None, None, None) {
+            transaction.execute(
+                "UPDATE library_core_follower_actor
+                 SET enrollmentCertificateDigest = ?1,
+                     canonicalEnrollmentCertificateJson = ?2,
+                     actorChainGenesis = ?3, enrolledAtMs = ?4
+                 WHERE libraryId = ?5 AND epochId = ?6 AND actorId = ?7;",
+                params![
+                    enrollment.enrollment_certificate_digest,
+                    enrollment.canonical_enrollment_certificate_json,
+                    enrollment.actor_chain_genesis,
+                    enrollment.enrolled_at_ms,
+                    enrollment.library_id,
+                    enrollment.epoch_id,
+                    enrollment.actor_id,
+                ],
+            )?;
+        } else if existing != candidate {
+            return Err(invalid("follower_actor_enrollment.replay"));
+        }
+        transaction.execute(
+            "INSERT OR IGNORE INTO library_core_follower_intent_actor (
+               libraryId, epochId, actorId, nextIntentSequence,
+               latestOperationId, latestActorChainDigest,
+               publishedThroughIntentSequence, latestPublishedSegmentDigest,
+               nextResultSequence, latestResultSegmentDigest
+             ) VALUES (?1, ?2, ?3, 1, NULL, ?4, 0, NULL, 1, NULL);",
+            params![
+                enrollment.library_id,
+                enrollment.epoch_id,
+                enrollment.actor_id,
+                enrollment.actor_chain_genesis,
+            ],
+        )?;
+        let actor_chain_genesis: String = transaction.query_row(
+            "SELECT latestActorChainDigest
+             FROM library_core_follower_intent_actor
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+            params![
+                enrollment.library_id,
+                enrollment.epoch_id,
+                enrollment.actor_id
+            ],
+            |row| row.get(0),
+        )?;
+        if actor_chain_genesis != enrollment.actor_chain_genesis {
+            return Err(invalid("follower_actor_enrollment.intent_actor"));
+        }
+        transaction.commit()?;
+        Ok(StoredFollowerActorEnrollment {
+            library_id: enrollment.library_id.clone(),
+            epoch_id: enrollment.epoch_id.clone(),
+            actor_id: enrollment.actor_id.clone(),
+            actor_public_key: enrollment.actor_public_key.clone(),
+            enrollment_certificate_digest: enrollment.enrollment_certificate_digest.clone(),
+            canonical_enrollment_certificate_json: enrollment
+                .canonical_enrollment_certificate_json
+                .clone(),
+            actor_chain_genesis: enrollment.actor_chain_genesis.clone(),
+            enrolled_at_ms: enrollment.enrolled_at_ms,
+        })
     }
 
     /// Install or advance one verified immutable-checkpoint anchor.

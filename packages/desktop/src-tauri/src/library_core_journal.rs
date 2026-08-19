@@ -26,7 +26,9 @@ mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-pub(crate) use follower::{StoredFollowerActorRequest, VerifiedFollowerAnchor};
+pub(crate) use follower::{
+    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerAnchor,
+};
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
@@ -1481,6 +1483,22 @@ impl LibraryCoreJournal {
             })?;
         let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
         self.enroll_actor_under_authority(&enrollment, &authority)
+    }
+
+    /// Verify and install the authority-countersigned certificate for this
+    /// follower without admitting the actor to the canonical writer journal.
+    pub(crate) fn verify_and_install_follower_actor(
+        &mut self,
+        canonical_certificate: &[u8],
+    ) -> JournalResult<StoredFollowerActorEnrollment> {
+        let anchor = self
+            .follower_anchor()?
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "follower_actor_enrollment.anchor",
+            })?;
+        let enrollment =
+            self.verify_actor_enrollment(canonical_certificate, &anchor.authority)?;
+        self.install_verified_follower_actor_enrollment(&enrollment)
     }
 
     #[cfg(test)]
