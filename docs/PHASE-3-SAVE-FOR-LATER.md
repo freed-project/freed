@@ -9,7 +9,9 @@
 > has full article extraction, local HTML caching, Markdown import/export,
 > background fetch healing, user-visible AI controls, and hierarchical tag
 > navigation. PWA saves sync-healed stubs for Freed Desktop to hydrate. Saved
-> content is pinned in the device-local reader cache by default.
+> content is pinned in the device-local reader cache by default. The PWA now
+> pages the complete Saved collection from IndexedDB in all four sort modes and
+> computes its exact overview outside the 512-card renderer window.
 
 ---
 
@@ -89,6 +91,7 @@ architecture is now:
 | 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
 | 3.10 | Saved content pinned in local reader cache | ✓ Complete | Saved URLs, saved posts, and saved stories enter the high-priority local cache path |
 | 3.11 | Bound Saved overview analytics on Freed Desktop | ✓ Complete | The overview now reads exact source, content, and time-bucket aggregates from the authenticated SQLite generation without retaining the Library corpus; stale or unavailable derived state falls back to the existing Automerge-compatible reducer |
+| 3.12 | Complete bounded Saved reads on the PWA | ✓ Complete | IndexedDB query generations page every visible Saved item in date saved, date published, recommended, and shortest read order, while exact analytics scan the selected checkpoint in bounded pages |
 
 ---
 
