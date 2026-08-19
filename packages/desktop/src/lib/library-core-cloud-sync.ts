@@ -72,6 +72,7 @@ const LOCAL_REVISION_POLL_MS = 15_000;
 const INBOUND_ACTOR_POLL_MS = 60_000;
 const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
+const EMPTY_LIBRARY_SOURCE_DIGEST = "0".repeat(64);
 
 interface LocalLibraryCoreCloudStateV1 {
   readonly version: 1;
@@ -149,18 +150,24 @@ async function loadOrCreateCloudState(
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
-      throw new Error(
-        "The saved Library Core cloud identity belongs to another Library",
-      );
+      if (
+        stored.sourceDigest !== EMPTY_LIBRARY_SOURCE_DIGEST ||
+        stored.lastPublishedRevision !== null
+      ) {
+        throw new Error(
+          "The saved Library Core cloud identity belongs to another Library",
+        );
+      }
+    } else {
+      return {
+        state: Object.freeze({
+          ...stored,
+          lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+        }),
+        currentWriterId,
+        bootstrap,
+      };
     }
-    return {
-      state: Object.freeze({
-        ...stored,
-        lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
-      }),
-      currentWriterId,
-      bootstrap,
-    };
   }
   const state: LocalLibraryCoreCloudStateV1 = Object.freeze({
     version: 1,

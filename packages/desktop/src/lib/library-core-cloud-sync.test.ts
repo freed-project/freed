@@ -351,6 +351,54 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
+  it("replaces an unpublished synthetic empty cloud identity after Library recovery", async () => {
+    mocks.nativeState = {
+      version: 1,
+      libraryId: "empty-library",
+      sourceDigest: "0".repeat(64),
+      storageEpoch: "empty-epoch",
+      writerId: "empty-writer",
+      controlFileId: "empty-control",
+      lastPublishedRevision: null,
+      lastPublishedActorDigest: null,
+    };
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 7 });
+
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.nativeState).toMatchObject({
+      libraryId: mocks.bootstrapAuthority.authority.library_id,
+      sourceDigest: "ab".repeat(32),
+      storageEpoch: mocks.bootstrapAuthority.authority.epoch_id,
+      writerId: mocks.bootstrapAuthority.actor.actor_id,
+      controlFileId: "control-1",
+      lastPublishedRevision: 7,
+    });
+  });
+
+  it("refuses to replace a mismatched cloud identity that published a revision", async () => {
+    mocks.nativeState = {
+      version: 1,
+      libraryId: "published-library",
+      sourceDigest: "0".repeat(64),
+      storageEpoch: "published-epoch",
+      writerId: "published-writer",
+      controlFileId: "published-control",
+      lastPublishedRevision: 0,
+      lastPublishedActorDigest: null,
+    };
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow(
+      "The saved Library Core cloud identity belongs to another Library",
+    );
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.writeNative).not.toHaveBeenCalled();
+  });
+
   it("does not queue a fresh publication behind an abandoned native command", async () => {
     const controller = new AbortController();
     mocks.readDescriptor
