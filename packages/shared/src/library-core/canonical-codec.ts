@@ -54,6 +54,8 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "legacy-epoch-bootstrap-prepared",
   "legacy-epoch-bootstrap-receipt",
   "legacy-library-identity",
+  "native-sqlite-library-identity",
+  "native-sqlite-source-manifest",
   "installation-incarnation",
   "actor-incarnation-nonce",
 ] as const;

@@ -1,6 +1,6 @@
 # Library Core Contract
 
-Status: **Approved architecture. Implementation remains dark until each activation gate passes.**
+Status: **Approved architecture. The SQLite cutover is active; installed sync acceptance remains gated.**
 
 This contract defines Freed's durable library, mutation, query, migration, and
 replication behavior. It replaces the assumption that one in-memory Automerge
@@ -36,6 +36,50 @@ can prove which storage epoch owns a write.
     with a resident full-library renderer document.
 
 ## Replacement replication authority
+
+### Native SQLite genesis and historical correction
+
+A fresh active SQLite Library establishes authority with one canonical signed
+`freed_library_core_native_sqlite_genesis_v1` certificate. Its opaque Library
+ID is derived from the exact imported source digest and an installation
+witness. The certificate commits `library_core_v1`, physical schema version
+11, `op_segments_v1`, `freed_logical_checkpoint_v1`, the authority public key
+and key ID, and one `freed_library_core_sqlite_source_manifest_v1`. That source
+manifest commits the source digest, source generation, source revision, SQLite
+revision, item count, and materialized digest. Fresh establishment cannot name
+`automerge_legacy`, `automerge_blob_v1`, or a fabricated Automerge head.
+
+Before deriving a fresh identity, bootstrap reads the sole active journal
+authority and the persisted cloud identity. If the journal has authority, the
+current SQLite source digest, generation, and source revision must match its
+accepted source lineage. A persisted cloud identity must match the accepted
+Library ID, epoch ID, and source digest. Missing journal authority beneath a
+persisted identity, multiple active local Libraries, an unrelated source, a
+missing authority key, or a key-lineage mismatch fails closed.
+
+An existing canonical
+`freed_library_core_genesis_epoch_certificate_v1` remains immutable historical
+evidence. The authority may sign exactly one
+`freed_library_core_native_sqlite_protocol_transition_v1` correction. It binds
+the same Library ID, epoch, epoch ID, authority public key, authority key ID,
+and exact prior transition-certificate digest to the native engine, schema,
+operation-segment, checkpoint, and source-manifest fields. The correction is a
+forward protocol transition, not a replacement epoch. It cannot rewrite the
+legacy certificate or invalidate epoch-scoped actors, writer admission,
+follower anchors, intents, results, checkpoints, or the Drive namespace. Exact
+retry returns the stored signed transition even when the acceptance timestamp
+changes. Any unequal second transition fails closed.
+
+The initial local Desktop actor may be enrolled before the first cloud control
+tuple exists because that actor is needed to name the initial writer. This
+narrow bootstrap exception grants no operation admission, accepts only the
+first actor for the Library, and preserves exact replay of that actor's signed
+certificate. Every canonical operation, ordinary actor enrollment, and
+provider outbox attempt requires a present writer-admission row whose local
+writer equals the verified active writer. Absence is not authority.
+
+Neither genesis nor historical correction opens Automerge bytes or adds a
+bridge. No transport synchronizes SQLite, WAL, or SHM files.
 
 The replacement protocol has one non-expiring designated Freed Desktop writer
 epoch per library. The writer may commit canonical local work while offline.
