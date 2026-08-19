@@ -65,6 +65,7 @@ import {
   mirrorSqliteLibraryBackupsToGoogleDrive,
   resetSqliteLibraryDriveBackupMirror,
 } from "./library-core-drive-backups";
+import { requirePrimaryLibraryCoreDesktopRole } from "./library-core-desktop-role";
 
 const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
@@ -1563,6 +1564,7 @@ export function publishCurrentSqliteLibraryToGoogleDrive(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
+  requirePrimaryLibraryCoreDesktopRole();
   return runBoundedPublication(input);
 }
 

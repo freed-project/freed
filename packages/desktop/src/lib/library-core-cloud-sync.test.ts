@@ -357,6 +357,17 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(isSqliteLibraryGoogleDriveSyncEnabled()).toBe(false);
   });
 
+  it("rechecks the Desktop role before any publication work begins", async () => {
+    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+
+    expect(() =>
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).toThrow("Editable follower sync is not active");
+
+    expect(mocks.readDescriptor).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
   it("streams the exact SQLite revision into one immutable checkpoint publication", async () => {
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
