@@ -501,8 +501,7 @@ export async function startCloudSync(
     ) {
       return;
     }
-    const message =
-      error instanceof Error ? error.message : "SQLite Library sync failed.";
+    const message = error instanceof Error ? error.message : String(error);
     updateCloudProvider(provider, {
       status: "error",
       stage: "idle",
