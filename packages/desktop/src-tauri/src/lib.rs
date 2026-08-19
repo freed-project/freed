@@ -14109,6 +14109,7 @@ pub fn run() {
             library_core_desktop_runtime::install_sqlite_library_follower_actor_enrollment,
             library_core_desktop_runtime::sign_sqlite_library_follower_operation,
             library_core_desktop_runtime::enqueue_sqlite_library_follower_intent,
+            library_core_desktop_runtime::sqlite_library_follower_intent_context,
             library_core_desktop_runtime::bootstrap_sqlite_library_authority,
             library_core_desktop_runtime::reassign_sqlite_library_writer_epoch,
             library_core_desktop_runtime::accept_pwa_actor_enrollment_request,

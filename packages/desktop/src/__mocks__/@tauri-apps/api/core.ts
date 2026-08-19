@@ -545,6 +545,7 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
+  sqlite_library_follower_intent_context: () => null,
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,

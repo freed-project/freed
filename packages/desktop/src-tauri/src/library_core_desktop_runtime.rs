@@ -333,6 +333,17 @@ pub(super) struct DesktopLibraryFollowerIntentReceipt {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentContext {
+    authority: DesktopLibraryAcceptedAuthority,
+    actor_id: String,
+    actor_public_key: String,
+    next_intent_sequence: i64,
+    previous_operation_id: Option<String>,
+    previous_chain_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct DesktopLibraryWriterEpochReassignment {
     authority: DesktopLibraryAcceptedAuthority,
     actor: DesktopLibraryActorEnrollment,
@@ -1432,6 +1443,56 @@ pub(super) fn enqueue_sqlite_library_follower_intent(
         .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
         .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
     Ok(follower_intent_receipt_response(receipt))
+}
+
+/// Read the exact native actor tip used to assemble the next follower intent.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_intent_context(
+    app: tauri::AppHandle,
+) -> Result<Option<DesktopLibraryFollowerIntentContext>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let Some(anchor) = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    let Some(actor) = journal
+        .active_follower_actor_state()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(DesktopLibraryFollowerIntentContext {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: anchor.authority.library_id,
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id,
+            authority_key_id: anchor.authority.authority_key_id,
+            authority_public_key: anchor.authority.authority_public_key,
+            observed_frontier: anchor
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        actor_id: actor.actor_id,
+        actor_public_key: actor.actor_public_key,
+        next_intent_sequence: actor.next_sequence,
+        previous_operation_id: actor.previous_operation_id,
+        previous_chain_digest: actor.previous_chain_digest,
+    }))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.

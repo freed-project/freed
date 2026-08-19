@@ -12,6 +12,25 @@ import {
   type ReachOutLog,
   type UserPreferences,
 } from "@freed/shared";
+import {
+  assembleLibraryCoreTransactionV1,
+  encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreDigestInput,
+  encodeLibraryCoreOperationSignatureInput,
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  finalizeLibraryCoreTransactionV1,
+  sha256LowerHex,
+  type FeedItemReadAssignmentTransactionMemberInputV1,
+  type FeedItemUserStateAssignmentFieldV1,
+  type FeedItemUserStateAssignmentTransactionMemberInputV1,
+  type LibraryCoreCanonicalValue,
+  type LibraryCoreEd25519SignatureHex,
+  type LibraryCoreLowercaseHex64,
+  type LibraryCoreOperationInstanceId,
+} from "@freed/shared/library-core";
 import { decodeJson, encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
@@ -91,6 +110,222 @@ export interface SqliteLibraryCloudWriterAdmissionStatus {
   readonly storageEpoch: string | null;
   readonly controlRevision: string | null;
   readonly verifiedAtMs: number | null;
+}
+
+export interface SqliteLibraryFollowerIntentContext {
+  readonly authority: SqliteLibraryAcceptedAuthority;
+  readonly actorId: string;
+  readonly actorPublicKey: string;
+  readonly nextIntentSequence: number;
+  readonly previousOperationId: string | null;
+  readonly previousChainDigest: string;
+}
+
+export interface SqliteLibraryFollowerOperationSignature {
+  readonly actorId: string;
+  readonly operationSigningBodyDigest: string;
+  readonly signature: string;
+}
+
+export interface SqliteLibraryFollowerIntentReceipt {
+  readonly transactionId: string;
+  readonly firstIntentSequence: number;
+  readonly lastIntentSequence: number;
+  readonly operationCount: number;
+  readonly status: "enqueued" | "already_enqueued";
+}
+
+export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibraryFollowerIntentContext | null> {
+  return invoke<SqliteLibraryFollowerIntentContext | null>(
+    "sqlite_library_follower_intent_context",
+  );
+}
+
+export async function signSqliteLibraryFollowerOperation(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly operationSigningBodyDigest: string;
+}): Promise<SqliteLibraryFollowerOperationSignature> {
+  return invoke<SqliteLibraryFollowerOperationSignature>(
+    "sign_sqlite_library_follower_operation",
+    { request: input },
+  );
+}
+
+export async function enqueueSqliteLibraryFollowerIntent(
+  canonicalEnvelopeJson: readonly string[],
+): Promise<SqliteLibraryFollowerIntentReceipt> {
+  if (canonicalEnvelopeJson.length === 0 || canonicalEnvelopeJson.length > 1_000) {
+    throw new RangeError("Follower intent transaction has an invalid member count");
+  }
+  return invoke<SqliteLibraryFollowerIntentReceipt>(
+    "enqueue_sqlite_library_follower_intent",
+    {
+      request: {
+        canonicalEnvelopeJson: [...canonicalEnvelopeJson],
+        enqueuedAtMs: Date.now(),
+      },
+    },
+  );
+}
+
+function followerDigest(
+  domain: Parameters<typeof encodeLibraryCoreDigestInput>[0],
+  value: unknown,
+): string {
+  return sha256LowerHex(
+    encodeLibraryCoreDigestInput(
+      domain,
+      value as LibraryCoreCanonicalValue,
+    ),
+  );
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+}
+
+async function finalizeAndEnqueueFollowerTransaction(
+  context: SqliteLibraryFollowerIntentContext,
+  members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
+): Promise<void> {
+  const assembled = assembleLibraryCoreTransactionV1(
+    members,
+    context.previousChainDigest as LibraryCoreLowercaseHex64,
+    { digest: followerDigest },
+  );
+  let signatureIndex = 0;
+  const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+    digest: followerDigest,
+    signOperation: async (message) => {
+      const member = assembled.members[signatureIndex++];
+      if (!member) throw new Error("Follower signer received too many members");
+      const expected = encodeLibraryCoreOperationSignatureInput({
+        operation_signing_body_digest: member.signing_body_digest,
+      });
+      if (!sameBytes(message, expected)) {
+        throw new Error("Follower signer input does not match its assembled member");
+      }
+      const signed = await signSqliteLibraryFollowerOperation({
+        libraryId: context.authority.library_id,
+        epochId: context.authority.epoch_id,
+        actorId: context.actorId,
+        operationSigningBodyDigest: member.signing_body_digest,
+      });
+      if (
+        signed.actorId !== context.actorId ||
+        signed.operationSigningBodyDigest !== member.signing_body_digest
+      ) {
+        throw new Error("Follower signer returned a mismatched receipt");
+      }
+      return signed.signature as LibraryCoreEd25519SignatureHex;
+    },
+  });
+  if (signatureIndex !== assembled.members.length) {
+    throw new Error("Follower signer did not sign every transaction member");
+  }
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  await enqueueSqliteLibraryFollowerIntent(
+    finalized.members.map((member) =>
+      decoder.decode(
+        encodeLibraryCoreCanonicalValue(
+          member.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    ),
+  );
+}
+
+async function maybeEnqueueFollowerReadAssignments(
+  entityIds: readonly string[],
+  readAtMs: number,
+): Promise<boolean> {
+  const context = await sqliteLibraryFollowerIntentContext();
+  if (!context) return false;
+  const uniqueIds = [...new Set(entityIds)];
+  if (uniqueIds.length === 0 || uniqueIds.length > 1_000) {
+    throw new RangeError("Follower read assignment count is invalid");
+  }
+  const transactionId =
+    `desktop-follower-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = uniqueIds.map((entityId, index) =>
+    FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        operation_id: `${transactionId}:${index}`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.actorId,
+        actor_sequence: context.nextIntentSequence + index,
+        previous_actor_operation_id:
+          index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: readAtMs,
+        hlc_counter: index,
+        transaction_id: transactionId,
+        transaction_member_index: index,
+        transaction_member_count: uniqueIds.length,
+        entity_id: entityId,
+        payload: { read_at_ms: readAtMs },
+        created_at_ms: readAtMs,
+      } satisfies FeedItemReadAssignmentTransactionMemberInputV1,
+      { digest: followerDigest },
+    ),
+  );
+  await finalizeAndEnqueueFollowerTransaction(context, members);
+  return true;
+}
+
+async function maybeEnqueueFollowerUserStateAssignments(
+  assignments: readonly {
+    readonly entityId: string;
+    readonly field: FeedItemUserStateAssignmentFieldV1;
+    readonly assigned: boolean;
+    readonly assignedAtMs: number;
+  }[],
+): Promise<boolean> {
+  const context = await sqliteLibraryFollowerIntentContext();
+  if (!context) return false;
+  if (assignments.length === 0 || assignments.length > 1_000) {
+    throw new RangeError("Follower user-state assignment count is invalid");
+  }
+  const transactionId =
+    `desktop-follower-assignment:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = assignments.map((assignment, index) => {
+    const schema = assignment.field === "saved"
+      ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+      : assignment.field === "archived"
+        ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+        : FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA;
+    return schema.construct(
+      {
+        operation_id: `${transactionId}:${index}`,
+        library_id: context.authority.library_id,
+        epoch: context.authority.epoch,
+        epoch_id: context.authority.epoch_id,
+        actor_id: context.actorId,
+        actor_sequence: context.nextIntentSequence + index,
+        previous_actor_operation_id:
+          index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
+        causal_frontier: context.authority.observed_frontier,
+        hlc_wall_ms: assignment.assignedAtMs,
+        hlc_counter: index,
+        transaction_id: transactionId,
+        transaction_member_index: index,
+        transaction_member_count: assignments.length,
+        entity_id: assignment.entityId,
+        payload: {
+          assigned: assignment.assigned,
+          assigned_at_ms: assignment.assignedAtMs,
+        },
+        created_at_ms: assignment.assignedAtMs,
+      } satisfies FeedItemUserStateAssignmentTransactionMemberInputV1,
+      { digest: followerDigest },
+    );
+  });
+  await finalizeAndEnqueueFollowerTransaction(context, members);
+  return true;
 }
 
 export async function setSqliteLibraryCloudWriterAdmission(input: {
@@ -783,38 +1018,81 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "MARK_AS_READ":
-      await mutateItems("mark_read", { ids: [message.globalId], timestampMs: timestamp });
+      if (!(await maybeEnqueueFollowerReadAssignments([message.globalId], timestamp))) {
+        await mutateItems("mark_read", { ids: [message.globalId], timestampMs: timestamp });
+      }
       changedIds = [message.globalId];
       source = "item_patch";
       break;
     case "MARK_ITEMS_AS_READ":
-      await mutateItems("mark_read", { ids: message.globalIds, timestampMs: timestamp });
+      if (!(await maybeEnqueueFollowerReadAssignments(message.globalIds, timestamp))) {
+        await mutateItems("mark_read", { ids: message.globalIds, timestampMs: timestamp });
+      }
       changedIds = [...message.globalIds];
       source = "item_patch";
       break;
     case "MARK_ALL_AS_READ":
       await mutateItems("mark_all_read", { platform: message.platform, timestampMs: timestamp });
       break;
-    case "TOGGLE_SAVED":
-      await mutateItems("toggle_saved", { ids: [message.globalId], timestampMs: timestamp });
+    case "TOGGLE_SAVED": {
+      const [item] = await readSqliteItems([message.globalId]);
+      const assigned = item?.userState?.saved !== true;
+      if (!(await maybeEnqueueFollowerUserStateAssignments([{
+        entityId: message.globalId,
+        field: "saved",
+        assigned,
+        assignedAtMs: timestamp,
+      }]))) {
+        await mutateItems("toggle_saved", { ids: [message.globalId], timestampMs: timestamp });
+      }
       changedIds = [message.globalId];
       source = "item_patch";
       break;
-    case "TOGGLE_ARCHIVED":
-      await mutateItems("toggle_archived", { ids: [message.globalId], timestampMs: timestamp });
+    }
+    case "TOGGLE_ARCHIVED": {
+      const [item] = await readSqliteItems([message.globalId]);
+      const assigned = item?.userState?.archived !== true;
+      if (!(await maybeEnqueueFollowerUserStateAssignments([{
+        entityId: message.globalId,
+        field: "archived",
+        assigned,
+        assignedAtMs: timestamp,
+      }]))) {
+        await mutateItems("toggle_archived", { ids: [message.globalId], timestampMs: timestamp });
+      }
       changedIds = [message.globalId];
       source = "item_patch";
       break;
+    }
     case "ARCHIVE_ITEMS":
-      await mutateItems("archive", { ids: message.globalIds, timestampMs: timestamp });
+      if (!(await maybeEnqueueFollowerUserStateAssignments(
+        message.globalIds.map((entityId) => ({
+          entityId,
+          field: "archived" as const,
+          assigned: true,
+          assignedAtMs: timestamp,
+        })),
+      ))) {
+        await mutateItems("archive", { ids: message.globalIds, timestampMs: timestamp });
+      }
       changedIds = [...message.globalIds];
       source = "item_patch";
       break;
-    case "TOGGLE_LIKED":
-      await mutateItems("toggle_liked", { ids: [message.globalId], timestampMs: timestamp });
+    case "TOGGLE_LIKED": {
+      const [item] = await readSqliteItems([message.globalId]);
+      const assigned = item?.userState?.liked !== true;
+      if (!(await maybeEnqueueFollowerUserStateAssignments([{
+        entityId: message.globalId,
+        field: "liked",
+        assigned,
+        assignedAtMs: timestamp,
+      }]))) {
+        await mutateItems("toggle_liked", { ids: [message.globalId], timestampMs: timestamp });
+      }
       changedIds = [message.globalId];
       source = "item_patch";
       break;
+    }
     case "CONFIRM_LIKED_SYNCED":
       await mutateItems("confirm_liked", {
         ids: [message.globalId], timestampMs: message.syncedAt ?? timestamp,

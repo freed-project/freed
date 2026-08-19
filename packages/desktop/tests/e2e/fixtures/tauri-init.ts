@@ -297,6 +297,7 @@ export function tauriInitScript(): string {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      sqlite_library_follower_intent_context: () => null,
       read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
         var item = sqliteState().items[id];
         return item && !item.__deleted ? JSON.stringify(item) : null;

@@ -341,6 +341,30 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
+    pub(crate) fn active_follower_actor_state(&self) -> JournalResult<Option<super::ActorState>> {
+        let Some(anchor) = self.follower_anchor()? else {
+            return Ok(None);
+        };
+        let actor_id = self
+            .connection
+            .query_row(
+                "SELECT actorId FROM library_core_follower_actor
+                 WHERE libraryId = ?1 AND epochId = ?2
+                   AND enrollmentCertificateDigest IS NOT NULL;",
+                params![anchor.authority.library_id, anchor.authority.epoch_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(actor_id) = actor_id else {
+            return Ok(None);
+        };
+        self.follower_actor_state(
+            &anchor.authority.library_id,
+            &anchor.authority.epoch_id,
+            &actor_id,
+        )
+    }
+
     pub(crate) fn store_follower_actor_request(
         &mut self,
         request: &StoredFollowerActorRequest,
@@ -637,6 +661,22 @@ impl LibraryCoreJournal {
         )?;
         let frontier = parse_frontier(&frontier_json)?;
         for (member_index, member) in verified.members.iter().enumerate() {
+            if member.item_json.is_some()
+                || member.rss_feed_json.is_some()
+                || member.preferences_patch_json.is_some()
+                || member.person_json.is_some()
+                || member.account_json.is_some()
+                || member.removed_at_ms.is_some()
+                || (member.read_at_ms.is_none()
+                    && !matches!(
+                        member.operation_type.as_str(),
+                        "feed_item_saved_assignment"
+                            | "feed_item_archive_assignment"
+                            | "feed_item_like_assignment"
+                    ))
+            {
+                return Err(invalid("follower_intent.unsupported_materialization"));
+            }
             for tip in &member.causal_tips {
                 let in_anchor = frontier.iter().any(|candidate| candidate == tip);
                 let in_current = verified.members[..member_index].iter().any(|candidate| {
@@ -703,6 +743,95 @@ impl LibraryCoreJournal {
                     member.envelope_digest,
                 ],
             )?;
+        }
+        let mut materialized_rows = 0usize;
+        for member in &verified.members {
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM library_core_feed_items
+                   WHERE globalId = ?1 AND deletedAt IS NULL
+                 );",
+                [&member.entity_id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(invalid("follower_intent.entity"));
+            }
+            materialized_rows += if let Some(read_at_ms) = member.read_at_ms {
+                transaction.execute(
+                    "UPDATE library_core_feed_items
+                     SET readAt = ?1,
+                         payloadJson = json_set(payloadJson, '$.userState.readAt', ?1),
+                         updatedAtMs = ?2
+                     WHERE globalId = ?3 AND deletedAt IS NULL
+                       AND (readAt IS NULL OR ?1 < readAt);",
+                    params![read_at_ms, enqueued_at_ms, member.entity_id],
+                )?
+            } else {
+                let assigned = i64::from(member.assigned.expect("verified assignment"));
+                let assigned_at_ms = member
+                    .assigned_at_ms
+                    .expect("verified assignment timestamp");
+                match member.operation_type.as_str() {
+                    "feed_item_saved_assignment" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           saved = ?1,
+                           archived = CASE WHEN ?1 = 1 THEN 0 ELSE archived END,
+                           archivedAt = CASE WHEN ?1 = 1 THEN NULL ELSE archivedAt END,
+                           payloadJson = CASE WHEN ?1 = 0
+                             THEN json_remove(json_set(payloadJson, '$.userState.saved', json('false')), '$.userState.savedAt')
+                             ELSE json_remove(json_set(payloadJson,
+                               '$.userState.saved', json('true'), '$.userState.savedAt', ?2,
+                               '$.userState.archived', json('false')), '$.userState.archivedAt')
+                           END,
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND (saved IS NOT ?1 OR (?1 = 1 AND archived IS 1));",
+                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
+                    )?,
+                    "feed_item_archive_assignment" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           archived = ?1,
+                           archivedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
+                           payloadJson = CASE WHEN ?1 = 0
+                             THEN json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt')
+                             ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?2)
+                           END,
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND archived IS NOT ?1
+                           AND (?1 = 0 OR saved IS NOT 1);",
+                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
+                    )?,
+                    "feed_item_like_assignment" => transaction.execute(
+                        "UPDATE library_core_feed_items SET
+                           liked = ?1,
+                           likedAt = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END,
+                           likedSyncedAt = NULL,
+                           payloadJson = CASE WHEN ?1 = 0
+                             THEN json_remove(json_set(payloadJson, '$.userState.liked', json('false')), '$.userState.likedAt', '$.userState.likedSyncedAt')
+                             ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?2), '$.userState.likedSyncedAt')
+                           END,
+                           updatedAtMs = ?3
+                         WHERE globalId = ?4 AND deletedAt IS NULL
+                           AND liked IS NOT ?1;",
+                        params![assigned, assigned_at_ms, enqueued_at_ms, member.entity_id],
+                    )?,
+                    _ => return Err(invalid("follower_intent.operation_type")),
+                }
+            };
+        }
+        if materialized_rows > 0 {
+            let updated = transaction.execute(
+                "UPDATE library_core_desktop_state
+                 SET revision = revision + 1
+                 WHERE singletonId = 1 AND active = 1
+                   AND revision < 9007199254740991;",
+                [],
+            )?;
+            if updated != 1 {
+                return Err(invalid("follower_intent.desktop_revision"));
+            }
         }
         transaction.execute(
             "UPDATE library_core_follower_intent_actor
@@ -1005,6 +1134,26 @@ mod tests {
         journal
             .connection_for_test()
             .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 1, 1, 1, ?1, 1, 1, '{}', 1, 1);",
+                ["d".repeat(64)],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_feed_items (
+                   globalId, payloadJson, updatedAtMs
+                 ) VALUES ('item-1', '{\"globalId\":\"item-1\",\"userState\":{}}', 1);",
+                [],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
                 "INSERT INTO library_core_follower_actor (
                    libraryId, epochId, actorId, actorPublicKey,
                    actorChainGenesis, enrollmentRequestDigest,
@@ -1065,6 +1214,18 @@ mod tests {
             )
             .unwrap();
         assert_eq!(queued, 1);
+        let (read_at, revision): (i64, i64) = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT item.readAt, state.revision
+                 FROM library_core_feed_items AS item
+                 CROSS JOIN library_core_desktop_state AS state
+                 WHERE item.globalId = 'item-1' AND state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((read_at, revision), (1, 2));
 
         let stale = verified_intent("transaction-2");
         assert!(journal
