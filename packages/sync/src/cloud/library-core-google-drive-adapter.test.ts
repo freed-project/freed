@@ -62,6 +62,36 @@ function operationObject(value = "operation-1"): {
   };
 }
 
+function publishedControlBytes(libraryId = "library-1"): Uint8Array {
+  const manifestDigest = "22".repeat(32);
+  return bytes(
+    JSON.stringify({
+      activeTransport: "google_drive_app_data_v1",
+      causalFrontierDigest: "11".repeat(32),
+      generation: 1,
+      libraryId,
+      manifest: {
+        descriptor: {
+          byteLength: 10,
+          contentDigest: manifestDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            kind: "checkpoint_manifest",
+            libraryId,
+            epochId: "epoch-1",
+            generation: 1,
+            digest: manifestDigest,
+          }),
+        },
+        transportObjectId: "manifest-1",
+      },
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch: "epoch-1",
+      writerId: "desktop-1",
+    }),
+  );
+}
+
 function emptyIntentHead() {
   return parseLibraryCoreIntentHeadV1({
     actor_id: "actor-1",
@@ -282,7 +312,9 @@ class FakeGoogleDrive {
           },
         });
       }
-      return Response.json(this.metadata(file));
+      return Response.json(this.metadata(file), {
+        headers: { ETag: file.etag },
+      });
     }
 
     return new Response(`unhandled ${method} ${url}`, { status: 500 });
@@ -369,36 +401,7 @@ describe("Google Drive Library Core immutable adapter", () => {
   it("discovers a fresh PWA library identity from the sole published control", async () => {
     const fake = new FakeGoogleDrive();
     fake.exposeMediaEtag = false;
-    const manifestDigest = "22".repeat(32);
-    fake.addControl(
-      "control-1",
-      bytes(
-        JSON.stringify({
-          activeTransport: "google_drive_app_data_v1",
-          causalFrontierDigest: "11".repeat(32),
-          generation: 1,
-          libraryId: "library-1",
-          manifest: {
-            descriptor: {
-              byteLength: 10,
-              contentDigest: manifestDigest,
-              objectKey: createLibraryCoreImmutableObjectKey({
-                kind: "checkpoint_manifest",
-                libraryId: "library-1",
-                epochId: "epoch-1",
-                generation: 1,
-                digest: manifestDigest,
-              }),
-            },
-            transportObjectId: "manifest-1",
-          },
-          protocolVersion: 1,
-          schemaVersion: 1,
-          storageEpoch: "epoch-1",
-          writerId: "desktop-1",
-        }),
-      ),
-    );
+    fake.addControl("control-1", publishedControlBytes());
 
     const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
       accessToken: "test-token",
@@ -413,6 +416,72 @@ describe("Google Drive Library Core immutable adapter", () => {
     const query = new URL(fake.requests[0]?.url ?? "").searchParams.get("q");
     expect(query).toContain("freedObjectKind");
     expect(query).not.toContain("freedLibraryDigest");
+  });
+
+  it("ignores abandoned empty controls when no library was published", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", bytes("{}"));
+    fake.addControl("control-2", bytes("{}"));
+
+    await expect(
+      discoverPublishedGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+      }),
+    ).resolves.toBeNull();
+    expect(
+      fake.requests.filter((request) =>
+        new URL(request.url).searchParams.has("alt"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("discovers one published control among abandoned empty controls", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", bytes("{}"));
+    fake.addControl("control-2", publishedControlBytes());
+    fake.addControl("control-3", bytes("{}"));
+
+    await expect(
+      discoverPublishedGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+      }),
+    ).resolves.toMatchObject({
+      controlFileId: "control-2",
+      libraryId: "library-1",
+    });
+    expect(
+      fake.requests.filter((request) =>
+        new URL(request.url).searchParams.has("alt"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("fails closed when more than one control was published", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", publishedControlBytes());
+    fake.addControl("control-2", publishedControlBytes());
+
+    await expect(
+      discoverPublishedGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+      }),
+    ).rejects.toThrow("more than one published Library Core control");
+  });
+
+  it("fails closed when a control body is malformed", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", bytes("{}"));
+    fake.addControl("control-2", bytes('{"protocolVersion":1}'));
+
+    await expect(
+      discoverPublishedGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        googleFetch: fake.fetch,
+      }),
+    ).rejects.toThrow();
   });
 
   it("fails closed when private properties identify duplicate controls", async () => {
@@ -559,8 +628,9 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
-  it("updates control only with the exact ETag and verifies readback", async () => {
+  it("uses the metadata ETag for an exact control update when media omits it", async () => {
     const fake = new FakeGoogleDrive();
+    fake.exposeMediaEtag = false;
     fake.addControl();
     const nextControl = bytes('{"next":true}');
 

@@ -87,6 +87,7 @@ export function MobileSyncTab() {
       : { status: driveState.status };
   const connected = driveCardState.status === "connected";
   const diagnosticError = driveState?.error ?? manualError;
+  const publishing = driveState?.stage === "upload" || syncing;
 
   useEffect(() => {
     setWarningDismissed(isDesktopClientWarningAcknowledged(warningSignature));
@@ -225,9 +226,19 @@ export function MobileSyncTab() {
 
             <div
               data-testid="cloud-sync-status-message"
+              aria-busy={publishing}
+              aria-live="polite"
+              role="status"
               className="mb-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-secondary)]"
             >
-              <p className="font-medium text-[var(--theme-text-primary)]">
+              <p className="flex items-center gap-2 font-medium text-[var(--theme-text-primary)]">
+                {publishing && (
+                  <span
+                    aria-hidden="true"
+                    data-testid="cloud-sync-activity-spinner"
+                    className="h-3 w-3 shrink-0 animate-spin rounded-full border border-[var(--theme-accent-secondary)] border-t-transparent"
+                  />
+                )}
                 {driveState?.statusMessage ?? "No cloud sync activity yet."}
               </p>
               <p className="mt-1 text-[var(--theme-text-muted)]">

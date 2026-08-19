@@ -39,6 +39,7 @@ const MAX_ACCESS_TOKEN_BYTES = 16_384;
 const MAX_DRIVE_FILE_ID_BYTES = 1_024;
 const MAX_LIST_PAGES = 16;
 const MAX_DUPLICATE_IMMUTABLE_OBJECTS = 8;
+const MAX_CONTROL_DISCOVERY_CANDIDATES = 16;
 const MAX_ACTOR_ENROLLMENT_REQUESTS = 256;
 const MAX_INTENT_SEGMENTS = 1_500;
 const MAX_CONTROL_BYTES = 65_536;
@@ -46,6 +47,7 @@ const MAX_INTENT_HEAD_BYTES = 65_536;
 const MAX_RESULT_HEAD_BYTES = 65_536;
 const MAX_DRIVE_JSON_BYTES = 262_144;
 const MAX_DRIVE_ERROR_BYTES = 4_096;
+const MAX_CONSISTENT_MUTABLE_READ_ATTEMPTS = 3;
 
 export type GoogleDriveFetch = typeof fetch;
 
@@ -545,8 +547,34 @@ async function readDriveFileWithRevision(input: {
   readonly maxBytes: number;
   readonly label: string;
 }): Promise<{ readonly revision: string; readonly bytes: Uint8Array }> {
+  for (
+    let attempt = 0;
+    attempt < MAX_CONSISTENT_MUTABLE_READ_ATTEMPTS;
+    attempt += 1
+  ) {
+    // Drive's media response does not reliably expose an ETag. The metadata
+    // response does. Read the metadata revision on both sides of the media
+    // body so the returned bytes and compare-and-swap token describe one
+    // stable file generation.
+    const revisionBefore = await readDriveFileRevision(input);
+    const bytes = await readDriveFileBytes(input);
+    const revisionAfter = await readDriveFileRevision(input);
+    if (revisionBefore === revisionAfter) {
+      return Object.freeze({ revision: revisionAfter, bytes });
+    }
+  }
+  throw new Error(`${input.label} changed during read`);
+}
+
+async function readDriveFileRevision(input: {
+  readonly accessToken: string;
+  readonly fileId: string;
+  readonly googleFetch: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly label: string;
+}): Promise<string> {
   const response = await input.googleFetch(
-    `${DRIVE_FILES_URL}/${encodeURIComponent(input.fileId)}?alt=media`,
+    `${DRIVE_FILES_URL}/${encodeURIComponent(input.fileId)}?fields=id`,
     {
       headers: authorizationHeaders(input.accessToken),
       signal: input.signal,
@@ -554,15 +582,25 @@ async function readDriveFileWithRevision(input: {
   );
   if (!response.ok) throw await responseError(input.label, response);
   const revision = response.headers.get("ETag");
-  assertBoundedText(revision, `${input.label} ETag`, MAX_DRIVE_FILE_ID_BYTES);
-  return {
+  assertBoundedText(
     revision,
-    bytes: await readBoundedResponseBytes(
-      response,
-      input.maxBytes,
-      input.label,
-    ),
-  };
+    `${input.label} metadata ETag`,
+    MAX_DRIVE_FILE_ID_BYTES,
+  );
+  const responseBytes = await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    `${input.label} metadata`,
+  );
+  const metadata = ownRecord(
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(responseBytes)),
+    `${input.label} metadata`,
+  );
+  assertBoundedText(metadata.id, `${input.label} file id`, MAX_DRIVE_FILE_ID_BYTES);
+  if (metadata.id !== input.fileId) {
+    throw new Error(`${input.label} returned the wrong file identity`);
+  }
+  return revision;
 }
 
 async function readDriveFileBytes(input: {
@@ -686,35 +724,53 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
+  const expectedProperties = Object.freeze({
+    freedProtocol: PROTOCOL_PROPERTY,
+    freedObjectKind: "control",
+  });
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
-    properties: Object.freeze({
-      freedProtocol: PROTOCOL_PROPERTY,
-      freedObjectKind: "control",
-    }),
+    properties: expectedProperties,
     googleFetch,
     signal: input.signal,
-    maxFiles: 1,
+    maxFiles: MAX_CONTROL_DISCOVERY_CANDIDATES,
   });
-  const file = files[0];
-  if (file === undefined) return null;
-  const controlBytes = await readDriveFileBytes({
-    accessToken: input.accessToken,
-    fileId: file.id,
-    googleFetch,
-    signal: input.signal,
-    maxBytes: MAX_CONTROL_BYTES,
-    label: "Library Core Drive control discovery",
-  });
-  const decoded = JSON.parse(
-    new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
-  );
-  const pointer = parseLibraryCoreControlPointerV1(decoded);
-  return Object.freeze({
-    controlFileId: file.id,
-    control: Object.freeze({ bytes: controlBytes }),
-    libraryId: pointer.libraryId,
-  });
+  let discovered: PublishedGoogleDriveLibraryCoreControlV1 | null = null;
+  for (const file of files) {
+    assertExpectedProperties(
+      file.appProperties,
+      expectedProperties,
+      "Library Core Drive control discovery",
+    );
+    // Provisioning writes the canonical empty object as exactly two bytes.
+    // appDataFolder is private to this app, so its authenticated object kind
+    // and exact stored size are enough to ignore an abandoned placeholder
+    // without downloading it on every PWA refresh.
+    if (file.size === 2) continue;
+    const controlBytes = await readDriveFileBytes({
+      accessToken: input.accessToken,
+      fileId: file.id,
+      googleFetch,
+      signal: input.signal,
+      maxBytes: MAX_CONTROL_BYTES,
+      label: "Library Core Drive control discovery",
+    });
+    const decoded: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
+    );
+    const pointer = parseLibraryCoreControlPointerV1(decoded);
+    if (discovered !== null) {
+      throw new Error(
+        "Drive contains more than one published Library Core control",
+      );
+    }
+    discovered = Object.freeze({
+      controlFileId: file.id,
+      control: Object.freeze({ bytes: controlBytes }),
+      libraryId: pointer.libraryId,
+    });
+  }
+  return discovered;
 }
 
 /**

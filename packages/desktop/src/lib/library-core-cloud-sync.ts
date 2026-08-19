@@ -72,6 +72,7 @@ const LOCAL_REVISION_POLL_MS = 15_000;
 const INBOUND_ACTOR_POLL_MS = 60_000;
 const PUBLICATION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
+const EMPTY_LIBRARY_SOURCE_DIGEST = "0".repeat(64);
 
 interface LocalLibraryCoreCloudStateV1 {
   readonly version: 1;
@@ -149,18 +150,24 @@ async function loadOrCreateCloudState(
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
-      throw new Error(
-        "The saved Library Core cloud identity belongs to another Library",
-      );
+      if (
+        stored.sourceDigest !== EMPTY_LIBRARY_SOURCE_DIGEST ||
+        stored.lastPublishedRevision !== null
+      ) {
+        throw new Error(
+          "The saved Library Core cloud identity belongs to another Library",
+        );
+      }
+    } else {
+      return {
+        state: Object.freeze({
+          ...stored,
+          lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+        }),
+        currentWriterId,
+        bootstrap,
+      };
     }
-    return {
-      state: Object.freeze({
-        ...stored,
-        lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
-      }),
-      currentWriterId,
-      bootstrap,
-    };
   }
   const state: LocalLibraryCoreCloudStateV1 = Object.freeze({
     version: 1,
@@ -295,15 +302,17 @@ async function tracedPublicationStage<T>(
     return result;
   } catch (error) {
     const elapsedMs = Math.round(performance.now() - startedAt);
+    const detail = error instanceof Error ? error.message : String(error);
     log.warn(
-      `[library-core-cloud] ${label} failed after ${elapsedMs.toLocaleString()} ms: ${error instanceof Error ? error.message : String(error)}`,
+      `[library-core-cloud] ${label} failed after ${elapsedMs.toLocaleString()} ms: ${detail}`,
     );
     recordCloudProviderEvent("gdrive", {
       kind: "error",
       stage: "upload",
-      message: `${label} failed after ${elapsedMs.toLocaleString()} ms.`,
+      message: `${label} failed after ${elapsedMs.toLocaleString()} ms: ${detail}`,
     });
-    throw error;
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    throw new Error(`${label} failed: ${detail}`);
   }
 }
 
