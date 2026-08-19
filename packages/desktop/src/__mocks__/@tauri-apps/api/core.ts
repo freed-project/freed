@@ -546,6 +546,28 @@ const handlers: Record<string, Handler> = {
       verifiedAtMs: null,
     },
   sqlite_library_follower_intent_context: () => null,
+  read_sqlite_library_follower_intent_outbox_candidate: () => null,
+  record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstIntentSequence: request.firstIntentSequence,
+      lastIntentSequence: request.lastIntentSequence,
+      operationCount: Number(request.lastIntentSequence) - Number(request.firstIntentSequence) + 1,
+      publishedSegmentDigest: request.publishedSegmentDigest,
+      status: "recorded",
+    };
+  },
+  read_sqlite_library_follower_result_import_cursor: () => null,
+  append_sqlite_library_follower_result_segment: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstResultSequence: request.firstResultSequence,
+      lastResultSequence: request.lastResultSequence,
+      resultCount: Array.isArray(request.entries) ? request.entries.length : 0,
+      segmentDigest: request.segmentDigest,
+      status: "imported",
+    };
+  },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,

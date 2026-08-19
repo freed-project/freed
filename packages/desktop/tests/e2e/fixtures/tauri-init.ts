@@ -298,6 +298,28 @@ export function tauriInitScript(): string {
           verifiedAtMs: null,
         },
       sqlite_library_follower_intent_context: () => null,
+      read_sqlite_library_follower_intent_outbox_candidate: () => null,
+      record_sqlite_library_follower_intent_publication: (args) => {
+        var request = args.request || {};
+        return {
+          firstIntentSequence: request.firstIntentSequence,
+          lastIntentSequence: request.lastIntentSequence,
+          operationCount: request.lastIntentSequence - request.firstIntentSequence + 1,
+          publishedSegmentDigest: request.publishedSegmentDigest,
+          status: 'recorded',
+        };
+      },
+      read_sqlite_library_follower_result_import_cursor: () => null,
+      append_sqlite_library_follower_result_segment: (args) => {
+        var request = args.request || {};
+        return {
+          firstResultSequence: request.firstResultSequence,
+          lastResultSequence: request.lastResultSequence,
+          resultCount: (request.entries || []).length,
+          segmentDigest: request.segmentDigest,
+          status: 'imported',
+        };
+      },
       read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
         var item = sqliteState().items[id];
         return item && !item.__deleted ? JSON.stringify(item) : null;

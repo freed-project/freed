@@ -27,8 +27,10 @@ mod follower;
 mod operation_verifier;
 
 pub(crate) use follower::{
-    FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedFollowerAnchor,
+    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt,
+    FollowerResultImportCursor, FollowerResultImportReceipt, StoredFollowerActorEnrollment,
+    StoredFollowerActorRequest, VerifiedFollowerAnchor, VerifiedFollowerIntentPublication,
+    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;

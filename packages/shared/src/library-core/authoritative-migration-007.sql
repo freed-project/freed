@@ -295,6 +295,10 @@ CREATE TABLE library_core_follower_intent_result (
       AND providerReceiptDigest NOT GLOB '*[^0-9a-f]*'
     )
   ),
+  segmentDigest          TEXT    NOT NULL CHECK (
+    length(segmentDigest) = 64
+    AND segmentDigest NOT GLOB '*[^0-9a-f]*'
+  ),
   importedAtMs           INTEGER NOT NULL CHECK (
     importedAtMs BETWEEN 0 AND 9007199254740991
   ),

@@ -11,7 +11,7 @@ use super::{
     MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
 use crate::library_core_canonical::encode_canonical_value;
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, OptionalExtension, Result as SqlResult, TransactionBehavior};
 use serde_json::{json, Value};
 
 const MAX_CONTROL_REVISION_BYTES: usize = 512;
@@ -64,6 +64,85 @@ pub(crate) struct FollowerIntentEnqueueReceipt {
     pub(crate) first_intent_sequence: i64,
     pub(crate) last_intent_sequence: i64,
     pub(crate) operation_count: i64,
+    pub(crate) status: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerIntentOutboxEntry {
+    pub(crate) operation_id: String,
+    pub(crate) intent_sequence: i64,
+    pub(crate) canonical_envelope_json: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerIntentOutboxCandidate {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) schema_version: i64,
+    pub(crate) first_intent_sequence: i64,
+    pub(crate) last_intent_sequence: i64,
+    pub(crate) previous_segment_digest: Option<String>,
+    pub(crate) canonical_envelope_bytes: i64,
+    pub(crate) transaction_count: i64,
+    pub(crate) entries: Vec<FollowerIntentOutboxEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct VerifiedFollowerIntentPublication {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) first_intent_sequence: i64,
+    pub(crate) last_intent_sequence: i64,
+    pub(crate) previous_segment_digest: Option<String>,
+    pub(crate) published_segment_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerIntentPublicationReceipt {
+    pub(crate) first_intent_sequence: i64,
+    pub(crate) last_intent_sequence: i64,
+    pub(crate) operation_count: i64,
+    pub(crate) published_segment_digest: String,
+    pub(crate) status: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct VerifiedFollowerIntentResult {
+    pub(crate) result_operation_id: String,
+    pub(crate) result_sequence: i64,
+    pub(crate) intent_operation_id: String,
+    pub(crate) intent_sequence: i64,
+    pub(crate) status: String,
+    pub(crate) provider_receipt_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct VerifiedFollowerResultSegment {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) first_result_sequence: i64,
+    pub(crate) last_result_sequence: i64,
+    pub(crate) previous_segment_digest: Option<String>,
+    pub(crate) segment_digest: String,
+    pub(crate) entries: Vec<VerifiedFollowerIntentResult>,
+    pub(crate) imported_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerResultImportCursor {
+    pub(crate) next_result_sequence: i64,
+    pub(crate) latest_segment_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerResultImportReceipt {
+    pub(crate) first_result_sequence: i64,
+    pub(crate) last_result_sequence: i64,
+    pub(crate) result_count: i64,
+    pub(crate) segment_digest: String,
     pub(crate) status: &'static str,
 }
 
@@ -776,6 +855,531 @@ impl LibraryCoreJournal {
         Ok(receipt("enqueued"))
     }
 
+    pub(crate) fn follower_intent_outbox_candidate(
+        &self,
+        maximum_operations: usize,
+        maximum_canonical_envelope_bytes: usize,
+    ) -> JournalResult<Option<FollowerIntentOutboxCandidate>> {
+        if maximum_operations == 0
+            || maximum_operations > 1_000
+            || maximum_canonical_envelope_bytes == 0
+            || maximum_canonical_envelope_bytes > 4_194_304
+        {
+            return Err(invalid("follower_intent_candidate.bounds"));
+        }
+        let Some((
+            library_id,
+            epoch_id,
+            actor_id,
+            next_intent_sequence,
+            published_through,
+            previous_segment_digest,
+        )) = self
+            .connection
+            .query_row(
+                "SELECT libraryId, epochId, actorId, nextIntentSequence,
+                        publishedThroughIntentSequence,
+                        latestPublishedSegmentDigest
+                 FROM library_core_follower_intent_actor
+                 ORDER BY libraryId, epochId, actorId
+                 LIMIT 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )
+            .optional()?
+        else {
+            return Ok(None);
+        };
+        let first_intent_sequence = published_through + 1;
+        if first_intent_sequence == next_intent_sequence {
+            return Ok(None);
+        }
+        if first_intent_sequence > next_intent_sequence {
+            return Err(invalid("follower_intent_candidate.actor_tip"));
+        }
+
+        let mut statement = self.connection.prepare(
+            "SELECT firstIntentSequence, lastIntentSequence, operationCount,
+                    canonicalEnvelopeBytes
+             FROM library_core_follower_intent_transaction
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND firstIntentSequence >= ?4
+             ORDER BY firstIntentSequence;",
+        )?;
+        let mut rows = statement.query(params![
+            library_id,
+            epoch_id,
+            actor_id,
+            first_intent_sequence
+        ])?;
+        let mut expected_sequence = first_intent_sequence;
+        let mut operation_count = 0usize;
+        let mut canonical_envelope_bytes = 0usize;
+        let mut transaction_count = 0usize;
+        let mut last_intent_sequence = 0i64;
+        while let Some(row) = rows.next()? {
+            let transaction_first = row.get::<_, i64>(0)?;
+            let transaction_last = row.get::<_, i64>(1)?;
+            let transaction_operations = usize::try_from(row.get::<_, i64>(2)?)
+                .map_err(|_| invalid("follower_intent_candidate.transaction"))?;
+            let transaction_bytes = usize::try_from(row.get::<_, i64>(3)?)
+                .map_err(|_| invalid("follower_intent_candidate.transaction"))?;
+            if transaction_first != expected_sequence
+                || transaction_last
+                    != transaction_first + i64::try_from(transaction_operations).unwrap_or(0) - 1
+            {
+                return Err(invalid("follower_intent_candidate.transaction_gap"));
+            }
+            if operation_count + transaction_operations > maximum_operations
+                || canonical_envelope_bytes + transaction_bytes > maximum_canonical_envelope_bytes
+            {
+                if transaction_count == 0 {
+                    return Err(invalid("follower_intent_candidate.transaction_bounds"));
+                }
+                break;
+            }
+            operation_count += transaction_operations;
+            canonical_envelope_bytes += transaction_bytes;
+            transaction_count += 1;
+            last_intent_sequence = transaction_last;
+            expected_sequence = transaction_last + 1;
+        }
+        drop(rows);
+        drop(statement);
+        if transaction_count == 0 || operation_count == 0 {
+            return Err(invalid("follower_intent_candidate.transaction_missing"));
+        }
+
+        let mut statement = self.connection.prepare(
+            "SELECT operationId, intentSequence, canonicalEnvelopeJson,
+                    publishedSegmentDigest
+             FROM library_core_follower_intent_operation
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND intentSequence BETWEEN ?4 AND ?5
+             ORDER BY intentSequence;",
+        )?;
+        let entries = statement
+            .query_map(
+                params![
+                    library_id,
+                    epoch_id,
+                    actor_id,
+                    first_intent_sequence,
+                    last_intent_sequence
+                ],
+                |row| {
+                    Ok((
+                        FollowerIntentOutboxEntry {
+                            operation_id: row.get(0)?,
+                            intent_sequence: row.get(1)?,
+                            canonical_envelope_json: row.get(2)?,
+                        },
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                },
+            )?
+            .collect::<SqlResult<Vec<_>>>()?;
+        if entries.len() != operation_count
+            || entries
+                .iter()
+                .enumerate()
+                .any(|(index, (entry, published))| {
+                    entry.intent_sequence != first_intent_sequence + index as i64
+                        || published.is_some()
+                })
+        {
+            return Err(invalid("follower_intent_candidate.operations"));
+        }
+        Ok(Some(FollowerIntentOutboxCandidate {
+            library_id,
+            epoch_id,
+            actor_id,
+            schema_version: 1,
+            first_intent_sequence,
+            last_intent_sequence,
+            previous_segment_digest,
+            canonical_envelope_bytes: canonical_envelope_bytes as i64,
+            transaction_count: transaction_count as i64,
+            entries: entries.into_iter().map(|(entry, _)| entry).collect(),
+        }))
+    }
+
+    pub(crate) fn record_follower_intent_publication(
+        &mut self,
+        publication: &VerifiedFollowerIntentPublication,
+    ) -> JournalResult<FollowerIntentPublicationReceipt> {
+        if !is_lower_hex(&publication.library_id, 32)
+            || !is_lower_hex(&publication.epoch_id, 32)
+            || !is_lower_hex(&publication.actor_id, 32)
+            || !is_lower_hex(&publication.published_segment_digest, 32)
+            || publication
+                .previous_segment_digest
+                .as_ref()
+                .is_some_and(|digest| !is_lower_hex(digest, 32))
+            || !(1..=MAX_SAFE_INTEGER).contains(&publication.first_intent_sequence)
+            || publication.last_intent_sequence < publication.first_intent_sequence
+            || publication.last_intent_sequence > MAX_SAFE_INTEGER
+        {
+            return Err(invalid("follower_intent_publication"));
+        }
+        let operation_count =
+            publication.last_intent_sequence - publication.first_intent_sequence + 1;
+        let receipt = |status| FollowerIntentPublicationReceipt {
+            first_intent_sequence: publication.first_intent_sequence,
+            last_intent_sequence: publication.last_intent_sequence,
+            operation_count,
+            published_segment_digest: publication.published_segment_digest.clone(),
+            status,
+        };
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (next_intent_sequence, published_through, latest_segment_digest) = transaction
+            .query_row(
+                "SELECT nextIntentSequence, publishedThroughIntentSequence,
+                        latestPublishedSegmentDigest
+                 FROM library_core_follower_intent_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![
+                    publication.library_id,
+                    publication.epoch_id,
+                    publication.actor_id
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| invalid("follower_intent_publication.actor"))?;
+        let matching_operations: i64 = transaction.query_row(
+            "SELECT COUNT(*)
+             FROM library_core_follower_intent_operation
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND intentSequence BETWEEN ?4 AND ?5
+               AND publishedSegmentDigest = ?6;",
+            params![
+                publication.library_id,
+                publication.epoch_id,
+                publication.actor_id,
+                publication.first_intent_sequence,
+                publication.last_intent_sequence,
+                publication.published_segment_digest,
+            ],
+            |row| row.get(0),
+        )?;
+        if publication.last_intent_sequence <= published_through {
+            if matching_operations != operation_count {
+                return Err(invalid("follower_intent_publication.replay"));
+            }
+            transaction.commit()?;
+            return Ok(receipt("already_recorded"));
+        }
+        if publication.first_intent_sequence != published_through + 1
+            || publication.last_intent_sequence >= next_intent_sequence
+            || publication.previous_segment_digest != latest_segment_digest
+        {
+            return Err(invalid("follower_intent_publication.actor_tip"));
+        }
+        let (covered_transactions, covered_operations, minimum_first, maximum_last): (
+            i64,
+            i64,
+            Option<i64>,
+            Option<i64>,
+        ) = transaction.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(operationCount), 0),
+                    MIN(firstIntentSequence), MAX(lastIntentSequence)
+             FROM library_core_follower_intent_transaction
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND firstIntentSequence >= ?4 AND lastIntentSequence <= ?5;",
+            params![
+                publication.library_id,
+                publication.epoch_id,
+                publication.actor_id,
+                publication.first_intent_sequence,
+                publication.last_intent_sequence,
+            ],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let crossing_transactions: i64 = transaction.query_row(
+            "SELECT COUNT(*)
+             FROM library_core_follower_intent_transaction
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND firstIntentSequence <= ?5 AND lastIntentSequence >= ?4
+               AND NOT (firstIntentSequence >= ?4 AND lastIntentSequence <= ?5);",
+            params![
+                publication.library_id,
+                publication.epoch_id,
+                publication.actor_id,
+                publication.first_intent_sequence,
+                publication.last_intent_sequence,
+            ],
+            |row| row.get(0),
+        )?;
+        if covered_transactions < 1
+            || covered_operations != operation_count
+            || minimum_first != Some(publication.first_intent_sequence)
+            || maximum_last != Some(publication.last_intent_sequence)
+            || crossing_transactions != 0
+        {
+            return Err(invalid("follower_intent_publication.transactions"));
+        }
+        let updated = transaction.execute(
+            "UPDATE library_core_follower_intent_operation
+             SET publishedSegmentDigest = ?1
+             WHERE libraryId = ?2 AND epochId = ?3 AND actorId = ?4
+               AND intentSequence BETWEEN ?5 AND ?6
+               AND publishedSegmentDigest IS NULL;",
+            params![
+                publication.published_segment_digest,
+                publication.library_id,
+                publication.epoch_id,
+                publication.actor_id,
+                publication.first_intent_sequence,
+                publication.last_intent_sequence,
+            ],
+        )?;
+        if updated as i64 != operation_count {
+            return Err(invalid("follower_intent_publication.operations"));
+        }
+        transaction.execute(
+            "UPDATE library_core_follower_intent_actor
+             SET publishedThroughIntentSequence = ?1,
+                 latestPublishedSegmentDigest = ?2
+             WHERE libraryId = ?3 AND epochId = ?4 AND actorId = ?5;",
+            params![
+                publication.last_intent_sequence,
+                publication.published_segment_digest,
+                publication.library_id,
+                publication.epoch_id,
+                publication.actor_id,
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(receipt("recorded"))
+    }
+
+    pub(crate) fn follower_result_import_cursor(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<FollowerResultImportCursor>> {
+        self.connection
+            .query_row(
+                "SELECT nextResultSequence, latestResultSegmentDigest
+                 FROM library_core_follower_intent_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![library_id, epoch_id, actor_id],
+                |row| {
+                    Ok(FollowerResultImportCursor {
+                        next_result_sequence: row.get(0)?,
+                        latest_segment_digest: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn append_follower_result_segment(
+        &mut self,
+        segment: &VerifiedFollowerResultSegment,
+    ) -> JournalResult<FollowerResultImportReceipt> {
+        if !is_lower_hex(&segment.library_id, 32)
+            || !is_lower_hex(&segment.epoch_id, 32)
+            || !is_lower_hex(&segment.actor_id, 32)
+            || !is_lower_hex(&segment.segment_digest, 32)
+            || segment
+                .previous_segment_digest
+                .as_ref()
+                .is_some_and(|digest| !is_lower_hex(digest, 32))
+            || !(0..=MAX_SAFE_INTEGER).contains(&segment.imported_at_ms)
+            || !(1..=MAX_SAFE_INTEGER).contains(&segment.first_result_sequence)
+            || segment.last_result_sequence < segment.first_result_sequence
+            || segment.last_result_sequence > MAX_SAFE_INTEGER
+            || segment.entries.is_empty()
+            || segment.entries.len() > 1_000
+            || segment.last_result_sequence - segment.first_result_sequence + 1
+                != segment.entries.len() as i64
+        {
+            return Err(invalid("follower_result_segment"));
+        }
+        for (index, entry) in segment.entries.iter().enumerate() {
+            let valid_status = matches!(
+                entry.status.as_str(),
+                "accepted" | "provider_completed" | "provider_failed"
+            );
+            if entry.result_operation_id.is_empty()
+                || entry.result_operation_id.len() > 128
+                || entry.intent_operation_id.is_empty()
+                || entry.intent_operation_id.len() > 128
+                || entry.result_sequence != segment.first_result_sequence + index as i64
+                || !(1..=MAX_SAFE_INTEGER).contains(&entry.intent_sequence)
+                || !valid_status
+                || entry
+                    .provider_receipt_digest
+                    .as_ref()
+                    .is_some_and(|digest| !is_lower_hex(digest, 32))
+                || ((entry.status == "accepted") != entry.provider_receipt_digest.is_none())
+            {
+                return Err(invalid("follower_result_segment.entries"));
+            }
+        }
+        let result_count = segment.entries.len() as i64;
+        let receipt = |status| FollowerResultImportReceipt {
+            first_result_sequence: segment.first_result_sequence,
+            last_result_sequence: segment.last_result_sequence,
+            result_count,
+            segment_digest: segment.segment_digest.clone(),
+            status,
+        };
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (next_result_sequence, latest_segment_digest) = transaction
+            .query_row(
+                "SELECT nextResultSequence, latestResultSegmentDigest
+                 FROM library_core_follower_intent_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![segment.library_id, segment.epoch_id, segment.actor_id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| invalid("follower_result_segment.actor"))?;
+        let existing_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM library_core_follower_intent_result
+             WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+               AND resultSequence BETWEEN ?4 AND ?5;",
+            params![
+                segment.library_id,
+                segment.epoch_id,
+                segment.actor_id,
+                segment.first_result_sequence,
+                segment.last_result_sequence,
+            ],
+            |row| row.get(0),
+        )?;
+        if existing_count > 0 {
+            if existing_count != result_count
+                || next_result_sequence <= segment.last_result_sequence
+            {
+                return Err(invalid("follower_result_segment.replay"));
+            }
+            for entry in &segment.entries {
+                let stored = transaction.query_row(
+                    "SELECT resultOperationId, intentOperationId, intentSequence,
+                                status, providerReceiptDigest, segmentDigest
+                         FROM library_core_follower_intent_result
+                         WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+                           AND resultSequence = ?4;",
+                    params![
+                        segment.library_id,
+                        segment.epoch_id,
+                        segment.actor_id,
+                        entry.result_sequence,
+                    ],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                            row.get::<_, String>(5)?,
+                        ))
+                    },
+                )?;
+                if stored
+                    != (
+                        entry.result_operation_id.clone(),
+                        entry.intent_operation_id.clone(),
+                        entry.intent_sequence,
+                        entry.status.clone(),
+                        entry.provider_receipt_digest.clone(),
+                        segment.segment_digest.clone(),
+                    )
+                {
+                    return Err(invalid("follower_result_segment.replay"));
+                }
+            }
+            transaction.commit()?;
+            return Ok(receipt("already_imported"));
+        }
+        if segment.first_result_sequence != next_result_sequence
+            || segment.previous_segment_digest != latest_segment_digest
+        {
+            return Err(invalid("follower_result_segment.actor_tip"));
+        }
+        for entry in &segment.entries {
+            let intent_operation_id = transaction
+                .query_row(
+                    "SELECT operationId
+                     FROM library_core_follower_intent_operation
+                     WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3
+                       AND intentSequence = ?4;",
+                    params![
+                        segment.library_id,
+                        segment.epoch_id,
+                        segment.actor_id,
+                        entry.intent_sequence,
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("follower_result_segment.intent"))?;
+            if intent_operation_id != entry.intent_operation_id {
+                return Err(invalid("follower_result_segment.intent"));
+            }
+            transaction.execute(
+                "INSERT INTO library_core_follower_intent_result (
+                   resultOperationId, libraryId, epochId, actorId,
+                   resultSequence, intentOperationId, intentSequence, status,
+                   providerReceiptDigest, segmentDigest, importedAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);",
+                params![
+                    entry.result_operation_id,
+                    segment.library_id,
+                    segment.epoch_id,
+                    segment.actor_id,
+                    entry.result_sequence,
+                    entry.intent_operation_id,
+                    entry.intent_sequence,
+                    entry.status,
+                    entry.provider_receipt_digest,
+                    segment.segment_digest,
+                    segment.imported_at_ms,
+                ],
+            )?;
+        }
+        transaction.execute(
+            "UPDATE library_core_follower_intent_actor
+             SET nextResultSequence = ?1, latestResultSegmentDigest = ?2
+             WHERE libraryId = ?3 AND epochId = ?4 AND actorId = ?5;",
+            params![
+                segment.last_result_sequence + 1,
+                segment.segment_digest,
+                segment.library_id,
+                segment.epoch_id,
+                segment.actor_id,
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(receipt("imported"))
+    }
+
     /// Install or advance one verified immutable-checkpoint anchor.
     ///
     /// A different Library is never adopted implicitly. An epoch transition is
@@ -1078,6 +1682,165 @@ mod tests {
                 },
             ],
         }
+    }
+
+    fn journal_with_enqueued_intent() -> LibraryCoreJournal {
+        let mut journal = LibraryCoreJournal::open_in_memory().unwrap();
+        journal.install_follower_anchor(&anchor(1, 10)).unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 1, 1, 1, ?1, 1, 1, '{}', 1, 1);",
+                ["d".repeat(64)],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_feed_items (
+                   globalId, payloadJson, updatedAtMs
+                 ) VALUES ('item-1', '{\"globalId\":\"item-1\",\"userState\":{}}', 1);",
+                [],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_follower_actor (
+                   libraryId, epochId, actorId, actorPublicKey,
+                   actorChainGenesis, enrollmentRequestDigest,
+                   canonicalEnrollmentRequestJson,
+                   enrollmentCertificateDigest,
+                   canonicalEnrollmentCertificateJson, createdAtMs,
+                   enrolledAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', ?6, '{}', 1, 1);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "6".repeat(64),
+                    "7".repeat(64),
+                    "0".repeat(64),
+                    "8".repeat(64),
+                ],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_follower_intent_actor (
+                   libraryId, epochId, actorId, nextIntentSequence,
+                   latestOperationId, latestActorChainDigest,
+                   publishedThroughIntentSequence, latestPublishedSegmentDigest,
+                   nextResultSequence, latestResultSegmentDigest
+                 ) VALUES (?1, ?2, ?3, 1, NULL, ?4, 0, NULL, 1, NULL);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "6".repeat(64),
+                    "0".repeat(64),
+                ],
+            )
+            .unwrap();
+        journal
+            .enqueue_verified_follower_transaction(&verified_intent("transaction-1"), 2_000)
+            .unwrap();
+        journal
+    }
+
+    #[test]
+    fn follower_outbox_publication_and_result_import_are_exact_and_replay_safe() {
+        let mut journal = journal_with_enqueued_intent();
+        assert!(journal
+            .follower_intent_outbox_candidate(1, 4_194_304)
+            .is_err());
+        let candidate = journal
+            .follower_intent_outbox_candidate(1_000, 4_194_304)
+            .unwrap()
+            .unwrap();
+        assert_eq!(candidate.first_intent_sequence, 1);
+        assert_eq!(candidate.last_intent_sequence, 2);
+        assert_eq!(candidate.transaction_count, 1);
+        assert_eq!(candidate.entries.len(), 2);
+        assert_eq!(candidate.previous_segment_digest, None);
+
+        let publication = VerifiedFollowerIntentPublication {
+            library_id: "a".repeat(64),
+            epoch_id: "b".repeat(64),
+            actor_id: "6".repeat(64),
+            first_intent_sequence: 1,
+            last_intent_sequence: 2,
+            previous_segment_digest: None,
+            published_segment_digest: "c".repeat(64),
+        };
+        assert_eq!(
+            journal
+                .record_follower_intent_publication(&publication)
+                .unwrap()
+                .status,
+            "recorded"
+        );
+        assert_eq!(
+            journal
+                .record_follower_intent_publication(&publication)
+                .unwrap()
+                .status,
+            "already_recorded"
+        );
+        assert!(journal
+            .follower_intent_outbox_candidate(1_000, 4_194_304)
+            .unwrap()
+            .is_none());
+
+        assert_eq!(
+            journal
+                .follower_result_import_cursor(&"a".repeat(64), &"b".repeat(64), &"6".repeat(64),)
+                .unwrap(),
+            Some(FollowerResultImportCursor {
+                next_result_sequence: 1,
+                latest_segment_digest: None,
+            })
+        );
+        let result_segment = VerifiedFollowerResultSegment {
+            library_id: "a".repeat(64),
+            epoch_id: "b".repeat(64),
+            actor_id: "6".repeat(64),
+            first_result_sequence: 1,
+            last_result_sequence: 1,
+            previous_segment_digest: None,
+            segment_digest: "d".repeat(64),
+            entries: vec![VerifiedFollowerIntentResult {
+                result_operation_id: "result-1".to_string(),
+                result_sequence: 1,
+                intent_operation_id: "operation-1".to_string(),
+                intent_sequence: 1,
+                status: "accepted".to_string(),
+                provider_receipt_digest: None,
+            }],
+            imported_at_ms: 3_000,
+        };
+        assert_eq!(
+            journal
+                .append_follower_result_segment(&result_segment)
+                .unwrap()
+                .status,
+            "imported"
+        );
+        assert_eq!(
+            journal
+                .append_follower_result_segment(&result_segment)
+                .unwrap()
+                .status,
+            "already_imported"
+        );
+        let mut changed_replay = result_segment;
+        changed_replay.segment_digest = "e".repeat(64);
+        assert!(journal
+            .append_follower_result_segment(&changed_replay)
+            .is_err());
     }
 
     #[test]
