@@ -21,12 +21,12 @@
 //! recognized as a replay. An already-enrolled actor is therefore returned
 //! from storage without rebuilding anything.
 
-use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_authority_genesis::load_established_authority_key_pair;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_operation_signature_input,
     encode_signature_input,
 };
+use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_journal::{ActorState, LibraryCoreJournal};
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
 use ring::rand::SystemRandom;
@@ -411,7 +411,7 @@ fn enroll_with_key_pairs(
         created_at_ms,
     )?;
     journal
-        .verify_and_enroll_actor(&certificate, &authority.library_id)
+        .verify_and_enroll_initial_desktop_actor(&certificate, &authority.library_id)
         .map_err(|error| format!("Library Core could not enroll its actor: {error}"))
 }
 
@@ -636,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn a_different_actor_key_is_a_different_actor() {
+    fn a_second_desktop_actor_is_refused_before_writer_admission() {
         let (_directory, mut journal, authority) = journal_with_authority();
 
         let first = enroll_with_key_pairs(
@@ -647,16 +647,17 @@ mod tests {
             2_000,
         )
         .unwrap();
-        let second = enroll_with_key_pairs(
+        let error = enroll_with_key_pairs(
             &mut journal,
             &authority,
             &other_actor_key_pair(),
             &authority_key_pair(),
             2_000,
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert_ne!(first.actor_id, second.actor_id);
+        assert!(error.contains("active authority is stale"), "{error}");
+        assert!(is_lower_sha256(&first.actor_id));
     }
 
     /// The authority admits actors. An actor that countersigned its own
@@ -779,25 +780,22 @@ mod tests {
             .unwrap()
             .authority;
         journal
-            .install_follower_anchor(
-                &crate::library_core_journal::VerifiedFollowerAnchor {
-                    authority: accepted,
-                    manifest_object_key: "manifest".to_string(),
-                    manifest_transport_object_id: "drive-object".to_string(),
-                    manifest_content_digest: "1".repeat(64),
-                    generation: 1,
-                    remote_ingest_sequence: 0,
-                    remote_materialized_digest: "2".repeat(64),
-                    writer_id: "3".repeat(64),
-                    control_revision: "revision-1".to_string(),
-                    checkpoint_actor: None,
-                    installed_at_ms: 1_900,
-                },
-            )
+            .install_follower_anchor(&crate::library_core_journal::VerifiedFollowerAnchor {
+                authority: accepted,
+                manifest_object_key: "manifest".to_string(),
+                manifest_transport_object_id: "drive-object".to_string(),
+                manifest_content_digest: "1".repeat(64),
+                generation: 1,
+                remote_ingest_sequence: 0,
+                remote_materialized_digest: "2".repeat(64),
+                writer_id: "3".repeat(64),
+                control_revision: "revision-1".to_string(),
+                checkpoint_actor: None,
+                installed_at_ms: 1_900,
+            })
             .unwrap();
         let store = MemoryActorKeyStore::default();
-        let request =
-            prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
+        let request = prepare_follower_actor_enrollment_request(&authority, &store, 2_000).unwrap();
         journal
             .store_follower_actor_request(
                 &crate::library_core_journal::StoredFollowerActorRequest {
@@ -806,16 +804,14 @@ mod tests {
                     actor_id: request.actor_id.clone(),
                     actor_public_key: request.actor_public_key.clone(),
                     enrollment_request_digest: request.enrollment_request_digest.clone(),
-                    canonical_enrollment_request_json: request
-                        .canonical_enrollment_request_json,
+                    canonical_enrollment_request_json: request.canonical_enrollment_request_json,
                     created_at_ms: 2_000,
                 },
             )
             .unwrap();
-        let actor_key = Ed25519KeyPair::from_pkcs8(
-            store.stored.borrow().as_ref().expect("stored actor key"),
-        )
-        .unwrap();
+        let actor_key =
+            Ed25519KeyPair::from_pkcs8(store.stored.borrow().as_ref().expect("stored actor key"))
+                .unwrap();
         let identity = actor_identity(&authority, &actor_key).unwrap();
         let certificate = build_certificate(
             &authority,
@@ -832,7 +828,9 @@ mod tests {
         assert_eq!(installed.actor_id, request.actor_id);
         let canonical_actor_count: i64 = journal
             .connection_for_test()
-            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let follower_actor_count: i64 = journal
             .connection_for_test()

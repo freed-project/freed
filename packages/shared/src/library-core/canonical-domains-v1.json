@@ -26,6 +26,8 @@
     "legacy-epoch-bootstrap-prepared",
     "legacy-epoch-bootstrap-receipt",
     "legacy-library-identity",
+    "native-sqlite-library-identity",
+    "native-sqlite-source-manifest",
     "installation-incarnation",
     "actor-incarnation-nonce"
   ],

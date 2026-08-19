@@ -43,7 +43,19 @@ const mocks = vi.hoisted(() => ({
       actor_chain_genesis: "45".repeat(32),
     },
     canonicalEpochCertificateJson: "{}",
+    protocol: {
+      format: "freed_library_core_native_authority_protocol_v1",
+      active_engine: "library_core_v1",
+      schema_version: 11,
+      replication_protocol: "op_segments_v1",
+      checkpoint_format: "freed_logical_checkpoint_v1",
+      transition_certificate_digest: "59".repeat(32),
+      native_protocol_certificate_digest: "57".repeat(32),
+      prior_transition_certificate_digest: null,
+      source_manifest_digest: "58".repeat(32),
+    },
   })),
+  bootstrapNative: vi.fn(),
   bootstrapAuthority: {
     authority: {
       library_id: "ab".repeat(32),
@@ -62,7 +74,19 @@ const mocks = vi.hoisted(() => ({
       canonical_enrollment_certificate_json: "{}",
       actor_chain_genesis: "45".repeat(32),
     },
+    protocol: {
+      format: "freed_library_core_native_authority_protocol_v1",
+      active_engine: "library_core_v1",
+      schema_version: 11,
+      replication_protocol: "op_segments_v1",
+      checkpoint_format: "freed_logical_checkpoint_v1",
+      transition_certificate_digest: "56".repeat(32),
+      native_protocol_certificate_digest: "57".repeat(32),
+      prior_transition_certificate_digest: null,
+      source_manifest_digest: "58".repeat(32),
+    },
   },
+  readNative: vi.fn(),
   writeNative: vi.fn(),
   setWriterAdmission: vi.fn(async () => ({ configured: true, allowed: true })),
   publish: vi.fn(),
@@ -89,7 +113,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./native-json-store", () => ({
-  readNativeJsonValue: vi.fn(async () => mocks.nativeState),
+  readNativeJsonValue: mocks.readNative.mockImplementation(
+    async () => mocks.nativeState,
+  ),
   writeNativeJsonValue: mocks.writeNative.mockImplementation(
     async (_file: string, _key: string, value: unknown) => {
       mocks.nativeState = value;
@@ -104,7 +130,9 @@ vi.mock("./sqlite-library", () => ({
   appendSqliteLibraryFollowerResultSegment:
     mocks.appendFollowerResultSegment,
   beginPortableSqliteLibraryImport: mocks.beginPortableImport,
-  bootstrapSqliteLibraryAuthority: vi.fn(async () => mocks.bootstrapAuthority),
+  bootstrapSqliteLibraryAuthority: mocks.bootstrapNative.mockImplementation(
+    async () => mocks.bootstrapAuthority,
+  ),
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   createSqliteLibraryBackup: mocks.createBackup,
   finalizePortableSqliteLibraryImport: mocks.finalizePortableImport,
@@ -255,8 +283,10 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
             canonical_codec_version: 1,
             anchor_kind: "accepted_authority",
             accepted_authority: mocks.bootstrapAuthority.authority,
-            source_transition_digest: null,
-            source_manifest_digest: null,
+            source_transition_digest:
+              mocks.bootstrapAuthority.protocol.transition_certificate_digest,
+            source_manifest_digest:
+              mocks.bootstrapAuthority.protocol.source_manifest_digest,
             transition_candidate_anchor: null,
             promoted_receipt_digests: [],
             materializer_position: {
@@ -373,6 +403,9 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.publish.mockClear();
     mocks.reassign.mockClear();
     mocks.reassignNative.mockClear();
+    mocks.bootstrapNative
+      .mockReset()
+      .mockImplementation(async () => mocks.bootstrapAuthority);
     mocks.importCheckpoint.mockClear();
     mocks.beginPortableImport.mockClear();
     mocks.appendPortableItems.mockClear();
@@ -380,6 +413,9 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.restoreBackup.mockClear();
     mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
+    mocks.readNative
+      .mockReset()
+      .mockImplementation(async () => mocks.nativeState);
     mocks.setWriterAdmission.mockClear();
     mocks.discoverPublishedControl.mockReset();
     mocks.discoverActorEnrollments.mockReset().mockResolvedValue([]);
@@ -780,6 +816,17 @@ describe("SQLite Library Google Drive production wiring", () => {
       offset: 0,
     });
     expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.bootstrapNative).toHaveBeenCalledWith({
+      descriptor: expect.objectContaining({
+        revision: 7,
+        sourceDigest: "ab".repeat(32),
+        materializedDigest: "cd".repeat(32),
+      }),
+      persistedCloudIdentity: null,
+    });
+    expect(mocks.readNative.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.bootstrapNative.mock.invocationCallOrder[0]!,
+    );
     const request = mocks.publishRequest;
     expect(request?.generation).toBe(0);
     expect(request?.writerId).toBe(mocks.bootstrapAuthority.actor.actor_id);
@@ -791,6 +838,10 @@ describe("SQLite Library Google Drive production wiring", () => {
         materialized_digest: "cd".repeat(32),
       },
       schema_version: 2,
+      source_transition_digest:
+        mocks.bootstrapAuthority.protocol.transition_certificate_digest,
+      source_manifest_digest:
+        mocks.bootstrapAuthority.protocol.source_manifest_digest,
     });
     expect(mocks.nativeState).toMatchObject({
       controlFileId: "control-1",
@@ -848,6 +899,45 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
+  it("loads persisted identity before bootstrap and chains the previous manifest", async () => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
+    mocks.bootstrapNative.mockClear();
+    mocks.readDescriptor.mockResolvedValue({
+      revision: 8,
+      itemCount: 2,
+      sourceDigest: "ab".repeat(32),
+      shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
+      materializedDigest: "ce".repeat(32),
+    });
+    mocks.readPage.mockResolvedValue({
+      revision: 8,
+      itemsJson: [
+        '{"globalId":"item-1","platform":"rss"}',
+        '{"globalId":"item-2","platform":"youtube"}',
+      ],
+      nextOffset: null,
+    });
+
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "published", revision: 8 });
+
+    expect(mocks.bootstrapNative).toHaveBeenCalledWith({
+      descriptor: expect.objectContaining({ revision: 8 }),
+      persistedCloudIdentity: {
+        libraryId: mocks.bootstrapAuthority.authority.library_id,
+        storageEpoch: mocks.bootstrapAuthority.authority.epoch_id,
+        writerId: mocks.bootstrapAuthority.actor.actor_id,
+        sourceDigest: "ab".repeat(32),
+      },
+    });
+    expect(mocks.publishRequest?.header).toMatchObject({
+      source_transition_digest:
+        mocks.bootstrapAuthority.protocol.transition_certificate_digest,
+      source_manifest_digest: "67".repeat(32),
+    });
+  });
+
   it("rejects a stored receipt that is not bound to its local revision", async () => {
     await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
     const stored = mocks.nativeState as {
@@ -869,10 +959,10 @@ describe("SQLite Library Google Drive production wiring", () => {
   it("replaces an unpublished synthetic empty cloud identity after Library recovery", async () => {
     mocks.nativeState = {
       version: 1,
-      libraryId: "empty-library",
+      libraryId: "01".repeat(32),
       sourceDigest: "0".repeat(64),
-      storageEpoch: "empty-epoch",
-      writerId: "empty-writer",
+      storageEpoch: "02".repeat(32),
+      writerId: "03".repeat(32),
       controlFileId: "empty-control",
       lastPublishedRevision: null,
       lastPublishedActorDigest: null,
@@ -896,10 +986,10 @@ describe("SQLite Library Google Drive production wiring", () => {
   it("refuses to replace a mismatched cloud identity that published a revision", async () => {
     mocks.nativeState = {
       version: 1,
-      libraryId: "published-library",
+      libraryId: "01".repeat(32),
       sourceDigest: "0".repeat(64),
-      storageEpoch: "published-epoch",
-      writerId: "published-writer",
+      storageEpoch: "02".repeat(32),
+      writerId: "03".repeat(32),
       controlFileId: "published-control",
       lastPublishedRevision: 0,
       lastPublishedActorDigest: null,
@@ -955,10 +1045,10 @@ describe("SQLite Library Google Drive production wiring", () => {
   it("refuses cloud publication when restored state belongs to another Desktop installation", async () => {
     mocks.nativeState = {
       version: 1,
-      libraryId: `library-${"ab".repeat(20)}`,
+      libraryId: "ab".repeat(32),
       sourceDigest: "ab".repeat(32),
-      storageEpoch: "epoch-original",
-      writerId: "desktop-original-installation",
+      storageEpoch: "cd".repeat(32),
+      writerId: "34".repeat(32),
       controlFileId: "control-1",
       lastPublishedRevision: 6,
     };
@@ -966,7 +1056,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({
       status: "ownership_required",
-      currentWriterId: "desktop-original-installation",
+      currentWriterId: "34".repeat(32),
       localWriterId: mocks.bootstrapAuthority.actor.actor_id,
     });
 
@@ -974,20 +1064,20 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.writeNative).not.toHaveBeenCalled();
     expect(mocks.setWriterAdmission).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeWriterId: "desktop-original-installation",
+        activeWriterId: "34".repeat(32),
         localWriterId: mocks.bootstrapAuthority.actor.actor_id,
       }),
     );
   });
 
   it("moves a current restored SQLite copy to a fresh writer epoch with one control CAS", async () => {
-    const libraryId = `library-${"ab".repeat(20)}`;
+    const libraryId = "ab".repeat(32);
     mocks.nativeState = {
       version: 1,
       libraryId,
       sourceDigest: "ab".repeat(32),
-      storageEpoch: "epoch-original",
-      writerId: "desktop-original-installation",
+      storageEpoch: "cd".repeat(32),
+      writerId: "34".repeat(32),
       controlFileId: "control-1",
       lastPublishedRevision: 7,
     };
@@ -1005,7 +1095,7 @@ describe("SQLite Library Google Drive production wiring", () => {
               contentDigest: "12".repeat(32),
               objectKey: createLibraryCoreImmutableObjectKey({
                 digest: "12".repeat(32) as LibraryCoreLowercaseHex64,
-                epochId: "epoch-original",
+                epochId: "cd".repeat(32),
                 generation: 4,
                 kind: "checkpoint_manifest",
                 libraryId,
@@ -1015,8 +1105,8 @@ describe("SQLite Library Google Drive production wiring", () => {
           },
           protocolVersion: 1,
           schemaVersion: 1,
-          storageEpoch: "epoch-original",
-          writerId: "desktop-original-installation",
+          storageEpoch: "cd".repeat(32),
+          writerId: "34".repeat(32),
         }),
       ),
     };
@@ -1056,13 +1146,13 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("backs up and imports the active cloud checkpoint before taking over from a newer epoch", async () => {
-    const libraryId = `library-${"ab".repeat(20)}`;
+    const libraryId = "ab".repeat(32);
     mocks.nativeState = {
       version: 1,
       libraryId,
       sourceDigest: "ab".repeat(32),
-      storageEpoch: "epoch-original",
-      writerId: "desktop-original-installation",
+      storageEpoch: "cd".repeat(32),
+      writerId: "34".repeat(32),
       controlFileId: "control-1",
       lastPublishedRevision: 7,
     };

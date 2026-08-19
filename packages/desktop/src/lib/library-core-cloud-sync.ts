@@ -153,11 +153,17 @@ function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
   return (
     candidate.version === 1 &&
     typeof candidate.libraryId === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.libraryId) &&
     typeof candidate.sourceDigest === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.sourceDigest) &&
     typeof candidate.storageEpoch === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.storageEpoch) &&
     typeof candidate.writerId === "string" &&
+    /^[a-f0-9]{64}$/.test(candidate.writerId) &&
     (candidate.controlFileId === null ||
-      typeof candidate.controlFileId === "string") &&
+      (typeof candidate.controlFileId === "string" &&
+        candidate.controlFileId.length > 0 &&
+        candidate.controlFileId.length <= 1_024)) &&
     (candidate.lastPublishedRevision === null ||
       (typeof candidate.lastPublishedRevision === "number" &&
         Number.isSafeInteger(candidate.lastPublishedRevision) &&
@@ -237,9 +243,11 @@ async function loadOrCreateCloudState(
   readonly currentWriterId: string;
   readonly bootstrap: SqliteLibraryAuthorityBootstrap;
 }> {
-  const bootstrap = await bootstrapSqliteLibraryAuthority();
-  const currentWriterId = bootstrap.actor.actor_id;
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+  if (stored !== null && stored !== undefined && !isCloudState(stored)) {
+    throw new Error("The saved Library Core cloud identity is invalid");
+  }
+  let reusableState: LocalLibraryCoreCloudStateV1 | null = null;
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
       if (
@@ -251,16 +259,36 @@ async function loadOrCreateCloudState(
         );
       }
     } else {
-      return {
-        state: Object.freeze({
-          ...stored,
-          lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
-          lastPublishedCheckpoint: checkpointReceiptForState(stored),
-        }),
-        currentWriterId,
-        bootstrap,
-      };
+      reusableState = Object.freeze({
+        ...stored,
+        lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+        lastPublishedCheckpoint: checkpointReceiptForState(stored),
+      });
     }
+  }
+  const bootstrap = await bootstrapSqliteLibraryAuthority({
+    descriptor,
+    persistedCloudIdentity:
+      reusableState === null
+        ? null
+        : {
+            libraryId: reusableState.libraryId,
+            storageEpoch: reusableState.storageEpoch,
+            writerId: reusableState.writerId,
+            sourceDigest: reusableState.sourceDigest,
+          },
+  });
+  const currentWriterId = bootstrap.actor.actor_id;
+  if (reusableState !== null) {
+    if (
+      reusableState.libraryId !== bootstrap.authority.library_id ||
+      reusableState.storageEpoch !== bootstrap.authority.epoch_id
+    ) {
+      throw new Error(
+        "The saved Library Core cloud identity conflicts with accepted authority",
+      );
+    }
+    return { state: reusableState, currentWriterId, bootstrap };
   }
   const state: LocalLibraryCoreCloudStateV1 = Object.freeze({
     version: 1,
@@ -517,8 +545,14 @@ async function checkpointHeader(
     canonical_codec_version: 1,
     anchor_kind: "accepted_authority",
     accepted_authority: bootstrap.authority,
-    source_transition_digest: null,
-    source_manifest_digest: null,
+    source_transition_digest:
+      bootstrap.protocol
+        .transition_certificate_digest as LibraryCorePortableCheckpointHeaderV1["source_transition_digest"],
+    source_manifest_digest:
+      (checkpointReceiptForState(state)?.controlPointer.manifest.descriptor
+        .contentDigest ??
+        bootstrap.protocol
+          .source_manifest_digest) as LibraryCorePortableCheckpointHeaderV1["source_manifest_digest"],
     transition_candidate_anchor: null,
     promoted_receipt_digests: [],
     materializer_position: {

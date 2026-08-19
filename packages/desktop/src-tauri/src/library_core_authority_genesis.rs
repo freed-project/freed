@@ -1,37 +1,33 @@
-//! A disposable local epoch so the shadow journal will accept shadow writes.
+//! Signed authority establishment for the native SQLite Library.
 //!
-//! NOT canonical authority, and it can never become canonical authority. The
-//! contract is explicit: the legacy bootstrap record deliberately carries no
-//! authority key, signature, or proof of owner consent, because a key created
-//! and signed by the same app process proves only that the app possesses the
-//! key it just created. It authenticates neither the owner nor another
-//! installation. The real Library Core authority key stays unprovisioned until
-//! a user-present or authenticated authority-holder protocol exists.
+//! A fresh active SQLite Library receives one signed native genesis. Its
+//! certificate commits the opaque Library ID, authority key, native engine,
+//! operation-segment replication protocol, logical-checkpoint format, and one
+//! exact captured SQLite source manifest. The journal commit is idempotent, so
+//! response loss and restart return the same authority instead of minting a
+//! second head.
 //!
-//! What this is for: `library_core_authority_epochs` requires an epoch row
-//! before the journal will accept an actor or an operation, and the shadow
-//! slice needs to write shadow operations. This fills that slot with a local,
-//! never-replicated value that is thrown away at the real bootstrap.
+//! Older installations may already contain the retired certificate format
+//! that named `automerge_legacy` and `automerge_blob_v1`. Those signed bytes
+//! remain immutable historical evidence. One separately stored, authority
+//! signed forward correction references the old certificate digest and binds
+//! the same Library ID, epoch, key lineage, actors, cloud namespace, intents,
+//! results, and checkpoints to the native protocol fields.
 //!
-//! Three rules follow, and each is load-bearing:
-//!
-//! 1. Nothing may call this from startup. Startup absence never chooses a
-//!    creator. An earlier revision did exactly that and had to be reverted.
-//! 2. Nothing may treat the key or the epoch id as cloud authority, as a
-//!    writer epoch, or as input to a future authenticated transition.
-//! 3. Installation identity never comes from this key. It comes from the
-//!    Desktop installation witness, which is derived from the machine and the
-//!    user rather than from something the app just minted.
-//!
-//! Automerge stays authoritative throughout.
+//! Authority discovery always reads the accepted journal state and the
+//! persisted cloud identity fence before deriving a fresh identity. Multiple
+//! active Libraries, missing persisted authority, mismatched epochs, missing
+//! keys, and competing protocol corrections fail closed. This module never
+//! opens Automerge bytes and never synthesizes an Automerge head from SQLite.
 
-use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
+use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_journal::{
     AcceptedAuthorityState, LibraryCoreJournal, VerifiedAuthorityEpoch,
+    VerifiedAuthorityProtocolTransition,
 };
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
 use ring::rand::SystemRandom;
@@ -48,6 +44,16 @@ const TRUST_MODEL: &str = "tofu_read_only_until_authenticated_pairing";
 const GENESIS_EPOCH: i64 = 1;
 const MAX_CERTIFICATE_BYTES: usize = 16 * 1_024;
 const MAX_DOCUMENT_ID_BYTES: usize = 4_096;
+const NATIVE_GENESIS_FORMAT: &str = "freed_library_core_native_sqlite_genesis_v1";
+const NATIVE_PROTOCOL_TRANSITION_FORMAT: &str =
+    "freed_library_core_native_sqlite_protocol_transition_v1";
+const NATIVE_SOURCE_MANIFEST_FORMAT: &str = "freed_library_core_sqlite_source_manifest_v1";
+const NATIVE_PROTOCOL_RECEIPT_FORMAT: &str = "freed_library_core_native_authority_protocol_v1";
+const NATIVE_ACTIVE_ENGINE: &str = "library_core_v1";
+const NATIVE_SCHEMA_VERSION: i64 = 11;
+const NATIVE_REPLICATION_PROTOCOL: &str = "op_segments_v1";
+const NATIVE_CHECKPOINT_FORMAT: &str = "freed_logical_checkpoint_v1";
+const MAX_SAFE_INTEGER_U64: u64 = 9_007_199_254_740_991;
 
 /// The authority signing key is a separate vault account from the migration
 /// signing key. One compromised or cleared key must not stand in for the other.
@@ -69,6 +75,115 @@ pub(crate) struct LegacySourceRevision {
     pub(crate) head_count: u64,
     pub(crate) storage_generation: u64,
     pub(crate) storage_save_revision: u64,
+}
+
+/// One exact materialized SQLite revision used as the immutable predecessor
+/// manifest for authority establishment. It contains identities and digests,
+/// never SQLite, WAL, SHM, or Automerge bytes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeSqliteSourceSnapshot {
+    pub(crate) source_digest: String,
+    pub(crate) source_generation: u64,
+    pub(crate) source_revision: u64,
+    pub(crate) sqlite_revision: u64,
+    pub(crate) item_count: u64,
+    pub(crate) materialized_digest: String,
+}
+
+/// Identity loaded from the renderer's bounded native JSON store before the
+/// bootstrap command is allowed to derive any fresh Library identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PersistedCloudAuthorityHint {
+    pub(crate) library_id: String,
+    pub(crate) storage_epoch: String,
+    pub(crate) writer_id: String,
+    pub(crate) source_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SqliteAuthorityProtocolReceipt {
+    pub(crate) format: String,
+    pub(crate) active_engine: String,
+    pub(crate) schema_version: i64,
+    pub(crate) replication_protocol: String,
+    pub(crate) checkpoint_format: String,
+    pub(crate) transition_certificate_digest: String,
+    pub(crate) native_protocol_certificate_digest: String,
+    pub(crate) prior_transition_certificate_digest: Option<String>,
+    pub(crate) source_manifest_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EstablishedSqliteAuthority {
+    pub(crate) authority: AcceptedAuthorityState,
+    pub(crate) protocol: SqliteAuthorityProtocolReceipt,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NativeSqliteSourceManifestV1 {
+    format: String,
+    library_id: String,
+    source_digest: String,
+    source_generation: u64,
+    source_revision: u64,
+    sqlite_revision: u64,
+    item_count: u64,
+    materialized_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NativeGenesisCertificateBodyV1 {
+    format: String,
+    library_id: String,
+    epoch: i64,
+    active_engine: String,
+    schema_version: i64,
+    replication_protocol: String,
+    checkpoint_format: String,
+    signature_algorithm: String,
+    authority_public_key: String,
+    authority_key_id: String,
+    source_manifest: NativeSqliteSourceManifestV1,
+    source_manifest_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NativeGenesisCertificateV1 {
+    certificate_body: NativeGenesisCertificateBodyV1,
+    epoch_id: String,
+    epoch_signature: String,
+    authority_key_possession_signature: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NativeProtocolTransitionBodyV1 {
+    format: String,
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    active_engine: String,
+    schema_version: i64,
+    replication_protocol: String,
+    checkpoint_format: String,
+    signature_algorithm: String,
+    authority_public_key: String,
+    authority_key_id: String,
+    prior_transition_certificate_digest: String,
+    source_manifest: NativeSqliteSourceManifestV1,
+    source_manifest_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct NativeProtocolTransitionCertificateV1 {
+    certificate_body: NativeProtocolTransitionBodyV1,
+    protocol_transition_id: String,
+    transition_signature: String,
+    authority_key_possession_signature: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -143,7 +258,7 @@ fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
 /// installations that adopt the same legacy document agree on which library
 /// they are talking about, and re-deriving it after a crash gives the same
 /// answer.
-pub(crate) fn legacy_library_id(document_id: &str) -> Result<String, String> {
+fn legacy_library_id(document_id: &str) -> Result<String, String> {
     if document_id.is_empty() || document_id.len() > MAX_DOCUMENT_ID_BYTES {
         return Err("Library Core legacy document ID is invalid".to_string());
     }
@@ -154,6 +269,79 @@ pub(crate) fn legacy_library_id(document_id: &str) -> Result<String, String> {
             "source_kind": SOURCE_KIND,
         }),
     )
+}
+
+fn native_library_id(source_digest: &str, installation_witness: &str) -> Result<String, String> {
+    if !is_lower_sha256(source_digest) || !is_lower_sha256(installation_witness) {
+        return Err("Library Core native Library identity input is invalid".to_string());
+    }
+    digest_value(
+        "native-sqlite-library-identity",
+        &json!({
+            "installation_witness": installation_witness,
+            "source_digest": source_digest,
+        }),
+    )
+}
+
+fn validate_native_snapshot(snapshot: &NativeSqliteSourceSnapshot) -> Result<(), String> {
+    if !is_lower_sha256(&snapshot.source_digest)
+        || !is_lower_sha256(&snapshot.materialized_digest)
+        || snapshot.source_generation > MAX_SAFE_INTEGER_U64
+        || snapshot.source_revision > MAX_SAFE_INTEGER_U64
+        || snapshot.sqlite_revision > MAX_SAFE_INTEGER_U64
+        || snapshot.item_count > 1_000_000
+    {
+        return Err("Library Core native SQLite source snapshot is invalid".to_string());
+    }
+    Ok(())
+}
+
+fn native_source_manifest(
+    library_id: &str,
+    snapshot: &NativeSqliteSourceSnapshot,
+) -> Result<(NativeSqliteSourceManifestV1, String), String> {
+    if !is_lower_sha256(library_id) {
+        return Err("Library Core native Library ID is invalid".to_string());
+    }
+    validate_native_snapshot(snapshot)?;
+    let manifest = NativeSqliteSourceManifestV1 {
+        format: NATIVE_SOURCE_MANIFEST_FORMAT.to_string(),
+        library_id: library_id.to_string(),
+        source_digest: snapshot.source_digest.clone(),
+        source_generation: snapshot.source_generation,
+        source_revision: snapshot.source_revision,
+        sqlite_revision: snapshot.sqlite_revision,
+        item_count: snapshot.item_count,
+        materialized_digest: snapshot.materialized_digest.clone(),
+    };
+    let value = serde_json::to_value(&manifest)
+        .map_err(|_| "Library Core native source manifest is invalid".to_string())?;
+    let digest = digest_value("native-sqlite-source-manifest", &value)?;
+    Ok((manifest, digest))
+}
+
+fn verify_native_source_manifest(
+    manifest: &NativeSqliteSourceManifestV1,
+    expected_digest: &str,
+) -> Result<(), String> {
+    if manifest.format != NATIVE_SOURCE_MANIFEST_FORMAT
+        || !is_lower_sha256(&manifest.library_id)
+        || !is_lower_sha256(&manifest.source_digest)
+        || !is_lower_sha256(&manifest.materialized_digest)
+        || manifest.source_generation > MAX_SAFE_INTEGER_U64
+        || manifest.source_revision > MAX_SAFE_INTEGER_U64
+        || manifest.sqlite_revision > MAX_SAFE_INTEGER_U64
+        || manifest.item_count > 1_000_000
+    {
+        return Err("Library Core native source manifest is invalid".to_string());
+    }
+    let value = serde_json::to_value(manifest)
+        .map_err(|_| "Library Core native source manifest is invalid".to_string())?;
+    if expected_digest != digest_value("native-sqlite-source-manifest", &value)? {
+        return Err("Library Core native source manifest digest is invalid".to_string());
+    }
+    Ok(())
 }
 
 fn authority_key_id(authority_public_key: &str) -> Result<String, String> {
@@ -202,6 +390,7 @@ fn validate_revision(revision: &LegacySourceRevision) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn build_certificate(
     library_id: &str,
     revision: &LegacySourceRevision,
@@ -306,6 +495,196 @@ fn verify_certificate(certificate: &GenesisEpochCertificateV1) -> Result<(), Str
     Ok(())
 }
 
+fn verify_signatures(
+    certificate_digest: &str,
+    authority_public_key: &str,
+    authority_key_id: &str,
+    transition_signature: &str,
+    possession_signature: &str,
+    label: &str,
+) -> Result<(), String> {
+    for (input, signature, what) in [
+        (
+            epoch_signature_input(certificate_digest)?,
+            transition_signature,
+            "transition",
+        ),
+        (
+            possession_signature_input(certificate_digest, authority_key_id)?,
+            possession_signature,
+            "authority key possession",
+        ),
+    ] {
+        let verified = verify_library_core_ed25519(authority_public_key, signature, &input)
+            .map_err(|_| format!("Library Core {label} {what} signature is malformed"))?;
+        if !verified {
+            return Err(format!("Library Core {label} {what} signature is invalid"));
+        }
+    }
+    Ok(())
+}
+
+fn build_native_genesis_certificate(
+    library_id: &str,
+    snapshot: &NativeSqliteSourceSnapshot,
+    key_pair: &Ed25519KeyPair,
+) -> Result<NativeGenesisCertificateV1, String> {
+    let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+    let authority_key_id = authority_key_id(&authority_public_key)?;
+    let (source_manifest, source_manifest_digest) = native_source_manifest(library_id, snapshot)?;
+    let certificate_body = NativeGenesisCertificateBodyV1 {
+        format: NATIVE_GENESIS_FORMAT.to_string(),
+        library_id: library_id.to_string(),
+        epoch: GENESIS_EPOCH,
+        active_engine: NATIVE_ACTIVE_ENGINE.to_string(),
+        schema_version: NATIVE_SCHEMA_VERSION,
+        replication_protocol: NATIVE_REPLICATION_PROTOCOL.to_string(),
+        checkpoint_format: NATIVE_CHECKPOINT_FORMAT.to_string(),
+        signature_algorithm: SIGNATURE_ALGORITHM.to_string(),
+        authority_public_key,
+        authority_key_id: authority_key_id.clone(),
+        source_manifest,
+        source_manifest_digest,
+    };
+    let body_value = serde_json::to_value(&certificate_body)
+        .map_err(|_| "Library Core native genesis body is invalid".to_string())?;
+    let epoch_id = digest_value("epoch-transition-certificate", &body_value)?;
+    Ok(NativeGenesisCertificateV1 {
+        epoch_signature: lower_hex(key_pair.sign(&epoch_signature_input(&epoch_id)?).as_ref()),
+        authority_key_possession_signature: lower_hex(
+            key_pair
+                .sign(&possession_signature_input(&epoch_id, &authority_key_id)?)
+                .as_ref(),
+        ),
+        certificate_body,
+        epoch_id,
+    })
+}
+
+fn verify_native_genesis_certificate(
+    certificate: &NativeGenesisCertificateV1,
+) -> Result<(), String> {
+    let body = &certificate.certificate_body;
+    if body.format != NATIVE_GENESIS_FORMAT
+        || body.epoch != GENESIS_EPOCH
+        || body.active_engine != NATIVE_ACTIVE_ENGINE
+        || body.schema_version != NATIVE_SCHEMA_VERSION
+        || body.replication_protocol != NATIVE_REPLICATION_PROTOCOL
+        || body.checkpoint_format != NATIVE_CHECKPOINT_FORMAT
+        || body.signature_algorithm != SIGNATURE_ALGORITHM
+        || !is_lower_sha256(&body.library_id)
+        || !is_lower_sha256(&body.authority_public_key)
+        || body.authority_key_id != authority_key_id(&body.authority_public_key)?
+        || body.source_manifest.library_id != body.library_id
+    {
+        return Err("Library Core native genesis certificate is invalid".to_string());
+    }
+    verify_native_source_manifest(&body.source_manifest, &body.source_manifest_digest)?;
+    let body_value = serde_json::to_value(body)
+        .map_err(|_| "Library Core native genesis body is invalid".to_string())?;
+    if certificate.epoch_id != digest_value("epoch-transition-certificate", &body_value)? {
+        return Err("Library Core native genesis epoch digest is invalid".to_string());
+    }
+    verify_signatures(
+        &certificate.epoch_id,
+        &body.authority_public_key,
+        &body.authority_key_id,
+        &certificate.epoch_signature,
+        &certificate.authority_key_possession_signature,
+        "native genesis",
+    )
+}
+
+fn build_native_protocol_transition(
+    source: &VerifiedAuthorityEpoch,
+    snapshot: &NativeSqliteSourceSnapshot,
+    key_pair: &Ed25519KeyPair,
+) -> Result<NativeProtocolTransitionCertificateV1, String> {
+    let public_key = lower_hex(key_pair.public_key().as_ref());
+    if public_key != source.authority.authority_public_key
+        || authority_key_id(&public_key)? != source.authority.authority_key_id
+    {
+        return Err("Library Core legacy authority key lineage is unavailable".to_string());
+    }
+    let (source_manifest, source_manifest_digest) =
+        native_source_manifest(&source.authority.library_id, snapshot)?;
+    let certificate_body = NativeProtocolTransitionBodyV1 {
+        format: NATIVE_PROTOCOL_TRANSITION_FORMAT.to_string(),
+        library_id: source.authority.library_id.clone(),
+        epoch: source.authority.epoch,
+        epoch_id: source.authority.epoch_id.clone(),
+        active_engine: NATIVE_ACTIVE_ENGINE.to_string(),
+        schema_version: NATIVE_SCHEMA_VERSION,
+        replication_protocol: NATIVE_REPLICATION_PROTOCOL.to_string(),
+        checkpoint_format: NATIVE_CHECKPOINT_FORMAT.to_string(),
+        signature_algorithm: SIGNATURE_ALGORITHM.to_string(),
+        authority_public_key: public_key,
+        authority_key_id: source.authority.authority_key_id.clone(),
+        prior_transition_certificate_digest: source.transition_certificate_digest.clone(),
+        source_manifest,
+        source_manifest_digest,
+    };
+    let body_value = serde_json::to_value(&certificate_body)
+        .map_err(|_| "Library Core native protocol transition body is invalid".to_string())?;
+    let protocol_transition_id = digest_value("epoch-transition-certificate", &body_value)?;
+    Ok(NativeProtocolTransitionCertificateV1 {
+        transition_signature: lower_hex(
+            key_pair
+                .sign(&epoch_signature_input(&protocol_transition_id)?)
+                .as_ref(),
+        ),
+        authority_key_possession_signature: lower_hex(
+            key_pair
+                .sign(&possession_signature_input(
+                    &protocol_transition_id,
+                    &certificate_body.authority_key_id,
+                )?)
+                .as_ref(),
+        ),
+        certificate_body,
+        protocol_transition_id,
+    })
+}
+
+fn verify_native_protocol_transition(
+    certificate: &NativeProtocolTransitionCertificateV1,
+    source: &VerifiedAuthorityEpoch,
+) -> Result<(), String> {
+    let body = &certificate.certificate_body;
+    if body.format != NATIVE_PROTOCOL_TRANSITION_FORMAT
+        || body.library_id != source.authority.library_id
+        || body.epoch != source.authority.epoch
+        || body.epoch_id != source.authority.epoch_id
+        || body.active_engine != NATIVE_ACTIVE_ENGINE
+        || body.schema_version != NATIVE_SCHEMA_VERSION
+        || body.replication_protocol != NATIVE_REPLICATION_PROTOCOL
+        || body.checkpoint_format != NATIVE_CHECKPOINT_FORMAT
+        || body.signature_algorithm != SIGNATURE_ALGORITHM
+        || body.authority_public_key != source.authority.authority_public_key
+        || body.authority_key_id != source.authority.authority_key_id
+        || body.prior_transition_certificate_digest != source.transition_certificate_digest
+        || body.source_manifest.library_id != body.library_id
+    {
+        return Err("Library Core native protocol transition is invalid".to_string());
+    }
+    verify_native_source_manifest(&body.source_manifest, &body.source_manifest_digest)?;
+    let body_value = serde_json::to_value(body)
+        .map_err(|_| "Library Core native protocol transition body is invalid".to_string())?;
+    if certificate.protocol_transition_id
+        != digest_value("epoch-transition-certificate", &body_value)?
+    {
+        return Err("Library Core native protocol transition digest is invalid".to_string());
+    }
+    verify_signatures(
+        &certificate.protocol_transition_id,
+        &body.authority_public_key,
+        &body.authority_key_id,
+        &certificate.transition_signature,
+        &certificate.authority_key_possession_signature,
+        "native protocol transition",
+    )
+}
+
 /// Where the authority signing key is kept. Production is the platform vault;
 /// tests substitute memory so they never touch the real credential store.
 trait AuthorityKeyStore {
@@ -350,6 +729,142 @@ fn load_or_create_authority_key_pair(
         .map_err(|_| "Library Core authority signing key readback is corrupt".to_string())
 }
 
+fn load_authority_key_pair(
+    store: &dyn AuthorityKeyStore,
+    library_id: &str,
+) -> Result<Ed25519KeyPair, String> {
+    let bytes = store
+        .load(library_id)?
+        .ok_or_else(|| "Library Core has no established authority signing key".to_string())?;
+    Ed25519KeyPair::from_pkcs8(&bytes)
+        .map_err(|_| "Library Core authority signing key is corrupt".to_string())
+}
+
+fn canonical_certificate<T: Serialize>(
+    certificate: &T,
+    label: &str,
+) -> Result<(Value, String), String> {
+    let value = serde_json::to_value(certificate)
+        .map_err(|_| format!("Library Core {label} certificate is invalid"))?;
+    let canonical = encode_canonical_value(&value, MAX_CERTIFICATE_BYTES)
+        .map_err(|_| format!("Library Core {label} certificate is not canonical"))?;
+    let canonical_json = String::from_utf8(canonical)
+        .map_err(|_| format!("Library Core {label} certificate is not UTF-8"))?;
+    Ok((value, canonical_json))
+}
+
+fn require_canonical_certificate<T>(canonical_json: &str, label: &str) -> Result<T, String>
+where
+    T: for<'de> Deserialize<'de> + Serialize,
+{
+    if canonical_json.is_empty() || canonical_json.len() > MAX_CERTIFICATE_BYTES {
+        return Err(format!("Library Core {label} certificate size is invalid"));
+    }
+    let parsed: T = serde_json::from_str(canonical_json)
+        .map_err(|_| format!("Library Core {label} certificate is invalid"))?;
+    let (_, canonical) = canonical_certificate(&parsed, label)?;
+    if canonical != canonical_json {
+        return Err(format!("Library Core {label} certificate is not canonical"));
+    }
+    Ok(parsed)
+}
+
+fn verify_legacy_epoch_record(
+    record: &VerifiedAuthorityEpoch,
+) -> Result<GenesisEpochCertificateV1, String> {
+    let certificate: GenesisEpochCertificateV1 = require_canonical_certificate(
+        &record.canonical_transition_certificate_json,
+        "legacy genesis",
+    )?;
+    verify_certificate(&certificate)?;
+    let (value, _) = canonical_certificate(&certificate, "legacy genesis")?;
+    let body = &certificate.certificate_body;
+    if record.authority.library_id != body.library_id
+        || record.authority.epoch != body.epoch
+        || record.authority.epoch_id != certificate.epoch_id
+        || record.authority.authority_key_id != body.authority_key_id
+        || record.authority.authority_public_key != body.authority_public_key
+        || record.transition_certificate_digest
+            != digest_value("epoch-transition-certificate", &value)?
+    {
+        return Err("Library Core stored legacy authority certificate is inconsistent".to_string());
+    }
+    Ok(certificate)
+}
+
+fn require_source_lineage(
+    manifest: &NativeSqliteSourceManifestV1,
+    snapshot: &NativeSqliteSourceSnapshot,
+) -> Result<(), String> {
+    if manifest.source_digest != snapshot.source_digest
+        || manifest.source_generation != snapshot.source_generation
+        || manifest.source_revision != snapshot.source_revision
+    {
+        return Err("Library Core SQLite source lineage conflicts with accepted authority".into());
+    }
+    Ok(())
+}
+
+fn require_legacy_sqlite_source_lineage(
+    certificate: &GenesisEpochCertificateV1,
+    snapshot: &NativeSqliteSourceSnapshot,
+) -> Result<(), String> {
+    let source = &certificate.certificate_body;
+    if source.source_document_id != format!("freed-sqlite-{}", snapshot.source_digest)
+        || source.source_heads_digest != snapshot.source_digest
+        || source.source_head_count != 1
+        || source.source_storage_generation != snapshot.source_generation
+        || source.source_save_revision != snapshot.source_revision
+    {
+        return Err("Library Core SQLite source lineage conflicts with legacy authority".into());
+    }
+    Ok(())
+}
+
+fn verify_native_epoch_record(
+    record: &VerifiedAuthorityEpoch,
+) -> Result<NativeGenesisCertificateV1, String> {
+    let certificate: NativeGenesisCertificateV1 = require_canonical_certificate(
+        &record.canonical_transition_certificate_json,
+        "native genesis",
+    )?;
+    verify_native_genesis_certificate(&certificate)?;
+    let (value, _) = canonical_certificate(&certificate, "native genesis")?;
+    let body = &certificate.certificate_body;
+    if record.authority.library_id != body.library_id
+        || record.authority.epoch != body.epoch
+        || record.authority.epoch_id != certificate.epoch_id
+        || record.authority.authority_key_id != body.authority_key_id
+        || record.authority.authority_public_key != body.authority_public_key
+        || record.transition_certificate_digest
+            != digest_value("epoch-transition-certificate", &value)?
+    {
+        return Err("Library Core stored native authority certificate is inconsistent".to_string());
+    }
+    Ok(certificate)
+}
+
+fn verify_writer_epoch_record(record: &VerifiedAuthorityEpoch) -> Result<(), String> {
+    let certificate: WriterEpochReassignmentCertificateV1 = require_canonical_certificate(
+        &record.canonical_transition_certificate_json,
+        "writer reassignment",
+    )?;
+    verify_writer_reassignment_certificate(&certificate)?;
+    let (value, _) = canonical_certificate(&certificate, "writer reassignment")?;
+    let body = &certificate.certificate_body;
+    if record.authority.library_id != body.library_id
+        || record.authority.epoch != body.target_epoch
+        || record.authority.epoch_id != certificate.epoch_id
+        || record.authority.authority_key_id != body.target_authority_key_id
+        || record.authority.authority_public_key != body.target_authority_public_key
+        || record.transition_certificate_digest
+            != digest_value("epoch-transition-certificate", &value)?
+    {
+        return Err("Library Core stored writer authority certificate is inconsistent".to_string());
+    }
+    Ok(())
+}
+
 /// Establish a genesis epoch with a caller-supplied key.
 ///
 /// Test-only entry point for sibling modules that need a real installed epoch
@@ -380,6 +895,298 @@ pub(crate) fn load_established_authority_key_pair(
         .map_err(|_| "Library Core authority signing key is corrupt".to_string())
 }
 
+fn stored_certificate_format(canonical_json: &str) -> Result<String, String> {
+    let value: Value = serde_json::from_str(canonical_json)
+        .map_err(|_| "Library Core stored authority certificate is invalid".to_string())?;
+    value
+        .get("certificate_body")
+        .and_then(Value::as_object)
+        .and_then(|body| body.get("format"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "Library Core stored authority certificate format is missing".to_string())
+}
+
+fn establish_native_with_store(
+    journal: &mut LibraryCoreJournal,
+    snapshot: &NativeSqliteSourceSnapshot,
+    installation_witness: &str,
+    accepted_at_ms: i64,
+    store: &dyn AuthorityKeyStore,
+) -> Result<EstablishedSqliteAuthority, String> {
+    validate_native_snapshot(snapshot)?;
+    if accepted_at_ms < 0 {
+        return Err("Library Core native genesis acceptance time is invalid".to_string());
+    }
+    let library_id = native_library_id(&snapshot.source_digest, installation_witness)?;
+    let key_pair = load_or_create_authority_key_pair(store, &library_id)?;
+    let certificate = build_native_genesis_certificate(&library_id, snapshot, &key_pair)?;
+    verify_native_genesis_certificate(&certificate)?;
+    let (certificate_value, canonical_json) =
+        canonical_certificate(&certificate, "native genesis")?;
+    let transition_certificate_digest =
+        digest_value("epoch-transition-certificate", &certificate_value)?;
+    let source_manifest_digest = certificate.certificate_body.source_manifest_digest.clone();
+    let authority = journal
+        .install_authority_epoch(&VerifiedAuthorityEpoch {
+            authority: AcceptedAuthorityState {
+                library_id,
+                epoch: GENESIS_EPOCH,
+                epoch_id: certificate.epoch_id,
+                authority_key_id: certificate.certificate_body.authority_key_id,
+                authority_public_key: certificate.certificate_body.authority_public_key,
+                observed_frontier: Vec::new(),
+            },
+            transition_certificate_digest: transition_certificate_digest.clone(),
+            canonical_transition_certificate_json: canonical_json,
+            accepted_at_ms,
+        })
+        .map_err(|error| format!("Library Core could not install native genesis: {error}"))?;
+    Ok(EstablishedSqliteAuthority {
+        authority,
+        protocol: SqliteAuthorityProtocolReceipt {
+            format: NATIVE_PROTOCOL_RECEIPT_FORMAT.to_string(),
+            active_engine: NATIVE_ACTIVE_ENGINE.to_string(),
+            schema_version: NATIVE_SCHEMA_VERSION,
+            replication_protocol: NATIVE_REPLICATION_PROTOCOL.to_string(),
+            checkpoint_format: NATIVE_CHECKPOINT_FORMAT.to_string(),
+            transition_certificate_digest: transition_certificate_digest.clone(),
+            native_protocol_certificate_digest: transition_certificate_digest,
+            prior_transition_certificate_digest: None,
+            source_manifest_digest,
+        },
+    })
+}
+
+fn verify_stored_protocol_transition(
+    stored: &VerifiedAuthorityProtocolTransition,
+    source: &VerifiedAuthorityEpoch,
+) -> Result<NativeProtocolTransitionCertificateV1, String> {
+    let certificate: NativeProtocolTransitionCertificateV1 = require_canonical_certificate(
+        &stored.canonical_protocol_transition_certificate_json,
+        "native protocol transition",
+    )?;
+    verify_native_protocol_transition(&certificate, source)?;
+    let (value, _) = canonical_certificate(&certificate, "native protocol transition")?;
+    if stored.library_id != source.authority.library_id
+        || stored.source_epoch != source.authority.epoch
+        || stored.source_epoch_id != source.authority.epoch_id
+        || stored.source_transition_certificate_digest != source.transition_certificate_digest
+        || stored.protocol_transition_certificate_digest
+            != digest_value("epoch-transition-certificate", &value)?
+        || stored.source_manifest_digest != certificate.certificate_body.source_manifest_digest
+    {
+        return Err("Library Core stored native protocol transition is inconsistent".to_string());
+    }
+    Ok(certificate)
+}
+
+fn establish_or_load_legacy_protocol_transition(
+    journal: &mut LibraryCoreJournal,
+    source: &VerifiedAuthorityEpoch,
+    snapshot: &NativeSqliteSourceSnapshot,
+    key_pair: &Ed25519KeyPair,
+    accepted_at_ms: i64,
+) -> Result<VerifiedAuthorityProtocolTransition, String> {
+    let legacy = verify_legacy_epoch_record(source)?;
+    require_legacy_sqlite_source_lineage(&legacy, snapshot)?;
+    if let Some(stored) = journal
+        .authority_protocol_transition(&source.authority.library_id)
+        .map_err(|error| error.to_string())?
+    {
+        let certificate = verify_stored_protocol_transition(&stored, source)?;
+        require_source_lineage(&certificate.certificate_body.source_manifest, snapshot)?;
+        return Ok(stored);
+    }
+    let certificate = build_native_protocol_transition(source, snapshot, key_pair)?;
+    verify_native_protocol_transition(&certificate, source)?;
+    let source_manifest_digest = certificate.certificate_body.source_manifest_digest.clone();
+    let (value, canonical_json) =
+        canonical_certificate(&certificate, "native protocol transition")?;
+    let transition = VerifiedAuthorityProtocolTransition {
+        library_id: source.authority.library_id.clone(),
+        source_epoch: source.authority.epoch,
+        source_epoch_id: source.authority.epoch_id.clone(),
+        source_transition_certificate_digest: source.transition_certificate_digest.clone(),
+        protocol_transition_certificate_digest: digest_value(
+            "epoch-transition-certificate",
+            &value,
+        )?,
+        canonical_protocol_transition_certificate_json: canonical_json,
+        source_manifest_digest,
+        accepted_at_ms,
+    };
+    let stored = journal
+        .install_authority_protocol_transition(&transition)
+        .map_err(|error| {
+            format!("Library Core could not install native protocol transition: {error}")
+        })?;
+    verify_stored_protocol_transition(&stored, source)?;
+    Ok(stored)
+}
+
+fn reconcile_persisted_hint(
+    hint: &PersistedCloudAuthorityHint,
+    snapshot: &NativeSqliteSourceSnapshot,
+    active: &AcceptedAuthorityState,
+) -> Result<(), String> {
+    if !is_lower_sha256(&hint.library_id)
+        || !is_lower_sha256(&hint.storage_epoch)
+        || !is_lower_sha256(&hint.writer_id)
+        || !is_lower_sha256(&hint.source_digest)
+    {
+        return Err("Library Core persisted cloud identity is invalid".to_string());
+    }
+    if hint.source_digest != snapshot.source_digest
+        || hint.library_id != active.library_id
+        || hint.storage_epoch != active.epoch_id
+    {
+        return Err(
+            "Library Core persisted cloud identity conflicts with accepted authority".to_string(),
+        );
+    }
+    // writer_id names the writer from the last verified cloud control tuple.
+    // It may intentionally name another Desktop on a restored or stale copy.
+    // The cloud conductor compares it with the local actor and installs the
+    // resulting read-only admission fence. It is not journal authority identity.
+    Ok(())
+}
+
+fn establish_or_transition_with_store(
+    journal: &mut LibraryCoreJournal,
+    snapshot: &NativeSqliteSourceSnapshot,
+    installation_witness: &str,
+    persisted_hint: Option<&PersistedCloudAuthorityHint>,
+    accepted_at_ms: i64,
+    store: &dyn AuthorityKeyStore,
+) -> Result<EstablishedSqliteAuthority, String> {
+    validate_native_snapshot(snapshot)?;
+    if !is_lower_sha256(installation_witness) || accepted_at_ms < 0 {
+        return Err("Library Core native authority request is invalid".to_string());
+    }
+
+    // Authority is loaded before a new identity can be derived. A database
+    // containing two active Libraries has no safe automatic winner.
+    let Some(active) = journal
+        .sole_active_authority_epoch()
+        .map_err(|error| format!("Library Core could not resolve accepted authority: {error}"))?
+    else {
+        if persisted_hint.is_some() {
+            return Err(
+                "Library Core persisted cloud identity has no accepted journal authority"
+                    .to_string(),
+            );
+        }
+        return establish_native_with_store(
+            journal,
+            snapshot,
+            installation_witness,
+            accepted_at_ms,
+            store,
+        );
+    };
+
+    if let Some(hint) = persisted_hint {
+        reconcile_persisted_hint(hint, snapshot, &active.authority)?;
+    }
+    let key_pair = load_authority_key_pair(store, &active.authority.library_id)?;
+    let key_public = lower_hex(key_pair.public_key().as_ref());
+    if key_public != active.authority.authority_public_key
+        || authority_key_id(&key_public)? != active.authority.authority_key_id
+    {
+        return Err("Library Core active authority key lineage conflicts".to_string());
+    }
+
+    let genesis = journal
+        .authority_epoch(&active.authority.library_id, GENESIS_EPOCH)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Library Core active authority has no genesis certificate".to_string())?;
+    if active.authority.epoch > GENESIS_EPOCH {
+        verify_writer_epoch_record(&active)?;
+    }
+    match stored_certificate_format(&genesis.canonical_transition_certificate_json)?.as_str() {
+        NATIVE_GENESIS_FORMAT => {
+            let certificate = verify_native_epoch_record(&genesis)?;
+            require_source_lineage(&certificate.certificate_body.source_manifest, snapshot)?;
+            if journal
+                .authority_protocol_transition(&active.authority.library_id)
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
+                return Err(
+                    "Library Core native authority has a competing protocol transition".to_string(),
+                );
+            }
+            Ok(EstablishedSqliteAuthority {
+                authority: active.authority,
+                protocol: SqliteAuthorityProtocolReceipt {
+                    format: NATIVE_PROTOCOL_RECEIPT_FORMAT.to_string(),
+                    active_engine: NATIVE_ACTIVE_ENGINE.to_string(),
+                    schema_version: NATIVE_SCHEMA_VERSION,
+                    replication_protocol: NATIVE_REPLICATION_PROTOCOL.to_string(),
+                    checkpoint_format: NATIVE_CHECKPOINT_FORMAT.to_string(),
+                    transition_certificate_digest: active.transition_certificate_digest,
+                    native_protocol_certificate_digest: genesis.transition_certificate_digest,
+                    prior_transition_certificate_digest: None,
+                    source_manifest_digest: certificate.certificate_body.source_manifest_digest,
+                },
+            })
+        }
+        CERTIFICATE_FORMAT => {
+            let transition = establish_or_load_legacy_protocol_transition(
+                journal,
+                &genesis,
+                snapshot,
+                &key_pair,
+                accepted_at_ms,
+            )?;
+            let accepted_transition_digest = if active.authority.epoch == GENESIS_EPOCH {
+                transition.protocol_transition_certificate_digest.clone()
+            } else {
+                active.transition_certificate_digest
+            };
+            Ok(EstablishedSqliteAuthority {
+                authority: active.authority,
+                protocol: SqliteAuthorityProtocolReceipt {
+                    format: NATIVE_PROTOCOL_RECEIPT_FORMAT.to_string(),
+                    active_engine: NATIVE_ACTIVE_ENGINE.to_string(),
+                    schema_version: NATIVE_SCHEMA_VERSION,
+                    replication_protocol: NATIVE_REPLICATION_PROTOCOL.to_string(),
+                    checkpoint_format: NATIVE_CHECKPOINT_FORMAT.to_string(),
+                    transition_certificate_digest: accepted_transition_digest,
+                    native_protocol_certificate_digest: transition
+                        .protocol_transition_certificate_digest,
+                    prior_transition_certificate_digest: Some(
+                        genesis.transition_certificate_digest,
+                    ),
+                    source_manifest_digest: transition.source_manifest_digest,
+                },
+            })
+        }
+        _ => Err("Library Core authority genesis format is unsupported".to_string()),
+    }
+}
+
+/// Establish native SQLite authority or apply the one historical legacy
+/// protocol correction. No Automerge bytes are loaded on either path.
+pub(crate) fn establish_or_transition_sqlite_authority(
+    journal: &mut LibraryCoreJournal,
+    snapshot: &NativeSqliteSourceSnapshot,
+    installation_witness: &str,
+    persisted_hint: Option<&PersistedCloudAuthorityHint>,
+    accepted_at_ms: i64,
+) -> Result<EstablishedSqliteAuthority, String> {
+    establish_or_transition_with_store(
+        journal,
+        snapshot,
+        installation_witness,
+        persisted_hint,
+        accepted_at_ms,
+        &PlatformAuthorityKeyStore,
+    )
+}
+
+#[cfg(test)]
 fn establish_with_key_pair(
     journal: &mut LibraryCoreJournal,
     revision: &LegacySourceRevision,
@@ -418,23 +1225,6 @@ fn establish_with_key_pair(
             accepted_at_ms,
         })
         .map_err(|error| format!("Library Core could not install the genesis epoch: {error}"))
-}
-
-/// Establish the disposable local epoch for one exact legacy Automerge
-/// revision, minting and storing the local key if needed.
-///
-/// Has no production caller and must not acquire one from startup. The real
-/// creator choice is an explicit owner action in the legacy epoch bootstrap.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn establish_genesis_epoch(
-    journal: &mut LibraryCoreJournal,
-    revision: &LegacySourceRevision,
-    accepted_at_ms: i64,
-) -> Result<AcceptedAuthorityState, String> {
-    validate_revision(revision)?;
-    let library_id = legacy_library_id(&revision.document_id)?;
-    let key_pair = load_or_create_authority_key_pair(&PlatformAuthorityKeyStore, &library_id)?;
-    establish_with_key_pair(journal, revision, &key_pair, accepted_at_ms)
 }
 
 fn validate_source_control(source_control: &Value, library_id: &str) -> Result<(), String> {
@@ -624,6 +1414,7 @@ pub(crate) fn reassign_writer_epoch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::params;
     use tempfile::tempdir;
 
     fn revision() -> LegacySourceRevision {
@@ -977,5 +1768,510 @@ mod tests {
             parsed,
             build_certificate(&library_id, &revision(), &key_pair()).unwrap()
         );
+    }
+
+    fn native_snapshot() -> NativeSqliteSourceSnapshot {
+        NativeSqliteSourceSnapshot {
+            source_digest: "1".repeat(64),
+            source_generation: 7,
+            source_revision: 11,
+            sqlite_revision: 19,
+            item_count: 19_000,
+            materialized_digest: "2".repeat(64),
+        }
+    }
+
+    fn synthetic_sqlite_legacy_revision() -> LegacySourceRevision {
+        let snapshot = native_snapshot();
+        LegacySourceRevision {
+            document_id: format!("freed-sqlite-{}", snapshot.source_digest),
+            heads_digest: snapshot.source_digest,
+            head_count: 1,
+            storage_generation: snapshot.source_generation,
+            storage_save_revision: snapshot.source_revision,
+        }
+    }
+
+    fn generated_key_store() -> (Ed25519KeyPair, MemoryKeyStore) {
+        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+        let store = MemoryKeyStore::default();
+        store.stored.replace(Some(pkcs8.as_ref().to_vec()));
+        (key_pair, store)
+    }
+
+    #[test]
+    fn fresh_sqlite_library_emits_native_genesis_and_checkpoint_protocol() {
+        let (_directory, mut journal) = open_journal();
+        let store = MemoryKeyStore::default();
+
+        let established = establish_or_transition_with_store(
+            &mut journal,
+            &native_snapshot(),
+            &"3".repeat(64),
+            None,
+            2_000,
+            &store,
+        )
+        .unwrap();
+
+        assert_eq!(established.authority.epoch, 1);
+        assert_eq!(established.protocol.active_engine, "library_core_v1");
+        assert_eq!(established.protocol.schema_version, 11);
+        assert_eq!(established.protocol.replication_protocol, "op_segments_v1");
+        assert_eq!(
+            established.protocol.checkpoint_format,
+            "freed_logical_checkpoint_v1"
+        );
+        assert_eq!(
+            established.protocol.transition_certificate_digest,
+            established.protocol.native_protocol_certificate_digest
+        );
+        assert!(established
+            .protocol
+            .prior_transition_certificate_digest
+            .is_none());
+        let stored = journal
+            .active_authority_epoch(&established.authority.library_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored_certificate_format(&stored.canonical_transition_certificate_json).unwrap(),
+            NATIVE_GENESIS_FORMAT
+        );
+        assert!(!stored
+            .canonical_transition_certificate_json
+            .contains("automerge"));
+        assert_eq!(
+            journal
+                .connection_for_test()
+                .query_row(
+                    "SELECT COUNT(*) FROM library_core_native_authority_protocol;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn fresh_native_genesis_replays_after_response_loss_and_restart() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("library-core.sqlite");
+        let store = MemoryKeyStore::default();
+        let first = {
+            let mut journal = LibraryCoreJournal::open(&path).unwrap();
+            establish_or_transition_with_store(
+                &mut journal,
+                &native_snapshot(),
+                &"3".repeat(64),
+                None,
+                2_000,
+                &store,
+            )
+            .unwrap()
+        };
+        let second = {
+            let mut reopened = LibraryCoreJournal::open(&path).unwrap();
+            let replay = establish_or_transition_with_store(
+                &mut reopened,
+                &native_snapshot(),
+                &"3".repeat(64),
+                None,
+                9_000,
+                &store,
+            )
+            .unwrap();
+            let count = reopened
+                .connection_for_test()
+                .query_row(
+                    "SELECT COUNT(*) FROM library_core_authority_epochs;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1);
+            replay
+        };
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn native_genesis_refuses_a_replaced_sqlite_source_after_restart() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("library-core.sqlite");
+        let store = MemoryKeyStore::default();
+        {
+            let mut journal = LibraryCoreJournal::open(&path).unwrap();
+            establish_or_transition_with_store(
+                &mut journal,
+                &native_snapshot(),
+                &"3".repeat(64),
+                None,
+                2_000,
+                &store,
+            )
+            .unwrap();
+        }
+        let mut reopened = LibraryCoreJournal::open(&path).unwrap();
+        let error = establish_or_transition_with_store(
+            &mut reopened,
+            &NativeSqliteSourceSnapshot {
+                source_digest: "a".repeat(64),
+                ..native_snapshot()
+            },
+            &"3".repeat(64),
+            None,
+            9_000,
+            &store,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("source lineage conflicts"), "{error}");
+    }
+
+    fn seed_legacy_replication_state(
+        journal: &LibraryCoreJournal,
+        authority: &AcceptedAuthorityState,
+    ) {
+        let actor_id = "4".repeat(64);
+        let actor_public_key = "5".repeat(64);
+        let actor_chain = "6".repeat(64);
+        let enrollment_digest = "7".repeat(64);
+        let intent_segment = "8".repeat(64);
+        let result_segment = "9".repeat(64);
+        let connection = journal.connection_for_test();
+        connection
+            .execute(
+                "INSERT INTO library_core_actors (
+                   libraryId, epoch, epochId, actorId, actorPublicKey,
+                   enrollmentOperationId, enrollmentCertificateDigest,
+                   canonicalEnrollmentCertificateJson, actorChainGenesis,
+                   nextSequence, previousOperationId, previousChainDigest,
+                   enrolledAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 'actor-enrollment-1', ?6,
+                           '{}', ?7, 1, NULL, ?7, 1000);",
+                params![
+                    authority.library_id,
+                    authority.epoch,
+                    authority.epoch_id,
+                    actor_id,
+                    actor_public_key,
+                    enrollment_digest,
+                    actor_chain,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?1, ?2, 'control-revision-1', 1000);",
+                params![actor_id, authority.epoch_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_anchor (
+                   singletonId, libraryId, epoch, epochId, authorityKeyId,
+                   authorityPublicKey, observedFrontierJson,
+                   manifestObjectKey, manifestContentDigest, generation,
+                   remoteIngestSequence, remoteMaterializedDigest, writerId,
+                   controlRevision, installedAtMs, manifestTransportObjectId
+                 ) VALUES (1, ?1, ?2, ?3, ?4, ?5, '[]', 'manifest-object-1',
+                           ?6, 4, 19, ?7, ?8, 'control-revision-1', 1000,
+                           'drive-manifest-1');",
+                params![
+                    authority.library_id,
+                    authority.epoch,
+                    authority.epoch_id,
+                    authority.authority_key_id,
+                    authority.authority_public_key,
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    actor_id,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_actor (
+                   libraryId, epochId, actorId, actorPublicKey,
+                   actorChainGenesis, enrollmentRequestDigest,
+                   canonicalEnrollmentRequestJson,
+                   enrollmentCertificateDigest,
+                   canonicalEnrollmentCertificateJson, createdAtMs, enrolledAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', ?7, '{}', 900, 1000);",
+                params![
+                    authority.library_id,
+                    authority.epoch_id,
+                    actor_id,
+                    actor_public_key,
+                    actor_chain,
+                    "c".repeat(64),
+                    enrollment_digest,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_intent_actor (
+                   libraryId, epochId, actorId, nextIntentSequence,
+                   latestOperationId, latestActorChainDigest,
+                   publishedThroughIntentSequence,
+                   latestPublishedSegmentDigest, nextResultSequence,
+                   latestResultSegmentDigest
+                 ) VALUES (?1, ?2, ?3, 2, 'intent-1', ?4, 1, ?5, 2, ?6);",
+                params![
+                    authority.library_id,
+                    authority.epoch_id,
+                    actor_id,
+                    actor_chain,
+                    intent_segment,
+                    result_segment,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_intent_transaction (
+                   transactionId, transactionDigest, libraryId, epochId,
+                   actorId, firstIntentSequence, lastIntentSequence,
+                   operationCount, canonicalEnvelopeBytes, enqueuedAtMs
+                 ) VALUES ('intent-transaction-1', ?1, ?2, ?3, ?4,
+                           1, 1, 1, 2, 1000);",
+                params![
+                    "d".repeat(64),
+                    authority.library_id,
+                    authority.epoch_id,
+                    actor_id,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_intent_operation (
+                   operationId, transactionId, transactionMemberIndex,
+                   libraryId, epochId, actorId, intentSequence,
+                   actorChainDigest, canonicalEnvelopeJson, envelopeDigest,
+                   publishedSegmentDigest
+                 ) VALUES ('intent-1', 'intent-transaction-1', 0, ?1, ?2,
+                           ?3, 1, ?4, '{}', ?5, ?6);",
+                params![
+                    authority.library_id,
+                    authority.epoch_id,
+                    actor_id,
+                    actor_chain,
+                    "e".repeat(64),
+                    intent_segment,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_follower_intent_result (
+                   resultOperationId, libraryId, epochId, actorId,
+                   resultSequence, intentOperationId, intentSequence, status,
+                   providerReceiptDigest, segmentDigest, importedAtMs
+                 ) VALUES ('result-1', ?1, ?2, ?3, 1, 'intent-1', 1,
+                           'accepted', NULL, ?4, 1100);",
+                params![
+                    authority.library_id,
+                    authority.epoch_id,
+                    actor_id,
+                    result_segment,
+                ],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn legacy_protocol_transition_preserves_every_epoch_scoped_record() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("library-core.sqlite");
+        let (key_pair, store) = generated_key_store();
+        let (legacy, prior_digest, first) = {
+            let mut journal = LibraryCoreJournal::open(&path).unwrap();
+            let legacy = establish_with_key_pair(
+                &mut journal,
+                &synthetic_sqlite_legacy_revision(),
+                &key_pair,
+                1_700,
+            )
+            .unwrap();
+            let prior_digest = journal
+                .active_authority_epoch(&legacy.library_id)
+                .unwrap()
+                .unwrap()
+                .transition_certificate_digest;
+            seed_legacy_replication_state(&journal, &legacy);
+            let hint = PersistedCloudAuthorityHint {
+                library_id: legacy.library_id.clone(),
+                storage_epoch: legacy.epoch_id.clone(),
+                writer_id: "4".repeat(64),
+                source_digest: native_snapshot().source_digest,
+            };
+            let transitioned = establish_or_transition_with_store(
+                &mut journal,
+                &native_snapshot(),
+                &"3".repeat(64),
+                Some(&hint),
+                2_000,
+                &store,
+            )
+            .unwrap();
+            (legacy, prior_digest, transitioned)
+        };
+
+        assert_eq!(first.authority, legacy);
+        assert_eq!(
+            first.protocol.prior_transition_certificate_digest,
+            Some(prior_digest.clone())
+        );
+        assert_ne!(
+            first.protocol.native_protocol_certificate_digest,
+            prior_digest
+        );
+
+        let mut reopened = LibraryCoreJournal::open(&path).unwrap();
+        let hint = PersistedCloudAuthorityHint {
+            library_id: legacy.library_id.clone(),
+            storage_epoch: legacy.epoch_id.clone(),
+            writer_id: "4".repeat(64),
+            source_digest: native_snapshot().source_digest,
+        };
+        let replay = establish_or_transition_with_store(
+            &mut reopened,
+            &NativeSqliteSourceSnapshot {
+                sqlite_revision: 20,
+                materialized_digest: "f".repeat(64),
+                ..native_snapshot()
+            },
+            &"3".repeat(64),
+            Some(&hint),
+            9_000,
+            &store,
+        )
+        .unwrap();
+        assert_eq!(replay, first);
+        let preserved: (i64, i64, i64, i64, i64, String, String) = reopened
+            .connection_for_test()
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_authority_epochs),
+                   (SELECT COUNT(*) FROM library_core_actors),
+                   (SELECT COUNT(*) FROM library_core_follower_anchor),
+                   (SELECT COUNT(*) FROM library_core_follower_intent_operation),
+                   (SELECT COUNT(*) FROM library_core_follower_intent_result),
+                   (SELECT manifestObjectKey FROM library_core_follower_anchor),
+                   (SELECT controlRevision FROM library_core_cloud_writer_admission);",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            preserved,
+            (
+                1,
+                1,
+                1,
+                1,
+                1,
+                "manifest-object-1".to_string(),
+                "control-revision-1".to_string(),
+            )
+        );
+        let transition_count = reopened
+            .connection_for_test()
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_native_authority_protocol;",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!(transition_count, 1);
+    }
+
+    #[test]
+    fn legacy_protocol_transition_refuses_an_unrelated_sqlite_source() {
+        let (_directory, mut journal) = open_journal();
+        let (key_pair, store) = generated_key_store();
+        let authority =
+            establish_with_key_pair(&mut journal, &revision(), &key_pair, 1_700).unwrap();
+
+        let error = establish_or_transition_with_store(
+            &mut journal,
+            &native_snapshot(),
+            &"3".repeat(64),
+            None,
+            2_000,
+            &store,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("legacy authority"), "{error}");
+        assert!(journal
+            .authority_protocol_transition(&authority.library_id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn persisted_identity_conflict_and_split_heads_fail_closed() {
+        let (_directory, mut journal) = open_journal();
+        let (key_pair, store) = generated_key_store();
+        let authority =
+            establish_with_key_pair(&mut journal, &revision(), &key_pair, 1_700).unwrap();
+        let conflict = PersistedCloudAuthorityHint {
+            library_id: "a".repeat(64),
+            storage_epoch: authority.epoch_id.clone(),
+            writer_id: "4".repeat(64),
+            source_digest: native_snapshot().source_digest,
+        };
+        let error = establish_or_transition_with_store(
+            &mut journal,
+            &native_snapshot(),
+            &"3".repeat(64),
+            Some(&conflict),
+            2_000,
+            &store,
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("conflicts with accepted authority"),
+            "{error}"
+        );
+        assert!(journal
+            .authority_protocol_transition(&authority.library_id)
+            .unwrap()
+            .is_none());
+
+        let other = LegacySourceRevision {
+            document_id: "freed-library-document-2".to_string(),
+            ..revision()
+        };
+        establish_with_key_pair(&mut journal, &other, &key_pair, 1_800).unwrap();
+        let error = establish_or_transition_with_store(
+            &mut journal,
+            &native_snapshot(),
+            &"3".repeat(64),
+            None,
+            2_000,
+            &store,
+        )
+        .unwrap_err();
+        assert!(error.contains("more than one local authority"), "{error}");
     }
 }

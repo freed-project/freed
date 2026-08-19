@@ -504,6 +504,16 @@ mod tests {
                 accepted_at_ms: 900,
             })
             .expect("install authority epoch");
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?1, ?2, 'fixture-admission', 1);",
+                rusqlite::params!["8".repeat(64), authority.epoch_id],
+            )
+            .expect("install fixture writer admission");
     }
 
     #[test]
@@ -632,7 +642,7 @@ mod tests {
             .expect("advance authority epoch");
 
         assert!(matches!(
-            journal.enroll_actor_under_authority(&verified, &accepted),
+            journal.enroll_actor_under_authority(&verified, &accepted, false),
             Err(JournalError::StaleAuthority { .. })
         ));
         let rows: (i64, i64) = journal
@@ -661,7 +671,7 @@ mod tests {
             .verify_actor_enrollment(&certificate, &accepted)
             .expect("verify enrollment");
         let first = journal
-            .enroll_actor_under_authority(&verified, &accepted)
+            .enroll_actor_under_authority(&verified, &accepted, false)
             .expect("enroll actor");
 
         let mut next = accepted.clone();
@@ -678,7 +688,7 @@ mod tests {
             .expect("advance authority epoch");
 
         let retry = journal
-            .enroll_actor_under_authority(&verified, &accepted)
+            .enroll_actor_under_authority(&verified, &accepted, false)
             .expect("retry committed enrollment");
         assert_eq!(retry, first);
         let rows: (i64, i64) = journal
