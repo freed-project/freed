@@ -16,14 +16,22 @@ use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 use super::library_core_actor_enrollment::{
-    countersign_pwa_actor_enrollment_request, enroll_desktop_actor, EnrollmentAuthority,
+    countersign_pwa_actor_enrollment_request, enroll_desktop_actor,
+    prepare_follower_actor_enrollment_request, sign_follower_operation_digest, EnrollmentAuthority,
     PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
     establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
     reassign_writer_epoch, LegacySourceRevision,
 };
-use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
+use super::library_core_journal::{
+    AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
+    FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
+    FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
+    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
+    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+};
 use super::library_core_journal_runtime::journal_path;
 
 const BACKUP_DIRECTORY: &str = "library-backups";
@@ -177,7 +185,7 @@ pub(super) struct CloudWriterAdmissionStatus {
     verified_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryCausalTip {
     actor_id: String,
@@ -186,7 +194,7 @@ pub(super) struct DesktopLibraryCausalTip {
     chain_digest: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) struct DesktopLibraryAcceptedAuthority {
     library_id: String,
@@ -227,6 +235,238 @@ pub(super) struct DesktopLibraryAuthorityBootstrap {
     actor: DesktopLibraryActorEnrollment,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerAnchorRequest {
+    authority: DesktopLibraryAcceptedAuthority,
+    manifest_object_key: String,
+    manifest_transport_object_id: String,
+    manifest_content_digest: String,
+    generation: i64,
+    remote_ingest_sequence: i64,
+    remote_materialized_digest: String,
+    writer_id: String,
+    control_revision: String,
+    checkpoint_actor: Option<DesktopLibraryFollowerCheckpointActor>,
+    installed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub(super) struct DesktopLibraryFollowerCheckpointActor {
+    actor_id: String,
+    accepted_sequence: i64,
+    accepted_operation_id: Option<String>,
+    accepted_chain_digest: String,
+    enrollment_certificate_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerOverlayReplayReceipt {
+    transaction_count: i64,
+    operation_count: i64,
+    materialized_row_count: i64,
+    revision_advanced: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrepareFollowerActorRequest {
+    created_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_request_digest: String,
+    canonical_enrollment_request_json: String,
+    created_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct InstallFollowerActorEnrollmentRequest {
+    canonical_enrollment_certificate_json: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerActorEnrollment {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_certificate_digest: String,
+    actor_chain_genesis: String,
+    enrolled_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SignFollowerOperationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    operation_signing_body_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct EnqueueFollowerIntentRequest {
+    canonical_envelope_json: Vec<String>,
+    enqueued_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerOperationSignature {
+    actor_id: String,
+    operation_signing_body_digest: String,
+    signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentReceipt {
+    transaction_id: String,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    operation_count: i64,
+    status: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentContext {
+    authority: DesktopLibraryAcceptedAuthority,
+    actor_id: String,
+    actor_public_key: String,
+    next_intent_sequence: i64,
+    previous_operation_id: Option<String>,
+    previous_chain_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerRuntimeStatus {
+    state: &'static str,
+    library_id: Option<String>,
+    epoch_id: Option<String>,
+    actor_id: Option<String>,
+    checkpoint_generation: Option<i64>,
+    remote_ingest_sequence: Option<i64>,
+    pending_intent_count: i64,
+    published_intent_count: i64,
+    imported_result_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadFollowerIntentOutboxRequest {
+    maximum_operations: usize,
+    maximum_canonical_envelope_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentOutboxEntry {
+    operation_id: String,
+    intent_sequence: i64,
+    canonical_envelope_json: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentOutboxCandidate {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    schema_version: i64,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    previous_segment_digest: Option<String>,
+    canonical_envelope_bytes: i64,
+    transaction_count: i64,
+    entries: Vec<DesktopLibraryFollowerIntentOutboxEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RecordFollowerIntentPublicationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    previous_segment_digest: Option<String>,
+    published_segment_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentPublicationReceipt {
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    operation_count: i64,
+    published_segment_digest: String,
+    status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReadFollowerResultImportCursorRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerResultImportCursor {
+    next_result_sequence: i64,
+    latest_segment_digest: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AppendFollowerIntentResultRequest {
+    result_operation_id: String,
+    result_sequence: i64,
+    intent_operation_id: String,
+    intent_sequence: i64,
+    status: String,
+    provider_receipt_digest: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AppendFollowerResultSegmentRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    first_result_sequence: i64,
+    last_result_sequence: i64,
+    previous_segment_digest: Option<String>,
+    segment_digest: String,
+    entries: Vec<AppendFollowerIntentResultRequest>,
+    imported_at_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerResultImportReceipt {
+    first_result_sequence: i64,
+    last_result_sequence: i64,
+    result_count: i64,
+    segment_digest: String,
+    status: &'static str,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DesktopLibraryWriterEpochReassignment {
@@ -241,7 +481,23 @@ pub(super) struct BeginImportRequest {
     source_generation: i64,
     source_revision: i64,
     source_digest: String,
+    source_checkpoint_object_key: Option<String>,
+    source_checkpoint_content_digest: Option<String>,
+    source_checkpoint_transport_object_id: Option<String>,
     expected_item_count: i64,
+    shell_json: String,
+    started_at_ms: i64,
+}
+
+struct StagedSqliteLibraryImport {
+    source_generation: i64,
+    source_revision: i64,
+    source_digest: String,
+    source_checkpoint_object_key: Option<String>,
+    source_checkpoint_content_digest: Option<String>,
+    source_checkpoint_transport_object_id: Option<String>,
+    expected_item_count: i64,
+    imported_item_count: i64,
     shell_json: String,
     started_at_ms: i64,
 }
@@ -729,44 +985,73 @@ pub(super) fn begin_sqlite_library_import(
     app: tauri::AppHandle,
     request: BeginImportRequest,
 ) -> Result<(), String> {
+    begin_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn begin_sqlite_library_import_at(root: &Path, request: BeginImportRequest) -> Result<(), String> {
+    let checkpoint_field_count = [
+        request.source_checkpoint_object_key.is_some(),
+        request.source_checkpoint_content_digest.is_some(),
+        request.source_checkpoint_transport_object_id.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
     if !validate_hex_digest(&request.source_digest)
         || !(0..=1_000_000).contains(&request.expected_item_count)
         || request.source_generation < 0
         || request.source_revision < 0
         || request.started_at_ms < 0
+        || (checkpoint_field_count != 0 && checkpoint_field_count != 3)
+        || request
+            .source_checkpoint_object_key
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 4_096)
+        || request
+            .source_checkpoint_content_digest
+            .as_ref()
+            .is_some_and(|value| !validate_hex_digest(value))
+        || request
+            .source_checkpoint_transport_object_id
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 4_096)
     {
         return Err("invalid SQLite Library import identity".into());
     }
     validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let mut connection = open_database(&app)?;
+    let mut connection = open_database_at(root)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
     transaction
-        .execute("DELETE FROM library_core_feed_items;", [])
+        .execute("DELETE FROM library_core_import_item_stage;", [])
         .map_err(|error| error.to_string())?;
     transaction
         .execute(
-            "INSERT INTO library_core_desktop_state (
-               singletonId, active, revision, sourceGeneration, sourceRevision,
-               sourceDigest, expectedItemCount, importedItemCount, shellJson,
-               startedAtMs, activatedAtMs
-             ) VALUES (1, 0, 0, ?1, ?2, ?3, ?4, 0, ?5, ?6, NULL)
+            "INSERT INTO library_core_import_stage (
+               singletonId, sourceGeneration, sourceRevision, sourceDigest,
+               sourceCheckpointObjectKey, sourceCheckpointContentDigest,
+               sourceCheckpointTransportObjectId, expectedItemCount,
+               importedItemCount, shellJson, startedAtMs
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)
              ON CONFLICT(singletonId) DO UPDATE SET
-               active = 0,
-               revision = 0,
                sourceGeneration = excluded.sourceGeneration,
                sourceRevision = excluded.sourceRevision,
                sourceDigest = excluded.sourceDigest,
+               sourceCheckpointObjectKey = excluded.sourceCheckpointObjectKey,
+               sourceCheckpointContentDigest = excluded.sourceCheckpointContentDigest,
+               sourceCheckpointTransportObjectId = excluded.sourceCheckpointTransportObjectId,
                expectedItemCount = excluded.expectedItemCount,
                importedItemCount = 0,
                shellJson = excluded.shellJson,
-               startedAtMs = excluded.startedAtMs,
-               activatedAtMs = NULL;",
+               startedAtMs = excluded.startedAtMs;",
             params![
                 request.source_generation,
                 request.source_revision,
                 request.source_digest,
+                request.source_checkpoint_object_key,
+                request.source_checkpoint_content_digest,
+                request.source_checkpoint_transport_object_id,
                 request.expected_item_count,
                 request.shell_json,
                 request.started_at_ms,
@@ -781,31 +1066,58 @@ pub(super) fn append_sqlite_library_import(
     app: tauri::AppHandle,
     request: AppendImportRequest,
 ) -> Result<i64, String> {
+    append_sqlite_library_import_at(&app_root(&app)?, request)
+}
+
+fn append_sqlite_library_import_at(
+    root: &Path,
+    request: AppendImportRequest,
+) -> Result<i64, String> {
     if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library import batch must contain 1 through 1,000 items".into());
     }
-    let mut connection = open_database(&app)?;
+    if request.updated_at_ms < 0 {
+        return Err("SQLite Library import time is invalid".into());
+    }
+    let mut connection = open_database_at(root)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
     for encoded in &request.items_base64 {
         let item = decode_base64_json(encoded)?;
-        upsert_item(&transaction, &item, request.updated_at_ms)?;
+        let parsed = validate_json_object(&item, MAX_ITEM_BYTES)?;
+        let global_id = string_at(&parsed, &["globalId"])
+            .filter(|value| !value.is_empty() && value.len() <= 4_096)
+            .ok_or_else(|| "feed item globalId is missing or invalid".to_string())?;
+        transaction
+            .execute(
+                "INSERT INTO library_core_import_item_stage (
+                   globalId, itemJson, updatedAtMs
+                 ) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(globalId) DO UPDATE SET
+                   itemJson = excluded.itemJson,
+                   updatedAtMs = excluded.updatedAtMs;",
+                params![global_id, item, request.updated_at_ms],
+            )
+            .map_err(|error| error.to_string())?;
     }
     let count: i64 = transaction
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            "SELECT COUNT(*) FROM library_core_import_item_stage;",
             [],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    transaction
+    let updated = transaction
         .execute(
-            "UPDATE library_core_desktop_state SET importedItemCount = ?1
-             WHERE singletonId = 1 AND active = 0;",
+            "UPDATE library_core_import_stage SET importedItemCount = ?1
+             WHERE singletonId = 1;",
             [count],
         )
         .map_err(|error| error.to_string())?;
+    if updated != 1 {
+        return Err("SQLite Library has no active staged import".into());
+    }
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(count)
 }
@@ -814,26 +1126,93 @@ pub(super) fn append_sqlite_library_import(
 pub(super) fn finalize_sqlite_library_import(
     app: tauri::AppHandle,
     activated_at_ms: i64,
+    follower_anchor: Option<InstallFollowerAnchorRequest>,
 ) -> Result<DesktopLibraryStatus, String> {
-    let mut connection = open_database(&app)?;
-    let (expected, imported): (i64, i64) = connection
+    let root = app_root(&app)?;
+    let follower_anchor = follower_anchor.map(verified_follower_anchor);
+    finalize_sqlite_library_import_at(&root, activated_at_ms, follower_anchor.as_ref())?;
+    let replay = replay_sqlite_library_follower_overlay_at(&root)?;
+    if replay.transaction_count > 0 {
+        log::info!(
+            "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
+            replay.transaction_count,
+            replay.operation_count,
+            replay.materialized_row_count,
+            replay.revision_advanced
+        );
+    }
+    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+}
+
+#[tauri::command]
+pub(super) fn recover_sqlite_library_follower_overlay(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFollowerOverlayReplayReceipt, String> {
+    let replay = replay_sqlite_library_follower_overlay_at(&app_root(&app)?)?;
+    Ok(DesktopLibraryFollowerOverlayReplayReceipt {
+        transaction_count: replay.transaction_count,
+        operation_count: replay.operation_count,
+        materialized_row_count: replay.materialized_row_count,
+        revision_advanced: replay.revision_advanced,
+    })
+}
+
+fn replay_sqlite_library_follower_overlay_at(
+    root: &Path,
+) -> Result<FollowerOverlayReplayReceipt, String> {
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())?;
+    journal
+        .replay_pending_follower_overlay()
+        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))
+}
+
+fn finalize_sqlite_library_import_at(
+    root: &Path,
+    activated_at_ms: i64,
+    follower_anchor: Option<&VerifiedFollowerAnchor>,
+) -> Result<(), String> {
+    if activated_at_ms < 0 {
+        return Err("SQLite Library activation time is invalid".into());
+    }
+    let mut connection = open_database_at(root)?;
+    let staged: StagedSqliteLibraryImport = connection
         .query_row(
-            "SELECT expectedItemCount, importedItemCount
-             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 0;",
+            "SELECT sourceGeneration, sourceRevision, sourceDigest,
+                    sourceCheckpointObjectKey, sourceCheckpointContentDigest,
+                    sourceCheckpointTransportObjectId,
+                    expectedItemCount, importedItemCount, shellJson, startedAtMs
+             FROM library_core_import_stage WHERE singletonId = 1;",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| {
+                Ok(StagedSqliteLibraryImport {
+                    source_generation: row.get(0)?,
+                    source_revision: row.get(1)?,
+                    source_digest: row.get(2)?,
+                    source_checkpoint_object_key: row.get(3)?,
+                    source_checkpoint_content_digest: row.get(4)?,
+                    source_checkpoint_transport_object_id: row.get(5)?,
+                    expected_item_count: row.get(6)?,
+                    imported_item_count: row.get(7)?,
+                    shell_json: row.get(8)?,
+                    started_at_ms: row.get(9)?,
+                })
+            },
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| format!("SQLite Library has no complete staged import: {error}"))?;
     let actual: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            "SELECT COUNT(*) FROM library_core_import_item_stage;",
             [],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    if expected != imported || expected != actual {
+    if staged.expected_item_count != staged.imported_item_count
+        || staged.expected_item_count != actual
+    {
         return Err(format!(
-            "SQLite Library import count mismatch: expected {expected}, imported {imported}, actual {actual}"
+            "SQLite Library import count mismatch: expected {}, imported {}, actual {actual}",
+            staged.expected_item_count, staged.imported_item_count
         ));
     }
     let integrity: String = connection
@@ -848,16 +1227,78 @@ pub(super) fn finalize_sqlite_library_import(
         .transaction()
         .map_err(|error| error.to_string())?;
     transaction
+        .execute("DELETE FROM library_core_feed_items;", [])
+        .map_err(|error| error.to_string())?;
+    {
+        let mut statement = transaction
+            .prepare(
+                "SELECT itemJson, updatedAtMs
+                 FROM library_core_import_item_stage
+                 ORDER BY globalId COLLATE BINARY;",
+            )
+            .map_err(|error| error.to_string())?;
+        let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+        while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+            let item_json = row.get::<_, String>(0).map_err(|error| error.to_string())?;
+            let updated_at_ms = row.get::<_, i64>(1).map_err(|error| error.to_string())?;
+            upsert_item(&transaction, &item_json, updated_at_ms)?;
+        }
+    }
+    transaction
         .execute(
-            "UPDATE library_core_desktop_state
-             SET active = 1, activatedAtMs = ?1, revision = 1
-             WHERE singletonId = 1 AND active = 0;",
-            [activated_at_ms],
+            "INSERT INTO library_core_desktop_state (
+               singletonId, active, revision, sourceGeneration, sourceRevision,
+               sourceDigest, expectedItemCount, importedItemCount, shellJson,
+               startedAtMs, activatedAtMs
+             ) VALUES (1, 1, 1, ?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)
+             ON CONFLICT(singletonId) DO UPDATE SET
+               active = 1,
+               revision = 1,
+               sourceGeneration = excluded.sourceGeneration,
+               sourceRevision = excluded.sourceRevision,
+               sourceDigest = excluded.sourceDigest,
+               expectedItemCount = excluded.expectedItemCount,
+               importedItemCount = excluded.importedItemCount,
+               shellJson = excluded.shellJson,
+               startedAtMs = excluded.startedAtMs,
+               activatedAtMs = excluded.activatedAtMs;",
+            params![
+                staged.source_generation,
+                staged.source_revision,
+                staged.source_digest,
+                staged.expected_item_count,
+                staged.shell_json,
+                staged.started_at_ms,
+                activated_at_ms,
+            ],
         )
         .map_err(|error| error.to_string())?;
+    if let Some(anchor) = follower_anchor {
+        if anchor.authority.epoch != staged.source_generation
+            || anchor.remote_ingest_sequence != staged.source_revision
+            || staged.source_checkpoint_object_key.as_deref()
+                != Some(anchor.manifest_object_key.as_str())
+            || staged.source_checkpoint_content_digest.as_deref()
+                != Some(anchor.manifest_content_digest.as_str())
+            || staged.source_checkpoint_transport_object_id.as_deref()
+                != Some(anchor.manifest_transport_object_id.as_str())
+        {
+            return Err(
+                "SQLite Library follower anchor does not match the staged checkpoint".into(),
+            );
+        }
+        LibraryCoreJournal::install_follower_anchor_in_transaction(&transaction, anchor).map_err(
+            |error| format!("SQLite Library could not atomically install follower anchor: {error}"),
+        )?;
+    }
+    transaction
+        .execute("DELETE FROM library_core_import_item_stage;", [])
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute("DELETE FROM library_core_import_stage;", [])
+        .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
-    drop(connection);
-    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+    Ok(())
 }
 
 #[tauri::command]
@@ -925,7 +1366,6 @@ pub(super) fn read_sqlite_library_shell(
         unread_by_platform,
     })
 }
-
 
 #[tauri::command]
 pub(super) fn read_sqlite_library_counts(
@@ -1076,6 +1516,494 @@ pub(super) fn read_sqlite_library_sync_descriptor(
         shell_json,
         materialized_digest,
     })
+}
+
+fn verified_follower_anchor(request: InstallFollowerAnchorRequest) -> VerifiedFollowerAnchor {
+    VerifiedFollowerAnchor {
+        authority: AcceptedAuthorityState {
+            library_id: request.authority.library_id,
+            epoch: request.authority.epoch,
+            epoch_id: request.authority.epoch_id,
+            authority_key_id: request.authority.authority_key_id,
+            authority_public_key: request.authority.authority_public_key,
+            observed_frontier: request
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| VerifiedCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        manifest_object_key: request.manifest_object_key,
+        manifest_transport_object_id: request.manifest_transport_object_id,
+        manifest_content_digest: request.manifest_content_digest,
+        generation: request.generation,
+        remote_ingest_sequence: request.remote_ingest_sequence,
+        remote_materialized_digest: request.remote_materialized_digest,
+        writer_id: request.writer_id,
+        control_revision: request.control_revision,
+        checkpoint_actor: request
+            .checkpoint_actor
+            .map(|actor| VerifiedFollowerCheckpointActor {
+                actor_id: actor.actor_id,
+                accepted_sequence: actor.accepted_sequence,
+                accepted_operation_id: actor.accepted_operation_id,
+                accepted_chain_digest: actor.accepted_chain_digest,
+                enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            }),
+        installed_at_ms: request.installed_at_ms,
+    }
+}
+
+fn follower_actor_request_response(
+    request: StoredFollowerActorRequest,
+) -> DesktopLibraryFollowerActorRequest {
+    DesktopLibraryFollowerActorRequest {
+        library_id: request.library_id,
+        epoch_id: request.epoch_id,
+        actor_id: request.actor_id,
+        actor_public_key: request.actor_public_key,
+        enrollment_request_digest: request.enrollment_request_digest,
+        canonical_enrollment_request_json: request.canonical_enrollment_request_json,
+        created_at_ms: request.created_at_ms,
+    }
+}
+
+/// Prepare one stable actor proof for the active follower anchor.
+///
+/// The exact request is committed before it is returned. A response-loss retry
+/// returns those same bytes rather than signing a second request with a new
+/// timestamp. No authority signature, writer admission, or provider I/O is
+/// available on this path.
+#[tauri::command]
+pub(super) fn prepare_sqlite_library_follower_actor_request(
+    app: tauri::AppHandle,
+    request: PrepareFollowerActorRequest,
+) -> Result<DesktopLibraryFollowerActorRequest, String> {
+    if request.created_at_ms < 0 {
+        return Err("SQLite Library follower actor request time is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let anchor = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library has no verified follower anchor".to_string())?;
+    if let Some(existing) = journal
+        .follower_actor_request(&anchor.authority.library_id, &anchor.authority.epoch_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(follower_actor_request_response(existing));
+    }
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    let prepared = prepare_follower_actor_enrollment_request(
+        &EnrollmentAuthority {
+            library_id: anchor.authority.library_id.clone(),
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id.clone(),
+            authority_key_id: anchor.authority.authority_key_id,
+            installation_witness,
+        },
+        &PlatformActorKeyStore,
+        request.created_at_ms,
+    )?;
+    let stored = journal
+        .store_follower_actor_request(&StoredFollowerActorRequest {
+            library_id: anchor.authority.library_id,
+            epoch_id: anchor.authority.epoch_id,
+            actor_id: prepared.actor_id,
+            actor_public_key: prepared.actor_public_key,
+            enrollment_request_digest: prepared.enrollment_request_digest,
+            canonical_enrollment_request_json: prepared.canonical_enrollment_request_json,
+            created_at_ms: request.created_at_ms,
+        })
+        .map_err(|error| format!("SQLite Library could not store follower actor: {error}"))?;
+    Ok(follower_actor_request_response(stored))
+}
+
+fn follower_actor_enrollment_response(
+    enrollment: StoredFollowerActorEnrollment,
+) -> DesktopLibraryFollowerActorEnrollment {
+    DesktopLibraryFollowerActorEnrollment {
+        library_id: enrollment.library_id,
+        epoch_id: enrollment.epoch_id,
+        actor_id: enrollment.actor_id,
+        actor_public_key: enrollment.actor_public_key,
+        enrollment_certificate_digest: enrollment.enrollment_certificate_digest,
+        actor_chain_genesis: enrollment.actor_chain_genesis,
+        enrolled_at_ms: enrollment.enrolled_at_ms,
+    }
+}
+
+/// Verify and install the exact authority-countersigned follower certificate.
+///
+/// Successful verification initializes only the isolated follower intent
+/// chain. It never enrolls the actor into the canonical writer journal.
+#[tauri::command]
+pub(super) fn install_sqlite_library_follower_actor_enrollment(
+    app: tauri::AppHandle,
+    request: InstallFollowerActorEnrollmentRequest,
+) -> Result<DesktopLibraryFollowerActorEnrollment, String> {
+    if request.canonical_enrollment_certificate_json.is_empty()
+        || request.canonical_enrollment_certificate_json.len() > 65_536
+    {
+        return Err("SQLite Library follower enrollment certificate size is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let enrollment = journal
+        .verify_and_install_follower_actor(request.canonical_enrollment_certificate_json.as_bytes())
+        .map_err(|error| format!("SQLite Library refused follower enrollment: {error}"))?;
+    Ok(follower_actor_enrollment_response(enrollment))
+}
+
+/// Sign one finalized follower operation body digest with the native actor key.
+///
+/// The caller still has to submit the complete canonical transaction to the
+/// native outbox, where sequence, chain, schema, and operation semantics are
+/// reverified before anything becomes durable.
+#[tauri::command]
+pub(super) fn sign_sqlite_library_follower_operation(
+    app: tauri::AppHandle,
+    request: SignFollowerOperationRequest,
+) -> Result<DesktopLibraryFollowerOperationSignature, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let enrollment = journal
+        .follower_actor_enrollment(&request.library_id, &request.epoch_id, &request.actor_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "SQLite Library follower actor is not enrolled".to_string())?;
+    let signature = sign_follower_operation_digest(
+        &PlatformActorKeyStore,
+        &request.library_id,
+        &enrollment.actor_public_key,
+        &request.operation_signing_body_digest,
+    )?;
+    Ok(DesktopLibraryFollowerOperationSignature {
+        actor_id: request.actor_id,
+        operation_signing_body_digest: request.operation_signing_body_digest,
+        signature,
+    })
+}
+
+fn follower_intent_receipt_response(
+    receipt: FollowerIntentEnqueueReceipt,
+) -> DesktopLibraryFollowerIntentReceipt {
+    DesktopLibraryFollowerIntentReceipt {
+        transaction_id: receipt.transaction_id,
+        first_intent_sequence: receipt.first_intent_sequence,
+        last_intent_sequence: receipt.last_intent_sequence,
+        operation_count: receipt.operation_count,
+        status: receipt.status,
+    }
+}
+
+/// Verify and atomically enqueue one complete signed follower transaction.
+///
+/// Canonical operation semantics, signatures, actor sequence, actor chain,
+/// transaction boundaries, and causal tips are checked again in native code.
+#[tauri::command]
+pub(super) fn enqueue_sqlite_library_follower_intent(
+    app: tauri::AppHandle,
+    request: EnqueueFollowerIntentRequest,
+) -> Result<DesktopLibraryFollowerIntentReceipt, String> {
+    if request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > 1_000
+        || request.enqueued_at_ms < 0
+    {
+        return Err("SQLite Library follower intent request is invalid".into());
+    }
+    let canonical_envelopes = request
+        .canonical_envelope_json
+        .iter()
+        .map(|value| value.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let receipt = journal
+        .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
+        .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
+    Ok(follower_intent_receipt_response(receipt))
+}
+
+/// Read the exact native actor tip used to assemble the next follower intent.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_intent_context(
+    app: tauri::AppHandle,
+) -> Result<Option<DesktopLibraryFollowerIntentContext>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let Some(anchor) = journal
+        .follower_anchor()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    let Some(actor) = journal
+        .active_follower_actor_state()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(DesktopLibraryFollowerIntentContext {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: anchor.authority.library_id,
+            epoch: anchor.authority.epoch,
+            epoch_id: anchor.authority.epoch_id,
+            authority_key_id: anchor.authority.authority_key_id,
+            authority_public_key: anchor.authority.authority_public_key,
+            observed_frontier: anchor
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        actor_id: actor.actor_id,
+        actor_public_key: actor.actor_public_key,
+        next_intent_sequence: actor.next_sequence,
+        previous_operation_id: actor.previous_operation_id,
+        previous_chain_digest: actor.previous_chain_digest,
+    }))
+}
+
+/// Report the local follower checkpoint, enrollment, outbox, and result state
+/// without reading or mutating any cloud transport.
+#[tauri::command]
+pub(super) fn sqlite_library_follower_runtime_status(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibraryFollowerRuntimeStatus, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let FollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    } = journal
+        .follower_runtime_status()
+        .map_err(|error| format!("SQLite Library refused follower diagnostics: {error}"))?;
+    Ok(DesktopLibraryFollowerRuntimeStatus {
+        state,
+        library_id,
+        epoch_id,
+        actor_id,
+        checkpoint_generation,
+        remote_ingest_sequence,
+        pending_intent_count,
+        published_intent_count,
+        imported_result_count,
+    })
+}
+
+fn follower_intent_outbox_response(
+    candidate: FollowerIntentOutboxCandidate,
+) -> DesktopLibraryFollowerIntentOutboxCandidate {
+    DesktopLibraryFollowerIntentOutboxCandidate {
+        library_id: candidate.library_id,
+        epoch_id: candidate.epoch_id,
+        actor_id: candidate.actor_id,
+        schema_version: candidate.schema_version,
+        first_intent_sequence: candidate.first_intent_sequence,
+        last_intent_sequence: candidate.last_intent_sequence,
+        previous_segment_digest: candidate.previous_segment_digest,
+        canonical_envelope_bytes: candidate.canonical_envelope_bytes,
+        transaction_count: candidate.transaction_count,
+        entries: candidate
+            .entries
+            .into_iter()
+            .map(|entry| DesktopLibraryFollowerIntentOutboxEntry {
+                operation_id: entry.operation_id,
+                intent_sequence: entry.intent_sequence,
+                canonical_envelope_json: entry.canonical_envelope_json,
+            })
+            .collect(),
+    }
+}
+
+/// Read one bounded, transaction-complete follower intent publication candidate.
+#[tauri::command]
+pub(super) fn read_sqlite_library_follower_intent_outbox_candidate(
+    app: tauri::AppHandle,
+    request: ReadFollowerIntentOutboxRequest,
+) -> Result<Option<DesktopLibraryFollowerIntentOutboxCandidate>, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .follower_intent_outbox_candidate(
+            request.maximum_operations,
+            request.maximum_canonical_envelope_bytes,
+        )
+        .map(|candidate| candidate.map(follower_intent_outbox_response))
+        .map_err(|error| format!("SQLite Library refused follower outbox read: {error}"))
+}
+
+fn follower_intent_publication_response(
+    receipt: FollowerIntentPublicationReceipt,
+) -> DesktopLibraryFollowerIntentPublicationReceipt {
+    DesktopLibraryFollowerIntentPublicationReceipt {
+        first_intent_sequence: receipt.first_intent_sequence,
+        last_intent_sequence: receipt.last_intent_sequence,
+        operation_count: receipt.operation_count,
+        published_segment_digest: receipt.published_segment_digest,
+        status: receipt.status,
+    }
+}
+
+/// Record publication only after the immutable segment and exact actor head
+/// readback have been verified by the bounded cloud adapter.
+#[tauri::command]
+pub(super) fn record_sqlite_library_follower_intent_publication(
+    app: tauri::AppHandle,
+    request: RecordFollowerIntentPublicationRequest,
+) -> Result<DesktopLibraryFollowerIntentPublicationReceipt, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .record_follower_intent_publication(&VerifiedFollowerIntentPublication {
+            library_id: request.library_id,
+            epoch_id: request.epoch_id,
+            actor_id: request.actor_id,
+            first_intent_sequence: request.first_intent_sequence,
+            last_intent_sequence: request.last_intent_sequence,
+            previous_segment_digest: request.previous_segment_digest,
+            published_segment_digest: request.published_segment_digest,
+        })
+        .map(follower_intent_publication_response)
+        .map_err(|error| format!("SQLite Library refused follower publication: {error}"))
+}
+
+/// Read the exact durable cursor for one follower actor result chain.
+#[tauri::command]
+pub(super) fn read_sqlite_library_follower_result_import_cursor(
+    app: tauri::AppHandle,
+    request: ReadFollowerResultImportCursorRequest,
+) -> Result<Option<DesktopLibraryFollowerResultImportCursor>, String> {
+    if !validate_hex_digest(&request.library_id)
+        || !validate_hex_digest(&request.epoch_id)
+        || !validate_hex_digest(&request.actor_id)
+    {
+        return Err("SQLite Library follower result cursor identity is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .follower_result_import_cursor(&request.library_id, &request.epoch_id, &request.actor_id)
+        .map(|cursor| {
+            cursor.map(
+                |FollowerResultImportCursor {
+                     next_result_sequence,
+                     latest_segment_digest,
+                 }| DesktopLibraryFollowerResultImportCursor {
+                    next_result_sequence,
+                    latest_segment_digest,
+                },
+            )
+        })
+        .map_err(|error| format!("SQLite Library refused follower result cursor: {error}"))
+}
+
+fn follower_result_import_response(
+    receipt: FollowerResultImportReceipt,
+) -> DesktopLibraryFollowerResultImportReceipt {
+    DesktopLibraryFollowerResultImportReceipt {
+        first_result_sequence: receipt.first_result_sequence,
+        last_result_sequence: receipt.last_result_sequence,
+        result_count: receipt.result_count,
+        segment_digest: receipt.segment_digest,
+        status: receipt.status,
+    }
+}
+
+/// Append one already verified immutable result segment to the durable follower
+/// receipt chain. The journal rechecks its actor, sequence, intent references,
+/// replay identity, and previous segment digest before advancing the cursor.
+#[tauri::command]
+pub(super) fn append_sqlite_library_follower_result_segment(
+    app: tauri::AppHandle,
+    request: AppendFollowerResultSegmentRequest,
+) -> Result<DesktopLibraryFollowerResultImportReceipt, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .append_follower_result_segment(&VerifiedFollowerResultSegment {
+            library_id: request.library_id,
+            epoch_id: request.epoch_id,
+            actor_id: request.actor_id,
+            first_result_sequence: request.first_result_sequence,
+            last_result_sequence: request.last_result_sequence,
+            previous_segment_digest: request.previous_segment_digest,
+            segment_digest: request.segment_digest,
+            entries: request
+                .entries
+                .into_iter()
+                .map(|entry| VerifiedFollowerIntentResult {
+                    result_operation_id: entry.result_operation_id,
+                    result_sequence: entry.result_sequence,
+                    intent_operation_id: entry.intent_operation_id,
+                    intent_sequence: entry.intent_sequence,
+                    status: entry.status,
+                    provider_receipt_digest: entry.provider_receipt_digest,
+                })
+                .collect(),
+            imported_at_ms: request.imported_at_ms,
+        })
+        .map(follower_result_import_response)
+        .map_err(|error| format!("SQLite Library refused follower result segment: {error}"))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.
@@ -1863,7 +2791,9 @@ pub(super) fn query_sqlite_library_items(
         .map_err(|error| error.to_string())?;
     if !author_keys.is_empty() {
         let mut insert = connection
-            .prepare("INSERT OR IGNORE INTO query_author_keys (platform, authorId) VALUES (?1, ?2);")
+            .prepare(
+                "INSERT OR IGNORE INTO query_author_keys (platform, authorId) VALUES (?1, ?2);",
+            )
             .map_err(|error| error.to_string())?;
         for key in &author_keys {
             insert
@@ -2361,9 +3291,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         }
         digest.update(&buffer[..count]);
     }
-    Ok(crate::library_core_hash::lower_hex(
-        &digest.finalize(),
-    ))
+    Ok(crate::library_core_hash::lower_hex(&digest.finalize()))
 }
 
 #[tauri::command]
@@ -3100,6 +4028,332 @@ mod tests {
         }
         assert_eq!(seen.len(), 125);
         assert!(seen.windows(2).all(|pair| pair[0] < pair[1]));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    fn seed_active_import_test_library(root: &Path) {
+        let mut connection = open_database_at(root).expect("open Library database");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration, sourceRevision,
+                   sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                   startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 2, ?1, 1, 1, '{}', 100, 200);",
+                ["a".repeat(64)],
+            )
+            .expect("insert active Desktop state");
+        let transaction = connection.transaction().expect("begin item insert");
+        upsert_item(
+            &transaction,
+            r#"{"globalId":"rss:old","platform":"rss","userState":{"saved":true}}"#,
+            250,
+        )
+        .expect("insert old item");
+        transaction.commit().expect("commit old item");
+    }
+
+    fn begin_staged_import(root: &Path, expected_item_count: i64) {
+        begin_sqlite_library_import_at(
+            root,
+            BeginImportRequest {
+                source_generation: 3,
+                source_revision: 9,
+                source_digest: "b".repeat(64),
+                source_checkpoint_object_key: Some("checkpoints/3/manifest.json".to_string()),
+                source_checkpoint_content_digest: Some("b".repeat(64)),
+                source_checkpoint_transport_object_id: Some("drive-manifest-object-4".to_string()),
+                expected_item_count,
+                shell_json: r#"{"feeds":{}}"#.to_string(),
+                started_at_ms: 300,
+            },
+        )
+        .expect("begin staged import");
+    }
+
+    fn append_staged_import_item(root: &Path) {
+        append_sqlite_library_import_at(
+            root,
+            AppendImportRequest {
+                items_base64: vec![BASE64_STANDARD.encode(
+                    r#"{"globalId":"rss:new","platform":"rss","userState":{"saved":false}}"#,
+                )],
+                updated_at_ms: 350,
+            },
+        )
+        .expect("append staged item");
+    }
+
+    fn staged_import_follower_anchor(source_revision: i64) -> VerifiedFollowerAnchor {
+        verified_follower_anchor(InstallFollowerAnchorRequest {
+            authority: DesktopLibraryAcceptedAuthority {
+                library_id: "c".repeat(64),
+                epoch: 3,
+                epoch_id: "d".repeat(64),
+                authority_key_id: "e".repeat(64),
+                authority_public_key: "f".repeat(64),
+                observed_frontier: Vec::new(),
+            },
+            manifest_object_key: "checkpoints/3/manifest.json".to_string(),
+            manifest_transport_object_id: "drive-manifest-object-4".to_string(),
+            manifest_content_digest: "b".repeat(64),
+            generation: 4,
+            remote_ingest_sequence: source_revision,
+            remote_materialized_digest: "1".repeat(64),
+            writer_id: "2".repeat(64),
+            control_revision: "drive-revision-4".to_string(),
+            checkpoint_actor: None,
+            installed_at_ms: 390,
+        })
+    }
+
+    #[test]
+    fn staged_import_items_require_an_active_import_identity() {
+        let root = temporary_root("sqlite-staged-import-identity");
+        fs::create_dir_all(&root).expect("create temporary root");
+        drop(open_database_at(&root).expect("create Library database"));
+        let error = append_sqlite_library_import_at(
+            &root,
+            AppendImportRequest {
+                items_base64: vec![
+                    BASE64_STANDARD.encode(r#"{"globalId":"rss:unbound","platform":"rss"}"#)
+                ],
+                updated_at_ms: 350,
+            },
+        )
+        .expect_err("reject item without staged import identity");
+        assert!(error.contains("no active staged import"), "{error}");
+        let connection = open_database_at(&root).expect("reopen Library database");
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rolled back staged items");
+        assert_eq!(staged_item_count, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_checkpoint_reference_must_be_complete() {
+        let root = temporary_root("sqlite-staged-import-checkpoint-reference");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let error = begin_sqlite_library_import_at(
+            &root,
+            BeginImportRequest {
+                source_generation: 3,
+                source_revision: 9,
+                source_digest: "b".repeat(64),
+                source_checkpoint_object_key: Some("manifest".to_string()),
+                source_checkpoint_content_digest: None,
+                source_checkpoint_transport_object_id: None,
+                expected_item_count: 0,
+                shell_json: "{}".to_string(),
+                started_at_ms: 300,
+            },
+        )
+        .expect_err("reject partial checkpoint reference");
+        assert!(error.contains("invalid SQLite Library import identity"));
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_import_keeps_the_previous_library_until_atomic_activation() {
+        let root = temporary_root("sqlite-staged-import-activation");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+
+        let connection = open_database_at(&root).expect("reopen during staged import");
+        let active_state: (i64, i64) = connection
+            .query_row(
+                "SELECT active, revision FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read active state during import");
+        assert_eq!(active_state, (1, 7));
+        let old_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_feed_items WHERE globalId = 'rss:old';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read old item during import");
+        assert_eq!(old_item_count, 1);
+        drop(connection);
+
+        append_staged_import_item(&root);
+        finalize_sqlite_library_import_at(&root, 400, None).expect("activate staged import");
+
+        let connection = open_database_at(&root).expect("open activated Library");
+        let activated_state: (i64, i64, i64, i64, String) = connection
+            .query_row(
+                "SELECT active, revision, sourceGeneration, sourceRevision, sourceDigest
+                 FROM library_core_desktop_state WHERE singletonId = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read activated state");
+        assert_eq!(activated_state, (1, 1, 3, 9, "b".repeat(64)));
+        let item_ids = connection
+            .prepare("SELECT globalId FROM library_core_feed_items ORDER BY globalId;")
+            .expect("prepare activated item query")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query activated items")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect activated items");
+        assert_eq!(item_ids, vec!["rss:new"]);
+        let staged_rows: i64 = connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM library_core_import_stage)
+                      + (SELECT COUNT(*) FROM library_core_import_item_stage);",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cleared staging rows");
+        assert_eq!(staged_rows, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn incomplete_staged_import_cannot_damage_the_active_library() {
+        let root = temporary_root("sqlite-staged-import-rejection");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 2);
+        append_staged_import_item(&root);
+
+        let error = finalize_sqlite_library_import_at(&root, 400, None)
+            .expect_err("reject incomplete staged import");
+        assert!(error.contains("import count mismatch"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT state.active, state.revision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old')
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read preserved Library");
+        assert_eq!(preserved, (1, 7, 1));
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read retryable staged item");
+        assert_eq!(staged_item_count, 1);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_follower_import_activates_checkpoint_and_anchor_atomically() {
+        let root = temporary_root("sqlite-staged-follower-activation");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let anchor = staged_import_follower_anchor(9);
+
+        finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect("atomically activate follower checkpoint");
+
+        let connection = open_database_at(&root).expect("open activated follower Library");
+        let installed: (i64, i64, String, i64, String) = connection
+            .query_row(
+                "SELECT state.sourceGeneration, state.sourceRevision, state.sourceDigest,
+                        anchor.remoteIngestSequence, anchor.manifestContentDigest
+                 FROM library_core_desktop_state AS state
+                 JOIN library_core_follower_anchor AS anchor ON anchor.singletonId = 1
+                 WHERE state.singletonId = 1 AND state.active = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read atomically installed checkpoint and anchor");
+        assert_eq!(installed, (3, 9, "b".repeat(64), 9, "b".repeat(64)));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn mismatched_follower_anchor_rolls_back_checkpoint_activation() {
+        let root = temporary_root("sqlite-staged-follower-mismatch");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let anchor = staged_import_follower_anchor(8);
+
+        let error = finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect_err("reject mismatched follower anchor");
+        assert!(error.contains("does not match"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64, i64, i64) = connection
+            .query_row(
+                "SELECT state.sourceGeneration, state.sourceRevision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old'),
+                        (SELECT COUNT(*) FROM library_core_follower_anchor)
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("read rolled back follower activation");
+        assert_eq!(preserved, (1, 2, 1, 0));
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn substituted_manifest_object_cannot_activate_a_follower_checkpoint() {
+        let root = temporary_root("sqlite-staged-follower-object-substitution");
+        fs::create_dir_all(&root).expect("create temporary root");
+        seed_active_import_test_library(&root);
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        let mut anchor = staged_import_follower_anchor(9);
+        anchor.manifest_transport_object_id = "substituted-drive-object".to_string();
+
+        let error = finalize_sqlite_library_import_at(&root, 400, Some(&anchor))
+            .expect_err("reject substituted manifest transport object");
+        assert!(error.contains("does not match"), "{error}");
+
+        let connection = open_database_at(&root).expect("open preserved Library");
+        let preserved: (i64, i64) = connection
+            .query_row(
+                "SELECT state.sourceRevision,
+                        EXISTS(SELECT 1 FROM library_core_feed_items WHERE globalId = 'rss:old')
+                 FROM library_core_desktop_state AS state WHERE state.singletonId = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Library after object substitution rejection");
+        assert_eq!(preserved, (2, 1));
         drop(connection);
         fs::remove_dir_all(root).expect("remove temporary root");
     }

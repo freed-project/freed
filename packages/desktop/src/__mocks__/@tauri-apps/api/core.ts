@@ -174,6 +174,16 @@ type MockSqliteLibrary = {
   };
 };
 
+type MockSqliteImportStage = Pick<
+  MockSqliteLibrary,
+  | "sourceGeneration"
+  | "sourceRevision"
+  | "sourceDigest"
+  | "expectedItemCount"
+  | "shell"
+  | "items"
+>;
+
 function sqliteLibrary(): MockSqliteLibrary {
   const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
   w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
@@ -187,6 +197,16 @@ function sqliteLibrary(): MockSqliteLibrary {
     items: {},
   };
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
+}
+
+function sqliteImportStage(): MockSqliteImportStage | null {
+  return (
+    (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ ?? null
+  );
 }
 
 function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
@@ -297,6 +317,21 @@ function sqliteUpsertItems(args: Record<string, unknown>): null {
   return null;
 }
 
+function sqliteAppendImportItems(args: Record<string, unknown>): null {
+  const stage = sqliteImportStage();
+  if (!stage) throw new Error("SQLite Library has no active staged import");
+  const request = (args.request ?? {}) as { itemsBase64?: string[] };
+  for (const encoded of request.itemsBase64 ?? []) {
+    const binary = atob(encoded);
+    const json = new TextDecoder().decode(
+      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    );
+    const item = JSON.parse(json) as MockSqliteItem;
+    stage.items[item.globalId] = item;
+  }
+  return null;
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   sqlite_library_status: () => {
@@ -319,23 +354,34 @@ const handlers: Record<string, Handler> = {
       expectedItemCount: number;
       shellJson: string;
     };
-    const state = sqliteLibrary();
-    Object.assign(state, {
-      active: false,
-      revision: 0,
+    (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
       sourceGeneration: request.sourceGeneration,
       sourceRevision: request.sourceRevision,
       sourceDigest: request.sourceDigest,
       expectedItemCount: request.expectedItemCount,
       shell: JSON.parse(request.shellJson) as Record<string, unknown>,
       items: {},
-    });
+    };
     return null;
   },
-  append_sqlite_library_import: sqliteUpsertItems,
+  append_sqlite_library_import: sqliteAppendImportItems,
   finalize_sqlite_library_import: () => {
+    const stage = sqliteImportStage();
+    if (!stage) throw new Error("SQLite Library has no complete staged import");
+    if (Object.keys(stage.items).length !== stage.expectedItemCount) {
+      throw new Error("SQLite Library import count mismatch");
+    }
     const state = sqliteLibrary();
-    state.active = true;
+    Object.assign(state, stage, { active: true, revision: 1 });
+    delete (
+      window as unknown as {
+        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
+      }
+    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
     return {
       active: true,
       revision: state.revision,
@@ -346,6 +392,12 @@ const handlers: Record<string, Handler> = {
       sourceDigest: state.sourceDigest,
     };
   },
+  recover_sqlite_library_follower_overlay: () => ({
+    transactionCount: 0,
+    operationCount: 0,
+    materializedRowCount: 0,
+    revisionAdvanced: false,
+  }),
   read_sqlite_library_shell: sqliteShellResult,
   read_sqlite_library_counts: sqliteCountsResult,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
@@ -545,6 +597,40 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
+  sqlite_library_follower_intent_context: () => null,
+  sqlite_library_follower_runtime_status: () => ({
+    state: "awaiting_checkpoint",
+    libraryId: null,
+    epochId: null,
+    actorId: null,
+    checkpointGeneration: null,
+    remoteIngestSequence: null,
+    pendingIntentCount: 0,
+    publishedIntentCount: 0,
+    importedResultCount: 0,
+  }),
+  read_sqlite_library_follower_intent_outbox_candidate: () => null,
+  record_sqlite_library_follower_intent_publication: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstIntentSequence: request.firstIntentSequence,
+      lastIntentSequence: request.lastIntentSequence,
+      operationCount: Number(request.lastIntentSequence) - Number(request.firstIntentSequence) + 1,
+      publishedSegmentDigest: request.publishedSegmentDigest,
+      status: "recorded",
+    };
+  },
+  read_sqlite_library_follower_result_import_cursor: () => null,
+  append_sqlite_library_follower_result_segment: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as Record<string, unknown>;
+    return {
+      firstResultSequence: request.firstResultSequence,
+      lastResultSequence: request.lastResultSequence,
+      resultCount: Array.isArray(request.entries) ? request.entries.length : 0,
+      segmentDigest: request.segmentDigest,
+      status: "imported",
+    };
+  },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,

@@ -57,6 +57,7 @@ import {
   isSqliteLibraryActive,
   sqliteLibraryCloudWriterAdmissionStatus,
 } from "./sqlite-library";
+import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
 
 export type SocialProviderRefreshStatus =
   "success" | "empty" | "deferred" | "error" | "ignored";
@@ -72,6 +73,13 @@ export type SocialProviderRefreshResult = {
 };
 
 async function activeLibraryWriterMayContactProviders(): Promise<boolean> {
+  if (readLibraryCoreDesktopRole() === "follower") {
+    addDebugEvent(
+      "change",
+      "[Capture] provider work is disabled on this follower Freed Desktop",
+    );
+    return false;
+  }
   if (!isSqliteLibraryActive()) return true;
   try {
     const admission = await sqliteLibraryCloudWriterAdmissionStatus();

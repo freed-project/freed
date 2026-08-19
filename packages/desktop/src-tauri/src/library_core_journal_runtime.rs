@@ -168,7 +168,7 @@ mod tests {
         assert!(status_of(&state).expect("status before open").is_none());
 
         let status = open_at_root(&state, root.path()).expect("open journal");
-        assert_eq!(status.schema_version, 6);
+        assert_eq!(status.schema_version, 10);
         assert_eq!(status.materializer_ingest_sequence, 0);
         assert_eq!(status.actors, 0);
         assert_eq!(status.operations, 0);
