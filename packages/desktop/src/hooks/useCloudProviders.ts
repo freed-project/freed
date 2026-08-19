@@ -83,9 +83,10 @@ export function useCloudProviders() {
           return;
         }
         log.warn(`[cloud/${provider}] connect failed: ${err instanceof Error ? err.message : String(err)}`);
+        const message = err instanceof Error ? err.message : String(err);
         setProvider(provider, {
           status: "error",
-          error: err instanceof Error ? err.message : "Connection failed",
+          error: message,
         });
       } finally {
         if (connectAbortControllers.current[provider] === abortController) {

@@ -40,6 +40,10 @@ import {
   readSqliteItems,
   sqliteLibraryStatus,
 } from "./sqlite-library";
+import {
+  hasLegacyLibraryData,
+  shouldBlockForLegacyLibrary,
+} from "./legacy-library-presence";
 
 export type { DocChangeEvent, DocState } from "./library-types";
 
@@ -117,6 +121,14 @@ async function initializeEmptySqliteLibrary(): Promise<void> {
 async function ensureInitialized(): Promise<DocState> {
   if (lastState) return lastState;
   const status = await sqliteLibraryStatus();
+  if (
+    shouldBlockForLegacyLibrary(status, true) &&
+    (await hasLegacyLibraryData())
+  ) {
+    throw new Error(
+      "Freed Desktop found legacy Library data and refused to replace it with an empty SQLite Library. Recover the existing Library before continuing.",
+    );
+  }
   if (!status?.active) await initializeEmptySqliteLibrary();
   const state = await loadSqliteLibraryState();
   lastState = state;
