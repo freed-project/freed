@@ -77,6 +77,11 @@ function entry(registryKey: string, globalId: string) {
   };
 }
 
+const SELECTED_SOURCE = Object.freeze({
+  generationId: "45".repeat(32),
+  selectionSequence: 7,
+});
+
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -101,11 +106,13 @@ describe("PWA Library Core bounded scanner", () => {
           ),
           nextCursor:
             page.nextOrdinal === null ? null : String(page.nextOrdinal),
+          source: SELECTED_SOURCE,
         };
       },
     );
     mocks.readSelectedMaterializedRow.mockReset();
     mocks.readSelectedCheckpointReceipt.mockReset();
+    mocks.readSelectedCheckpointReceipt.mockResolvedValue(SELECTED_SOURCE);
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemCaptures.mockReset();
@@ -145,14 +152,17 @@ describe("PWA Library Core bounded scanner", () => {
       .mockResolvedValueOnce({
         entries: [entry("10_feed_items", "item-1")],
         nextCursor: "cursor-1",
+        source: SELECTED_SOURCE,
       })
       .mockResolvedValueOnce({
         entries: [entry("00_library_shell", "shell")],
         nextCursor: "cursor-2",
+        source: SELECTED_SOURCE,
       })
       .mockResolvedValueOnce({
         entries: [entry("10_feed_items", "item-2")],
         nextCursor: "cursor-3",
+        source: SELECTED_SOURCE,
       });
     const visited: string[][] = [];
 
@@ -168,6 +178,27 @@ describe("PWA Library Core bounded scanner", () => {
       [{ cursor: "cursor-1", limit: 32 }],
       [{ cursor: "cursor-2", limit: 32 }],
     ]);
+  });
+
+  it("rejects a checkpoint selection change instead of mixing generations", async () => {
+    mocks.readSelectedMaterializedPage
+      .mockResolvedValueOnce({
+        entries: [entry("10_feed_items", "old-item")],
+        nextCursor: "cursor-1",
+        source: SELECTED_SOURCE,
+      })
+      .mockResolvedValueOnce({
+        entries: [entry("10_feed_items", "new-item")],
+        nextCursor: null,
+        source: {
+          generationId: "67".repeat(32),
+          selectionSequence: SELECTED_SOURCE.selectionSequence + 1,
+        },
+      });
+
+    await expect(scanPwaLibraryCoreItems(() => "continue")).rejects.toThrow(
+      "changed during its bounded scan",
+    );
   });
 
   it("reads one complete item from IndexedDB without consulting Automerge", async () => {
