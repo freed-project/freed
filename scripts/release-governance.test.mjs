@@ -187,6 +187,30 @@ test("release identity lanes receive authenticated pull request read access", ()
   }
 });
 
+test("native dependency setup removes the unstable Azure package source before apt update", () => {
+  for (const [name, workflow, expectedCount] of [
+    ["CI", ciWorkflow, 2],
+    ["production validation", mainReleaseValidationWorkflow, 1],
+    ["release", releaseWorkflow, 1],
+  ]) {
+    const blocks = workflow.match(
+      /- name: Install native Linux dependencies[\s\S]*?(?=\n      - name:)/g,
+    );
+    assert.equal(blocks?.length, expectedCount, `${name} native setup count`);
+    for (const block of blocks ?? []) {
+      const sourceRemoval = block.indexOf(
+        "sudo rm -f /etc/apt/sources.list.d/azure-cli.list",
+      );
+      const aptUpdate = block.indexOf("sudo apt-get update");
+      assert.ok(sourceRemoval >= 0, `${name} removes the Azure package source`);
+      assert.ok(
+        sourceRemoval < aptUpdate,
+        `${name} removes the Azure package source before apt update`,
+      );
+    }
+  }
+});
+
 test("dev tag validation inherits the exact successful dev integration receipt", () => {
   const validationJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  validation:"),
