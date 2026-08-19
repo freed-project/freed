@@ -210,6 +210,8 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     });
     const reopenedEnrollment =
       await reopened.preparePwaActorEnrollmentRequest();
+    const selectedCheckpointReceipt =
+      await reopened.readSelectedCheckpointReceipt();
     const reopenedPage = await reopened.readSelectedCollectionPage({
       afterOrdinal: null,
       collection: "materialized_rows",
@@ -363,6 +365,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       reopenedPage,
       resumedBegin,
       secondPage,
+      selectedCheckpointReceipt,
       selectedAfterAbort,
     };
   });
@@ -437,6 +440,22 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     secondPage: {
       entries: [{ ordinal: 1, value: { row: { globalId: "item-1" } } }],
       nextOrdinal: null,
+    },
+    selectedCheckpointReceipt: {
+      generationId: "aa".repeat(32),
+      importedThroughIngestSequence: 0,
+      libraryId: "01".repeat(32),
+      manifest: {
+        descriptor: {
+          contentDigest: "aa".repeat(32),
+          objectKey: expect.stringContaining("freed-v2-manifest"),
+        },
+        transportObjectId: "drive-manifest-1",
+      },
+      manifestGeneration: 1,
+      selectionSequence: 1,
+      storageEpoch: "02".repeat(32),
+      totalRecordCount: 3,
     },
     selectedAfterAbort: {
       entries: [{ ordinal: 0 }, { ordinal: 1 }],
@@ -574,9 +593,8 @@ test("preview authority persists fractional captures in the current materialized
   await page.goto("/favicon.svg");
 
   const result = await page.evaluate(async () => {
-    const { createPwaLibraryCorePortableCheckpointStore } = await import(
-      "/src/lib/library-core-portable-checkpoint-store.ts"
-    );
+    const { createPwaLibraryCorePortableCheckpointStore } =
+      await import("/src/lib/library-core-portable-checkpoint-store.ts");
     const databaseName = `freed-library-core-preview-${crypto.randomUUID()}`;
     const store = createPwaLibraryCorePortableCheckpointStore({
       databaseName,

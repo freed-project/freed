@@ -536,6 +536,17 @@ export interface PwaLibraryCoreReadState {
   readonly sourceOperationId: string;
 }
 
+export interface PwaLibraryCoreSelectedCheckpointReceiptV1 {
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly selectionSequence: number;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly storageEpoch: LibraryCoreOperationInstanceId;
+  readonly manifestGeneration: number;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly importedThroughIngestSequence: number;
+  readonly totalRecordCount: number;
+}
+
 export type PwaLibraryCorePortableFeedReaderErrorCode =
   | "RUNTIME_INACTIVE"
   | "CURSOR_STALE"
@@ -1083,6 +1094,49 @@ class PwaLibraryCorePortableCheckpointStore
     return generation.header.accepted_authority;
   }
 
+  async readSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, CONTROL_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      generationId: generation.generationId,
+      selectionSequence: selected.selectionSequence,
+      libraryId: generation.libraryId,
+      storageEpoch: generation.storageEpoch,
+      manifestGeneration: generation.manifestGeneration,
+      manifest: snapshotReference({
+        descriptor: {
+          byteLength: generation.manifestStoredByteLength,
+          contentDigest: generation.generationId,
+          objectKey: generation.manifestObjectKey,
+        },
+        transportObjectId: generation.manifestTransportObjectId,
+      }),
+      importedThroughIngestSequence: generation.importedThroughIngestSequence,
+      totalRecordCount: generation.totalRecordCount,
+    });
+  }
+
   /**
    * Create one isolated local authority for the feature preview.
    *
@@ -1280,9 +1334,7 @@ class PwaLibraryCorePortableCheckpointStore
       PWA_ACTOR_IDENTITIES_STORE,
       "readwrite",
     );
-    identityTransaction
-      .objectStore(PWA_ACTOR_IDENTITIES_STORE)
-      .add(identity);
+    identityTransaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).add(identity);
     await transactionDone(identityTransaction);
     await this.installActorEnrollment({
       acceptedAuthorityState: authority,
@@ -2945,7 +2997,9 @@ class PwaLibraryCorePortableCheckpointStore
           delete persons[member.envelope.entity_id];
           const accounts = { ...(canonicalObject(shell.row.accounts) ?? {}) };
           for (const [accountId, account] of Object.entries(accounts)) {
-            if (canonicalObject(account)?.personId === member.envelope.entity_id) {
+            if (
+              canonicalObject(account)?.personId === member.envelope.entity_id
+            ) {
               delete accounts[accountId];
             }
           }
@@ -3868,7 +3922,9 @@ class PwaLibraryCorePortableCheckpointStore
     return receipt;
   }
 
-  async #applySelectedAccountUpserts(accounts: readonly Account[]): Promise<void> {
+  async #applySelectedAccountUpserts(
+    accounts: readonly Account[],
+  ): Promise<void> {
     await this.#mutateSelectedAccounts((current) => {
       const next = { ...current };
       for (const account of accounts) {
@@ -4651,10 +4707,7 @@ class PwaLibraryCorePortableCheckpointStore
       };
       materializedRows.put(stored);
       const projected = projectPortableFeedRow(selected.generationId, stored);
-      if (
-        previousFeedRow &&
-        previousFeedRow.orderKey !== projected?.orderKey
-      ) {
+      if (previousFeedRow && previousFeedRow.orderKey !== projected?.orderKey) {
         feedRows.delete([selected.generationId, previousFeedRow.orderKey]);
       }
       if (projected) {
@@ -5501,12 +5554,14 @@ class PwaLibraryCorePortableCheckpointStore
         false,
       );
       const totalCount = await requestResult(
-        transaction.objectStore(FEED_ROWS_STORE).count(
-          this.#keyRange.bound(
-            [generation.generationId],
-            [generation.generationId, []],
+        transaction
+          .objectStore(FEED_ROWS_STORE)
+          .count(
+            this.#keyRange.bound(
+              [generation.generationId],
+              [generation.generationId, []],
+            ),
           ),
-        ),
       );
       const rows: LibraryCoreFeedCardV1[] = [];
       let cursor = await requestResult(
@@ -6060,11 +6115,13 @@ class PwaLibraryCorePortableCheckpointStore
     let lastKey: readonly [string, string] | null = null;
     while (cursor && entries.length < input.limit) {
       const stored = cursor.value as PortableMaterializedRowRecord;
-      entries.push(Object.freeze({
-        primaryKey: stored.primaryKey,
-        registryKey: stored.registryKey,
-        row: stored.row,
-      }));
+      entries.push(
+        Object.freeze({
+          primaryKey: stored.primaryKey,
+          registryKey: stored.registryKey,
+          row: stored.row,
+        }),
+      );
       lastKey = [stored.registryKey, stored.primaryKey];
       cursor.continue();
       cursor = await requestResult(cursor.request);

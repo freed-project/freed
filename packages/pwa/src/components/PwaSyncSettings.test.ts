@@ -13,6 +13,23 @@ const mocks = vi.hoisted(() => ({
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
+  readSelectedCheckpoint: vi.fn(async () => ({
+    generationId: "67".repeat(32),
+    selectionSequence: 3,
+    libraryId: "01".repeat(32),
+    storageEpoch: "02".repeat(32),
+    manifestGeneration: 4,
+    manifest: {
+      descriptor: {
+        byteLength: 123,
+        contentDigest: "67".repeat(32),
+        objectKey: "checkpoint-manifest-object-key",
+      },
+      transportObjectId: "drive-object-12345678",
+    },
+    importedThroughIngestSequence: 7,
+    totalRecordCount: 19_003,
+  })),
 }));
 
 vi.mock("../lib/sync", () => ({
@@ -22,6 +39,10 @@ vi.mock("../lib/sync", () => ({
   getCloudProvider: mocks.getCloudProvider,
   stopCloudSync: mocks.stopCloudSync,
   syncCloudProviderNow: mocks.syncCloudProviderNow,
+}));
+
+vi.mock("../lib/library-core-runtime", () => ({
+  readPwaLibraryCoreSelectedCheckpointReceipt: mocks.readSelectedCheckpoint,
 }));
 
 function createPlatform(): PlatformConfig {
@@ -43,19 +64,29 @@ function createPlatform(): PlatformConfig {
   };
 }
 
-function renderWithPlatform(node: ReactNode): { container: HTMLDivElement; root: Root } {
+function renderWithPlatform(node: ReactNode): {
+  container: HTMLDivElement;
+  root: Root;
+} {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(createElement(PlatformProvider, { value: createPlatform(), children: node }));
+    root.render(
+      createElement(PlatformProvider, {
+        value: createPlatform(),
+        children: node,
+      }),
+    );
   });
   return { container, root };
 }
 
 describe("PwaSyncSettings cloud diagnostics", () => {
   beforeEach(() => {
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
@@ -105,21 +136,46 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
     useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
     document.body.innerHTML = "";
-    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
   it("explains a missing upload and lets the user run sync now", async () => {
-    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const { container, root } = renderWithPlatform(
+      createElement(PwaSyncSettings),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-    const diagnostics = container.querySelector("[data-testid='pwa-cloud-sync-diagnostics']");
-    const syncNow = container.querySelector<HTMLButtonElement>("[data-testid='pwa-cloud-sync-now-button']");
+    const diagnostics = container.querySelector(
+      "[data-testid='pwa-cloud-sync-diagnostics']",
+    );
+    const syncNow = container.querySelector<HTMLButtonElement>(
+      "[data-testid='pwa-cloud-sync-now-button']",
+    );
 
     expect(diagnostics?.textContent).toContain("Sync diagnostics");
     expect(diagnostics?.textContent).toContain("Local items");
     expect(diagnostics?.textContent).toContain("1");
     expect(diagnostics?.textContent).toContain("No remote changes found.");
-    expect(diagnostics?.textContent).toContain("Waiting for local document changes or Sync now.");
-    expect(diagnostics?.textContent).toContain("Checked cloud storage. No remote changes found.");
+    expect(diagnostics?.textContent).toContain(
+      "Waiting for local document changes or Sync now.",
+    );
+    expect(diagnostics?.textContent).toContain(
+      "Checked cloud storage. No remote changes found.",
+    );
+    expect(diagnostics?.textContent).toContain("Manifest records");
+    expect(diagnostics?.textContent).toContain("19,003");
+    expect(diagnostics?.textContent).toContain("...67676767");
+    expect(diagnostics?.textContent).toContain("...12345678");
+    const manifestDigest = Array.from(
+      diagnostics?.querySelectorAll("div") ?? [],
+    ).find((cell) => cell.firstElementChild?.textContent === "Manifest digest");
+    expect(
+      manifestDigest?.querySelector("p[title]")?.getAttribute("title"),
+    ).toBe("67".repeat(32));
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
 
@@ -140,15 +196,19 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     mocks.clearCloudSync.mockImplementationOnce(() => {
       mocks.getCloudProvider.mockReturnValue(null);
     });
-    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
-    const disconnectButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Disconnect",
+    const { container, root } = renderWithPlatform(
+      createElement(PwaSyncSettings),
     );
+    const disconnectButton = Array.from(
+      container.querySelectorAll("button"),
+    ).find((button) => button.textContent?.trim() === "Disconnect");
 
     expect(disconnectButton).toBeInstanceOf(HTMLButtonElement);
 
     await act(async () => {
-      disconnectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      disconnectButton?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
       await Promise.resolve();
     });
 
@@ -178,7 +238,9 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       },
     });
 
-    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const { container, root } = renderWithPlatform(
+      createElement(PwaSyncSettings),
+    );
     const text = container.textContent ?? "";
 
     expect(text).toContain("Google Drive");
@@ -186,7 +248,9 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     expect(text).toContain(
       "Google Drive is connected. Waiting for the Primary Freed Desktop to publish its Library.",
     );
-    expect(text).toContain("No published SQLite Library was found in Google Drive");
+    expect(text).toContain(
+      "No published SQLite Library was found in Google Drive",
+    );
     expect(text).not.toContain("Needs attention");
     expect(text).not.toContain("Choose a sync method below to get started.");
     expect(
@@ -215,13 +279,17 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       },
     });
 
-    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const { container, root } = renderWithPlatform(
+      createElement(PwaSyncSettings),
+    );
     const text = container.textContent ?? "";
-    const diagnostics = container.querySelector("[data-testid='pwa-cloud-sync-diagnostics']");
+    const diagnostics = container.querySelector(
+      "[data-testid='pwa-cloud-sync-diagnostics']",
+    );
 
     expect(text).toContain("Merge blocked. Review Sync diagnostics below.");
     expect(diagnostics?.textContent).toContain(blockedMessage);
-    expect((text.match(/Freed blocked a sync merge/g) ?? [])).toHaveLength(1);
+    expect(text.match(/Freed blocked a sync merge/g) ?? []).toHaveLength(1);
 
     act(() => {
       root.unmount();
@@ -251,11 +319,17 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       },
     });
 
-    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
-    const activeCounter = container.querySelector("[data-testid='pwa-cloud-sync-active-counter']");
+    const { container, root } = renderWithPlatform(
+      createElement(PwaSyncSettings),
+    );
+    const activeCounter = container.querySelector(
+      "[data-testid='pwa-cloud-sync-active-counter']",
+    );
 
     expect(container.textContent).toContain("Merging 30s");
-    expect(activeCounter?.textContent).toContain("Merging Google Drive data into this library");
+    expect(activeCounter?.textContent).toContain(
+      "Merging Google Drive data into this library",
+    );
     expect(activeCounter?.textContent).toContain("30s");
     expect(activeCounter?.querySelector("[aria-label='Syncing']")).toBeTruthy();
 
