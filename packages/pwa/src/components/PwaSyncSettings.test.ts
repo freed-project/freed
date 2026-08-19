@@ -7,6 +7,7 @@ import { useAppStore } from "../lib/store";
 import { PwaSyncSettings } from "./PwaSyncSettings";
 
 const mocks = vi.hoisted(() => ({
+  clipboardWrite: vi.fn(async () => {}),
   clearCloudSync: vi.fn(),
   clearStoredRelayUrl: vi.fn(),
   disconnect: vi.fn(),
@@ -92,6 +93,10 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.clipboardWrite },
+    });
     mocks.getCloudProvider.mockReturnValue("gdrive");
     useAppStore.setState({
       syncConnected: true,
@@ -157,6 +162,9 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     const syncNow = container.querySelector<HTMLButtonElement>(
       "[data-testid='pwa-cloud-sync-now-button']",
     );
+    const copyReceipt = container.querySelector<HTMLButtonElement>(
+      "[data-testid='copy-pwa-checkpoint-receipt']",
+    );
 
     expect(diagnostics?.textContent).toContain("Sync diagnostics");
     expect(diagnostics?.textContent).toContain("Local items");
@@ -182,6 +190,17 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     ).toBe("67".repeat(32));
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
+    expect(copyReceipt).toBeInstanceOf(HTMLButtonElement);
+    expect(copyReceipt?.disabled).toBe(false);
+
+    await act(async () => {
+      copyReceipt?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(mocks.clipboardWrite).toHaveBeenCalledWith(
+      JSON.stringify(await mocks.readSelectedCheckpoint(), null, 2),
+    );
+    expect(copyReceipt?.textContent).toContain("PWA receipt copied");
 
     await act(async () => {
       syncNow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

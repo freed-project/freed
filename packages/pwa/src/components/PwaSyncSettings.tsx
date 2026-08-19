@@ -16,6 +16,7 @@ import {
   useDebugStore,
   type CloudProviderDebugState,
 } from "@freed/ui/lib/debug-store";
+import { copyExactJsonToClipboard } from "@freed/ui/lib/clipboard";
 import { useAppStore } from "../lib/store";
 import {
   getCloudProvider,
@@ -211,6 +212,8 @@ export function PwaSyncSettings() {
   const [selectedCheckpointError, setSelectedCheckpointError] = useState<
     string | null
   >(null);
+  const [selectedCheckpointCopied, setSelectedCheckpointCopied] =
+    useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   const lastSyncTime = useMemo(() => {
@@ -259,6 +262,22 @@ export function PwaSyncSettings() {
       );
     }
   }, [activeCloudProvider]);
+
+  const copySelectedCheckpoint = useCallback(async () => {
+    if (!selectedCheckpoint) return;
+    try {
+      await copyExactJsonToClipboard(selectedCheckpoint);
+      setSelectedCheckpointCopied(true);
+      setSelectedCheckpointError(null);
+    } catch (error) {
+      setSelectedCheckpointCopied(false);
+      setSelectedCheckpointError(
+        error instanceof Error
+          ? error.message
+          : "IndexedDB checkpoint receipt could not be copied.",
+      );
+    }
+  }, [selectedCheckpoint]);
 
   useEffect(() => {
     void refreshSelectedCheckpoint();
@@ -585,6 +604,17 @@ export function PwaSyncSettings() {
             }
           />
         </div>
+        <button
+          type="button"
+          data-testid="copy-pwa-checkpoint-receipt"
+          onClick={() => void copySelectedCheckpoint()}
+          disabled={!selectedCheckpoint}
+          className="btn-secondary mt-3 w-full rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+        >
+          {selectedCheckpointCopied
+            ? "PWA receipt copied"
+            : "Copy exact PWA receipt"}
+        </button>
 
         {cloudProviderState?.events && cloudProviderState.events.length > 0 && (
           <div className="mt-3 space-y-2">

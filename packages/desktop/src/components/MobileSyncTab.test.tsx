@@ -7,6 +7,7 @@ import { readLibraryCoreDesktopRole } from "../lib/library-core-desktop-role";
 import { MobileSyncTab } from "./MobileSyncTab";
 
 const mocks = vi.hoisted(() => ({
+  clipboardWrite: vi.fn(async () => {}),
   connect: vi.fn(),
   cancelConnect: vi.fn(),
   disconnect: vi.fn(),
@@ -117,6 +118,10 @@ describe("MobileSyncTab cloud diagnostics", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.clipboardWrite },
+    });
     mocks.providers.gdrive = { status: "connected", error: undefined };
     window.localStorage.clear();
     useAppStore.setState({ desktopClientIds: ["desktop-current"] });
@@ -177,6 +182,9 @@ describe("MobileSyncTab cloud diagnostics", () => {
     const syncNow = container.querySelector<HTMLButtonElement>(
       "[data-testid='cloud-sync-now-button']",
     );
+    const copyReceipt = container.querySelector<HTMLButtonElement>(
+      "[data-testid='copy-primary-checkpoint-receipt']",
+    );
 
     expect(diagnostics?.textContent).toContain("Sync diagnostics");
     expect(diagnostics?.textContent).toContain("10,288");
@@ -204,10 +212,21 @@ describe("MobileSyncTab cloud diagnostics", () => {
     ).toBeNull();
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
+    expect(copyReceipt).toBeInstanceOf(HTMLButtonElement);
+    expect(copyReceipt?.disabled).toBe(false);
     const follower = Array.from(
       container.querySelectorAll<HTMLButtonElement>("[role='radio']"),
     ).find((button) => button.textContent?.includes("Editable follower"));
     expect(follower?.disabled).toBe(true);
+
+    await act(async () => {
+      copyReceipt?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(mocks.clipboardWrite).toHaveBeenCalledWith(
+      JSON.stringify(mocks.publicationReceipt, null, 2),
+    );
+    expect(copyReceipt?.textContent).toContain("Primary receipt copied");
 
     await act(async () => {
       syncNow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

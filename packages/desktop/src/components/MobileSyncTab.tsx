@@ -6,6 +6,7 @@ import {
   useDebugStore,
   type CloudProviderDebugState,
 } from "@freed/ui/lib/debug-store";
+import { copyExactJsonToClipboard } from "@freed/ui/lib/clipboard";
 import {
   syncCloudProviderNow,
   transferSqliteLibraryWriterToThisDesktop,
@@ -140,6 +141,8 @@ export function MobileSyncTab() {
   const [publicationReceiptError, setPublicationReceiptError] = useState<
     string | null
   >(null);
+  const [publicationReceiptCopied, setPublicationReceiptCopied] =
+    useState(false);
   const driveState = cloudProviders?.gdrive ?? null;
   const driveCardState =
     driveState === null
@@ -217,6 +220,22 @@ export function MobileSyncTab() {
       );
     }
   }, []);
+
+  const copyPublicationReceipt = useCallback(async () => {
+    if (!publicationReceipt) return;
+    try {
+      await copyExactJsonToClipboard(publicationReceipt);
+      setPublicationReceiptCopied(true);
+      setPublicationReceiptError(null);
+    } catch (error) {
+      setPublicationReceiptCopied(false);
+      setPublicationReceiptError(
+        error instanceof Error
+          ? error.message
+          : "Checkpoint receipt could not be copied.",
+      );
+    }
+  }, [publicationReceipt]);
 
   useEffect(() => {
     void refreshPublicationReceipt();
@@ -624,6 +643,17 @@ export function MobileSyncTab() {
                 }
               />
             </div>
+            <button
+              type="button"
+              data-testid="copy-primary-checkpoint-receipt"
+              onClick={() => void copyPublicationReceipt()}
+              disabled={!publicationReceipt}
+              className="btn-secondary mt-3 w-full rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              {publicationReceiptCopied
+                ? "Primary receipt copied"
+                : "Copy exact Primary receipt"}
+            </button>
           </div>
         </div>
       </section>
