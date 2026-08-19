@@ -82,8 +82,9 @@ epoch and enrollment JSON, checkpoint manifests and pages, canonical operation
 segments, PWA intent and result segments, search artifacts, blobs, and backup
 manifests. Mutable control, intent-head, and result-head names cannot pass
 immutable-object validation. Active sync has no SQLite checkpoint object.
-Scrubbed closed SQLite checkpoints belong only to retained backups. The
-contract performs no cloud I/O, authority activation, or provider behavior.
+Scrubbed closed SQLite checkpoints belong only to local or explicitly exported
+offline backups. They are never cloud synchronization objects. The contract
+performs no cloud I/O, authority activation, or provider behavior.
 
 Control records, manifests, certificates, and individual signed envelopes use
 canonical UTF-8 JSON. Checkpoint, operation, intent, result, and search objects
@@ -189,16 +190,16 @@ checkpoint, operation, search, intent, and result conformance suite and rebuild
 from immutable objects into a verified fresh generation.
 
 Active Google Drive synchronization remains confined to `appDataFolder`.
-Complete off-device daily backups are separate. When Drive backup is enabled,
-Freed stores 24 immutable daily generations in a private user-visible
-`Freed Backups` folder using the narrow `drive.file` scope, alongside the local
-backup directory. Backup generations share content-addressed immutable objects
-and include one fresh scrubbed, closed, integrity-checked SQLite checkpoint.
-They never copy a live SQLite database or include WAL, SHM, rollback journals,
-free pages, stale deleted content, provider sessions, OAuth tokens, or private
-actor keys. The plaintext MVP backup contract supersedes the older encrypted
-backup-format design below. Application-layer backup encryption remains a
-versioned future extension, not an activation requirement.
+SQLite backup files remain local to the device that created them. No cloud
+transport may upload SQLite, WAL, SHM, or rollback-journal files, including a
+closed or scrubbed database. Complete off-device daily backups are separate
+logical generations. They reuse authenticated logical checkpoint objects and
+content-addressed media blobs, then publish one closed backup manifest that
+binds the exact Library, writer epoch, checkpoint, blob-root census, retention
+generation, and restore commitments. Provider sessions, OAuth tokens, private
+actor keys, free pages, and stale deleted content never enter a backup object.
+Application-layer backup encryption remains a versioned future extension, not
+an activation requirement.
 
 The first PWA consumer feeds the manifest's verified compact feed-card
 projection into the existing resumable IndexedDB generation writer. Exact page
