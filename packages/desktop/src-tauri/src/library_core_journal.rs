@@ -27,7 +27,8 @@ mod follower;
 mod operation_verifier;
 
 pub(crate) use follower::{
-    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerAnchor,
+    FollowerIntentEnqueueReceipt, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedFollowerAnchor,
 };
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 7;
@@ -1312,6 +1313,31 @@ impl LibraryCoreJournal {
                     actor_id: identity.actor_id.clone(),
                 })
         })
+    }
+
+    fn verify_follower_operation_transaction(
+        &self,
+        canonical_envelopes: &[Vec<u8>],
+    ) -> JournalResult<VerifiedOperationTransaction> {
+        operation_verifier::verify_operation_transaction(canonical_envelopes, |identity| {
+            self.follower_actor_state(
+                &identity.library_id,
+                &identity.epoch_id,
+                &identity.actor_id,
+            )?
+            .ok_or_else(|| JournalError::ActorNotFound {
+                actor_id: identity.actor_id.clone(),
+            })
+        })
+    }
+
+    pub(crate) fn verify_and_enqueue_follower_intent(
+        &mut self,
+        canonical_envelopes: &[Vec<u8>],
+        enqueued_at_ms: i64,
+    ) -> JournalResult<FollowerIntentEnqueueReceipt> {
+        let verified = self.verify_follower_operation_transaction(canonical_envelopes)?;
+        self.enqueue_verified_follower_transaction(&verified, enqueued_at_ms)
     }
 
     fn verify_and_commit_read_transaction(

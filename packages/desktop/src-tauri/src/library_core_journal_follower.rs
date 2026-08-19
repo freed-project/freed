@@ -58,6 +58,15 @@ pub(crate) struct StoredFollowerActorEnrollment {
     pub(crate) enrolled_at_ms: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerIntentEnqueueReceipt {
+    pub(crate) transaction_id: String,
+    pub(crate) first_intent_sequence: i64,
+    pub(crate) last_intent_sequence: i64,
+    pub(crate) operation_count: i64,
+    pub(crate) status: &'static str,
+}
+
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
@@ -283,6 +292,55 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
+    pub(super) fn follower_actor_state(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<super::ActorState>> {
+        self.connection
+            .query_row(
+                "SELECT actor.libraryId, anchor.epoch, actor.epochId,
+                        actor.actorId, actor.actorPublicKey,
+                        json_extract(actor.canonicalEnrollmentCertificateJson,
+                                     '$.certificate_body.actor_enrollment_body.operation_id'),
+                        actor.enrollmentCertificateDigest,
+                        actor.canonicalEnrollmentCertificateJson,
+                        actor.actorChainGenesis, intent.nextIntentSequence,
+                        intent.latestOperationId, intent.latestActorChainDigest
+                 FROM library_core_follower_actor AS actor
+                 JOIN library_core_follower_anchor AS anchor
+                   ON anchor.libraryId = actor.libraryId
+                  AND anchor.epochId = actor.epochId
+                 JOIN library_core_follower_intent_actor AS intent
+                   ON intent.libraryId = actor.libraryId
+                  AND intent.epochId = actor.epochId
+                  AND intent.actorId = actor.actorId
+                 WHERE actor.libraryId = ?1 AND actor.epochId = ?2
+                   AND actor.actorId = ?3
+                   AND actor.enrollmentCertificateDigest IS NOT NULL;",
+                params![library_id, epoch_id, actor_id],
+                |row| {
+                    Ok(super::ActorState {
+                        library_id: row.get(0)?,
+                        epoch: row.get(1)?,
+                        epoch_id: row.get(2)?,
+                        actor_id: row.get(3)?,
+                        actor_public_key: row.get(4)?,
+                        enrollment_operation_id: row.get(5)?,
+                        enrollment_certificate_digest: row.get(6)?,
+                        canonical_enrollment_certificate_json: row.get(7)?,
+                        actor_chain_genesis: row.get(8)?,
+                        next_sequence: row.get(9)?,
+                        previous_operation_id: row.get(10)?,
+                        previous_chain_digest: row.get(11)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub(crate) fn store_follower_actor_request(
         &mut self,
         request: &StoredFollowerActorRequest,
@@ -479,6 +537,191 @@ impl LibraryCoreJournal {
         })
     }
 
+    pub(super) fn enqueue_verified_follower_transaction(
+        &mut self,
+        verified: &super::VerifiedOperationTransaction,
+        enqueued_at_ms: i64,
+    ) -> JournalResult<FollowerIntentEnqueueReceipt> {
+        if !(0..=MAX_SAFE_INTEGER).contains(&enqueued_at_ms) {
+            return Err(invalid("follower_intent.enqueued_at_ms"));
+        }
+        let first = verified
+            .members
+            .first()
+            .ok_or_else(|| invalid("follower_intent.members"))?;
+        let last = verified
+            .members
+            .last()
+            .ok_or_else(|| invalid("follower_intent.members"))?;
+        let operation_count = i64::try_from(verified.members.len())
+            .map_err(|_| invalid("follower_intent.members"))?;
+        let receipt = |status| FollowerIntentEnqueueReceipt {
+            transaction_id: verified.transaction_id.clone(),
+            first_intent_sequence: first.actor_sequence,
+            last_intent_sequence: last.actor_sequence,
+            operation_count,
+            status,
+        };
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let existing = transaction
+            .query_row(
+                "SELECT transactionDigest, libraryId, epochId, actorId,
+                        firstIntentSequence, lastIntentSequence, operationCount,
+                        canonicalEnvelopeBytes
+                 FROM library_core_follower_intent_transaction
+                 WHERE transactionId = ?1;",
+                [&verified.transaction_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, i64>(5)?,
+                        row.get::<_, i64>(6)?,
+                        row.get::<_, i64>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some(existing) = existing {
+            if existing
+                != (
+                    verified.transaction_digest.clone(),
+                    verified.library_id.clone(),
+                    verified.epoch_id.clone(),
+                    verified.actor_id.clone(),
+                    first.actor_sequence,
+                    last.actor_sequence,
+                    operation_count,
+                    verified.canonical_envelope_bytes as i64,
+                )
+            {
+                return Err(invalid("follower_intent.transaction_replay"));
+            }
+            transaction.commit()?;
+            return Ok(receipt("already_enqueued"));
+        }
+        let actor_tip = transaction
+            .query_row(
+                "SELECT nextIntentSequence, latestOperationId,
+                        latestActorChainDigest
+                 FROM library_core_follower_intent_actor
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![verified.library_id, verified.epoch_id, verified.actor_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| invalid("follower_intent.actor"))?;
+        if actor_tip.0 != first.actor_sequence
+            || actor_tip.1 != first.previous_actor_operation_id
+            || actor_tip.2 != first.previous_actor_chain_digest
+        {
+            return Err(invalid("follower_intent.actor_tip"));
+        }
+        let frontier_json: String = transaction.query_row(
+            "SELECT observedFrontierJson
+             FROM library_core_follower_anchor
+             WHERE singletonId = 1 AND libraryId = ?1 AND epochId = ?2;",
+            params![verified.library_id, verified.epoch_id],
+            |row| row.get(0),
+        )?;
+        let frontier = parse_frontier(&frontier_json)?;
+        for (member_index, member) in verified.members.iter().enumerate() {
+            for tip in &member.causal_tips {
+                let in_anchor = frontier.iter().any(|candidate| candidate == tip);
+                let in_current = verified.members[..member_index].iter().any(|candidate| {
+                    candidate.operation_id == tip.operation_id
+                        && candidate.actor_sequence == tip.sequence
+                        && candidate.actor_chain_digest == tip.chain_digest
+                        && verified.actor_id == tip.actor_id
+                });
+                let in_outbox = transaction.query_row(
+                    "SELECT EXISTS(
+                       SELECT 1 FROM library_core_follower_intent_operation
+                       WHERE operationId = ?1 AND actorId = ?2
+                         AND intentSequence = ?3 AND actorChainDigest = ?4
+                     );",
+                    params![
+                        tip.operation_id,
+                        tip.actor_id,
+                        tip.sequence,
+                        tip.chain_digest
+                    ],
+                    |row| row.get::<_, bool>(0),
+                )?;
+                if !in_anchor && !in_current && !in_outbox {
+                    return Err(invalid("follower_intent.causal_tip"));
+                }
+            }
+        }
+        transaction.execute(
+            "INSERT INTO library_core_follower_intent_transaction (
+               transactionId, transactionDigest, libraryId, epochId, actorId,
+               firstIntentSequence, lastIntentSequence, operationCount,
+               canonicalEnvelopeBytes, enqueuedAtMs
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
+            params![
+                verified.transaction_id,
+                verified.transaction_digest,
+                verified.library_id,
+                verified.epoch_id,
+                verified.actor_id,
+                first.actor_sequence,
+                last.actor_sequence,
+                operation_count,
+                verified.canonical_envelope_bytes as i64,
+                enqueued_at_ms,
+            ],
+        )?;
+        for (index, member) in verified.members.iter().enumerate() {
+            transaction.execute(
+                "INSERT INTO library_core_follower_intent_operation (
+                   operationId, transactionId, transactionMemberIndex,
+                   libraryId, epochId, actorId, intentSequence,
+                   actorChainDigest, canonicalEnvelopeJson, envelopeDigest
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
+                params![
+                    member.operation_id,
+                    verified.transaction_id,
+                    index as i64,
+                    verified.library_id,
+                    verified.epoch_id,
+                    verified.actor_id,
+                    member.actor_sequence,
+                    member.actor_chain_digest,
+                    member.canonical_envelope_json,
+                    member.envelope_digest,
+                ],
+            )?;
+        }
+        transaction.execute(
+            "UPDATE library_core_follower_intent_actor
+             SET nextIntentSequence = ?1, latestOperationId = ?2,
+                 latestActorChainDigest = ?3
+             WHERE libraryId = ?4 AND epochId = ?5 AND actorId = ?6;",
+            params![
+                last.actor_sequence + 1,
+                last.operation_id,
+                last.actor_chain_digest,
+                verified.library_id,
+                verified.epoch_id,
+                verified.actor_id,
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(receipt("enqueued"))
+    }
+
     /// Install or advance one verified immutable-checkpoint anchor.
     ///
     /// A different Library is never adopted implicitly. An epoch transition is
@@ -610,7 +853,9 @@ impl LibraryCoreJournal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_journal::VerifiedCausalTip;
+    use crate::library_core_journal::{
+        VerifiedCausalTip, VerifiedOperation, VerifiedOperationTransaction,
+    };
 
     fn anchor(generation: i64, ingest_sequence: i64) -> VerifiedFollowerAnchor {
         VerifiedFollowerAnchor {
@@ -715,5 +960,115 @@ mod tests {
         let mut changed = request;
         changed.created_at_ms += 1;
         assert!(journal.store_follower_actor_request(&changed).is_err());
+    }
+
+    fn verified_intent(transaction_id: &str) -> VerifiedOperationTransaction {
+        VerifiedOperationTransaction {
+            transaction_id: transaction_id.to_string(),
+            transaction_digest: "9".repeat(64),
+            library_id: "a".repeat(64),
+            epoch: 3,
+            epoch_id: "b".repeat(64),
+            actor_id: "6".repeat(64),
+            canonical_envelope_bytes: 2,
+            members: vec![VerifiedOperation {
+                operation_id: "operation-1".to_string(),
+                actor_sequence: 1,
+                previous_actor_operation_id: None,
+                previous_actor_chain_digest: "0".repeat(64),
+                actor_chain_digest: "1".repeat(64),
+                member_digest: "2".repeat(64),
+                signing_body_digest: "3".repeat(64),
+                envelope_digest: "4".repeat(64),
+                entity_id: "item-1".to_string(),
+                entity_type: "feed_item".to_string(),
+                operation_type: "feed_item_read_assigned".to_string(),
+                item_json: None,
+                rss_feed_json: None,
+                preferences_patch_json: None,
+                person_json: None,
+                account_json: None,
+                read_at_ms: Some(1),
+                assigned: Some(true),
+                assigned_at_ms: None,
+                removed_at_ms: None,
+                canonical_envelope_json: "{}".to_string(),
+                causal_tips: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn verified_intent_enqueue_is_atomic_monotone_and_idempotent() {
+        let mut journal = LibraryCoreJournal::open_in_memory().unwrap();
+        journal.install_follower_anchor(&anchor(1, 10)).unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_follower_actor (
+                   libraryId, epochId, actorId, actorPublicKey,
+                   actorChainGenesis, enrollmentRequestDigest,
+                   canonicalEnrollmentRequestJson,
+                   enrollmentCertificateDigest,
+                   canonicalEnrollmentCertificateJson, createdAtMs,
+                   enrolledAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', ?6, '{}', 1, 1);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "6".repeat(64),
+                    "7".repeat(64),
+                    "0".repeat(64),
+                    "8".repeat(64),
+                ],
+            )
+            .unwrap();
+        journal
+            .connection_for_test()
+            .execute(
+                "INSERT INTO library_core_follower_intent_actor (
+                   libraryId, epochId, actorId, nextIntentSequence,
+                   latestOperationId, latestActorChainDigest,
+                   publishedThroughIntentSequence, latestPublishedSegmentDigest,
+                   nextResultSequence, latestResultSegmentDigest
+                 ) VALUES (?1, ?2, ?3, 1, NULL, ?4, 0, NULL, 1, NULL);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "6".repeat(64),
+                    "0".repeat(64),
+                ],
+            )
+            .unwrap();
+
+        let verified = verified_intent("transaction-1");
+        assert_eq!(
+            journal
+                .enqueue_verified_follower_transaction(&verified, 2_000)
+                .unwrap()
+                .status,
+            "enqueued"
+        );
+        assert_eq!(
+            journal
+                .enqueue_verified_follower_transaction(&verified, 9_000)
+                .unwrap()
+                .status,
+            "already_enqueued"
+        );
+        let queued: i64 = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_follower_intent_operation;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(queued, 1);
+
+        let stale = verified_intent("transaction-2");
+        assert!(journal
+            .enqueue_verified_follower_transaction(&stale, 3_000)
+            .is_err());
     }
 }

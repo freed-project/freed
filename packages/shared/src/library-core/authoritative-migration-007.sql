@@ -243,6 +243,10 @@ CREATE TABLE library_core_follower_intent_operation (
   intentSequence       INTEGER NOT NULL CHECK (
     intentSequence BETWEEN 1 AND 9007199254740990
   ),
+  actorChainDigest     TEXT    NOT NULL CHECK (
+    length(actorChainDigest) = 64
+    AND actorChainDigest NOT GLOB '*[^0-9a-f]*'
+  ),
   canonicalEnvelopeJson TEXT  NOT NULL CHECK (
     length(CAST(canonicalEnvelopeJson AS BLOB)) BETWEEN 1 AND 4194304
   ),

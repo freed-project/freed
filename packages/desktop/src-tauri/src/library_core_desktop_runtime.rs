@@ -25,7 +25,8 @@ use super::library_core_authority_genesis::{
     reassign_writer_epoch, LegacySourceRevision,
 };
 use super::library_core_journal::{
-    AcceptedAuthorityState, IntentResultOutboxEntry, LibraryCoreJournal,
+    AcceptedAuthorityState, FollowerIntentEnqueueReceipt, IntentResultOutboxEntry,
+    LibraryCoreJournal,
     StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedCausalTip,
     VerifiedFollowerAnchor,
 };
@@ -305,12 +306,29 @@ pub(super) struct SignFollowerOperationRequest {
     operation_signing_body_digest: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct EnqueueFollowerIntentRequest {
+    canonical_envelope_json: Vec<String>,
+    enqueued_at_ms: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DesktopLibraryFollowerOperationSignature {
     actor_id: String,
     operation_signing_body_digest: String,
     signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryFollowerIntentReceipt {
+    transaction_id: String,
+    first_intent_sequence: i64,
+    last_intent_sequence: i64,
+    operation_count: i64,
+    status: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -1370,6 +1388,50 @@ pub(super) fn sign_sqlite_library_follower_operation(
         operation_signing_body_digest: request.operation_signing_body_digest,
         signature,
     })
+}
+
+fn follower_intent_receipt_response(
+    receipt: FollowerIntentEnqueueReceipt,
+) -> DesktopLibraryFollowerIntentReceipt {
+    DesktopLibraryFollowerIntentReceipt {
+        transaction_id: receipt.transaction_id,
+        first_intent_sequence: receipt.first_intent_sequence,
+        last_intent_sequence: receipt.last_intent_sequence,
+        operation_count: receipt.operation_count,
+        status: receipt.status,
+    }
+}
+
+/// Verify and atomically enqueue one complete signed follower transaction.
+///
+/// Canonical operation semantics, signatures, actor sequence, actor chain,
+/// transaction boundaries, and causal tips are checked again in native code.
+#[tauri::command]
+pub(super) fn enqueue_sqlite_library_follower_intent(
+    app: tauri::AppHandle,
+    request: EnqueueFollowerIntentRequest,
+) -> Result<DesktopLibraryFollowerIntentReceipt, String> {
+    if request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > 1_000
+        || request.enqueued_at_ms < 0
+    {
+        return Err("SQLite Library follower intent request is invalid".into());
+    }
+    let canonical_envelopes = request
+        .canonical_envelope_json
+        .iter()
+        .map(|value| value.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let receipt = journal
+        .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
+        .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
+    Ok(follower_intent_receipt_response(receipt))
 }
 
 /// Establish the active SQLite Library's first signed authority and Desktop actor.
