@@ -26,11 +26,11 @@ use super::library_core_authority_genesis::{
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
-    FollowerIntentPublicationReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
-    FollowerRuntimeStatus, IntentResultOutboxEntry, LibraryCoreJournal,
-    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedCausalTip,
-    VerifiedFollowerAnchor, VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult,
-    VerifiedFollowerResultSegment,
+    FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
+    FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
+    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerIntentPublication,
+    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
 use super::library_core_journal_runtime::journal_path;
 
@@ -1090,6 +1090,21 @@ pub(super) fn finalize_sqlite_library_import(
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())?;
     drop(connection);
+    let root = app_root(&app)?;
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let replay: FollowerOverlayReplayReceipt = journal
+        .replay_pending_follower_overlay()
+        .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))?;
+    if replay.transaction_count > 0 {
+        log::info!(
+            "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
+            replay.transaction_count,
+            replay.operation_count,
+            replay.materialized_row_count,
+            replay.revision_advanced
+        );
+    }
     sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
 }
 

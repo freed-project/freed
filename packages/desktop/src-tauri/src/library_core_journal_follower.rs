@@ -159,6 +159,14 @@ pub(crate) struct FollowerRuntimeStatus {
     pub(crate) imported_result_count: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct FollowerOverlayReplayReceipt {
+    pub(crate) transaction_count: i64,
+    pub(crate) operation_count: i64,
+    pub(crate) materialized_row_count: i64,
+    pub(crate) revision_advanced: bool,
+}
+
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
     if authority.observed_frontier.len() > MAX_CAUSAL_TIPS_PER_OPERATION {
         return Err(invalid("follower_anchor.observed_frontier"));
@@ -962,6 +970,150 @@ impl LibraryCoreJournal {
         )?;
         transaction.commit()?;
         Ok(receipt("enqueued"))
+    }
+
+    pub(crate) fn replay_pending_follower_overlay(
+        &mut self,
+    ) -> JournalResult<FollowerOverlayReplayReceipt> {
+        self.replay_pending_follower_overlay_with(|journal, envelopes| {
+            journal.verify_follower_operation_transaction(envelopes)
+        })
+    }
+
+    fn replay_pending_follower_overlay_with<F>(
+        &mut self,
+        mut verify: F,
+    ) -> JournalResult<FollowerOverlayReplayReceipt>
+    where
+        F: FnMut(
+            &LibraryCoreJournal,
+            &[Vec<u8>],
+        ) -> JournalResult<super::VerifiedOperationTransaction>,
+    {
+        let Some(actor) = self.active_follower_actor_state()? else {
+            return Ok(FollowerOverlayReplayReceipt {
+                transaction_count: 0,
+                operation_count: 0,
+                materialized_row_count: 0,
+                revision_advanced: false,
+            });
+        };
+        let mut statement = self.connection.prepare(
+            "SELECT intent_tx.transactionId, intent_tx.operationCount,
+                    intent_tx.enqueuedAtMs,
+                    EXISTS(
+                      SELECT 1
+                      FROM library_core_follower_intent_operation AS intent_op
+                      JOIN library_core_follower_intent_result AS intent_result
+                        ON intent_result.intentOperationId = intent_op.operationId
+                      WHERE intent_op.transactionId = intent_tx.transactionId
+                    ) AS hasCanonicalResult
+             FROM library_core_follower_intent_transaction AS intent_tx
+             WHERE intent_tx.libraryId = ?1
+               AND intent_tx.epochId = ?2
+               AND intent_tx.actorId = ?3
+             ORDER BY intent_tx.firstIntentSequence;",
+        )?;
+        let candidates = statement
+            .query_map(
+                params![actor.library_id, actor.epoch_id, actor.actor_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )?
+            .collect::<SqlResult<Vec<_>>>()?;
+        drop(statement);
+
+        let mut replay = Vec::new();
+        for (transaction_id, operation_count, enqueued_at_ms, has_canonical_result) in candidates {
+            // The authority admits each transaction atomically. One verified
+            // canonical result therefore proves that every member is already
+            // represented by the imported checkpoint, even when bounded
+            // result transport has not delivered the other receipts yet.
+            if has_canonical_result != 0 {
+                continue;
+            }
+            let mut statement = self.connection.prepare(
+                "SELECT canonicalEnvelopeJson
+                 FROM library_core_follower_intent_operation
+                 WHERE transactionId = ?1
+                 ORDER BY transactionMemberIndex;",
+            )?;
+            let envelopes = statement
+                .query_map([&transaction_id], |row| row.get::<_, String>(0))?
+                .collect::<SqlResult<Vec<_>>>()?
+                .into_iter()
+                .map(String::into_bytes)
+                .collect::<Vec<_>>();
+            drop(statement);
+            if i64::try_from(envelopes.len()).ok() != Some(operation_count) {
+                return Err(invalid("follower_overlay.operation_count"));
+            }
+            let verified = verify(self, &envelopes)?;
+            if verified.transaction_id != transaction_id {
+                return Err(invalid("follower_overlay.transaction"));
+            }
+            replay.push((verified, enqueued_at_ms));
+        }
+
+        let transaction_count =
+            i64::try_from(replay.len()).map_err(|_| invalid("follower_overlay.bounds"))?;
+        let operation_count = replay.iter().try_fold(0i64, |total, (verified, _)| {
+            let count = i64::try_from(verified.members.len())
+                .map_err(|_| invalid("follower_overlay.bounds"))?;
+            total
+                .checked_add(count)
+                .ok_or_else(|| invalid("follower_overlay.bounds"))
+        })?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut materialized_rows = 0usize;
+        for (verified, enqueued_at_ms) in &replay {
+            for member in &verified.members {
+                if member.entity_type == "FeedItem" && member.item_json.is_none() {
+                    let exists: bool = transaction.query_row(
+                        "SELECT EXISTS(
+                           SELECT 1 FROM library_core_feed_items
+                           WHERE globalId = ?1 AND deletedAt IS NULL
+                         );",
+                        [&member.entity_id],
+                        |row| row.get(0),
+                    )?;
+                    if !exists {
+                        return Err(invalid("follower_overlay.entity"));
+                    }
+                }
+                materialized_rows +=
+                    Self::materialize_product_member(&transaction, member, *enqueued_at_ms)?;
+            }
+        }
+        let revision_advanced = materialized_rows > 0;
+        if revision_advanced {
+            let updated = transaction.execute(
+                "UPDATE library_core_desktop_state
+                 SET revision = revision + 1
+                 WHERE singletonId = 1 AND active = 1
+                   AND revision < 9007199254740991;",
+                [],
+            )?;
+            if updated != 1 {
+                return Err(invalid("follower_overlay.desktop_revision"));
+            }
+        }
+        transaction.commit()?;
+        Ok(FollowerOverlayReplayReceipt {
+            transaction_count,
+            operation_count,
+            materialized_row_count: i64::try_from(materialized_rows)
+                .map_err(|_| invalid("follower_overlay.bounds"))?,
+            revision_advanced,
+        })
     }
 
     pub(crate) fn follower_intent_outbox_candidate(
@@ -1844,7 +1996,7 @@ mod tests {
                    enrollmentCertificateDigest,
                    canonicalEnrollmentCertificateJson, createdAtMs,
                    enrolledAtMs
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', ?6, '{}', 1, 1);",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', ?6, ?7, 1, 1);",
                 params![
                     "a".repeat(64),
                     "b".repeat(64),
@@ -1852,6 +2004,7 @@ mod tests {
                     "7".repeat(64),
                     "0".repeat(64),
                     "8".repeat(64),
+                    r#"{"certificate_body":{"actor_enrollment_body":{"operation_id":"enroll"}}}"#,
                 ],
             )
             .unwrap();
@@ -1876,6 +2029,104 @@ mod tests {
             .enqueue_verified_follower_transaction(&verified_intent("transaction-1"), 2_000)
             .unwrap();
         journal
+    }
+
+    fn accepted_result_segment() -> VerifiedFollowerResultSegment {
+        VerifiedFollowerResultSegment {
+            library_id: "a".repeat(64),
+            epoch_id: "b".repeat(64),
+            actor_id: "6".repeat(64),
+            first_result_sequence: 1,
+            last_result_sequence: 1,
+            previous_segment_digest: None,
+            segment_digest: "d".repeat(64),
+            entries: vec![VerifiedFollowerIntentResult {
+                result_operation_id: "result-1".to_string(),
+                result_sequence: 1,
+                intent_operation_id: "operation-1".to_string(),
+                intent_sequence: 1,
+                status: "accepted".to_string(),
+                provider_receipt_digest: None,
+            }],
+            imported_at_ms: 3_000,
+        }
+    }
+
+    fn replace_projection_with_checkpoint_fixture(journal: &LibraryCoreJournal) {
+        journal
+            .connection_for_test()
+            .execute_batch(
+                r#"DELETE FROM library_core_feed_items;
+                 INSERT INTO library_core_feed_items (
+                   globalId, payloadJson, updatedAtMs
+                 ) VALUES (
+                   'item-1', '{"globalId":"item-1","userState":{}}', 10
+                 );
+                 UPDATE library_core_desktop_state
+                 SET active = 1, revision = 1, shellJson = '{}',
+                     expectedItemCount = 1, importedItemCount = 1;"#,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn checkpoint_import_replays_only_intents_without_canonical_acceptance() {
+        let mut journal = journal_with_enqueued_intent();
+        replace_projection_with_checkpoint_fixture(&journal);
+
+        let replay = journal
+            .replay_pending_follower_overlay_with(|_, _| Ok(verified_intent("transaction-1")))
+            .unwrap();
+        assert_eq!(
+            replay,
+            FollowerOverlayReplayReceipt {
+                transaction_count: 1,
+                operation_count: 2,
+                materialized_row_count: 2,
+                revision_advanced: true,
+            }
+        );
+        let (read_at, revision): (Option<i64>, i64) = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT item.readAt, state.revision
+                 FROM library_core_feed_items AS item
+                 CROSS JOIN library_core_desktop_state AS state
+                 WHERE item.globalId = 'item-1';",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(read_at, Some(1));
+        assert_eq!(revision, 2);
+
+        journal
+            .append_follower_result_segment(&accepted_result_segment())
+            .unwrap();
+        replace_projection_with_checkpoint_fixture(&journal);
+        assert_eq!(
+            journal
+                .replay_pending_follower_overlay_with(|_, _| {
+                    panic!("accepted transactions must not be replayed")
+                })
+                .unwrap(),
+            FollowerOverlayReplayReceipt {
+                transaction_count: 0,
+                operation_count: 0,
+                materialized_row_count: 0,
+                revision_advanced: false,
+            }
+        );
+        let read_at: Option<i64> = journal
+            .connection_for_test()
+            .query_row(
+                "SELECT readAt FROM library_core_feed_items
+                 WHERE globalId = 'item-1';",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(read_at, None);
     }
 
     #[test]
@@ -1948,24 +2199,7 @@ mod tests {
                 latest_segment_digest: None,
             })
         );
-        let result_segment = VerifiedFollowerResultSegment {
-            library_id: "a".repeat(64),
-            epoch_id: "b".repeat(64),
-            actor_id: "6".repeat(64),
-            first_result_sequence: 1,
-            last_result_sequence: 1,
-            previous_segment_digest: None,
-            segment_digest: "d".repeat(64),
-            entries: vec![VerifiedFollowerIntentResult {
-                result_operation_id: "result-1".to_string(),
-                result_sequence: 1,
-                intent_operation_id: "operation-1".to_string(),
-                intent_sequence: 1,
-                status: "accepted".to_string(),
-                provider_receipt_digest: None,
-            }],
-            imported_at_ms: 3_000,
-        };
+        let result_segment = accepted_result_segment();
         assert_eq!(
             journal
                 .append_follower_result_segment(&result_segment)
