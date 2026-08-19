@@ -201,10 +201,18 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
     /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
   );
   assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
-  assert.ok(
-    aptSourceSanitizer.includes("http://azure.archive.ubuntu.com/ubuntu"),
+  const archiveAssignment = aptSourceSanitizer
+    .split("\n")
+    .find((line) => line.startsWith("readonly ubuntu_archive="));
+  assert.equal(
+    archiveAssignment,
+    'readonly ubuntu_archive="https://archive.ubuntu.com/ubuntu"',
   );
-  assert.ok(aptSourceSanitizer.includes("https://archive.ubuntu.com/ubuntu"));
+  assert.equal(
+    aptSourceSanitizer.split("${ubuntu_archive}").length - 1,
+    2,
+    "both Azure mirror variants route through the canonical archive",
+  );
 
   for (const [name, workflow, expectedCount] of [
     ["CI", ciWorkflow, 2],
