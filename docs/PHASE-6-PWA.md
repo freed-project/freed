@@ -14,7 +14,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Shared codebase** — Same React app embedded in Desktop WebView and deployed to [app.freed.wtf](https://app.freed.wtf), with the dev channel on `dev-app.freed.wtf`
 - **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
 - **Light saves:** Saves URL stubs immediately; full detail extraction requires Freed Desktop
-- **Offline-first:** Service worker caches feed data, saved reader HTML, and images for offline reading
+- **Offline-first:** Service worker precaches the app shell and caches saved reader HTML and images for offline reading. Library records remain in IndexedDB.
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
 - **Desktop handoff in source settings:** PWA Settings exposes Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as sync status dashboards with clear Freed Desktop management handoff states
@@ -26,7 +26,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **People mutations:** Person and Account add, bounded batch add, synchronized profile and relationship updates, connection-person promotion, bounded reach-out history, and atomic removal enter the signed epoch-scoped intent outbox and update the selected IndexedDB Library shell immediately. Device-local graph coordinates stay outside canonical payloads, Account removal cannot prune a Person during legacy Friend replacement, and reach-out history retains its 20-entry cap without waking Automerge.
 - **FeedItem capture mutations:** New and updated FeedItems enter the signed epoch-scoped intent outbox in ordered transactions of at most 128 unique items. IndexedDB and local search update after each durable batch, repeated identities retain input order across transaction boundaries, and device-local ranking fields never enter canonical payloads.
 - **Library maintenance mutations:** Sample seeding, fingerprinted sample clearing, and bulk feed removal use the same signed Library Core operations as normal writes. Sample clearing scans the complete IndexedDB corpus and unlinks real accounts before removing sample people.
-- **SQLite-only PWA:** IndexedDB Library Core is the only PWA product store. Production builds reject any Automerge asset, the rollback flag cannot reactivate the retired worker, and legacy Automerge cloud-file merging fails closed.
+- **SQLite-only PWA:** IndexedDB Library Core is the only PWA product store. Production builds reject any Automerge asset or retired registry payload, the service worker has no legacy `/sync` route, the rollback flag cannot reactivate the retired worker, and legacy Automerge cloud-file merging fails closed.
 - **Complete bounded reads:** Feed filters, all Saved orders, facets, Friends activity and timelines, Map, and Story Wall read the selected IndexedDB checkpoint beyond the initial 512-card UI window. Query pages are capped at 128 compact rows and source movement fails closed.
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu with tappable 10% zoom steps, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
@@ -225,6 +225,7 @@ export function filterByAuthor(
 | 6.15 | URL navigation state with browser back/forward support | Low |
 | 6.16 | Public-safe bundles and private GitHub vulnerability reports | Medium |
 | 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall | High | ✓ Complete |
+| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium | ✓ Complete |
 
 ---
 
@@ -266,7 +267,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
 - [x] FeedItem capture and whole-record updates use bounded signed Library Core intents, update IndexedDB and search without waking Automerge, preserve repeated-identity order, and exclude device-local ranking fields
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
-- [x] Production PWA bundles contain no Automerge JavaScript, worker, or WASM asset, and stale rollback state cannot reactivate the retired engine
+- [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search keeps its normalized term projection in IndexedDB, streams scored matches in 32-row pages, and retains at most 100 result cards in React instead of rebuilding a corpus-wide MiniSearch heap
 - [x] Runtime state, counts, full-library scans, and item detail resolve from the current IndexedDB materialization after local intents instead of rereading the immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
 - [x] Archived, provider, feed, tag, signal, author, hidden, post, and story filters, all four Saved orders, facets, Saved analytics, Friends graph and timelines, Map, and Story Wall read the complete selected IndexedDB generation. Browser acceptance covers 2,607 records in Chromium and WebKit.
