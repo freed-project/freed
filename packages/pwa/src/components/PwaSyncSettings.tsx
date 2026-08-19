@@ -86,8 +86,15 @@ function isMergeBlocked(message?: string): boolean {
   return message?.includes("blocked a sync merge") ?? false;
 }
 
+function isWaitingForPrimary(message?: string): boolean {
+  return message === "No published SQLite Library was found in Google Drive";
+}
+
 function describeProviderError(message: string): string {
   if (isMergeBlocked(message)) return "Merge blocked. Review Sync diagnostics below.";
+  if (isWaitingForPrimary(message)) {
+    return "Google Drive is connected. Waiting for the Primary Freed Desktop to publish its Library.";
+  }
   return "Sync needs attention. Review Sync diagnostics below.";
 }
 
@@ -230,11 +237,14 @@ export function PwaSyncSettings() {
   // Connected, polished status card.
   const providerError = cloudProviderState?.error;
   const statusText = providerError
-    ? isMergeBlocked(providerError) ? "Merge blocked" : "Needs attention"
+    ? isWaitingForPrimary(providerError) ? "Waiting for Primary"
+      : isMergeBlocked(providerError) ? "Merge blocked" : "Needs attention"
     : cloudActivity ? `${cloudActivity.shortLabel} ${cloudActivity.elapsedLabel}`
     : isSyncing ? "Syncing now"
     : syncConnected ? "Connected" : "Not synchronized";
-  const dotColor = providerError
+  const dotColor = isWaitingForPrimary(providerError)
+    ? "bg-[var(--theme-text-soft)]"
+    : providerError
     ? "bg-[rgb(var(--theme-feedback-danger-rgb))]"
     : isSyncing || cloudActivity
       ? "bg-[var(--theme-accent-secondary)] animate-pulse"
@@ -258,7 +268,7 @@ export function PwaSyncSettings() {
             </p>
           )}
           {providerError && (
-            <p className="theme-feedback-text-danger mt-2 break-words text-xs">
+            <p className={`${isWaitingForPrimary(providerError) ? "text-[var(--theme-text-muted)]" : "theme-feedback-text-danger"} mt-2 break-words text-xs`}>
               {describeProviderError(providerError)}
             </p>
           )}

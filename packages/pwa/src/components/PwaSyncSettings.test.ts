@@ -162,7 +162,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
   });
 
-  it("shows a linked Google account with a failed Library sync as needing attention", () => {
+  it("shows a linked Google account without a published Library as waiting for Primary", () => {
     useAppStore.setState({ syncConnected: false });
     useDebugStore.setState({
       cloudProviders: {
@@ -182,8 +182,12 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     const text = container.textContent ?? "";
 
     expect(text).toContain("Google Drive");
-    expect(text).toContain("Needs attention");
+    expect(text).toContain("Waiting for Primary");
+    expect(text).toContain(
+      "Google Drive is connected. Waiting for the Primary Freed Desktop to publish its Library.",
+    );
     expect(text).toContain("No published SQLite Library was found in Google Drive");
+    expect(text).not.toContain("Needs attention");
     expect(text).not.toContain("Choose a sync method below to get started.");
     expect(
       container.querySelector("[data-testid='pwa-cloud-sync-now-button']"),

@@ -52,6 +52,10 @@ describe("PWA Library Core sync lifecycle", () => {
       expect.objectContaining({
         status: "error",
         error: "No published SQLite Library was found in Google Drive",
+        statusMessage:
+          "Waiting for the Primary Freed Desktop to publish its first Library checkpoint.",
+        pendingReason:
+          "Your Google Drive connection is working. No remote Library has been published yet.",
       }),
     );
 
