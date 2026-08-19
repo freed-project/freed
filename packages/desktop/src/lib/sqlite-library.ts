@@ -1174,7 +1174,10 @@ export async function beginPortableSqliteLibraryImport(
       startedAtMs: Date.now(),
     },
   });
-  sqliteActive = false;
+  // Native imports stage beside the active Library. Preserve its runtime
+  // admission fences until finalize atomically swaps the staged checkpoint.
+  // A first import still reports inactive here and becomes active at finalize.
+  await sqliteLibraryStatus();
 }
 
 export async function appendPortableSqliteLibraryItems(
