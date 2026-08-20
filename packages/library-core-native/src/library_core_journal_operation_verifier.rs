@@ -694,7 +694,10 @@ fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<VerifiedC
             operation_id.clone(),
             chain_digest.clone(),
         );
-        if previous.as_ref().is_some_and(|prior| prior >= &key) {
+        if previous
+            .as_ref()
+            .is_some_and(|prior| prior.0 == actor_id || prior >= &key)
+        {
             return Err(invalid(index, "causal_frontier"));
         }
         previous = Some(key);
@@ -716,23 +719,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
 
     require_integer_literal(object, "schema_version", 1, index)?;
     let operation_type = required_string(object, "operation_type", index)?;
-    if !matches!(
-        operation_type.as_str(),
-        "feed_item_read_assignment"
-            | "feed_item_capture_upsert"
-            | "feed_item_saved_assignment"
-            | "feed_item_archive_assignment"
-            | "feed_item_like_assignment"
-            | "feed_item_remove"
-            | "rss_feed_upsert"
-            | "rss_feed_remove_keep_items"
-            | "rss_feed_remove_with_items"
-            | "preferences_leaf_assignment"
-            | "person_upsert"
-            | "person_remove_and_accounts"
-            | "account_upsert"
-            | "account_remove"
-    ) {
+    if !super::actor_capability::is_registered_operation(&operation_type) {
         return Err(invalid(index, "operation_type"));
     }
     let entity_type = if operation_type.starts_with("rss_feed_") {
@@ -1234,6 +1221,21 @@ where
         previous_chain_digest = actor_chain_digest;
     }
 
+    for (index, member) in parsed.iter().enumerate() {
+        if actor.capability.retired {
+            return Err(invalid(index, "actor_capability_retired"));
+        }
+        if matches!(
+            actor.capability.scope,
+            super::actor_capability::ActorCapabilityScope::Bounded { .. }
+        ) {
+            return Err(invalid(index, "actor_capability_scope"));
+        }
+        if !actor.capability.allows_operation(&member.operation_type) {
+            return Err(invalid(index, "actor_capability_operation"));
+        }
+    }
+
     Ok(VerifiedOperationTransaction {
         transaction_id: first.transaction_id.clone(),
         transaction_digest,
@@ -1241,6 +1243,7 @@ where
         epoch: first.epoch,
         epoch_id: first.epoch_id.clone(),
         actor_id: first.actor_id.clone(),
+        actor_capability: actor.capability.clone(),
         canonical_envelope_bytes: total_bytes,
         members: verified_members,
     })
@@ -1317,6 +1320,11 @@ mod tests {
                     }
                 }),
                 "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
+                "feed_item_saved_assignment"
+                | "feed_item_archive_assignment"
+                | "feed_item_like_assignment" => {
+                    json!({ "assigned": true, "assigned_at_ms": timestamp_ms })
+                }
                 "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
                 "rss_feed_upsert" => json!({
                     "feed": {
@@ -1498,6 +1506,329 @@ mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_owned(),
             actor_chain_genesis: "5".repeat(64),
             enrolled_at_ms: 1_000,
+            capability: super::super::actor_capability::ActorCapabilityState::legacy_editor(
+                "4".repeat(64),
+                1_000,
+            ),
+        }
+    }
+
+    fn signed_v2_enrollment(
+        actor_key: &Ed25519KeyPair,
+        actor_class: &str,
+        allowed_operation_types: &[&str],
+        scope: super::super::actor_capability::ActorCapabilityScope,
+    ) -> (
+        super::super::AcceptedAuthorityState,
+        Vec<u8>,
+        VerifiedActorEnrollment,
+    ) {
+        let authority_key =
+            Ed25519KeyPair::from_seed_unchecked(&[30_u8; 32]).expect("authority key");
+        let authority_public_key = hex(authority_key.public_key().as_ref());
+        let authority_key_id = digest_hex(
+            "authority-key",
+            &json!({
+                "signature_algorithm": "ed25519",
+                "authority_public_key": authority_public_key,
+            }),
+            0,
+        )
+        .expect("authority key ID");
+        let authority = super::super::AcceptedAuthorityState {
+            library_id: "1".repeat(64),
+            epoch: 1,
+            epoch_id: "2".repeat(64),
+            authority_key_id: authority_key_id.clone(),
+            authority_public_key,
+            observed_frontier: Vec::new(),
+        };
+        let actor_public_key = hex(actor_key.public_key().as_ref());
+        let actor_public_key_fingerprint = digest_hex(
+            "actor-public-key",
+            &json!({
+                "signature_algorithm": "ed25519",
+                "actor_public_key": actor_public_key,
+            }),
+            0,
+        )
+        .expect("actor public key fingerprint");
+        let installation_incarnation = "3".repeat(64);
+        let actor_incarnation_nonce = "4".repeat(64);
+        let actor_id = digest_hex(
+            "actor-id",
+            &json!({
+                "library_id": authority.library_id,
+                "installation_incarnation": installation_incarnation,
+                "signature_algorithm": "ed25519",
+                "actor_public_key": actor_public_key,
+                "actor_incarnation_nonce": actor_incarnation_nonce,
+            }),
+            0,
+        )
+        .expect("actor ID");
+        let enrollment_body = json!({
+            "operation_id": "actor-enrolled:capability-operation-test",
+            "operation_type": "actor_enrolled",
+            "library_id": authority.library_id,
+            "epoch": authority.epoch,
+            "epoch_id": authority.epoch_id,
+            "schema_version": 1,
+            "authority_key_id": authority.authority_key_id,
+            "installation_incarnation": installation_incarnation,
+            "actor_incarnation_nonce": actor_incarnation_nonce,
+            "actor_id": actor_id,
+            "actor_public_key": actor_public_key,
+            "actor_public_key_fingerprint": actor_public_key_fingerprint,
+            "observed_frontier": [],
+            "created_at_ms": 1_000,
+            "signature_algorithm": "ed25519",
+        });
+        let enrollment_body_digest = digest_hex("actor-enrollment-body", &enrollment_body, 0)
+            .expect("enrollment body digest");
+        let actor_proof_input = crate::library_core_canonical::encode_signature_input(
+            "actor-enrollment-proof",
+            &json!({ "enrollment_body_digest": enrollment_body_digest }),
+            MAX_TRANSACTION_ENVELOPE_BYTES,
+        )
+        .expect("actor proof input");
+        let actor_proof = hex(actor_key.sign(&actor_proof_input).as_ref());
+        let issuance_identity = digest_hex(
+            "actor-capability-issuance",
+            &json!({
+                "library_id": authority.library_id,
+                "epoch_id": authority.epoch_id,
+                "authority_key_id": authority.authority_key_id,
+                "actor_id": actor_id,
+                "enrollment_body_digest": enrollment_body_digest,
+            }),
+            0,
+        )
+        .expect("issuance identity");
+        let retirement_identity = digest_hex(
+            "actor-capability-retirement",
+            &json!({
+                "library_id": authority.library_id,
+                "epoch_id": authority.epoch_id,
+                "actor_id": actor_id,
+                "issuance_identity": issuance_identity,
+            }),
+            0,
+        )
+        .expect("retirement identity");
+        let scope = match scope {
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide => {
+                json!({ "mode": "library_wide" })
+            }
+            super::super::actor_capability::ActorCapabilityScope::Bounded { kind, scope_id } => {
+                json!({ "mode": "bounded", "scope_kind": kind, "scope_id": scope_id })
+            }
+            super::super::actor_capability::ActorCapabilityScope::LegacyEditor => {
+                panic!("v2 test capability cannot use legacy scope")
+            }
+        };
+        let capability_body = json!({
+            "format": "freed_library_core_actor_capability_v2",
+            "library_id": authority.library_id,
+            "epoch": authority.epoch,
+            "epoch_id": authority.epoch_id,
+            "authority_key_id": authority.authority_key_id,
+            "actor_id": actor_id,
+            "actor_public_key": actor_public_key,
+            "actor_class": actor_class,
+            "allowed_operation_types": allowed_operation_types,
+            "scope": scope,
+            "issuance_identity": issuance_identity,
+            "retirement_identity": retirement_identity,
+            "issued_at_ms": 1_000,
+            "signature_algorithm": "ed25519",
+        });
+        let capability_body_digest = digest_hex("actor-capability-body", &capability_body, 0)
+            .expect("capability body digest");
+        let certificate_body = json!({
+            "actor_enrollment_body": enrollment_body,
+            "enrollment_body_digest": enrollment_body_digest,
+            "actor_proof": actor_proof,
+            "actor_capability_body": capability_body,
+            "actor_capability_body_digest": capability_body_digest,
+        });
+        let certificate_digest = digest_hex("actor-capability-certificate", &certificate_body, 0)
+            .expect("certificate digest");
+        let authority_signature_input = crate::library_core_canonical::encode_signature_input(
+            "actor-capability-authority",
+            &json!({ "certificate_digest": certificate_digest }),
+            MAX_TRANSACTION_ENVELOPE_BYTES,
+        )
+        .expect("authority signature input");
+        let certificate = encode_canonical_value(
+            &json!({
+                "certificate_body": certificate_body,
+                "certificate_digest": certificate_digest,
+                "authority_signature": hex(authority_key.sign(&authority_signature_input).as_ref()),
+            }),
+            MAX_TRANSACTION_ENVELOPE_BYTES,
+        )
+        .expect("canonical v2 certificate");
+        let enrollment =
+            super::super::enrollment_verifier::verify_actor_enrollment(&certificate, &authority)
+                .expect("verify signed v2 enrollment fixture");
+        (authority, certificate, enrollment)
+    }
+
+    fn signed_v1_enrollment(
+        actor_key: &Ed25519KeyPair,
+    ) -> (
+        super::super::AcceptedAuthorityState,
+        Vec<u8>,
+        VerifiedActorEnrollment,
+    ) {
+        let (authority, v2_certificate, _) = signed_v2_enrollment(
+            actor_key,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let v2_value = decode_canonical_value(&v2_certificate, MAX_TRANSACTION_ENVELOPE_BYTES)
+            .expect("decode v2 source certificate")
+            .into_value();
+        let v2_body = v2_value["certificate_body"]
+            .as_object()
+            .expect("v2 certificate body");
+        let certificate_body = json!({
+            "actor_enrollment_body": v2_body["actor_enrollment_body"].clone(),
+            "enrollment_body_digest": v2_body["enrollment_body_digest"].clone(),
+            "actor_proof": v2_body["actor_proof"].clone(),
+        });
+        let certificate_digest = digest_hex("actor-enrollment-certificate", &certificate_body, 0)
+            .expect("v1 certificate digest");
+        let authority_signature_input = crate::library_core_canonical::encode_signature_input(
+            "actor-enrollment-authority",
+            &json!({ "certificate_digest": certificate_digest }),
+            MAX_TRANSACTION_ENVELOPE_BYTES,
+        )
+        .expect("v1 authority signature input");
+        let authority_key =
+            Ed25519KeyPair::from_seed_unchecked(&[30_u8; 32]).expect("authority key");
+        let certificate = encode_canonical_value(
+            &json!({
+                "certificate_body": certificate_body,
+                "certificate_digest": certificate_digest,
+                "authority_signature": hex(authority_key.sign(&authority_signature_input).as_ref()),
+            }),
+            MAX_TRANSACTION_ENVELOPE_BYTES,
+        )
+        .expect("canonical v1 certificate");
+        let enrollment =
+            super::super::enrollment_verifier::verify_actor_enrollment(&certificate, &authority)
+                .expect("verify signed v1 enrollment fixture");
+        (authority, certificate, enrollment)
+    }
+
+    fn install_signed_v2_actor(
+        journal: &mut LibraryCoreJournal,
+        actor_key: &Ed25519KeyPair,
+        actor_class: &str,
+        allowed_operation_types: &[&str],
+        scope: super::super::actor_capability::ActorCapabilityScope,
+    ) -> VerifiedActorEnrollment {
+        let (authority, certificate, enrollment) =
+            signed_v2_enrollment(actor_key, actor_class, allowed_operation_types, scope);
+        journal
+            .install_authority_epoch(&super::super::VerifiedAuthorityEpoch {
+                authority: authority.clone(),
+                transition_certificate_digest: "c".repeat(64),
+                canonical_transition_certificate_json: "{\"transition\":\"signed-v2-test\"}"
+                    .to_owned(),
+                accepted_at_ms: 900,
+            })
+            .expect("install signed v2 authority");
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?1, ?2, 'signed-v2-test', 900);",
+                rusqlite::params!["8".repeat(64), authority.epoch_id],
+            )
+            .expect("install signed v2 writer admission");
+        journal
+            .verify_and_enroll_actor(&certificate, &authority.library_id)
+            .expect("install signed v2 actor");
+        enrollment
+    }
+
+    fn install_signed_v1_actor(
+        journal: &mut LibraryCoreJournal,
+        actor_key: &Ed25519KeyPair,
+    ) -> VerifiedActorEnrollment {
+        let (authority, certificate, enrollment) = signed_v1_enrollment(actor_key);
+        journal
+            .install_authority_epoch(&super::super::VerifiedAuthorityEpoch {
+                authority: authority.clone(),
+                transition_certificate_digest: "c".repeat(64),
+                canonical_transition_certificate_json: "{\"transition\":\"signed-v1-test\"}"
+                    .to_owned(),
+                accepted_at_ms: 900,
+            })
+            .expect("install signed v1 authority");
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_cloud_writer_admission (
+                   singletonId, localWriterId, activeWriterId, storageEpoch,
+                   controlRevision, verifiedAtMs
+                 ) VALUES (1, ?1, ?1, ?2, 'signed-v1-test', 900);",
+                rusqlite::params!["8".repeat(64), authority.epoch_id],
+            )
+            .expect("install signed v1 writer admission");
+        journal
+            .verify_and_enroll_actor(&certificate, &authority.library_id)
+            .expect("install signed v1 actor");
+        enrollment
+    }
+
+    fn authoritative_operation_state(
+        journal: &LibraryCoreJournal,
+        actor_id: &str,
+    ) -> (i64, i64, i64, i64, i64, i64, i64) {
+        journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT COUNT(*) FROM library_core_feed_item_read_state),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("read authoritative operation state")
+    }
+
+    fn entity_for_operation(operation_type: &str) -> &'static str {
+        match operation_type {
+            "rss_feed_upsert" | "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                "https://example.com/feed.xml"
+            }
+            "preferences_leaf_assignment" => "preferences",
+            "person_upsert" | "person_remove_and_accounts" => "person:verified",
+            "account_upsert" | "account_remove" => "account:verified",
+            _ => "rss:item:capability",
         }
     }
 
@@ -1529,6 +1860,618 @@ mod tests {
             validate_rss_feed(incomplete.as_object().expect("object"), entity_id, 0),
             Err(JournalError::OperationVerification { field: "feed", .. })
         ));
+    }
+
+    #[test]
+    fn operation_frontier_rejects_two_tips_for_one_actor() {
+        let actor_id = "1".repeat(64);
+        let tips = json!([
+            {
+                "actor_id": actor_id,
+                "sequence": 1,
+                "operation_id": "op:frontier:one",
+                "chain_digest": "2".repeat(64),
+            },
+            {
+                "actor_id": actor_id,
+                "sequence": 2,
+                "operation_id": "op:frontier:two",
+                "chain_digest": "3".repeat(64),
+            }
+        ]);
+        assert!(matches!(
+            parse_causal_tips(&tips, 0),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "causal_frontier"
+            })
+        ));
+    }
+
+    #[test]
+    fn genuine_signed_v1_enrollment_is_reverified_before_commit_and_replay() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v1_actor(&mut journal, &key_pair);
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:legacy-editor:genuine-certificate",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:genuine-v1", 1_234)],
+            "feed_item_read_assignment",
+        );
+
+        let receipt = journal
+            .verify_and_commit_read_transaction(&envelopes, 1_500)
+            .expect("commit genuine signed v1 operation");
+        let replay = journal
+            .verify_and_commit_read_transaction(&envelopes, 9_999)
+            .expect("replay genuine signed v1 operation");
+        assert_eq!(replay, receipt);
+        assert_eq!(
+            journal
+                .read_state("rss:item:genuine-v1")
+                .expect("read state")
+                .expect("materialized read")
+                .read_at_ms,
+            1_234
+        );
+    }
+
+    #[test]
+    fn retired_actor_exact_replay_fails_without_writes_or_results() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[18_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:agent:replay-after-retirement",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:replay-after-retirement", 1_234)],
+            "feed_item_read_assignment",
+        );
+        let results = journal
+            .accept_operation_transaction(&envelopes, 1_500)
+            .expect("commit before retirement");
+        assert_eq!(results.len(), 1);
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET retired = 1, retirementCertificateDigest = ?1
+                  WHERE actorId = ?2;",
+                rusqlite::params!["8".repeat(64), enrollment.actor_id],
+            )
+            .expect("install retired state fixture");
+        let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
+        assert!(matches!(
+            journal.accept_operation_transaction(&envelopes, 9_000),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "actor_capability_retired"
+            })
+        ));
+        assert_eq!(
+            authoritative_operation_state(&journal, &enrollment.actor_id),
+            state_before
+        );
+    }
+
+    #[test]
+    fn stale_epoch_exact_replay_fails_without_writes_or_results() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:agent:replay-after-epoch-advance",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:replay-after-epoch-advance", 1_234)],
+            "feed_item_read_assignment",
+        );
+        let results = journal
+            .accept_operation_transaction(&envelopes, 1_500)
+            .expect("commit before authority epoch advance");
+        assert_eq!(results.len(), 1);
+        journal
+            .install_fixture_authority(&enrollment.library_id, 2, &"9".repeat(64))
+            .expect("advance authority epoch");
+        let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
+        assert!(matches!(
+            journal.accept_operation_transaction(&envelopes, 9_999),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        assert_eq!(
+            authoritative_operation_state(&journal, &enrollment.actor_id),
+            state_before
+        );
+    }
+
+    #[test]
+    fn lost_writer_admission_exact_replay_fails_without_writes_or_results() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[20_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:agent:replay-after-writer-loss",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:replay-after-writer-loss", 1_234)],
+            "feed_item_read_assignment",
+        );
+        let results = journal
+            .accept_operation_transaction(&envelopes, 1_500)
+            .expect("commit before writer admission loss");
+        assert_eq!(results.len(), 1);
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_cloud_writer_admission
+                    SET activeWriterId = ?1
+                  WHERE singletonId = 1;",
+                ["7".repeat(64)],
+            )
+            .expect("remove local writer admission");
+        let state_before = authoritative_operation_state(&journal, &enrollment.actor_id);
+        assert!(matches!(
+            journal.accept_operation_transaction(&envelopes, 9_999),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        assert_eq!(
+            authoritative_operation_state(&journal, &enrollment.actor_id),
+            state_before
+        );
+    }
+
+    #[test]
+    fn reused_transaction_id_cannot_bypass_capability_admission() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[17_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let transaction_id = "tx:agent:reused-id";
+        let allowed = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            transaction_id,
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:reused-id", 1_234)],
+            "feed_item_read_assignment",
+        );
+        let receipt = journal
+            .verify_and_commit_read_transaction(&allowed, 1_500)
+            .expect("commit allowed transaction");
+        let state_before: (i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("state before conflicting replay");
+        let denied = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            transaction_id,
+            2,
+            Some(&receipt.committed_operation_id),
+            &receipt.committed_chain_digest,
+            &[("rss:item:reused-id", 2_345)],
+            "feed_item_remove",
+        );
+
+        assert!(matches!(
+            journal.verify_and_commit_read_transaction(&denied, 2_500),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "actor_capability_operation"
+            })
+        ));
+        let state_after: (i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("state after conflicting replay");
+        assert_eq!(state_after, state_before);
+    }
+
+    #[test]
+    fn v2_scraper_capability_allows_capture_and_denies_every_other_operation() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[20_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "scraper",
+            &["feed_item_capture_upsert"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let capture = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:scraper:capture",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:scraper-capture", 1_234)],
+            "feed_item_capture_upsert",
+        );
+        journal
+            .connection
+            .execute_batch(&format!(
+                r#"INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 0, 1, 1, '{}', 0, 0, '{{}}', 1, 1);"#,
+                "b".repeat(64)
+            ))
+            .expect("install desktop state");
+        let receipt = journal
+            .verify_and_commit_read_transaction(&capture, 1_500)
+            .expect("commit allowed scraper capture");
+        let replay = journal
+            .verify_and_commit_read_transaction(&capture, 9_999)
+            .expect("replay exact allowed scraper capture");
+        assert_eq!(replay, receipt);
+
+        for operation_type in super::super::actor_capability::canonical_operation_types()
+            .iter()
+            .filter(|operation| operation.as_str() != "feed_item_capture_upsert")
+        {
+            let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+            let enrollment = install_signed_v2_actor(
+                &mut journal,
+                &key_pair,
+                "scraper",
+                &["feed_item_capture_upsert"],
+                super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+            );
+            let transaction_id = format!("tx:scraper:deny:{operation_type}");
+            let denied = signed_envelopes_from_tip(
+                &key_pair,
+                &enrollment,
+                &transaction_id,
+                1,
+                None,
+                &enrollment.actor_chain_genesis,
+                &[(entity_for_operation(operation_type), 1_234)],
+                operation_type,
+            );
+            assert!(matches!(
+                journal.verify_and_commit_read_transaction(&denied, 1_500),
+                Err(JournalError::OperationVerification {
+                    index: 0,
+                    field: "actor_capability_operation"
+                })
+            ));
+            let rows: i64 = journal
+                .connection
+                .query_row("SELECT COUNT(*) FROM library_core_operations;", [], |row| {
+                    row.get(0)
+                })
+                .expect("count denied operations");
+            assert_eq!(rows, 0, "{operation_type}");
+        }
+    }
+
+    #[test]
+    fn v2_bounded_retired_stale_and_oversized_inputs_fail_before_ingestion() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[21_u8; 32]).expect("key pair");
+        let mut bounded_journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let bounded = install_signed_v2_actor(
+            &mut bounded_journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::Bounded {
+                kind: "provider".to_owned(),
+                scope_id: "instagram".to_owned(),
+            },
+        );
+        let bounded_envelope = signed_envelopes_from_tip(
+            &key_pair,
+            &bounded,
+            "tx:agent:bounded",
+            1,
+            None,
+            &bounded.actor_chain_genesis,
+            &[("rss:item:bounded", 1_234)],
+            "feed_item_read_assignment",
+        );
+        assert!(matches!(
+            bounded_journal.verify_and_commit_read_transaction(&bounded_envelope, 1_500),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "actor_capability_scope"
+            })
+        ));
+
+        let mut retired_journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let active = install_signed_v2_actor(
+            &mut retired_journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let active_envelope = signed_envelopes_from_tip(
+            &key_pair,
+            &active,
+            "tx:agent:retired",
+            1,
+            None,
+            &active.actor_chain_genesis,
+            &[("rss:item:retired", 1_234)],
+            "feed_item_read_assignment",
+        );
+        retired_journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET retired = 1, retirementCertificateDigest = ?1
+                  WHERE actorId = ?2;",
+                rusqlite::params!["8".repeat(64), &active.actor_id],
+            )
+            .expect("install retired state fixture");
+        assert!(matches!(
+            retired_journal.verify_and_commit_read_transaction(&active_envelope, 1_500),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "actor_capability_retired"
+            })
+        ));
+
+        let stale_envelope = signed_envelopes_from_tip(
+            &key_pair,
+            &active,
+            "tx:agent:stale-epoch",
+            1,
+            None,
+            &active.actor_chain_genesis,
+            &[("rss:item:stale-capability", 1_234)],
+            "feed_item_read_assignment",
+        );
+        let mut stale_journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_signed_v2_actor(
+            &mut stale_journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        stale_journal
+            .install_fixture_authority(&active.library_id, 2, &"9".repeat(64))
+            .expect("advance authority epoch");
+        assert!(matches!(
+            stale_journal.verify_and_commit_read_transaction(&stale_envelope, 1_500),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+
+        let oversized = vec![Vec::new(); MAX_TRANSACTION_MEMBERS + 1];
+        assert!(matches!(
+            stale_journal.verify_operation_transaction(&oversized),
+            Err(JournalError::OperationVerification {
+                index: 0,
+                field: "transaction_members"
+            })
+        ));
+
+        for journal in [&bounded_journal, &retired_journal, &stale_journal] {
+            let rows: i64 = journal
+                .connection
+                .query_row("SELECT COUNT(*) FROM library_core_operations;", [], |row| {
+                    row.get(0)
+                })
+                .expect("count rejected operations");
+            assert_eq!(rows, 0);
+        }
+    }
+
+    #[test]
+    fn signed_v2_capability_refuses_an_sql_widened_cache_without_any_write() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[22_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let removal = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:agent:unsigned-cache-widening",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:unsigned-cache-widening", 1_234)],
+            "feed_item_remove",
+        );
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET allowedOperationTypesJson = '[\"feed_item_remove\"]'
+                  WHERE actorId = ?1;",
+                [&enrollment.actor_id],
+            )
+            .expect("widen unsigned capability cache");
+
+        assert!(matches!(
+            journal.verify_and_commit_read_transaction(&removal, 1_500),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_signed_cache"
+            })
+        ));
+        let state: (i64, i64, i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT COUNT(*) FROM library_core_feed_items),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("unchanged authoritative state");
+        assert_eq!(state, (0, 0, 0, 0, 0, 1, 0));
+    }
+
+    #[test]
+    fn signed_v2_capability_cannot_be_downgraded_to_the_legacy_policy() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[23_u8; 32]).expect("key pair");
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = install_signed_v2_actor(
+            &mut journal,
+            &key_pair,
+            "agent",
+            &["feed_item_read_assignment"],
+            super::super::actor_capability::ActorCapabilityScope::LibraryWide,
+        );
+        let removal = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:agent:unsigned-legacy-downgrade",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:unsigned-legacy-downgrade", 1_234)],
+            "feed_item_remove",
+        );
+        journal
+            .connection
+            .execute(
+                "UPDATE library_core_actor_capability_state
+                    SET certificateVersion = 1,
+                        actorClass = 'legacy_editor',
+                        allowedOperationTypesJson =
+                          '[\"account_remove\",\"account_upsert\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"person_remove_and_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_upsert\"]',
+                        scopeMode = 'legacy_editor', scopeKind = NULL,
+                        scopeId = NULL, issuanceIdentity = NULL,
+                        retirementIdentity = NULL
+                  WHERE actorId = ?1;",
+                [&enrollment.actor_id],
+            )
+            .expect("downgrade unsigned capability cache");
+
+        assert!(matches!(
+            journal.verify_and_commit_read_transaction(&removal, 1_500),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "actor_capability_signed_cache"
+            })
+        ));
+        let state: (i64, i64, i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox),
+                   (SELECT COUNT(*) FROM library_core_feed_items),
+                   (SELECT nextSequence FROM library_core_actors WHERE actorId = ?1),
+                   (SELECT integerValue FROM library_core_meta
+                     WHERE key = 'projectionRevision');",
+                [&enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("unchanged authoritative state");
+        assert_eq!(state, (0, 0, 0, 0, 0, 1, 0));
     }
 
     #[test]

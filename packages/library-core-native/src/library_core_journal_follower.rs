@@ -589,7 +589,8 @@ impl LibraryCoreJournal {
                         actor.enrollmentCertificateDigest,
                         actor.canonicalEnrollmentCertificateJson,
                         actor.actorChainGenesis, intent.nextIntentSequence,
-                        intent.latestOperationId, intent.latestActorChainDigest
+                        intent.latestOperationId, intent.latestActorChainDigest,
+                        actor.enrolledAtMs
                  FROM library_core_follower_actor AS actor
                  JOIN library_core_follower_anchor AS anchor
                    ON anchor.libraryId = actor.libraryId
@@ -600,7 +601,9 @@ impl LibraryCoreJournal {
                   AND intent.actorId = actor.actorId
                  WHERE actor.libraryId = ?1 AND actor.epochId = ?2
                    AND actor.actorId = ?3
-                   AND actor.enrollmentCertificateDigest IS NOT NULL;",
+                   AND actor.enrollmentCertificateDigest IS NOT NULL
+                   AND json_type(actor.canonicalEnrollmentCertificateJson,
+                                 '$.certificate_body.actor_capability_body') IS NULL;",
                 params![library_id, epoch_id, actor_id],
                 |row| {
                     Ok(super::ActorState {
@@ -616,6 +619,10 @@ impl LibraryCoreJournal {
                         next_sequence: row.get(9)?,
                         previous_operation_id: row.get(10)?,
                         previous_chain_digest: row.get(11)?,
+                        capability: super::actor_capability::ActorCapabilityState::legacy_editor(
+                            row.get(6)?,
+                            row.get(12)?,
+                        ),
                     })
                 },
             )
@@ -2184,6 +2191,10 @@ mod tests {
             epoch: 3,
             epoch_id: "b".repeat(64),
             actor_id: "6".repeat(64),
+            actor_capability: super::super::actor_capability::ActorCapabilityState::legacy_editor(
+                "5".repeat(64),
+                2_000,
+            ),
             canonical_envelope_bytes: 4,
             members: vec![
                 VerifiedOperation {

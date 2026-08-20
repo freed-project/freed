@@ -7,7 +7,7 @@ function nativeProtocol(prior: string | null) {
   return {
     format: "freed_library_core_native_authority_protocol_v1",
     active_engine: "library_core_v1",
-    schema_version: 11,
+    schema_version: 12,
     replication_protocol: "op_segments_v1",
     checkpoint_format: "freed_logical_checkpoint_v1",
     transition_certificate_digest: digest("11"),

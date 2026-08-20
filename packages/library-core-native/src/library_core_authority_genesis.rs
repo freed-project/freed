@@ -49,11 +49,18 @@ const NATIVE_PROTOCOL_TRANSITION_FORMAT: &str =
 const NATIVE_SOURCE_MANIFEST_FORMAT: &str = "freed_library_core_sqlite_source_manifest_v1";
 const NATIVE_PROTOCOL_RECEIPT_FORMAT: &str = "freed_library_core_native_authority_protocol_v1";
 const NATIVE_ACTIVE_ENGINE: &str = "library_core_v1";
-const NATIVE_SCHEMA_VERSION: i64 = 11;
+const HISTORICAL_NATIVE_SCHEMA_VERSION: i64 = 11;
+const NATIVE_SCHEMA_VERSION: i64 = 12;
 const NATIVE_REPLICATION_PROTOCOL: &str = "op_segments_v1";
 const NATIVE_CHECKPOINT_FORMAT: &str = "freed_logical_checkpoint_v1";
 const MAX_SAFE_INTEGER_U64: u64 = 9_007_199_254_740_991;
 
+fn is_supported_native_certificate_schema_version(schema_version: i64) -> bool {
+    matches!(
+        schema_version,
+        HISTORICAL_NATIVE_SCHEMA_VERSION | NATIVE_SCHEMA_VERSION
+    )
+}
 /// The authority signing key is a separate vault account from the migration
 /// signing key. One compromised or cleared key must not stand in for the other.
 /// One exact durable Automerge revision, as the worker already reports it.
@@ -561,7 +568,7 @@ fn verify_native_genesis_certificate(
     if body.format != NATIVE_GENESIS_FORMAT
         || body.epoch != GENESIS_EPOCH
         || body.active_engine != NATIVE_ACTIVE_ENGINE
-        || body.schema_version != NATIVE_SCHEMA_VERSION
+        || !is_supported_native_certificate_schema_version(body.schema_version)
         || body.replication_protocol != NATIVE_REPLICATION_PROTOCOL
         || body.checkpoint_format != NATIVE_CHECKPOINT_FORMAT
         || body.signature_algorithm != SIGNATURE_ALGORITHM
@@ -649,7 +656,7 @@ fn verify_native_protocol_transition(
         || body.epoch != source.authority.epoch
         || body.epoch_id != source.authority.epoch_id
         || body.active_engine != NATIVE_ACTIVE_ENGINE
-        || body.schema_version != NATIVE_SCHEMA_VERSION
+        || !is_supported_native_certificate_schema_version(body.schema_version)
         || body.replication_protocol != NATIVE_REPLICATION_PROTOCOL
         || body.checkpoint_format != NATIVE_CHECKPOINT_FORMAT
         || body.signature_algorithm != SIGNATURE_ALGORITHM
@@ -1785,6 +1792,200 @@ mod tests {
         (key_pair, store)
     }
 
+    fn native_genesis_for_schema(
+        library_id: &str,
+        snapshot: &NativeSqliteSourceSnapshot,
+        key_pair: &Ed25519KeyPair,
+        schema_version: i64,
+    ) -> NativeGenesisCertificateV1 {
+        let mut certificate =
+            build_native_genesis_certificate(library_id, snapshot, key_pair).unwrap();
+        certificate.certificate_body.schema_version = schema_version;
+        let body_value = serde_json::to_value(&certificate.certificate_body).unwrap();
+        certificate.epoch_id = digest_value("epoch-transition-certificate", &body_value).unwrap();
+        certificate.epoch_signature = lower_hex(
+            key_pair
+                .sign(&epoch_signature_input(&certificate.epoch_id).unwrap())
+                .as_ref(),
+        );
+        certificate.authority_key_possession_signature = lower_hex(
+            key_pair
+                .sign(
+                    &possession_signature_input(
+                        &certificate.epoch_id,
+                        &certificate.certificate_body.authority_key_id,
+                    )
+                    .unwrap(),
+                )
+                .as_ref(),
+        );
+        certificate
+    }
+
+    fn native_protocol_transition_for_schema(
+        source: &VerifiedAuthorityEpoch,
+        snapshot: &NativeSqliteSourceSnapshot,
+        key_pair: &Ed25519KeyPair,
+        schema_version: i64,
+    ) -> NativeProtocolTransitionCertificateV1 {
+        let mut certificate = build_native_protocol_transition(source, snapshot, key_pair).unwrap();
+        certificate.certificate_body.schema_version = schema_version;
+        let body_value = serde_json::to_value(&certificate.certificate_body).unwrap();
+        certificate.protocol_transition_id =
+            digest_value("epoch-transition-certificate", &body_value).unwrap();
+        certificate.transition_signature = lower_hex(
+            key_pair
+                .sign(&epoch_signature_input(&certificate.protocol_transition_id).unwrap())
+                .as_ref(),
+        );
+        certificate.authority_key_possession_signature = lower_hex(
+            key_pair
+                .sign(
+                    &possession_signature_input(
+                        &certificate.protocol_transition_id,
+                        &certificate.certificate_body.authority_key_id,
+                    )
+                    .unwrap(),
+                )
+                .as_ref(),
+        );
+        certificate
+    }
+
+    #[test]
+    fn schema_v12_runtime_reopens_a_schema_v11_native_genesis_certificate() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("library-core.sqlite");
+        let mut journal = LibraryCoreJournal::open(&path).unwrap();
+        let (key_pair, store) = generated_key_store();
+        let snapshot = native_snapshot();
+        let installation_witness = "3".repeat(64);
+        let library_id = native_library_id(&snapshot.source_digest, &installation_witness).unwrap();
+        let certificate = native_genesis_for_schema(
+            &library_id,
+            &snapshot,
+            &key_pair,
+            HISTORICAL_NATIVE_SCHEMA_VERSION,
+        );
+        verify_native_genesis_certificate(&certificate).unwrap();
+        let (certificate_value, canonical_json) =
+            canonical_certificate(&certificate, "historical native genesis").unwrap();
+        let transition_certificate_digest =
+            digest_value("epoch-transition-certificate", &certificate_value).unwrap();
+        journal
+            .install_authority_epoch(&VerifiedAuthorityEpoch {
+                authority: AcceptedAuthorityState {
+                    library_id: library_id.clone(),
+                    epoch: GENESIS_EPOCH,
+                    epoch_id: certificate.epoch_id.clone(),
+                    authority_key_id: certificate.certificate_body.authority_key_id.clone(),
+                    authority_public_key: certificate.certificate_body.authority_public_key.clone(),
+                    observed_frontier: Vec::new(),
+                },
+                transition_certificate_digest,
+                canonical_transition_certificate_json: canonical_json,
+                accepted_at_ms: 1_900,
+            })
+            .unwrap();
+        drop(journal);
+        let mut reopened = LibraryCoreJournal::open(&path).unwrap();
+
+        let replay = establish_or_transition_with_store(
+            &mut reopened,
+            &snapshot,
+            &installation_witness,
+            None,
+            2_000,
+            &store,
+        )
+        .unwrap();
+
+        assert_eq!(replay.authority.epoch_id, certificate.epoch_id);
+        assert_eq!(replay.protocol.schema_version, NATIVE_SCHEMA_VERSION);
+        for unsupported in [10, 13] {
+            assert!(
+                verify_native_genesis_certificate(&native_genesis_for_schema(
+                    &library_id,
+                    &snapshot,
+                    &key_pair,
+                    unsupported,
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn schema_v12_runtime_reopens_a_schema_v11_native_protocol_transition() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("library-core.sqlite");
+        let mut journal = LibraryCoreJournal::open(&path).unwrap();
+        let (key_pair, store) = generated_key_store();
+        let snapshot = native_snapshot();
+        let legacy = establish_with_key_pair(
+            &mut journal,
+            &synthetic_sqlite_legacy_revision(),
+            &key_pair,
+            1_700,
+        )
+        .unwrap();
+        let source = journal
+            .active_authority_epoch(&legacy.library_id)
+            .unwrap()
+            .unwrap();
+        let certificate = native_protocol_transition_for_schema(
+            &source,
+            &snapshot,
+            &key_pair,
+            HISTORICAL_NATIVE_SCHEMA_VERSION,
+        );
+        verify_native_protocol_transition(&certificate, &source).unwrap();
+        let (certificate_value, canonical_json) =
+            canonical_certificate(&certificate, "historical native transition").unwrap();
+        let transition = VerifiedAuthorityProtocolTransition {
+            library_id: legacy.library_id.clone(),
+            source_epoch: legacy.epoch,
+            source_epoch_id: legacy.epoch_id.clone(),
+            source_transition_certificate_digest: source.transition_certificate_digest.clone(),
+            protocol_transition_certificate_digest: digest_value(
+                "epoch-transition-certificate",
+                &certificate_value,
+            )
+            .unwrap(),
+            canonical_protocol_transition_certificate_json: canonical_json,
+            source_manifest_digest: certificate.certificate_body.source_manifest_digest.clone(),
+            accepted_at_ms: 1_900,
+        };
+        journal
+            .install_authority_protocol_transition(&transition)
+            .unwrap();
+        drop(journal);
+        let mut reopened = LibraryCoreJournal::open(&path).unwrap();
+
+        let replay = establish_or_transition_with_store(
+            &mut reopened,
+            &snapshot,
+            &"3".repeat(64),
+            None,
+            2_000,
+            &store,
+        )
+        .unwrap();
+
+        assert_eq!(
+            replay.protocol.native_protocol_certificate_digest,
+            transition.protocol_transition_certificate_digest
+        );
+        assert_eq!(replay.protocol.schema_version, NATIVE_SCHEMA_VERSION);
+        for unsupported in [10, 13] {
+            assert!(verify_native_protocol_transition(
+                &native_protocol_transition_for_schema(&source, &snapshot, &key_pair, unsupported,),
+                &source,
+            )
+            .is_err());
+        }
+    }
+
     #[test]
     fn fresh_sqlite_library_emits_native_genesis_and_checkpoint_protocol() {
         let (_directory, mut journal) = open_journal();
@@ -1802,7 +2003,7 @@ mod tests {
 
         assert_eq!(established.authority.epoch, 1);
         assert_eq!(established.protocol.active_engine, "library_core_v1");
-        assert_eq!(established.protocol.schema_version, 11);
+        assert_eq!(established.protocol.schema_version, 12);
         assert_eq!(established.protocol.replication_protocol, "op_segments_v1");
         assert_eq!(
             established.protocol.checkpoint_format,
@@ -1945,6 +2146,28 @@ mod tests {
                     actor_public_key,
                     enrollment_digest,
                     actor_chain,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_actor_capability_state (
+                   libraryId, epoch, epochId, actorId, certificateVersion,
+                   actorClass, allowedOperationTypesJson, scopeMode, scopeKind,
+                   scopeId, issuanceIdentity, retirementIdentity,
+                   capabilityCertificateDigest, issuedAtMs, retired,
+                   retirementCertificateDigest
+                 ) VALUES (
+                   ?1, ?2, ?3, ?4, 1, 'legacy_editor',
+                   '[\"account_remove\",\"account_upsert\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"person_remove_and_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_upsert\"]',
+                   'legacy_editor', NULL, NULL, NULL, NULL, ?5, 1000, 0, NULL
+                 );",
+                params![
+                    authority.library_id,
+                    authority.epoch,
+                    authority.epoch_id,
+                    actor_id,
+                    enrollment_digest,
                 ],
             )
             .unwrap();
