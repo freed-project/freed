@@ -9,8 +9,12 @@ mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg(unix)]
 mod library_core_bound_root;
+#[cfg(unix)]
+mod library_core_bound_sqlite_vfs;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
+#[cfg(unix)]
+mod library_core_desktop_binding;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
 mod library_core_hash;
@@ -33,6 +37,10 @@ pub use library_core_authority_genesis::{
     NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, SqliteAuthorityProtocolReceipt,
     WriterEpochReassignment,
 };
+#[cfg(unix)]
+pub use library_core_desktop_binding::{
+    desktop_binding, install_desktop_binding, LibraryCoreDesktopBinding,
+};
 pub use library_core_hash::lower_hex;
 pub use library_core_journal::{
     AcceptedAuthorityState, ActorState, FollowerIntentEnqueueReceipt,
@@ -49,8 +57,9 @@ pub use library_core_process_lease::{
 #[cfg(unix)]
 pub use library_core_sidecar::{run_library_authority_sidecar, LibraryCoreSidecarAuthority};
 pub use library_core_store::{
-    BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupOperationGuard,
-    LibraryCoreBackupReceipt, LibraryCoreCheckpointReference, LibraryCoreImportItem,
-    LibraryCoreStore, LibraryCoreStoreError, LibraryCoreStoreResult, LibraryCoreStoreStatus,
+    BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupChunk,
+    LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
+    LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore, LibraryCoreStoreError,
+    LibraryCoreStoreResult, LibraryCoreStoreStatus,
 };
 pub use product_projection::upsert_item;

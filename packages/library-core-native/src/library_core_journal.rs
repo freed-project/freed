@@ -17,6 +17,9 @@ use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
+#[cfg(unix)]
+use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
+
 #[path = "library_core_actor_capability.rs"]
 mod actor_capability;
 #[path = "library_core_journal_authority.rs"]
@@ -962,24 +965,41 @@ impl LibraryCoreJournal {
         Self::open_after_preflight(&resolved_path, existing_file)
     }
 
-    /// Opens one database name relative to a process working directory that
-    /// was pinned from an inherited directory descriptor before SQLite ran.
-    ///
-    /// The caller owns the process-wide working-directory invariant. This
-    /// entry point deliberately skips canonicalization so SQLite's database,
-    /// WAL, and shared-memory opens all resolve from that pinned directory
-    /// inode rather than from a cached macOS pathname.
     #[cfg(unix)]
-    pub(crate) fn open_bound_relative(file_name: &Path) -> JournalResult<Self> {
-        if file_name.components().count() != 1
-            || file_name.file_name() != Some(file_name.as_os_str())
-        {
-            return Err(JournalError::InvalidVerifiedInput {
-                field: "database_path",
-            });
+    pub(crate) fn open_bound(database: &BoundSqliteDatabase) -> JournalResult<Self> {
+        let read_flags = OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW
+            | OpenFlags::SQLITE_OPEN_EXRESCODE;
+        let existing_file = match database.open(read_flags) {
+            Ok(connection) => {
+                Self::configure_validation_connection(&connection)?;
+                Self::validate_existing_connection(&connection)?;
+                true
+            }
+            Err(rusqlite::Error::SqliteFailure(error, _))
+                if error.code == rusqlite::ErrorCode::CannotOpen =>
+            {
+                false
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW
+            | OpenFlags::SQLITE_OPEN_EXRESCODE;
+        if !existing_file {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
         }
-        let existing_file = Self::preflight_existing_file(file_name)?;
-        Self::open_after_preflight(file_name, existing_file)
+        let connection = database.open(flags)?;
+        Self::configure_validation_connection(&connection)?;
+        Self::validate_existing_connection(&connection)?;
+        let mut journal = Self { connection };
+        journal.configure()?;
+        journal.migrate()?;
+        Ok(journal)
     }
 
     /// Counts the runtime can report after opening.

@@ -7,7 +7,8 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use freed_library_core::{
-    upsert_item, BeginLibraryCoreImport, LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt,
+    upsert_item, BeginLibraryCoreImport, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
+    LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
     LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
     LibraryCoreStoreStatus,
 };
@@ -38,9 +39,9 @@ use super::library_core_journal::{
     VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
     VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
-use super::library_core_journal_runtime::journal_path;
-
 const BACKUP_DIRECTORY: &str = "library-backups";
+const JOURNAL_DIRECTORY: &str = "library-core";
+const JOURNAL_FILE: &str = "library-core.sqlite";
 const MAX_IMPORT_BATCH: usize = 1_000;
 const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
@@ -829,6 +830,21 @@ impl From<LibraryCoreBackupReceipt> for DesktopBackupSummary {
     }
 }
 
+impl From<LibraryCoreBackupRecord> for DesktopBackupSummary {
+    fn from(record: LibraryCoreBackupRecord) -> Self {
+        Self {
+            backup_id: record.backup_id,
+            file_name: record.file_name,
+            created_at_ms: record.created_at_ms,
+            revision: record.revision,
+            item_count: record.item_count,
+            reason: record.reason,
+            byte_length: record.byte_length,
+            sha256: record.sha256,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ReadDesktopBackupChunkRequest {
@@ -848,12 +864,76 @@ pub(super) struct DesktopBackupChunk {
     total_byte_length: u64,
 }
 
+impl From<NativeLibraryCoreBackupChunk> for DesktopBackupChunk {
+    fn from(chunk: NativeLibraryCoreBackupChunk) -> Self {
+        Self {
+            backup_id: chunk.backup_id,
+            bytes: chunk.bytes,
+            next_offset: chunk.next_offset,
+            offset: chunk.offset,
+            sha256: chunk.sha256,
+            total_byte_length: chunk.total_byte_length,
+        }
+    }
+}
+
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
 
+fn journal_path(root: &Path) -> PathBuf {
+    root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE)
+}
+
+#[cfg(unix)]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
+    match fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(path)?;
+        }
+        Err(error) => return Err(error),
+    }
+
+    let directory = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(path)?;
+    let metadata = directory.metadata()?;
+    if !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Library Core storage root is not a physical directory",
+        ));
+    }
+    if metadata.permissions().mode() & 0o7777 != 0o700 {
+        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+    }
+    if directory.metadata()?.permissions().mode() & 0o7777 != 0o700 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Library Core storage root is not private",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(path)
+}
+
 fn open_database_at(root: &Path) -> Result<Connection, String> {
-    fs::create_dir_all(root.join("library-core")).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding.connect().map_err(|error| error.to_string());
+    }
+    create_private_directory(&root.join(JOURNAL_DIRECTORY)).map_err(|error| error.to_string())?;
     let path = journal_path(root);
     drop(LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?);
     let connection = Connection::open(path).map_err(|error| error.to_string())?;
@@ -865,6 +945,22 @@ fn open_database_at(root: &Path) -> Result<Connection, String> {
         )
         .map_err(|error| error.to_string())?;
     Ok(connection)
+}
+
+fn open_journal_at(root: &Path) -> Result<LibraryCoreJournal, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding.open_journal().map_err(|error| error.to_string());
+    }
+    LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())
+}
+
+fn open_store_at(root: &Path) -> Result<LibraryCoreStore, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return Ok(binding.store().clone());
+    }
+    LibraryCoreStore::open(root).map_err(|error| error.to_string())
 }
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
@@ -933,8 +1029,7 @@ fn require_active(connection: &Connection) -> Result<(), String> {
 pub(super) fn sqlite_library_status(
     app: tauri::AppHandle,
 ) -> Result<Option<DesktopLibraryStatus>, String> {
-    let status: Option<DesktopLibraryStatus> = LibraryCoreStore::open(app_root(&app)?)
-        .map_err(|error| error.to_string())?
+    let status: Option<DesktopLibraryStatus> = open_store_at(&app_root(&app)?)?
         .status()
         .map_err(|error| error.to_string())?
         .map(Into::into);
@@ -1003,8 +1098,7 @@ fn begin_sqlite_library_import_at(root: &Path, request: BeginImportRequest) -> R
         (None, None, None) => None,
         _ => return Err("invalid SQLite Library import identity".into()),
     };
-    LibraryCoreStore::open(root)
-        .map_err(|error| error.to_string())?
+    open_store_at(root)?
         .begin_import(BeginLibraryCoreImport {
             source_generation: request.source_generation,
             source_revision: request.source_revision,
@@ -1056,8 +1150,7 @@ fn append_sqlite_library_import_at(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    LibraryCoreStore::open(root)
-        .map_err(|error| error.to_string())?
+    open_store_at(root)?
         .append_import_page(&items)
         .map_err(|error| error.to_string())
 }
@@ -1109,8 +1202,7 @@ pub(super) fn recover_sqlite_library_follower_overlay(
 fn replay_sqlite_library_follower_overlay_at(
     root: &Path,
 ) -> Result<FollowerOverlayReplayReceipt, String> {
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(root)?;
     journal
         .replay_pending_follower_overlay()
         .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))
@@ -1131,8 +1223,7 @@ fn finalize_sqlite_library_import_receipt_at(
     activated_at_ms: i64,
     follower_anchor: Option<&VerifiedFollowerAnchor>,
 ) -> Result<freed_library_core::FinalizeLibraryCoreImportReceipt, String> {
-    LibraryCoreStore::open(root)
-        .map_err(|error| error.to_string())?
+    open_store_at(root)?
         .finalize_import(activated_at_ms, follower_anchor)
         .map_err(|error| error.to_string())
 }
@@ -1457,8 +1548,7 @@ pub(super) fn prepare_sqlite_library_follower_actor_request(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let anchor = journal
         .follower_anchor()
         .map_err(|error| error.to_string())?
@@ -1527,8 +1617,7 @@ pub(super) fn install_sqlite_library_follower_actor_enrollment(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let enrollment = journal
         .verify_and_install_follower_actor(request.canonical_enrollment_certificate_json.as_bytes())
         .map_err(|error| format!("SQLite Library refused follower enrollment: {error}"))?;
@@ -1549,8 +1638,7 @@ pub(super) fn sign_sqlite_library_follower_operation(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     let enrollment = journal
         .follower_actor_enrollment(&request.library_id, &request.epoch_id, &request.actor_id)
         .map_err(|error| error.to_string())?
@@ -1604,8 +1692,7 @@ pub(super) fn enqueue_sqlite_library_follower_intent(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let receipt = journal
         .verify_and_enqueue_follower_intent(&canonical_envelopes, request.enqueued_at_ms)
         .map_err(|error| format!("SQLite Library refused follower intent: {error}"))?;
@@ -1621,8 +1708,7 @@ pub(super) fn sqlite_library_follower_intent_context(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     let Some(anchor) = journal
         .follower_anchor()
         .map_err(|error| error.to_string())?
@@ -1672,8 +1758,7 @@ pub(super) fn sqlite_library_follower_runtime_status(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     let FollowerRuntimeStatus {
         state,
         library_id,
@@ -1735,8 +1820,7 @@ pub(super) fn read_sqlite_library_follower_intent_outbox_candidate(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .follower_intent_outbox_candidate(
             request.maximum_operations,
@@ -1769,8 +1853,7 @@ pub(super) fn record_sqlite_library_follower_intent_publication(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .record_follower_intent_publication(&VerifiedFollowerIntentPublication {
             library_id: request.library_id,
@@ -1801,8 +1884,7 @@ pub(super) fn read_sqlite_library_follower_result_import_cursor(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .follower_result_import_cursor(&request.library_id, &request.epoch_id, &request.actor_id)
         .map(|cursor| {
@@ -1843,8 +1925,7 @@ pub(super) fn append_sqlite_library_follower_result_segment(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .append_follower_result_segment(&VerifiedFollowerResultSegment {
             library_id: request.library_id,
@@ -1901,7 +1982,6 @@ pub(super) fn bootstrap_sqlite_library_authority(
         return Err("SQLite Library authority bootstrap request is invalid".into());
     }
     let root = app_root(&app)?;
-    let path = journal_path(&root);
     let mut connection = open_database_at(&root)?;
     require_active(&connection)?;
     let (descriptor, source_generation, source_revision) =
@@ -1915,7 +1995,7 @@ pub(super) fn bootstrap_sqlite_library_authority(
         return Err("SQLite Library changed before authority bootstrap".into());
     }
 
-    let mut journal = LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let snapshot = NativeSqliteSourceSnapshot {
         source_digest: descriptor.source_digest,
         source_generation,
@@ -2020,8 +2100,7 @@ pub(super) fn reassign_sqlite_library_writer_epoch(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let reassigned = reassign_writer_epoch(
         &mut journal,
         &request.library_id,
@@ -2190,8 +2269,7 @@ pub(super) fn accept_pwa_actor_enrollment_request(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     let actor = countersign_pwa_actor_enrollment_request(
         &mut journal,
         request.canonical_request_json.as_bytes(),
@@ -2227,8 +2305,7 @@ pub(super) fn accept_pwa_intent_transaction(
         .iter()
         .map(|value| value.as_bytes().to_vec())
         .collect::<Vec<_>>();
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .accept_operation_transaction(&canonical_envelopes, request.committed_at_ms)
         .map_err(|error| error.to_string())
@@ -2244,8 +2321,7 @@ pub(super) fn read_pwa_intent_result_outbox(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .pending_intent_results(&request.library_id, &request.epoch_id, request.limit)
         .map_err(|error| error.to_string())
@@ -2261,8 +2337,7 @@ pub(super) fn acknowledge_pwa_intent_result_outbox(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let mut journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let mut journal = open_journal_at(&root)?;
     journal
         .acknowledge_intent_results(&request.result_operation_ids, request.acknowledged_at_ms)
         .map_err(|error| error.to_string())
@@ -2281,8 +2356,7 @@ pub(super) fn list_sqlite_library_actor_enrollments(
     let connection = open_database_at(&root)?;
     require_active(&connection)?;
     drop(connection);
-    let journal =
-        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let journal = open_journal_at(&root)?;
     journal
         .actor_states(&request.library_id, &request.epoch_id)
         .map_err(|error| error.to_string())?
@@ -3608,8 +3682,7 @@ fn create_sqlite_library_backup_at(
     created_at_ms: i64,
     reason: &str,
 ) -> Result<DesktopBackupSummary, String> {
-    let receipt = LibraryCoreStore::open(root)
-        .map_err(|error| error.to_string())?
+    let receipt = open_store_at(root)?
         .create_backup(created_at_ms, reason)
         .map_err(|error| error.to_string())?;
     log::info!(
@@ -3635,6 +3708,14 @@ fn acquire_sqlite_library_backup_operation(
 pub(super) fn list_sqlite_library_backups(
     app: tauri::AppHandle,
 ) -> Result<Vec<DesktopBackupSummary>, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .list_bound_backups()
+            .map(|records| records.into_iter().map(Into::into).collect())
+            .map_err(|error| error.to_string());
+    }
     let root = app_root(&app)?;
     let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
@@ -3683,7 +3764,6 @@ fn read_sqlite_library_backup_chunk_at(
     root: &Path,
     request: ReadDesktopBackupChunkRequest,
 ) -> Result<DesktopBackupChunk, String> {
-    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     if request.backup_id.is_empty()
         || request.backup_id.len() > 128
         || request.limit == 0
@@ -3691,6 +3771,15 @@ fn read_sqlite_library_backup_chunk_at(
     {
         return Err("invalid SQLite Library backup chunk request".into());
     }
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .read_bound_backup_chunk(&request.backup_id, request.offset, request.limit)
+            .map(Into::into)
+            .map_err(|error| error.to_string());
+    }
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let connection = open_database_at(root)?;
     require_active(&connection)?;
     let summary = connection
@@ -3759,6 +3848,14 @@ fn restore_sqlite_library_backup_at(
 ) -> Result<DesktopBackupSummary, String> {
     if backup_id.is_empty() || backup_id.len() > 256 {
         return Err("invalid SQLite Library backup identity".into());
+    }
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .restore_bound_backup(backup_id)
+            .map(Into::into)
+            .map_err(|error| error.to_string());
     }
     let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let database_path = journal_path(root);
@@ -3888,6 +3985,13 @@ pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), 
 }
 
 fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .clear_bound_backups()
+            .map_err(|error| error.to_string());
+    }
     let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
     let connection = open_database_at(root)?;
@@ -3907,6 +4011,13 @@ fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
 
 #[tauri::command]
 pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .store()
+            .clear_bound_all()
+            .map_err(|error| error.to_string());
+    }
     let root = app_root(&app)?;
     let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let path = journal_path(&root);
@@ -3941,6 +4052,83 @@ mod tests {
             .expect("system clock")
             .as_nanos();
         std::env::temp_dir().join(format!("freed-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn database_path_stays_under_the_private_library_directory() {
+        let root = temporary_root("sqlite-library-private-root");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let connection = open_database_at(&root).expect("open Library database");
+        drop(connection);
+
+        let path = journal_path(&root);
+        assert_eq!(
+            path,
+            root.join(JOURNAL_DIRECTORY).join(JOURNAL_FILE),
+            "the sole Desktop runtime must own the canonical database path",
+        );
+        assert!(path.is_file());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(path.parent().expect("Library directory"))
+                .expect("Library directory metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o700);
+        }
+
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_library_directory_is_corrected_to_private_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_root("sqlite-library-existing-permissions");
+        let directory = root.join(JOURNAL_DIRECTORY);
+        fs::create_dir_all(&directory).expect("create existing Library directory");
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))
+            .expect("make existing Library directory permissive");
+
+        let connection = open_database_at(&root).expect("open Library database");
+        drop(connection);
+
+        let mode = fs::metadata(&directory)
+            .expect("Library directory metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn library_directory_symlink_is_rejected_without_touching_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let root = temporary_root("sqlite-library-symlink-root");
+        let target = temporary_root("sqlite-library-symlink-target");
+        fs::create_dir_all(&root).expect("create temporary root");
+        fs::create_dir_all(&target).expect("create symlink target");
+        let sentinel = target.join("sentinel");
+        fs::write(&sentinel, b"unchanged").expect("write target sentinel");
+        symlink(&target, root.join(JOURNAL_DIRECTORY)).expect("link Library directory");
+
+        let error = open_database_at(&root).expect_err("symlink must be rejected");
+        assert!(!error.is_empty());
+        assert_eq!(
+            fs::read(&sentinel).expect("read target sentinel"),
+            b"unchanged"
+        );
+        assert!(!target.join(JOURNAL_FILE).exists());
+
+        fs::remove_dir_all(root).expect("remove temporary root");
+        fs::remove_dir_all(target).expect("remove symlink target");
     }
 
     #[test]

@@ -4,8 +4,7 @@ pub(super) use freed_library_core::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
     FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
     FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
-    JournalRuntimeStatus, LibraryCoreJournal, StoredFollowerActorEnrollment,
-    StoredFollowerActorRequest, VerifiedCausalTip, VerifiedFollowerAnchor,
-    VerifiedFollowerCheckpointActor, VerifiedFollowerIntentPublication,
-    VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
+    LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
+    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
+    VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
