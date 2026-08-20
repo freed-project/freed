@@ -7,6 +7,8 @@
 
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
+#[cfg(unix)]
+mod library_core_bound_root;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -15,6 +17,8 @@ mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 mod library_core_process_lease;
+#[cfg(unix)]
+mod library_core_sidecar;
 mod library_core_store;
 mod product_projection;
 
@@ -42,6 +46,8 @@ pub use library_core_journal::{
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
 };
+#[cfg(unix)]
+pub use library_core_sidecar::{run_library_authority_sidecar, LibraryCoreSidecarAuthority};
 pub use library_core_store::{
     BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupOperationGuard,
     LibraryCoreBackupReceipt, LibraryCoreCheckpointReference, LibraryCoreImportItem,

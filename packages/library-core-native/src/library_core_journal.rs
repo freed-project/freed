@@ -962,6 +962,26 @@ impl LibraryCoreJournal {
         Self::open_after_preflight(&resolved_path, existing_file)
     }
 
+    /// Opens one database name relative to a process working directory that
+    /// was pinned from an inherited directory descriptor before SQLite ran.
+    ///
+    /// The caller owns the process-wide working-directory invariant. This
+    /// entry point deliberately skips canonicalization so SQLite's database,
+    /// WAL, and shared-memory opens all resolve from that pinned directory
+    /// inode rather than from a cached macOS pathname.
+    #[cfg(unix)]
+    pub(crate) fn open_bound_relative(file_name: &Path) -> JournalResult<Self> {
+        if file_name.components().count() != 1
+            || file_name.file_name() != Some(file_name.as_os_str())
+        {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "database_path",
+            });
+        }
+        let existing_file = Self::preflight_existing_file(file_name)?;
+        Self::open_after_preflight(file_name, existing_file)
+    }
+
     /// Counts the runtime can report after opening.
     ///
     /// Deliberately cheap and read-only. This is the first observable evidence

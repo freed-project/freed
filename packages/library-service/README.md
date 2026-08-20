@@ -1,9 +1,9 @@
 # Freed Library service supervisor
 
 `@freed/library-service` is the fail-closed Node 24 host foundation for one
-headless Library Primary. It supervises one explicitly pinned native authority
-sidecar. Node never opens the Library SQLite database or acquires its data-root
-lease.
+headless Library Primary. It supervises the explicitly pinned
+`library-authority-sidecar` binary from `freed-library-core`. Node never opens
+the Library SQLite database or acquires its data-root lease.
 
 The compiled `freed-library` CLI currently provides three commands:
 
@@ -61,15 +61,57 @@ record identifier, never credential bytes:
 ```json
 {
   "schemaVersion": 1,
-  "backend": "os-vault",
+  "backend": "mounted-credential",
   "recordId": "freed-library-primary"
 }
 ```
 
-`backend` may be `os-vault` or `mounted-credential`. The descriptor identifies
-a record but cannot contain credential bytes. The sidecar must prove that both
-admission and credentials are usable in its bounded ready record. Missing or
-changed prerequisites stop startup with no surviving child process group.
+The supervisor accepts `os-vault` or `mounted-credential` as descriptor
+syntax. The current native sidecar supports only `mounted-credential` and
+fails closed for `os-vault` until task 11.5 provides the platform vault
+adapter. A mounted record lives at
+`<stateRoot>/mounted-credentials/<recordId>`. The directory must be a physical
+directory owned by the service user with mode `0700`. The record must be one
+physical file owned by the service user with mode `0600`, exactly one link,
+and 1 through 65,536 bytes. `recordId` is a bounded token, never a path.
+Absolute paths, separators, symlinks, hardlinks, broad modes, changed owners,
+and oversized records fail closed. Reads use one fixed-size zeroizing buffer,
+stop after the first byte beyond the limit, and recheck the same inode, owner,
+mode, link count, and exact size before readiness.
+
+`credentialsReady: true` proves only that the descriptor-bound sidecar could
+securely open and read the exact local mounted material, then zeroize its
+in-memory copy. The bytes remain opaque. The receipt does not prove that they
+match a generic secret format, a Drive credential format, Google Drive
+authentication, OAuth validity, cloud reachability, or writer admission. The
+sidecar never interprets a Drive token and makes no provider request in this
+slice. Generic or Drive-specific secret parsing remains unavailable until task
+11.5 defines and approves that contract.
+
+The admission record on fd6 is exact-shape JSON. It binds the operator's local
+Primary admission to the start envelope, executable, both inherited root
+identities, and the exact credential descriptor bytes:
+
+```json
+{
+  "format": "freed_library_service_admission_v1",
+  "schemaVersion": 1,
+  "role": "primary",
+  "configDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "executableDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "dataRootDevice": "1",
+  "dataRootInode": "2",
+  "stateRootDevice": "1",
+  "stateRootInode": "3",
+  "credentialDescriptorDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+}
+```
+
+`configDigest`, `executableDigest`, and `credentialDescriptorDigest` are
+lowercase SHA-256 digests of the exact bound bytes. Device and inode values are
+decimal strings. The sidecar proves EOF and rechecks exact file kind, device,
+inode, owner, mode, link count, and size after reading fd3, fd6, and fd7. Any
+drift stops startup before SQLite opens.
 
 Before `doctor` or `serve`, create
 `library-service-status.json` inside the state root as an empty file owned by
@@ -83,7 +125,22 @@ the verified executable, 4 is the data root, 5 is the state root, 6 is the
 admission record, 7 is the credential descriptor, and 8 is an anonymous
 lifetime pipe. A valid configuration cannot place service inputs beneath the
 data root. Node never opens SQLite or another declared authority data file. The
-future native sidecar owns SQLite and its process lease.
+native sidecar owns SQLite and its process lease. The sidecar derives its only
+authority and credential paths from those open descriptors. It does not accept
+paths, arguments, or environment variables from the supervisor.
+
+The native sidecar never converts fd4 into an authority pathname. It opens and
+locks `process.lock` with `openat(fd4)`, opens the physical `library-core`
+directory with `openat(fd4)` and `O_NOFOLLOW`, then pins that directory inode as
+the dedicated sidecar process working directory before SQLite starts. SQLite
+receives only the fixed relative database name, so its database, WAL, SHM, and
+rollback-journal opens remain on the pinned inode if the visible data-root path
+is renamed or replaced. The backup directory and each backup file are also
+opened relative to fd4. Backup bytes are copied through the already-open file
+descriptor. No code changes the process working directory after this bind.
+Retention deletes only metadata whose backup ID, creation time, and file name
+reconstruct one exact `sqlite-<nonnegative integer>.sqlite` leaf. Corrupt or
+path-shaped metadata stays visible for repair and cannot reach deletion.
 
 The startup control channel is inherited stdin and stdout. The supervisor
 writes one bounded start record and closes stdin. The sidecar writes one
@@ -99,3 +156,10 @@ A second signal sends an immediate group kill. Supervisor death closes the
 lifetime pipe, which the verified sidecar must treat as a shutdown command.
 Status and doctor output use only fixed reason codes and never include paths,
 child output, or credential values.
+
+On successful startup the native sidecar holds the data-root lease before it
+opens SQLite, constructs the reusable staged checkpoint, status, and closed
+backup authority, writes exactly one secret-free ready record, closes stdout,
+and waits on fd8. This slice adds no socket or public listener. SQLite, WAL,
+SHM, rollback journals, and backups stay beneath the descriptor-bound data
+root and never enter service state or transport.

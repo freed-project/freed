@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound native sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -76,8 +76,8 @@ The current product already provides the protocol foundation:
 - `freed-library-core` now owns the native signed journal, SQLite authority
   schema and migrations, actor enrollment, authority epochs, exact product
   projection, staged logical checkpoint activation, exact local status,
-  closed backup receipts, and process lease without importing Tauri or
-  selecting a credential backend.
+  closed backup receipts, process lease, and fixed-fd authority sidecar without
+  importing Tauri or contacting a provider.
 - Native schema v12 binds every actor to an explicit operation capability.
   Existing v1 actors receive one fixed 14-operation legacy editor policy. New
   v2 editor, scraper, and agent certificates bind an exact operation subset,
@@ -92,10 +92,16 @@ The current product already provides the protocol foundation:
   commands never open SQLite or start social provider work.
 
 These pieces do not yet create a complete headless authority. Drive credentials
-remain owned by the Freed Desktop renderer, and no production native sidecar
-yet consumes the reusable core through descriptor-bound authority and lease
-entry points. The next work adds that sidecar and credential boundary without
-changing the wire protocol.
+remain owned by the Freed Desktop renderer. The native sidecar now consumes
+the reusable core through descriptor-bound authority and lease entry points,
+but it exposes no checkpoint command ingress or cloud coordinator yet. Its
+mounted credential proof establishes only that bounded private local material
+is exactly readable through a fixed zeroizing buffer. Growth beyond the bound,
+partial read failure, or post-read identity or metadata drift fails closed. The
+secret bytes remain opaque. The receipt does not claim a generic secret format, Drive
+credential validity, Drive authentication, or cloud readiness. Generic and
+Drive-specific secret parsing remain unavailable until task 11.5 defines and
+approves that contract.
 
 The checkpoint store extraction is consumed by Freed Desktop through its
 existing Tauri command DTOs. It stages bounded pages beside the active Library,
@@ -106,8 +112,23 @@ falsely reporting that the committed activation failed. Closed
 integrity-checked backups bind exact bytes, revision, item count, and retention
 state in the native receipt. Freed Desktop preserves its existing command DTOs
 and logs either pending condition for its existing recovery commands. This is
-reusable native substrate for task 11.6. It does not claim that the
-descriptor-bound sidecar or installed headless import has shipped.
+reusable native substrate for task 11.6. The descriptor-bound sidecar now
+constructs that substrate after acquiring the process lease, but installed
+headless checkpoint import remains unshipped.
+
+The macOS and Linux sidecar authority never reopens fd4 through a discovered
+pathname. It opens the process lease and private child directories relative to
+fd4, pins the physical `library-core` directory inode as the dedicated process
+working directory before SQLite opens, and gives SQLite only a fixed relative
+database name. WAL, SHM, rollback journals, status, imports, and later
+connections therefore stay on that inode across a data-root rename or path
+replacement. Backups are created through an already-open fd4-relative file
+descriptor. Deterministic replacement tests cover changes both before and
+after authority open and prove the replacement root remains untouched.
+Startup also proves EOF and exact post-read metadata for fd3, fd6, and fd7.
+Backup retention accepts only an exact internal backup ID, time, and leaf-name
+binding before deletion, so corrupt path-shaped metadata cannot escape the
+already-open backup directory or delete the live database.
 
 ---
 
@@ -170,6 +191,17 @@ coordinator is responsible for:
 `packages/library-service` will provide a Node supervisor and a single native
 authority sidecar. Only the sidecar opens SQLite and holds the local process
 lease. The first production service exposes no public network listener.
+
+The current sidecar protocol uses only stdin, stdout, and fixed inherited file
+descriptors 3 through 8. One strict v1 admission record binds the exact start
+envelope, executable digest, data and state root identities, and credential
+descriptor digest. Only private bounded mounted credential material is
+accepted today. `os-vault`, Drive OAuth, cloud writer readiness, and every
+provider request fail closed or remain absent until task 11.5. A true ready
+receipt means only that the private physical record was securely and exactly
+readable through a fixed buffer that is zeroized on success and failure. Its opaque bytes are not
+parsed in this slice. It is not a secret-validation or cloud-authentication
+receipt.
 
 Planned commands:
 
@@ -384,7 +416,7 @@ review before implementation.
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; consume them from the descriptor-bound native sidecar |
+| 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; construct them behind the descriptor-bound native sidecar, then add installed headless checkpoint ingress |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
 | 11.8 | Complete | Enforce actor capability certificates and the fixed legacy editor policy in native SQLite and PWA IndexedDB, with production issuance dormant |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |

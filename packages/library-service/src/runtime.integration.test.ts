@@ -4,10 +4,12 @@ import {
   chmod,
   mkdtemp,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -26,6 +28,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const fixtures: string[] = [];
+let nativeSidecarBuild: Promise<string> | null = null;
 const darwinIt = process.platform === "darwin" ? it : it.skip;
 const linuxIt = process.platform === "linux" ? it : it.skip;
 const posixIt =
@@ -39,6 +42,21 @@ async function privateTemporaryRoot(prefix: string): Promise<string> {
   fixtures.push(fixture);
   await chmod(fixture, 0o700);
   return fixture;
+}
+
+async function nativeSidecarExecutable(): Promise<string> {
+  nativeSidecarBuild ??= (async () => {
+    const nativeRoot = path.resolve("../library-core-native");
+    await execFileAsync(
+      "cargo",
+      ["build", "--bin", "library-authority-sidecar"],
+      { cwd: nativeRoot },
+    );
+    return realpath(
+      path.join(nativeRoot, "target", "debug", "library-authority-sidecar"),
+    );
+  })();
+  return nativeSidecarBuild;
 }
 
 async function createServiceFixture(): Promise<{
@@ -272,6 +290,99 @@ async function createHarnessFixture(
   };
 }
 
+async function createNativeSidecarFixture(input: {
+  backend?: "mounted-credential" | "os-vault";
+  admissionDigestOverride?: string;
+} = {}): Promise<{
+  dataRoot: string;
+  stateRoot: string;
+  supervisorArgs: string[];
+}> {
+  const fixtureRoot = await privateTemporaryRoot("freed-library-native-sidecar-");
+  const dataRoot = path.join(fixtureRoot, "data");
+  const stateRoot = path.join(fixtureRoot, "state");
+  const mountedRoot = path.join(stateRoot, "mounted-credentials");
+  await Promise.all([
+    mkdir(dataRoot, { mode: 0o700 }),
+    mkdir(stateRoot, { mode: 0o700 }),
+  ]);
+  await mkdir(mountedRoot, { mode: 0o700 });
+  const sidecar = await nativeSidecarExecutable();
+  const admission = path.join(stateRoot, "admission.json");
+  const credential = path.join(stateRoot, "credentials.json");
+  const status = path.join(stateRoot, "library-service-status.json");
+  const config = path.join(fixtureRoot, "service.json");
+  const recordId = "fixture-primary";
+  const credentialBytes = Buffer.from(
+    `${JSON.stringify({
+      schemaVersion: 1,
+      backend: input.backend ?? "mounted-credential",
+      recordId,
+    })}\n`,
+  );
+  await Promise.all([
+    writeFile(credential, credentialBytes, { mode: 0o600 }),
+    writeFile(status, "", { mode: 0o600 }),
+    writeFile(path.join(mountedRoot, recordId), "opaque-local-material", {
+      mode: 0o600,
+    }),
+  ]);
+  const executableDigest = createHash("sha256")
+    .update(await readFile(sidecar))
+    .digest("hex");
+  const configBytes = Buffer.from(
+    `${JSON.stringify({
+      schemaVersion: 1,
+      role: "primary",
+      dataRoot,
+      stateRoot,
+      admissionFile: admission,
+      credentialDescriptorFile: credential,
+      sidecar: {
+        executable: sidecar,
+        sha256: executableDigest,
+        startupTimeoutMs: 5_000,
+        shutdownTimeoutMs: 1_000,
+      },
+    })}\n`,
+  );
+  await writeFile(config, configBytes, { mode: 0o600 });
+  const [dataIdentity, stateIdentity] = await Promise.all([
+    stat(dataRoot, { bigint: true }),
+    stat(stateRoot, { bigint: true }),
+  ]);
+  await writeFile(
+    admission,
+    `${JSON.stringify({
+      format: "freed_library_service_admission_v1",
+      schemaVersion: 1,
+      role: "primary",
+      configDigest: createHash("sha256").update(configBytes).digest("hex"),
+      executableDigest,
+      dataRootDevice: String(dataIdentity.dev),
+      dataRootInode: String(dataIdentity.ino),
+      stateRootDevice: String(stateIdentity.dev),
+      stateRootInode: String(stateIdentity.ino),
+      credentialDescriptorDigest:
+        input.admissionDigestOverride ??
+        createHash("sha256").update(credentialBytes).digest("hex"),
+    })}\n`,
+    { mode: 0o600 },
+  );
+  return {
+    dataRoot,
+    stateRoot,
+    supervisorArgs: [
+      config,
+      sidecar,
+      dataRoot,
+      stateRoot,
+      admission,
+      credential,
+    ],
+  };
+}
+
 function launchHarness(args: readonly string[]): {
   child: ChildProcess;
   ready: Promise<{ sidecarPid: number }>;
@@ -387,6 +498,35 @@ function launchSupervisorHarness(args: readonly string[]): {
   return { child, ready };
 }
 
+async function runSupervisorHarnessOnce(args: readonly string[]): Promise<{
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}> {
+  const harnessPath = path.resolve(
+    "src/testing/fixtures/supervisor-runtime-harness.mjs",
+  );
+  const child = spawn(process.execPath, [harnessPath, ...args], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout!.setEncoding("utf8");
+  child.stderr!.setEncoding("utf8");
+  child.stdout!.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr!.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", resolve);
+  });
+  return { code, stdout, stderr };
+}
+
 async function processTable(): Promise<
   Array<{ pid: number; ppid: number; pgid: number; state: string }>
 > {
@@ -437,6 +577,93 @@ afterEach(async () => {
 });
 
 describe("compiled freed-library runtime", () => {
+  darwinIt(
+    "runs the real descriptor-bound native sidecar with one lease and no SQLite transport",
+    async () => {
+      const { dataRoot, stateRoot, supervisorArgs } =
+        await createNativeSidecarFixture();
+      const { child, ready } = launchSupervisorHarness(supervisorArgs);
+      const { sidecarPid } = await ready;
+      expect(sidecarPid).toBeGreaterThan(0);
+      expect(
+        await stat(
+          path.join(dataRoot, "library-core", "library-core.sqlite"),
+        ),
+      ).toBeDefined();
+      const stateFiles = await readdir(stateRoot, { recursive: true });
+      expect(
+        stateFiles.filter((file) => /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file)),
+      ).toEqual([]);
+
+      const competitor = await runSupervisorHarnessOnce(supervisorArgs);
+      expect(competitor.code).toBe(2);
+      expect(competitor.stdout).toBe("");
+      expect(JSON.parse(competitor.stderr)).toMatchObject({
+        type: "supervisor-failed",
+        code: expect.stringMatching(/^(?:sidecar_exited|ready_response_lost)$/),
+      });
+
+      child.stdin!.end("stop\n");
+      await waitForHarnessExit(child);
+      await waitForGone([sidecarPid]);
+      expect(child.exitCode).toBe(0);
+    },
+    30_000,
+  );
+
+  darwinIt(
+    "keeps the real sidecar lease and SQLite on fd4 after its visible root is replaced",
+    async () => {
+      const { dataRoot, supervisorArgs } = await createNativeSidecarFixture();
+      const { child, ready } = launchSupervisorHarness(supervisorArgs);
+      const { sidecarPid } = await ready;
+      const movedRoot = path.join(path.dirname(dataRoot), "moved-data");
+      await rename(dataRoot, movedRoot);
+      await mkdir(dataRoot, { mode: 0o700 });
+
+      expect(await stat(path.join(movedRoot, "process.lock"))).toBeDefined();
+      expect(
+        await stat(
+          path.join(movedRoot, "library-core", "library-core.sqlite"),
+        ),
+      ).toBeDefined();
+      await expect(stat(path.join(dataRoot, "process.lock"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(stat(path.join(dataRoot, "library-core"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      child.stdin!.end("stop\n");
+      await waitForHarnessExit(child);
+      await waitForGone([sidecarPid]);
+      expect(child.exitCode).toBe(0);
+    },
+    30_000,
+  );
+
+  darwinIt.each([
+    ["unsupported backend", { backend: "os-vault" as const }],
+    ["admission digest drift", { admissionDigestOverride: "f".repeat(64) }],
+  ])(
+    "fails the real native sidecar closed for %s before ready",
+    async (_label, input) => {
+      const { dataRoot, supervisorArgs } =
+        await createNativeSidecarFixture(input);
+      const result = await runSupervisorHarnessOnce(supervisorArgs);
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr)).toMatchObject({
+        type: "supervisor-failed",
+        code: expect.stringMatching(/^(?:sidecar_exited|ready_response_lost)$/),
+      });
+      await expect(
+        stat(path.join(dataRoot, "library-core", "library-core.sqlite")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+    30_000,
+  );
+
   darwinIt(
     "keeps doctor and status read-only with a root-owned pinned executable",
     async () => {

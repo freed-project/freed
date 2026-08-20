@@ -1,13 +1,26 @@
 use crate::{
     upsert_item, FollowerOverlayReplayReceipt, LibraryCoreJournal, VerifiedFollowerAnchor,
 };
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{
+    backup::Backup, params, Connection, OpenFlags, OptionalExtension, TransactionBehavior,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::Read;
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+#[cfg(unix)]
+use std::os::unix::fs::{FileExt, MetadataExt};
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::sync::Arc;
+#[cfg(unix)]
+use std::time::Duration;
+
+#[cfg(unix)]
+use crate::library_core_bound_root::LibraryCoreBoundRoot;
 
 const LIBRARY_DIRECTORY: &str = "library-core";
 const LIBRARY_FILE: &str = "library-core.sqlite";
@@ -129,6 +142,41 @@ struct StagedImport {
 #[derive(Debug, Clone)]
 pub struct LibraryCoreStore {
     root: PathBuf,
+    #[cfg(unix)]
+    bound: Option<Arc<BoundStoreRoot>>,
+}
+
+#[cfg(unix)]
+#[derive(Debug)]
+struct BoundStoreRoot {
+    previous_working_directory: OwnedFd,
+    library_directory: OwnedFd,
+    backup_directory: OwnedFd,
+    library_device: u64,
+    library_inode: u64,
+}
+
+#[cfg(unix)]
+impl BoundStoreRoot {
+    fn assert_current(&self) -> LibraryCoreStoreResult<()> {
+        let current = open_directory_at(libc::AT_FDCWD, ".")?;
+        let metadata = File::from(current).metadata()?;
+        if metadata.dev() != self.library_device || metadata.ino() != self.library_inode {
+            return Err(LibraryCoreStoreError(
+                "descriptor-bound Library working directory changed".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+impl Drop for BoundStoreRoot {
+    fn drop(&mut self) {
+        unsafe {
+            libc::fchdir(self.previous_working_directory.as_raw_fd());
+        }
+    }
 }
 
 pub struct LibraryCoreBackupOperationGuard {
@@ -153,7 +201,38 @@ impl LibraryCoreStore {
             LibraryCoreJournal::open(&database_path(&root))
                 .map_err(|error| LibraryCoreStoreError(error.to_string()))?,
         );
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            #[cfg(unix)]
+            bound: None,
+        })
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn open_bound(root: &LibraryCoreBoundRoot) -> LibraryCoreStoreResult<Self> {
+        let library_directory = root.open_or_create_private_directory(LIBRARY_DIRECTORY)?;
+        let backup_directory = root.open_or_create_private_directory(BACKUP_DIRECTORY)?;
+        let previous_working_directory = open_directory_at(libc::AT_FDCWD, ".")?;
+        let metadata = File::from(library_directory.try_clone()?).metadata()?;
+        if unsafe { libc::fchdir(library_directory.as_raw_fd()) } < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let bound = Arc::new(BoundStoreRoot {
+            previous_working_directory,
+            library_directory,
+            backup_directory,
+            library_device: metadata.dev(),
+            library_inode: metadata.ino(),
+        });
+        bound.assert_current()?;
+        drop(
+            LibraryCoreJournal::open_bound_relative(Path::new(LIBRARY_FILE))
+                .map_err(|error| LibraryCoreStoreError(error.to_string()))?,
+        );
+        Ok(Self {
+            root: PathBuf::from("."),
+            bound: Some(bound),
+        })
     }
 
     pub fn status(&self) -> LibraryCoreStoreResult<Option<LibraryCoreStoreStatus>> {
@@ -491,6 +570,10 @@ impl LibraryCoreStore {
         created_at_ms: i64,
         reason: &str,
     ) -> LibraryCoreStoreResult<LibraryCoreBackupReceipt> {
+        #[cfg(unix)]
+        if self.bound.is_some() {
+            return self.create_bound_backup(created_at_ms, reason);
+        }
         self.create_backup_with_hooks(
             created_at_ms,
             reason,
@@ -620,21 +703,25 @@ impl LibraryCoreStore {
                 return Err(error.into());
             }
         }
-        let expired = (|| -> rusqlite::Result<Vec<String>> {
+        let expired = (|| -> rusqlite::Result<Vec<(String, i64, String)>> {
             let mut statement = connection.prepare(
-                "SELECT fileName FROM library_core_desktop_backups
+                "SELECT backupId, createdAtMs, fileName FROM library_core_desktop_backups
                  WHERE backupId != ?1
                  ORDER BY createdAtMs DESC, backupId DESC LIMIT -1 OFFSET ?2;",
             )?;
             let files = statement
                 .query_map(params![backup_id, RETAINED_BACKUP_COUNT - 1], |row| {
-                    row.get::<_, String>(0)
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(files)
         })();
         let mut retention_pending = expired.is_err();
-        for expired_file in expired.unwrap_or_default() {
+        for (expired_id, expired_at_ms, expired_file) in expired.unwrap_or_default() {
+            if !valid_internal_backup_metadata(&expired_id, expired_at_ms, &expired_file) {
+                retention_pending = true;
+                continue;
+            }
             match fs::remove_file(backup_directory.join(&expired_file)) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -667,6 +754,14 @@ impl LibraryCoreStore {
     }
 
     fn connect(&self) -> LibraryCoreStoreResult<Connection> {
+        #[cfg(unix)]
+        let connection = if let Some(bound) = &self.bound {
+            bound.assert_current()?;
+            Connection::open(Path::new(LIBRARY_FILE))?
+        } else {
+            Connection::open(database_path(&self.root))?
+        };
+        #[cfg(not(unix))]
         let connection = Connection::open(database_path(&self.root))?;
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
@@ -675,10 +770,188 @@ impl LibraryCoreStore {
         )?;
         Ok(connection)
     }
+
+    #[cfg(unix)]
+    fn create_bound_backup(
+        &self,
+        created_at_ms: i64,
+        reason: &str,
+    ) -> LibraryCoreStoreResult<LibraryCoreBackupReceipt> {
+        if created_at_ms < 0 {
+            return Err(LibraryCoreStoreError(
+                "invalid SQLite Library backup time".into(),
+            ));
+        }
+        if reason != "auto" && reason != "manual" {
+            return Err(LibraryCoreStoreError(
+                "invalid SQLite Library backup reason".into(),
+            ));
+        }
+        let bound = self.bound.as_ref().ok_or_else(|| {
+            LibraryCoreStoreError("descriptor-bound backup root is absent".into())
+        })?;
+        bound.assert_current()?;
+        let _backup_lock =
+            BoundFileLock::acquire(bound.library_directory.as_raw_fd(), BACKUP_LOCK_FILE)?;
+        let backup_id = format!("sqlite-{created_at_ms}");
+        let file_name = format!("{backup_id}.sqlite");
+        let destination_file =
+            open_new_private_file_at(bound.backup_directory.as_raw_fd(), &file_name)?;
+        let destination_path = descriptor_file_path(destination_file.as_raw_fd());
+        let connection = self.connect()?;
+        require_active(&connection)?;
+
+        let prepared = (|| -> LibraryCoreStoreResult<(i64, i64, u64, String)> {
+            let mut destination = Connection::open_with_flags(
+                &destination_path,
+                OpenFlags::SQLITE_OPEN_READ_WRITE
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                    | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                    | OpenFlags::SQLITE_OPEN_EXRESCODE,
+            )?;
+            destination.execute_batch(
+                "PRAGMA journal_mode = OFF;
+                 PRAGMA locking_mode = EXCLUSIVE;",
+            )?;
+            let backup = Backup::new(&connection, &mut destination)?;
+            backup.run_to_completion(100, Duration::from_millis(1), None)?;
+            drop(backup);
+            drop(destination);
+            destination_file.sync_all()?;
+            let check = Connection::open_with_flags(
+                descriptor_immutable_uri(destination_file.as_raw_fd()),
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | OpenFlags::SQLITE_OPEN_URI
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                    | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                    | OpenFlags::SQLITE_OPEN_EXRESCODE,
+            )?;
+            require_integrity(&check).map_err(|error| {
+                LibraryCoreStoreError(format!("SQLite Library backup integrity failed: {error}"))
+            })?;
+            let (revision, item_count) = check.query_row(
+                "SELECT
+                   (SELECT revision FROM library_core_desktop_state WHERE singletonId = 1),
+                   (SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL);",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )?;
+            drop(check);
+            let byte_length = destination_file.metadata()?.len();
+            let sha256 = sha256_open_file(&destination_file)?;
+            Ok((revision, item_count, byte_length, sha256))
+        })();
+        let (revision, item_count, byte_length, sha256) = match prepared {
+            Ok(value) => value,
+            Err(error) => {
+                drop(destination_file);
+                let _ = unlink_file_at(bound.backup_directory.as_raw_fd(), &file_name);
+                return Err(error);
+            }
+        };
+        let byte_length_i64 = match i64::try_from(byte_length) {
+            Ok(value) => value,
+            Err(_) => {
+                drop(destination_file);
+                let _ = unlink_file_at(bound.backup_directory.as_raw_fd(), &file_name);
+                return Err(LibraryCoreStoreError("backup is too large".into()));
+            }
+        };
+        let inserted = connection.execute(
+            "INSERT INTO library_core_desktop_backups (
+               backupId, createdAtMs, revision, itemCount, reason, fileName, byteLength, sha256
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
+            params![
+                backup_id,
+                created_at_ms,
+                revision,
+                item_count,
+                reason,
+                file_name,
+                byte_length_i64,
+                sha256,
+            ],
+        );
+        if !matches!(inserted, Ok(1)) {
+            drop(destination_file);
+            let _ = unlink_file_at(bound.backup_directory.as_raw_fd(), &file_name);
+            return match inserted {
+                Ok(_) => Err(LibraryCoreStoreError(
+                    "SQLite Library backup metadata was not stored".into(),
+                )),
+                Err(error) => Err(error.into()),
+            };
+        }
+        let expired = (|| -> rusqlite::Result<Vec<(String, i64, String)>> {
+            let mut statement = connection.prepare(
+                "SELECT backupId, createdAtMs, fileName FROM library_core_desktop_backups
+                 WHERE backupId != ?1
+                 ORDER BY createdAtMs DESC, backupId DESC LIMIT -1 OFFSET ?2;",
+            )?;
+            let files = statement
+                .query_map(params![backup_id, RETAINED_BACKUP_COUNT - 1], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(files)
+        })();
+        let mut retention_pending = expired.is_err();
+        for (expired_id, expired_at_ms, expired_file) in expired.unwrap_or_default() {
+            if !valid_internal_backup_metadata(&expired_id, expired_at_ms, &expired_file) {
+                retention_pending = true;
+                continue;
+            }
+            if unlink_file_at(bound.backup_directory.as_raw_fd(), &expired_file).is_err() {
+                retention_pending = true;
+                continue;
+            }
+            if connection
+                .execute(
+                    "DELETE FROM library_core_desktop_backups WHERE fileName = ?1;",
+                    [&expired_file],
+                )
+                .is_err()
+            {
+                retention_pending = true;
+            }
+        }
+        drop(destination_file);
+        Ok(LibraryCoreBackupReceipt {
+            backup_id,
+            file_name,
+            created_at_ms,
+            revision,
+            item_count,
+            reason: reason.to_string(),
+            byte_length,
+            sha256,
+            retention_pending,
+        })
+    }
 }
 
 fn database_path(root: &Path) -> PathBuf {
     root.join(LIBRARY_DIRECTORY).join(LIBRARY_FILE)
+}
+
+fn valid_internal_backup_file_name(name: &str) -> bool {
+    let Some(identifier) = name
+        .strip_prefix("sqlite-")
+        .and_then(|value| value.strip_suffix(".sqlite"))
+    else {
+        return false;
+    };
+    let Ok(created_at_ms) = identifier.parse::<i64>() else {
+        return false;
+    };
+    created_at_ms >= 0 && format!("sqlite-{created_at_ms}.sqlite") == name
+}
+
+fn valid_internal_backup_metadata(backup_id: &str, created_at_ms: i64, file_name: &str) -> bool {
+    created_at_ms >= 0
+        && backup_id == format!("sqlite-{created_at_ms}")
+        && file_name == format!("{backup_id}.sqlite")
+        && valid_internal_backup_file_name(file_name)
 }
 
 fn acquire_backup_lock(directory: &Path) -> LibraryCoreStoreResult<fslock::LockFile> {
@@ -689,6 +962,155 @@ fn acquire_backup_lock(directory: &Path) -> LibraryCoreStoreResult<fslock::LockF
         ));
     }
     Ok(lock)
+}
+
+#[cfg(unix)]
+struct BoundFileLock {
+    file: File,
+}
+
+#[cfg(unix)]
+impl BoundFileLock {
+    fn acquire(directory: RawFd, name: &str) -> LibraryCoreStoreResult<Self> {
+        let file = open_private_lock_file_at(directory, name)?;
+        let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if result < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::WouldBlock {
+                return Err(LibraryCoreStoreError(
+                    "SQLite Library backup operation is already in progress".into(),
+                ));
+            }
+            return Err(error.into());
+        }
+        Ok(Self { file })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for BoundFileLock {
+    fn drop(&mut self) {
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn open_directory_at(parent: RawFd, name: &str) -> LibraryCoreStoreResult<OwnedFd> {
+    let name = std::ffi::CString::new(name)
+        .map_err(|_| LibraryCoreStoreError("invalid bound directory name".into()))?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent,
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(descriptor) })
+}
+
+#[cfg(unix)]
+fn open_private_lock_file_at(parent: RawFd, name: &str) -> LibraryCoreStoreResult<File> {
+    let name = std::ffi::CString::new(name)
+        .map_err(|_| LibraryCoreStoreError("invalid bound lock name".into()))?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent,
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            0o600,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let file = unsafe { File::from_raw_fd(descriptor) };
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o7777 != 0o600
+        || metadata.nlink() != 1
+    {
+        return Err(LibraryCoreStoreError(
+            "descriptor-bound lock file is not private".into(),
+        ));
+    }
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn open_new_private_file_at(parent: RawFd, name: &str) -> LibraryCoreStoreResult<File> {
+    let name = std::ffi::CString::new(name)
+        .map_err(|_| LibraryCoreStoreError("invalid bound backup name".into()))?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent,
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            0o600,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(unsafe { File::from_raw_fd(descriptor) })
+}
+
+#[cfg(unix)]
+fn unlink_file_at(parent: RawFd, name: &str) -> std::io::Result<()> {
+    let name = std::ffi::CString::new(name)
+        .map_err(|_| std::io::Error::other("invalid bound backup name"))?;
+    if unsafe { libc::unlinkat(parent, name.as_ptr(), 0) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn descriptor_file_path(descriptor: RawFd) -> PathBuf {
+    Path::new("/dev/fd").join(descriptor.to_string())
+}
+
+#[cfg(unix)]
+fn descriptor_immutable_uri(descriptor: RawFd) -> String {
+    format!(
+        "file:{}?immutable=1",
+        descriptor_file_path(descriptor).display()
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn descriptor_file_path(descriptor: RawFd) -> PathBuf {
+    Path::new("/proc/self/fd").join(descriptor.to_string())
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn descriptor_file_path(descriptor: RawFd) -> PathBuf {
+    Path::new("/dev/fd").join(descriptor.to_string())
+}
+
+#[cfg(unix)]
+fn sha256_open_file(file: &File) -> LibraryCoreStoreResult<String> {
+    let length = file.metadata()?.len();
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0u8; 64 * 1_024];
+    let mut offset = 0u64;
+    while offset < length {
+        let remaining = (length - offset).min(buffer.len() as u64) as usize;
+        let count = file.read_at(&mut buffer[..remaining], offset)?;
+        if count == 0 {
+            return Err(LibraryCoreStoreError(
+                "descriptor-bound backup ended early".into(),
+            ));
+        }
+        digest.update(&buffer[..count]);
+        offset += count as u64;
+    }
+    Ok(crate::lower_hex(&digest.finalize()))
 }
 
 #[cfg(unix)]
@@ -779,7 +1201,19 @@ fn sha256_file(path: &Path) -> LibraryCoreStoreResult<String> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::os::fd::AsRawFd;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::process::Command;
+
     use super::*;
+
+    #[cfg(unix)]
+    const BOUND_RETENTION_HELPER_ROOT: &str = "FREED_BOUND_RETENTION_HELPER_ROOT";
+    #[cfg(unix)]
+    const BOUND_RETENTION_HELPER_CASE: &str = "FREED_BOUND_RETENTION_HELPER_CASE";
 
     fn active_store() -> (tempfile::TempDir, LibraryCoreStore) {
         let directory = tempfile::TempDir::new().expect("create store root");
@@ -804,6 +1238,178 @@ mod tests {
             .expect("append import");
         store.finalize_import(102, None).expect("finalize import");
         (directory, store)
+    }
+
+    #[test]
+    fn backup_file_names_accept_only_exact_internal_leaves() {
+        assert!(valid_internal_backup_file_name("sqlite-0.sqlite"));
+        assert!(valid_internal_backup_file_name(
+            "sqlite-9223372036854775807.sqlite"
+        ));
+        assert!(valid_internal_backup_metadata(
+            "sqlite-17",
+            17,
+            "sqlite-17.sqlite"
+        ));
+        assert!(!valid_internal_backup_metadata(
+            "different-id",
+            17,
+            "sqlite-17.sqlite"
+        ));
+        for invalid in [
+            "../library-core.sqlite",
+            "/tmp/sqlite-1.sqlite",
+            "nested/sqlite-1.sqlite",
+            "not-a-backup.sqlite",
+            "sqlite--1.sqlite",
+            "sqlite-9223372036854775808.sqlite",
+            "sqlite-01.sqlite",
+            "sqlite-1.sqlite.bak",
+        ] {
+            assert!(
+                !valid_internal_backup_file_name(invalid),
+                "accepted invalid backup leaf {invalid:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bound_retention_tamper_helper() {
+        let Ok(root_value) = std::env::var(BOUND_RETENTION_HELPER_ROOT) else {
+            return;
+        };
+        let case = std::env::var(BOUND_RETENTION_HELPER_CASE).expect("retention helper case");
+        let root = PathBuf::from(root_value);
+        let fixture = root.parent().expect("fixture directory");
+        let external_sentinel = fixture.join("external-sentinel");
+        let parent_sentinel = root.join(LIBRARY_FILE);
+        let nested_directory = root.join(BACKUP_DIRECTORY).join("nested");
+        let nested_sentinel = nested_directory.join("sentinel");
+        fs::create_dir_all(&nested_directory).expect("create nested sentinel directory");
+        fs::set_permissions(
+            root.join(BACKUP_DIRECTORY),
+            fs::Permissions::from_mode(0o700),
+        )
+        .expect("set backup directory permissions");
+        fs::write(&external_sentinel, b"external").expect("write external sentinel");
+        fs::write(&parent_sentinel, b"parent").expect("write parent sentinel");
+        fs::write(&nested_sentinel, b"nested").expect("write nested sentinel");
+        let tampered_file_name = match case.as_str() {
+            "parent" => "../library-core.sqlite".to_string(),
+            "absolute" => external_sentinel.to_string_lossy().into_owned(),
+            "nested" => "nested/sentinel".to_string(),
+            "malformed" => "not-a-backup.sqlite".to_string(),
+            "negative" => "sqlite--1.sqlite".to_string(),
+            "oversized" => "sqlite-9223372036854775808.sqlite".to_string(),
+            _ => panic!("unknown retention helper case"),
+        };
+
+        let descriptor = File::open(&root).expect("open bound root");
+        let bound_root = LibraryCoreBoundRoot::from_inherited_descriptor(descriptor.as_raw_fd())
+            .expect("bind root");
+        let store = LibraryCoreStore::open_bound(&bound_root).expect("open bound store");
+        store
+            .begin_import(BeginLibraryCoreImport {
+                source_generation: 7,
+                source_revision: 11,
+                source_digest: "ab".repeat(32),
+                source_checkpoint: None,
+                expected_item_count: 1,
+                shell_json: "{}".into(),
+                started_at_ms: 100,
+            })
+            .expect("begin import");
+        store
+            .append_import_page(&[LibraryCoreImportItem {
+                item_json: r#"{"globalId":"item-1"}"#.into(),
+                updated_at_ms: 101,
+            }])
+            .expect("append import");
+        store.finalize_import(102, None).expect("finalize import");
+        let connection = store.connect().expect("open source");
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_backups (
+                   backupId, createdAtMs, revision, itemCount, reason,
+                   fileName, byteLength, sha256
+                 ) VALUES ('tampered', 1, 1, 1, 'auto', ?1, 1, ?2);",
+                params![tampered_file_name, "0".repeat(64)],
+            )
+            .expect("insert tampered metadata");
+        for created_at_ms in 2..=RETAINED_BACKUP_COUNT {
+            connection
+                .execute(
+                    "INSERT INTO library_core_desktop_backups (
+                       backupId, createdAtMs, revision, itemCount, reason,
+                       fileName, byteLength, sha256
+                     ) VALUES (?1, ?2, 1, 1, 'auto', ?3, 1, ?4);",
+                    params![
+                        format!("sqlite-{created_at_ms}"),
+                        created_at_ms,
+                        format!("sqlite-{created_at_ms}.sqlite"),
+                        "0".repeat(64)
+                    ],
+                )
+                .expect("insert retained metadata");
+        }
+        drop(connection);
+
+        let receipt = store.create_backup(1_000, "auto").expect("create backup");
+        assert!(receipt.retention_pending);
+        assert!(store.status().expect("read live status").is_some());
+        let connection = store.connect().expect("reopen source");
+        let tampered_is_tracked: bool = connection
+            .query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM library_core_desktop_backups WHERE backupId = 'tampered'
+                 );",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read tampered metadata");
+        assert!(tampered_is_tracked);
+        assert!(root.join(LIBRARY_DIRECTORY).join(LIBRARY_FILE).is_file());
+        assert_eq!(
+            fs::read(&external_sentinel).expect("external sentinel"),
+            b"external"
+        );
+        assert_eq!(
+            fs::read(&parent_sentinel).expect("parent sentinel"),
+            b"parent"
+        );
+        assert_eq!(
+            fs::read(&nested_sentinel).expect("nested sentinel"),
+            b"nested"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tampered_bound_retention_metadata_cannot_delete_any_path() {
+        for case in [
+            "parent",
+            "absolute",
+            "nested",
+            "malformed",
+            "negative",
+            "oversized",
+        ] {
+            let fixture = tempfile::TempDir::new().expect("create retention fixture");
+            let root = fixture.path().join("data");
+            fs::create_dir(&root).expect("create bound root");
+            fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+                .expect("set bound root permissions");
+            let status = Command::new(std::env::current_exe().expect("current test executable"))
+                .arg("--exact")
+                .arg("library_core_store::tests::bound_retention_tamper_helper")
+                .arg("--nocapture")
+                .env(BOUND_RETENTION_HELPER_ROOT, &root)
+                .env(BOUND_RETENTION_HELPER_CASE, case)
+                .status()
+                .expect("run retention helper");
+            assert!(status.success(), "retention helper failed for {case}");
+        }
     }
 
     #[test]
@@ -1008,9 +1614,9 @@ mod tests {
         let connection = store.connect().expect("open source");
         for index in 1..=RETAINED_BACKUP_COUNT {
             let file_name = if index == 1 {
-                "blocked.sqlite".to_string()
+                "sqlite-1.sqlite".to_string()
             } else {
-                format!("existing-{index}.sqlite")
+                format!("sqlite-{index}.sqlite")
             };
             if index == 1 {
                 fs::create_dir(backup_directory.join(&file_name))
@@ -1040,7 +1646,7 @@ mod tests {
         let blocked_is_tracked: bool = connection
             .query_row(
                 "SELECT EXISTS(
-                   SELECT 1 FROM library_core_desktop_backups WHERE fileName = 'blocked.sqlite'
+                   SELECT 1 FROM library_core_desktop_backups WHERE fileName = 'sqlite-1.sqlite'
                  );",
                 [],
                 |row| row.get(0),
@@ -1056,7 +1662,8 @@ mod tests {
         create_private_directory(&backup_directory).expect("create backup directory");
         let connection = store.connect().expect("open source");
         for index in 0..RETAINED_BACKUP_COUNT {
-            let file_name = format!("existing-{index}.sqlite");
+            let backup_time = 1_000 + index;
+            let file_name = format!("sqlite-{backup_time}.sqlite");
             File::create(backup_directory.join(&file_name)).expect("create existing backup");
             connection
                 .execute(
@@ -1065,8 +1672,8 @@ mod tests {
                        fileName, byteLength, sha256
                      ) VALUES (?1, ?2, 1, 1, 'auto', ?3, 1, ?4);",
                     params![
-                        format!("existing-{index}"),
-                        1_000 + index,
+                        format!("sqlite-{backup_time}"),
+                        backup_time,
                         file_name,
                         "0".repeat(64)
                     ],
