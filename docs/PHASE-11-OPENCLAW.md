@@ -1,399 +1,370 @@
-# Phase 11: Power User Integrations (OpenClaw + Omi)
+# Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (provider-neutral Primary coordinator foundation landed; headless host and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator and local process lease have landed; the service host, actor capabilities, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
 
-## Overview
+## Objective
 
-Two power-user integrations that extend Freed beyond its Desktop App:
+Freed must support one authoritative Library Core on an always-on machine while
+Freed Desktop and the PWA remain fully editable clients. The authority may run
+inside Freed Desktop or in a future headless service. Both hosts must use the
+same SQLite journal, immutable Google Drive protocol, actor admission rules,
+and exact checkpoint receipts.
 
-1. **OpenClaw** — Run capture headlessly on a server or always-on machine. No GUI required.
-2. **[Omi](https://www.omi.me/)** — Ingest voice conversations, meeting summaries, and spoken notes from the Omi wearable AI as first-class Freed feed items.
+This phase also creates a safe boundary for OpenClaw, OpenClaude-style agents,
+self-hosted automation, RSS capture, and future social capture workers. Workers
+submit signed operations. They never open the authority database, hold the
+Library authority key, or receive the Google Drive refresh token.
 
-**Who this is for:**
+The complete product has four roles:
 
-- OpenClaw users who want server-side, scheduled capture without launching the Desktop App
-- Self-hosters who prefer CLI over GUI
-- Omi wearers who want their spoken notes and meeting recaps surfaced alongside their social and RSS feeds in a single unified timeline
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    OpenClaw Instance                             │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                      Skills                               │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │   │
-│  │  │capture-x │ │capture-  │ │capture-  │ │ archive  │   │   │
-│  │  │          │ │   rss    │ │   save   │ │          │   │   │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│                              ▼                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                 SQLite Library Core                       │   │
-│  │                   (filesystem storage)                    │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│              ┌───────────────┴───────────────┐                  │
-│              ▼                               ▼                  │
-│   Primary Coordinator            Logical Cloud Library         │
-│    (injected ports)              (Drive checkpoints/ops)        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The shared `@freed/sync` Primary coordinator now owns the behavior-preserving
-publication lifecycle used by Freed Desktop. Authority, durable revision
-state, credentials, clock, scheduler, fetch, publication, and bounded safe
-diagnostics are host ports. This is the first reusable headless boundary. It
-does not export a Desktop credential, start a server process, contact a social
-provider, or create a second Library authority.
+1. The Primary is the only process allowed to advance the cloud control head.
+2. Editable followers apply local edits immediately, publish signed intents,
+   and import canonical results from the Primary.
+3. Reader clients import verified immutable checkpoints into bounded local
+   storage. The production PWA uses IndexedDB.
+4. Capability-bounded workers submit only the operation types and source scope
+   granted by the Primary.
 
 ---
 
-## Skill Wrappers
+## Non-negotiable boundaries
 
-Each capture layer has an OpenClaw skill wrapper.
-
-### capture-x
-
-```yaml
-# skills/capture-x/SKILL.md
----
-name: capture-x
-description: Capture X/Twitter timeline
-user-invocable: true
-metadata:
-  requires:
-    bins: ["bun"]
----
-
-# X Capture
-
-Capture your X timeline to Freed.
-
-## Commands
-
-- `capture-x sync` - Capture latest timeline
-- `capture-x status` - Show capture status
-- `capture-x config` - Configure capture mode
-```
-
-### capture-rss
-
-```yaml
-# skills/capture-rss/SKILL.md
----
-name: capture-rss
-description: Sync RSS feeds
-user-invocable: true
----
-
-# RSS Capture
-
-## Commands
-
-- `capture-rss sync` - Sync all subscribed feeds
-- `capture-rss add <url>` - Subscribe to feed
-- `capture-rss list` - List subscriptions
-- `capture-rss import <opml>` - Import OPML
-```
+- Google Drive carries immutable logical checkpoints, signed operation
+  segments, signed result segments, enrollment records, and control receipts.
+- SQLite files, WAL files, SHM files, and rollback journals never enter cloud
+  transport.
+- Automerge is not an authority, transport, fallback, or bridge.
+- One operating system lock is held before any process opens the authority data
+  root. A second process exits with an attributable refusal.
+- The cloud writer decision remains the exact Google Drive control compare and
+  swap. A local process lock and the cloud writer decision solve different
+  races, and both are required.
+- Missing writer admission, unreadable control state, a stale epoch, a retired
+  actor, or a changed signed envelope fails closed.
+- A worker never receives a SQLite path, authority private key, Drive token, or
+  another actor's signing key.
+- Social provider behavior remains off until the owner approves the exact
+  provider, request pattern, cadence, browser behavior, and fingerprinting
+  risk. Headless authority work does not grant social provider traffic.
+- No migration copies a live SQLite database, WAL file, or SHM file between
+  machines.
 
 ---
 
-## Scheduled Capture
+## Shipped foundation
 
-Run captures on a schedule via OpenClaw's cron system.
+The current product already provides the protocol foundation:
 
-```typescript
-// skills/capture-scheduler/src/index.ts
-export interface ScheduleConfig {
-  jobs: {
-    skill: string;
-    cron: string;
-    args?: string[];
-  }[];
-}
+- Freed Desktop stores the active Library in bounded SQLite.
+- The PWA imports authenticated immutable checkpoints into IndexedDB.
+- Editable Freed Desktop followers exchange signed intents and canonical
+  results without becoming the writer.
+- The Primary publishes immutable checkpoints and a durable exact revision
+  receipt.
+- One operating system backed Library data-root lease prevents two local Freed
+  processes from opening the same authority root.
+- `@freed/sync` owns a provider-neutral Primary coordinator with injected
+  authority, durable state, credential, clock, scheduler, fetch, publication,
+  and diagnostic ports.
+- Freed Desktop is the production consumer of that shared coordinator.
+- Freed Desktop performs one immediate publication attempt, checks local
+  revisions every 15 seconds, and refreshes inbound actor work every 60
+  seconds.
 
-export async function scheduleCaptures(config: ScheduleConfig): Promise<void> {
-  const jobs = [
-    { skill: "capture-x", cron: "*/15 * * * *" }, // Every 15 min
-    { skill: "capture-rss", cron: "*/30 * * * *" }, // Every 30 min
-    { skill: "capture-save", cron: "0 * * * *" }, // Every hour
-  ];
+These pieces do not yet create a headless executable. Drive credentials remain
+owned by the Freed Desktop renderer, and the native SQLite authority remains
+inside the Tauri crate. The next work extracts those host boundaries without
+changing the wire protocol.
 
-  for (const job of jobs) {
-    await registerCronJob(job);
-  }
-}
+---
+
+## Target architecture
+
+```text
+Agent or capture worker
+        |
+        | signed, capability-bounded operation intent
+        v
+Private local socket
+        |
+        v
+Headless Library service
+  |     |     |
+  |     |     + local status, receipts, and diagnostics
+  |     + shared Primary coordinator
+  + native SQLite authority sidecar
+        |
+        | immutable logical protocol only
+        v
+Google Drive
+        |
+        + Freed Desktop editable followers
+        + authenticated PWA IndexedDB readers
 ```
 
----
+### Native Library package
 
-## Custom Ranking Rules
+`packages/library-core-native` will be a reusable Rust library extracted from
+the existing Tauri modules. It owns:
 
-Power users can define ranking rules in YAML.
+- SQLite schema and migrations
+- signed operation journal and materializer
+- actor enrollment and capability verification
+- authority epochs and writer admission
+- backup and forward-only restore
+- local data-root process lease
+- injected key store, clock, and durable-state traits
 
-```yaml
-# ~/.freed/ranking.yml
-rules:
-  - name: "Boost favorite authors"
-    condition:
-      author_handle:
-        - "@favorite_author"
-        - "@another_author"
-    boost: 50
+It accepts an explicit data root. It does not accept a Tauri application
+handle. Freed Desktop keeps its current command names through a thin adapter.
 
-  - name: "Deprioritize promotional content"
-    condition:
-      content_contains:
-        - "sponsored"
-        - "ad"
-        - "promo"
-    penalty: 30
+### Shared Primary runtime
 
-  - name: "Boost long-form"
-    condition:
-      content_type: "article"
-      word_count_min: 500
-    boost: 20
+`@freed/sync` remains the only Primary cloud coordinator. Freed Desktop and the
+headless service inject different host ports into the same state machine. The
+coordinator is responsible for:
+
+- immediate checkpoint publication
+- local revision polling
+- actor enrollment discovery
+- intent import and canonical result publication
+- checkpoint refresh and exact receipt persistence
+- writer ownership loss and role loss fencing
+- bounded, secret-free diagnostics
+
+### Headless service
+
+`packages/library-service` will provide a Node supervisor and a single native
+authority sidecar. Only the sidecar opens SQLite and holds the local process
+lease. The first production service exposes no public network listener.
+
+Planned commands:
+
+```text
+freed-library init
+freed-library drive-auth
+freed-library promote
+freed-library serve
+freed-library sync-now
+freed-library checkpoint-now
+freed-library backup-now
+freed-library status
+freed-library doctor
 ```
 
-```typescript
-// packages/shared/src/ranking-rules.ts
-import { parse } from "yaml";
-import { FeedItem } from "./types";
+`promote` requires the exact expected cloud control revision, manifest digest,
+source receipt, and owner confirmation. It creates a new writer epoch. It
+never adopts an old local database as the cloud head.
 
-export interface RankingRule {
-  name: string;
-  condition: RuleCondition;
-  boost?: number;
-  penalty?: number;
-}
+### Secrets
 
-export function applyCustomRules(item: FeedItem, rules: RankingRule[]): number {
-  let adjustment = 0;
+Authority keys, actor keys, Google refresh tokens, and future provider
+credentials are separate secret records. They never appear in SQLite,
+backups, cloud objects, command arguments, environment values, logs, or bug
+reports.
 
-  for (const rule of rules) {
-    if (matchesCondition(item, rule.condition)) {
-      adjustment += rule.boost ?? 0;
-      adjustment -= rule.penalty ?? 0;
-    }
-  }
+macOS and Windows use their platform credential vaults. Linux uses an injected
+secret store. The first Linux implementation should use a versioned sealed
+file whose wrapping key is supplied as a mounted credential file. An
+environment variable is not an acceptable wrapping-key source.
 
-  return adjustment;
-}
-```
+Headless Drive authorization uses PKCE through the existing Freed OAuth proxy.
+It requests only the Drive scopes needed by Library Core. Google Contacts
+remains a separate permission and a separate runtime.
 
 ---
 
-## Feed Archival
+## Actor capabilities
 
-Automatically archive old items to keep the main document lean.
+An enrolled identity proves who signed an operation. A capability certificate
+also proves what that actor may do.
 
-```typescript
-// skills/archive/src/index.ts
-export interface ArchiveConfig {
-  maxAgeDays: number;
-  preserveSaved: boolean;
-  archivePath: string;
-}
+The capability certificate binds:
 
-export async function archiveOldItems(
-  doc: FreedDoc,
-  config: ArchiveConfig
-): Promise<{ archived: number }> {
-  const cutoff = Date.now() - config.maxAgeDays * 24 * 60 * 60 * 1000;
-  let archived = 0;
+- Library ID and writer epoch
+- actor ID and actor class
+- exact allowed operation types
+- optional source or provider scope
+- issuance identity and retirement identity
+- size bounds and canonical signature domain
 
-  for (const [id, item] of Object.entries(doc.feedItems)) {
-    if (item.publishedAt < cutoff) {
-      if (config.preserveSaved && item.userState.saved) {
-        continue;
-      }
+Existing version 1 editable actors map to a fixed legacy editor policy. That
+policy contains the existing editable operation set and never grows when a new
+canonical operation type is added.
 
-      await appendToArchive(item, config.archivePath);
-      delete doc.feedItems[id];
-      archived++;
-    }
-  }
+New actors use explicit classes:
 
-  return { archived };
-}
-```
+- `editor` may perform the exact user-edit operations listed in its
+  certificate.
+- `scraper` may submit only capture upserts for its approved source scope.
+- `agent` may read through bounded APIs and submit only its approved edits.
+- `service` may perform authority maintenance only when the active writer
+  epoch grants it that role.
 
-```yaml
-# skills/archive/SKILL.md
----
-name: archive
-description: Archive old feed items
----
+Source-scoped ingestion remains disabled until the signed operation envelope
+contains one canonical source field. The verifier must not infer scope from
+inconsistent entity payloads.
 
-# Archive
-
-## Commands
-
-- `archive run` - Archive items older than configured threshold
-- `archive search <query>` - Search archived items
-- `archive restore <id>` - Restore item from archive
-```
+Retirement requires a signed authority action, durable propagation through a
+checkpoint, and denial on every replay path. Editing a local cache is not a
+retirement mechanism.
 
 ---
 
-## Omi Integration
+## Agent and capture boundary
 
-[Omi](https://www.omi.me/) is a wearable AI that continuously listens and builds a personal memory bank. The Freed ↔ Omi integration is **bidirectional and intentional** — not a bulk sync. Two flows:
+The first ingress API uses a private Unix socket or Windows named pipe that is
+restricted to the service account. Requests are bounded, signed, replay
+protected, and mapped to Library Core operations. Signature verification does
+not replace transport limits or rate limits.
 
-1. **Omi → Freed ("Hey Freed" wake word):** When the user says *"Hey Freed"* while wearing Omi, that utterance (and any transcribed context) is sent to Freed as a deliberate voice capture — a saved note in the user's library. Freed does not ingest ambient Omi memories.
-2. **Freed → Omi (reading context as a memory source):** Freed registers as a data source in Omi's app, pushing a digest of what the user has been reading into Omi's memory banks so Omi can reference it during future conversations.
+The first useful agent surface provides:
 
-### Flow 1: "Hey Freed" Wake Word → Saved Note
+- bounded search
+- bounded item detail reads
+- bounded Saved and Friends reads
+- signed user-state edits
+- signed link saves
+- signed feed item capture for capability-approved actors
+- exact operation and result receipts
 
-Omi supports custom wake words and app integrations via its plugin/webhook system. When Omi detects "Hey Freed", it POSTs the transcript segment to a Freed webhook endpoint, which saves the note into the user's Automerge document.
+RSS and explicit link saves are the lowest-profile capture workers. Social
+capture workers come later. Each social provider receives its own review and
+acceptance pass. Moving a provider from the current Freed Desktop WebView to a
+cloud browser changes its observable browser identity and requires fresh owner
+approval even if the extraction code is similar.
 
-```typescript
-// packages/desktop/src/omi/webhook.ts
-import type { FreedDoc } from "@freed/shared";
-import * as A from "@automerge/automerge";
-
-export interface OmiWebhookPayload {
-  session_id: string;
-  segments: { text: string; speaker: string; start: number; end: number }[];
-  created_at: number;
-}
-
-/** Receives a "Hey Freed" trigger from Omi and saves the transcript as a note. */
-export function handleOmiWakeWord(
-  doc: FreedDoc,
-  payload: OmiWebhookPayload
-): FreedDoc {
-  const text = payload.segments.map((s) => s.text).join(" ").trim();
-  if (!text) return doc;
-
-  return A.change(doc, (d) => {
-    d.savedItems.push({
-      globalId: `omi:${payload.session_id}`,
-      savedAt: payload.created_at,
-      source: "omi-voice",
-      content: { text },
-    });
-  });
-}
-```
-
-### Flow 2: Freed → Omi Reading Context
-
-Freed registers as an Omi external data source. On a configurable schedule, it pushes a digest of recently read and saved items to Omi's memory API so Omi can reference what the user has been reading during future conversations.
-
-```typescript
-// packages/desktop/src/omi/reading-context.ts
-import type { FeedItem } from "@freed/shared";
-
-export interface OmiMemoryPayload {
-  content: string;
-  /** ISO 8601 */
-  happened_at: string;
-  structured?: { title: string; overview: string };
-}
-
-/** Builds a memory payload from recently read Freed items. */
-export function buildReadingContextMemory(
-  recentItems: FeedItem[]
-): OmiMemoryPayload {
-  const titles = recentItems
-    .map((i) => i.content.linkPreview?.title ?? i.content.text?.slice(0, 80))
-    .filter(Boolean)
-    .slice(0, 10);
-
-  return {
-    content: `The user recently read: ${titles.join("; ")}`,
-    happened_at: new Date().toISOString(),
-    structured: {
-      title: "Freed reading digest",
-      overview: titles.join(", "),
-    },
-  };
-}
-
-export async function pushReadingContextToOmi(
-  apiKey: string,
-  payload: OmiMemoryPayload
-): Promise<void> {
-  const res = await fetch("https://api.omi.me/v1/memories", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Omi memory push failed: ${res.status}`);
-}
-```
+Workers do not use fixed example cron schedules. They preserve the approved
+provider cadence, quiet hours, randomized timing, login behavior, and request
+graph. A scheduler may run only when the service reports both cloud-ready and
+provider-ready.
 
 ---
 
-## Tasks
+## Migration from a Freed Desktop Primary
 
-### OpenClaw
+1. The current Primary publishes one exact checkpoint and creates one closed
+   local backup.
+2. Record the local revision, item count, control revision, writer epoch,
+   writer ID, manifest digest, Drive object ID, and backup digest.
+3. Start the headless service as a read-only importer against a fresh data
+   root.
+4. Import the exact checkpoint and verify item count, materialized digest,
+   actor frontier, and source receipt.
+5. Promote only with the recorded expected control revision and manifest
+   digest. The service creates a fresh writer epoch and wins one exact control
+   compare and swap.
+6. Confirm that the former Primary refreshes control, loses writer admission,
+   and continues as an editable follower.
+7. Confirm that the authenticated PWA imports the same manifest into IndexedDB.
 
-| Task  | Description                    | Complexity |
-| ----- | ------------------------------ | ---------- |
-| 11.1  | Skill wrapper for capture-x    | Low        |
-| 11.2  | Skill wrapper for capture-rss  | Low        |
-| 11.3  | Skill wrapper for capture-save | Low        |
-| 11.4  | Capture scheduler skill        | Medium     |
-| 11.5  | Custom ranking rules parser    | Medium     |
-| 11.6  | Ranking rules integration      | Medium     |
-| 11.7  | Archive skill                  | Medium     |
-| 11.8  | Archive search                 | Medium     |
-| 11.9  | Local relay for PWA sync       | Medium     |
-| 11.10 | Documentation for self-hosters | Low        |
-
-### Omi
-
-| Task  | Description                                                        | Complexity |
-| ----- | ------------------------------------------------------------------ | ---------- |
-| 11.11 | Omi webhook endpoint ("Hey Freed" → saved note)                    | Medium     |
-| 11.12 | Automerge write for voice-captured saved items                     | Low        |
-| 11.13 | Freed → Omi reading context push (memory API)                      | Medium     |
-| 11.14 | Scheduled reading digest (configurable interval)                   | Low        |
-| 11.15 | Omi app plugin / data-source registration                          | Medium     |
-| 11.16 | Omi API key + webhook secret config in `~/.freed/config.json`      | Low        |
-| 11.17 | Voice note card styling in feed (`source: "omi-voice"`)            | Low        |
-| 11.18 | Documentation for Omi setup (wake word, data source, permissions)  | Low        |
+The former Primary is never restored by copying its database into the service.
+The service is never seeded from an older follower database.
 
 ---
 
-## Success Criteria
+## Recovery and rollback
 
-### OpenClaw
+Before the promotion compare and swap, the headless importer can be stopped and
+discarded without changing authority.
 
-- [x] Provider-neutral Primary Drive coordinator is shared from `@freed/sync`, consumed by Freed Desktop, and covered with offline fake authority, state, credential, clock, scheduler, fetch, publication, and diagnostics ports
-- [ ] All capture layers have OpenClaw skill wrappers
-- [ ] Scheduled captures run on cron
-- [ ] Custom ranking rules load from YAML
-- [ ] Archive skill prunes old items
-- [ ] Archived items searchable
-- [ ] PWA can sync to OpenClaw instance
-- [ ] Self-hosting documentation complete
+After promotion, rollback means another forward writer transfer:
 
-### Omi
+1. Stop capture workers.
+2. Preserve the current service data root and receipts.
+3. Import the latest verified checkpoint into the recovery host.
+4. Create a new writer epoch through an exact control compare and swap.
+5. Confirm that the former service observes the newer control and fences
+   itself.
 
-- [ ] Saying "Hey Freed" on Omi triggers a webhook that saves the transcript as a note in the user's Freed library
-- [ ] Voice-captured notes appear in the saved items view with `source: "omi-voice"` styling
-- [ ] Freed pushes a reading context digest to Omi's memory API on a configurable schedule
-- [ ] Freed appears as a registered data source in the Omi app
-- [ ] API key and webhook secret configured via `~/.freed/config.json`
-- [ ] Setup documentation covers wake word configuration, data source registration, and required permissions
+Code can roll back to a previous signed binary. Library data does not roll back
+to an older live database. A verified closed backup is restored only into a new
+authority epoch with an attributable restore receipt.
+
+---
+
+## Omi integration
+
+Omi remains a future actor integration. It does not write Automerge state and
+does not receive direct database access.
+
+The intended flows are deliberate:
+
+1. A user-triggered voice capture submits a signed Saved note intent through a
+   capability-bounded Omi actor.
+2. A separately approved reading-context worker sends a bounded digest to Omi.
+
+Ambient Omi memories are not bulk imported. Omi API keys and webhook secrets
+use the service secret store. Webhook exposure, request authentication,
+retention, and outbound digest cadence require their own security and provider
+review before implementation.
+
+---
+
+## Task ledger
+
+| Task | State | Description |
+| --- | --- | --- |
+| 11.1 | Complete | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop |
+| 11.2 | Complete | Enforce one operating system backed Library data-root lease before SQLite opens |
+| 11.3 | Open | Extract the reusable native SQLite authority package without changing Tauri behavior |
+| 11.4 | Open | Add the headless service supervisor, explicit role config, and fail-closed startup |
+| 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
+| 11.6 | Open | Add exact checkpoint import, status, doctor, backup, and structured receipts |
+| 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
+| 11.8 | In progress | Enforce actor capability certificates and fixed legacy editor policy |
+| 11.9 | Open | Add signed retirement application and checkpoint propagation |
+| 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
+| 11.11 | Open | Add bounded agent search, read, and signed edit APIs |
+| 11.12 | Open | Add provider-neutral RSS and explicit-save workers |
+| 11.13 | Blocked | Add social capture workers after provider-specific owner approval |
+| 11.14 | Open | Package Linux services, macOS launch agents, and Windows services |
+| 11.15 | Open | Complete installed Primary migration and editable follower acceptance |
+| 11.16 | Open | Complete forward recovery, competing-Primary, and fault-injection acceptance |
+| 11.20 | Open | Define the signed Omi actor and user-triggered voice capture contract |
+| 11.21 | Open | Implement authenticated Omi ingress with bounded retention |
+| 11.22 | Open | Implement the separately approved bounded reading-context export |
+
+---
+
+## Acceptance criteria
+
+- [ ] A headless service imports a verified checkpoint into a fresh SQLite
+  generation without copying a SQLite file from another host.
+- [ ] One exact writer promotion succeeds and a competing Primary loses the
+  same control compare and swap.
+- [ ] The losing process durably fences itself before any further cloud or
+  provider work.
+- [ ] A Primary checkpoint receipt and an authenticated production PWA receipt
+  name the same Library, epoch, generation, manifest digest, Drive object ID,
+  item count, and exact revision.
+- [ ] A Freed Desktop follower makes a local edit, publishes one signed intent,
+  receives the canonical result, and retains the edit after checkpoint refresh.
+- [ ] A real-size Library with at least 19,000 items preserves exact item count,
+  materialized digest, actor frontier, and bounded memory through migration.
+- [ ] Two processes against one data root produce exactly one lease holder.
+- [ ] Missing admission, stale epochs, retired actors, replays, changed
+  envelopes, oversized batches, and operations outside a capability all fail
+  with zero writes.
+- [ ] Crash and response-loss injection covers SQLite commit, object upload,
+  manifest upload, control compare and swap, result publication, and backup.
+- [ ] Secret scans find no key or token in arguments, environment values, logs,
+  state JSON, SQLite, backups, manifests, or bug reports.
+- [ ] A Drive call ledger proves that SQLite, WAL, SHM, and rollback journal
+  files were never uploaded.
+- [ ] Social workers remain unable to start until their exact provider gates
+  and installed acceptance are complete.
+- [ ] Linux x86_64 and arm64, macOS, and Windows service lifecycle tests pass.
 
 ---
 
 ## Deliverable
 
-Full Freed functionality via OpenClaw CLI—no Desktop App required—plus a bidirectional Omi integration: "Hey Freed" voice captures land in your Freed library, and your Freed reading activity enriches Omi's personal memory banks.
+One Library can run continuously on an owner-controlled machine or cloud host.
+Freed Desktop and the PWA remain ordinary editable clients. Agents and capture
+workers use narrow signed capabilities, while the authority database, cloud
+credentials, and provider sessions stay isolated. The system can move Primary
+authority forward without creating split heads or copying live database files.
