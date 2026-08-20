@@ -167,19 +167,21 @@ const fileSystem = {
   async openPrivateStatusFile(stateRootBinding, stateRootPath, expectedUserId) {
     await stateRootBinding.assertStable();
     const filePath = path.join(stateRootPath, "library-service-status.json");
-    const metadata = rawMetadata(lstatSync(filePath, { bigint: true }));
+    const statusFile = new BoundPath(
+      filePath,
+      openSync(filePath, constants.O_RDWR | (constants.O_NOFOLLOW ?? 0)),
+    );
+    const metadata = statusFile.metadata;
     if (
       metadata.kind !== "file" ||
       metadata.uid !== expectedUserId ||
       (metadata.mode & 0o7777) !== 0o600 ||
       metadata.links !== 1
     ) {
+      await statusFile.close();
       throw new Error("invalid status fixture");
     }
-    return new BoundPath(
-      filePath,
-      openSync(filePath, constants.O_RDWR | (constants.O_NOFOLLOW ?? 0)),
-    );
+    return statusFile;
   },
   async readPrivateStatusText(statusFile, maximumBytes) {
     return Buffer.from(
