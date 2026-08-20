@@ -25,7 +25,7 @@ import {
   LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2,
   type LibraryCoreActorCapabilityAuthorityStateV2,
   verifyLibraryCoreActorCapabilityCertificateV2,
-} from "./actor-capability-certificate-v2.test-support.js";
+} from "./actor-capability-certificate-v2.js";
 import { verifyLibraryCoreEd25519WithWebCrypto } from "./ed25519-verification.js";
 
 const AUTHORITY_SEED =
@@ -72,10 +72,7 @@ const HEX = {
 function digest(domain: LibraryCoreDigestDomain, value: unknown): string {
   return createHash("sha256")
     .update(
-      encodeLibraryCoreDigestInput(
-        domain,
-        value as LibraryCoreCanonicalValue,
-      ),
+      encodeLibraryCoreDigestInput(domain, value as LibraryCoreCanonicalValue),
     )
     .digest("hex");
 }
@@ -117,11 +114,13 @@ function authority(): LibraryCoreActorCapabilityAuthorityStateV2 {
 }
 
 async function certificate(
-  scope: { readonly mode: "library_wide" } | {
-    readonly mode: "bounded";
-    readonly scope_kind: "provider" | "source";
-    readonly scope_id: string;
-  } = { mode: "library_wide" },
+  scope:
+    | { readonly mode: "library_wide" }
+    | {
+        readonly mode: "bounded";
+        readonly scope_kind: "provider" | "source";
+        readonly scope_id: string;
+      } = { mode: "library_wide" },
 ) {
   return constructLibraryCoreActorCapabilityCertificateV2(
     enrollment(),
@@ -175,9 +174,7 @@ describe("Library Core actor capability certificate v2", () => {
     const canonicalCertificate = new TextDecoder().decode(
       encodeLibraryCoreCanonicalValue(result.certificate as never),
     );
-    expect(publicKeyHex(AUTHORITY_SEED)).toBe(
-      vector.authority_public_key_hex,
-    );
+    expect(publicKeyHex(AUTHORITY_SEED)).toBe(vector.authority_public_key_hex);
     expect(publicKeyHex(ACTOR_SEED)).toBe(vector.actor_public_key_hex);
     expect(result.certificate).toStrictEqual(vector.certificate);
     expect(result.actor_chain_genesis).toBe(vector.actor_chain_genesis);
@@ -188,12 +185,14 @@ describe("Library Core actor capability certificate v2", () => {
         authority(),
         { digest, verifySignature: verifyLibraryCoreEd25519WithWebCrypto },
       ),
-    ).resolves.toMatchObject({ actor_chain_genesis: result.actor_chain_genesis });
+    ).resolves.toMatchObject({
+      actor_chain_genesis: result.actor_chain_genesis,
+    });
   });
   it("keeps legacy and scraper authority frozen outside the extensible canonical registry", () => {
-    expect(Object.isFrozen(LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2)).toBe(
-      true,
-    );
+    expect(
+      Object.isFrozen(LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2),
+    ).toBe(true);
     expect(Object.isFrozen(LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1)).toBe(
       true,
     );
@@ -285,6 +284,61 @@ describe("Library Core actor capability certificate v2", () => {
     expect(verifySignature).not.toHaveBeenCalled();
   });
 
+  it("snapshots accepted authority before either asynchronous signature check", async () => {
+    const constructed = await certificate();
+    const acceptedAuthority = authority() as unknown as Record<string, unknown>;
+    const substitutedPublicKey = "aa".repeat(32);
+    let releaseActorProof: ((valid: boolean) => void) | undefined;
+    let markActorProofStarted: (() => void) | undefined;
+    const actorProofStarted = new Promise<void>((resolve) => {
+      markActorProofStarted = resolve;
+    });
+    const verifySignature = vi.fn(
+      async (verification: { readonly publicKeyHex: string }) => {
+        if (verifySignature.mock.calls.length === 1) {
+          markActorProofStarted!();
+          return new Promise<boolean>((release) => {
+            releaseActorProof = release;
+          });
+        }
+        return verification.publicKeyHex === substitutedPublicKey;
+      },
+    );
+    const pending = verifyLibraryCoreActorCapabilityCertificateV2(
+      encodeLibraryCoreCanonicalValue(
+        constructed.certificate as unknown as LibraryCoreCanonicalValue,
+      ),
+      acceptedAuthority as unknown as LibraryCoreActorCapabilityAuthorityStateV2,
+      { digest, verifySignature },
+    );
+    await actorProofStarted;
+    acceptedAuthority.authority_public_key = substitutedPublicKey;
+    acceptedAuthority.authority_key_id = digest("authority-key", {
+      signature_algorithm: "ed25519",
+      authority_public_key: substitutedPublicKey,
+    });
+    releaseActorProof!(true);
+    await expect(pending).rejects.toThrow(
+      "actor capability authority signature is invalid",
+    );
+  });
+
+  it("requires the signature dependency to return the boolean true", async () => {
+    const constructed = await certificate();
+    await expect(
+      verifyLibraryCoreActorCapabilityCertificateV2(
+        encodeLibraryCoreCanonicalValue(
+          constructed.certificate as unknown as LibraryCoreCanonicalValue,
+        ),
+        authority(),
+        {
+          digest,
+          verifySignature: async () => 1 as unknown as boolean,
+        },
+      ),
+    ).rejects.toThrow("actor capability proof signature is invalid");
+  });
+
   it("requires explicit scope and constrains scraper certificates to capture only", async () => {
     await expect(
       constructLibraryCoreActorCapabilityCertificateV2(
@@ -323,13 +377,13 @@ describe("Library Core actor capability certificate v2", () => {
       scope_kind: "provider",
       scope_id: "instagram",
     });
-    expect(result.certificate.certificate_body.actor_capability_body.scope).toStrictEqual(
-      {
-        mode: "bounded",
-        scope_kind: "provider",
-        scope_id: "instagram",
-      },
-    );
+    expect(
+      result.certificate.certificate_body.actor_capability_body.scope,
+    ).toStrictEqual({
+      mode: "bounded",
+      scope_kind: "provider",
+      scope_id: "instagram",
+    });
     await expect(
       verifyLibraryCoreActorCapabilityCertificateV2(
         encodeLibraryCoreCanonicalValue(result.certificate as never),

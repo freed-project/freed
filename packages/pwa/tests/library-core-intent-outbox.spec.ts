@@ -22,43 +22,80 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       const { createPwaLibraryCorePortableCheckpointStore } =
         await import("/src/lib/library-core-portable-checkpoint-store.ts");
       const hex = (pair: string) => pair.repeat(32);
-      const libraryId = hex("11");
-      const epochId = hex("22");
-      const actorId = hex("33");
-      const actorChainGenesis = hex("44");
       const signature = "55".repeat(64);
       const digest = (domain: string, value: unknown) =>
         shared.sha256LowerHex(
           shared.encodeLibraryCoreDigestInput(domain, value),
         );
       const databaseName = `freed-library-core-intents-${crypto.randomUUID()}`;
-      await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open(databaseName, 4);
-        request.addEventListener("upgradeneeded", () => {
-          request.result.createObjectStore("portable_control", {
-            keyPath: "key",
-          });
-        });
-        request.addEventListener(
-          "success",
-          () => {
-            request.result.close();
-            resolve();
-          },
-          { once: true },
-        );
-        request.addEventListener(
-          "error",
-          () => reject(request.error ?? new Error("v4 database setup failed")),
-          { once: true },
-        );
-      });
       const store = createPwaLibraryCorePortableCheckpointStore({
         databaseName,
         indexedDb: indexedDB,
         keyRange: IDBKeyRange,
         subtle: crypto.subtle,
       });
+      await store.bootstrapFeaturePreviewAuthority();
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(databaseName);
+        request.addEventListener("success", () => resolve(request.result), {
+          once: true,
+        });
+        request.addEventListener(
+          "error",
+          () => reject(request.error ?? new Error("preview database open failed")),
+          { once: true },
+        );
+      });
+      const identityRead = database.transaction(
+        [
+          "portable_control",
+          "portable_generations",
+          "portable_actor_tips",
+          "portable_pwa_actor_identities",
+        ],
+        "readonly",
+      );
+      const selected = await new Promise<{ generationId: string }>((resolve, reject) => {
+        const request = identityRead
+          .objectStore("portable_control")
+          .get("selected_portable_generation");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const generation = await new Promise<{
+        libraryId: string;
+        storageEpoch: string;
+      }>((resolve, reject) => {
+        const request = identityRead
+          .objectStore("portable_generations")
+          .get(selected.generationId);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const identity = await new Promise<{ actorId: string }>((resolve, reject) => {
+        const request = identityRead
+          .objectStore("portable_pwa_actor_identities")
+          .get(generation.libraryId);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const actorTip = await new Promise<{ acceptedChainDigest: string }>((resolve, reject) => {
+        const request = identityRead
+          .objectStore("portable_actor_tips")
+          .get([selected.generationId, identity.actorId]);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        identityRead.oncomplete = () => resolve();
+        identityRead.onerror = () => reject(identityRead.error);
+        identityRead.onabort = () => reject(identityRead.error);
+      });
+      database.close();
+      const libraryId = generation.libraryId as string;
+      const epochId = generation.storageEpoch as string;
+      const actorId = identity.actorId as string;
+      const actorChainGenesis = actorTip.acceptedChainDigest as string;
 
       const finalize = async ({
         count,
@@ -309,16 +346,22 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
         libraryId,
       });
       const replacementEpochId = hex("66");
-      const replacementEpochReceipt = await store.enqueueIntentTransaction(
-        await finalize({
-          count: 1,
-          firstSequence: 1,
-          previousChainDigest: actorChainGenesis,
-          previousOperationId: null,
-          transactionEpochId: replacementEpochId,
-          transactionId: "tx-replacement-epoch-1",
-        }),
-      );
+      let replacementEpochError = "";
+      try {
+        await store.enqueueIntentTransaction(
+          await finalize({
+            count: 1,
+            firstSequence: 1,
+            previousChainDigest: actorChainGenesis,
+            previousOperationId: null,
+            transactionEpochId: replacementEpochId,
+            transactionId: "tx-replacement-epoch-1",
+          }),
+        );
+      } catch (error) {
+        replacementEpochError =
+          error instanceof Error ? error.message : String(error);
+      }
       const originalEpochActors = await store.readIntentActors({
         epochId,
         libraryId,
@@ -361,6 +404,8 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       return {
         afterRestart: afterRestart?.body,
         acceptedResult,
+        actorId,
+        epochId,
         resultCursor,
         resultReferenceDigest: resultReference.descriptor.contentDigest,
         acceptedAfterRestart,
@@ -368,6 +413,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
         changedRetryError,
         firstReceipt,
         fullBody: fullCandidate?.body,
+        libraryId,
         publication,
         publicationReplay,
         originalEpochActors,
@@ -376,7 +422,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
         remainingBody: remaining?.body,
         replayReceipt,
         replacementEpochActors,
-        replacementEpochReceipt,
+        replacementEpochError,
         secondReceipt,
         staleReadbackError,
       };
@@ -398,16 +444,16 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
   });
   expect(result.pendingActorsBeforePublication).toEqual([
     {
-      actorId: "33".repeat(32),
-      epochId: "22".repeat(32),
-      libraryId: "11".repeat(32),
+      actorId: result.actorId,
+      epochId: result.epochId,
+      libraryId: result.libraryId,
     },
   ]);
   expect(result.pendingActorsAfterPublication).toEqual([
     {
-      actorId: "33".repeat(32),
-      epochId: "22".repeat(32),
-      libraryId: "11".repeat(32),
+      actorId: result.actorId,
+      epochId: result.epochId,
+      libraryId: result.libraryId,
     },
   ]);
   expect(result.changedRetryError).toMatch(/different bytes/);
@@ -448,23 +494,13 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     previous_segment_digest: result.publication.storedContentDigest,
   });
   expect(result.afterRestart).toEqual(result.remainingBody);
-  expect(result.replacementEpochReceipt).toMatchObject({
-    firstIntentSequence: 1,
-    lastIntentSequence: 1,
-    status: "enqueued",
-  });
+  expect(result.replacementEpochError).toMatch(/active enrolled capability/);
   expect(result.originalEpochActors).toEqual([
     {
-      actorId: "33".repeat(32),
-      epochId: "22".repeat(32),
-      libraryId: "11".repeat(32),
+      actorId: result.actorId,
+      epochId: result.epochId,
+      libraryId: result.libraryId,
     },
   ]);
-  expect(result.replacementEpochActors).toEqual([
-    {
-      actorId: "33".repeat(32),
-      epochId: "66".repeat(32),
-      libraryId: "11".repeat(32),
-    },
-  ]);
+  expect(result.replacementEpochActors).toEqual([]);
 });

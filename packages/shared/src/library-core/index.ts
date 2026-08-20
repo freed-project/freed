@@ -3,6 +3,11 @@ export * from "./actor-enrollment-verification.js";
 export * from "./actor-enrollment-contracts.js";
 export * from "./actor-enrollment-certificate.js";
 export * from "./actor-enrollment-request.js";
+export {
+  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
+  verifyLibraryCoreActorCapabilityCertificateV2,
+  type LibraryCoreActorCapabilityBodyV2,
+} from "./actor-capability-certificate-v2.js";
 export * from "./ed25519-verification.js";
 export * from "./checkpoint-manifest-contracts.js";
 export * from "./feed-browse-filter-contract.js";
