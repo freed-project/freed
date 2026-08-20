@@ -43,6 +43,7 @@ const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
+  "chore: refresh dev promotion for production release (#1538)",
   "chore: promote dev into main for cloud conflict recovery (#784)",
   "chore: promote dev into main for PWA sync recovery (#798)",
   "chore: promote updater asset url fix to main (#313)",

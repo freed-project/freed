@@ -432,6 +432,7 @@ test("validate-main-backflow accepts the historical promote dev to main subject"
 });
 
 for (const subject of [
+  "chore: refresh dev promotion for production release (#1538)",
   "chore: promote dev into main for cloud conflict recovery (#784)",
   "chore: promote dev into main for PWA sync recovery (#798)",
   "chore: promote updater asset url fix to main (#313)",
