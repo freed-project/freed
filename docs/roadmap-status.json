@@ -17,7 +17,11 @@
       "source": "docs/PHASE-4-SYNC.md",
       "status": "current"
     },
-    { "id": 5, "status": "current", "source": "docs/PHASE-5-DESKTOP.md" },
+    {
+      "id": 5,
+      "status": "current",
+      "source": "docs/PHASE-5-DESKTOP.md"
+    },
     { "id": 6, "status": "complete", "source": "docs/PHASE-6-PWA.md" },
     {
       "id": 7,

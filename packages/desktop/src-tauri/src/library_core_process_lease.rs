@@ -39,18 +39,18 @@ impl LibraryCoreProcessLease {
     ) -> Result<Self, freed_library_core::LibraryCoreProcessLeaseError> {
         #[cfg(unix)]
         {
-        let app_root = requested_data_root.parent().ok_or_else(|| {
-            binding_error(
-                requested_data_root,
-                "Freed Desktop Library Core data root has no app root",
-            )
-        })?;
-        let binding =
-            freed_library_core::LibraryCoreDesktopBinding::open(app_root, DESKTOP_IDENTITY)
+            let app_root = requested_data_root.parent().ok_or_else(|| {
+                binding_error(
+                    requested_data_root,
+                    "Freed Desktop Library Core data root has no app root",
+                )
+            })?;
+            let binding =
+                freed_library_core::LibraryCoreDesktopBinding::open(app_root, DESKTOP_IDENTITY)
+                    .map_err(|error| binding_error(app_root, &error.to_string()))?;
+            freed_library_core::install_desktop_binding(binding)
                 .map_err(|error| binding_error(app_root, &error.to_string()))?;
-        freed_library_core::install_desktop_binding(binding)
-            .map_err(|error| binding_error(app_root, &error.to_string()))?;
-        Ok(Self { installed: true })
+            Ok(Self { installed: true })
         }
         #[cfg(not(unix))]
         {
