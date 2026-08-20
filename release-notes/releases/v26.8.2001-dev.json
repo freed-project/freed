@@ -5,7 +5,7 @@
   "dayKey": "26.8.20",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-20T23:41:55.696Z",
+  "generatedAt": "2026-08-20T23:44:34.875Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
@@ -44,9 +44,9 @@
       "inspectionDigest": "sha256:79538530219fe76ade4e97d61e4175c901e0fc57f6fa12aeecc71a0f2547be61",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-2001-dev#sha256:dbf85e6b503eb1e153b31f37c1a2f96d89bb41a0caf8f588ad87f4fb0514eb65",
+        "ownerApprovalReference": "current-task:release-26-8-2001-dev#sha256:2ae09e32e97960d28ded8d4a3bec15f0c63d2a2ef29f2b8b87d2493abd5362c3",
         "approvedInspectionDigest": "sha256:79538530219fe76ade4e97d61e4175c901e0fc57f6fa12aeecc71a0f2547be61",
-        "approvedReleaseArtifactDigest": "sha256:d1fbfbe85a2563b60984e0c232625a50026852759cfa653319dc4d7d2bc24419"
+        "approvedReleaseArtifactDigest": "sha256:0c5b6bff4ce77e4f57295360d92e1ec4b18363053eb5cf368f4b93e82855c7a3"
       }
     },
     "isLatestOfDay": true,
@@ -145,30 +145,27 @@
       "Fail-closed Library service supervisor"
     ],
     "fixes": [
+      "Bound Drive checkpoint pages by decoded bytes",
+      "Defer checkpoint refresh until the current render settles",
       "Support local-only Library authority",
-      "Defer PWA checkpoint refresh effect",
-      "Reader, feed, and header polish",
-      "Recognize release identity backflow",
+      "Repair Drive mutable revision fencing",
+      "Preserve PWA intents across checkpoint activation",
+      "Bound Library Core search work and result size",
+      "Enforce one Library Core process per data root",
       "Keep SQLite backups off cloud storage",
-      "Sanitize runner sources before apt update",
-      "Show honest Drive sync activity",
+      "Establish native SQLite Library authority",
       "Read immutable Drive objects without browser ETags",
-      "Prevent Drive sync lifecycle stalls"
+      "Prevent Drive sync lifecycle stalls",
+      "Show honest Drive sync activity",
+      "Stabilize Drive Library Core bootstrap",
+      "Recognize release and promotion backflow",
+      "Route CI away from stalled Ubuntu mirrors"
     ],
     "followUps": [
-      "Retire competing Library journal runtime",
-      "Retire operation field registry runtime",
-      "Share native checkpoint store primitives",
-      "Reverse integrate v26.8.1901 release identity",
-      "Enforce actor capability certificates",
-      "Extract native Library Core",
-      "Extract Library Primary coordinator",
-      "Close retired Automerge runtime boundary",
-      "Content-addressed Library media transport",
-      "PWA IndexedDB Library parity",
-      "Build editable SQLite Library followers",
-      "Merge main back into dev after v26.8.1500"
+      "Publish normalized typed Library checkpoints",
+      "Import Library checkpoints into SQLite WASM over OPFS",
+      "Retire remaining compatibility shell reads"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2001-dev\n\nDescriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor\n\n### Features\n\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Support local-only Library authority\n- Defer PWA checkpoint refresh effect\n- Reader, feed, and header polish\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Sanitize runner sources before apt update\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n\n### Follow-ups\n\n- Retire competing Library journal runtime\n- Retire operation field registry runtime\n- Share native checkpoint store primitives\n- Reverse integrate v26.8.1901 release identity\n- Enforce actor capability certificates\n- Extract native Library Core\n- Extract Library Primary coordinator\n- Close retired Automerge runtime boundary\n- Content-addressed Library media transport\n- PWA IndexedDB Library parity\n- Build editable SQLite Library followers\n- Merge main back into dev after v26.8.1500\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2001-dev\n\nDescriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor\n\n### Features\n\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Bound Drive checkpoint pages by decoded bytes\n- Defer checkpoint refresh until the current render settles\n- Support local-only Library authority\n- Repair Drive mutable revision fencing\n- Preserve PWA intents across checkpoint activation\n- Bound Library Core search work and result size\n- Enforce one Library Core process per data root\n- Keep SQLite backups off cloud storage\n- Establish native SQLite Library authority\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n- Show honest Drive sync activity\n- Stabilize Drive Library Core bootstrap\n- Recognize release and promotion backflow\n- Route CI away from stalled Ubuntu mirrors\n\n### Follow-ups\n\n- Publish normalized typed Library checkpoints\n- Import Library checkpoints into SQLite WASM over OPFS\n- Retire remaining compatibility shell reads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
