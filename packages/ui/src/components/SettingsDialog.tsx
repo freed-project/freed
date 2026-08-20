@@ -931,7 +931,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setShowSampleClearConfirm(false);
       toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to clear sample data");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : typeof error === "string" && error.length > 0
+            ? error
+            : "Failed to clear sample data",
+      );
     } finally {
       setClearingSampleData(false);
     }

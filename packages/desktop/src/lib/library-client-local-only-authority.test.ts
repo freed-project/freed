@@ -3,14 +3,18 @@ import { createDefaultPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
+  bootstrap: vi.fn(),
 }));
 
 vi.mock("./library-core-desktop-role", () => ({
-  readLibraryCoreDesktopRole: () => "follower",
+  readLibraryCoreDesktopRole: () => "primary",
 }));
 
 vi.mock("./library-core-cloud-sync", () => ({
-  readPersistedSqliteLibraryCloudIdentity: vi.fn(),
+  readPersistedSqliteLibraryCloudIdentity: vi.fn(async () => {
+    mocks.calls.push("cloud-identity");
+    return null;
+  }),
 }));
 
 vi.mock("./sqlite-library", async (importOriginal) => {
@@ -26,15 +30,21 @@ vi.mock("./sqlite-library", async (importOriginal) => {
       sourceRevision: 3,
       sourceDigest: "ab".repeat(32),
     })),
-    recoverSqliteLibraryFollowerOverlay: vi.fn(async () => {
-      mocks.calls.push("recover");
+    readSqliteLibrarySyncDescriptor: vi.fn(async () => {
+      mocks.calls.push("descriptor");
       return {
-        transactionCount: 1,
-        operationCount: 1,
-        materializedRowCount: 1,
-        revisionAdvanced: true,
+        revision: 4,
+        itemCount: 0,
+        sourceDigest: "ab".repeat(32),
+        shellJson: "{}",
+        materializedDigest: "cd".repeat(32),
       };
     }),
+    bootstrapSqliteLibraryAuthority: mocks.bootstrap.mockImplementation(
+      async () => {
+        mocks.calls.push("bootstrap");
+      },
+    ),
     loadSqliteLibraryState: vi.fn(async () => {
       mocks.calls.push("load");
       return {
@@ -65,10 +75,25 @@ vi.mock("./sqlite-library", async (importOriginal) => {
 
 import { initDoc } from "./library-client";
 
-describe("editable follower startup recovery", () => {
-  it("replays durable local edits before exposing the active checkpoint", async () => {
+describe("local-only primary startup authority", () => {
+  it("establishes explicit authority before exposing Library state", async () => {
     await initDoc();
 
-    expect(mocks.calls).toEqual(["recover", "load"]);
+    expect(mocks.calls).toEqual([
+      "descriptor",
+      "cloud-identity",
+      "bootstrap",
+      "load",
+    ]);
+    expect(mocks.bootstrap).toHaveBeenCalledWith({
+      descriptor: {
+        revision: 4,
+        itemCount: 0,
+        sourceDigest: "ab".repeat(32),
+        shellJson: "{}",
+        materializedDigest: "cd".repeat(32),
+      },
+      persistedCloudIdentity: null,
+    });
   });
 });

@@ -76,6 +76,7 @@ import {
   type SqliteLibraryActorCheckpointState,
   type SqliteLibraryFollowerCheckpointActor,
   type SqliteLibraryIntentResultOutboxEntry,
+  type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 import {
@@ -172,6 +173,23 @@ function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
       candidate.lastPublishedActorDigest === null ||
       /^[a-f0-9]{64}$/.test(candidate.lastPublishedActorDigest))
   );
+}
+
+/** Read a valid persisted cloud identity without creating cloud state. */
+export async function readPersistedSqliteLibraryCloudIdentity(): Promise<
+  SqliteLibraryPersistedCloudIdentity | null
+> {
+  const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+  if (stored === null || stored === undefined) return null;
+  if (!isCloudState(stored)) {
+    throw new Error("The saved Library Core cloud identity is invalid");
+  }
+  return Object.freeze({
+    libraryId: stored.libraryId,
+    storageEpoch: stored.storageEpoch,
+    writerId: stored.writerId,
+    sourceDigest: stored.sourceDigest,
+  });
 }
 
 function parsePublishedCheckpointReceipt(

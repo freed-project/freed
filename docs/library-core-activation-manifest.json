@@ -160,6 +160,16 @@
         "retirement_receipt",
         "roll_forward_recovery_receipt"
       ]
+    },
+    {
+      "activationId": "desktop-local-only-primary-authority-v1",
+      "gate": "F",
+      "kind": "library_core_writer_activation",
+      "rollbackTrigger": "Restore the previous Freed Desktop build before accepting any local-only mutation if provider-free startup cannot establish and read back the signed authority transition, enrolled actor, and local writer admission. After the first admitted mutation, retain the SQLite library and use roll-forward recovery because the previous build cannot safely write the new authority state.",
+      "receiptExpectations": [
+        "authority_transition_certificate",
+        "roll_forward_recovery_receipt"
+      ]
     }
   ]
 }

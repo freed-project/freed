@@ -32,15 +32,18 @@ import { registerDocAccessors, setDocSnapshot } from "@freed/ui/lib/debug-store"
 import {
   appendPortableSqliteLibraryItems,
   beginPortableSqliteLibraryImport,
+  bootstrapSqliteLibraryAuthority,
   clearSqliteLibrary,
   dispatchSqliteMutation,
   finalizePortableSqliteLibraryImport,
   loadSqliteLibraryState,
   querySqliteItems,
+  readSqliteLibrarySyncDescriptor,
   readSqliteItems,
   recoverSqliteLibraryFollowerOverlay,
   sqliteLibraryStatus,
 } from "./sqlite-library";
+import { readPersistedSqliteLibraryCloudIdentity } from "./library-core-cloud-sync";
 import {
   hasLegacyLibraryData,
   shouldBlockForLegacyLibrary,
@@ -134,6 +137,11 @@ async function ensureInitialized(): Promise<DocState> {
   if (!status?.active) await initializeEmptySqliteLibrary();
   if (readLibraryCoreDesktopRole() === "follower") {
     await recoverSqliteLibraryFollowerOverlay();
+  } else {
+    await bootstrapSqliteLibraryAuthority({
+      descriptor: await readSqliteLibrarySyncDescriptor(),
+      persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),
+    });
   }
   const state = await loadSqliteLibraryState();
   lastState = state;

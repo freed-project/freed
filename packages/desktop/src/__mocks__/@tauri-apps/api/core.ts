@@ -332,6 +332,50 @@ function sqliteAppendImportItems(args: Record<string, unknown>): null {
   return null;
 }
 
+function sqliteSyncDescriptor(): Record<string, unknown> {
+  const state = sqliteLibrary();
+  const items = Object.values(state.items).filter((item) => !item.__deleted);
+  return {
+    revision: state.revision,
+    itemCount: items.length,
+    sourceDigest: state.sourceDigest || "0".repeat(64),
+    shellJson: JSON.stringify(state.shell ?? {}),
+    materializedDigest: "1".repeat(64),
+  };
+}
+
+function sqliteAuthorityBootstrap(): Record<string, unknown> {
+  return {
+    authority: {
+      library_id: "2".repeat(64),
+      epoch: 1,
+      epoch_id: "3".repeat(64),
+      authority_key_id: "4".repeat(64),
+      authority_public_key: "5".repeat(64),
+      observed_frontier: [],
+    },
+    actor: {
+      actor_id: "6".repeat(64),
+      actor_public_key: "7".repeat(64),
+      enrollment_operation_id: "mock-local-authority-enrollment",
+      enrollment_certificate_digest: "8".repeat(64),
+      canonical_enrollment_certificate_json: "{}",
+      actor_chain_genesis: "9".repeat(64),
+    },
+    protocol: {
+      format: "freed_library_core_native_authority_protocol_v1",
+      active_engine: "library_core_v1",
+      schema_version: 12,
+      replication_protocol: "op_segments_v1",
+      checkpoint_format: "freed_logical_checkpoint_v1",
+      transition_certificate_digest: "a".repeat(64),
+      native_protocol_certificate_digest: "b".repeat(64),
+      prior_transition_certificate_digest: null,
+      source_manifest_digest: "c".repeat(64),
+    },
+  };
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   sqlite_library_status: () => {
@@ -398,6 +442,8 @@ const handlers: Record<string, Handler> = {
     materializedRowCount: 0,
     revisionAdvanced: false,
   }),
+  read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
+  bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
   read_sqlite_library_shell: sqliteShellResult,
   read_sqlite_library_counts: sqliteCountsResult,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
