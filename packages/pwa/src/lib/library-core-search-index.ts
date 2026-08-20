@@ -6,8 +6,10 @@ import {
   LIBRARY_CORE_SEARCH_QUERY_MAXIMUM_TERMS,
   LIBRARY_CORE_SEARCH_RESULT_PAGE_LIMIT,
   LIBRARY_CORE_SEARCH_SCAN_ROW_LIMIT,
+  LIBRARY_CORE_SEARCH_SCORE_WORK_LIMIT,
+  isLibraryCoreSearchQueryV1,
   projectLibraryCoreSearchResultItemV1,
-  scoreLibraryCoreSearchFieldsV1,
+  scoreLibraryCoreSearchFieldsWithBudgetV1,
   tokenizeLibraryCoreSearchTextV1,
   type LibraryCoreSearchFieldV1,
 } from "@freed/shared/library-core";
@@ -15,7 +17,7 @@ import type { ScanLibraryItems, ScoredLibraryItem } from "@freed/ui/context";
 
 import { requestResult, transactionDone } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const DOCUMENTS_STORE = "search_documents";
 const META_STORE = "search_meta";
 const ACTIVE_INDEX_KEY = "active_index";
@@ -25,11 +27,18 @@ interface SearchDocument {
   readonly fields: readonly LibraryCoreSearchFieldV1[];
   readonly globalId: string;
   readonly item: FeedItem;
+  readonly sourceToken: string;
 }
 
 interface ActiveIndexRecord {
   readonly corpusVersion: number;
   readonly key: typeof ACTIVE_INDEX_KEY;
+  readonly sourceToken: string;
+}
+
+export interface PwaLibraryCoreSearchSourceV1 {
+  readonly corpusVersion: number;
+  readonly sourceToken: string;
 }
 
 export type SearchIdentityDecision = "continue" | "stop";
@@ -46,7 +55,21 @@ function field(
   return terms.length > 0 ? { terms, weight } : null;
 }
 
-function searchDocument(item: FeedItem, corpusVersion: number): SearchDocument {
+function boundedScalarPrefix(value: string, maximum: number): string {
+  let result = "";
+  let count = 0;
+  for (const scalar of value) {
+    if (count === maximum) break;
+    result += scalar;
+    count += 1;
+  }
+  return result;
+}
+
+function searchDocument(
+  item: FeedItem,
+  source: PwaLibraryCoreSearchSourceV1,
+): SearchDocument {
   const candidateFields = [
     field(item.content.linkPreview?.title, 4),
     field([...item.topics, ...(item.contentSignals?.tags ?? [])].join(" "), 3),
@@ -75,9 +98,10 @@ function searchDocument(item: FeedItem, corpusVersion: number): SearchDocument {
       2,
     ),
     field(
-      Array.from(item.preservedContent?.text ?? "")
-        .slice(0, LIBRARY_CORE_SEARCH_PRESERVED_TEXT_MAXIMUM_SCALARS)
-        .join(""),
+      boundedScalarPrefix(
+        item.preservedContent?.text ?? "",
+        LIBRARY_CORE_SEARCH_PRESERVED_TEXT_MAXIMUM_SCALARS,
+      ),
       1,
     ),
   ].filter(
@@ -94,10 +118,11 @@ function searchDocument(item: FeedItem, corpusVersion: number): SearchDocument {
     remainingTermBudget -= terms.length;
   }
   return {
-    corpusVersion,
+    corpusVersion: source.corpusVersion,
     fields,
     globalId: item.globalId,
     item: projectLibraryCoreSearchResultItemV1(item),
+    sourceToken: source.sourceToken,
   };
 }
 
@@ -111,7 +136,7 @@ export class PwaLibraryCoreSearchIndex {
   readonly #indexedDb: IDBFactory;
   readonly #keyRange: typeof IDBKeyRange;
   #databasePromise: Promise<IDBDatabase> | null = null;
-  #buildPromise: Promise<void> | null = null;
+  #buildQueue: Promise<void> = Promise.resolve();
 
   constructor(options: {
     readonly databaseName: string;
@@ -124,34 +149,45 @@ export class PwaLibraryCoreSearchIndex {
   }
 
   async ensureBuilt(
-    corpusVersion: number,
+    source: PwaLibraryCoreSearchSourceV1,
     scanItems: ScanLibraryItems,
+    signal?: AbortSignal,
   ): Promise<void> {
-    const database = await this.#database();
-    const read = database.transaction(META_STORE, "readonly");
-    const active = (await requestResult(
-      read.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
-    )) as ActiveIndexRecord | undefined;
-    await transactionDone(read);
-    if (active?.corpusVersion === corpusVersion) return;
-    if (this.#buildPromise) return this.#buildPromise;
-
-    const build = this.#rebuild(corpusVersion, scanItems).finally(() => {
-      if (this.#buildPromise === build) this.#buildPromise = null;
-    });
-    this.#buildPromise = build;
-    return build;
+    throwIfAborted(signal);
+    const build = this.#buildQueue
+      .catch(() => undefined)
+      .then(async () => {
+        throwIfAborted(signal);
+        const database = await this.#database();
+        const read = database.transaction(META_STORE, "readonly");
+        const active = (await requestResult(
+          read.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
+        )) as ActiveIndexRecord | undefined;
+        await transactionDone(read);
+        if (
+          active?.corpusVersion === source.corpusVersion &&
+          active.sourceToken === source.sourceToken
+        ) {
+          return;
+        }
+        await this.#rebuild(source, scanItems, signal);
+      });
+    this.#buildQueue = build;
+    await build;
   }
 
   async search(
     query: string,
-    corpusVersion: number,
+    source: PwaLibraryCoreSearchSourceV1,
     visit: (matches: readonly ScoredLibraryItem[]) => SearchIdentityDecision,
     options: {
       readonly accountAliases?: ReadonlyMap<string, string>;
       readonly signal?: AbortSignal;
     } = {},
   ): Promise<void> {
+    if (!isLibraryCoreSearchQueryV1(query)) {
+      throw new Error("Library Core search query exceeds its byte limit");
+    }
     const queryTerms = tokenizeLibraryCoreSearchTextV1(
       query,
       LIBRARY_CORE_SEARCH_QUERY_MAXIMUM_TERMS,
@@ -169,7 +205,10 @@ export class PwaLibraryCoreSearchIndex {
       const active = (await requestResult(
         transaction.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
       )) as ActiveIndexRecord | undefined;
-      if (active?.corpusVersion !== corpusVersion) {
+      if (
+        active?.corpusVersion !== source.corpusVersion ||
+        active.sourceToken !== source.sourceToken
+      ) {
         transaction.abort();
         throw new Error(
           "PWA search index does not match the selected Library generation",
@@ -178,18 +217,18 @@ export class PwaLibraryCoreSearchIndex {
       const documents = transaction.objectStore(DOCUMENTS_STORE);
       const range = this.#keyRange.bound(
         afterGlobalId === null
-          ? [corpusVersion]
-          : [corpusVersion, afterGlobalId],
-        [corpusVersion, []],
+          ? [source.sourceToken]
+          : [source.sourceToken, afterGlobalId],
+        [source.sourceToken, []],
         afterGlobalId !== null,
       );
       let cursor = await requestResult(documents.openCursor(range));
       let scanned = 0;
+      let fuzzyWorkRemaining = LIBRARY_CORE_SEARCH_SCORE_WORK_LIMIT;
       let nextAfterGlobalId: string | null = null;
       while (cursor && scanned < LIBRARY_CORE_SEARCH_SCAN_ROW_LIMIT) {
         throwIfAborted(options.signal);
         const document = cursor.value as SearchDocument;
-        nextAfterGlobalId = document.globalId;
         const alias = options.accountAliases?.get(
           `${document.item.platform}:${document.item.author.id}`,
         );
@@ -205,7 +244,21 @@ export class PwaLibraryCoreSearchIndex {
         const fields = aliasField?.terms.length
           ? [...document.fields, aliasField]
           : document.fields;
-        const score = scoreLibraryCoreSearchFieldsV1(fields, queryTerms);
+        const scored = scoreLibraryCoreSearchFieldsWithBudgetV1(
+          fields,
+          queryTerms,
+          fuzzyWorkRemaining,
+        );
+        fuzzyWorkRemaining -= scored.work;
+        if (
+          scored.exhausted &&
+          fuzzyWorkRemaining <
+            LIBRARY_CORE_SEARCH_SCORE_WORK_LIMIT - scored.work
+        ) {
+          break;
+        }
+        nextAfterGlobalId = document.globalId;
+        const score = scored.score;
         if (score > 0) {
           batch.push({ item: document.item, score });
           if (batch.length >= LIBRARY_CORE_SEARCH_RESULT_PAGE_LIMIT) {
@@ -230,6 +283,7 @@ export class PwaLibraryCoreSearchIndex {
   }
 
   async close(): Promise<void> {
+    await this.#buildQueue.catch(() => undefined);
     if (!this.#databasePromise) return;
     const database = await this.#databasePromise;
     database.close();
@@ -245,7 +299,7 @@ export class PwaLibraryCoreSearchIndex {
   }
 
   async updateItems(
-    corpusVersion: number,
+    source: PwaLibraryCoreSearchSourceV1,
     items: readonly FeedItem[],
   ): Promise<void> {
     if (items.length === 0 || !this.#databasePromise) return;
@@ -255,16 +309,19 @@ export class PwaLibraryCoreSearchIndex {
       read.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
     )) as ActiveIndexRecord | undefined;
     await transactionDone(read);
-    if (active?.corpusVersion !== corpusVersion) return;
+    if (
+      active?.corpusVersion !== source.corpusVersion ||
+      active.sourceToken !== source.sourceToken
+    )
+      return;
     const write = database.transaction(DOCUMENTS_STORE, "readwrite");
     const documents = write.objectStore(DOCUMENTS_STORE);
-    for (const item of items)
-      documents.put(searchDocument(item, corpusVersion));
+    for (const item of items) documents.put(searchDocument(item, source));
     await transactionDone(write);
   }
 
   async removeItems(
-    corpusVersion: number,
+    source: PwaLibraryCoreSearchSourceV1,
     globalIds: readonly string[],
   ): Promise<void> {
     if (globalIds.length === 0 || !this.#databasePromise) return;
@@ -274,19 +331,25 @@ export class PwaLibraryCoreSearchIndex {
       read.objectStore(META_STORE).get(ACTIVE_INDEX_KEY),
     )) as ActiveIndexRecord | undefined;
     await transactionDone(read);
-    if (active?.corpusVersion !== corpusVersion) return;
+    if (
+      active?.corpusVersion !== source.corpusVersion ||
+      active.sourceToken !== source.sourceToken
+    )
+      return;
     const write = database.transaction(DOCUMENTS_STORE, "readwrite");
     const documents = write.objectStore(DOCUMENTS_STORE);
     for (const globalId of new Set(globalIds)) {
-      documents.delete([corpusVersion, globalId]);
+      documents.delete([source.sourceToken, globalId]);
     }
     await transactionDone(write);
   }
 
   async #rebuild(
-    corpusVersion: number,
+    source: PwaLibraryCoreSearchSourceV1,
     scanItems: ScanLibraryItems,
+    signal?: AbortSignal,
   ): Promise<void> {
+    throwIfAborted(signal);
     const database = await this.#database();
     const clear = database.transaction(
       [DOCUMENTS_STORE, META_STORE],
@@ -297,18 +360,20 @@ export class PwaLibraryCoreSearchIndex {
     await transactionDone(clear);
 
     await scanItems(async (items) => {
+      throwIfAborted(signal);
       const transaction = database.transaction(DOCUMENTS_STORE, "readwrite");
       const documents = transaction.objectStore(DOCUMENTS_STORE);
-      for (const item of items)
-        documents.put(searchDocument(item, corpusVersion));
+      for (const item of items) documents.put(searchDocument(item, source));
       await transactionDone(transaction);
+      throwIfAborted(signal);
       return "continue" as const;
     });
 
     const publish = database.transaction(META_STORE, "readwrite");
     publish.objectStore(META_STORE).put({
-      corpusVersion,
+      corpusVersion: source.corpusVersion,
       key: ACTIVE_INDEX_KEY,
+      sourceToken: source.sourceToken,
     } satisfies ActiveIndexRecord);
     await transactionDone(publish);
   }
@@ -319,20 +384,24 @@ export class PwaLibraryCoreSearchIndex {
         this.#databaseName,
         DATABASE_VERSION,
       );
-      request.addEventListener("upgradeneeded", () => {
+      request.addEventListener("upgradeneeded", (event) => {
         const database = request.result;
+        if (
+          event.oldVersion > 0 &&
+          event.oldVersion < DATABASE_VERSION &&
+          database.objectStoreNames.contains(DOCUMENTS_STORE)
+        ) {
+          database.deleteObjectStore(DOCUMENTS_STORE);
+        }
         if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) {
           database.createObjectStore(DOCUMENTS_STORE, {
-            keyPath: ["corpusVersion", "globalId"],
+            keyPath: ["sourceToken", "globalId"],
           });
-        } else {
-          const documents = request.transaction!.objectStore(DOCUMENTS_STORE);
-          if (documents.indexNames.contains("by_search_key")) {
-            documents.deleteIndex("by_search_key");
-          }
         }
         if (!database.objectStoreNames.contains(META_STORE)) {
           database.createObjectStore(META_STORE, { keyPath: "key" });
+        } else if (event.oldVersion < DATABASE_VERSION) {
+          request.transaction!.objectStore(META_STORE).clear();
         }
       });
       request.addEventListener(

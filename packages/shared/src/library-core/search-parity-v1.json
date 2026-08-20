@@ -37,5 +37,11 @@
     "queryTerms": ["abc"],
     "fields": [{ "value": "abd", "weight": 4 }],
     "score": 0
+  },
+  {
+    "query": "ΟΣ",
+    "queryTerms": ["οσ"],
+    "fields": [{ "value": "οσ", "weight": 4 }],
+    "score": 16
   }
 ]
