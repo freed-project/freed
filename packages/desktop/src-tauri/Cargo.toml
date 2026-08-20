@@ -61,6 +61,7 @@ ring = "0.17"
 # the projection contract depends on STRICT.
 rusqlite = { version = "0.32", features = ["blob", "bundled", "limits"] }
 tempfile = "3"
+unicode-normalization = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

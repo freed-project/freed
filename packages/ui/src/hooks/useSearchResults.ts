@@ -34,6 +34,13 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   sortByPriority,
 } from "@freed/shared";
+import {
+  compareLibraryCoreSearchIdentityV1,
+  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
+  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES,
+  LIBRARY_CORE_SEARCH_RETAINED_RESULT_LIMIT,
+  type LibraryCoreSearchAccountAliasV1,
+} from "@freed/shared/library-core";
 import type {
   Account,
   FeedItem,
@@ -51,7 +58,7 @@ import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
 const SEARCH_INDEX_CHUNK_SIZE = 100;
 const SEARCH_INDEX_RELEASE_DELAY_MS = 75;
-const MAX_BOUNDED_SEARCH_RESULTS = 100;
+const MAX_BOUNDED_SEARCH_RESULTS = LIBRARY_CORE_SEARCH_RETAINED_RESULT_LIMIT;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */
 interface SearchDoc {
@@ -113,6 +120,64 @@ function accountSignature(accounts: Record<string, Account>): string {
     )
     .sort()
     .join("|");
+}
+
+const searchTextEncoder = new TextEncoder();
+
+function boundedAliasText(value: string): string {
+  if (
+    searchTextEncoder.encode(value).byteLength <=
+    LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES
+  ) {
+    return value;
+  }
+  const scalars = Array.from(value);
+  let low = 0;
+  let high = scalars.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (
+      searchTextEncoder.encode(scalars.slice(0, middle).join("")).byteLength <=
+      LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES
+    ) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return scalars.slice(0, low).join("");
+}
+
+function libraryCoreSearchAccountAliases(
+  accounts: Record<string, Account>,
+): readonly LibraryCoreSearchAccountAliasV1[] {
+  return Object.values(accounts)
+    .filter(
+      (account) => account.kind === "social" && searchText(account.externalId),
+    )
+    .sort((left, right) => {
+      const leftKey = `${left.provider}:${searchText(left.externalId)}`;
+      const rightKey = `${right.provider}:${searchText(right.externalId)}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    })
+    .slice(0, LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT)
+    .map((account) => {
+      const authorId = searchText(account.externalId);
+      const aliases = [
+        account.displayName,
+        account.handle,
+        account.handle?.startsWith("@") ? account.handle.slice(1) : undefined,
+        authorId,
+        authorId.slice(-8),
+      ]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join(" ");
+      return Object.freeze({
+        aliases: boundedAliasText(aliases),
+        authorId,
+        platform: account.provider,
+      });
+    });
 }
 
 function toSearchDoc(
@@ -500,7 +565,7 @@ function comparePersistentSearchItems(
   return (
     priorityValue(right.item) - priorityValue(left.item) ||
     right.score - left.score ||
-    left.item.globalId.localeCompare(right.item.globalId)
+    compareLibraryCoreSearchIdentityV1(left.item.globalId, right.item.globalId)
   );
 }
 
@@ -532,6 +597,7 @@ async function computePersistentSearchResults(args: {
   persons: Record<string, Person>;
   accounts: Record<string, Account>;
   friends: Record<string, Friend>;
+  signal: AbortSignal;
 }): Promise<SearchResults> {
   const normalizedFilter = normalizeLibraryCoreFeedBrowseFilterV1(
     args.activeFilter,
@@ -555,6 +621,10 @@ async function computePersistentSearchResults(args: {
         insertBoundedPersistentSearchItem(retained, match);
       }
       return "continue";
+    },
+    {
+      accountAliases: libraryCoreSearchAccountAliases(args.accounts),
+      signal: args.signal,
     },
   );
   return {
@@ -830,6 +900,7 @@ export function useSearchResults(
     }
 
     const graphSnapshot = store.getState();
+    const controller = new AbortController();
     setPersistentResult(null);
     computePersistentSearchResults({
       searcher: searchLibraryItems,
@@ -840,6 +911,7 @@ export function useSearchResults(
       persons: graphSnapshot.persons as Record<string, Person>,
       accounts: graphSnapshot.accounts as Record<string, Account>,
       friends: graphSnapshot.friends as Record<string, Friend>,
+      signal: controller.signal,
     })
       .then((result) => {
         if (!cancelled) {
@@ -848,10 +920,11 @@ export function useSearchResults(
         }
       })
       .catch(() => {
-        if (!cancelled) setPersistentFailed(true);
+        if (!cancelled && !controller.signal.aborted) setPersistentFailed(true);
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     accountIndexSignature,

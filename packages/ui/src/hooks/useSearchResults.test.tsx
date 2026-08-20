@@ -169,7 +169,11 @@ describe("SQLite-streamed Library search", () => {
     await act(async () => {
       root?.render(
         <PlatformProvider value={platform}>
-          <Harness onResult={(result) => { latest = result; }} />
+          <Harness
+            onResult={(result) => {
+              latest = result;
+            }}
+          />
         </PlatformProvider>,
       );
     });
@@ -189,6 +193,10 @@ describe("SQLite-streamed Library search", () => {
       "needle",
       41,
       expect.any(Function),
+      expect.objectContaining({
+        accountAliases: [],
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(scanLibraryItems).not.toHaveBeenCalled();
     expect(latest?.resultCount).toBe(101);

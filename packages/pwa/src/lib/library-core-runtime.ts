@@ -14,6 +14,8 @@ import {
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
+  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateAssignmentFieldV1,
@@ -187,6 +189,8 @@ function stateFromShell(
 
 async function readSelectedState(): Promise<LibraryState | null> {
   const store = getPortableStore();
+  const selected = await store.readSelectedCheckpointReceipt();
+  if (!selected) return null;
   const shell = await store.readSelectedMaterializedRow(
     "00_library_shell",
     "shell",
@@ -235,17 +239,29 @@ async function readSelectedState(): Promise<LibraryState | null> {
     cursor = page.nextCursor;
   } while (cursor !== null);
 
-  return stateFromShell(shell, items, {
-    archivableCountByPlatform,
-    archivableFeedCounts,
-    feedTotalCounts,
-    feedUnreadCounts,
-    itemCountByPlatform,
-    totalArchivableCount,
-    totalItemCount,
-    totalUnreadCount,
-    unreadCountByPlatform,
-  });
+  const current = await store.readSelectedCheckpointReceipt();
+  if (
+    !current ||
+    current.generationId !== selected.generationId ||
+    current.selectionSequence !== selected.selectionSequence
+  ) {
+    throw new Error("Selected PWA Library changed while reading its state");
+  }
+
+  return {
+    ...stateFromShell(shell, items, {
+      archivableCountByPlatform,
+      archivableFeedCounts,
+      feedTotalCounts,
+      feedUnreadCounts,
+      itemCountByPlatform,
+      totalArchivableCount,
+      totalItemCount,
+      totalUnreadCount,
+      unreadCountByPlatform,
+    }),
+    searchCorpusVersion: selected.selectionSequence,
+  };
 }
 
 function publishState(state: LibraryState): void {
@@ -792,10 +808,39 @@ export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
   query,
   searchCorpusVersion,
   visit,
+  options,
 ) => {
   const index = getSearchIndex();
   await index.ensureBuilt(searchCorpusVersion, scanPwaLibraryCoreItems);
-  await index.search(query, searchCorpusVersion, visit);
+  const aliasEntries = options?.accountAliases ?? [];
+  if (aliasEntries.length > LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT) {
+    throw new Error("Library Core search account alias count is invalid");
+  }
+  const encoder = new TextEncoder();
+  const accountAliases = new Map<string, string>();
+  for (const entry of aliasEntries) {
+    if (
+      entry.platform.length === 0 ||
+      entry.authorId.length === 0 ||
+      encoder.encode(entry.platform).byteLength >
+        LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES ||
+      encoder.encode(entry.authorId).byteLength >
+        LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES ||
+      encoder.encode(entry.aliases).byteLength >
+        LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES
+    ) {
+      throw new Error("Library Core search account alias is invalid");
+    }
+    const key = `${entry.platform}:${entry.authorId}`;
+    if (accountAliases.has(key)) {
+      throw new Error("Library Core search account alias is duplicated");
+    }
+    accountAliases.set(key, entry.aliases);
+  }
+  await index.search(query, searchCorpusVersion, visit, {
+    accountAliases,
+    signal: options?.signal,
+  });
 };
 
 /** Read one complete FeedItem from the selected IndexedDB generation. */

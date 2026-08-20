@@ -350,6 +350,25 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.readPendingIntentActors).toHaveBeenCalledTimes(1);
   });
 
+  it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
+    mocks.readSelectedMaterializedRow.mockResolvedValue({
+      accounts: {},
+      feeds: {},
+      persons: {},
+      preferences: createDefaultPreferences(),
+      searchCorpusVersion: 1,
+    });
+    mocks.readSelectedMaterializedPage.mockResolvedValue({
+      entries: [],
+      nextCursor: null,
+      source: SELECTED_SOURCE,
+    });
+
+    const state = await initializePwaLibraryCoreState();
+
+    expect(state.searchCorpusVersion).toBe(SELECTED_SOURCE.selectionSequence);
+  });
+
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {
     mocks.readSelectedMaterializedPage
       .mockResolvedValueOnce({

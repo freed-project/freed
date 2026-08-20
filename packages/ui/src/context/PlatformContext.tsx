@@ -36,6 +36,7 @@ import type {
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
+import type { LibraryCoreSearchAccountAliasV1 } from "@freed/shared/library-core";
 import type {
   ImportSummary,
   ProgressFn,
@@ -140,6 +141,10 @@ export type SearchLibraryItems = (
   visit: (
     matches: readonly ScoredLibraryItem[],
   ) => LibraryItemScanDecision,
+  options?: Readonly<{
+    accountAliases?: readonly LibraryCoreSearchAccountAliasV1[];
+    signal?: AbortSignal;
+  }>,
 ) => Promise<void>;
 
 export type ReadFeedSignalCounts = (

@@ -40,6 +40,24 @@ test("PWA search keeps its corpus projection in IndexedDB and streams bounded ma
       priority: itemIndex,
       sourceUrl: `https://example.com/${itemIndex}`,
     }));
+    items.push(
+      {
+        ...items[0]!,
+        globalId: "rss:prefix-only",
+        content: {
+          ...items[0]!.content,
+          text: "architecture handbook",
+        },
+      },
+      {
+        ...items[0]!,
+        globalId: "rss:fuzzy-only",
+        content: {
+          ...items[0]!.content,
+          text: "archtectur handbook",
+        },
+      },
+    );
     let scanCount = 0;
     let largestSourcePage = 0;
     const scan = async (visit: (items: readonly unknown[]) => unknown) => {
@@ -67,6 +85,43 @@ test("PWA search keeps its corpus projection in IndexedDB and streams bounded ma
       fuzzyOnlyMatches.push(...batch.map(({ item }) => item.globalId));
       return "continue";
     });
+    const mixedPrefixAndFuzzyMatches: string[] = [];
+    await index.search("architectur", 41, (batch) => {
+      mixedPrefixAndFuzzyMatches.push(
+        ...batch.map(({ item }) => item.globalId),
+      );
+      return "continue";
+    });
+    const aliasMatches: string[] = [];
+    await index.search(
+      "countess",
+      41,
+      (batch) => {
+        aliasMatches.push(...batch.map(({ item }) => item.globalId));
+        return "continue";
+      },
+      {
+        accountAliases: new Map([["rss:author", "Countess Ada"]]),
+      },
+    );
+    const cancellation = new AbortController();
+    let cancellationBatchCount = 0;
+    let cancellationRejected = false;
+    try {
+      await index.search(
+        "analytical",
+        41,
+        () => {
+          cancellationBatchCount += 1;
+          cancellation.abort();
+          return "continue";
+        },
+        { signal: cancellation.signal },
+      );
+    } catch (error) {
+      cancellationRejected =
+        error instanceof DOMException && error.name === "AbortError";
+    }
 
     await index.ensureBuilt(42, scan);
     await index.close();
@@ -83,6 +138,10 @@ test("PWA search keeps its corpus projection in IndexedDB and streams bounded ma
       fuzzyOnlyMatchCount: fuzzyOnlyMatches.length,
       matchCount: matches.length,
       minimumScore: Math.min(...matches.map(({ score }) => score)),
+      mixedPrefixAndFuzzyMatches,
+      cancellationBatchCount,
+      cancellationRejected,
+      aliasMatchCount: aliasMatches.length,
       scanCount,
       uniqueMatchCount: new Set(matches.map(({ id }) => id)).size,
     };
@@ -95,4 +154,11 @@ test("PWA search keeps its corpus projection in IndexedDB and streams bounded ma
   expect(result.uniqueMatchCount).toBe(101);
   expect(result.minimumScore).toBeGreaterThan(0);
   expect(Math.max(...result.batchSizes)).toBeLessThanOrEqual(32);
+  expect(result.mixedPrefixAndFuzzyMatches).toEqual([
+    "rss:fuzzy-only",
+    "rss:prefix-only",
+  ]);
+  expect(result.cancellationBatchCount).toBe(1);
+  expect(result.cancellationRejected).toBe(true);
+  expect(result.aliasMatchCount).toBe(103);
 });
