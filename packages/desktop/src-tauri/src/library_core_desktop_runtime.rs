@@ -6,7 +6,8 @@
 //! is rejected. Normal startup, reads, and writes do not open it.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use freed_library_core::upsert_item;
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -865,95 +866,6 @@ fn hash_bounded_record(hasher: &mut Sha256, value: &str) -> Result<(), String> {
     let length = u64::try_from(value.len()).map_err(|_| "SQLite Library record is too large")?;
     hasher.update(length.to_be_bytes());
     hasher.update(value.as_bytes());
-    Ok(())
-}
-
-fn integer_at(value: &Value, path: &[&str]) -> Option<i64> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_i64()
-}
-
-fn boolean_at(value: &Value, path: &[&str]) -> Option<i64> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_bool().map(i64::from)
-}
-
-pub(crate) fn upsert_item(
-    transaction: &Transaction<'_>,
-    item_json: &str,
-    updated_at_ms: i64,
-) -> Result<(), String> {
-    let item = validate_json_object(item_json, MAX_ITEM_BYTES)?;
-    let global_id = string_at(&item, &["globalId"])
-        .filter(|value| !value.is_empty() && value.len() <= 4_096)
-        .ok_or_else(|| "feed item globalId is missing or invalid".to_string())?;
-    transaction
-        .execute(
-            "INSERT INTO library_core_feed_items (
-               globalId, platform, contentType, publishedAt, capturedAt,
-               authorId, authorDisplayName, authorHandle, sourceUrl,
-               hidden, saved, archived, readAt, archivedAt, liked, likedAt,
-               likedSyncedAt, seenSyncedAt, feedUrl, sampleData, deletedAt,
-               payloadJson, updatedAtMs
-             ) VALUES (
-               ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-               ?14, ?15, ?16, ?17, ?18, ?19, ?20, NULL, ?21, ?22
-             )
-             ON CONFLICT(globalId) DO UPDATE SET
-               platform = excluded.platform,
-               contentType = excluded.contentType,
-               publishedAt = excluded.publishedAt,
-               capturedAt = excluded.capturedAt,
-               authorId = excluded.authorId,
-               authorDisplayName = excluded.authorDisplayName,
-               authorHandle = excluded.authorHandle,
-               sourceUrl = excluded.sourceUrl,
-               hidden = excluded.hidden,
-               saved = excluded.saved,
-               archived = excluded.archived,
-               readAt = excluded.readAt,
-               archivedAt = excluded.archivedAt,
-               liked = excluded.liked,
-               likedAt = excluded.likedAt,
-               likedSyncedAt = excluded.likedSyncedAt,
-               seenSyncedAt = excluded.seenSyncedAt,
-               feedUrl = excluded.feedUrl,
-               sampleData = excluded.sampleData,
-               deletedAt = NULL,
-               payloadJson = excluded.payloadJson,
-               updatedAtMs = excluded.updatedAtMs;",
-            params![
-                global_id,
-                string_at(&item, &["platform"]),
-                string_at(&item, &["contentType"]),
-                integer_at(&item, &["publishedAt"]),
-                integer_at(&item, &["capturedAt"]),
-                string_at(&item, &["author", "id"]),
-                string_at(&item, &["author", "displayName"]),
-                string_at(&item, &["author", "handle"]),
-                string_at(&item, &["sourceUrl"]),
-                boolean_at(&item, &["userState", "hidden"]),
-                boolean_at(&item, &["userState", "saved"]),
-                boolean_at(&item, &["userState", "archived"]),
-                integer_at(&item, &["userState", "readAt"]),
-                integer_at(&item, &["userState", "archivedAt"]),
-                boolean_at(&item, &["userState", "liked"]),
-                integer_at(&item, &["userState", "likedAt"]),
-                integer_at(&item, &["userState", "likedSyncedAt"]),
-                integer_at(&item, &["userState", "seenSyncedAt"]),
-                string_at(&item, &["rssSource", "feedUrl"]),
-                i64::from(item.get("sampleDataFingerprint").is_some()),
-                item_json,
-                updated_at_ms,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

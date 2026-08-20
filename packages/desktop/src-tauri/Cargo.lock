@@ -1365,6 +1365,7 @@ dependencies = [
  "base64 0.23.0",
  "criterion",
  "dirs",
+ "freed-library-core",
  "fslock",
  "futures-util",
  "hostname",
@@ -1403,6 +1404,18 @@ dependencies = [
  "windows-sys 0.61.2",
  "wreq",
  "wreq-util",
+]
+
+[[package]]
+name = "freed-library-core"
+version = "0.1.0"
+dependencies = [
+ "fslock",
+ "ring",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

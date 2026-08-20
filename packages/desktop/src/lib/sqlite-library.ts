@@ -106,7 +106,7 @@ export interface SqliteLibraryAuthorityBootstrap {
 export interface SqliteLibraryAuthorityProtocol {
   readonly format: "freed_library_core_native_authority_protocol_v1";
   readonly active_engine: "library_core_v1";
-  readonly schema_version: 11;
+  readonly schema_version: 12;
   readonly replication_protocol: "op_segments_v1";
   readonly checkpoint_format: "freed_logical_checkpoint_v1";
   readonly transition_certificate_digest: string;
@@ -1243,7 +1243,7 @@ export function parseSqliteLibraryAuthorityProtocol(
     keys.some((key, index) => key !== expectedKeys[index]) ||
     record.format !== "freed_library_core_native_authority_protocol_v1" ||
     record.active_engine !== "library_core_v1" ||
-    record.schema_version !== 11 ||
+    record.schema_version !== 12 ||
     record.replication_protocol !== "op_segments_v1" ||
     record.checkpoint_format !== "freed_logical_checkpoint_v1" ||
     typeof record.transition_certificate_digest !== "string" ||

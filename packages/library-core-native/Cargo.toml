@@ -1,0 +1,18 @@
+[package]
+name = "freed-library-core"
+version = "0.1.0"
+description = "Runtime-neutral native SQLite authority for Freed Library Core"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[dependencies]
+fslock = "0.2.1"
+ring = "0.17"
+rusqlite = { version = "0.32", features = ["blob", "bundled", "limits"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+
+[dev-dependencies]
+tempfile = "3"

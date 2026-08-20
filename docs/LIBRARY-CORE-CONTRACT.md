@@ -43,7 +43,7 @@ A fresh active SQLite Library establishes authority with one canonical signed
 `freed_library_core_native_sqlite_genesis_v1` certificate. Its opaque Library
 ID is derived from the exact imported source digest and an installation
 witness. The certificate commits `library_core_v1`, physical schema version
-11, `op_segments_v1`, `freed_logical_checkpoint_v1`, the authority public key
+12, `op_segments_v1`, `freed_logical_checkpoint_v1`, the authority public key
 and key ID, and one `freed_library_core_sqlite_source_manifest_v1`. That source
 manifest commits the source digest, source generation, source revision, SQLite
 revision, item count, and materialized digest. Fresh establishment cannot name
@@ -69,6 +69,12 @@ legacy certificate or invalidate epoch-scoped actors, writer admission,
 follower anchors, intents, results, checkpoints, or the Drive namespace. Exact
 retry returns the stored signed transition even when the acceptance timestamp
 changes. Any unequal second transition fails closed.
+
+Schema v12 migration does not invalidate an already signed native genesis or
+historical correction that committed schema v11. Verification accepts exactly
+those two native schema versions, preserves the original canonical certificate
+bytes and signatures, and reports the migrated journal's current schema v12.
+Any older or future schema value fails closed.
 
 The initial local Desktop actor may be enrolled before the first cloud control
 tuple exists because that actor is needed to name the initial writer. This
@@ -168,9 +174,10 @@ Response loss recovers only when readback equals the intended pointer,
 including that exact manifest locator. Ordinary publication cannot change the
 writer epoch or active cloud transport. Writer reassignment uses a separate
 explicit control transition. This coordinator has no Google or Dropbox
-dependency, token, polling loop, or production caller.
+dependency or token and owns no polling loop. The Freed Desktop Primary calls
+it through injected credential, schedule, fetch, authority, and receipt ports.
 
-The dormant Google Drive adapter implements that injected boundary for an
+The shared Google Drive adapter implements that injected boundary for an
 already-provisioned exact control file ID. It discovers controls only through
 private protocol, library-digest, and object-kind properties, rejects duplicate
 controls, and never treats a filename as authority. Ordinary immutable objects
@@ -178,12 +185,19 @@ use a single multipart upload below 5 MB. Each upload is indexed by private
 properties for its actual protocol kind, library digest, logical-key digest,
 and content digest, then read back through the exact Drive file ID and verified
 for byte length and SHA-256. Exact duplicate retries collapse only after every
-matching object verifies. Control updates send the exact previously read ETag
-as `If-Match`, classify `412` as a race, and read back exact bytes and the new
-ETag before reporting commit. All response bodies are bounded while reading.
+matching object verifies. Mutable control, intent head, and result head reads
+sample the bounded strong Drive v2 JSON `etag` field on both sides of one Drive
+v3 media read. Their updates use only Drive v2 media `PUT` with that exact
+strong ETag as `If-Match`, classify `412` as a race, and read back exact bytes
+and the new ETag before reporting commit. Immutable discovery, creation, media
+reads, and resumable traffic remain on Drive v3. The native transport admits
+only those exact v2 file routes, methods, queries, headers, and bounded bodies.
+It cannot use v2 for an unconditional overwrite. All response bodies are
+bounded while reading.
 The same exact-file path can return verified immutable bytes to a dormant
 checkpoint consumer. Control bootstrap remains separate. The adapter has no
-timer, caller, OAuth acquisition, product registration, or activation path.
+timer, OAuth acquisition, or product registration. Freed Desktop and the PWA
+are production callers through their platform fetch and runtime boundaries.
 
 Media blobs use a separate closed descriptor:
 
@@ -1894,6 +1908,160 @@ the actor is accepted until this certificate commits. An exact certificate
 retry is idempotent. Reusing `operation_id` or `actor_id` with different
 canonical bytes is an authority conflict and is rejected or quarantined, never
 overwritten.
+
+Schema v12 adds an explicit operation capability to every actor admitted by
+the native journal. Existing v1 Desktop and PWA enrollment certificates remain
+valid only through the `legacy_editor` compatibility policy for their exact
+enrolled epoch. That policy is the following frozen list, not an alias of the
+extensible canonical operation registry:
+
+```text
+account_remove
+account_upsert
+feed_item_archive_assignment
+feed_item_capture_upsert
+feed_item_like_assignment
+feed_item_read_assignment
+feed_item_remove
+feed_item_saved_assignment
+person_remove_and_accounts
+person_upsert
+preferences_leaf_assignment
+rss_feed_remove_keep_items
+rss_feed_remove_with_items
+rss_feed_upsert
+```
+
+A later canonical operation does not enter that list through registry
+maintenance. The v11 to v12 migration writes one explicit legacy capability
+row for each existing actor. A missing, malformed, digest-mismatched, or
+epoch-mismatched capability row makes the actor unusable.
+
+Schema v12 is a forward-only local rollout boundary. Once a Primary opens and
+migrates a Library, the v26.8.1900 schema v11 binary cannot reopen that
+Library. Every participating Freed Desktop installation must be upgraded to a
+schema v12 capable release before the authoritative Primary activates the
+migration. After activation, rollback means shipping a forward repair in a
+schema v12 capable binary. It does not mean reopening the migrated Library with
+v26.8.1900. The source implementation and dormant validation of this contract
+are not evidence that the upgrade prerequisite or installed migration has
+already completed.
+
+New `scraper` and `agent` actors require an authority-signed v2 capability
+certificate. New `editor` actors may also use v2. The certificate retains the
+closed v1 enrollment body and possession proof, then adds this closed body:
+
+```text
+actor_capability_body = {
+  format: "freed_library_core_actor_capability_v2",
+  library_id,
+  epoch,
+  epoch_id,
+  authority_key_id,
+  actor_id,
+  actor_public_key,
+  actor_class: "editor" | "scraper" | "agent",
+  allowed_operation_types,
+  scope,
+  issuance_identity,
+  retirement_identity,
+  issued_at_ms,
+  signature_algorithm: "ed25519"
+}
+
+issuance_identity = D("actor-capability-issuance", {
+  library_id,
+  epoch_id,
+  authority_key_id,
+  actor_id,
+  enrollment_body_digest
+})
+
+retirement_identity = D("actor-capability-retirement", {
+  library_id,
+  epoch_id,
+  actor_id,
+  issuance_identity
+})
+
+actor_capability_body_digest = D(
+  "actor-capability-body",
+  actor_capability_body
+)
+
+actor_capability_certificate_body = {
+  actor_enrollment_body,
+  enrollment_body_digest,
+  actor_proof,
+  actor_capability_body,
+  actor_capability_body_digest
+}
+
+certificate_digest = D(
+  "actor-capability-certificate",
+  actor_capability_certificate_body
+)
+
+authority_signature = S(
+  "actor-capability-authority",
+  authority_private_key,
+  { certificate_digest }
+)
+```
+
+The TypeScript constructor and verifier are test-only executable conformance
+machinery in this slice. They are not a production package export. No
+production service issues a v2 enrollment yet, and the PWA enrollment importer
+still accepts and stores only v1 certificates. A headless actor must not emit a
+v2 certificate into production sync until its enrollment service implements or
+promotes a consumed production API and the PWA can persist and verify the same
+capability. Until that integration lands, production enrollment remains on the
+frozen v1 `legacy_editor` path. The native journal does not downgrade a v2
+certificate to that policy.
+
+`allowed_operation_types` is a nonempty, unique, binary-sorted subset of the
+registered canonical operations. A `scraper` capability may contain only
+`feed_item_capture_upsert`. Reconciliation, Person, Account, RSS, preference,
+user-state, and removal authority must be granted through a different actor
+class and must be named individually. An `agent` or `editor` receives no
+implicit operations from its class.
+
+Scope is always present in the signed body. `{ mode: "library_wide" }` grants
+only the named operations across the library. A bounded scope is the closed
+object `{ mode: "bounded", scope_kind: "provider" | "source", scope_id }`.
+Current operation envelopes carry no canonical provider or source scope, so
+the native journal rejects every bounded capability. It never infers scope
+from a payload field. A future envelope version must define and bind one
+canonical scope before bounded capabilities can admit operations. Missing
+scope never means library-wide authority.
+
+Remote ingestion loads the stored capability for the exact actor and epoch
+before signature acceptance. For v2, it reverifies the canonical enrollment
+certificate and requires every immutable cached capability field to equal the
+authority-signed body. Only separately verified retirement state may differ.
+It rejects retired actors, bounded scope, and each operation absent from the
+signed set before any journal, materialization, outbox, actor-tip, or receipt
+row changes. The commit transaction reloads capability under its immediate
+write lock and refuses any change since verification. Exact accepted
+transaction replay remains idempotent only after complete envelope and
+signature verification and an existing receipt with the same transaction
+digest, actor ID, and member count. Receipt retrieval remains available only
+while the local writer is currently admitted, the transaction epoch is still
+active, the actor is not retired, and its exact signed capability is unchanged
+and still authorizes every operation. The journal rechecks those conditions
+under the same immediate transaction before returning the old receipt. Reusing
+a transaction ID with changed bytes does not bypass capability admission.
+Retired actors, stale epochs, lost writer admission, and oversized batches
+retain the existing fail-closed bounds without returning an outbox result.
+
+The v2 body prebinds `retirement_identity`, and the stored state refuses every
+operation once a verified retirement is recorded. This schema and verifier
+slice does not add the authority-signed retirement-certificate application
+API. That transition remains required before the product can retire a new v2
+actor through a production entry point. No caller may set `retired` from an
+unsigned renderer or transport value. Checkpoint export must also propagate a
+verified retirement instead of emitting an active actor. That checkpoint
+propagation remains blocked with the retirement application API.
 
 Every `transition_candidate` has one candidate-only verification mode before
 its target transition. The immutable import plan, migration or rollback
