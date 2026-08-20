@@ -284,6 +284,33 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
   );
 });
 
+test("feature plan runs strict reusable Library Core checks", () => {
+  const plan = buildValidationPlan("feature", [
+    "packages/library-core-native/src/lib.rs",
+  ]);
+  const clippy = plan.find(
+    (item) => item.label === "Library Core native rust clippy",
+  );
+  const tests = plan.find(
+    (item) => item.label === "Library Core native rust tests",
+  );
+
+  assert.ok(clippy);
+  assert.ok(tests);
+  assert.match(clippy.cwd, /\/packages\/library-core-native$/);
+  assert.ok(plan.some((item) => item.label === "desktop production build"));
+  assert.ok(plan.some((item) => item.label === "native rust clippy"));
+  assert.ok(plan.some((item) => item.label === "native rust tests"));
+  assert.deepEqual(clippy.args, [
+    "clippy",
+    "--all-targets",
+    "--all-features",
+    "--",
+    "-D",
+    "warnings",
+  ]);
+});
+
 test("workspace checks run inside each workspace without root dispatch flags", () => {
   const plan = buildValidationPlan("dev", []);
   const workspaceCommands = plan.filter(
@@ -607,6 +634,8 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(labels.includes("shared unit tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  assert.ok(labels.includes("Library Core native rust clippy"));
+  assert.ok(labels.includes("Library Core native rust tests"));
   assert.ok(labels.includes("retired Automerge release artifact guard"));
   assert.ok(!labels.includes("desktop e2e full"));
 });

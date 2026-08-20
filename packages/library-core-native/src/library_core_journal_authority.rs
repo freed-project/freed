@@ -143,7 +143,7 @@ fn observed_frontier(
     Ok(indexed_tips.into_iter().map(|(_, tip)| tip).collect())
 }
 
-pub(super) fn active_authority(
+pub(crate) fn active_authority(
     connection: &Connection,
     library_id: &str,
 ) -> JournalResult<Option<AcceptedAuthorityState>> {
@@ -181,7 +181,7 @@ pub(super) fn active_authority(
     Ok(Some(authority))
 }
 
-pub(super) fn require_active_authority(
+pub(crate) fn require_active_authority(
     connection: &Connection,
     expected: &AcceptedAuthorityState,
 ) -> JournalResult<()> {
@@ -198,7 +198,7 @@ pub(super) fn require_active_authority(
     Ok(())
 }
 
-pub(super) fn require_active_epoch(
+pub(crate) fn require_active_epoch(
     connection: &Connection,
     library_id: &str,
     epoch: i64,
