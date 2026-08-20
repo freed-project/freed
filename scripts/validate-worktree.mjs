@@ -586,8 +586,12 @@ function nodeCommand(label, args, workspacePath = ".") {
   return commandItem(label, NODE_BIN, args, workspacePath);
 }
 
-function cargoCommand(label, args) {
-  return commandItem(label, CARGO_BIN, args, "packages/desktop/src-tauri");
+function cargoCommand(
+  label,
+  args,
+  workspacePath = "packages/desktop/src-tauri",
+) {
+  return commandItem(label, CARGO_BIN, args, workspacePath);
 }
 
 function desktopUnitFilesCommand(label, files) {
@@ -651,6 +655,28 @@ function nativeRustChecks() {
       "--all-features",
     ]),
     cargoCommand("native rust tests", ["test", "--all-features"]),
+  ];
+}
+
+function libraryCoreNativeRustChecks() {
+  return [
+    cargoCommand(
+      "Library Core native rust clippy",
+      [
+        "clippy",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings",
+      ],
+      "packages/library-core-native",
+    ),
+    cargoCommand(
+      "Library Core native rust tests",
+      ["test", "--all-features"],
+      "packages/library-core-native",
+    ),
   ];
 }
 
@@ -890,6 +916,7 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
       ...nativeRustChecks(),
+      ...libraryCoreNativeRustChecks(),
       nodeCommand("retired Automerge release artifact guard", [
         path.join("scripts", "validate-retired-automerge-runtime.mjs"),
         "all",
@@ -1018,7 +1045,12 @@ export function buildValidationPlan(mode, changedFiles) {
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
-  const desktopNativeSurfaceChanged = changedFiles.some(isDesktopNativeSurface);
+  const libraryCoreNativeSurfaceChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/library-core-native/"),
+  );
+  const desktopNativeSurfaceChanged =
+    libraryCoreNativeSurfaceChanged ||
+    changedFiles.some(isDesktopNativeSurface);
   const desktopPerfSensitiveChanged = changedFiles.some(
     isDesktopPerfSensitiveSurface,
   );
@@ -1189,6 +1221,12 @@ export function buildValidationPlan(mode, changedFiles) {
       ),
     );
     for (const check of nativeRustChecks()) {
+      addCommand(plan, check);
+    }
+  }
+
+  if (libraryCoreNativeSurfaceChanged) {
+    for (const check of libraryCoreNativeRustChecks()) {
       addCommand(plan, check);
     }
   }

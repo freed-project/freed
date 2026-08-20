@@ -1280,6 +1280,7 @@ mod tests {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn signed_envelopes_from_tip(
         key_pair: &Ed25519KeyPair,
         enrollment: &VerifiedActorEnrollment,

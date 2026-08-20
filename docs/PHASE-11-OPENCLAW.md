@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator and local process lease have landed; the service host, actor capabilities, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, and local process lease have landed; the service host, actor capabilities, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -73,11 +73,17 @@ The current product already provides the protocol foundation:
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
   seconds.
+- `freed-library-core` now owns the native signed journal, SQLite authority
+  schema and migrations, actor enrollment, authority epochs, exact product
+  projection, and process lease without importing Tauri or selecting a
+  credential backend.
+- Freed Desktop preserves its existing command DTOs and behavior through thin
+  data-root and platform-vault adapters around that reusable native package.
 
 These pieces do not yet create a headless executable. Drive credentials remain
-owned by the Freed Desktop renderer, and the native SQLite authority remains
-inside the Tauri crate. The next work extracts those host boundaries without
-changing the wire protocol.
+owned by the Freed Desktop renderer, and the production native command host
+remains inside the Tauri crate. The next work adds the service host and its
+credential boundary without changing the wire protocol.
 
 ---
 
@@ -310,7 +316,7 @@ review before implementation.
 | --- | --- | --- |
 | 11.1 | Complete | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop |
 | 11.2 | Complete | Enforce one operating system backed Library data-root lease before SQLite opens |
-| 11.3 | Open | Extract the reusable native SQLite authority package without changing Tauri behavior |
+| 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Open | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | Open | Add exact checkpoint import, status, doctor, backup, and structured receipts |

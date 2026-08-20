@@ -13,6 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+freed-library-core = { path = "../../library-core-native" }
 tauri = { version = "=2.11.5", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
