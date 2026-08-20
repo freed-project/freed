@@ -65,6 +65,12 @@ impl LibraryCoreBoundRoot {
         self._descriptor.as_raw_fd()
     }
 
+    pub(crate) fn duplicate_descriptor(&self) -> Result<OwnedFd, LibraryCoreStoreError> {
+        self._descriptor
+            .try_clone()
+            .map_err(LibraryCoreStoreError::from)
+    }
+
     pub(crate) fn is_private_for(&self, owner: u32) -> bool {
         self.owner == owner && self.mode & 0o7777 == 0o700
     }

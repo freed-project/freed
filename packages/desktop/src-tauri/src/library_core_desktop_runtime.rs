@@ -5,6 +5,9 @@
 //! is retained only as the cold source file that can be restored if the import
 //! is rejected. Normal startup, reads, and writes do not open it.
 
+#[path = "library_core_media_recovery.rs"]
+mod media_recovery;
+
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use freed_library_core::{
     upsert_item, BeginLibraryCoreImport, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
@@ -1029,7 +1032,9 @@ fn require_active(connection: &Connection) -> Result<(), String> {
 pub(super) fn sqlite_library_status(
     app: tauri::AppHandle,
 ) -> Result<Option<DesktopLibraryStatus>, String> {
-    let status: Option<DesktopLibraryStatus> = open_store_at(&app_root(&app)?)?
+    let root = app_root(&app)?;
+    media_recovery::reconcile_legacy_media_vault_once(&root)?;
+    let status: Option<DesktopLibraryStatus> = open_store_at(&root)?
         .status()
         .map_err(|error| error.to_string())?
         .map(Into::into);

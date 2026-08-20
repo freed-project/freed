@@ -2,6 +2,7 @@
 
 > **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, one durable device-local scheduler for X, Facebook, Instagram, LinkedIn, YouTube, Substack, and Medium across sleep, hidden windows, locks, and renderer restarts, an independent RSS-only fixed scheduler, Facebook group controls with stored-name repair, ID-tail fallback labels, and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, post-login sync startup that closes login prompts only after scrape health is confirmed, a local permanent media vault for a user's own Meta media, and a local social scrape optimization loop that ranks safe next actions and post-block memory recovery from runtime logs without adding provider-visible behavior
 > **Dependencies:** Phase 5 (Desktop App)
+> **Media recovery:** The first Freed Desktop Library status read preserves the legacy permanent vault through a native content-addressed copy, exact logical backup, and fail-closed reconciliation receipt before that status read continues. Unix recovery evidence is rooted through held Library Core descriptors. Platforms without the descriptor-bound recovery-store adapter refuse an existing legacy vault. Quarantined evidence remains in place.
 
 ---
 
@@ -138,6 +139,8 @@ Facebook and Instagram settings now expose a local-only media archive for the us
 
 The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
 
+Freed Desktop now reconciles that legacy manifest at startup without using the renderer reader that substitutes an empty manifest after an error. The native path validates the complete closed v1 record, pins the exact vault root, rejects linked or escaping paths, and streams regular files through a fixed 1 MiB buffer into the Library Core content-addressed store. A durable logical backup accounts for every entry as admitted or quarantined before the completion receipt is written. Missing files, duplicate paths, legacy FNV hashes, content or length mismatches, symbolic links, out-of-root paths, unreadable files, nonregular files, and oversize payloads are quarantined. Existing files stay in their original locations, including bytes that could not be safely admitted. This recovery performs no provider request, cloud write, file removal, or Automerge mutation.
+
 Historical completeness comes from Meta export import. The importer accepts Accounts Center ZIP exports, prefers JSON-backed structures, scans Facebook and Instagram media folders defensively, skips message attachments, records discovered account handles, and copies media into the permanent vault with content-hash dedupe.
 
 Recent coverage is continuous. After Facebook or Instagram sync stores captured items, Freed records roster metadata and attempts to archive recent own-account media when the provider archive is enabled and the user's handle is known. The archive dedupes by content hash, source URL, provider media ID, and normalized media URL, records bounded retry state for failed downloads, and never prunes permanent media.
@@ -204,6 +207,7 @@ const RATE_LIMITS = {
 | 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete     |
 | 7.25 | Process-matched startup memory attribution                               | ✓ Complete     |
 | 7.26 | Durable provider scheduler, native hidden-window deadlines, independent cadence controls, and RSS split | ✓ Complete |
+| 7.27 | Native fail-closed legacy media-vault reconciliation into the local Library Core content-addressed store, with durable logical backup and quarantine receipts | ✓ Complete |
 
 ---
 
@@ -258,6 +262,7 @@ const RATE_LIMITS = {
 - [x] Facebook and Instagram settings expose `(Beta) Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
 - [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
 - [x] Permanent media archive state stays outside Automerge and is not synced
+- [x] Native startup reconciliation reads the legacy manifest directly, preserves every source file, stores verified bytes by `DB("blob-content", raw_bytes)`, and durably accounts for missing, ambiguous, legacy-hash, corrupt, linked, and escaping entries without provider or cloud traffic
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
 - [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
 - [x] Story Wall beta preferences store selected years, source filters, layout, style, embed, publish target, hidden memories, and featured memories without syncing media binaries

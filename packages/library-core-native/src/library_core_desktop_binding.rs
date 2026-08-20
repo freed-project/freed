@@ -1,5 +1,5 @@
 use std::fs;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -102,6 +102,14 @@ impl LibraryCoreDesktopBinding {
 
     pub fn store(&self) -> &LibraryCoreStore {
         &self.store
+    }
+
+    pub fn duplicate_app_root_descriptor(&self) -> Result<OwnedFd, LibraryCoreStoreError> {
+        self._app_root.duplicate_descriptor()
+    }
+
+    pub fn duplicate_library_root_descriptor(&self) -> Result<OwnedFd, LibraryCoreStoreError> {
+        self._library_root.duplicate_descriptor()
     }
 }
 

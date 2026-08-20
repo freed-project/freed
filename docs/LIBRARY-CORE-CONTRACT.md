@@ -2714,6 +2714,102 @@ receipt. The importer streams ZIP members and media bytes through bounded
 native staging. It cannot load a whole archive or media member into renderer
 memory.
 
+The first production media recovery slice preserves that legacy source before
+the portable snapshot and off-device backup protocols become active. The
+existing `sqlite_library_status` command invokes the native reconciler once per
+Freed Desktop process on the first Library status read. The reconciler reads
+the literal `media-vault/manifest.json` file itself. It never calls the renderer helper
+that converts a missing, unreadable, or malformed manifest into a new empty
+manifest.
+
+The legacy decoder accepts only the closed version 1 record already written by
+the current media-vault owner. The top-level record, provider states, entries,
+failure records, and roster records reject unknown fields, duplicate JSON map
+keys, null values in optional fields, noninteger numeric fields, unsupported
+enum values, mismatched map keys and embedded IDs, unsafe integers, and text or
+entry counts outside the recorded v1 bounds. Only an absent vault root means
+that no legacy source exists. Any existing root with no manifest, a linked
+manifest, a nonregular manifest, a parse failure, or a source change during the
+read is a blocking error. It is never reported as an empty vault.
+
+Each legacy absolute path is reduced only when it has the exact configured
+vault root prefix. A relative path is interpreted only beneath the pinned
+root. The remaining path has exactly the registered provider directory and
+one filename. Empty, current-directory, parent-directory, root, prefix, NUL,
+and control escapes are invalid. Native code opens the root once and resolves
+each component without following symbolic links or reparse points. Unix uses
+handle-relative `openat` with `O_NOFOLLOW` for every component and rejects
+device crossings. Windows checks each component for a reparse point, opens the
+final object with reparse-point traversal disabled, and verifies the final
+path remains beneath the exact root. The root and each opened file retain one
+physical identity that must remain unchanged through the final byte and source
+commit check.
+
+Recovery artifact creation is descriptor-bound on Unix. The reconciler holds
+the installed Library Core app-root and Library-root descriptors, creates every
+recovery directory and staged artifact relative to those descriptors, and
+publishes each immutable file without replacing an existing leaf. A visible
+root rename or replacement cannot redirect those writes. Platforms without
+that descriptor-bound recovery-store adapter fail closed when a legacy vault
+is present. They do not create recovery evidence through pathname checks.
+
+Raw regular-file bytes are copied through one 1 MiB buffer while two
+incremental hashes are computed. A closed lowercase SHA-256 `contentHash` is
+checked against the raw bytes, while a legacy FNV tag is quarantined. The
+Library Core identity is
+`DB("blob-content", raw_bytes)`. A zero-byte file is valid. A temporary file is
+flushed and synced, published without replacing an existing digest path, its
+parent directory is synced, and the final blob is streamed back through the
+same bounded verifier. An existing content address is reused only after its
+length and complete domain-separated digest verify. A crash before logical
+commit may leave only a safe content-addressed orphan.
+
+The device-local recovery layout is:
+
+```text
+library-core/media-blobs-v1/<first-two-digest-bytes>/<blob-content-digest>
+library-core/media-vault-reconciliation-v1/source-manifests/<source-digest>.json
+library-core/media-vault-reconciliation-v1/logical-backups/<source-digest>.json
+library-core/media-vault-reconciliation-v1/receipts/<source-digest>.json
+```
+
+The source digest is
+`DB("media-vault-source-manifest", exact_manifest_bytes)`. The immutable source
+copy preserves those exact bytes. The logical backup is a closed entry census
+that repeats each legacy ID, provider, original local-path string, declared
+length, declared hash, and media type. Each entry has exactly one disposition:
+`admitted` with an empty quarantine set, or `quarantined` with one or more
+closed reasons. When a questionable regular file can still be read safely, the
+backup also retains its actual raw SHA-256, Library Core blob digest, and byte
+length. Unreadable, missing, linked, escaping, nonregular, or oversize objects
+have no invented blob reference.
+
+The closed quarantine registry is `missing`, `ambiguous`,
+`legacy_fnv_tagged`, `digest_mismatch`, `length_mismatch`, `symlinked`,
+`out_of_root`, `unreadable`, `not_regular_file`, and
+`exceeds_v1_blob_limit`. Repeated logical paths are ambiguous. Legacy FNV tags
+never count as verified content identity. Digest and length mismatches remain
+quarantined even though safely opened raw bytes are copied under their actual
+content address. No quarantine silently becomes an admitted media reference.
+
+The completion receipt binds the exact source digest and byte length, the raw
+SHA-256 of the logical backup, attempted, admitted, quarantined, and unique
+preserved-blob counts, and completion time. It is written and read back only
+after the exact source copy, every safe blob, and the logical backup are
+durable. `attempted = admitted + quarantined` is mandatory. Restart after any
+earlier phase resumes from immutable artifacts. A lost response after receipt
+commit returns that exact receipt on retry. A conflicting durable artifact or
+changed source blocks rather than overwriting evidence.
+
+This recovery never moves or deletes a legacy source file. It performs no
+Google Drive or social-provider request, publishes no cloud object, transports
+no SQLite, WAL, SHM, or rollback-journal file, and creates no Automerge bridge.
+It runs once for the startup source view. Legacy media written later in the
+same process remains in the authoritative vault and is reconciled on the next
+launch. Direct Library Core media writes, portable snapshot authority,
+off-device backup, restore, exclusion signatures, reachability, retention, and
+garbage collection remain separate governed slices.
+
 For two operations `a` and `b`:
 
 1. If `a` causally observes `b`, `a` is later.
