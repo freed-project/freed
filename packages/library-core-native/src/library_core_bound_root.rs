@@ -73,6 +73,11 @@ impl LibraryCoreBoundRoot {
         &self,
         name: &str,
     ) -> Result<OwnedFd, LibraryCoreStoreError> {
+        if name.is_empty() || matches!(name, "." | "..") || name.as_bytes().contains(&b'/') {
+            return Err(LibraryCoreStoreError::from(
+                "invalid bound directory leaf".to_string(),
+            ));
+        }
         let name = CString::new(name)
             .map_err(|_| LibraryCoreStoreError::from("invalid bound directory name".to_string()))?;
         let mut descriptor = unsafe {
@@ -107,13 +112,24 @@ impl LibraryCoreBoundRoot {
         let metadata = File::from(descriptor.try_clone()?)
             .metadata()
             .map_err(LibraryCoreStoreError::from)?;
-        if !metadata.file_type().is_dir()
-            || metadata.uid() != self.owner
-            || metadata.mode() & 0o7777 != 0o700
-        {
+        if !metadata.file_type().is_dir() || metadata.uid() != self.owner {
             return Err(LibraryCoreStoreError::from(
                 "bound directory is not private".to_string(),
             ));
+        }
+        if metadata.mode() & 0o7777 != 0o700 {
+            if unsafe { libc::fchmod(descriptor.as_raw_fd(), 0o700) } < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            let corrected = File::from(descriptor.try_clone()?).metadata()?;
+            if corrected.dev() != metadata.dev()
+                || corrected.ino() != metadata.ino()
+                || corrected.mode() & 0o7777 != 0o700
+            {
+                return Err(LibraryCoreStoreError::from(
+                    "bound directory is not private".to_string(),
+                ));
+            }
         }
         Ok(descriptor)
     }

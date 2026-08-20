@@ -12,7 +12,6 @@ mod library_core_ed25519;
 mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
-mod library_core_journal_runtime;
 mod library_core_platform_key;
 mod youtube;
 
@@ -12998,8 +12997,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
-        .manage(ProviderScheduleWakeState::default())
-        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default());
+        .manage(ProviderScheduleWakeState::default());
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -14182,8 +14180,6 @@ pub fn run() {
             replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
-            library_core_journal_runtime::open_library_core_journal,
-            library_core_journal_runtime::library_core_journal_status,
             library_core_desktop_runtime::sqlite_library_status,
             library_core_desktop_runtime::begin_sqlite_library_import,
             library_core_desktop_runtime::append_sqlite_library_import,

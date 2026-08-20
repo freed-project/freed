@@ -116,15 +116,19 @@ reusable native substrate for task 11.6. The descriptor-bound sidecar now
 constructs that substrate after acquiring the process lease, but installed
 headless checkpoint import remains unshipped.
 
-The macOS and Linux sidecar authority never reopens fd4 through a discovered
-pathname. It opens the process lease and private child directories relative to
-fd4, pins the physical `library-core` directory inode as the dedicated process
-working directory before SQLite opens, and gives SQLite only a fixed relative
-database name. WAL, SHM, rollback journals, status, imports, and later
-connections therefore stay on that inode across a data-root rename or path
-replacement. Backups are created through an already-open fd4-relative file
-descriptor. Deterministic replacement tests cover changes both before and
-after authority open and prove the replacement root remains untouched.
+The macOS and Linux native authorities never reopen a verified root through a
+discovered pathname and never change the process working directory. A shared
+SQLite VFS router maps one opaque, closed logical database name to an already
+open physical directory. Every database, WAL, SHM, rollback-journal, status,
+import, and later connection open then uses `openat` with `O_NOFOLLOW` beneath
+that descriptor. The sidecar holds fd4 through this route. Freed Desktop binds
+its app-data and `library-core` directories before it acquires the process
+lease, then uses the same route for every existing command without changing
+any command DTO. Backup creation, listing, reads, restore staging, retention,
+and clearing use held directory or file descriptors too. Deterministic root
+replacement and final-leaf swap tests prove the original lease, SQLite files,
+and backups remain together while replacement roots and symlink targets stay
+untouched.
 Startup also proves EOF and exact post-read metadata for fd3, fd6, and fd7.
 Backup retention accepts only an exact internal backup ID, time, and leaf-name
 binding before deletion, so corrupt path-shaped metadata cannot escape the

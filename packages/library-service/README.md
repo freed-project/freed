@@ -131,13 +131,15 @@ paths, arguments, or environment variables from the supervisor.
 
 The native sidecar never converts fd4 into an authority pathname. It opens and
 locks `process.lock` with `openat(fd4)`, opens the physical `library-core`
-directory with `openat(fd4)` and `O_NOFOLLOW`, then pins that directory inode as
-the dedicated sidecar process working directory before SQLite starts. SQLite
-receives only the fixed relative database name, so its database, WAL, SHM, and
-rollback-journal opens remain on the pinned inode if the visible data-root path
-is renamed or replaced. The backup directory and each backup file are also
-opened relative to fd4. Backup bytes are copied through the already-open file
-descriptor. No code changes the process working directory after this bind.
+directory with `openat(fd4)` and `O_NOFOLLOW`, then registers that held inode
+under one opaque, closed logical SQLite name. A shared Unix VFS router resolves
+only the fixed database, WAL, SHM, and rollback-journal leaves through
+`openat` on that descriptor. Ordinary SQLite paths keep their normal operating
+system behavior. No code changes the process working directory. The backup
+directory and each backup file are also opened relative to fd4. Backup bytes,
+restore staging, retention, and clearing operate through held descriptors.
+The visible data-root path can therefore be renamed or replaced without
+splitting the lease, SQLite files, or backups across roots.
 Retention deletes only metadata whose backup ID, creation time, and file name
 reconstruct one exact `sqlite-<nonnegative integer>.sqlite` leaf. Corrupt or
 path-shaped metadata stays visible for repair and cannot reach deletion.
