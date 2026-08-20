@@ -3,7 +3,7 @@
   "version": "26.8.2001-dev",
   "channel": "dev",
   "dayKey": "26.8.20",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-08-20T23:41:55.696Z",
   "model": "heuristic",
@@ -43,10 +43,10 @@
       ],
       "inspectionDigest": "sha256:79538530219fe76ade4e97d61e4175c901e0fc57f6fa12aeecc71a0f2547be61",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-8-2001-dev#sha256:dbf85e6b503eb1e153b31f37c1a2f96d89bb41a0caf8f588ad87f4fb0514eb65",
+        "approvedInspectionDigest": "sha256:79538530219fe76ade4e97d61e4175c901e0fc57f6fa12aeecc71a0f2547be61",
+        "approvedReleaseArtifactDigest": "sha256:d1fbfbe85a2563b60984e0c232625a50026852759cfa653319dc4d7d2bc24419"
       }
     },
     "isLatestOfDay": true,
@@ -145,6 +145,8 @@
       "Fail-closed Library service supervisor"
     ],
     "fixes": [
+      "Support local-only Library authority",
+      "Defer PWA checkpoint refresh effect",
       "Reader, feed, and header polish",
       "Recognize release identity backflow",
       "Keep SQLite backups off cloud storage",
@@ -154,7 +156,6 @@
       "Prevent Drive sync lifecycle stalls"
     ],
     "followUps": [
-      "Prepare v26.8.2000-dev",
       "Retire competing Library journal runtime",
       "Retire operation field registry runtime",
       "Share native checkpoint store primitives",
@@ -169,5 +170,5 @@
       "Merge main back into dev after v26.8.1500"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2001-dev\n\nDescriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor\n\n### Features\n\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Reader, feed, and header polish\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Sanitize runner sources before apt update\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n\n### Follow-ups\n\n- Prepare v26.8.2000-dev\n- Retire competing Library journal runtime\n- Retire operation field registry runtime\n- Share native checkpoint store primitives\n- Reverse integrate v26.8.1901 release identity\n- Enforce actor capability certificates\n- Extract native Library Core\n- Extract Library Primary coordinator\n- Close retired Automerge runtime boundary\n- Content-addressed Library media transport\n- PWA IndexedDB Library parity\n- Build editable SQLite Library followers\n- Merge main back into dev after v26.8.1500\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2001-dev\n\nDescriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor\n\n### Features\n\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Support local-only Library authority\n- Defer PWA checkpoint refresh effect\n- Reader, feed, and header polish\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Sanitize runner sources before apt update\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n\n### Follow-ups\n\n- Retire competing Library journal runtime\n- Retire operation field registry runtime\n- Share native checkpoint store primitives\n- Reverse integrate v26.8.1901 release identity\n- Enforce actor capability certificates\n- Extract native Library Core\n- Extract Library Primary coordinator\n- Close retired Automerge runtime boundary\n- Content-addressed Library media transport\n- PWA IndexedDB Library parity\n- Build editable SQLite Library followers\n- Merge main back into dev after v26.8.1500\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
