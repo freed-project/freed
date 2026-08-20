@@ -474,6 +474,39 @@ const handlers: Record<string, Handler> = {
       totalCount: items.length,
     };
   },
+  search_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      query?: string;
+      afterGlobalId?: string | null;
+      expectedRevision?: number;
+      limit?: number;
+    };
+    const state = sqliteLibrary();
+    if (request.expectedRevision !== state.revision) {
+      throw new Error("SQLite Library changed during its bounded search");
+    }
+    const candidates = Object.values(state.items)
+      .filter((item) => !item.__deleted && (!request.afterGlobalId || item.globalId > request.afterGlobalId))
+      .sort((left, right) => left.globalId.localeCompare(right.globalId));
+    const query = (request.query ?? "").toLowerCase();
+    const limit = Math.max(1, Math.min(request.limit ?? 32, 32));
+    let scanned = 0;
+    const matches: Array<{ itemJson: string; score: number }> = [];
+    let lastScanned: string | null = null;
+    while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
+      const item = candidates[scanned]!;
+      lastScanned = item.globalId;
+      if (JSON.stringify(item).toLowerCase().includes(query)) {
+        matches.push({ itemJson: JSON.stringify(item), score: 1 });
+      }
+      scanned += 1;
+    }
+    return {
+      matches,
+      nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
+      sourceRevision: state.revision,
+    };
+  },
   mutate_sqlite_library_items: (args: Record<string, unknown>) => {
     const request = (args.request ?? {}) as {
       mutation?: string;

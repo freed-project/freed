@@ -169,7 +169,11 @@ describe("SQLite-streamed Library search", () => {
     await act(async () => {
       root?.render(
         <PlatformProvider value={platform}>
-          <Harness onResult={(result) => { latest = result; }} />
+          <Harness
+            onResult={(result) => {
+              latest = result;
+            }}
+          />
         </PlatformProvider>,
       );
     });
@@ -189,6 +193,10 @@ describe("SQLite-streamed Library search", () => {
       "needle",
       41,
       expect.any(Function),
+      expect.objectContaining({
+        accountAliases: [],
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(scanLibraryItems).not.toHaveBeenCalled();
     expect(latest?.resultCount).toBe(101);
@@ -196,18 +204,84 @@ describe("SQLite-streamed Library search", () => {
     expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
   });
 
-  it("indexes bounded pages and retains only the first 100 ordered matches", async () => {
+  it("deduplicates aliases and omits over-bound canonical account identities", async () => {
+    const accounts = {
+      z: {
+        id: "z",
+        kind: "social",
+        provider: "rss",
+        externalId: "author",
+        displayName: "Later duplicate",
+      },
+      a: {
+        id: "a",
+        kind: "social",
+        provider: "rss",
+        externalId: "author",
+        displayName: "Canonical alias",
+      },
+      long: {
+        id: "long",
+        kind: "social",
+        provider: "rss",
+        externalId: "x".repeat(4_097),
+        displayName: "Over bound",
+      },
+    } as unknown as SearchAccounts;
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async () => undefined);
+    const platform = {
+      store: createPlatformStore(() => ({
+        persons: EMPTY_RECORD,
+        accounts,
+        friends: EMPTY_RECORD,
+      })),
+      searchLibraryItems,
+    } as unknown as PlatformConfig;
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <PlatformProvider value={platform}>
+          <Harness accounts={accounts} onResult={() => undefined} />
+        </PlatformProvider>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
+    expect(searchLibraryItems.mock.calls[0]?.[3]?.accountAliases).toEqual([
+      {
+        aliases: "Canonical alias author author",
+        authorId: "author",
+        platform: "rss",
+      },
+    ]);
+  });
+
+  it("retains only the first 100 ordered persistent matches", async () => {
     const corpus = Array.from({ length: 101 }, (_, index) => item(index));
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
-    >(async (visit) => {
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async (_query, _version, visit) => {
       for (let offset = 0; offset < corpus.length; offset += 17) {
-        if ((await visit(corpus.slice(offset, offset + 17))) === "stop") return;
+        if (
+          visit(
+            corpus.slice(offset, offset + 17).map((entry, index) => ({
+              item: entry,
+              score: corpus.length - offset - index,
+            })),
+          ) === "stop"
+        )
+          return;
       }
     });
     const platform = {
       store: createPlatformStore(),
-      scanLibraryItems,
+      searchLibraryItems,
     } as unknown as PlatformConfig;
     let latest: SearchResults | null = null;
 
@@ -236,20 +310,20 @@ describe("SQLite-streamed Library search", () => {
       });
     }
 
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
     expect(latest?.resultCount).toBe(101);
     expect(latest?.filteredItems).toHaveLength(100);
     expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
     expect(latest?.filteredItems.at(-1)?.globalId).toBe("rss:item-001");
   });
 
-  it("does not scan SQLite until a search query is active", async () => {
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
+  it("does not invoke persistent search until a query is active", async () => {
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
     >(async () => undefined);
     const platform = {
       store: createPlatformStore(),
-      scanLibraryItems,
+      searchLibraryItems,
     } as unknown as PlatformConfig;
 
     container = document.createElement("div");
@@ -264,7 +338,7 @@ describe("SQLite-streamed Library search", () => {
       await Promise.resolve();
     });
 
-    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(searchLibraryItems).not.toHaveBeenCalled();
 
     await act(async () => {
       root?.render(
@@ -275,26 +349,26 @@ describe("SQLite-streamed Library search", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
   });
 
-  it("refreshes queried user state without rebuilding the search index", async () => {
+  it("refreshes queried user state through the persistent search source", async () => {
     let sourceItem = item(1);
     let releaseRefresh: (() => void) | null = null;
     const refreshBlocked = new Promise<void>((resolve) => {
       releaseRefresh = resolve;
     });
-    let scanCount = 0;
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
-    >(async (visit) => {
-      scanCount += 1;
-      if (scanCount === 3) await refreshBlocked;
-      await visit([sourceItem]);
+    let searchCount = 0;
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async (_query, _version, visit) => {
+      searchCount += 1;
+      if (searchCount === 2) await refreshBlocked;
+      visit([{ item: sourceItem, score: 1 }]);
     });
     const platform = {
       store: createPlatformStore(),
-      scanLibraryItems,
+      searchLibraryItems,
     } as unknown as PlatformConfig;
     const latest = { current: null as SearchResults | null };
     const onResult = (result: SearchResults) => {
@@ -322,7 +396,7 @@ describe("SQLite-streamed Library search", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
     expect(latest.current?.filteredItems[0]?.userState.saved).toBe(false);
 
     sourceItem = {
@@ -337,7 +411,7 @@ describe("SQLite-streamed Library search", () => {
       );
     });
 
-    expect(scanLibraryItems).toHaveBeenCalledTimes(3);
+    expect(searchLibraryItems).toHaveBeenCalledTimes(2);
     expect(latest.current?.filteredItems).toEqual([]);
 
     await act(async () => {
@@ -355,21 +429,24 @@ describe("SQLite-streamed Library search", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
-    expect(scanLibraryItems).toHaveBeenCalledTimes(3);
+    expect(searchLibraryItems).toHaveBeenCalledTimes(2);
     expect(latest.current?.filteredItems[0]?.userState.saved).toBe(true);
   });
 
-  it("falls back to the Automerge corpus when the SQLite scan is unavailable", async () => {
+  it("fails closed when governed persistent search rejects a query", async () => {
     const scanLibraryItems = vi.fn<
       NonNullable<PlatformConfig["scanLibraryItems"]>
+    >(async () => undefined);
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
     >(async () => {
-      throw new Error("projection unavailable");
+      throw new Error("persistent projection unavailable");
     });
-    const releaseLegacyItems = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => releaseLegacyItems);
+    const acquireLegacyLibraryItems = vi.fn();
     const platform = {
       store: createPlatformStore(),
       scanLibraryItems,
+      searchLibraryItems,
       acquireLegacyLibraryItems,
     } as unknown as PlatformConfig;
     let latest: SearchResults | null = null;
@@ -392,7 +469,7 @@ describe("SQLite-streamed Library search", () => {
 
     for (
       let attempt = 0;
-      attempt < 100 && latest?.filteredItems.length !== 1;
+      attempt < 100 && latest?.searchUnavailable !== true;
       attempt += 1
     ) {
       await act(async () => {
@@ -400,39 +477,32 @@ describe("SQLite-streamed Library search", () => {
       });
     }
 
-    expect(scanLibraryItems).toHaveBeenCalledTimes(1);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-001");
-
-    await act(async () => root?.unmount());
-    root = null;
-    expect(releaseLegacyItems).toHaveBeenCalledTimes(1);
+    expect(searchLibraryItems).toHaveBeenCalledOnce();
+    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(latest).toMatchObject({
+      filteredItems: [],
+      isSearching: true,
+      resultCount: 0,
+      searchUnavailable: true,
+    });
   });
 
-  it("keeps one legacy lease across cloned graph records and failed version retries", async () => {
-    let graphState = {
-      persons: {} as SearchPersons,
-      accounts: {} as SearchAccounts,
-      friends: {} as SearchFriends,
-    };
-    let scanFails = true;
+  it("rejects over-bound queries before any persistent or legacy search work", async () => {
     const scanLibraryItems = vi.fn<
       NonNullable<PlatformConfig["scanLibraryItems"]>
-    >(async (visit) => {
-      if (scanFails) throw new Error("projection unavailable");
-      await visit([item(1)]);
-    });
-    const releaseLegacyItems = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => releaseLegacyItems);
+    >(async () => undefined);
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async () => undefined);
+    const acquireLegacyLibraryItems = vi.fn();
     const platform = {
-      store: createPlatformStore(() => graphState),
+      store: createPlatformStore(),
       scanLibraryItems,
+      searchLibraryItems,
       acquireLegacyLibraryItems,
     } as unknown as PlatformConfig;
     let latest: SearchResults | null = null;
-    const onResult = (result: SearchResults) => {
-      latest = result;
-    };
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -441,12 +511,10 @@ describe("SQLite-streamed Library search", () => {
       root?.render(
         <PlatformProvider value={platform}>
           <Harness
-            items={[item(1)]}
-            resultSourceVersion={1}
-            persons={graphState.persons}
-            accounts={graphState.accounts}
-            friends={graphState.friends}
-            onResult={onResult}
+            query={"x".repeat(1_025)}
+            onResult={(result) => {
+              latest = result;
+            }}
           />
         </PlatformProvider>,
       );
@@ -454,112 +522,16 @@ describe("SQLite-streamed Library search", () => {
 
     for (
       let attempt = 0;
-      attempt < 100 && acquireLegacyLibraryItems.mock.calls.length !== 1;
+      attempt < 100 && latest?.searchUnavailable !== true;
       attempt += 1
     ) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
-    expect(scanLibraryItems).toHaveBeenCalledTimes(1);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(releaseLegacyItems).not.toHaveBeenCalled();
-
-    graphState = {
-      persons: { ...graphState.persons },
-      accounts: { ...graphState.accounts },
-      friends: { ...graphState.friends },
-    };
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            items={[item(1)]}
-            resultSourceVersion={1}
-            persons={graphState.persons}
-            accounts={graphState.accounts}
-            friends={graphState.friends}
-            onResult={onResult}
-          />
-        </PlatformProvider>,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(scanLibraryItems).toHaveBeenCalledTimes(1);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(releaseLegacyItems).not.toHaveBeenCalled();
-
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            items={[item(1)]}
-            resultSourceVersion={2}
-            persons={graphState.persons}
-            accounts={graphState.accounts}
-            friends={graphState.friends}
-            onResult={onResult}
-          />
-        </PlatformProvider>,
-      );
-    });
-    for (
-      let attempt = 0;
-      attempt < 100 && scanLibraryItems.mock.calls.length !== 2;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(releaseLegacyItems).not.toHaveBeenCalled();
-
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            items={[item(1)]}
-            query=""
-            resultSourceVersion={2}
-            persons={graphState.persons}
-            accounts={graphState.accounts}
-            friends={graphState.friends}
-            onResult={onResult}
-          />
-        </PlatformProvider>,
-      );
-      await Promise.resolve();
-    });
-    expect(releaseLegacyItems).toHaveBeenCalledTimes(1);
-
-    scanFails = false;
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            items={[item(1)]}
-            resultSourceVersion={2}
-            persons={graphState.persons}
-            accounts={graphState.accounts}
-            friends={graphState.friends}
-            onResult={onResult}
-          />
-        </PlatformProvider>,
-      );
-    });
-    for (
-      let attempt = 0;
-      attempt < 100 && latest?.filteredItems.length !== 1;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-001");
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
-    expect(releaseLegacyItems).toHaveBeenCalledTimes(1);
+    expect(searchLibraryItems).not.toHaveBeenCalled();
+    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(latest?.searchUnavailable).toBe(true);
   });
 });

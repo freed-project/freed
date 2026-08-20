@@ -14,6 +14,9 @@ import {
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
+  isLibraryCoreSearchAccountAliasV1,
+  isLibraryCoreSearchQueryV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateAssignmentFieldV1,
@@ -49,7 +52,10 @@ import {
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
   type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
-import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
+import {
+  PwaLibraryCoreSearchIndex,
+  type PwaLibraryCoreSearchSourceV1,
+} from "./library-core-search-index";
 import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
@@ -104,6 +110,33 @@ function getSearchIndex(): PwaLibraryCoreSearchIndex {
     keyRange: globalThis.IDBKeyRange,
   });
   return searchIndex;
+}
+
+function searchSourceFromReceipt(
+  receipt: PwaLibraryCoreSelectedCheckpointReceiptV1,
+): PwaLibraryCoreSearchSourceV1 {
+  return {
+    corpusVersion: receipt.selectionSequence,
+    sourceToken: JSON.stringify([
+      receipt.libraryId,
+      receipt.generationId,
+      receipt.selectionSequence,
+    ]),
+  };
+}
+
+async function readCurrentSearchSource(
+  expectedCorpusVersion?: number,
+): Promise<PwaLibraryCoreSearchSourceV1> {
+  const receipt = await getPortableStore().readSelectedCheckpointReceipt();
+  if (!receipt) throw new Error("Selected PWA Library is unavailable");
+  if (
+    expectedCorpusVersion !== undefined &&
+    receipt.selectionSequence !== expectedCorpusVersion
+  ) {
+    throw new Error("Selected PWA Library changed before search admission");
+  }
+  return searchSourceFromReceipt(receipt);
 }
 
 function getIndexedDbReaders(): ReturnType<
@@ -187,6 +220,8 @@ function stateFromShell(
 
 async function readSelectedState(): Promise<LibraryState | null> {
   const store = getPortableStore();
+  const selected = await store.readSelectedCheckpointReceipt();
+  if (!selected) return null;
   const shell = await store.readSelectedMaterializedRow(
     "00_library_shell",
     "shell",
@@ -235,17 +270,29 @@ async function readSelectedState(): Promise<LibraryState | null> {
     cursor = page.nextCursor;
   } while (cursor !== null);
 
-  return stateFromShell(shell, items, {
-    archivableCountByPlatform,
-    archivableFeedCounts,
-    feedTotalCounts,
-    feedUnreadCounts,
-    itemCountByPlatform,
-    totalArchivableCount,
-    totalItemCount,
-    totalUnreadCount,
-    unreadCountByPlatform,
-  });
+  const current = await store.readSelectedCheckpointReceipt();
+  if (
+    !current ||
+    current.generationId !== selected.generationId ||
+    current.selectionSequence !== selected.selectionSequence
+  ) {
+    throw new Error("Selected PWA Library changed while reading its state");
+  }
+
+  return {
+    ...stateFromShell(shell, items, {
+      archivableCountByPlatform,
+      archivableFeedCounts,
+      feedTotalCounts,
+      feedUnreadCounts,
+      itemCountByPlatform,
+      totalArchivableCount,
+      totalItemCount,
+      totalUnreadCount,
+      unreadCountByPlatform,
+    }),
+    searchCorpusVersion: selected.selectionSequence,
+  };
 }
 
 function publishState(state: LibraryState): void {
@@ -476,7 +523,7 @@ export async function enqueuePwaLibraryCoreFeedItemRemove(
     removedAtMs: Date.now(),
   });
   if (searchIndex && lastState) {
-    await searchIndex.removeItems(lastState.searchCorpusVersion, [globalId]);
+    await searchIndex.removeItems(await readCurrentSearchSource(), [globalId]);
   }
 }
 
@@ -498,7 +545,7 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     if (batch.length === 0) return;
     await getPortableStore().enqueueFeedItemCaptures(batch);
     if (searchIndex && lastState) {
-      await searchIndex.updateItems(lastState.searchCorpusVersion, batch);
+      await searchIndex.updateItems(await readCurrentSearchSource(), batch);
     }
     batch = [];
     identities = new Set<string>();
@@ -727,7 +774,7 @@ async function refreshPersistentSearchItems(
     );
     if (row?.globalId === globalId) items.push(row as unknown as FeedItem);
   }
-  await searchIndex.updateItems(lastState.searchCorpusVersion, items);
+  await searchIndex.updateItems(await readCurrentSearchSource(), items);
 }
 
 /**
@@ -792,10 +839,33 @@ export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
   query,
   searchCorpusVersion,
   visit,
+  options,
 ) => {
+  if (!isLibraryCoreSearchQueryV1(query)) {
+    throw new Error("Library Core search query exceeds its byte limit");
+  }
   const index = getSearchIndex();
-  await index.ensureBuilt(searchCorpusVersion, scanPwaLibraryCoreItems);
-  await index.search(query, searchCorpusVersion, visit);
+  const source = await readCurrentSearchSource(searchCorpusVersion);
+  await index.ensureBuilt(source, scanPwaLibraryCoreItems, options?.signal);
+  const aliasEntries = options?.accountAliases ?? [];
+  if (aliasEntries.length > LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT) {
+    throw new Error("Library Core search account alias count is invalid");
+  }
+  const accountAliases = new Map<string, string>();
+  for (const entry of aliasEntries) {
+    if (!isLibraryCoreSearchAccountAliasV1(entry)) {
+      throw new Error("Library Core search account alias is invalid");
+    }
+    const key = `${entry.platform}:${entry.authorId}`;
+    if (accountAliases.has(key)) {
+      throw new Error("Library Core search account alias is duplicated");
+    }
+    accountAliases.set(key, entry.aliases);
+  }
+  await index.search(query, source, visit, {
+    accountAliases,
+    signal: options?.signal,
+  });
 };
 
 /** Read one complete FeedItem from the selected IndexedDB generation. */
@@ -888,7 +958,10 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState>
     if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
       await searchIndex.invalidate();
     } else {
-      await searchIndex.updateItems(state.searchCorpusVersion, state.items);
+      await searchIndex.updateItems(
+        await readCurrentSearchSource(state.searchCorpusVersion),
+        state.items,
+      );
     }
   }
   publishState(state);

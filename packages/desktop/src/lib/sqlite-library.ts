@@ -1100,6 +1100,7 @@ interface SqliteSearchMatch {
 interface SqliteSearchPage {
   matches: SqliteSearchMatch[];
   nextAfterGlobalId: string | null;
+  sourceRevision: number;
 }
 
 export interface SqliteLibraryBackupSummary {
@@ -1650,13 +1651,26 @@ async function collectSqliteItemIds(
 export async function searchSqliteItemsPage(
   query: string,
   afterGlobalId: string | null,
+  expectedRevision: number,
+  accountAliases: readonly {
+    aliases: string;
+    authorId: string;
+    platform: string;
+  }[],
   limit = 32,
 ): Promise<{
   matches: Array<{ item: FeedItem; score: number }>;
   nextAfterGlobalId: string | null;
+  sourceRevision: number;
 }> {
   const page = await invoke<SqliteSearchPage>("search_sqlite_library_items", {
-    request: { query, afterGlobalId, limit },
+    request: {
+      query,
+      afterGlobalId,
+      expectedRevision,
+      accountAliases,
+      limit,
+    },
   });
   return {
     matches: page.matches.map(({ itemJson, score }) => ({
@@ -1664,6 +1678,7 @@ export async function searchSqliteItemsPage(
       score,
     })),
     nextAfterGlobalId: page.nextAfterGlobalId,
+    sourceRevision: page.sourceRevision,
   };
 }
 

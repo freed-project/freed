@@ -263,12 +263,24 @@ const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
 
 const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
   query,
-  _searchCorpusVersion,
+  searchCorpusVersion,
   visit,
+  options,
 ) => {
   let afterGlobalId: string | null = null;
   for (;;) {
-    const page = await searchSqliteItemsPage(query, afterGlobalId);
+    if (options?.signal?.aborted) {
+      throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    const page = await searchSqliteItemsPage(
+      query,
+      afterGlobalId,
+      searchCorpusVersion,
+      options?.accountAliases ?? [],
+    );
+    if (page.sourceRevision !== searchCorpusVersion) {
+      throw new Error("SQLite Library changed during its bounded search");
+    }
     if (page.matches.length > 0 && visit(page.matches) === "stop") return;
     if (!page.nextAfterGlobalId) return;
     if (page.nextAfterGlobalId === afterGlobalId) {
