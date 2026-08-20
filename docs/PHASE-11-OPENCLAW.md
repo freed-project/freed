@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, local process lease, and actor capability enforcement have landed; the service host, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, local process lease, actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -84,11 +84,17 @@ The current product already provides the protocol foundation:
   signature.
 - Freed Desktop preserves its existing command DTOs and behavior through thin
   data-root and platform-vault adapters around that reusable native package.
+- `@freed/library-service` validates one explicit Primary role, private roots,
+  admission and credential descriptors, an exact sidecar digest, descriptor
+  bound authority inputs, a private lifetime watchdog, and whole process group
+  settlement before it starts one sidecar. Its local status and doctor
+  commands never open SQLite or start social provider work.
 
-These pieces do not yet create a headless executable. Drive credentials remain
-owned by the Freed Desktop renderer, and the production native command host
-remains inside the Tauri crate. The next work adds the service host and its
-credential boundary without changing the wire protocol.
+These pieces do not yet create a complete headless authority. Drive credentials
+remain owned by the Freed Desktop renderer, and no production native sidecar
+yet consumes the reusable core through descriptor-bound authority and lease
+entry points. The next work adds that sidecar and credential boundary without
+changing the wire protocol.
 
 ---
 
@@ -351,7 +357,7 @@ review before implementation.
 | 11.1 | Complete | Share the provider-neutral Primary coordinator from `@freed/sync` and consume it from Freed Desktop |
 | 11.2 | Complete | Enforce one operating system backed Library data-root lease before SQLite opens |
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
-| 11.4 | Open | Add the headless service supervisor, explicit role config, and fail-closed startup |
+| 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | Open | Add exact checkpoint import, status, doctor, backup, and structured receipts |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |

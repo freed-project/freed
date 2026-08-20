@@ -662,14 +662,7 @@ function libraryCoreNativeRustChecks() {
   return [
     cargoCommand(
       "Library Core native rust clippy",
-      [
-        "clippy",
-        "--all-targets",
-        "--all-features",
-        "--",
-        "-D",
-        "warnings",
-      ],
+      ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"],
       "packages/library-core-native",
     ),
     cargoCommand(
@@ -889,6 +882,11 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root lint", ["run", "lint"]),
       npmCommand("website tests", ["run", "test"], "website"),
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+      npmCommand(
+        "library service tests",
+        ["run", "test"],
+        "packages/library-service",
+      ),
       ...pwaTestCommands(),
       npmCommand(
         "desktop unit tests",
@@ -1042,6 +1040,9 @@ export function buildValidationPlan(mode, changedFiles) {
   const syncPackageChanged = changedFiles.some((filePath) =>
     filePath.startsWith("packages/sync/"),
   );
+  const libraryServicePackageChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/library-service/"),
+  );
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
@@ -1163,6 +1164,17 @@ export function buildValidationPlan(mode, changedFiles) {
     addCommand(
       plan,
       npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
+    );
+  }
+
+  if (libraryServicePackageChanged) {
+    addCommand(
+      plan,
+      npmCommand(
+        "library service tests",
+        ["run", "test"],
+        "packages/library-service",
+      ),
     );
   }
 

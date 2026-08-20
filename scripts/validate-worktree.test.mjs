@@ -94,6 +94,16 @@ test("feature plan for sync changes runs the sync package tests", () => {
   ]);
 });
 
+test("feature plan for library service changes runs its package tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/library-service/src/supervisor.ts",
+    ]),
+  );
+
+  assert.deepEqual(labels, ["root typecheck", "library service tests"]);
+});
+
 test("feature plan for feed UI changes runs desktop perf checks", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
@@ -632,6 +642,7 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(labels.includes("desktop e2e visual"));
   assert.ok(labels.includes("pwa performance tests"));
   assert.ok(labels.includes("shared unit tests"));
+  assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
   assert.ok(labels.includes("Library Core native rust clippy"));
@@ -651,6 +662,7 @@ test("production plan includes dev desktop gates without duplicating shipped bui
 
   // The PWA is not otherwise built by the release workflow, so it stays.
   assert.ok(labels.includes("pwa production build"));
+  assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("retired Automerge release artifact guard"));
 
   assert.ok(
@@ -677,9 +689,7 @@ test("production plan includes dev desktop gates without duplicating shipped bui
     !labels.includes("desktop production build"),
     "the desktop build must not be duplicated ahead of the release matrix",
   );
-  const frontendContextIndex = labels.indexOf(
-    "desktop frontend context build",
-  );
+  const frontendContextIndex = labels.indexOf("desktop frontend context build");
   const nativeClippyIndex = labels.indexOf("native rust clippy");
   const pwaBuildIndex = labels.indexOf("pwa production build");
   const artifactGuardIndex = labels.indexOf(
