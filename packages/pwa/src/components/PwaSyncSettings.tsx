@@ -280,7 +280,7 @@ export function PwaSyncSettings() {
   }, [selectedCheckpoint]);
 
   useEffect(() => {
-    void refreshSelectedCheckpoint();
+    queueMicrotask(() => void refreshSelectedCheckpoint());
     const timer = window.setInterval(
       () => void refreshSelectedCheckpoint(),
       15_000,
