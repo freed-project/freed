@@ -217,6 +217,40 @@ context.
 The feasible design moves resolution and packaging to Freed Desktop, then moves
 the resulting package to the PWA. The PWA does not resolve YouTube streams.
 
+### Shared selective-content contract
+
+Offline media uses the Library Core content plane defined in
+[LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md). YouTube-specific
+resolution produces a rendition. It does not invent a second synchronization
+system.
+
+The normalized Library checkpoint contains only typed content descriptors. It
+never contains media bytes or a whole package serialized as one logical
+record. One rendition may be hundreds of megabytes or multiple gigabytes while
+each checkpoint record remains within the initial 131,072-byte canonical
+ceiling.
+
+Each rendition is one content-addressed logical blob with a paged authenticated
+range index. Clients can verify selected ranges without downloading the whole
+blob. Range leaf size is a measured content-plane parameter. It is independent
+from checkpoint record size. The implementation must benchmark 1 MiB, 4 MiB,
+8 MiB, and 16 MiB leaves before freezing the media profile.
+
+Hydration policy is device-local and supports these states:
+
+- Metadata only
+- Stream on demand
+- Partial verified cache
+- Fully cached
+- Pinned offline
+- Excluded
+
+A Freed Desktop installation may pre-download and pin a long-form video. An
+iPhone may cache audio only, selected video ranges, or a complete rendition.
+Another client may stream through the approved Google Drive transport or
+exclude the rendition entirely. These choices never alter canonical Library
+metadata, checkpoint identity, or another device's policy.
+
 ### Audio-First Package
 
 Audio is the first supported rendition because it best serves focused study,
@@ -273,9 +307,11 @@ a provider change does not masquerade as storage corruption.
 
 ### Transfer Order
 
-Media bytes never belong in Automerge, the normal document relay, application
-logs, bug reports, or rotating document snapshots. Only a small package record
-and, if useful, a device-keyed availability summary may enter synced metadata.
+Media bytes never belong in checkpoint rows, application logs, bug reports, or
+SQLite file transport. Only typed content descriptors, authenticated range
+roots, and canonical rendition metadata enter normalized synchronization.
+Hydration, cache range maps, eviction state, playback position, and local
+availability stay device-local.
 
 Transfer should follow this order:
 
@@ -412,11 +448,12 @@ Before starting, the PWA should:
 6. Resume from the last verified chunk after interruption.
 7. Mark the rendition offline only after every chunk and final checksum pass.
 
-The app shell, artwork, and small metadata can stay in the Cache API and
-IndexedDB. Large media should use the Origin Private File System, with IndexedDB
-holding the searchable package index and download state. OPFS is available in
-modern iOS Safari, is scoped to the Freed origin, and is still governed by
-browser quota and eviction policy.
+The app shell and bounded static assets can stay in the Cache API. Library
+metadata, the searchable content index, intent state, range map, and download
+state live in SQLite WebAssembly over OPFS. Large media lives in the same
+origin's content vault as separate OPFS files. IndexedDB is not a Library or
+media-index store. A narrow IndexedDB keystore may remain only for
+nonextractable WebCrypto keys when WebKit offers no suitable alternative.
 
 Cloud objects remain encrypted in transit and at rest. After download, the PWA
 should authenticate and decrypt into the final OPFS media file. Locked-screen
@@ -443,8 +480,8 @@ Freed should maintain a user-visible storage budget and apply these rules:
 - Evict least-recently-played unpinned packages next.
 - Keep metadata after media eviction so the item remains saved and can be
   downloaded again.
-- Reconcile IndexedDB against OPFS on startup, resume, and before claiming that
-  an item is offline.
+- Reconcile SQLite content descriptors and range state against the OPFS vault
+  on startup, resume, and before claiming that an item is offline.
 - Surface the reason for every automatic eviction and the bytes recovered.
 
 `Available offline` means that the selected rendition exists on this device and

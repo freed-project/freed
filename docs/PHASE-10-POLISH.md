@@ -112,9 +112,11 @@ Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted f
 
 Freed Desktop now supplies SearchJump tags, archive facets, scope counts, and
 selected-item context from bounded Library Core readers. On the healthy default
-native path, focusing the palette does not mount the complete item corpus. A
-native reader failure or device-local rollback key restores the Desktop
-compatibility path. PWA keeps its existing resident-row path.
+native path, focusing the palette does not mount the complete item corpus. The
+final runtime has no compatibility rollback reader. A failure returns a typed
+unavailable or stale-source result and leaves the last verified visible window
+intact. The PWA uses the same bounded named query contract through SQLite
+WebAssembly over OPFS.
 
 The command palette now covers:
 
@@ -437,7 +439,7 @@ Reward security researchers for responsible disclosure.
 | 10.2  | Statistics dashboard              | Medium     |
 | 10.3  | Export to JSON                    | Low        |
 | 10.4  | Export to CSV                     | Low        |
-| 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
+| 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA content-view keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
 | 10.6  | Screen reader support             | Medium     |
 | 10.7  | Reduced motion support            | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
 | 10.8  | Color contrast audit              | Low        |
@@ -530,7 +532,7 @@ Reward security researchers for responsible disclosure.
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
 - [x] Shared bug reports can submit redacted text and selected stack traces to the private GitHub vulnerability inbox after an explicit click, while keeping the diagnostic zip on the user's device and avoiding automatic retries
 - [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
-- [x] Factory reset clears device preferences, selected provider sessions and sync credentials, recovery copies, diagnostics, relay-held document bytes, and the local document in a failure-aware order. It preserves local request history, retry and receipt ledgers, encrypted AI keys, local AI files, media archives, installation identity, and legal acceptance. It rotates the relay pairing token, rejects pre-reset mobile sessions, requires existing PWA readers to scan the current pairing QR code again, and leaves mobile sync paused if document deletion is uncertain.
+- [x] Factory reset clears device preferences, selected provider sessions and sync credentials, recovery copies, diagnostics, relay-held document bytes, and the local document in a failure-aware order. It preserves local request history, retry and receipt ledgers, encrypted AI keys, local AI files, media archives, installation identity, and legal acceptance. It rotates the relay pairing token, rejects pre-reset mobile sessions, requires existing PWA clients to scan the current pairing QR code again, and leaves mobile sync paused if document deletion is uncertain.
 
 ---
 

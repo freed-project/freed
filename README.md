@@ -31,6 +31,14 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ## Architecture
 
+Freed uses SQLite everywhere. Freed Desktop and the headless Primary share one
+native Rust core. The PWA runs official SQLite WebAssembly over OPFS. Every
+view uses bounded typed queries, and synchronization exchanges normalized
+signed logical objects rather than database files or a monolithic Library
+document. See
+[the Library Core architecture](docs/LIBRARY-CORE-ARCHITECTURE.md) and
+[the detailed contract](docs/LIBRARY-CORE-CONTRACT.md).
+
 ```
   Capture Layers              Sync                    Clients
  ─────────────────      ─────────────────      ─────────────────
@@ -39,7 +47,11 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
                                                 Extension
 ```
 
-**Desktop App is the hub.** It runs capture, hosts the sync relay, and provides the reader UI. Phone PWA syncs to it for mobile reading. OpenClaw users can run capture headlessly instead.
+One active Primary admits canonical mutations. The Primary may run inside
+Freed Desktop or the headless service. Freed Desktop and PWA followers keep
+fully queryable local SQLite replicas, apply edits through durable signed
+intent overlays, and choose independently which large content to stream,
+cache, pin offline, or exclude.
 
 ---
 
@@ -80,7 +92,7 @@ Local WebSocket relay + cloud backup.
 
 **HIGHEST PRIORITY** — Native apps (macOS, Windows, Linux, iOS, Android) bundling capture, sync, and reader UI.
 
-### [Phase 6: PWA Reader](docs/PHASE-6-PWA.md) 🚧
+### [Phase 6: PWA](docs/PHASE-6-PWA.md) 🚧
 
 Mobile companion at [app.freed.wtf](https://app.freed.wtf), with the dev channel at `dev-app.freed.wtf`.
 
@@ -116,14 +128,14 @@ Compose and publish through your own site.
 
 ## Key Decisions
 
-1. **Desktop App as hub** — Capture + sync + UI in one installable package
-2. **Zero external infrastructure** — Local relay + user's cloud storage (GDrive, Dropbox, iCloud)
-3. **Local-first sync** — Devices reconcile without a server; your cloud storage is backup, not the source of truth
-4. **Shared React codebase** — `packages/pwa/` embedded in Desktop AND deployed standalone
-5. **TypeScript capture via subprocess** — Capture packages run as TypeScript, not compiled into Tauri's Rust core. Easier to extend, easier to debug.
-6. **Ranking on core, display on edge** — Desktop/OpenClaw computes `priority`, PWA just displays
-7. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
-8. **Next.js for marketing site** — SSG for SEO, React for consistency with app codebase
+1. **One active Primary:** Freed Desktop or the headless service admits canonical mutations through the same native Library Core
+2. **No Freed content backend:** Synchronization uses storage owned by the user
+3. **SQLite everywhere:** Every client queries a local SQLite Library through one generated contract
+4. **Shared React views:** `packages/ui` consumes platform-neutral typed query and mutation adapters
+5. **Typed capture boundary:** Provider packages normalize bounded values and submit registered mutations
+6. **Ranking in the Primary:** Canonical ranking policy is materialized once and queried locally on every client
+7. **Logical-object sync:** Devices exchange signed normalized records and selective content, never database files
+8. **Next.js for the marketing site:** The public site remains isolated in the `www` lane
 
 ---
 
@@ -152,7 +164,7 @@ npm run website:dev    # Dev server at http://localhost:3000
 npm run website:build  # Production build
 ```
 
-### PWA Reader
+### PWA
 
 ```bash
 npm run pwa:dev    # Dev server at http://localhost:5173

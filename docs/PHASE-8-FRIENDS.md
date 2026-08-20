@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model uses `Person` plus attached `Account` records, the Friends workspace defaults to `All content`, and the shipping Friends route has been cut over to the next-generation GPU-resident Friends Galaxy. Raw WebGPU is preferred, WebGL2 is the retained compatibility backend, every semantic identity remains resident during movement, and the locked camera supports native iPhone touch and Mac trackpad navigation with inertia. Freed Desktop Friends activity, suggestions, overview, selected-person timelines, FriendEditor profile candidates, and the non-Saved Friends-only feed now read bounded source-fenced SQLite aggregates or pages instead of retaining the full item corpus. The PWA now reads its Friends-only feed, compact graph activity, selected-person timelines, location details, and Map candidates from bounded source-fenced IndexedDB pages. The broader Friends phase still includes unfinished native contacts, overlap, and Mozi work.
+> **Status:** In Progress. The canonical identity model uses `Person` plus attached `Account` records, and the shipping Friends route uses the GPU-resident Friends Galaxy. Freed Desktop uses bounded SQLite aggregates and pages. The current PWA transition store proved equivalent bounded reads in IndexedDB. Phase 6 replaces that store with SQLite WebAssembly over OPFS and the same named query contracts. Native contacts, overlap, and Mozi work remain unfinished.
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -23,11 +23,11 @@ This phase also becomes the home for future-aware social planning. Historical po
 ┌──────────────────────────────────────────────────────────────────┐
 │                  8A: Person + Account Identity Layer              │
 │                                                                   │
-│  Person record (Automerge doc)                                    │
+│  Person row plus normalized child rows                            │
 │  ├── relationshipStatus: "connection" | "friend"                  │
 │  └── metadata for the confirmed same-human identity               │
 │                                                                   │
-│  Account record (Automerge doc)                                   │
+│  Account row plus normalized child rows                           │
 │  ├── kind: "social" | "contact"                                   │
 │  ├── provider + externalId                                        │
 │  └── optional personId when the operator confirms identity        │
@@ -609,7 +609,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.163 | Reproject and collision-admit the bounded label roster on every changed camera frame while coalescing worker candidate refreshes and avoiding per-frame text rerasterization                                                                                     | High       | Done        |
 | 8.164 | Restore the standard workspace sidebar inset on Friends while retaining the full-frame pointer-free Galaxy background beneath it                                                                                                                                 | Medium     | Done        |
 | 8.165 | Extend the shared map and Friends Galaxy palette registry with AubOS Starship and Dark Star                                                                                                                                                                      | Medium     | Done        |
-| 8.166 | Move the Freed Desktop non-Saved Friends-only feed onto versioned `feed_browse_page_v2` SQLite pages when no search is active, while preserving Person-first membership, ordinary browse ordering, ranking invalidation, bounded projection and renderer residency, selected-card continuity, exact Automerge fallback, and the PWA reader | High       | Done        |
+| 8.166 | Move the Freed Desktop non-Saved Friends-only feed onto versioned `feed_browse_page_v2` SQLite pages when no search is active, while preserving Person-first membership, ordinary browse ordering, ranking invalidation, bounded projection and renderer residency, selected-card continuity, exact Automerge fallback, and the PWA client | High       | Done        |
 | 8.167 | Match the Friends detail rail's vertical card insets to the primary navigation rail, keep both resize rails full-height and centered in equal gutters, clamp wheel and pinch zoom at the exact per-canvas Fit All transform, and move graph diagnostics into the Friends sidebar menu | Medium     | Done        |
 | 8.168 | Add a persisted preview control that compares 100,000 worker-buffered decorative stars, 100,000 Raw WebGPU vertex-generated stars with no per-star source or instance buffer, and no decorative stars while reporting the last worker-to-renderer build time | Medium     | Done        |
 | 8.169 | Keep graph-invalidating fields narrow, coalesce sustained source hydration through one resident latest-wins worker, and replace Raw WebGPU scenes without recreating the canvas, device, or compiled pipelines | High       | Done        |

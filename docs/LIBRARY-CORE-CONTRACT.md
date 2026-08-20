@@ -1,7 +1,5 @@
 # Library Core Contract
 
-Status: **Approved architecture. The SQLite cutover is active; installed sync acceptance remains gated.**
-
 This contract defines Freed's durable library, mutation, query, migration, and
 replication behavior. It replaces the assumption that one in-memory Automerge
 document can remain the database, search index, sync payload, backup format,
@@ -10,6 +8,47 @@ and UI state for an arbitrarily large library.
 The objective is a bounded-memory library that preserves every supported
 field, converges across devices, survives interruption at every boundary, and
 can prove which storage epoch owns a write.
+
+## Core invariants
+
+The complete architecture is described in
+[LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md). This contract is
+the detailed companion to that overview. These rules govern the complete
+contract:
+
+1. Stock SQLite is the only Library row engine. Freed Desktop and the headless
+   Primary use the extracted native Rust core. The PWA uses official SQLite
+   WebAssembly with OPFS.
+2. Every product view uses a bounded named query. React owns only visible
+   windows and ephemeral interface state.
+3. `shellJson`, `DocState`, whole FeedItem checkpoint rows, and equivalent
+   Library shells are not authority, transport, fallback, rollback proof, or
+   compatibility state.
+4. Automerge and the derived shadow-store architecture are source migration
+   inputs only. They are not part of the runtime.
+5. There is no dual write, compatibility bridge, rollback flag that revives a
+   retired engine, or IndexedDB Library fallback.
+6. Synchronization exchanges logical protocol objects. It never exchanges a
+   SQLite database, WAL, SHM, or rollback-journal file.
+7. Checkpoint records use a stable registry identity plus typed primary key.
+   Ordinals are page framing only and never logical identity.
+8. Large legal fields use content-addressed descriptors, chunks, and
+   authenticated range indexes. Every canonical logical checkpoint record is
+   bounded independently of content size.
+9. Editable followers commit local intent overlays, then submit signed intents
+   to the active Primary. The Primary alone admits canonical operations.
+10. A follower can stream, partially cache, fully cache, pin offline, or exclude
+    content independently of metadata replication.
+11. Rust, TypeScript, SQLite schema, named queries, mutations, checkpoint
+    records, and canonical vectors derive from one executable contract source.
+12. Migration writes directly into the final model and activates one storage
+    epoch after proof. Same-frontier rollback is the only rollback. Later
+    recovery rolls forward.
+
+Every section is governed by these invariants. Automerge and IndexedDB may be
+named only as bounded source-migration inputs. They never name a runtime
+authority, Library row engine, follower store, transport, fallback, or rollback
+path.
 
 ## Non-negotiable outcomes
 
@@ -135,13 +174,16 @@ protocol, but it cannot maintain an independent active pointer. Drive file IDs
 are locators. Names and app properties describe objects, but never establish
 authority.
 
-PWA installations are intent producers in v1, not canonical writers. Their
-required MVP store is a bounded row-oriented IndexedDB adapter. SQLite WASM and
-OPFS are not on the MVP critical path. They may be added later behind the same
-adapter and conformance suite. The designated Desktop verifies and accepts an
-intent into canonical SQLite before publishing an acceptance receipt. Provider
-acceptance is separate from provider completion. A PWA cannot display provider
-success until the Desktop records the actual provider result.
+PWA installations are intent producers, not canonical writers. Their Library
+store is official SQLite WebAssembly persisted through OPFS and owned by one
+worker. The PWA uses the same schema catalog, named SQL, result DTOs, mutation
+intent codecs, and conformance vectors as the native core. IndexedDB is not a
+Library row-store fallback. A narrow IndexedDB keystore may hold
+nonextractable WebCrypto keys only when WebKit offers no suitable alternative.
+The designated Primary verifies and accepts an intent into canonical SQLite
+before publishing an acceptance receipt. Provider acceptance is separate from
+provider completion. A PWA cannot display provider success until the Primary
+records the actual provider result.
 
 The package-internal immutable transport contract closes one flat namespace for
 epoch and enrollment JSON, checkpoint manifests and pages, canonical operation
@@ -263,37 +305,35 @@ A stale starting control tuple uploads nothing. A later failure can leave
 immutable unreachable objects, but it cannot publish a partial checkpoint or
 infer authority from their presence.
 
-The registered `library_core_logical_checkpoint_v1` dataset is the complete
-portable row-store stream. Record zero is one closed
-`logical_checkpoint_header` carrying the library, epoch, schema and codec
-versions, authority anchor, promoted receipt digests, materializer frontier
-and state digests, and exact count of every logical collection. The remaining
-records are closed `logical_checkpoint_entry` values for accepted and
-quarantined frontiers, materialized rows, field clocks, relationships,
-tombstones, actor states, receipt records, blob roots, and explicit registry
-exclusions. Entries carry a contiguous collection-local ordinal. Their wire
-identity is the fixed collection order plus that ordinal, while the verifier
-also enforces each collection's semantic sort order from the logical
-checkpoint contract.
+The final normalized checkpoint dataset is the complete portable row-store
+stream. It contains closed typed records for authority anchors, accepted and
+quarantined frontiers, normalized materialized tables, field clocks,
+relationships, tombstones, actor states, receipts, operation tips, content
+descriptors, and explicit registry exclusions. It contains no Library shell
+and no whole FeedItem JSON record. Every record identity is the tuple of its
+stable registry key and canonical typed primary key. Page number, record
+position, and collection ordinal are framing metadata only. They never become
+logical identity.
+
+Each canonical logical record is at most 131,072 bytes. A legal field that can
+exceed that ceiling is represented through a content descriptor and bounded
+content-addressed chunks or an authenticated range index. Large content bytes
+do not enter the metadata checkpoint. The 131,072-byte ceiling remains a
+proposed protocol parameter until measurement compares 65,536, 131,072, and
+262,144 byte candidates. The final protocol freezes one value before
+activation.
 
 The portable producer validates that stream while retaining at most 128
-records, encodes each page through the existing canonical frame and gzip
-object, and sends the prepared pages through the exact manifest and control
-publication path. The portable importer verifies the authenticated manifest
-and every page, stages only bounded pages through an injected row-store
-writer, and refuses selection until the writer returns a staging receipt
-matching the exact library, epoch, frontier digest, materialized-state digest,
-and complete record count. A malformed collection, missing record, reordered
-row, header or manifest mismatch, or false staging receipt aborts the staged
-import. The writer remains responsible for recomputing semantic commitments
-from its staged SQLite or IndexedDB rows before issuing that receipt. This is
-the shared interchange path for Desktop SQLite and PWA IndexedDB. It has no
-product caller and does not activate replacement replication.
-
-For the MVP, PWA IndexedDB is the primary Library Core row store. SQLite WASM
-and OPFS are not release dependencies. A future adapter must pass the same
-checkpoint, operation, search, intent, and result conformance suite and rebuild
-from immutable objects into a verified fresh generation.
+records and 2,097,152 canonical decoded bytes per page. One native export
+response contains at most 1,048,576 source bytes. It encodes each page through
+the registered canonical frame and sends prepared pages through the exact
+manifest and control publication path. The portable importer verifies the
+authenticated manifest and every page, stages only bounded pages into SQLite,
+and refuses activation until SQLite recomputes the exact library, epoch,
+frontier, normalized-state, registry-count, and content-root commitments. A
+malformed registry, missing record, duplicate primary key, reordered identity,
+manifest mismatch, oversized record, or false staging receipt aborts import.
+The same stream is imported by native SQLite and PWA SQLite WebAssembly.
 
 Active Google Drive synchronization remains confined to `appDataFolder`.
 SQLite backup files remain local to the device that created them. No cloud
@@ -3487,13 +3527,11 @@ side-effect execution.
 
 ## PWA durable store
 
-The PWA implements the same logical operation and materialization contract
-behind one browser storage adapter. IndexedDB is the required MVP engine. It
-stores bounded record pages, tombstones, search postings, cursors, intent
-queues, and result receipts without holding the corpus in JavaScript memory.
-
-SQLite WASM with OPFS may be added later as a measured adapter only after the
-supported browser matrix proves:
+The PWA implements the same logical operation, schema, query, and
+materialization contract in official SQLite WebAssembly over OPFS. One worker
+owns the connection. Tabs, service workers, and obsolete application versions
+are fenced by one connection generation and browser-level Library writer lock.
+The browser implementation must prove:
 
 - durable reopen and crash recovery;
 - worker-only access where required;
@@ -3502,23 +3540,24 @@ supported browser matrix proves:
 - correct behavior without cross-origin isolation where Freed must run;
 - a visible answer from `navigator.storage.persisted()`.
 
-The future adapter must pass the same conformance suite and rebuild from
-immutable cloud objects into a verified generation. It never mutates or
-translates an active IndexedDB store in place.
+The PWA passes the same schema, mutation, query, checkpoint, operation, search,
+intent, result, and crash conformance suite as the native core. It rebuilds
+from immutable protocol objects into a verified staging database, then
+activates that database atomically. It never mutates or translates an active
+IndexedDB Library store in place.
 
 Freed requests persistent storage when the user enables a local library and
 reports whether the browser granted it. A denial is a durability warning, not a
 silent success.
 
-One dedicated worker owns the PWA adapter connection. Tabs, service workers,
-and obsolete application versions are fenced from concurrent local intent
-writes. Existing but unreadable storage enters recovery, never an empty-library
-bootstrap.
-
-IndexedDB commits each intent envelope, local rows, tombstones, ingest cursor,
-receipt, and intent outbox atomically before acknowledgment. Its crash proof
-injects failure at every adapter-specific commit boundary and reopens the
-store. A future SQLite WASM adapter cannot borrow IndexedDB or Desktop evidence.
+SQLite commits each intent envelope, sparse local overlay, tombstone, ingest
+cursor, receipt, and intent outbox atomically before acknowledgment. Crash
+proof injects failure at every browser-specific commit boundary, terminates
+the worker, reopens the database, and verifies exact retry. IndexedDB may
+remain only as a narrow keystore for nonextractable WebCrypto key objects when
+WebKit supplies no suitable alternative. It may not contain Library rows,
+checkpoint records, cursors, operations, content metadata, or compatibility
+state.
 
 ## Replication protocol
 

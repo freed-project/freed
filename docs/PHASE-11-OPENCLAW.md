@@ -1,6 +1,13 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
 > **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound native sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
+
+> **Architecture:** The headless Primary and Freed Desktop consume the
+> same extracted native Rust Library Core and the same stock SQLite contract.
+> PWA and Desktop followers query local SQLite replicas and submit signed
+> intents. No role opens another device's database, transfers SQLite files, or
+> reconstructs a Library shell.
+
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -24,7 +31,7 @@ The complete product has four roles:
 2. Editable followers apply local edits immediately, publish signed intents,
    and import canonical results from the Primary.
 3. Reader clients import verified immutable checkpoints into bounded local
-   storage. The production PWA uses IndexedDB.
+   SQLite. The production PWA uses official SQLite WebAssembly over OPFS.
 4. Capability-bounded workers submit only the operation types and source scope
    granted by the Primary.
 
@@ -59,7 +66,9 @@ The complete product has four roles:
 The current product already provides the protocol foundation:
 
 - Freed Desktop stores the active Library in bounded SQLite.
-- The PWA imports authenticated immutable checkpoints into IndexedDB.
+- The current PWA transition candidate imports authenticated immutable
+  checkpoints into IndexedDB. The final architecture replaces that store with
+  SQLite WebAssembly over OPFS and deletes the IndexedDB Library paths.
 - Editable Freed Desktop followers exchange signed intents and canonical
   results without becoming the writer.
 - The Primary publishes immutable checkpoints and a durable exact revision
@@ -157,7 +166,7 @@ Headless Library service
 Google Drive
         |
         + Freed Desktop editable followers
-        + authenticated PWA IndexedDB readers
+        + authenticated PWA SQLite readers
 ```
 
 ### Native Library package
@@ -366,7 +375,8 @@ provider-ready.
    compare and swap.
 6. Confirm that the former Primary refreshes control, loses writer admission,
    and continues as an editable follower.
-7. Confirm that the authenticated PWA imports the same manifest into IndexedDB.
+7. Confirm that the authenticated PWA imports the same manifest into SQLite
+   WebAssembly over OPFS.
 
 The former Primary is never restored by copying its database into the service.
 The service is never seeded from an older follower database.
@@ -422,7 +432,7 @@ review before implementation.
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; construct them behind the descriptor-bound native sidecar, then add installed headless checkpoint ingress |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
-| 11.8 | Complete | Enforce actor capability certificates and the fixed legacy editor policy in native SQLite and PWA IndexedDB, with production issuance dormant |
+| 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
 | 11.11 | Open | Add bounded agent search, read, and signed edit APIs |

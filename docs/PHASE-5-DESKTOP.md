@@ -1,8 +1,35 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, blocked-preflight crash-loop protection shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, classifier health notification isolation shipped, idle Automerge worker recycling shipped, bounded SQLite maintenance scans shipped, explicit local-only primary Library authority shipped, SQLite-backed sample-data accounting, Story Wall candidates, Saved analytics, and full-library native search shipped, the four-mode Saved feed and non-Saved Friends-only feed moved onto bounded Gate D SQLite reads, the ordinary all-content feed moved onto bidirectional bounded SQLite paging, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, local interface zoom controls shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, multi-Desktop provider request warnings shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
+
+> **Architecture:** Freed Desktop is a bounded SQLite client and a host
+> for the shared native Library Core. Every view calls a named typed query.
+> Every durable product edit calls a registered mutation. React retains only
+> visible windows and ephemeral interface state. Tauri owns command wiring and
+> host capabilities, not Library semantics. Automerge, whole-corpus renderer
+> state, Library shells, shadow readers, and compatibility leases are deleted
+> at the verified SQLite-only cutover.
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
+
+## Current SQLite Desktop work
+
+- [ ] Complete extraction of Library semantics into
+      `packages/library-core-native` so Freed Desktop and the headless Primary
+      call the same Rust core.
+- [ ] Generate Rust and TypeScript bindings from one executable contract source
+      and consume one checked-in SQL catalog.
+- [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
+      Wall, settings, exports, and diagnostics through bounded named queries.
+- [ ] Route the exhaustive mutation registry through atomic native
+      journal-plus-materialization transactions with exact retry receipts.
+- [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
+      feed and query reruns.
+- [ ] Keep large content in a content-addressed vault with per-device hydration
+      policy and verified range reads.
+- [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
+      workers, shadow stores, compatibility flags, and unconsumed migration
+      exports after one-epoch activation proof.
 
 ---
 
@@ -270,7 +297,7 @@ export async function captureDomFeed(
 - [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, native preview windows carry a visible worktree and thread label, and feature previews auto-accept local legal gates plus seed sample data
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog, pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link, opens the saved item in reader mode after stub persistence, and pulls readable details in the background
-- [x] Freed Desktop factory reset closes Automerge admission, settles document work already accepted by the worker, and rejects later mutations before deletion. It clears device display and AI choices, snapshots, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. The relay rotates its pairing token, clears held document bytes, disconnects old mobile sessions, and stays paused whenever document deletion is uncertain. Existing PWA readers must scan the current pairing QR code again after a successful reset. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
+- [x] Freed Desktop factory reset closes Automerge admission, settles document work already accepted by the worker, and rejects later mutations before deletion. It clears device display and AI choices, snapshots, runtime diagnostics, shortcut configuration, local provider sessions, active cloud credentials, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. The relay rotates its pairing token, clears held document bytes, disconnects old mobile sessions, and stays paused whenever document deletion is uncertain. Existing PWA clients must scan the current pairing QR code again after a successful reset. Local discovery and request history, backoff and receipt ledgers, encrypted AI keys, local model files, the media vault, scraper window modes, and provider user agent identity stay intact. Legal acceptance, release channel, and installation identity also remain installation state.
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
@@ -286,7 +313,7 @@ export async function captureDomFeed(
 - [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
 - [x] Desktop Settings > Sync shows local item count, local document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, cloud errors, pending upload explanations, a manual Drive `Sync now` action, and a recent activity timeline
-- [x] Desktop Settings > Sync warns when more than one Freed Desktop installation is registered with the library because parallel RSS or authenticated provider polling can duplicate request traffic. PWA readers do not trigger the warning.
+- [x] Desktop Settings > Sync warns when more than one Freed Desktop installation is registered with the library because parallel RSS or authenticated provider polling can duplicate request traffic. PWA clients do not trigger the warning.
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider
