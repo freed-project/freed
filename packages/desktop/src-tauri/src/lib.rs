@@ -5208,6 +5208,95 @@ fn response_headers(response: &reqwest::Response) -> Vec<(String, String)> {
         .collect()
 }
 
+fn has_one_bounded_drive_file_id(path: &str, prefix: &str) -> bool {
+    let Some(file_id) = path.strip_prefix(prefix) else {
+        return false;
+    };
+    !file_id.is_empty()
+        && file_id.len() <= 1_024
+        && file_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn google_drive_request_target_is_allowed(parsed: &url::Url, method: &str) -> bool {
+    if parsed.scheme() != "https" || parsed.host_str() != Some("www.googleapis.com") {
+        return false;
+    }
+    if parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/") {
+        return matches!(method, "GET" | "POST" | "PATCH" | "DELETE");
+    }
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.port().is_some()
+        || parsed.fragment().is_some()
+    {
+        return false;
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/drive/v2/files/") {
+        return method == "GET" && parsed.query() == Some("fields=id,etag");
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/upload/drive/v2/files/") {
+        return method == "PUT" && parsed.query() == Some("uploadType=media&fields=id,etag");
+    }
+    false
+}
+
+fn one_exact_header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    let mut matches = headers
+        .iter()
+        .filter(|(key, _)| key.eq_ignore_ascii_case(name));
+    let value = matches.next()?.1.as_str();
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(value)
+}
+
+fn is_bounded_drive_bearer(value: &str) -> bool {
+    let Some(token) = value.strip_prefix("Bearer ") else {
+        return false;
+    };
+    !token.is_empty()
+        && token.len() <= 16_384
+        && token.bytes().all(|byte| matches!(byte, 0x21..=0x7e))
+}
+
+fn is_bounded_strong_drive_etag(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 3
+        && bytes.len() <= 1_024
+        && bytes.first() == Some(&b'"')
+        && bytes.last() == Some(&b'"')
+        && bytes[1..bytes.len() - 1]
+            .iter()
+            .all(|byte| *byte == 0x21 || matches!(*byte, 0x23..=0x7e))
+}
+
+fn google_drive_v2_request_shape_is_allowed(
+    parsed: &url::Url,
+    method: &str,
+    headers: &[(String, String)],
+    body: Option<&[u8]>,
+) -> bool {
+    if has_one_bounded_drive_file_id(parsed.path(), "/drive/v2/files/") {
+        return method == "GET"
+            && body.is_none()
+            && headers.len() == 1
+            && one_exact_header(headers, "Authorization").is_some_and(is_bounded_drive_bearer);
+    }
+    if has_one_bounded_drive_file_id(parsed.path(), "/upload/drive/v2/files/") {
+        return method == "PUT"
+            && body.is_some_and(|bytes| !bytes.is_empty() && bytes.len() <= 65_536)
+            && headers.len() == 3
+            && one_exact_header(headers, "Authorization").is_some_and(is_bounded_drive_bearer)
+            && one_exact_header(headers, "Content-Type")
+                == Some("application/json; charset=UTF-8")
+            && one_exact_header(headers, "If-Match").is_some_and(is_bounded_strong_drive_etag);
+    }
+    true
+}
+
 /// Fetch a Google People API URL with a bearer token.
 #[tauri::command]
 async fn google_api_request(
@@ -5271,21 +5360,13 @@ async fn google_drive_request(
     };
     let parsed =
         url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
-    let allowed_path =
-        parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/");
-    if parsed.scheme() != "https"
-        || parsed.host_str() != Some("www.googleapis.com")
-        || !allowed_path
-    {
-        return Err("Google Drive API URL is not allowed".to_string());
-    }
-
     let method_name = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
     let method = match method_name.as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
         "PATCH" => reqwest::Method::PATCH,
         "DELETE" => reqwest::Method::DELETE,
+        "PUT" => reqwest::Method::PUT,
         _ => {
             return Err(format!(
                 "Google Drive API method is not allowed: {}",
@@ -5293,6 +5374,13 @@ async fn google_drive_request(
             ))
         }
     };
+    if !google_drive_request_target_is_allowed(&parsed, &method_name) {
+        return Err("Google Drive API URL is not allowed".to_string());
+    }
+    let headers = headers.unwrap_or_default();
+    if !google_drive_v2_request_shape_is_allowed(&parsed, &method_name, &headers, body.as_deref()) {
+        return Err("Google Drive v2 request shape is not allowed".to_string());
+    }
 
     let client = reqwest::Client::builder()
         .user_agent("Freed/1.0 (https://freed.wtf)")
@@ -5300,7 +5388,7 @@ async fn google_drive_request(
         .map_err(|e| e.to_string())?;
 
     let mut builder = client.request(method, parsed);
-    for (key, value) in headers.unwrap_or_default() {
+    for (key, value) in headers {
         builder = builder.header(&key, &value);
     }
     if let Some(body) = body {
@@ -14207,6 +14295,171 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn drive_target(url: &str, method: &str) -> bool {
+        google_drive_request_target_is_allowed(&url::Url::parse(url).unwrap(), method)
+    }
+
+    fn drive_shape(url: &str, method: &str, headers: &[(&str, &str)], body: Option<&[u8]>) -> bool {
+        let owned_headers = headers
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect::<Vec<_>>();
+        google_drive_v2_request_shape_is_allowed(
+            &url::Url::parse(url).unwrap(),
+            method,
+            &owned_headers,
+            body,
+        )
+    }
+
+    #[test]
+    fn google_drive_v2_revision_transport_is_exactly_scoped() {
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+            "GET"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+            "PUT"
+        ));
+
+        for (url, method) in [
+            (
+                "https://www.googleapis.com/drive/v2/files?fields=id,etag",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1/permissions?fields=id,etag",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag&alt=media",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,version",
+                "GET",
+            ),
+            (
+                "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+                "POST",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media",
+                "PUT",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag&supportsAllDrives=true",
+                "PUT",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+                "PATCH",
+            ),
+            (
+                "https://www.googleapis.com/upload/drive/v3/files/file-1?uploadType=media",
+                "PUT",
+            ),
+            (
+                "https://evil.example/drive/v2/files/file-1?fields=id,etag",
+                "GET",
+            ),
+        ] {
+            assert!(!drive_target(url, method), "unexpectedly allowed {method} {url}");
+        }
+    }
+
+    #[test]
+    fn google_drive_v3_transport_keeps_its_existing_methods() {
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v3/files/file-1?alt=media",
+            "GET"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            "POST"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/upload/drive/v3/files/file-1?uploadType=media",
+            "PATCH"
+        ));
+        assert!(drive_target(
+            "https://www.googleapis.com/drive/v3/files/file-1",
+            "DELETE"
+        ));
+    }
+
+    #[test]
+    fn google_drive_v2_request_shape_requires_exact_headers_and_body() {
+        let metadata_url = "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag";
+        let upload_url = "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag";
+        let authorization = ("Authorization", "Bearer opaque-token");
+        let content_type = ("Content-Type", "application/json; charset=UTF-8");
+        let if_match = ("If-Match", "\"revision-1\"");
+
+        assert!(drive_shape(metadata_url, "GET", &[authorization], None));
+        assert!(drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match],
+            Some(b"{}")
+        ));
+
+        assert!(!drive_shape(
+            metadata_url,
+            "GET",
+            &[authorization],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(metadata_url, "GET", &[], None));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match],
+            None
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[
+                authorization,
+                content_type,
+                ("If-Match", "W/\"revision-1\"")
+            ],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, ("If-Match", "revision-1")],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match, if_match],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[authorization, content_type, if_match, ("X-Extra", "no")],
+            Some(b"{}")
+        ));
+        assert!(!drive_shape(
+            upload_url,
+            "PUT",
+            &[content_type, if_match],
+            Some(b"{}")
+        ));
+    }
 
     #[test]
     fn macos_tray_icon_is_a_small_monochrome_template() {

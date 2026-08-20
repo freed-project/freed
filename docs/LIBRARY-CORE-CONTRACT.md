@@ -174,9 +174,10 @@ Response loss recovers only when readback equals the intended pointer,
 including that exact manifest locator. Ordinary publication cannot change the
 writer epoch or active cloud transport. Writer reassignment uses a separate
 explicit control transition. This coordinator has no Google or Dropbox
-dependency, token, polling loop, or production caller.
+dependency or token and owns no polling loop. The Freed Desktop Primary calls
+it through injected credential, schedule, fetch, authority, and receipt ports.
 
-The dormant Google Drive adapter implements that injected boundary for an
+The shared Google Drive adapter implements that injected boundary for an
 already-provisioned exact control file ID. It discovers controls only through
 private protocol, library-digest, and object-kind properties, rejects duplicate
 controls, and never treats a filename as authority. Ordinary immutable objects
@@ -184,12 +185,19 @@ use a single multipart upload below 5 MB. Each upload is indexed by private
 properties for its actual protocol kind, library digest, logical-key digest,
 and content digest, then read back through the exact Drive file ID and verified
 for byte length and SHA-256. Exact duplicate retries collapse only after every
-matching object verifies. Control updates send the exact previously read ETag
-as `If-Match`, classify `412` as a race, and read back exact bytes and the new
-ETag before reporting commit. All response bodies are bounded while reading.
+matching object verifies. Mutable control, intent head, and result head reads
+sample the bounded strong Drive v2 JSON `etag` field on both sides of one Drive
+v3 media read. Their updates use only Drive v2 media `PUT` with that exact
+strong ETag as `If-Match`, classify `412` as a race, and read back exact bytes
+and the new ETag before reporting commit. Immutable discovery, creation, media
+reads, and resumable traffic remain on Drive v3. The native transport admits
+only those exact v2 file routes, methods, queries, headers, and bounded bodies.
+It cannot use v2 for an unconditional overwrite. All response bodies are
+bounded while reading.
 The same exact-file path can return verified immutable bytes to a dormant
 checkpoint consumer. Control bootstrap remains separate. The adapter has no
-timer, caller, OAuth acquisition, product registration, or activation path.
+timer, OAuth acquisition, or product registration. Freed Desktop and the PWA
+are production callers through their platform fetch and runtime boundaries.
 
 Media blobs use a separate closed descriptor:
 
