@@ -193,6 +193,18 @@ test("release admission and repository configuration changes use focused feature
   assert.match(selection.reason, /explicit focused feature-validation/);
 });
 
+test("roadmap changes use focused feature validation without tooling shards", () => {
+  const selection = selectApplicableSuites([
+    "docs/PHASE-6-PWA.md",
+    "docs/roadmap-status.json",
+    "scripts/validate-roadmap-status.mjs",
+    "scripts/validate-roadmap-status.test.mjs",
+  ]);
+
+  assert.deepEqual(selection.suites, []);
+  assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
 test("generated release artifacts do not replay unrelated tooling suites", () => {
   const selection = selectApplicableSuites([
     "release-notes/daily/dev/26.7.28.json",

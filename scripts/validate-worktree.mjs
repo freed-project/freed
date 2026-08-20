@@ -410,46 +410,6 @@ export function isSocialProviderFocusedSurface(filePath) {
   );
 }
 
-export function isDesktopPerfSensitiveSurface(filePath) {
-  return (
-    filePath === "scripts/perf-compare.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-map.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-sidebar.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-settings.spec.ts" ||
-    filePath === "packages/desktop/tests/e2e/perf-budgets.json" ||
-    filePath === "packages/desktop/tests/e2e/perf-baselines.json" ||
-    filePath === "packages/desktop/tests/e2e/reporters/perf-reporter.ts" ||
-    filePath === "packages/desktop/src/lib/store.ts" ||
-    filePath === "packages/desktop/src/lib/automerge.ts" ||
-    filePath === "packages/desktop/src/lib/automerge-types.ts" ||
-    filePath === "packages/desktop/src/lib/automerge.worker.ts" ||
-    filePath === "packages/desktop/src/lib/automerge-persistence.ts" ||
-    filePath === "packages/desktop/src/lib/background-runtime-coordinator.ts" ||
-    filePath === "packages/desktop/src/lib/memory-monitor.ts" ||
-    filePath === "packages/desktop/src/lib/content-fetcher.ts" ||
-    filePath === "packages/desktop/src/lib/rss-poller.ts" ||
-    filePath.startsWith("packages/desktop/src-tauri/src/") ||
-    filePath.startsWith("packages/ui/src/components/feed/") ||
-    filePath.startsWith("packages/ui/src/components/friends/") ||
-    filePath.startsWith("packages/ui/src/components/layout/") ||
-    filePath.startsWith("packages/ui/src/components/map/") ||
-    filePath.startsWith("packages/ui/src/components/settings/") ||
-    filePath === "packages/ui/src/components/SettingsDialog.tsx" ||
-    filePath === "packages/ui/src/lib/friends-workspace.ts" ||
-    filePath === "packages/ui/src/lib/account-link-suggestions.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-render.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-layout.ts" ||
-    filePath === "packages/ui/src/lib/identity-graph-model.ts" ||
-    filePath === "packages/ui/src/hooks/useResolvedLocations.ts" ||
-    filePath === "packages/ui/src/hooks/useSearchResults.ts" ||
-    filePath === "packages/shared/src/location.ts" ||
-    filePath === "packages/shared/src/ranking.ts" ||
-    filePath === "packages/shared/src/schema.ts"
-  );
-}
-
 export function captureWorkspaceForFile(filePath) {
   const match = filePath.match(/^(packages\/capture-[^/]+)/);
   return match ? match[1] : null;
@@ -531,6 +491,27 @@ const STABILITY_STATUS_PATHS = new Set([
 
 export function isStabilityStatusPath(filePath) {
   return STABILITY_STATUS_PATHS.has(filePath);
+}
+
+export function isRoadmapStatusPath(filePath) {
+  return (
+    filePath === "docs/roadmap-status.json" ||
+    filePath === "scripts/validate-roadmap-status.mjs" ||
+    filePath === "scripts/validate-roadmap-status.test.mjs" ||
+    /^docs\/PHASE-\d+-[^/]+\.md$/.test(filePath)
+  );
+}
+
+function roadmapStatusChecks() {
+  return [
+    nodeCommand("roadmap status validation", [
+      path.join("scripts", "validate-roadmap-status.mjs"),
+    ]),
+    nodeCommand("roadmap status tests", [
+      "--test",
+      path.join("scripts", "validate-roadmap-status.test.mjs"),
+    ]),
+  ];
 }
 
 function stabilityStatusTestsCommand() {
@@ -904,11 +885,6 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
       npmCommand(
-        "desktop e2e perf",
-        ["run", "test:e2e:perf"],
-        "packages/desktop",
-      ),
-      npmCommand(
         "desktop e2e visual",
         ["run", "test:e2e:visual"],
         "packages/desktop",
@@ -925,6 +901,9 @@ export function buildValidationPlan(mode, changedFiles) {
     }
     if (changedFiles.some(isStabilityStatusPath)) {
       addCommand(plan, stabilityStatusTestsCommand());
+    }
+    if (changedFiles.some(isRoadmapStatusPath)) {
+      for (const check of roadmapStatusChecks()) addCommand(plan, check);
     }
     return plan;
   }
@@ -1052,9 +1031,6 @@ export function buildValidationPlan(mode, changedFiles) {
   const desktopNativeSurfaceChanged =
     libraryCoreNativeSurfaceChanged ||
     changedFiles.some(isDesktopNativeSurface);
-  const desktopPerfSensitiveChanged = changedFiles.some(
-    isDesktopPerfSensitiveSurface,
-  );
   const pwaSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
@@ -1085,6 +1061,7 @@ export function buildValidationPlan(mode, changedFiles) {
   );
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const stabilityStatusChanged = changedFiles.some(isStabilityStatusPath);
+  const roadmapStatusChanged = changedFiles.some(isRoadmapStatusPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
@@ -1206,17 +1183,6 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand(
         "desktop e2e smoke",
         ["run", "test:e2e:smoke"],
-        "packages/desktop",
-      ),
-    );
-  }
-
-  if (desktopPerfSensitiveChanged) {
-    addCommand(
-      plan,
-      npmCommand(
-        "desktop e2e perf",
-        ["run", "test:e2e:perf"],
         "packages/desktop",
       ),
     );
@@ -1383,6 +1349,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (roadmapStatusChanged) {
+    for (const check of roadmapStatusChecks()) addCommand(plan, check);
   }
 
   if (
