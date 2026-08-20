@@ -29,8 +29,8 @@ export interface LibraryCoreWireFrameOptions {
 }
 
 const MAGIC = new TextEncoder().encode("FRDV2FRM");
-const HEADER_BYTES = 16;
-const LENGTH_BYTES = 4;
+export const LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES = 16;
+export const LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES = 4;
 
 function isUint8Array(value: unknown): value is Uint8Array {
   return (
@@ -144,7 +144,7 @@ export function encodeLibraryCoreWireFrameV1(
   assertRecordCount(records.length, limits.maximumRecords);
   const encodedRecords: Uint8Array[] = [];
   const identities = new Set<string>();
-  let totalBytes = HEADER_BYTES;
+  let totalBytes = LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES;
 
   for (const record of records) {
     const identity = checkedIdentity(record, options.recordIdentity);
@@ -157,7 +157,8 @@ export function encodeLibraryCoreWireFrameV1(
     const encoded = encodeLibraryCoreCanonicalValue(record, {
       maximumBytes: limits.maximumRecordBytes,
     });
-    totalBytes += LENGTH_BYTES + encoded.byteLength;
+    totalBytes +=
+      LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES + encoded.byteLength;
     if (totalBytes > limits.maximumDecodedBytes) {
       throw new RangeError(
         `Library Core frame exceeds ${limits.maximumDecodedBytes.toLocaleString()} decoded bytes`,
@@ -174,10 +175,10 @@ export function encodeLibraryCoreWireFrameV1(
   output[11] = 0;
   writeUint32(output, 12, records.length);
 
-  let offset = HEADER_BYTES;
+  let offset = LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES;
   for (const encoded of encodedRecords) {
     writeUint32(output, offset, encoded.byteLength);
-    offset += LENGTH_BYTES;
+    offset += LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES;
     output.set(encoded, offset);
     offset += encoded.byteLength;
   }
@@ -226,14 +227,21 @@ export class LibraryCoreWireFrameDecoderV1 {
     this.append(chunk);
     const decoded: LibraryCoreCanonicalValue[] = [];
 
-    if (!this.headerRead && this.pending.byteLength >= HEADER_BYTES) {
+    if (
+      !this.headerRead &&
+      this.pending.byteLength >= LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES
+    ) {
       this.readHeader();
     }
     while (this.headerRead && this.recordsRead < this.recordCount) {
       if (this.nextRecordLength === null) {
-        if (this.pending.byteLength < LENGTH_BYTES) break;
+        if (
+          this.pending.byteLength < LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES
+        ) {
+          break;
+        }
         this.nextRecordLength = readUint32(this.pending, 0);
-        this.consume(LENGTH_BYTES);
+        this.consume(LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES);
         if (
           this.nextRecordLength === 0 ||
           this.nextRecordLength > this.limits.maximumRecordBytes
@@ -248,7 +256,7 @@ export class LibraryCoreWireFrameDecoderV1 {
       this.consume(this.nextRecordLength);
       this.nextRecordLength = null;
       const record = decodeLibraryCoreCanonicalValue(recordBytes, {
-        maximumBytes: LIBRARY_CORE_MAX_WIRE_RECORD_BYTES,
+        maximumBytes: this.limits.maximumRecordBytes,
       });
       const identity = checkedIdentity(record, this.recordIdentity);
       if (this.identities.has(identity)) {
@@ -319,7 +327,7 @@ export class LibraryCoreWireFrameDecoderV1 {
     }
     this.recordCount = readUint32(this.pending, 12);
     assertRecordCount(this.recordCount, this.limits.maximumRecords);
-    this.consume(HEADER_BYTES);
+    this.consume(LIBRARY_CORE_WIRE_FRAME_HEADER_BYTES);
     this.headerRead = true;
   }
 }
