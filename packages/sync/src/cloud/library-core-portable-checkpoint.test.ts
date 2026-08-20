@@ -193,6 +193,27 @@ function materializedRows(
   });
 }
 
+function largeMaterializedRows(
+  count: number,
+): LibraryCorePortableCheckpointEntryV1[] {
+  return Array.from({ length: count }, (_, ordinal) => {
+    const primaryKey = `large-item-${String(ordinal).padStart(6, "0")}`;
+    return {
+      collection: "materialized_rows",
+      kind: "logical_checkpoint_entry",
+      ordinal,
+      value: {
+        primary_key: primaryKey,
+        registry_key: "feedItems",
+        row: {
+          globalId: primaryKey,
+          text: "x".repeat(120_000),
+        },
+      },
+    };
+  });
+}
+
 describe("Library Core portable checkpoint", () => {
   it("publishes the first pointer into a provisioned empty CAS control", async () => {
     const adapter = new FakeCheckpointAdapter();
@@ -338,6 +359,49 @@ describe("Library Core portable checkpoint", () => {
     expect(finalized).toBe(true);
   });
 
+  it("flushes a checkpoint page before its exact decoded byte budget is exhausted", async () => {
+    const rows = largeMaterializedRows(20);
+    const pages: LibraryCorePreparedCheckpointPageV1[] = [];
+
+    for await (const page of prepareLibraryCorePortableCheckpointPagesV1({
+      entries: rows,
+      generation: 0,
+      header: header(rows.length),
+      subtle,
+    })) {
+      pages.push(page);
+    }
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0]?.recordCount).toBeLessThan(128);
+    expect(pages.reduce((total, page) => total + page.recordCount, 0)).toBe(
+      rows.length + 1,
+    );
+    expect(pages[1]!.firstRecordIdentity > pages[0]!.lastRecordIdentity).toBe(
+      true,
+    );
+
+    const adapter = new FakeCheckpointAdapter();
+    const published = await publishLibraryCorePortableCheckpointV1({
+      activeTransport: "google_drive_app_data_v1",
+      adapter,
+      entries: rows,
+      expectedControl: { pointer: null, revision: null },
+      generation: 0,
+      header: header(rows.length),
+      subtle,
+      writerId: "desktop-1",
+    });
+    if (published.status === "conflict") {
+      throw new Error("byte-bounded checkpoint publication conflicted");
+    }
+    expect(published.dependencies).toHaveLength(2);
+    expect(
+      adapter.events.filter((event) => event.startsWith("put:")),
+    ).toHaveLength(3);
+    expect(adapter.objects.size).toBe(3);
+  });
+
   it("rejects an out-of-order logical collection before uploading a page", async () => {
     const adapter = new FakeCheckpointAdapter();
     const rows = materializedRows(2);
@@ -356,6 +420,67 @@ describe("Library Core portable checkpoint", () => {
       }),
     ).rejects.toThrow(/contiguous ordinals/);
     expect(adapter.events).toEqual(["read-control"]);
+  });
+
+  it("rejects one oversized canonical record before any immutable upload", async () => {
+    const adapter = new FakeCheckpointAdapter();
+    const oversized: LibraryCorePortableCheckpointEntryV1[] = [
+      {
+        collection: "materialized_rows",
+        kind: "logical_checkpoint_entry",
+        ordinal: 0,
+        value: {
+          primary_key: "large-item-000000",
+          registry_key: "feedItems",
+          row: {
+            globalId: "large-item-000000",
+            text: "x".repeat(140_000),
+          },
+        },
+      },
+    ];
+
+    await expect(
+      publishLibraryCorePortableCheckpointV1({
+        activeTransport: "google_drive_app_data_v1",
+        adapter,
+        entries: oversized,
+        expectedControl: { pointer: null, revision: null },
+        generation: 0,
+        header: header(1),
+        subtle,
+        writerId: "desktop-1",
+      }),
+    ).rejects.toThrow(/131,072 UTF-8 bytes/);
+    expect(adapter.events).toEqual(["read-control"]);
+    expect(adapter.objects.size).toBe(0);
+  });
+
+  it("streams an installed-Library-scale checkpoint through bounded pages", async () => {
+    const installedItemCount = 22_172;
+    let pageCount = 0;
+    let recordCount = 0;
+    let maximumPageRecords = 0;
+    let previousLastIdentity: string | null = null;
+
+    for await (const page of prepareLibraryCorePortableCheckpointPagesV1({
+      entries: materializedRows(installedItemCount),
+      generation: 0,
+      header: header(installedItemCount),
+      subtle,
+    })) {
+      if (previousLastIdentity !== null) {
+        expect(page.firstRecordIdentity > previousLastIdentity).toBe(true);
+      }
+      previousLastIdentity = page.lastRecordIdentity;
+      pageCount += 1;
+      recordCount += page.recordCount;
+      maximumPageRecords = Math.max(maximumPageRecords, page.recordCount);
+    }
+
+    expect(pageCount).toBe(174);
+    expect(recordCount).toBe(installedItemCount + 1);
+    expect(maximumPageRecords).toBe(128);
   });
 
   it("aborts when a row store cannot prove the staged materialized state", async () => {
