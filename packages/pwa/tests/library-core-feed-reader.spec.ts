@@ -336,7 +336,7 @@ test("dormant IndexedDB feed reader preserves bounded session and generation sem
   });
 });
 
-test("dormant browse projection upgrades v1 and persists exact recommendation order", async ({
+test("bounded browse projection upgrades v2 and persists exact recommendation order", async ({
   page,
 }) => {
   await page.goto("/favicon.svg");
@@ -344,7 +344,7 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
   const result = await page.evaluate(async () => {
     const databaseName = `freed-library-core-browse-${crypto.randomUUID()}`;
     const legacyDatabase = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 1);
+      const request = indexedDB.open(databaseName, 2);
       request.onupgradeneeded = () => {
         const database = request.result;
         database.createObjectStore("generations", {
@@ -357,6 +357,26 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
           keyPath: ["generationId", "batchIndex"],
         });
         database.createObjectStore("control", { keyPath: "key" });
+        database.createObjectStore("browse_generations", {
+          keyPath: "generationId",
+        });
+        const browseRows = database.createObjectStore("browse_rows", {
+          keyPath: ["generationId", "orderKey"],
+        });
+        browseRows.createIndex(
+          "browse_generation_global_id",
+          ["generationId", "globalId"],
+          { unique: true },
+        );
+        browseRows.createIndex(
+          "browse_generation_source_sequence",
+          ["generationId", "sourceSequence"],
+          { unique: true },
+        );
+        database.createObjectStore("browse_generation_batches", {
+          keyPath: ["generationId", "batchIndex"],
+        });
+        database.createObjectStore("browse_control", { keyPath: "key" });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -432,7 +452,7 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       rows: [
         { priority: 40, row: row("source-first", 100), sourceSequence: 0 },
         { priority: 80, row: row("newer-high", 300), sourceSequence: 1 },
-        { priority: 80, row: row("source-second", 200), sourceSequence: 3 },
+        { priority: 80, row: row("source-second", 200), sourceSequence: 2 },
         { priority: 80, row: row("source-earlier", 200), sourceSequence: 2 },
       ],
     });
@@ -465,7 +485,7 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
     const orderedRows = await new Promise<
       Array<{ globalId: string; orderKey: string }>
     >((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 2);
+      const request = indexedDB.open(databaseName, 3);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction("browse_rows", "readonly");

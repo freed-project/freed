@@ -21,8 +21,8 @@ use super::library_core_actor_enrollment::{
     PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
-    establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
-    reassign_writer_epoch, LegacySourceRevision,
+    establish_or_transition_sqlite_authority, load_established_authority_key_pair,
+    reassign_writer_epoch, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
@@ -116,6 +116,20 @@ pub(super) struct DesktopLibrarySyncPage {
 pub(super) struct BootstrapAuthorityRequest {
     installation_witness: String,
     accepted_at_ms: i64,
+    revision: i64,
+    item_count: i64,
+    source_digest: String,
+    materialized_digest: String,
+    persisted_cloud_identity: Option<BootstrapPersistedCloudIdentity>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct BootstrapPersistedCloudIdentity {
+    library_id: String,
+    storage_epoch: String,
+    writer_id: String,
+    source_digest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,6 +247,21 @@ pub(super) struct DesktopLibraryActorCheckpointState {
 pub(super) struct DesktopLibraryAuthorityBootstrap {
     authority: DesktopLibraryAcceptedAuthority,
     actor: DesktopLibraryActorEnrollment,
+    protocol: DesktopLibraryAuthorityProtocol,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryAuthorityProtocol {
+    format: String,
+    active_engine: String,
+    schema_version: i64,
+    replication_protocol: String,
+    checkpoint_format: String,
+    transition_certificate_digest: String,
+    native_protocol_certificate_digest: String,
+    prior_transition_certificate_digest: Option<String>,
+    source_manifest_digest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1465,21 +1494,33 @@ pub(super) fn read_sqlite_library_counts(
 }
 
 /// Describe one exact SQLite revision without retaining the corpus in memory.
-#[tauri::command]
-pub(super) fn read_sqlite_library_sync_descriptor(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibrarySyncDescriptor, String> {
-    let mut connection = open_database(&app)?;
-    require_active(&connection)?;
+fn read_sqlite_library_sync_snapshot(
+    connection: &mut Connection,
+) -> Result<(DesktopLibrarySyncDescriptor, u64, u64), String> {
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    let (revision, source_digest, shell_json): (i64, String, String) = transaction
+    let (revision, source_generation, source_revision, source_digest, shell_json): (
+        i64,
+        i64,
+        i64,
+        String,
+        String,
+    ) = transaction
         .query_row(
-            "SELECT revision, sourceDigest, shellJson
+            "SELECT revision, sourceGeneration, sourceRevision,
+                    sourceDigest, shellJson
              FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
@@ -1509,13 +1550,31 @@ pub(super) fn read_sqlite_library_sync_descriptor(
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    Ok(DesktopLibrarySyncDescriptor {
-        revision,
-        item_count,
-        source_digest,
-        shell_json,
-        materialized_digest,
-    })
+    let source_generation = u64::try_from(source_generation)
+        .map_err(|_| "SQLite Library source generation is invalid")?;
+    let source_revision =
+        u64::try_from(source_revision).map_err(|_| "SQLite Library source revision is invalid")?;
+    Ok((
+        DesktopLibrarySyncDescriptor {
+            revision,
+            item_count,
+            source_digest,
+            shell_json,
+            materialized_digest,
+        },
+        source_generation,
+        source_revision,
+    ))
+}
+
+/// Describe one exact SQLite revision without retaining the corpus in memory.
+#[tauri::command]
+pub(super) fn read_sqlite_library_sync_descriptor(
+    app: tauri::AppHandle,
+) -> Result<DesktopLibrarySyncDescriptor, String> {
+    let mut connection = open_database(&app)?;
+    require_active(&connection)?;
+    read_sqlite_library_sync_snapshot(&mut connection).map(|snapshot| snapshot.0)
 }
 
 fn verified_follower_anchor(request: InstallFollowerAnchorRequest) -> VerifiedFollowerAnchor {
@@ -2016,46 +2075,66 @@ pub(super) fn bootstrap_sqlite_library_authority(
     app: tauri::AppHandle,
     request: BootstrapAuthorityRequest,
 ) -> Result<DesktopLibraryAuthorityBootstrap, String> {
-    if !validate_hex_digest(&request.installation_witness) || request.accepted_at_ms < 0 {
+    if !validate_hex_digest(&request.installation_witness)
+        || !validate_hex_digest(&request.source_digest)
+        || !validate_hex_digest(&request.materialized_digest)
+        || request.accepted_at_ms < 0
+        || request.revision < 0
+        || !(0..=1_000_000).contains(&request.item_count)
+        || request
+            .persisted_cloud_identity
+            .as_ref()
+            .is_some_and(|hint| {
+                !validate_hex_digest(&hint.library_id)
+                    || !validate_hex_digest(&hint.storage_epoch)
+                    || !validate_hex_digest(&hint.writer_id)
+                    || !validate_hex_digest(&hint.source_digest)
+            })
+    {
         return Err("SQLite Library authority bootstrap request is invalid".into());
     }
     let root = app_root(&app)?;
     let path = journal_path(&root);
-    let connection = open_database_at(&root)?;
+    let mut connection = open_database_at(&root)?;
     require_active(&connection)?;
-    let (source_generation, source_revision, source_digest): (i64, i64, String) = connection
-        .query_row(
-            "SELECT sourceGeneration, sourceRevision, sourceDigest
-             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(|error| error.to_string())?;
+    let (descriptor, source_generation, source_revision) =
+        read_sqlite_library_sync_snapshot(&mut connection)?;
     drop(connection);
-    let source_generation = u64::try_from(source_generation)
-        .map_err(|_| "SQLite Library source generation is invalid")?;
-    let source_revision =
-        u64::try_from(source_revision).map_err(|_| "SQLite Library source revision is invalid")?;
-    if !validate_hex_digest(&source_digest) {
-        return Err("SQLite Library source digest is invalid".into());
+    if descriptor.revision != request.revision
+        || descriptor.item_count != request.item_count
+        || descriptor.source_digest != request.source_digest
+        || descriptor.materialized_digest != request.materialized_digest
+    {
+        return Err("SQLite Library changed before authority bootstrap".into());
     }
 
     let mut journal = LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?;
-    let revision = LegacySourceRevision {
-        document_id: format!("freed-sqlite-{source_digest}"),
-        heads_digest: source_digest,
-        head_count: 1,
-        storage_generation: source_generation,
-        storage_save_revision: source_revision,
+    let snapshot = NativeSqliteSourceSnapshot {
+        source_digest: descriptor.source_digest,
+        source_generation,
+        source_revision,
+        sqlite_revision: u64::try_from(descriptor.revision)
+            .map_err(|_| "SQLite Library revision is invalid")?,
+        item_count: u64::try_from(descriptor.item_count)
+            .map_err(|_| "SQLite Library item count is invalid")?,
+        materialized_digest: descriptor.materialized_digest,
     };
-    let library_id = legacy_library_id(&revision.document_id)?;
-    let authority = match journal
-        .active_authority_epoch(&library_id)
-        .map_err(|error| error.to_string())?
-    {
-        Some(active) => active.authority,
-        None => establish_genesis_epoch(&mut journal, &revision, request.accepted_at_ms)?,
-    };
+    let persisted_hint = request
+        .persisted_cloud_identity
+        .map(|hint| PersistedCloudAuthorityHint {
+            library_id: hint.library_id,
+            storage_epoch: hint.storage_epoch,
+            writer_id: hint.writer_id,
+            source_digest: hint.source_digest,
+        });
+    let established = establish_or_transition_sqlite_authority(
+        &mut journal,
+        &snapshot,
+        &request.installation_witness,
+        persisted_hint.as_ref(),
+        request.accepted_at_ms,
+    )?;
+    let authority = established.authority;
     let authority_key_pair = load_established_authority_key_pair(&authority.library_id)?;
     let actor = enroll_desktop_actor(
         &mut journal,
@@ -2096,6 +2175,21 @@ pub(super) fn bootstrap_sqlite_library_authority(
             enrollment_certificate_digest: actor.enrollment_certificate_digest,
             canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
             actor_chain_genesis: actor.actor_chain_genesis,
+        },
+        protocol: DesktopLibraryAuthorityProtocol {
+            format: established.protocol.format,
+            active_engine: established.protocol.active_engine,
+            schema_version: established.protocol.schema_version,
+            replication_protocol: established.protocol.replication_protocol,
+            checkpoint_format: established.protocol.checkpoint_format,
+            transition_certificate_digest: established.protocol.transition_certificate_digest,
+            native_protocol_certificate_digest: established
+                .protocol
+                .native_protocol_certificate_digest,
+            prior_transition_certificate_digest: established
+                .protocol
+                .prior_transition_certificate_digest,
+            source_manifest_digest: established.protocol.source_manifest_digest,
         },
     })
 }
@@ -2198,7 +2292,7 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
     Ok(match stored {
         None => CloudWriterAdmissionStatus {
             configured: false,
-            allowed: true,
+            allowed: false,
             local_writer_id: None,
             active_writer_id: None,
             storage_epoch: None,
@@ -3724,6 +3818,20 @@ mod tests {
         let decoded = decode_base64_json(&encoded).expect("decode item transport");
         assert_eq!(decoded, source);
         assert!(validate_json_object(&decoded, MAX_ITEM_BYTES).is_ok());
+    }
+
+    #[test]
+    fn missing_cloud_writer_admission_is_not_write_authority() {
+        let root = temporary_root("sqlite-writer-admission-absent");
+        fs::create_dir_all(&root).expect("create temporary root");
+        let connection = open_database_at(&root).expect("open Library database");
+
+        let status = writer_admission_status(&connection).expect("read missing admission");
+
+        assert!(!status.configured);
+        assert!(!status.allowed);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
     }
 
     #[test]

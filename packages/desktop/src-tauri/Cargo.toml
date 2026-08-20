@@ -45,6 +45,7 @@ tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 fslock = "0.2.1"
 hostname = "0.4"
+dirs = "6"
 rand = "0.10"
 base64 = "0.23"
 url = "2"
@@ -80,6 +81,7 @@ objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+tauri = { version = "=2.11.5", features = ["test"] }
 
 [[bench]]
 name = "relay"

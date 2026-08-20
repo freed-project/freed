@@ -1364,6 +1364,7 @@ version = "26.8.1800"
 dependencies = [
  "base64 0.23.0",
  "criterion",
+ "dirs",
  "fslock",
  "futures-util",
  "hostname",

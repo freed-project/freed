@@ -13,10 +13,7 @@ import {
 } from "@freed/shared";
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
-  LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
-  libraryCoreFeedCardToItemV1,
-  normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateAssignmentFieldV1,
@@ -25,6 +22,7 @@ import {
 import type { FilterOptions } from "@freed/shared";
 import type {
   BoundedFeedReader,
+  PlatformConfig,
   ScanLibraryItems,
   SearchLibraryItems,
 } from "@freed/ui/context";
@@ -51,9 +49,11 @@ import {
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
 } from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
+import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
+const READ_MODEL_DATABASE_NAME = "freed-library-core-read-model-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
 const LIBRARY_SCAN_PAGE_LIMIT = 32;
@@ -69,6 +69,10 @@ let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
 > | null = null;
 let searchIndex: PwaLibraryCoreSearchIndex | null = null;
+let indexedDbReaders: ReturnType<
+  typeof createPwaLibraryCoreIndexedDbReaders
+> | null = null;
+let libraryReadModelRevision = 0;
 
 function getPortableStore(): ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
@@ -89,6 +93,22 @@ function getSearchIndex(): PwaLibraryCoreSearchIndex {
     keyRange: globalThis.IDBKeyRange,
   });
   return searchIndex;
+}
+
+function getIndexedDbReaders(): ReturnType<
+  typeof createPwaLibraryCoreIndexedDbReaders
+> {
+  indexedDbReaders ??= createPwaLibraryCoreIndexedDbReaders({
+    databaseName: READ_MODEL_DATABASE_NAME,
+    indexedDb: globalThis.indexedDB,
+    keyRange: globalThis.IDBKeyRange,
+    subtle: globalThis.crypto.subtle,
+    scanItems: scanPwaLibraryCoreItems,
+    readItem: readPwaLibraryCoreItemDetail,
+    getState: () => lastState ?? emptyState(),
+    getSourceRevision: () => libraryReadModelRevision,
+  });
+  return indexedDbReaders;
 }
 
 export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
@@ -214,6 +234,7 @@ async function readSelectedState(): Promise<LibraryState | null> {
 }
 
 function publishState(state: LibraryState): void {
+  libraryReadModelRevision += 1;
   lastState = state;
   for (const listener of listeners) listener(state);
 }
@@ -702,12 +723,38 @@ async function refreshPersistentSearchItems(
  */
 export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
   const store = getPortableStore();
+  const readModelRevision = libraryReadModelRevision;
   let cursor: string | null = null;
+  let source: Readonly<{
+    generationId: string;
+    selectionSequence: number;
+  }> | null = null;
+  const assertSourceCurrent = async () => {
+    if (libraryReadModelRevision !== readModelRevision) {
+      throw new Error("Selected PWA Library changed during its bounded scan");
+    }
+    if (!source) return;
+    const selected = await store.readSelectedCheckpointReceipt();
+    if (
+      !selected ||
+      selected.generationId !== source.generationId ||
+      selected.selectionSequence !== source.selectionSequence
+    ) {
+      throw new Error("Selected PWA Library changed during its bounded scan");
+    }
+  };
   do {
     const page = await store.readSelectedMaterializedPage({
       cursor,
       limit: LIBRARY_SCAN_PAGE_LIMIT,
     });
+    if (source === null) source = page.source;
+    else if (
+      page.source.generationId !== source.generationId ||
+      page.source.selectionSequence !== source.selectionSequence
+    ) {
+      throw new Error("Selected PWA Library changed during its bounded scan");
+    }
     const items: FeedItem[] = [];
     for (const entry of page.entries) {
       if (entry.registryKey === "10_feed_items") {
@@ -715,10 +762,12 @@ export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
       }
     }
     if (items.length > 0 && (await visit(Object.freeze(items))) === "stop") {
+      await assertSourceCurrent();
       return;
     }
     cursor = page.nextCursor;
   } while (cursor !== null);
+  await assertSourceCurrent();
 };
 
 /** Search the selected Library through a persistent IndexedDB projection. */
@@ -747,79 +796,71 @@ export async function readPwaLibraryCoreItemDetail(
   return row as unknown as FeedItem;
 }
 
-function supportsPortableFeedFilter(filter: FilterOptions): boolean {
-  const normalized = normalizeLibraryCoreFeedBrowseFilterV1(filter);
-  return (
-    !normalized.archivedOnly &&
-    normalized.authorId === null &&
-    normalized.feedUrl === null &&
-    normalized.platform === null &&
-    !normalized.savedOnly &&
-    !normalized.showHidden &&
-    normalized.signals.length === 0 &&
-    normalized.socialContentFilter === "all" &&
-    normalized.tags.length === 0
+/** Open a complete filtered feed through a bounded IndexedDB projection. */
+export async function openPwaLibraryCoreFeedReader(
+  filter: FilterOptions,
+  rankingClockMs = Date.now(),
+): Promise<BoundedFeedReader> {
+  return getIndexedDbReaders().openFeedReader(filter, rankingClockMs);
+}
+
+/** Open the complete Person-first Friends feed through bounded IndexedDB pages. */
+export async function openPwaLibraryCoreFriendsFeedReader(
+  filter: FilterOptions,
+  rankingClockMs: number,
+): Promise<BoundedFeedReader> {
+  return getIndexedDbReaders().openFriendsFeedReader(filter, rankingClockMs);
+}
+
+/** Open every Saved sort mode through one bounded IndexedDB projection. */
+export async function openPwaLibraryCoreSavedFeedReader(
+  filter: FilterOptions,
+  sortMode: Parameters<
+    NonNullable<PlatformConfig["openBoundedSavedFeedReader"]>
+  >[1],
+  rankingClockMs: number,
+): Promise<BoundedFeedReader> {
+  return getIndexedDbReaders().openSavedFeedReader(
+    filter,
+    sortMode,
+    rankingClockMs,
   );
 }
 
-/** Open the complete ordinary feed directly from the selected IndexedDB generation. */
-export async function openPwaLibraryCoreFeedReader(
-  filter: FilterOptions,
-): Promise<BoundedFeedReader> {
-  if (!supportsPortableFeedFilter(filter)) {
-    throw new Error(
-      "This SQLite Library filter does not have a bounded PWA reader yet",
-    );
-  }
-  const store = getPortableStore();
-  const readerSessionId = crypto.randomUUID();
-  let cursor: string | null = null;
-  let closed = false;
-  let lastCancellationId = crypto.randomUUID();
-  let firstPage: Awaited<ReturnType<typeof store.readSelectedFeedPage>> | null =
-    await store.readSelectedFeedPage({
-      cancellationId: lastCancellationId,
-      cursor: null,
-      limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
-      queryId: "feed_page_v1",
-      readerSessionId,
-      schemaVersion: 1,
-    });
-  if (!firstPage.ok) throw new Error(firstPage.message);
-  cursor = firstPage.value.nextCursor;
-  const totalCount = firstPage.value.totalCount;
-  return Object.freeze({
-    totalCount,
-    async readNext() {
-      if (closed) return Object.freeze([]);
-      if (firstPage) {
-        const page = firstPage;
-        firstPage = null;
-        if (!page.ok) throw new Error(page.message);
-        return Object.freeze(page.value.rows.map(libraryCoreFeedCardToItemV1));
-      }
-      if (cursor === null) return Object.freeze([]);
-      lastCancellationId = crypto.randomUUID();
-      const page = await store.readSelectedFeedPage({
-        cancellationId: lastCancellationId,
-        cursor,
-        limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
-        queryId: "feed_page_v1",
-        readerSessionId,
-        schemaVersion: 1,
-      });
-      if (!page.ok) throw new Error(page.message);
-      cursor = page.value.nextCursor;
-      return Object.freeze(page.value.rows.map(libraryCoreFeedCardToItemV1));
-    },
-    async close() {
-      store.cancelSelectedFeedReader(readerSessionId, lastCancellationId);
-      closed = true;
-      firstPage = null;
-      cursor = null;
-    },
-  });
-}
+/** Read exact full-library facets without consulting the renderer window. */
+export const readPwaLibraryCoreFacetSummary: NonNullable<
+  PlatformConfig["readLibraryFacetSummary"]
+> = () => getIndexedDbReaders().readFacetSummary();
+
+/** Count every signal chip from the complete selected IndexedDB generation. */
+export const readPwaLibraryCoreFeedSignalCounts: NonNullable<
+  PlatformConfig["readFeedSignalCounts"]
+> = (filter) => getIndexedDbReaders().readFeedSignalCounts(filter);
+
+/** Read exact Saved overview aggregates from bounded IndexedDB scans. */
+export const readPwaLibraryCoreSavedAnalytics: NonNullable<
+  PlatformConfig["readLibrarySavedAnalytics"]
+> = (request) => getIndexedDbReaders().readSavedAnalytics(request);
+
+/** Read compact Friends graph activity from bounded IndexedDB scans. */
+export const readPwaLibraryCoreFriendsGraph: NonNullable<
+  PlatformConfig["readLibraryFriendsGraph"]
+> = (request) => getIndexedDbReaders().readFriendsGraph(request);
+
+/** Read one complete source-keyed Friends timeline page. */
+export const readPwaLibraryCorePersonTimeline: NonNullable<
+  PlatformConfig["readLibraryPersonTimeline"]
+> = (request) => getIndexedDbReaders().readPersonTimeline(request);
+
+/** Resolve one exact location item against its Friends source token. */
+export const readPwaLibraryCoreFriendsLocationItem: NonNullable<
+  PlatformConfig["readLibraryFriendsLocationItem"]
+> = (request) => getIndexedDbReaders().readFriendsLocationItem(request);
+
+/** Read bounded Map or Story Wall candidates from the complete Library. */
+export const readPwaLibraryCoreSurfaceItems: NonNullable<
+  PlatformConfig["readLibrarySurfaceItems"]
+> = (surface) => getIndexedDbReaders().readSurfaceItems(surface);
 
 /**
  * Import the sole published immutable Desktop checkpoint into IndexedDB.
@@ -1022,11 +1063,14 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
 registerPwaFactoryResetQuiesceHandler(
   "library-core-indexeddb",
   async () => {
+    await indexedDbReaders?.quiesce();
+    indexedDbReaders = null;
     await portableStore?.quiesce();
     portableStore = null;
     await searchIndex?.close();
     searchIndex = null;
     lastState = null;
+    libraryReadModelRevision = 0;
     const deleteDatabase = (databaseName: string) =>
       new Promise<void>((resolve, reject) => {
         const request = globalThis.indexedDB.deleteDatabase(databaseName);
@@ -1048,6 +1092,7 @@ registerPwaFactoryResetQuiesceHandler(
       });
     await deleteDatabase(DATABASE_NAME);
     await deleteDatabase(SEARCH_DATABASE_NAME);
+    await deleteDatabase(READ_MODEL_DATABASE_NAME);
   },
   25,
 );

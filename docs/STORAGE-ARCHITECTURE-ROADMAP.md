@@ -1,6 +1,6 @@
 # Storage Architecture Roadmap
 
-Status: **Approved direction. Activation remains gated.**
+Status: **Approved direction. The SQLite cutover is active; live acceptance remains gated.**
 
 The normative architecture lives in
 [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md). This roadmap records why
@@ -13,24 +13,53 @@ of preserving a bridge. Desktop and PWA production entry points no longer load
 an Automerge worker, package, WASM asset, mutable cloud document, LAN relay, or
 legacy snapshot. Freed Desktop reads and writes native SQLite directly, keeps
 large media outside the row store, publishes immutable Library Core objects,
-and retains 24 closed SQLite backups. The PWA uses IndexedDB through bounded
-logical pages, intents, results, and search state. Exact-head validation, the
-dev release, installation, and runtime evidence remain before this candidate
-becomes the verified shipped boundary. Further corpus fault injection, media
+and retains 24 closed SQLite backups on their originating device. Drive never
+receives SQLite, WAL, SHM, or rollback-journal files. The PWA uses IndexedDB
+through bounded logical pages, intents, results, and search state. Exact-head
+validation, the dev release, installation, and runtime evidence remain before
+this candidate becomes the verified shipped boundary. Further corpus fault injection, media
 transport, retired-writer review, restore coverage, source cleanup, cursor
 optimization, and bundle splitting are recorded in issues #1446 through #1453
 instead of delaying the first manually testable SQLite build.
 
-Freed Desktop now has a direct local SQLite cutover candidate. It imports the
-retained legacy Automerge library once into schema v2, verifies the complete
+Freed Desktop now has a direct local SQLite cutover candidate at schema v11.
+It imports the retained legacy Automerge library once, verifies the complete
 item count and database integrity, and then uses SQLite for ordinary startup,
 queries, mutations, search, export, diagnostics, sample management, and daily
 backup and restore. Normal Desktop execution does not start the Automerge
 worker, the legacy LAN relay, or the Automerge cloud loops, and no ordinary UI
 surface may request a full renderer item corpus. The old Automerge bytes remain
-only as a pre-import rollback source. This does not activate replacement cloud
-authority. Immutable-object sync and the PWA IndexedDB adapter remain the next
-two stages.
+only as a pre-import rollback source. Immutable Library Core checkpoint sync,
+the PWA IndexedDB reader and intent client, and the editable follower are now
+implemented candidates. Installed production acceptance still determines when
+the cutover and follower can be declared complete.
+
+### Native SQLite authority establishment
+
+A fresh SQLite Library signs
+`freed_library_core_native_sqlite_genesis_v1`. The certificate commits one
+opaque Library ID, the authority key, `library_core_v1`, schema v11,
+`op_segments_v1`, `freed_logical_checkpoint_v1`, and an exact captured SQLite
+source manifest. Fresh establishment never fabricates an Automerge document or
+head.
+
+An installation that already holds the retired legacy certificate keeps those
+canonical signed bytes as historical evidence. It may install exactly one
+`freed_library_core_native_sqlite_protocol_transition_v1` correction. The
+correction references the prior certificate digest and keeps the Library ID,
+epoch, authority key lineage, actor rows, cloud writer admission, follower
+anchor, Drive namespace, intents, results, and checkpoints unchanged. Exact
+replay returns the stored correction after response loss or restart. A changed
+correction, unrelated SQLite source lineage, missing persisted authority,
+multiple active local Libraries, or unavailable authority key fails closed.
+
+Authority bootstrap reads the accepted journal state and any persisted cloud
+identity before deriving a fresh Library ID. The first local Desktop actor may
+be enrolled before a cloud control tuple exists, but that bootstrap exception
+grants no operation admission and cannot enroll a second actor. Canonical
+operations, ordinary enrollment, and provider outbox work require a present
+matching writer-admission row. No authority path reads Automerge bytes or
+synchronizes SQLite, WAL, or SHM files.
 
 Gate A is a dormant census. A1 adds the package-internal closed legacy
 bootstrap record, journal, control, receipt, bounded current and historical
@@ -279,6 +308,22 @@ vault. Linux remains on the Automerge rollback path until it has a proven
 noninteractive platform vault. The next active milestone is
 conversion of the remaining compatibility surfaces and worker-corpus eviction,
 followed by complete elected migration authority admission.
+
+### Process lifetime data-root exclusion
+
+Every native Library Core runtime now takes one operating-system-backed
+exclusive lease on its canonical data root before SQLite can open. Freed
+Desktop holds the lease in process-managed state until exit. A future headless
+service must use the same primitive for the same root. A contender fails
+closed with both process IDs when the holder PID is readable, plus the exact
+data root, lock path, executable, package, version, and refusal time. Each
+failure overwrites one bounded `process-last-refusal.json` file, so diagnostics
+remain available when a release Windows app has no console without accumulating
+one file per launch. Clean exit releases the kernel lock and truncates its
+diagnostic PID. A killed process can leave stale PID text, but the kernel
+releases the actual lock and the next process replaces that text after it
+acquires the handle. The persistent `process.lock` file is local control state,
+not cloud authority or a database transport object.
 
 ## What the evidence establishes
 

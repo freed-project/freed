@@ -442,6 +442,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
 | 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
 | 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
+| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High | ✓ Done |
 
 ---
 
@@ -521,6 +522,10 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       audio package over the local network without media bytes entering Automerge
 - [ ] Offline audio passes real iPhone airplane-mode, cold-launch, lock-screen,
       interruption, Bluetooth, AirPlay, and long-seek acceptance
+- [x] Provider-neutral media blobs use a separate zero-byte-capable descriptor,
+      domain-separated raw-byte identity, exact 1 MiB resumable upload windows,
+      bounded response-loss recovery, and streamed Drive readback verification
+      without fetching media from YouTube or another content provider
 - [ ] User-cloud media objects are opaque, chunk-encrypted, resumable, verified,
       quota-aware, and deleted with their key material
 - [ ] Optional video passes storage, codec, range, seek, battery, and eviction

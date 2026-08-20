@@ -513,6 +513,10 @@ export interface PwaLibraryCoreMaterializedPageV1 {
     row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
   }>[];
   readonly nextCursor: string | null;
+  readonly source: Readonly<{
+    generationId: LibraryCoreLowercaseHex64;
+    selectionSequence: number;
+  }>;
 }
 
 export interface ReadPwaLibraryCoreOperationPageInput {
@@ -6136,33 +6140,58 @@ class PwaLibraryCorePortableCheckpointStore
     ) {
       throw new RangeError("materialized page limit must be between 1 and 512");
     }
-    let after: readonly [string, string] | null = null;
+    let after:
+      readonly [LibraryCoreLowercaseHex64, number, string, string] | null =
+      null;
     if (input.cursor !== null) {
       const decoded = JSON.parse(input.cursor) as unknown;
       if (
         !Array.isArray(decoded) ||
-        decoded.length !== 2 ||
-        decoded.some((value) => typeof value !== "string")
+        decoded.length !== 4 ||
+        typeof decoded[0] !== "string" ||
+        !/^[0-9a-f]{64}$/.test(decoded[0]) ||
+        !Number.isSafeInteger(decoded[1]) ||
+        (decoded[1] as number) < 0 ||
+        typeof decoded[2] !== "string" ||
+        typeof decoded[3] !== "string"
       ) {
         throw new TypeError("materialized page cursor is invalid");
       }
-      after = decoded as [string, string];
+      after = decoded as [LibraryCoreLowercaseHex64, number, string, string];
     }
     const database = await this.#database();
     const transaction = database.transaction(
-      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      [CONTROL_STORE, GENERATIONS_STORE, MATERIALIZED_ROWS_STORE],
       "readonly",
     );
     const selected = (await requestResult(
       transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
     )) as SelectedPortableGenerationRecord | undefined;
-    if (!selected) {
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
       transaction.abort();
       throw new Error("no complete portable checkpoint is selected");
     }
+    if (
+      after &&
+      (after[0] !== selected.generationId ||
+        after[1] !== selected.selectionSequence)
+    ) {
+      transaction.abort();
+      throw new Error("materialized page cursor source is stale");
+    }
     const range = after
       ? this.#keyRange.bound(
-          [selected.generationId, after[0], after[1]],
+          [selected.generationId, after[2], after[3]],
           [selected.generationId, []],
           true,
           false,
@@ -6193,9 +6222,25 @@ class PwaLibraryCorePortableCheckpointStore
       cursor.continue();
       cursor = await requestResult(cursor.request);
     }
-    const nextCursor = cursor && lastKey ? JSON.stringify(lastKey) : null;
+    const source = Object.freeze({
+      generationId: selected.generationId,
+      selectionSequence: selected.selectionSequence,
+    });
+    const nextCursor =
+      cursor && lastKey
+        ? JSON.stringify([
+            source.generationId,
+            source.selectionSequence,
+            lastKey[0],
+            lastKey[1],
+          ])
+        : null;
     await transactionDone(transaction);
-    return Object.freeze({ entries: Object.freeze(entries), nextCursor });
+    return Object.freeze({
+      entries: Object.freeze(entries),
+      nextCursor,
+      source,
+    });
   }
 
   async quiesce(): Promise<void> {

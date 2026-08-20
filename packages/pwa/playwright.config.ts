@@ -38,7 +38,10 @@ export default defineConfig({
         ...devices["iPhone 14"],
         browserName: "webkit",
       },
-      testMatch: "**/safari-viewport.spec.ts",
+      testMatch: [
+        "**/safari-viewport.spec.ts",
+        "**/library-core-indexeddb-readers.spec.ts",
+      ],
     },
   ],
 

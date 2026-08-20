@@ -1,6 +1,6 @@
 # Library Core Contract
 
-Status: **Approved architecture. Implementation remains dark until each activation gate passes.**
+Status: **Approved architecture. The SQLite cutover is active; installed sync acceptance remains gated.**
 
 This contract defines Freed's durable library, mutation, query, migration, and
 replication behavior. It replaces the assumption that one in-memory Automerge
@@ -37,6 +37,50 @@ can prove which storage epoch owns a write.
 
 ## Replacement replication authority
 
+### Native SQLite genesis and historical correction
+
+A fresh active SQLite Library establishes authority with one canonical signed
+`freed_library_core_native_sqlite_genesis_v1` certificate. Its opaque Library
+ID is derived from the exact imported source digest and an installation
+witness. The certificate commits `library_core_v1`, physical schema version
+11, `op_segments_v1`, `freed_logical_checkpoint_v1`, the authority public key
+and key ID, and one `freed_library_core_sqlite_source_manifest_v1`. That source
+manifest commits the source digest, source generation, source revision, SQLite
+revision, item count, and materialized digest. Fresh establishment cannot name
+`automerge_legacy`, `automerge_blob_v1`, or a fabricated Automerge head.
+
+Before deriving a fresh identity, bootstrap reads the sole active journal
+authority and the persisted cloud identity. If the journal has authority, the
+current SQLite source digest, generation, and source revision must match its
+accepted source lineage. A persisted cloud identity must match the accepted
+Library ID, epoch ID, and source digest. Missing journal authority beneath a
+persisted identity, multiple active local Libraries, an unrelated source, a
+missing authority key, or a key-lineage mismatch fails closed.
+
+An existing canonical
+`freed_library_core_genesis_epoch_certificate_v1` remains immutable historical
+evidence. The authority may sign exactly one
+`freed_library_core_native_sqlite_protocol_transition_v1` correction. It binds
+the same Library ID, epoch, epoch ID, authority public key, authority key ID,
+and exact prior transition-certificate digest to the native engine, schema,
+operation-segment, checkpoint, and source-manifest fields. The correction is a
+forward protocol transition, not a replacement epoch. It cannot rewrite the
+legacy certificate or invalidate epoch-scoped actors, writer admission,
+follower anchors, intents, results, checkpoints, or the Drive namespace. Exact
+retry returns the stored signed transition even when the acceptance timestamp
+changes. Any unequal second transition fails closed.
+
+The initial local Desktop actor may be enrolled before the first cloud control
+tuple exists because that actor is needed to name the initial writer. This
+narrow bootstrap exception grants no operation admission, accepts only the
+first actor for the Library, and preserves exact replay of that actor's signed
+certificate. Every canonical operation, ordinary actor enrollment, and
+provider outbox attempt requires a present writer-admission row whose local
+writer equals the verified active writer. Absence is not authority.
+
+Neither genesis nor historical correction opens Automerge bytes or adds a
+bridge. No transport synchronizes SQLite, WAL, or SHM files.
+
 The replacement protocol has one non-expiring designated Freed Desktop writer
 epoch per library. The writer may commit canonical local work while offline.
 Restarting the same enrolled installation resumes that epoch. There is no
@@ -49,6 +93,22 @@ It does not require the old computer, a pairing ceremony, a readiness receipt,
 or a simultaneous two-machine session. A lost-machine restore uses the same
 owner-confirmed transition. The previous installation becomes read-only when
 it next refreshes authority.
+
+Cloud writer authority is separate from local process exclusion. Before a
+Freed Desktop process or future headless service opens any SQLite authority
+database, it must acquire one nonblocking, operating-system-backed exclusive
+lease on the exact canonical Library Core data root. The process holds that
+handle for its full lifetime. A second process targeting the same root fails
+closed and records the requesting PID, current holder PID when readable, data
+root, lock path, executable, package, version, and refusal time in one bounded
+`process-last-refusal.json` record that each later refusal overwrites. The
+diagnostic PID stored in `process.lock` does not grant authority and is never
+used to decide whether a stale process is alive. A clean release truncates that
+PID. If a process is killed, the operating system releases the lock and the
+next holder replaces the stale diagnostic value. The lock file remains in
+place so ordinary shutdown never creates an unlocked replacement inode. This
+lease neither chooses the cloud writer nor transports SQLite, WAL, SHM, or
+rollback-journal files.
 
 An offline installation may resume local work only when its last durably
 verified control tuple names it as writer, and it must show that cloud authority
@@ -82,8 +142,9 @@ epoch and enrollment JSON, checkpoint manifests and pages, canonical operation
 segments, PWA intent and result segments, search artifacts, blobs, and backup
 manifests. Mutable control, intent-head, and result-head names cannot pass
 immutable-object validation. Active sync has no SQLite checkpoint object.
-Scrubbed closed SQLite checkpoints belong only to retained backups. The
-contract performs no cloud I/O, authority activation, or provider behavior.
+Scrubbed closed SQLite checkpoints belong only to local or explicitly exported
+offline backups. They are never cloud synchronization objects. The contract
+performs no cloud I/O, authority activation, or provider behavior.
 
 Control records, manifests, certificates, and individual signed envelopes use
 canonical UTF-8 JSON. Checkpoint, operation, intent, result, and search objects
@@ -121,10 +182,42 @@ matching object verifies. Control updates send the exact previously read ETag
 as `If-Match`, classify `412` as a race, and read back exact bytes and the new
 ETag before reporting commit. All response bodies are bounded while reading.
 The same exact-file path can return verified immutable bytes to a dormant
-checkpoint consumer. Control bootstrap and large resumable blobs remain
-separate. The adapter has no timer, caller, OAuth acquisition, product
-registration, or activation path, and the existing Automerge Drive
-implementation remains untouched.
+checkpoint consumer. Control bootstrap remains separate. The adapter has no
+timer, caller, OAuth acquisition, product registration, or activation path.
+
+Media blobs use a separate closed descriptor:
+
+```text
+media_blob_descriptor_v1 = {
+  objectKey,
+  blobContentDigest,
+  byteLength
+}
+
+blobContentDigest = DB("blob-content", raw_bytes)
+objectKey = "freed-v2-blob~" || library_id || "~" || blobContentDigest
+```
+
+This descriptor cannot pass ordinary immutable-object validation.
+`byteLength` is a nonnegative safe integer no greater than
+67,108,864,000,000, so the domain-separated digest of an empty byte stream is
+one valid blob identity. Ordinary immutable objects retain their positive
+stored-byte length, raw stored-byte SHA-256, and multipart path below 5 MB.
+
+The dormant Google Drive media adapter accepts a replayable random-access byte
+source, verifies the complete local `DB("blob-content", raw_bytes)` identity in
+1 MiB windows before a Drive request, then creates a resumable session only at
+an authenticated `https://www.googleapis.com` Drive upload endpoint. Uploads
+use exact 1 MiB chunks except for the final remainder. Strict `308` ranges
+select the next offset. A lost chunk response is settled by a zero-byte session
+status query. A `404` or `410` session is restarted from the same verified
+source with a bounded retry count. A lost final response first discovers the
+exact content-addressed object by private properties. Every completion and
+deduplicated retry streams an exact Drive readback in at most 1 MiB ranges and
+recomputes the blob digest before accepting the file ID. The boundary has no
+timer, OAuth acquisition, product caller, content-provider fetch, retention
+action, SQLite upload, or CRDT bridge. Its canonical tests inject a fake Drive
+transport and make no live request.
 
 The adapter-neutral logical-checkpoint importer starts from one exact immutable
 manifest receipt. It verifies the manifest provider object ID, locator, stored
@@ -189,16 +282,16 @@ checkpoint, operation, search, intent, and result conformance suite and rebuild
 from immutable objects into a verified fresh generation.
 
 Active Google Drive synchronization remains confined to `appDataFolder`.
-Complete off-device daily backups are separate. When Drive backup is enabled,
-Freed stores 24 immutable daily generations in a private user-visible
-`Freed Backups` folder using the narrow `drive.file` scope, alongside the local
-backup directory. Backup generations share content-addressed immutable objects
-and include one fresh scrubbed, closed, integrity-checked SQLite checkpoint.
-They never copy a live SQLite database or include WAL, SHM, rollback journals,
-free pages, stale deleted content, provider sessions, OAuth tokens, or private
-actor keys. The plaintext MVP backup contract supersedes the older encrypted
-backup-format design below. Application-layer backup encryption remains a
-versioned future extension, not an activation requirement.
+SQLite backup files remain local to the device that created them. No cloud
+transport may upload SQLite, WAL, SHM, or rollback-journal files, including a
+closed or scrubbed database. Complete off-device daily backups are separate
+logical generations. They reuse authenticated logical checkpoint objects and
+content-addressed media blobs, then publish one closed backup manifest that
+binds the exact Library, writer epoch, checkpoint, blob-root census, retention
+generation, and restore commitments. Provider sessions, OAuth tokens, private
+actor keys, free pages, and stale deleted content never enter a backup object.
+Application-layer backup encryption remains a versioned future extension, not
+an activation requirement.
 
 The first PWA consumer feeds the manifest's verified compact feed-card
 projection into the existing resumable IndexedDB generation writer. Exact page
