@@ -22,6 +22,19 @@ transport, retired-writer review, restore coverage, source cleanup, cursor
 optimization, and bundle splitting are recorded in issues #1446 through #1453
 instead of delaying the first manually testable SQLite build.
 
+The shared Google Drive adapter obtains mutable control, intent head, and
+result head revisions from the bounded strong Drive v2 JSON `etag` field. It
+samples that value around one Drive v3 media read and sends the exact token only
+through a Drive v2 media `PUT` with `If-Match`. A stale token returns `412` and
+triggers exact current readback. Immutable discovery, creation, media reads,
+multipart upload, and resumable upload remain on Drive v3. Freed Desktop and
+the PWA consume the same adapter without a new request or cadence change. The
+native route admits only the exact v2 file paths, methods, query fields,
+headers, strong token, and bounded body. An authenticated disposable
+appDataFolder probe confirmed a strong v2 JSON ETag, one successful update,
+stale same-token `412`, v3 byte readback, and cleanup. Installed Primary and PWA
+acceptance remains gated.
+
 Freed Desktop now has a direct local SQLite cutover candidate at schema v12.
 It imports the retained legacy Automerge library once, verifies the complete
 item count and database integrity, and then uses SQLite for ordinary startup,

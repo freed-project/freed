@@ -35,6 +35,63 @@ describe("desktop Google Drive platform fetch", () => {
     await expect(response.json()).resolves.toEqual({ files: [{ id: "file-1" }] });
   });
 
+  it("passes the narrow v2 revision read through the Tauri command", async () => {
+    invokeMock.mockResolvedValueOnce({
+      status: 200,
+      headers: [["content-type", "application/json"]],
+      bodyB64: btoa('{"id":"file-1","etag":"\\"revision-1\\""}'),
+    });
+
+    const { googleDriveFetchViaTauri } = await import("./google-drive");
+    const response = await googleDriveFetchViaTauri(
+      "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+      { headers: { Authorization: "Bearer token" } },
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("google_drive_request", {
+      url: "https://www.googleapis.com/drive/v2/files/file-1?fields=id,etag",
+      method: "GET",
+      headers: [["Authorization", "Bearer token"]],
+      bodyB64: undefined,
+    });
+    await expect(response.json()).resolves.toEqual({
+      id: "file-1",
+      etag: '"revision-1"',
+    });
+  });
+
+  it("passes the narrow v2 If-Match update through the Tauri command", async () => {
+    invokeMock.mockResolvedValueOnce({
+      status: 200,
+      headers: [["content-type", "application/json"]],
+      bodyB64: btoa('{"id":"file-1","etag":"\\"revision-2\\""}'),
+    });
+
+    const { googleDriveFetchViaTauri } = await import("./google-drive");
+    const response = await googleDriveFetchViaTauri(
+      "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+      {
+        body: new Uint8Array([4, 5, 6]),
+        headers: {
+          "Content-Type": "application/json; charset=UTF-8",
+          "If-Match": '"revision-1"',
+        },
+        method: "PUT",
+      },
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("google_drive_request", {
+      url: "https://www.googleapis.com/upload/drive/v2/files/file-1?uploadType=media&fields=id,etag",
+      method: "PUT",
+      headers: [
+        ["Content-Type", "application/json; charset=UTF-8"],
+        ["If-Match", '"revision-1"'],
+      ],
+      bodyB64: "BAUG",
+    });
+    expect(response.ok).toBe(true);
+  });
+
   it("sends upload bytes through the Tauri command", async () => {
     invokeMock.mockResolvedValueOnce({
       status: 200,
