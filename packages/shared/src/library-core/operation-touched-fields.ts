@@ -1,5 +1,11 @@
-import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
 import { LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY } from "./operation-field-algebra-contracts.js";
+import {
+  LIBRARY_CORE_ACCOUNT_OPERATION_FIELD_KEYS,
+  LIBRARY_CORE_FEED_ITEM_OPERATION_FIELD_KEYS,
+  LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS,
+  LIBRARY_CORE_PREFERENCE_OPERATION_FIELD_KEYS,
+  LIBRARY_CORE_RSS_FEED_OPERATION_FIELD_KEYS,
+} from "./operation-field-manifest.js";
 
 /**
  * Written-leaf inventories for candidate successor operations.
@@ -17,23 +23,10 @@ import { LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY } from "./operation-f
  */
 
 /**
- * Every synchronized leaf beneath a registry prefix, sorted.
- *
- * Derived rather than transcribed so a leaf added to the registry later is
- * included without anyone remembering. Only `legacy-synchronized` qualifies;
- * `legacy-device-local` and `legacy-compatibility` leaves are excluded because
- * the sanitizers strip them before any write reaches the document.
+ * The active operation manifests are closed runtime protocol data. Historical
+ * field-registry tests compare them against the frozen legacy census, but
+ * production verification does not import that retired authority model.
  */
-const synchronizedLeavesUnder = (prefix: string): readonly string[] =>
-  Object.freeze(
-    LIBRARY_CORE_FIELD_REGISTRY.filter(
-      (entry) =>
-        entry.registryKey.startsWith(prefix) &&
-        entry.currentLocality === "legacy-synchronized",
-    )
-      .map((entry) => entry.registryKey)
-      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
-  );
 
 export const LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY =
   "library-core-v1:feedItems.{globalId}.userState.archived";
@@ -87,20 +80,18 @@ export const FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
  * written set is exactly the synchronized preference leaves rather than a
  * shorter list of the ones some caller happens to use today.
  *
- * Derived from the field registry rather than transcribed, so a leaf added
- * later is included without anyone remembering. The derivation was checked
- * against reality: every addressable leaf the registry marks
- * `legacy-synchronized` does land in the document through `updatePreferences`,
- * and every leaf it marks `legacy-device-local` or `legacy-compatibility` does
+ * The closed manifest is checked against both the persisted legacy census and
+ * the current sanitizer behavior. Every addressable synchronized leaf lands
+ * through `updatePreferences`, while device-local and compatibility leaves do
  * not. `packages/shared/src/preference-locality-boundary.test.ts` holds the
- * second half of that statement.
+ * sanitizer half of that statement.
  *
  * Array-element and record patterns such as `...[]` and `...{groupId}` are
  * included. They are real registry keys naming real synchronized leaves, and
  * omitting them would understate what the operation writes.
  */
 export const PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
-  synchronizedLeavesUnder("library-core-v1:preferences.");
+  LIBRARY_CORE_PREFERENCE_OPERATION_FIELD_KEYS;
 
 export const LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY =
   "library-core-v1:rssFeeds.{url}.title";
@@ -126,12 +117,11 @@ export const RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
  * still, writing only `lastFetched`, `title`, and `siteUrl`, all of which are
  * already in this union.
  *
- * Derived from the field registry rather than transcribed. Checked against
- * reality: all nineteen `rssFeeds` registry leaves agree with what actually
- * lands through the add and update paths, with no exceptions.
+ * The manifest is checked against the historical census and the current add
+ * and update paths.
  */
 export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  synchronizedLeavesUnder("library-core-v1:rssFeeds.");
+  LIBRARY_CORE_RSS_FEED_OPERATION_FIELD_KEYS;
 
 /**
  * Traced from `addPerson` and `updatePerson`, plus the friend and connection
@@ -145,7 +135,7 @@ export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  * what lands through the add and update paths, no exceptions.
  */
 export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  synchronizedLeavesUnder("library-core-v1:persons.");
+  LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS;
 
 /**
  * Traced from `addAccount` and `updateAccount`.
@@ -154,7 +144,7 @@ export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  * `accounts` registry leaves agree with what lands.
  */
 export const ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  synchronizedLeavesUnder("library-core-v1:accounts.");
+  LIBRARY_CORE_ACCOUNT_OPERATION_FIELD_KEYS;
 
 /**
  * Traced from `logReachOut`, which is far narrower than the person upsert.
@@ -164,9 +154,8 @@ export const ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  * leaves can be written. Verified directly: an entry carrying an unmodelled
  * field stores `{loggedAt, channel, notes}` and drops the rest.
  *
- * Derived by filtering the registry rather than transcribed. A first draft
- * spelled the key placeholder `{id}` when the registry uses `{personId}`, and
- * hand-written keys invite exactly that. Filtering cannot misspell them.
+ * Derived from the closed person operation manifest so the placeholder and
+ * upsert surface cannot drift.
  */
 export const PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS =
   Object.freeze(
@@ -194,7 +183,7 @@ export const PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS =
  * with what lands, no exceptions.
  */
 export const FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  synchronizedLeavesUnder("library-core-v1:feedItems.");
+  LIBRARY_CORE_FEED_ITEM_OPERATION_FIELD_KEYS;
 
 /**
  * Traced from `toggleLiked`, which writes the three like leaves together.
