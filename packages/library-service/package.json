@@ -1,0 +1,30 @@
+{
+  "name": "@freed/library-service",
+  "version": "0.1.0",
+  "description": "Fail-closed supervisor for a headless Freed Library Primary",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "bin": {
+    "freed-library": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
+    "test": "npm run build && vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
+  }
+}
