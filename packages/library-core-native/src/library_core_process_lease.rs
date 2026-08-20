@@ -7,9 +7,18 @@
 //! file exists only to make a refusal attributable.
 
 use serde::Serialize;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+use crate::library_core_bound_root::LibraryCoreBoundRoot;
+#[cfg(unix)]
+use std::fs::File;
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 const PROCESS_LEASE_FILE: &str = "process.lock";
 const PROCESS_REFUSAL_DIAGNOSTIC_FILE: &str = "process-last-refusal.json";
@@ -118,7 +127,25 @@ impl std::error::Error for LibraryCoreProcessLeaseError {
 /// process termination lets the operating system release the lock and leaves a
 /// stale PID that the next successful holder atomically replaces.
 pub struct LibraryCoreProcessLease {
-    lock: fslock::LockFile,
+    lock: ProcessLeaseLock,
+}
+
+enum ProcessLeaseLock {
+    Path(fslock::LockFile),
+    #[cfg(unix)]
+    Bound(File),
+}
+
+impl Drop for ProcessLeaseLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Self::Bound(file) = self {
+            let _ = file.set_len(0);
+            unsafe {
+                libc::flock(file.as_raw_fd(), libc::LOCK_UN);
+            }
+        }
+    }
 }
 
 impl LibraryCoreProcessLease {
@@ -201,11 +228,97 @@ impl LibraryCoreProcessLease {
             });
         }
 
-        Ok(Self { lock })
+        Ok(Self {
+            lock: ProcessLeaseLock::Path(lock),
+        })
+    }
+
+    /// Acquire the sole lease beneath an already bound directory descriptor.
+    ///
+    /// This entry point never canonicalizes or reopens an operator supplied
+    /// path. The caller must retain `data_root` for the complete lease.
+    #[cfg(unix)]
+    pub(crate) fn acquire_bound(
+        data_root: &LibraryCoreBoundRoot,
+        identity: ProcessLeaseIdentity<'_>,
+    ) -> Result<Self, LibraryCoreProcessLeaseError> {
+        Self::acquire_bound_with_clock(data_root, identity, &SystemProcessLeaseClock)
+    }
+
+    #[cfg(unix)]
+    fn acquire_bound_with_clock(
+        data_root: &LibraryCoreBoundRoot,
+        identity: ProcessLeaseIdentity<'_>,
+        clock: &dyn ProcessLeaseClock,
+    ) -> Result<Self, LibraryCoreProcessLeaseError> {
+        let lock_path = PathBuf::from("fd4/process.lock");
+        let mut lock = open_private_bound_file(data_root.descriptor(), PROCESS_LEASE_FILE, false)
+            .map_err(|source| LibraryCoreProcessLeaseError::Storage {
+            operation: "bound lock-file open",
+            path: lock_path.clone(),
+            source,
+        })?;
+        let requester_pid = std::process::id();
+        let acquired = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if acquired < 0 {
+            let source = std::io::Error::last_os_error();
+            if source.kind() != std::io::ErrorKind::WouldBlock {
+                return Err(LibraryCoreProcessLeaseError::Storage {
+                    operation: "OS lock acquisition",
+                    path: lock_path,
+                    source,
+                });
+            }
+            let holder_pid = read_pid_from_open_file(&mut lock);
+            let diagnostic_path = PathBuf::from("fd4/process-last-refusal.json");
+            let diagnostic_error = persist_bound_refusal_diagnostic(
+                data_root,
+                requester_pid,
+                holder_pid,
+                identity,
+                clock,
+            )
+            .err()
+            .map(|error| error.to_string());
+            return Err(LibraryCoreProcessLeaseError::Held {
+                data_root: PathBuf::from("fd4"),
+                lock_path,
+                requester_pid,
+                holder_pid,
+                diagnostic_path,
+                diagnostic_error,
+            });
+        }
+        lock.set_len(0)
+            .map_err(|source| LibraryCoreProcessLeaseError::Storage {
+                operation: "bound lock PID truncate",
+                path: lock_path.clone(),
+                source,
+            })?;
+        lock.seek(SeekFrom::Start(0))
+            .map_err(|source| LibraryCoreProcessLeaseError::Storage {
+                operation: "bound lock PID seek",
+                path: lock_path.clone(),
+                source,
+            })?;
+        writeln!(lock, "{requester_pid}").map_err(|source| {
+            LibraryCoreProcessLeaseError::Storage {
+                operation: "bound lock PID write",
+                path: lock_path,
+                source,
+            }
+        })?;
+        Ok(Self {
+            lock: ProcessLeaseLock::Bound(lock),
+        })
     }
 
     pub fn owns_lock(&self) -> bool {
-        self.lock.owns_lock()
+        match &self.lock {
+            ProcessLeaseLock::Path(lock) => lock.owns_lock(),
+            #[cfg(unix)]
+            ProcessLeaseLock::Bound(_) => true,
+        }
     }
 }
 
@@ -271,6 +384,84 @@ fn persist_refusal_diagnostic(
     set_private_file_permissions(diagnostic_path)?;
     file.write_all(&bytes)?;
     file.sync_all()
+}
+
+#[cfg(unix)]
+fn read_pid_from_open_file(file: &mut File) -> Option<u32> {
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut raw = String::new();
+    file.take(64).read_to_string(&mut raw).ok()?;
+    raw.trim().parse::<u32>().ok()
+}
+
+#[cfg(unix)]
+fn persist_bound_refusal_diagnostic(
+    data_root: &LibraryCoreBoundRoot,
+    requester_pid: u32,
+    holder_pid: Option<u32>,
+    identity: ProcessLeaseIdentity<'_>,
+    clock: &dyn ProcessLeaseClock,
+) -> std::io::Result<()> {
+    let diagnostic = ProcessRefusalDiagnostic {
+        format: "freed_library_core_process_lease_refusal_v1",
+        recorded_at_ms: clock.now_ms(),
+        requester_pid,
+        holder_pid,
+        requester_executable: std::env::current_exe()
+            .ok()
+            .map(|path| path.display().to_string()),
+        requester_package: identity.package,
+        requester_version: identity.version,
+        data_root: "fd4".to_string(),
+        lock_path: "fd4/process.lock".to_string(),
+        reason: "data_root_already_leased",
+    };
+    let mut bytes = serde_json::to_vec(&diagnostic)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    bytes.push(b'\n');
+    if bytes.len() > MAX_PROCESS_REFUSAL_DIAGNOSTIC_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "process refusal diagnostic exceeds its byte limit",
+        ));
+    }
+    let mut file = open_private_bound_file(
+        data_root.descriptor(),
+        PROCESS_REFUSAL_DIAGNOSTIC_FILE,
+        true,
+    )?;
+    file.write_all(&bytes)?;
+    file.sync_all()
+}
+
+#[cfg(unix)]
+fn open_private_bound_file(parent: RawFd, name: &str, truncate: bool) -> std::io::Result<File> {
+    let name = std::ffi::CString::new(name)
+        .map_err(|_| std::io::Error::other("invalid bound file name"))?;
+    let truncate_flag = if truncate { libc::O_TRUNC } else { 0 };
+    let descriptor = unsafe {
+        libc::openat(
+            parent,
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_CLOEXEC | libc::O_NOFOLLOW | truncate_flag,
+            0o600,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let file = unsafe { File::from_raw_fd(descriptor) };
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o7777 != 0o600
+        || metadata.nlink() != 1
+    {
+        return Err(std::io::Error::other(
+            "descriptor-bound lease file is not private",
+        ));
+    }
+    Ok(file)
 }
 
 fn refuse_symbolic_lock_file(path: &Path) -> Result<(), LibraryCoreProcessLeaseError> {

@@ -214,6 +214,9 @@ try {
     if (chunk.trim() === "leader-term") {
       process.kill(started.sidecarPid, "SIGTERM");
     }
+    if (chunk.trim() === "stop") {
+      void supervisor.stop();
+    }
   });
   const exit = await supervisor.waitForExit();
   process.stdin.destroy();
