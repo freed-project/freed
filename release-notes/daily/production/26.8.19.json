@@ -2,16 +2,16 @@
   "channel": "production",
   "dayKey": "26.8.19",
   "date": "2026-08-19",
-  "preferredDeck": "Freed now has editable Library followers, complete PWA Library views, and a safer SQLite authority boundary",
+  "preferredDeck": "Strong Google Drive revision fencing, a reusable native Library Core, and enforced actor capabilities",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
-    "Editable Freed Desktop followers with signed intents and exact results",
-    "Complete bounded PWA IndexedDB readers",
-    "In-place native SQLite authority repair and one-process fencing"
+    "Google Drive mutable revisions use bounded strong ETags and exact conditional updates",
+    "Reusable native Library Core with thin Freed Desktop adapters",
+    "Authority-signed actor capability certificates"
   ],
   "editorialNotes": [],
   "updatedAt": "2026-08-20T06:38:30.868Z"
