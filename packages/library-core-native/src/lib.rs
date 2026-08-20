@@ -15,6 +15,7 @@ mod library_core_hash;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 mod library_core_process_lease;
+mod library_core_store;
 mod product_projection;
 
 pub use library_core_actor_enrollment::{
@@ -40,5 +41,10 @@ pub use library_core_journal::{
 };
 pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
+};
+pub use library_core_store::{
+    BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupOperationGuard,
+    LibraryCoreBackupReceipt, LibraryCoreCheckpointReference, LibraryCoreImportItem,
+    LibraryCoreStore, LibraryCoreStoreError, LibraryCoreStoreResult, LibraryCoreStoreStatus,
 };
 pub use product_projection::upsert_item;

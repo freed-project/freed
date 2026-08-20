@@ -170,7 +170,8 @@ pub struct FollowerRuntimeStatus {
     pub imported_result_count: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FollowerOverlayReplayReceipt {
     pub transaction_count: i64,
     pub operation_count: i64,

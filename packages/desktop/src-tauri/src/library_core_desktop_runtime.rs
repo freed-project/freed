@@ -6,7 +6,11 @@
 //! is rejected. Normal startup, reads, and writes do not open it.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-use freed_library_core::upsert_item;
+use freed_library_core::{
+    upsert_item, BeginLibraryCoreImport, LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt,
+    LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
+    LibraryCoreStoreStatus,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -37,6 +41,7 @@ use super::library_core_journal_runtime::journal_path;
 
 const BACKUP_DIRECTORY: &str = "library-backups";
 const MAX_IMPORT_BATCH: usize = 1_000;
+const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SHELL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IDS: usize = 10_000;
@@ -57,6 +62,20 @@ pub(super) struct DesktopLibraryStatus {
     source_generation: i64,
     source_revision: i64,
     source_digest: String,
+}
+
+impl From<LibraryCoreStoreStatus> for DesktopLibraryStatus {
+    fn from(status: LibraryCoreStoreStatus) -> Self {
+        Self {
+            active: status.active,
+            revision: status.revision,
+            expected_item_count: status.expected_item_count,
+            imported_item_count: status.imported_item_count,
+            source_generation: status.source_generation,
+            source_revision: status.source_revision,
+            source_digest: status.source_digest,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -519,19 +538,6 @@ pub(super) struct BeginImportRequest {
     started_at_ms: i64,
 }
 
-struct StagedSqliteLibraryImport {
-    source_generation: i64,
-    source_revision: i64,
-    source_digest: String,
-    source_checkpoint_object_key: Option<String>,
-    source_checkpoint_content_digest: Option<String>,
-    source_checkpoint_transport_object_id: Option<String>,
-    expected_item_count: i64,
-    imported_item_count: i64,
-    shell_json: String,
-    started_at_ms: i64,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct AppendImportRequest {
@@ -784,6 +790,21 @@ pub(super) struct DesktopBackupSummary {
     sha256: String,
 }
 
+impl From<LibraryCoreBackupReceipt> for DesktopBackupSummary {
+    fn from(receipt: LibraryCoreBackupReceipt) -> Self {
+        Self {
+            backup_id: receipt.backup_id,
+            file_name: receipt.file_name,
+            created_at_ms: receipt.created_at_ms,
+            revision: receipt.revision,
+            item_count: receipt.item_count,
+            reason: receipt.reason,
+            byte_length: receipt.byte_length,
+            sha256: receipt.sha256,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ReadDesktopBackupChunkRequest {
@@ -888,27 +909,11 @@ fn require_active(connection: &Connection) -> Result<(), String> {
 pub(super) fn sqlite_library_status(
     app: tauri::AppHandle,
 ) -> Result<Option<DesktopLibraryStatus>, String> {
-    let connection = open_database(&app)?;
-    let status = connection
-        .query_row(
-            "SELECT active, revision, expectedItemCount, importedItemCount,
-                    sourceGeneration, sourceRevision, sourceDigest
-             FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| {
-                Ok(DesktopLibraryStatus {
-                    active: row.get::<_, i64>(0)? == 1,
-                    revision: row.get(1)?,
-                    expected_item_count: row.get(2)?,
-                    imported_item_count: row.get(3)?,
-                    source_generation: row.get(4)?,
-                    source_revision: row.get(5)?,
-                    source_digest: row.get(6)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
+    let status: Option<DesktopLibraryStatus> = LibraryCoreStore::open(app_root(&app)?)
+        .map_err(|error| error.to_string())?
+        .status()
+        .map_err(|error| error.to_string())?
+        .map(Into::into);
     if let Some(status) = &status {
         log::info!(
             "[library-core] SQLite Library status active={} revision={} items={}/{}",
@@ -959,47 +964,33 @@ fn begin_sqlite_library_import_at(root: &Path, request: BeginImportRequest) -> R
     {
         return Err("invalid SQLite Library import identity".into());
     }
-    validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let mut connection = open_database_at(root)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute("DELETE FROM library_core_import_item_stage;", [])
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "INSERT INTO library_core_import_stage (
-               singletonId, sourceGeneration, sourceRevision, sourceDigest,
-               sourceCheckpointObjectKey, sourceCheckpointContentDigest,
-               sourceCheckpointTransportObjectId, expectedItemCount,
-               importedItemCount, shellJson, startedAtMs
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)
-             ON CONFLICT(singletonId) DO UPDATE SET
-               sourceGeneration = excluded.sourceGeneration,
-               sourceRevision = excluded.sourceRevision,
-               sourceDigest = excluded.sourceDigest,
-               sourceCheckpointObjectKey = excluded.sourceCheckpointObjectKey,
-               sourceCheckpointContentDigest = excluded.sourceCheckpointContentDigest,
-               sourceCheckpointTransportObjectId = excluded.sourceCheckpointTransportObjectId,
-               expectedItemCount = excluded.expectedItemCount,
-               importedItemCount = 0,
-               shellJson = excluded.shellJson,
-               startedAtMs = excluded.startedAtMs;",
-            params![
-                request.source_generation,
-                request.source_revision,
-                request.source_digest,
-                request.source_checkpoint_object_key,
-                request.source_checkpoint_content_digest,
-                request.source_checkpoint_transport_object_id,
-                request.expected_item_count,
-                request.shell_json,
-                request.started_at_ms,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())
+    let source_checkpoint = match (
+        request.source_checkpoint_object_key,
+        request.source_checkpoint_content_digest,
+        request.source_checkpoint_transport_object_id,
+    ) {
+        (Some(object_key), Some(content_digest), Some(transport_object_id)) => {
+            Some(LibraryCoreCheckpointReference {
+                object_key,
+                content_digest,
+                transport_object_id,
+            })
+        }
+        (None, None, None) => None,
+        _ => return Err("invalid SQLite Library import identity".into()),
+    };
+    LibraryCoreStore::open(root)
+        .map_err(|error| error.to_string())?
+        .begin_import(BeginLibraryCoreImport {
+            source_generation: request.source_generation,
+            source_revision: request.source_revision,
+            source_digest: request.source_digest,
+            source_checkpoint,
+            expected_item_count: request.expected_item_count,
+            shell_json: request.shell_json,
+            started_at_ms: request.started_at_ms,
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1017,50 +1008,34 @@ fn append_sqlite_library_import_at(
     if request.items_base64.is_empty() || request.items_base64.len() > MAX_IMPORT_BATCH {
         return Err("SQLite Library import batch must contain 1 through 1,000 items".into());
     }
+    let encoded_bytes = request
+        .items_base64
+        .iter()
+        .try_fold(0usize, |total, item| {
+            total
+                .checked_add(item.len())
+                .ok_or_else(|| "SQLite Library import page is too large".to_string())
+        })?;
+    if encoded_bytes > MAX_IMPORT_PAGE_ENCODED_BYTES {
+        return Err("SQLite Library import page is too large".into());
+    }
     if request.updated_at_ms < 0 {
         return Err("SQLite Library import time is invalid".into());
     }
-    let mut connection = open_database_at(root)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    for encoded in &request.items_base64 {
-        let item = decode_base64_json(encoded)?;
-        let parsed = validate_json_object(&item, MAX_ITEM_BYTES)?;
-        let global_id = string_at(&parsed, &["globalId"])
-            .filter(|value| !value.is_empty() && value.len() <= 4_096)
-            .ok_or_else(|| "feed item globalId is missing or invalid".to_string())?;
-        transaction
-            .execute(
-                "INSERT INTO library_core_import_item_stage (
-                   globalId, itemJson, updatedAtMs
-                 ) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(globalId) DO UPDATE SET
-                   itemJson = excluded.itemJson,
-                   updatedAtMs = excluded.updatedAtMs;",
-                params![global_id, item, request.updated_at_ms],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    let count: i64 = transaction
-        .query_row(
-            "SELECT COUNT(*) FROM library_core_import_item_stage;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let updated = transaction
-        .execute(
-            "UPDATE library_core_import_stage SET importedItemCount = ?1
-             WHERE singletonId = 1;",
-            [count],
-        )
-        .map_err(|error| error.to_string())?;
-    if updated != 1 {
-        return Err("SQLite Library has no active staged import".into());
-    }
-    transaction.commit().map_err(|error| error.to_string())?;
-    Ok(count)
+    let items = request
+        .items_base64
+        .iter()
+        .map(|encoded| {
+            Ok(LibraryCoreImportItem {
+                item_json: decode_base64_json(encoded)?,
+                updated_at_ms: request.updated_at_ms,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    LibraryCoreStore::open(root)
+        .map_err(|error| error.to_string())?
+        .append_import_page(&items)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1071,18 +1046,27 @@ pub(super) fn finalize_sqlite_library_import(
 ) -> Result<DesktopLibraryStatus, String> {
     let root = app_root(&app)?;
     let follower_anchor = follower_anchor.map(verified_follower_anchor);
-    finalize_sqlite_library_import_at(&root, activated_at_ms, follower_anchor.as_ref())?;
-    let replay = replay_sqlite_library_follower_overlay_at(&root)?;
-    if replay.transaction_count > 0 {
-        log::info!(
-            "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
-            replay.transaction_count,
-            replay.operation_count,
-            replay.materialized_row_count,
-            replay.revision_advanced
+    let receipt = finalize_sqlite_library_import_receipt_at(
+        &root,
+        activated_at_ms,
+        follower_anchor.as_ref(),
+    )?;
+    if let Some(replay) = receipt.overlay_replay {
+        if replay.transaction_count > 0 {
+            log::info!(
+                "[library-core] replayed {} pending follower transactions, {} operations, {} materialized rows, revision advanced={}",
+                replay.transaction_count,
+                replay.operation_count,
+                replay.materialized_row_count,
+                replay.revision_advanced
+            );
+        }
+    } else if receipt.overlay_replay_pending {
+        log::warn!(
+            "[library-core] checkpoint activation committed; follower overlay recovery remains pending"
         );
     }
-    sqlite_library_status(app)?.ok_or_else(|| "SQLite Library activation disappeared".into())
+    Ok(receipt.status.into())
 }
 
 #[tauri::command]
@@ -1108,138 +1092,25 @@ fn replay_sqlite_library_follower_overlay_at(
         .map_err(|error| format!("SQLite Library refused follower overlay replay: {error}"))
 }
 
+#[cfg(test)]
 fn finalize_sqlite_library_import_at(
     root: &Path,
     activated_at_ms: i64,
     follower_anchor: Option<&VerifiedFollowerAnchor>,
 ) -> Result<(), String> {
-    if activated_at_ms < 0 {
-        return Err("SQLite Library activation time is invalid".into());
-    }
-    let mut connection = open_database_at(root)?;
-    let staged: StagedSqliteLibraryImport = connection
-        .query_row(
-            "SELECT sourceGeneration, sourceRevision, sourceDigest,
-                    sourceCheckpointObjectKey, sourceCheckpointContentDigest,
-                    sourceCheckpointTransportObjectId,
-                    expectedItemCount, importedItemCount, shellJson, startedAtMs
-             FROM library_core_import_stage WHERE singletonId = 1;",
-            [],
-            |row| {
-                Ok(StagedSqliteLibraryImport {
-                    source_generation: row.get(0)?,
-                    source_revision: row.get(1)?,
-                    source_digest: row.get(2)?,
-                    source_checkpoint_object_key: row.get(3)?,
-                    source_checkpoint_content_digest: row.get(4)?,
-                    source_checkpoint_transport_object_id: row.get(5)?,
-                    expected_item_count: row.get(6)?,
-                    imported_item_count: row.get(7)?,
-                    shell_json: row.get(8)?,
-                    started_at_ms: row.get(9)?,
-                })
-            },
-        )
-        .map_err(|error| format!("SQLite Library has no complete staged import: {error}"))?;
-    let actual: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM library_core_import_item_stage;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if staged.expected_item_count != staged.imported_item_count
-        || staged.expected_item_count != actual
-    {
-        return Err(format!(
-            "SQLite Library import count mismatch: expected {}, imported {}, actual {actual}",
-            staged.expected_item_count, staged.imported_item_count
-        ));
-    }
-    let integrity: String = connection
-        .query_row("PRAGMA integrity_check;", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if integrity != "ok" {
-        return Err(format!(
-            "SQLite Library integrity check failed: {integrity}"
-        ));
-    }
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute("DELETE FROM library_core_feed_items;", [])
-        .map_err(|error| error.to_string())?;
-    {
-        let mut statement = transaction
-            .prepare(
-                "SELECT itemJson, updatedAtMs
-                 FROM library_core_import_item_stage
-                 ORDER BY globalId COLLATE BINARY;",
-            )
-            .map_err(|error| error.to_string())?;
-        let mut rows = statement.query([]).map_err(|error| error.to_string())?;
-        while let Some(row) = rows.next().map_err(|error| error.to_string())? {
-            let item_json = row.get::<_, String>(0).map_err(|error| error.to_string())?;
-            let updated_at_ms = row.get::<_, i64>(1).map_err(|error| error.to_string())?;
-            upsert_item(&transaction, &item_json, updated_at_ms)?;
-        }
-    }
-    transaction
-        .execute(
-            "INSERT INTO library_core_desktop_state (
-               singletonId, active, revision, sourceGeneration, sourceRevision,
-               sourceDigest, expectedItemCount, importedItemCount, shellJson,
-               startedAtMs, activatedAtMs
-             ) VALUES (1, 1, 1, ?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)
-             ON CONFLICT(singletonId) DO UPDATE SET
-               active = 1,
-               revision = 1,
-               sourceGeneration = excluded.sourceGeneration,
-               sourceRevision = excluded.sourceRevision,
-               sourceDigest = excluded.sourceDigest,
-               expectedItemCount = excluded.expectedItemCount,
-               importedItemCount = excluded.importedItemCount,
-               shellJson = excluded.shellJson,
-               startedAtMs = excluded.startedAtMs,
-               activatedAtMs = excluded.activatedAtMs;",
-            params![
-                staged.source_generation,
-                staged.source_revision,
-                staged.source_digest,
-                staged.expected_item_count,
-                staged.shell_json,
-                staged.started_at_ms,
-                activated_at_ms,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    if let Some(anchor) = follower_anchor {
-        if anchor.authority.epoch != staged.source_generation
-            || anchor.remote_ingest_sequence != staged.source_revision
-            || staged.source_checkpoint_object_key.as_deref()
-                != Some(anchor.manifest_object_key.as_str())
-            || staged.source_checkpoint_content_digest.as_deref()
-                != Some(anchor.manifest_content_digest.as_str())
-            || staged.source_checkpoint_transport_object_id.as_deref()
-                != Some(anchor.manifest_transport_object_id.as_str())
-        {
-            return Err(
-                "SQLite Library follower anchor does not match the staged checkpoint".into(),
-            );
-        }
-        LibraryCoreJournal::install_follower_anchor_in_transaction(&transaction, anchor).map_err(
-            |error| format!("SQLite Library could not atomically install follower anchor: {error}"),
-        )?;
-    }
-    transaction
-        .execute("DELETE FROM library_core_import_item_stage;", [])
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute("DELETE FROM library_core_import_stage;", [])
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())?;
+    finalize_sqlite_library_import_receipt_at(root, activated_at_ms, follower_anchor)?;
     Ok(())
+}
+
+fn finalize_sqlite_library_import_receipt_at(
+    root: &Path,
+    activated_at_ms: i64,
+    follower_anchor: Option<&VerifiedFollowerAnchor>,
+) -> Result<freed_library_core::FinalizeLibraryCoreImportReceipt, String> {
+    LibraryCoreStore::open(root)
+        .map_err(|error| error.to_string())?
+        .finalize_import(activated_at_ms, follower_anchor)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -3315,101 +3186,27 @@ fn create_sqlite_library_backup_at(
     created_at_ms: i64,
     reason: &str,
 ) -> Result<DesktopBackupSummary, String> {
-    if reason != "auto" && reason != "manual" {
-        return Err("invalid SQLite Library backup reason".into());
-    }
-    let backup_directory = root.join(BACKUP_DIRECTORY);
-    fs::create_dir_all(&backup_directory).map_err(|error| error.to_string())?;
-    let backup_id = format!("sqlite-{created_at_ms}");
-    let file_name = format!("{backup_id}.sqlite");
-    let destination = backup_directory.join(&file_name);
-    if destination.exists() {
-        return Err("SQLite Library backup already exists".into());
-    }
-    let connection = open_database_at(root)?;
-    require_active(&connection)?;
-    connection
-        .execute("VACUUM INTO ?1;", [destination.to_string_lossy().as_ref()])
-        .map_err(|error| error.to_string())?;
-    let check = Connection::open(&destination).map_err(|error| error.to_string())?;
-    let integrity: String = check
-        .query_row("PRAGMA integrity_check;", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if integrity != "ok" {
-        let _ = fs::remove_file(&destination);
-        return Err(format!(
-            "SQLite Library backup integrity failed: {integrity}"
-        ));
-    }
-    let (revision, item_count): (i64, i64) = check
-        .query_row(
-            "SELECT
-               (SELECT revision FROM library_core_desktop_state WHERE singletonId = 1),
-               (SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL);",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let byte_length = fs::metadata(&destination)
+    let receipt = LibraryCoreStore::open(root)
         .map_err(|error| error.to_string())?
-        .len();
-    let sha256 = sha256_file(&destination)?;
-    drop(check);
-    connection
-        .execute(
-            "INSERT INTO library_core_desktop_backups (
-               backupId, createdAtMs, revision, itemCount, reason, fileName, byteLength, sha256
-             ) SELECT ?1, ?2, revision, ?3, ?4, ?5, ?6, ?7
-               FROM library_core_desktop_state WHERE singletonId = 1;",
-            params![
-                backup_id,
-                created_at_ms,
-                item_count,
-                reason,
-                file_name,
-                i64::try_from(byte_length).map_err(|_| "backup is too large")?,
-                sha256,
-            ],
-        )
+        .create_backup(created_at_ms, reason)
         .map_err(|error| error.to_string())?;
-
-    let mut statement = connection
-        .prepare(
-            "SELECT fileName FROM library_core_desktop_backups
-             ORDER BY createdAtMs DESC, backupId DESC LIMIT -1 OFFSET 24;",
-        )
-        .map_err(|error| error.to_string())?;
-    let expired = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    drop(statement);
-    for expired_file in expired {
-        let _ = fs::remove_file(backup_directory.join(&expired_file));
-        connection
-            .execute(
-                "DELETE FROM library_core_desktop_backups WHERE fileName = ?1;",
-                [expired_file],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-
     log::info!(
         "[library-core] created SQLite Library backup items={} bytes={}",
-        item_count,
-        byte_length
+        receipt.item_count,
+        receipt.byte_length
     );
-    Ok(DesktopBackupSummary {
-        backup_id,
-        file_name,
-        created_at_ms,
-        revision,
-        item_count,
-        reason: reason.to_string(),
-        byte_length,
-        sha256,
-    })
+    if receipt.retention_pending {
+        log::warn!(
+            "[library-core] SQLite Library backup committed; retention cleanup remains pending"
+        );
+    }
+    Ok(receipt.into())
+}
+
+fn acquire_sqlite_library_backup_operation(
+    root: &Path,
+) -> Result<LibraryCoreBackupOperationGuard, String> {
+    LibraryCoreBackupOperationGuard::acquire(root).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -3417,6 +3214,7 @@ pub(super) fn list_sqlite_library_backups(
     app: tauri::AppHandle,
 ) -> Result<Vec<DesktopBackupSummary>, String> {
     let root = app_root(&app)?;
+    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
     let connection = open_database(&app)?;
     require_active(&connection)?;
@@ -3463,6 +3261,7 @@ fn read_sqlite_library_backup_chunk_at(
     root: &Path,
     request: ReadDesktopBackupChunkRequest,
 ) -> Result<DesktopBackupChunk, String> {
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     if request.backup_id.is_empty()
         || request.backup_id.len() > 128
         || request.limit == 0
@@ -3539,6 +3338,7 @@ fn restore_sqlite_library_backup_at(
     if backup_id.is_empty() || backup_id.len() > 256 {
         return Err("invalid SQLite Library backup identity".into());
     }
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let database_path = journal_path(root);
     let backup_directory = root.join(BACKUP_DIRECTORY);
     let connection = open_database_at(root)?;
@@ -3662,8 +3462,13 @@ fn restore_sqlite_library_backup_at(
 #[tauri::command]
 pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), String> {
     let root = app_root(&app)?;
+    clear_sqlite_library_backups_at(&root)
+}
+
+fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
+    let _backup_operation = acquire_sqlite_library_backup_operation(root)?;
     let backup_directory = root.join(BACKUP_DIRECTORY);
-    let connection = open_database(&app)?;
+    let connection = open_database_at(root)?;
     connection
         .execute("DELETE FROM library_core_desktop_backups;", [])
         .map_err(|error| error.to_string())?;
@@ -3681,6 +3486,7 @@ pub(super) fn clear_sqlite_library_backups(app: tauri::AppHandle) -> Result<(), 
 #[tauri::command]
 pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> {
     let root = app_root(&app)?;
+    let _backup_operation = acquire_sqlite_library_backup_operation(&root)?;
     let path = journal_path(&root);
     for candidate in [
         path.clone(),
@@ -4154,6 +3960,64 @@ mod tests {
             .expect("count rolled back staged items");
         assert_eq!(staged_item_count, 0);
         drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn staged_import_rejects_an_oversized_encoded_page_before_decoding() {
+        let root = temporary_root("sqlite-staged-import-page-bound");
+        fs::create_dir_all(&root).expect("create temporary root");
+        begin_staged_import(&root, 1);
+        let error = append_sqlite_library_import_at(
+            &root,
+            AppendImportRequest {
+                items_base64: vec!["a".repeat(MAX_IMPORT_PAGE_ENCODED_BYTES + 1)],
+                updated_at_ms: 350,
+            },
+        )
+        .expect_err("reject oversized encoded page");
+        assert_eq!(error, "SQLite Library import page is too large");
+        let connection = open_database_at(&root).expect("reopen Library database");
+        let staged_item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_import_item_stage;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count staged items");
+        assert_eq!(staged_item_count, 0);
+        drop(connection);
+        fs::remove_dir_all(root).expect("remove temporary root");
+    }
+
+    #[test]
+    fn backup_restore_and_clear_honor_the_shared_operation_lock() {
+        let root = temporary_root("sqlite-backup-operation-lock");
+        fs::create_dir_all(&root).expect("create temporary root");
+        begin_staged_import(&root, 1);
+        append_staged_import_item(&root);
+        finalize_sqlite_library_import_at(&root, 360, None).expect("activate Library");
+        let backup = create_sqlite_library_backup_at(&root, 400, "manual").expect("create backup");
+        let held = LibraryCoreBackupOperationGuard::acquire(&root).expect("hold backup lock");
+        let restore_error = restore_sqlite_library_backup_at(&root, &backup.backup_id)
+            .expect_err("refuse concurrent restore");
+        assert_eq!(
+            restore_error,
+            "SQLite Library backup operation is already in progress"
+        );
+        let clear_error =
+            clear_sqlite_library_backups_at(&root).expect_err("refuse concurrent backup clear");
+        assert_eq!(
+            clear_error,
+            "SQLite Library backup operation is already in progress"
+        );
+        assert!(root
+            .join(BACKUP_DIRECTORY)
+            .join(&backup.file_name)
+            .is_file());
+        drop(held);
+        clear_sqlite_library_backups_at(&root).expect("clear after lock release");
+        assert!(!root.join(BACKUP_DIRECTORY).join(&backup.file_name).exists());
         fs::remove_dir_all(root).expect("remove temporary root");
     }
 
