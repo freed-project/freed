@@ -1,7 +1,32 @@
 # Phase 12: Additional Platforms
 
 > **Status:** 🚧 In Progress: LinkedIn and YouTube are integrated, and authenticated Substack and Medium capture is available in beta with local sessions, visible roster and activity extraction, provider health controls, and connection-only identity ingestion
+
+> **Library and media target:** Every captured record enters the exhaustive
+> Library Core mutation registry and normalized SQLite schema. Large media does
+> not enter checkpoint rows. Synced metadata carries typed content descriptors
+> and authenticated range indexes. Each device may stream, partially cache,
+> fully cache, pin offline, or exclude a rendition. Provider acquisition and
+> Library replication remain separate authority and traffic decisions.
+
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
+
+## Selective long-form media work
+
+- [ ] Represent each rendition as a content-addressed logical blob with typed
+      codec, duration, byte length, digest, and range-index descriptors.
+- [ ] Verify independently retrievable ranges through a paged authenticated
+      range map so multi-gigabyte media never becomes one logical wire record.
+- [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
+      follower hydration.
+- [ ] Let a client stream selected ranges through the approved user-owned
+      storage transport, keep a partial cache, complete the cache, or exclude
+      the rendition entirely.
+- [ ] Keep hydration and eviction state device-local. Synchronize only content
+      identity, availability descriptors, and canonical metadata.
+- [ ] Require separate provider-risk approval before any new resolver request,
+      page load, click, timing pattern, header, cookie use, or background media
+      acquisition is implemented.
 
 ---
 

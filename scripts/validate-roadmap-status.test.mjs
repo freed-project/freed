@@ -18,7 +18,7 @@ test("roadmap status manifest matches every phase document", () => {
   );
   assert.equal(
     manifest.phases.find((phase) => phase.id === 6)?.status,
-    "complete",
+    "current",
   );
 });
 
