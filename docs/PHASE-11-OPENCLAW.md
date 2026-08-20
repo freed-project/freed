@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority, local process lease, actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -75,8 +75,9 @@ The current product already provides the protocol foundation:
   seconds.
 - `freed-library-core` now owns the native signed journal, SQLite authority
   schema and migrations, actor enrollment, authority epochs, exact product
-  projection, and process lease without importing Tauri or selecting a
-  credential backend.
+  projection, staged logical checkpoint activation, exact local status,
+  closed backup receipts, and process lease without importing Tauri or
+  selecting a credential backend.
 - Native schema v12 binds every actor to an explicit operation capability.
   Existing v1 actors receive one fixed 14-operation legacy editor policy. New
   v2 editor, scraper, and agent certificates bind an exact operation subset,
@@ -95,6 +96,18 @@ remain owned by the Freed Desktop renderer, and no production native sidecar
 yet consumes the reusable core through descriptor-bound authority and lease
 entry points. The next work adds that sidecar and credential boundary without
 changing the wire protocol.
+
+The checkpoint store extraction is consumed by Freed Desktop through its
+existing Tauri command DTOs. It stages bounded pages beside the active Library,
+refuses count or preverified-anchor mismatches before activation, and replays
+the follower overlay only after the atomic generation swap. If replay cannot
+finish, the reusable native receipt reports pending recovery instead of
+falsely reporting that the committed activation failed. Closed
+integrity-checked backups bind exact bytes, revision, item count, and retention
+state in the native receipt. Freed Desktop preserves its existing command DTOs
+and logs either pending condition for its existing recovery commands. This is
+reusable native substrate for task 11.6. It does not claim that the
+descriptor-bound sidecar or installed headless import has shipped.
 
 ---
 
@@ -359,7 +372,7 @@ review before implementation.
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | Open | Add exact checkpoint import, status, doctor, backup, and structured receipts |
+| 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; consume them from the descriptor-bound native sidecar |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
 | 11.8 | Complete | Enforce actor capability certificates and fixed legacy editor policy |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |

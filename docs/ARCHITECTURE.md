@@ -18,7 +18,7 @@ npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.
 | `packages/ui` | Platform-agnostic React UI (feed, reader, map via MapLibre, search via MiniSearch, zustand stores). Ships raw `.tsx`; no build step. No platform stores, no Tauri APIs. |
 | `packages/sync` | Storage-agnostic sync: IndexedDB and filesystem storage adapters, cloud providers (`cloud/gdrive.ts`, `cloud/dropbox.ts`, `cloud/merge.ts`), LAN relay client (`network/local-relay.ts`). Works in browser and Node. |
 | `packages/capture-*` | Isolated provider extraction, parsing, and normalization helpers. Capture packages never import each other. |
-| `packages/library-core-native` | Runtime-neutral Rust library for the signed SQLite authority journal, actor enrollment, authority epochs, deterministic product projection, and local process lease. Hosts inject explicit paths, credential stores, and diagnostic clocks. |
+| `packages/library-core-native` | Runtime-neutral Rust library for the signed SQLite authority journal, actor enrollment, authority epochs, deterministic product projection, staged logical checkpoint activation, exact local status and closed backup receipts, and the local process lease. Hosts inject explicit paths, credential stores, and diagnostic clocks. |
 | `packages/desktop` | Tauri shell: React renderer plus `src-tauri/src/lib.rs` (~13k lines of Rust). Imports the capture packages used by its native and scheduled providers, plus `@freed/ui`, `@freed/shared`, and `@freed/sync`. |
 | `packages/pwa` | Mobile reader app shell (Vite + React + vite-plugin-pwa/Workbox). Never imports Tauri APIs. |
 | `website` | Marketing site (Next.js App Router) at `freed.wtf`. Lives on the `www` branch lane. |
