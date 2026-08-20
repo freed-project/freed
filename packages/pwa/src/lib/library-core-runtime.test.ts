@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
+import { createLibraryCoreImmutableObjectKey } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
   enqueueReadAssignments: vi.fn(),
@@ -17,6 +18,16 @@ const mocks = vi.hoisted(() => ({
   readSelectedMaterializedPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
   readSelectedCheckpointReceipt: vi.fn(),
+  readIntentOverlayRecoveryState: vi.fn(),
+  readSelectedAcceptedAuthorityState: vi.fn(),
+  preparePwaActorEnrollmentRequest: vi.fn(),
+  readPendingIntentActors: vi.fn(),
+  readIntentActors: vi.fn(),
+  reapplySelectedIntentOverlay: vi.fn(),
+  createCloudAdapter: vi.fn(),
+  discoverActorEnrollments: vi.fn(),
+  discoverControl: vi.fn(),
+  importCheckpoint: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
@@ -38,7 +49,23 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
     readSelectedMaterializedPage: mocks.readSelectedMaterializedPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
     readSelectedCheckpointReceipt: mocks.readSelectedCheckpointReceipt,
+    readIntentOverlayRecoveryState: mocks.readIntentOverlayRecoveryState,
+    readSelectedAcceptedAuthorityState:
+      mocks.readSelectedAcceptedAuthorityState,
+    preparePwaActorEnrollmentRequest: mocks.preparePwaActorEnrollmentRequest,
+    readPendingIntentActors: mocks.readPendingIntentActors,
+    readIntentActors: mocks.readIntentActors,
+    reapplySelectedIntentOverlay: mocks.reapplySelectedIntentOverlay,
   }),
+}));
+
+vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@freed/sync/cloud/library-core")>()),
+  createGoogleDriveLibraryCoreAdapterV1: mocks.createCloudAdapter,
+  discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
+    mocks.discoverActorEnrollments,
+  discoverPublishedGoogleDriveLibraryCoreControlV1: mocks.discoverControl,
+  importLibraryCorePortableCheckpointV1: mocks.importCheckpoint,
 }));
 
 vi.mock("./factory-reset-coordinator", () => ({
@@ -64,9 +91,11 @@ import {
   enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   initializePwaLibraryCoreState,
+  readPwaLibraryCoreIntentOverlayRecoveryState,
   readPwaLibraryCoreItemDetail,
   readPwaLibraryCoreSelectedCheckpointReceipt,
   scanPwaLibraryCoreItems,
+  syncPwaLibraryCoreFromGoogleDrive,
 } from "./library-core-runtime";
 
 function entry(registryKey: string, globalId: string) {
@@ -112,7 +141,38 @@ describe("PWA Library Core bounded scanner", () => {
     );
     mocks.readSelectedMaterializedRow.mockReset();
     mocks.readSelectedCheckpointReceipt.mockReset();
+    mocks.readIntentOverlayRecoveryState.mockReset();
+    mocks.readSelectedAcceptedAuthorityState.mockReset();
+    mocks.preparePwaActorEnrollmentRequest.mockReset();
+    mocks.readPendingIntentActors.mockReset();
+    mocks.readIntentActors.mockReset();
+    mocks.reapplySelectedIntentOverlay.mockReset();
+    mocks.reapplySelectedIntentOverlay.mockResolvedValue({
+      canonicalEnvelopeBytes: 0,
+      countsAreLowerBounds: false,
+      operationCount: 0,
+      schemaVersion: 1,
+      status: "ready",
+      transactionCount: 0,
+    });
     mocks.readSelectedCheckpointReceipt.mockResolvedValue(SELECTED_SOURCE);
+    mocks.readIntentOverlayRecoveryState.mockResolvedValue({
+      canonicalEnvelopeBytes: 0,
+      countsAreLowerBounds: false,
+      operationCount: 0,
+      schemaVersion: 1,
+      status: "ready",
+      transactionCount: 0,
+    });
+    mocks.preparePwaActorEnrollmentRequest.mockResolvedValue(null);
+    mocks.readPendingIntentActors.mockResolvedValue([]);
+    mocks.readIntentActors.mockResolvedValue([]);
+    mocks.createCloudAdapter.mockReset();
+    mocks.createCloudAdapter.mockReturnValue({});
+    mocks.discoverActorEnrollments.mockReset();
+    mocks.discoverActorEnrollments.mockResolvedValue([]);
+    mocks.discoverControl.mockReset();
+    mocks.importCheckpoint.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemCaptures.mockReset();
@@ -145,6 +205,149 @@ describe("PWA Library Core bounded scanner", () => {
     await expect(readPwaLibraryCoreSelectedCheckpointReceipt()).resolves.toBe(
       receipt,
     );
+  });
+
+  it("keeps the selected Library readable while bounded overlay recovery awaits cloud sync", async () => {
+    const recovery = {
+      canonicalEnvelopeBytes: 16_777_217,
+      countsAreLowerBounds: true,
+      operationCount: 4_097,
+      schemaVersion: 1 as const,
+      status: "overflow" as const,
+      transactionCount: 513,
+    };
+    mocks.reapplySelectedIntentOverlay.mockResolvedValueOnce(recovery);
+    mocks.readSelectedMaterializedRow.mockResolvedValueOnce({
+      accounts: {},
+      feeds: {},
+      persons: {},
+      preferences: createDefaultPreferences(),
+    });
+    mocks.readSelectedMaterializedPage.mockResolvedValueOnce({
+      entries: [],
+      nextCursor: null,
+      source: SELECTED_SOURCE,
+    });
+
+    await expect(initializePwaLibraryCoreState()).resolves.toEqual(
+      expect.objectContaining({ items: [], preferences: expect.any(Object) }),
+    );
+    expect(readPwaLibraryCoreIntentOverlayRecoveryState()).toEqual(recovery);
+  });
+
+  it("keeps intent publication fenced while repeated cloud sync advances bounded recovery", async () => {
+    const libraryId = "library-runtime-recovery";
+    const storageEpoch = "epoch-runtime-recovery";
+    const manifestDigest = "6".repeat(64);
+    const pointer = {
+      activeTransport: "google_drive_app_data_v1",
+      causalFrontierDigest: "7".repeat(64),
+      generation: 9,
+      libraryId,
+      manifest: {
+        descriptor: {
+          byteLength: 1,
+          contentDigest: manifestDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            digest: manifestDigest,
+            epochId: storageEpoch,
+            generation: 9,
+            kind: "checkpoint_manifest",
+            libraryId,
+          }),
+        },
+        transportObjectId: "manifest-runtime-recovery",
+      },
+      protocolVersion: 1,
+      schemaVersion: 1,
+      storageEpoch,
+      writerId: "writer-runtime-recovery",
+    };
+    const overflow = {
+      canonicalEnvelopeBytes: 16_777_217,
+      countsAreLowerBounds: true,
+      operationCount: 4_097,
+      schemaVersion: 1,
+      status: "overflow" as const,
+      transactionCount: 513,
+    };
+    const ready = {
+      canonicalEnvelopeBytes: 0,
+      countsAreLowerBounds: false,
+      operationCount: 0,
+      schemaVersion: 1,
+      status: "ready" as const,
+      transactionCount: 0,
+    };
+    const backfillPending = {
+      canonicalEnvelopeBytes: 128,
+      countsAreLowerBounds: true,
+      operationCount: 128,
+      schemaVersion: 1,
+      status: "backfill_pending" as const,
+      transactionCount: 128,
+    };
+    const secondBackfillPass = {
+      ...backfillPending,
+      canonicalEnvelopeBytes: 256,
+      operationCount: 256,
+      transactionCount: 256,
+    };
+    mocks.reapplySelectedIntentOverlay.mockResolvedValueOnce(overflow);
+    mocks.readSelectedMaterializedRow.mockResolvedValue({
+      accounts: {},
+      feeds: {},
+      persons: {},
+      preferences: createDefaultPreferences(),
+    });
+    mocks.readSelectedMaterializedPage.mockResolvedValue({
+      entries: [],
+      nextCursor: null,
+      source: SELECTED_SOURCE,
+    });
+    await initializePwaLibraryCoreState();
+
+    mocks.discoverControl.mockResolvedValue({
+      control: {
+        bytes: new TextEncoder().encode(JSON.stringify(pointer)),
+      },
+      controlFileId: "control-runtime-recovery",
+      libraryId,
+    });
+    mocks.importCheckpoint.mockResolvedValue({ status: "already_complete" });
+    mocks.readIntentOverlayRecoveryState
+      .mockResolvedValueOnce(backfillPending)
+      .mockResolvedValueOnce(secondBackfillPass)
+      .mockResolvedValueOnce(ready);
+    mocks.readSelectedAcceptedAuthorityState.mockResolvedValue({
+      authority_key_id: "8".repeat(64),
+      authority_public_key: "9".repeat(64),
+      epoch: 1,
+      epoch_id: storageEpoch,
+      library_id: libraryId,
+      observed_frontier: [],
+    });
+
+    await expect(
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
+    ).resolves.toEqual(expect.objectContaining({ items: [] }));
+    expect(readPwaLibraryCoreIntentOverlayRecoveryState().status).toBe(
+      "backfill_pending",
+    );
+    expect(mocks.readPendingIntentActors).not.toHaveBeenCalled();
+    await expect(
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
+    ).resolves.toEqual(expect.objectContaining({ items: [] }));
+    expect(readPwaLibraryCoreIntentOverlayRecoveryState()).toEqual(
+      secondBackfillPass,
+    );
+    expect(mocks.readPendingIntentActors).not.toHaveBeenCalled();
+    await expect(
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
+    ).resolves.toEqual(expect.objectContaining({ items: [] }));
+    expect(mocks.importCheckpoint).toHaveBeenCalledTimes(3);
+    expect(readPwaLibraryCoreIntentOverlayRecoveryState().status).toBe("ready");
+    expect(mocks.readPendingIntentActors).toHaveBeenCalledTimes(1);
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {

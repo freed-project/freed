@@ -47,6 +47,7 @@ import {
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
   PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
+  type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
 import { PwaLibraryCoreSearchIndex } from "./library-core-search-index";
 import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
@@ -73,6 +74,16 @@ let indexedDbReaders: ReturnType<
   typeof createPwaLibraryCoreIndexedDbReaders
 > | null = null;
 let libraryReadModelRevision = 0;
+const READY_INTENT_OVERLAY_RECOVERY = Object.freeze({
+  canonicalEnvelopeBytes: 0,
+  countsAreLowerBounds: false,
+  operationCount: 0,
+  schemaVersion: 1,
+  status: "ready",
+  transactionCount: 0,
+}) satisfies PwaLibraryCoreIntentOverlayRecoveryStateV1;
+let intentOverlayRecoveryState: PwaLibraryCoreIntentOverlayRecoveryStateV1 =
+  READY_INTENT_OVERLAY_RECOVERY;
 
 function getPortableStore(): ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
@@ -113,6 +124,10 @@ function getIndexedDbReaders(): ReturnType<
 
 export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
   return getPortableStore().readSelectedCheckpointReceipt();
+}
+
+export function readPwaLibraryCoreIntentOverlayRecoveryState(): PwaLibraryCoreIntentOverlayRecoveryStateV1 {
+  return intentOverlayRecoveryState;
 }
 
 function emptyState(): LibraryState {
@@ -252,6 +267,8 @@ export function subscribePwaLibraryCoreState(
 }
 
 export async function initializePwaLibraryCoreState(): Promise<LibraryState> {
+  intentOverlayRecoveryState =
+    await getPortableStore().reapplySelectedIntentOverlay();
   const state = (await readSelectedState()) ?? emptyState();
   publishState(state);
   return state;
@@ -862,6 +879,22 @@ export const readPwaLibraryCoreSurfaceItems: NonNullable<
   PlatformConfig["readLibrarySurfaceItems"]
 > = (surface) => getIndexedDbReaders().readSurfaceItems(surface);
 
+async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState> {
+  const state = await readSelectedState();
+  if (!state) {
+    throw new Error("Imported SQLite Library checkpoint has no readable shell");
+  }
+  if (searchIndex) {
+    if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
+      await searchIndex.invalidate();
+    } else {
+      await searchIndex.updateItems(state.searchCorpusVersion, state.items);
+    }
+  }
+  publishState(state);
+  return state;
+}
+
 /**
  * Import the sole published immutable Desktop checkpoint into IndexedDB.
  * This is the production PWA Library path. Setting the activation key to
@@ -891,6 +924,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     libraryId: pointer.libraryId,
     signal: input.signal,
   });
+  const store = getPortableStore();
   await importLibraryCorePortableCheckpointV1({
     adapter,
     generation: pointer.generation,
@@ -898,9 +932,12 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     manifest: pointer.manifest,
     storageEpoch: pointer.storageEpoch,
     subtle: crypto.subtle,
-    writer: getPortableStore(),
+    writer: store,
   });
-  const store = getPortableStore();
+  intentOverlayRecoveryState = await store.readIntentOverlayRecoveryState();
+  if (readPwaLibraryCoreIntentOverlayRecoveryState().status !== "ready") {
+    return publishSelectedStateAfterLibraryCoreSync();
+  }
   const acceptedAuthority = await store.readSelectedAcceptedAuthorityState();
   if (acceptedAuthority === null) {
     throw new Error(
@@ -1045,19 +1082,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       throw new Error("PWA result objects do not match the actor result head");
     }
   }
-  const state = await readSelectedState();
-  if (!state) {
-    throw new Error("Imported SQLite Library checkpoint has no readable shell");
-  }
-  if (searchIndex) {
-    if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
-      await searchIndex.invalidate();
-    } else {
-      await searchIndex.updateItems(state.searchCorpusVersion, state.items);
-    }
-  }
-  publishState(state);
-  return state;
+  return publishSelectedStateAfterLibraryCoreSync();
 }
 
 registerPwaFactoryResetQuiesceHandler(
@@ -1071,6 +1096,7 @@ registerPwaFactoryResetQuiesceHandler(
     searchIndex = null;
     lastState = null;
     libraryReadModelRevision = 0;
+    intentOverlayRecoveryState = READY_INTENT_OVERLAY_RECOVERY;
     const deleteDatabase = (databaseName: string) =>
       new Promise<void>((resolve, reject) => {
         const request = globalThis.indexedDB.deleteDatabase(databaseName);
