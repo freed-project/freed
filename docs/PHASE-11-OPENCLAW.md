@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, and fail-closed service supervisor have landed; the native sidecar, production v2 issuance and retirement, and capture workers remain open)
 > **Dependencies:** Phase 2 (Capture layers), Phase 4 (Sync)
 
 ---
@@ -257,11 +257,23 @@ capability remains unchanged and authorizes every operation. Those conditions
 are rechecked under the immediate commit transaction before the receipt is
 returned, and retrieval creates no new outbox result.
 
-Production v2 issuance remains dormant. Task 11.4 must expose a consumed
-service API, and the PWA importer must persist and verify v2 before any v2
-certificate enters production sync. Authority-signed retirement application
-and checkpoint propagation remain task 11.9. These activation blockers do not
-weaken native admission for a v2 certificate presented to the journal.
+The PWA now consumes the shared production v2 verifier, stores the exact
+certificate bytes and signed capability fields in IndexedDB schema v9, and
+reverifies them before local intent admission and imported operation admission.
+Existing IndexedDB v8 enrollment rows keep their exact v1 shape and frozen
+legacy editor policy. Changed persistence, a stale epoch, a retired actor,
+bounded scope without an envelope binding, and operations outside the signed
+set all fail before an IndexedDB write. A mixed v1 and v2 checkpoint remains
+readable across restart. Opening the migrated database with schema v8 fails at
+the explicit browser rollback boundary instead of silently discarding v2
+state.
+
+Production v2 issuance remains dormant. No production entry point exports the
+certificate constructor, and neither Freed Desktop nor the headless service
+publishes v2 certificates. Authority-signed retirement application and
+checkpoint propagation remain task 11.9. The PWA importer must ship before a
+later reviewed slice enables issuance, because an older PWA cannot import a v2
+certificate that has entered production sync.
 
 Schema v12 also has an installed release prerequisite. Once the authoritative
 Primary migrates a Library, the v26.8.1900 schema v11 binary cannot reopen it.
@@ -374,7 +386,7 @@ review before implementation.
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
 | 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; consume them from the descriptor-bound native sidecar |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
-| 11.8 | Complete | Enforce actor capability certificates and fixed legacy editor policy |
+| 11.8 | Complete | Enforce actor capability certificates and the fixed legacy editor policy in native SQLite and PWA IndexedDB, with production issuance dormant |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
 | 11.10 | Open | Add a private local actor socket with bounded request and replay controls |
 | 11.11 | Open | Add bounded agent search, read, and signed edit APIs |

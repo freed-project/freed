@@ -14,8 +14,8 @@
     },
     {
       "id": 4,
-      "status": "current",
-      "source": "docs/PHASE-4-SYNC.md"
+      "source": "docs/PHASE-4-SYNC.md",
+      "status": "current"
     },
     { "id": 5, "status": "current", "source": "docs/PHASE-5-DESKTOP.md" },
     { "id": 6, "status": "complete", "source": "docs/PHASE-6-PWA.md" },
@@ -41,8 +41,8 @@
     },
     {
       "id": 11,
-      "status": "current",
-      "source": "docs/PHASE-11-OPENCLAW.md"
+      "source": "docs/PHASE-11-OPENCLAW.md",
+      "status": "current"
     },
     {
       "id": 12,

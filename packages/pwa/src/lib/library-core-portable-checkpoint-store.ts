@@ -12,6 +12,7 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreDigestInput,
+  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -51,11 +52,13 @@ import {
   isLibraryCoreLowercaseHex64,
   sha256LowerHex,
   verifyLibraryCoreActorEnrollmentCertificateV1,
+  verifyLibraryCoreActorCapabilityCertificateV2,
   verifyLibraryCoreEd25519WithWebCrypto,
   verifyLibraryCoreOperationTransactionV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreAcceptedActorStateV1,
   type LibraryCoreAcceptedAuthorityStateV1,
+  type LibraryCoreActorCapabilityBodyV2,
   type LibraryCoreActorEnrollmentRequestV1,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreCheckpointManifestV1,
@@ -115,7 +118,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
@@ -237,13 +240,22 @@ interface PortableActorTipRecord {
   readonly retired: boolean;
 }
 
-interface PortableActorEnrollmentRecord {
+interface PortableActorEnrollmentRecordV1 {
   readonly actorChainGenesis: LibraryCoreLowercaseHex64;
   readonly actorId: LibraryCoreLowercaseHex64;
   readonly actorPublicKey: LibraryCoreEd25519PublicKeyHex;
   readonly certificateDigest: LibraryCoreLowercaseHex64;
   readonly generationId: LibraryCoreLowercaseHex64;
 }
+
+interface PortableActorEnrollmentRecordV2 extends PortableActorEnrollmentRecordV1 {
+  readonly capability: LibraryCoreActorCapabilityBodyV2;
+  readonly canonicalCertificateBytes: Uint8Array;
+  readonly schemaVersion: 2;
+}
+
+type PortableActorEnrollmentRecord =
+  PortableActorEnrollmentRecordV1 | PortableActorEnrollmentRecordV2;
 
 interface PortableReadStateRecord {
   readonly actorId: LibraryCoreLowercaseHex64;
@@ -276,6 +288,7 @@ interface PortableFeedReaderSession {
 interface PortableActiveIntentContext {
   readonly actorTip: PortableActorTipRecord;
   readonly authority: LibraryCoreAcceptedAuthorityStateV1;
+  readonly enrollment: PortableActorEnrollmentRecord;
   readonly generation: PortableGenerationRecord;
   readonly identity: PortablePwaActorIdentityRecord;
   readonly intentActor: PortableIntentActorRecord | undefined;
@@ -681,6 +694,153 @@ function libraryCoreDigest(
 function canonicalStringKey(value: LibraryCoreCanonicalValue): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(
     encodeLibraryCoreCanonicalValue(value),
+  );
+}
+
+function isPortableActorEnrollmentV2(
+  enrollment: PortableActorEnrollmentRecord,
+): enrollment is PortableActorEnrollmentRecordV2 {
+  return Object.prototype.hasOwnProperty.call(enrollment, "schemaVersion");
+}
+
+function assertSupportedPortableActorEnrollment(
+  enrollment: PortableActorEnrollmentRecord,
+): void {
+  const commonKeys = [
+    "actorChainGenesis",
+    "actorId",
+    "actorPublicKey",
+    "certificateDigest",
+    "generationId",
+  ] as const;
+  const keys = Object.getOwnPropertyNames(enrollment);
+  const hasExactKeys = (expected: readonly string[]) =>
+    keys.length === expected.length &&
+    Object.getOwnPropertySymbols(enrollment).length === 0 &&
+    expected.every((key) =>
+      Object.prototype.hasOwnProperty.call(enrollment, key),
+    );
+  const hasValidCommonFields =
+    isLibraryCoreLowercaseHex64(enrollment.actorChainGenesis) &&
+    isLibraryCoreLowercaseHex64(enrollment.actorId) &&
+    isLibraryCoreLowercaseHex64(enrollment.actorPublicKey) &&
+    isLibraryCoreLowercaseHex64(enrollment.certificateDigest) &&
+    isLibraryCoreLowercaseHex64(enrollment.generationId);
+  if (hasExactKeys(commonKeys) && hasValidCommonFields) return;
+  const v2 = enrollment as Partial<PortableActorEnrollmentRecordV2>;
+  if (
+    hasExactKeys([
+      ...commonKeys,
+      "capability",
+      "canonicalCertificateBytes",
+      "schemaVersion",
+    ]) &&
+    hasValidCommonFields &&
+    v2.schemaVersion === 2 &&
+    typeof v2.capability === "object" &&
+    v2.capability !== null &&
+    !Array.isArray(v2.capability) &&
+    v2.canonicalCertificateBytes instanceof Uint8Array
+  ) {
+    return;
+  }
+  throw new Error(
+    "stored actor enrollment uses an unsupported schema or shape",
+  );
+}
+
+function exactBytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return (
+    left.byteLength === right.byteLength &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+function samePortableActorEnrollment(
+  left: PortableActorEnrollmentRecord,
+  right: PortableActorEnrollmentRecord,
+): boolean {
+  assertSupportedPortableActorEnrollment(left);
+  assertSupportedPortableActorEnrollment(right);
+  if (
+    left.actorChainGenesis !== right.actorChainGenesis ||
+    left.actorId !== right.actorId ||
+    left.actorPublicKey !== right.actorPublicKey ||
+    left.certificateDigest !== right.certificateDigest ||
+    left.generationId !== right.generationId ||
+    isPortableActorEnrollmentV2(left) !== isPortableActorEnrollmentV2(right)
+  ) {
+    return false;
+  }
+  if (
+    !isPortableActorEnrollmentV2(left) ||
+    !isPortableActorEnrollmentV2(right)
+  ) {
+    return true;
+  }
+  return (
+    canonicalStringKey(
+      left.capability as unknown as LibraryCoreCanonicalValue,
+    ) ===
+      canonicalStringKey(
+        right.capability as unknown as LibraryCoreCanonicalValue,
+      ) &&
+    exactBytesEqual(
+      left.canonicalCertificateBytes,
+      right.canonicalCertificateBytes,
+    )
+  );
+}
+
+function samePortableActorTip(
+  left: PortableActorTipRecord,
+  right: PortableActorTipRecord,
+): boolean {
+  return (
+    left.acceptedChainDigest === right.acceptedChainDigest &&
+    left.acceptedOperationId === right.acceptedOperationId &&
+    left.acceptedSequence === right.acceptedSequence &&
+    left.actorId === right.actorId &&
+    left.enrollmentCertificateDigest === right.enrollmentCertificateDigest &&
+    left.generationId === right.generationId &&
+    left.retired === right.retired
+  );
+}
+
+function actorEnrollmentAllowsOperation(
+  enrollment: PortableActorEnrollmentRecord,
+  operationType: unknown,
+): boolean {
+  assertSupportedPortableActorEnrollment(enrollment);
+  if (typeof operationType !== "string") return false;
+  if (!isPortableActorEnrollmentV2(enrollment)) {
+    return LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1.some(
+      (candidate) => candidate === operationType,
+    );
+  }
+  return (
+    enrollment.capability.scope.mode === "library_wide" &&
+    enrollment.capability.allowed_operation_types.some(
+      (candidate) => candidate === operationType,
+    )
+  );
+}
+
+function certificateUsesActorCapabilityV2(bytes: Uint8Array): boolean {
+  const decoded = decodeLibraryCoreCanonicalValue(bytes);
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    Array.isArray(decoded)
+  ) {
+    return false;
+  }
+  const body = (decoded as Record<string, unknown>).certificate_body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, "actor_capability_body")
   );
 }
 
@@ -1372,6 +1532,42 @@ class PwaLibraryCorePortableCheckpointStore
     return "created";
   }
 
+  async #verifyStoredActorEnrollment(
+    enrollment: PortableActorEnrollmentRecord,
+    authority: LibraryCoreAcceptedAuthorityStateV1,
+  ): Promise<void> {
+    assertSupportedPortableActorEnrollment(enrollment);
+    if (!isPortableActorEnrollmentV2(enrollment)) return;
+    const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
+      enrollment.canonicalCertificateBytes,
+      authority,
+      {
+        digest: libraryCoreDigest,
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+      },
+    );
+    const enrollmentBody =
+      verified.certificate.certificate_body.actor_enrollment_body;
+    const capability =
+      verified.certificate.certificate_body.actor_capability_body;
+    const derived = Object.freeze({
+      actorChainGenesis: verified.actor_chain_genesis,
+      actorId: enrollmentBody.actor_id,
+      actorPublicKey: enrollmentBody.actor_public_key,
+      capability,
+      canonicalCertificateBytes: enrollment.canonicalCertificateBytes,
+      certificateDigest: verified.certificate.certificate_digest,
+      generationId: enrollment.generationId,
+      schemaVersion: 2,
+    }) satisfies PortableActorEnrollmentRecordV2;
+    if (!samePortableActorEnrollment(enrollment, derived)) {
+      throw new Error(
+        "stored actor capability does not match its verified certificate",
+      );
+    }
+  }
+
   async #activeIntentContext(): Promise<PortableActiveIntentContext> {
     this.#requireAvailable();
     const database = await this.#database();
@@ -1448,7 +1644,16 @@ class PwaLibraryCorePortableCheckpointStore
     ) {
       throw new Error("PWA intent requires an active enrolled actor");
     }
-    return { actorTip, authority, generation, identity, intentActor, selected };
+    await this.#verifyStoredActorEnrollment(enrollment, authority);
+    return {
+      actorTip,
+      authority,
+      enrollment,
+      generation,
+      identity,
+      intentActor,
+      selected,
+    };
   }
 
   /**
@@ -2319,16 +2524,39 @@ class PwaLibraryCorePortableCheckpointStore
     readonly certificateBytes: Uint8Array;
   }): Promise<"installed" | "already_installed"> {
     this.#requireAvailable();
-    const verified = await verifyLibraryCoreActorEnrollmentCertificateV1(
-      input.certificateBytes,
-      input.acceptedAuthorityState,
-      {
-        digest: libraryCoreDigest,
-        verifySignature: (verification) =>
-          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
-      },
-    );
-    const body = verified.certificate.certificate_body.actor_enrollment_body;
+    const certificateBytes = input.certificateBytes.slice();
+    const verificationDependencies = {
+      digest: libraryCoreDigest,
+      verifySignature: (
+        verification: Parameters<
+          typeof verifyLibraryCoreEd25519WithWebCrypto
+        >[0],
+      ) => verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+    };
+    const capabilityV2 = certificateUsesActorCapabilityV2(certificateBytes);
+    const verifiedV2 = capabilityV2
+      ? await verifyLibraryCoreActorCapabilityCertificateV2(
+          certificateBytes,
+          input.acceptedAuthorityState,
+          verificationDependencies,
+        )
+      : null;
+    const verifiedV1 = capabilityV2
+      ? null
+      : await verifyLibraryCoreActorEnrollmentCertificateV1(
+          certificateBytes,
+          input.acceptedAuthorityState,
+          verificationDependencies,
+        );
+    const body = capabilityV2
+      ? verifiedV2!.certificate.certificate_body.actor_enrollment_body
+      : verifiedV1!.certificate.certificate_body.actor_enrollment_body;
+    const certificateDigest = capabilityV2
+      ? verifiedV2!.certificate.certificate_digest
+      : verifiedV1!.certificate.certificate_digest;
+    const actorChainGenesis = capabilityV2
+      ? verifiedV2!.actor_chain_genesis
+      : verifiedV1!.actor_chain_genesis;
     const database = await this.#database();
     const transaction = database.transaction(
       [
@@ -2364,8 +2592,7 @@ class PwaLibraryCorePortableCheckpointStore
       generation.header?.epoch !== body.epoch ||
       !actorTip ||
       actorTip.retired ||
-      actorTip.enrollmentCertificateDigest !==
-        verified.certificate.certificate_digest
+      actorTip.enrollmentCertificateDigest !== certificateDigest
     ) {
       transaction.abort();
       throw new Error(
@@ -2376,13 +2603,27 @@ class PwaLibraryCorePortableCheckpointStore
     const existing = (await requestResult(
       enrollments.get([selected.generationId, body.actor_id]),
     )) as PortableActorEnrollmentRecord | undefined;
+    const candidate: PortableActorEnrollmentRecord = verifiedV2
+      ? Object.freeze({
+          actorChainGenesis,
+          actorId: body.actor_id,
+          actorPublicKey: body.actor_public_key,
+          capability:
+            verifiedV2.certificate.certificate_body.actor_capability_body,
+          canonicalCertificateBytes: certificateBytes,
+          certificateDigest,
+          generationId: selected.generationId,
+          schemaVersion: 2,
+        } satisfies PortableActorEnrollmentRecordV2)
+      : Object.freeze({
+          actorChainGenesis,
+          actorId: body.actor_id,
+          actorPublicKey: body.actor_public_key,
+          certificateDigest,
+          generationId: selected.generationId,
+        } satisfies PortableActorEnrollmentRecordV1);
     if (existing) {
-      if (
-        existing.certificateDigest ===
-          verified.certificate.certificate_digest &&
-        existing.actorPublicKey === body.actor_public_key &&
-        existing.actorChainGenesis === verified.actor_chain_genesis
-      ) {
+      if (samePortableActorEnrollment(existing, candidate)) {
         await transactionDone(transaction);
         return "already_installed";
       }
@@ -2391,13 +2632,7 @@ class PwaLibraryCorePortableCheckpointStore
         "actor enrollment identity already exists with different bytes",
       );
     }
-    enrollments.add({
-      actorChainGenesis: verified.actor_chain_genesis,
-      actorId: body.actor_id,
-      actorPublicKey: body.actor_public_key,
-      certificateDigest: verified.certificate.certificate_digest,
-      generationId: selected.generationId,
-    } satisfies PortableActorEnrollmentRecord);
+    enrollments.add(candidate);
     await transactionDone(transaction);
     return "installed";
   }
@@ -2410,7 +2645,18 @@ class PwaLibraryCorePortableCheckpointStore
     this.#requireAvailable();
     const header = parseLibraryCoreOperationSegmentHeaderV1(input.header);
     const entries = Object.freeze(
-      input.entries.map(parseLibraryCoreOperationSegmentEntryV1),
+      input.entries.map((entry) => {
+        const parsed = parseLibraryCoreOperationSegmentEntryV1(entry);
+        const canonicalEnvelope = decodeLibraryCoreCanonicalValue(
+          encodeLibraryCoreCanonicalValue(
+            parsed.canonical_envelope as LibraryCoreCanonicalValue,
+          ),
+        );
+        return parseLibraryCoreOperationSegmentEntryV1({
+          ...parsed,
+          canonical_envelope: canonicalEnvelope,
+        });
+      }),
     );
     const reference = snapshotReference(
       parseLibraryCoreImmutableObjectReferenceV1(input.reference),
@@ -2487,7 +2733,8 @@ class PwaLibraryCorePortableCheckpointStore
       !generation ||
       generation.status !== "complete" ||
       generation.selectionSequence !== selected.selectionSequence ||
-      generation.header === null ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null ||
       header.library_id !== generation.libraryId ||
       header.epoch_id !== generation.storageEpoch
     ) {
@@ -2513,7 +2760,139 @@ class PwaLibraryCorePortableCheckpointStore
           reference.descriptor.contentDigest &&
         existingAuthenticated.transportObjectId === reference.transportObjectId
       ) {
+        const replayTips = new Map<
+          LibraryCoreLowercaseHex64,
+          PortableActorTipRecord
+        >();
+        const replayEnrollments = new Map<
+          LibraryCoreLowercaseHex64,
+          PortableActorEnrollmentRecord
+        >();
+        for (const actorId of new Set(groups.map((group) => group.actorId))) {
+          const tip = (await requestResult(
+            snapshotTransaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorTipRecord | undefined;
+          const enrollment = (await requestResult(
+            snapshotTransaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorEnrollmentRecord | undefined;
+          if (
+            !tip ||
+            tip.retired ||
+            !enrollment ||
+            enrollment.certificateDigest !== tip.enrollmentCertificateDigest
+          ) {
+            snapshotTransaction.abort();
+            throw new Error(
+              "authenticated operation replay actor is absent, retired, or unenrolled",
+            );
+          }
+          replayTips.set(actorId, tip);
+          replayEnrollments.set(actorId, enrollment);
+        }
         await transactionDone(snapshotTransaction);
+        for (const enrollment of replayEnrollments.values()) {
+          await this.#verifyStoredActorEnrollment(
+            enrollment,
+            generation.header.accepted_authority,
+          );
+        }
+        for (const group of groups) {
+          const enrollment = replayEnrollments.get(group.actorId)!;
+          for (const entry of group.entries) {
+            const operationType = operationEnvelopeRecord(entry).operation_type;
+            if (!actorEnrollmentAllowsOperation(enrollment, operationType)) {
+              throw new Error(
+                `actor capability denies ${String(operationType)}`,
+              );
+            }
+          }
+        }
+        const replayTransaction = database.transaction(
+          [
+            GENERATIONS_STORE,
+            CONTROL_STORE,
+            ACTOR_TIPS_STORE,
+            ACTOR_ENROLLMENTS_STORE,
+            AUTHENTICATED_SEGMENTS_STORE,
+          ],
+          "readonly",
+        );
+        const replaySelected = (await requestResult(
+          replayTransaction
+            .objectStore(CONTROL_STORE)
+            .get(SELECTED_GENERATION_KEY),
+        )) as SelectedPortableGenerationRecord | undefined;
+        const replayGeneration = (await requestResult(
+          replayTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(generation.generationId),
+        )) as PortableGenerationRecord | undefined;
+        const replaySegment = (await requestResult(
+          replayTransaction
+            .objectStore(AUTHENTICATED_SEGMENTS_STORE)
+            .get([generation.generationId, header.first_ingest_sequence]),
+        )) as PortableAuthenticatedSegmentRecord | undefined;
+        if (
+          replaySelected?.generationId !== generation.generationId ||
+          replaySelected.selectionSequence !== generation.selectionSequence ||
+          !replayGeneration ||
+          replayGeneration.status !== "complete" ||
+          replayGeneration.selectionSequence !== generation.selectionSequence ||
+          replayGeneration.libraryId !== generation.libraryId ||
+          replayGeneration.storageEpoch !== generation.storageEpoch ||
+          replayGeneration.headerDigest !== generation.headerDigest ||
+          replayGeneration.authenticatedThroughIngestSequence !==
+            generation.authenticatedThroughIngestSequence ||
+          replayGeneration.authenticatedFrontierDigest !==
+            generation.authenticatedFrontierDigest ||
+          replayGeneration.latestAuthenticatedSegmentDigest !==
+            generation.latestAuthenticatedSegmentDigest ||
+          !replaySegment ||
+          replaySegment.header.segment_digest !== header.segment_digest ||
+          replaySegment.lastIngestSequence !== header.last_ingest_sequence ||
+          replaySegment.objectKey !== reference.descriptor.objectKey ||
+          replaySegment.storedByteLength !== reference.descriptor.byteLength ||
+          replaySegment.storedContentDigest !==
+            reference.descriptor.contentDigest ||
+          replaySegment.transportObjectId !== reference.transportObjectId
+        ) {
+          replayTransaction.abort();
+          throw new Error(
+            "authenticated operation replay authority changed during verification",
+          );
+        }
+        for (const [actorId, tipSnapshot] of replayTips) {
+          const currentTip = (await requestResult(
+            replayTransaction
+              .objectStore(ACTOR_TIPS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorTipRecord | undefined;
+          const currentEnrollment = (await requestResult(
+            replayTransaction
+              .objectStore(ACTOR_ENROLLMENTS_STORE)
+              .get([generation.generationId, actorId]),
+          )) as PortableActorEnrollmentRecord | undefined;
+          if (
+            !currentTip ||
+            currentTip.retired ||
+            !samePortableActorTip(currentTip, tipSnapshot) ||
+            !currentEnrollment ||
+            !samePortableActorEnrollment(
+              currentEnrollment,
+              replayEnrollments.get(actorId)!,
+            )
+          ) {
+            replayTransaction.abort();
+            throw new Error(
+              "authenticated operation replay capability changed during verification",
+            );
+          }
+        }
+        await transactionDone(replayTransaction);
         return this.#segmentReceipt(header);
       }
       snapshotTransaction.abort();
@@ -2680,6 +3059,20 @@ class PwaLibraryCorePortableCheckpointStore
     }
     await transactionDone(snapshotTransaction);
 
+    const acceptedAuthority = generation.header.accepted_authority;
+    for (const enrollment of enrollments.values()) {
+      await this.#verifyStoredActorEnrollment(enrollment, acceptedAuthority);
+    }
+    for (const group of groups) {
+      const enrollment = enrollments.get(group.actorId)!;
+      for (const entry of group.entries) {
+        const operationType = operationEnvelopeRecord(entry).operation_type;
+        if (!actorEnrollmentAllowsOperation(enrollment, operationType)) {
+          throw new Error(`actor capability denies ${String(operationType)}`);
+        }
+      }
+    }
+
     const currentTips = new Map(tipSnapshots);
     const verifiedTransactions = [];
     for (const group of groups) {
@@ -2746,6 +3139,7 @@ class PwaLibraryCorePortableCheckpointStore
         OPERATIONS_STORE,
         SEGMENTS_STORE,
         ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
         AUTHENTICATED_OPERATIONS_STORE,
         AUTHENTICATED_SEGMENTS_STORE,
         MATERIALIZED_ROWS_STORE,
@@ -2764,6 +3158,11 @@ class PwaLibraryCorePortableCheckpointStore
       currentSelected?.generationId !== generation.generationId ||
       currentSelected.selectionSequence !== generation.selectionSequence ||
       !currentGeneration ||
+      currentGeneration.status !== "complete" ||
+      currentGeneration.selectionSequence !== generation.selectionSequence ||
+      currentGeneration.libraryId !== generation.libraryId ||
+      currentGeneration.storageEpoch !== generation.storageEpoch ||
+      currentGeneration.headerDigest !== generation.headerDigest ||
       currentGeneration.authenticatedThroughIngestSequence !==
         generation.authenticatedThroughIngestSequence ||
       currentGeneration.authenticatedFrontierDigest !==
@@ -2782,12 +3181,20 @@ class PwaLibraryCorePortableCheckpointStore
           .objectStore(ACTOR_TIPS_STORE)
           .get([generation.generationId, actorId]),
       )) as PortableActorTipRecord | undefined;
+      const currentEnrollment = (await requestResult(
+        transaction
+          .objectStore(ACTOR_ENROLLMENTS_STORE)
+          .get([generation.generationId, actorId]),
+      )) as PortableActorEnrollmentRecord | undefined;
       if (
         !current ||
-        current.acceptedSequence !== snapshot.acceptedSequence ||
-        current.acceptedOperationId !== snapshot.acceptedOperationId ||
-        current.acceptedChainDigest !== snapshot.acceptedChainDigest ||
-        current.retired !== snapshot.retired
+        !samePortableActorTip(current, snapshot) ||
+        current.retired ||
+        !currentEnrollment ||
+        !samePortableActorEnrollment(
+          currentEnrollment,
+          enrollments.get(actorId)!,
+        )
       ) {
         transaction.abort();
         throw new Error("actor tip changed during operation verification");
@@ -3313,10 +3720,137 @@ class PwaLibraryCorePortableCheckpointStore
     );
 
     const database = await this.#database();
+    const admissionTransaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+      ],
+      "readonly",
+    );
+    const admittedSelected = (await requestResult(
+      admissionTransaction
+        .objectStore(CONTROL_STORE)
+        .get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const admittedGeneration = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(admittedSelected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const admittedTip = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([admittedSelected.generationId, actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const admittedEnrollment = admittedSelected
+      ? ((await requestResult(
+          admissionTransaction
+            .objectStore(ACTOR_ENROLLMENTS_STORE)
+            .get([admittedSelected.generationId, actorId]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    await transactionDone(admissionTransaction);
+    const admittedAuthority =
+      admittedGeneration?.header?.anchor_kind === "accepted_authority"
+        ? admittedGeneration.header.accepted_authority
+        : null;
+    if (
+      !admittedSelected ||
+      !admittedGeneration ||
+      admittedGeneration.status !== "complete" ||
+      admittedGeneration.selectionSequence !==
+        admittedSelected.selectionSequence ||
+      !admittedAuthority ||
+      String(admittedAuthority.library_id) !== String(libraryId) ||
+      String(admittedAuthority.epoch_id) !== String(epochId) ||
+      !admittedTip ||
+      String(admittedTip.actorId) !== String(actorId) ||
+      admittedTip.retired ||
+      !admittedEnrollment ||
+      admittedEnrollment.certificateDigest !==
+        admittedTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("intent transaction has no active enrolled capability");
+    }
+    await this.#verifyStoredActorEnrollment(
+      admittedEnrollment,
+      admittedAuthority,
+    );
+    for (const entry of entries) {
+      if (
+        !actorEnrollmentAllowsOperation(
+          admittedEnrollment,
+          entry.canonical_envelope.operation_type,
+        )
+      ) {
+        throw new Error(
+          `actor capability denies ${String(entry.canonical_envelope.operation_type)}`,
+        );
+      }
+    }
+
     const transaction = database.transaction(
-      [INTENT_ACTORS_STORE, INTENT_OPERATIONS_STORE, INTENT_TRANSACTIONS_STORE],
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        INTENT_OPERATIONS_STORE,
+        INTENT_TRANSACTIONS_STORE,
+      ],
       "readwrite",
     );
+    const currentSelected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const currentGeneration = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(GENERATIONS_STORE)
+            .get(currentSelected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const currentTip = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([currentSelected.generationId, actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const currentEnrollment = currentSelected
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_ENROLLMENTS_STORE)
+            .get([currentSelected.generationId, actorId]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    if (
+      currentSelected?.generationId !== admittedSelected.generationId ||
+      currentSelected.selectionSequence !==
+        admittedSelected.selectionSequence ||
+      !currentGeneration ||
+      currentGeneration.status !== "complete" ||
+      currentGeneration.selectionSequence !==
+        admittedGeneration.selectionSequence ||
+      currentGeneration.headerDigest !== admittedGeneration.headerDigest ||
+      currentGeneration.libraryId !== libraryId ||
+      currentGeneration.storageEpoch !== epochId ||
+      !currentTip ||
+      !samePortableActorTip(currentTip, admittedTip) ||
+      currentTip.retired ||
+      !currentEnrollment ||
+      !samePortableActorEnrollment(currentEnrollment, admittedEnrollment)
+    ) {
+      transaction.abort();
+      throw new Error("intent capability changed before durable admission");
+    }
     const actors = transaction.objectStore(INTENT_ACTORS_STORE);
     const operations = transaction.objectStore(INTENT_OPERATIONS_STORE);
     const transactions = transaction.objectStore(INTENT_TRANSACTIONS_STORE);

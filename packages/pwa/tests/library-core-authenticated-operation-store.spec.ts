@@ -254,7 +254,14 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
     } as const;
     const header = {
       anchor_kind: "accepted_authority",
-      accepted_authority: null,
+      accepted_authority: {
+        authority_key_id: fixture.authorityKeyId,
+        authority_public_key: fixture.authorityPublicKey,
+        epoch: 1,
+        epoch_id: fixture.epochId,
+        library_id: fixture.libraryId,
+        observed_frontier: [],
+      },
       canonical_codec_version: 1,
       collection_counts: {
         accepted_frontier: 0,

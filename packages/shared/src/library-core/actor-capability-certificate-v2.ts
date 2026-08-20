@@ -1,6 +1,6 @@
-// Test-only executable contract machinery for the deterministic TypeScript and
-// Rust certificate vector. Production issuance must add a consumed service API
-// instead of importing this support module.
+// Closed actor capability certificate construction and verification contract.
+// Construction remains dormant in production. The PWA consumes verification
+// only, so importing this module does not grant issuance or writer authority.
 import {
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -14,12 +14,16 @@ import {
   type LibraryCoreActorEnrollmentBodyConstructionV1,
   type LibraryCoreActorEnrollmentBodyV1,
 } from "./actor-enrollment-contracts.js";
-import type { LibraryCoreCausalTipV1 } from "./operation-envelope-contracts.js";
+import {
+  snapshotLibraryCoreCausalFrontier,
+  type LibraryCoreCausalTipV1,
+} from "./operation-envelope-contracts.js";
 import CAPABILITY_OPERATIONS from "./actor-capability-operation-types-v2.json" with { type: "json" };
 import {
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreEd25519SignatureHex,
   isLibraryCoreLowercaseHex64,
+  isLibraryCoreNonnegativeSafeInteger,
   type LibraryCoreEd25519PublicKeyHex,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreLowercaseHex64,
@@ -185,14 +189,21 @@ function digest(
 ): LibraryCoreLowercaseHex64 {
   const result = dependency(domain, value);
   if (!isLibraryCoreLowercaseHex64(result)) {
-    throw new TypeError(`${domain} digest dependency returned an invalid digest`);
+    throw new TypeError(
+      `${domain} digest dependency returned an invalid digest`,
+    );
   }
   return result;
 }
 
-function signature(value: unknown, label: string): LibraryCoreEd25519SignatureHex {
+function signature(
+  value: unknown,
+  label: string,
+): LibraryCoreEd25519SignatureHex {
   if (!isLibraryCoreEd25519SignatureHex(value)) {
-    throw new TypeError(`${label} must be 128 lowercase hexadecimal characters`);
+    throw new TypeError(
+      `${label} must be 128 lowercase hexadecimal characters`,
+    );
   }
   return value;
 }
@@ -221,7 +232,9 @@ function snapshotAllowedOperations(
       );
     }
     if (actorClass === "scraper" && !scraper.has(operation)) {
-      throw new TypeError("scraper capability includes a non-capture operation");
+      throw new TypeError(
+        "scraper capability includes a non-capture operation",
+      );
     }
     result.push(operation as LibraryCoreActorCapabilityOperationTypeV2);
     previous = operation;
@@ -286,7 +299,8 @@ function closedRecord(
     throw new TypeError(`${label} has an invalid field set`);
   }
   const snapshot: Record<string, unknown> = {};
-  for (const key of keys) snapshot[key] = (value as Record<string, unknown>)[key];
+  for (const key of keys)
+    snapshot[key] = (value as Record<string, unknown>)[key];
   return Object.freeze(snapshot);
 }
 
@@ -303,6 +317,54 @@ function canonicalEqual(left: unknown, right: unknown): boolean {
   );
 }
 
+function snapshotAuthorityState(
+  value: unknown,
+  digestDependency: LibraryCoreActorCapabilityVerificationDependenciesV2["digest"],
+): LibraryCoreActorCapabilityAuthorityStateV2 {
+  const record = closedRecord(
+    value,
+    [
+      "library_id",
+      "epoch",
+      "epoch_id",
+      "authority_key_id",
+      "authority_public_key",
+      "observed_frontier",
+    ],
+    "accepted authority state",
+  );
+  if (
+    !isLibraryCoreLowercaseHex64(record.library_id) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.epoch) ||
+    record.epoch === 0 ||
+    !isLibraryCoreLowercaseHex64(record.epoch_id) ||
+    !isLibraryCoreLowercaseHex64(record.authority_key_id) ||
+    !isLibraryCoreEd25519PublicKeyHex(record.authority_public_key)
+  ) {
+    throw new TypeError("accepted authority state is invalid");
+  }
+  const expectedAuthorityKeyId = digest(digestDependency, "authority-key", {
+    signature_algorithm: "ed25519",
+    authority_public_key: record.authority_public_key,
+  });
+  if (record.authority_key_id !== expectedAuthorityKeyId) {
+    throw new TypeError(
+      "accepted authority state key ID does not match its public key",
+    );
+  }
+  return Object.freeze({
+    library_id: record.library_id,
+    epoch: record.epoch,
+    epoch_id: record.epoch_id,
+    authority_key_id: record.authority_key_id,
+    authority_public_key: record.authority_public_key,
+    observed_frontier: snapshotLibraryCoreCausalFrontier(
+      record.observed_frontier,
+      "accepted authority state.observed_frontier",
+    ),
+  });
+}
+
 function constructCapabilityBody(
   enrollment: LibraryCoreActorEnrollmentBodyConstructionV1,
   input: LibraryCoreActorCapabilityCertificateInputV2,
@@ -315,13 +377,17 @@ function constructCapabilityBody(
   );
   const scope = snapshotScope(input.scope);
   const body = enrollment.body;
-  const issuanceIdentity = digest(digestDependency, "actor-capability-issuance", {
-    library_id: body.library_id,
-    epoch_id: body.epoch_id,
-    authority_key_id: body.authority_key_id,
-    actor_id: body.actor_id,
-    enrollment_body_digest: enrollment.enrollment_body_digest,
-  });
+  const issuanceIdentity = digest(
+    digestDependency,
+    "actor-capability-issuance",
+    {
+      library_id: body.library_id,
+      epoch_id: body.epoch_id,
+      authority_key_id: body.authority_key_id,
+      actor_id: body.actor_id,
+      enrollment_body_digest: enrollment.enrollment_body_digest,
+    },
+  );
   const retirementIdentity = digest(
     digestDependency,
     "actor-capability-retirement",
@@ -367,7 +433,9 @@ export async function constructLibraryCoreActorCapabilityCertificateV2(
   dependencies: LibraryCoreActorCapabilityCertificateDependenciesV2,
 ): Promise<LibraryCoreActorCapabilityCertificateConstructionV2> {
   if (!isLibraryCoreActorEnrollmentBodyConstructionV1(enrollment)) {
-    throw new TypeError("actor enrollment body must use the closed v1 contract");
+    throw new TypeError(
+      "actor enrollment body must use the closed v1 contract",
+    );
   }
   const signActorProof = dependencies.signActorProof;
   const signAuthorityCertificate = dependencies.signAuthorityCertificate;
@@ -463,8 +531,14 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
     typeof digestDependency !== "function" ||
     typeof verifySignature !== "function"
   ) {
-    throw new TypeError("actor capability verification dependencies must be callable");
+    throw new TypeError(
+      "actor capability verification dependencies must be callable",
+    );
   }
+  const authorityState = snapshotAuthorityState(
+    acceptedAuthority,
+    digestDependency,
+  );
   const decoded = decodeLibraryCoreCanonicalValue(canonicalCertificate);
   const certificate = closedRecord(
     decoded,
@@ -523,7 +597,7 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
   }
   const expectedAuthorityKeyId = digest(digestDependency, "authority-key", {
     signature_algorithm: "ed25519",
-    authority_public_key: acceptedAuthority.authority_public_key,
+    authority_public_key: authorityState.authority_public_key,
   });
   if (
     !isLibraryCoreLowercaseHex64(enrollmentBody.library_id) ||
@@ -533,14 +607,14 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
     !isLibraryCoreEd25519PublicKeyHex(enrollmentBody.actor_public_key) ||
     enrollmentBody.operation_type !== "actor_enrolled" ||
     enrollmentBody.signature_algorithm !== "ed25519" ||
-    enrollmentBody.epoch !== acceptedAuthority.epoch ||
-    enrollmentBody.library_id !== acceptedAuthority.library_id ||
-    enrollmentBody.epoch_id !== acceptedAuthority.epoch_id ||
-    enrollmentBody.authority_key_id !== acceptedAuthority.authority_key_id ||
-    acceptedAuthority.authority_key_id !== expectedAuthorityKeyId ||
+    enrollmentBody.epoch !== authorityState.epoch ||
+    enrollmentBody.library_id !== authorityState.library_id ||
+    enrollmentBody.epoch_id !== authorityState.epoch_id ||
+    enrollmentBody.authority_key_id !== authorityState.authority_key_id ||
+    authorityState.authority_key_id !== expectedAuthorityKeyId ||
     !canonicalEqual(
       derivedEnrollment.body.observed_frontier,
-      acceptedAuthority.observed_frontier,
+      authorityState.observed_frontier,
     )
   ) {
     throw new TypeError("actor capability does not match accepted authority");
@@ -595,13 +669,13 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
   }
   const actorProof = signature(body.actor_proof, "actor proof");
   if (
-    !(await verifySignature({
+    (await verifySignature({
       publicKeyHex: enrollmentBody.actor_public_key,
       signatureHex: actorProof,
       message: encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
         enrollment_body_digest: enrollmentBodyDigest,
       }),
-    }))
+    })) !== true
   ) {
     throw new TypeError("actor capability proof signature is invalid");
   }
@@ -625,13 +699,13 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
     "authority signature",
   );
   if (
-    !(await verifySignature({
-      publicKeyHex: acceptedAuthority.authority_public_key,
+    (await verifySignature({
+      publicKeyHex: authorityState.authority_public_key,
       signatureHex: authoritySignature,
       message: encodeLibraryCoreSignatureInput("actor-capability-authority", {
         certificate_digest: certificateDigest,
       }),
-    }))
+    })) !== true
   ) {
     throw new TypeError("actor capability authority signature is invalid");
   }
@@ -642,10 +716,7 @@ export async function verifyLibraryCoreActorCapabilityCertificateV2(
   }) as unknown as LibraryCoreActorCapabilityCertificateV2;
   const result = Object.freeze({
     certificate: typedCertificate,
-    authority_state: Object.freeze({
-      ...acceptedAuthority,
-      observed_frontier: Object.freeze([...acceptedAuthority.observed_frontier]),
-    }),
+    authority_state: authorityState,
     actor_chain_genesis: digest(digestDependency, "actor-chain-genesis", {
       enrollment_certificate_digest: certificateDigest,
       actor_id: enrollmentBody.actor_id,
