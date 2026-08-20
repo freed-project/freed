@@ -22,7 +22,20 @@ transport, retired-writer review, restore coverage, source cleanup, cursor
 optimization, and bundle splitting are recorded in issues #1446 through #1453
 instead of delaying the first manually testable SQLite build.
 
-Freed Desktop now has a direct local SQLite cutover candidate at schema v11.
+The shared Google Drive adapter obtains mutable control, intent head, and
+result head revisions from the bounded strong Drive v2 JSON `etag` field. It
+samples that value around one Drive v3 media read and sends the exact token only
+through a Drive v2 media `PUT` with `If-Match`. A stale token returns `412` and
+triggers exact current readback. Immutable discovery, creation, media reads,
+multipart upload, and resumable upload remain on Drive v3. Freed Desktop and
+the PWA consume the same adapter without a new request or cadence change. The
+native route admits only the exact v2 file paths, methods, query fields,
+headers, strong token, and bounded body. An authenticated disposable
+appDataFolder probe confirmed a strong v2 JSON ETag, one successful update,
+stale same-token `412`, v3 byte readback, and cleanup. Installed Primary and PWA
+acceptance remains gated.
+
+Freed Desktop now has a direct local SQLite cutover candidate at schema v12.
 It imports the retained legacy Automerge library once, verifies the complete
 item count and database integrity, and then uses SQLite for ordinary startup,
 queries, mutations, search, export, diagnostics, sample management, and daily
@@ -38,7 +51,7 @@ the cutover and follower can be declared complete.
 
 A fresh SQLite Library signs
 `freed_library_core_native_sqlite_genesis_v1`. The certificate commits one
-opaque Library ID, the authority key, `library_core_v1`, schema v11,
+opaque Library ID, the authority key, `library_core_v1`, schema v12,
 `op_segments_v1`, `freed_logical_checkpoint_v1`, and an exact captured SQLite
 source manifest. Fresh establishment never fabricates an Automerge document or
 head.
@@ -52,6 +65,11 @@ anchor, Drive namespace, intents, results, and checkpoints unchanged. Exact
 replay returns the stored correction after response loss or restart. A changed
 correction, unrelated SQLite source lineage, missing persisted authority,
 multiple active local Libraries, or unavailable authority key fails closed.
+An already signed native genesis or historical correction that committed
+schema v11 remains valid after the journal migrates to schema v12. Its exact
+canonical certificate is preserved. Only schema v11 and v12 native
+certificates verify, and the active protocol receipt reports the migrated v12
+journal.
 
 Authority bootstrap reads the accepted journal state and any persisted cloud
 identity before deriving a fresh Library ID. The first local Desktop actor may
@@ -60,6 +78,29 @@ grants no operation admission and cannot enroll a second actor. Canonical
 operations, ordinary enrollment, and provider outbox work require a present
 matching writer-admission row. No authority path reads Automerge bytes or
 synchronizes SQLite, WAL, or SHM files.
+
+Schema v12 binds each admitted actor to one explicit native operation
+capability. Existing v1 Desktop and PWA actors receive a separately frozen
+14-operation `legacy_editor` policy for their exact epoch. The policy cannot
+grow when the canonical registry gains another operation. New scraper and
+agent actors require an authority-signed v2 certificate that binds the Library,
+epoch, actor identity and key, class, sorted operation set, explicit scope,
+issuance identity, and retirement identity. Scrapers receive capture only by
+default. Missing scope denies authority. Library-wide scope must be named
+explicitly. Bounded provider or source scope is recorded but denies all
+operations until a future envelope version carries a canonical scope binding.
+The native journal checks this capability before admitting remote operations.
+It reverifies each v2 canonical enrollment and requires exact equality between
+the signed immutable fields and the capability cache. The immediate commit
+transaction reloads and rechecks the capability before writing.
+This slice prebinds retirement identity and enforces an already verified
+retired state. The authority-signed production retirement transition remains
+future work, along with verified retirement propagation in checkpoint actor
+rows. The TypeScript constructor and verifier are test-only executable
+conformance machinery, with no production issuance caller. The PWA remains a
+v1-only enrollment importer. Headless activation must implement or promote a
+consumed production API and wire both consumers before any v2 actor is
+published into production sync.
 
 Gate A is a dormant census. A1 adds the package-internal closed legacy
 bootstrap record, journal, control, receipt, bounded current and historical
@@ -502,6 +543,9 @@ gate registry and proof requirements in
 - cutover, rollback, authority recovery, and concurrent-restore receipts;
 - recovery supersession for a consumed active or abandoned migration lifecycle;
 - duplicate and response-loss replay;
+- reusable native materializer ownership and a thin Freed Desktop crate
+  adapter, pinned by
+  [`native-materializer-binding.test.ts`](../packages/shared/src/library-core/native-materializer-binding.test.ts);
 - two-device offline convergence through authenticated branch-qualified
   manifests;
 - schema and database-plus-blob snapshot atomicity, including missing and

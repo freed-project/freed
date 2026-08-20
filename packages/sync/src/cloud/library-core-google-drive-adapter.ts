@@ -44,9 +44,12 @@ import type {
 
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
+const DRIVE_V2_FILES_URL = "https://www.googleapis.com/drive/v2/files";
+const DRIVE_V2_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v2/files";
 const PROTOCOL_PROPERTY = "library-core-v1";
 const MAX_ACCESS_TOKEN_BYTES = 16_384;
 const MAX_DRIVE_FILE_ID_BYTES = 1_024;
+const MAX_DRIVE_ETAG_BYTES = 1_024;
 const MAX_LIST_PAGES = 16;
 const MAX_DUPLICATE_IMMUTABLE_OBJECTS = 8;
 const MAX_CONTROL_DISCOVERY_CANDIDATES = 16;
@@ -205,6 +208,14 @@ function ownRecord(value: unknown, label: string): Record<string, unknown> {
     throw new TypeError(`${label} must be a plain record`);
   }
   return value as Record<string, unknown>;
+}
+
+function parseStrongDriveEtag(value: unknown, label: string): string {
+  assertBoundedText(value, label, MAX_DRIVE_ETAG_BYTES);
+  if (!/^"[\x21\x23-\x7e]+"$/u.test(value)) {
+    throw new TypeError(`${label} must be a bounded strong entity tag`);
+  }
+  return value;
 }
 
 function parseNonnegativeSize(value: unknown, label: string): number {
@@ -588,10 +599,10 @@ async function readDriveFileWithRevision(input: {
     attempt < MAX_CONSISTENT_MUTABLE_READ_ATTEMPTS;
     attempt += 1
   ) {
-    // Drive's media response does not reliably expose an ETag. The metadata
-    // response does. Read the metadata revision on both sides of the media
-    // body so the returned bytes and compare-and-swap token describe one
-    // stable file generation.
+    // Drive's v3 media and metadata responses do not reliably expose an ETag.
+    // Drive v2 exposes the same strong revision as a bounded JSON field. Read
+    // that revision on both sides of the v3 media body so the returned bytes
+    // and compare-and-swap token describe one stable file generation.
     const revisionBefore = await readDriveFileRevision(input);
     const bytes = await readDriveFileBytes(input);
     const revisionAfter = await readDriveFileRevision(input);
@@ -610,19 +621,15 @@ async function readDriveFileRevision(input: {
   readonly label: string;
 }): Promise<string> {
   const response = await input.googleFetch(
-    `${DRIVE_FILES_URL}/${encodeURIComponent(input.fileId)}?fields=id`,
+    `${DRIVE_V2_FILES_URL}/${encodeURIComponent(
+      input.fileId,
+    )}?fields=id,etag`,
     {
       headers: authorizationHeaders(input.accessToken),
       signal: input.signal,
     },
   );
   if (!response.ok) throw await responseError(input.label, response);
-  const revision = response.headers.get("ETag");
-  assertBoundedText(
-    revision,
-    `${input.label} metadata ETag`,
-    MAX_DRIVE_FILE_ID_BYTES,
-  );
   const responseBytes = await readBoundedResponseBytes(
     response,
     MAX_DRIVE_JSON_BYTES,
@@ -636,7 +643,10 @@ async function readDriveFileRevision(input: {
   if (metadata.id !== input.fileId) {
     throw new Error(`${input.label} returned the wrong file identity`);
   }
-  return revision;
+  return parseStrongDriveEtag(
+    metadata.etag,
+    `${input.label} metadata ETag`,
+  );
 }
 
 async function readDriveFileBytes(input: {
@@ -1353,6 +1363,7 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
     const head = decodeIntentHead(stored.bytes);
     if (
       head.library_id !== options.libraryId ||
+      head.epoch_id !== options.epochId ||
       head.actor_id !== options.actorId
     ) {
       throw new Error("Library Core Drive intent-head identity is incorrect");
@@ -1367,10 +1378,9 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
       readonly bytes: Uint8Array;
       readonly expectedRevision: string;
     }) {
-      assertBoundedText(
+      const expectedRevision = parseStrongDriveEtag(
         input.expectedRevision,
         "expected Drive intent-head revision",
-        MAX_DRIVE_FILE_ID_BYTES,
       );
       if (
         !(input.bytes instanceof Uint8Array) ||
@@ -1384,20 +1394,21 @@ export function createGoogleDriveLibraryCoreIntentAdapterV1(
       const proposed = decodeIntentHead(input.bytes);
       if (
         proposed.library_id !== options.libraryId ||
+        proposed.epoch_id !== options.epochId ||
         proposed.actor_id !== options.actorId
       ) {
         throw new TypeError("proposed intent head has the wrong identity");
       }
       const response = await googleFetch(
-        `${DRIVE_UPLOAD_URL}/${encodeURIComponent(
+        `${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(
           options.intentHeadFileId,
-        )}?uploadType=media`,
+        )}?uploadType=media&fields=id,etag`,
         {
-          method: "PATCH",
+          method: "PUT",
           headers: {
             ...authorizationHeaders(options.accessToken),
             "Content-Type": "application/json; charset=UTF-8",
-            "If-Match": input.expectedRevision,
+            "If-Match": expectedRevision,
           },
           body: exactArrayBuffer(input.bytes),
           signal: options.signal,
@@ -1549,7 +1560,10 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       readonly bytes: Uint8Array;
       readonly expectedRevision: string;
     }) {
-      assertBoundedText(input.expectedRevision, "expected Drive result-head revision", MAX_DRIVE_FILE_ID_BYTES);
+      const expectedRevision = parseStrongDriveEtag(
+        input.expectedRevision,
+        "expected Drive result-head revision",
+      );
       if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_RESULT_HEAD_BYTES) {
         throw new RangeError(`result-head bytes must contain 1 to ${MAX_RESULT_HEAD_BYTES.toLocaleString()} bytes`);
       }
@@ -1561,12 +1575,12 @@ export function createGoogleDriveLibraryCoreResultAdapterV1(
       ) {
         throw new TypeError("proposed result head has the wrong identity");
       }
-      const response = await googleFetch(`${DRIVE_UPLOAD_URL}/${encodeURIComponent(options.resultHeadFileId)}?uploadType=media`, {
-        method: "PATCH",
+      const response = await googleFetch(`${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(options.resultHeadFileId)}?uploadType=media&fields=id,etag`, {
+        method: "PUT",
         headers: {
           ...authorizationHeaders(options.accessToken),
           "Content-Type": "application/json; charset=UTF-8",
-          "If-Match": input.expectedRevision,
+          "If-Match": expectedRevision,
         },
         body: exactArrayBuffer(input.bytes),
         signal: options.signal,
@@ -2160,11 +2174,10 @@ export function createGoogleDriveLibraryCoreMediaBlobAdapterV1(
 }
 
 /**
- * Create the dormant Google Drive adapter for immutable Library Core objects.
+ * Create the shared Google Drive adapter for Library Core objects.
  *
- * This adapter has no timer, poller, product caller, or provider action path.
- * Automerge remains replication authority until the replacement protocol is
- * separately activated.
+ * The adapter owns no timer, scheduler, or OAuth acquisition. Freed Desktop
+ * and the PWA consume it through their platform fetch and runtime boundaries.
  */
 export function createGoogleDriveLibraryCoreAdapterV1(
   options: GoogleDriveLibraryCoreAdapterOptionsV1,
@@ -2411,10 +2424,9 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       readonly expectedRevision: string | null;
       readonly bytes: Uint8Array;
     }): Promise<LibraryCoreControlCompareAndSwapResultV1> {
-      assertBoundedText(
+      const expectedRevision = parseStrongDriveEtag(
         input.expectedRevision,
         "expected Drive control revision",
-        MAX_DRIVE_FILE_ID_BYTES,
       );
       if (
         !ArrayBuffer.isView(input.bytes) ||
@@ -2432,15 +2444,15 @@ export function createGoogleDriveLibraryCoreAdapterV1(
         );
       }
       const response = await googleFetch(
-        `${DRIVE_UPLOAD_URL}/${encodeURIComponent(
+        `${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(
           options.controlFileId,
-        )}?uploadType=media`,
+        )}?uploadType=media&fields=id,etag`,
         {
-          method: "PATCH",
+          method: "PUT",
           headers: {
             ...authorizationHeaders(options.accessToken),
             "Content-Type": "application/json; charset=UTF-8",
-            "If-Match": input.expectedRevision,
+            "If-Match": expectedRevision,
           },
           body: exactArrayBuffer(input.bytes),
           signal: options.signal,

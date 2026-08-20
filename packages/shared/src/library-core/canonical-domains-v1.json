@@ -6,6 +6,10 @@
     "actor-id",
     "actor-enrollment-body",
     "actor-enrollment-certificate",
+    "actor-capability-issuance",
+    "actor-capability-retirement",
+    "actor-capability-body",
+    "actor-capability-certificate",
     "epoch-transition-certificate",
     "operation-payload",
     "operation-signing-body",
@@ -35,6 +39,7 @@
     "operation-envelope",
     "actor-enrollment-proof",
     "actor-enrollment-authority",
+    "actor-capability-authority",
     "epoch-transition-certificate",
     "authority-key-possession",
     "legacy-source-admission-claim-key"

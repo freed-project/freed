@@ -1,4 +1,4 @@
-//! Durable state for a non-authoritative editable Freed Desktop follower.
+//! Durable state for a non-authoritative editable Library follower.
 //!
 //! These rows are deliberately separate from the active authority epoch and
 //! cloud-writer admission. Installing an authenticated checkpoint anchor can
@@ -23,159 +23,159 @@ fn invalid(field: &'static str) -> JournalError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct VerifiedFollowerCheckpointActor {
-    pub(crate) actor_id: String,
-    pub(crate) accepted_sequence: i64,
-    pub(crate) accepted_operation_id: Option<String>,
-    pub(crate) accepted_chain_digest: String,
-    pub(crate) enrollment_certificate_digest: String,
+pub struct VerifiedFollowerCheckpointActor {
+    pub actor_id: String,
+    pub accepted_sequence: i64,
+    pub accepted_operation_id: Option<String>,
+    pub accepted_chain_digest: String,
+    pub enrollment_certificate_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct VerifiedFollowerAnchor {
-    pub(crate) authority: AcceptedAuthorityState,
-    pub(crate) manifest_object_key: String,
-    pub(crate) manifest_transport_object_id: String,
-    pub(crate) manifest_content_digest: String,
-    pub(crate) generation: i64,
-    pub(crate) remote_ingest_sequence: i64,
-    pub(crate) remote_materialized_digest: String,
-    pub(crate) writer_id: String,
-    pub(crate) control_revision: String,
-    pub(crate) checkpoint_actor: Option<VerifiedFollowerCheckpointActor>,
-    pub(crate) installed_at_ms: i64,
+pub struct VerifiedFollowerAnchor {
+    pub authority: AcceptedAuthorityState,
+    pub manifest_object_key: String,
+    pub manifest_transport_object_id: String,
+    pub manifest_content_digest: String,
+    pub generation: i64,
+    pub remote_ingest_sequence: i64,
+    pub remote_materialized_digest: String,
+    pub writer_id: String,
+    pub control_revision: String,
+    pub checkpoint_actor: Option<VerifiedFollowerCheckpointActor>,
+    pub installed_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct StoredFollowerActorRequest {
-    pub(crate) library_id: String,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) actor_public_key: String,
-    pub(crate) enrollment_request_digest: String,
-    pub(crate) canonical_enrollment_request_json: String,
-    pub(crate) created_at_ms: i64,
+pub struct StoredFollowerActorRequest {
+    pub library_id: String,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub actor_public_key: String,
+    pub enrollment_request_digest: String,
+    pub canonical_enrollment_request_json: String,
+    pub created_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct StoredFollowerActorEnrollment {
-    pub(crate) library_id: String,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) actor_public_key: String,
-    pub(crate) enrollment_certificate_digest: String,
-    pub(crate) canonical_enrollment_certificate_json: String,
-    pub(crate) actor_chain_genesis: String,
-    pub(crate) enrolled_at_ms: i64,
+pub struct StoredFollowerActorEnrollment {
+    pub library_id: String,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub actor_public_key: String,
+    pub enrollment_certificate_digest: String,
+    pub canonical_enrollment_certificate_json: String,
+    pub actor_chain_genesis: String,
+    pub enrolled_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerIntentEnqueueReceipt {
-    pub(crate) transaction_id: String,
-    pub(crate) first_intent_sequence: i64,
-    pub(crate) last_intent_sequence: i64,
-    pub(crate) operation_count: i64,
-    pub(crate) status: &'static str,
+pub struct FollowerIntentEnqueueReceipt {
+    pub transaction_id: String,
+    pub first_intent_sequence: i64,
+    pub last_intent_sequence: i64,
+    pub operation_count: i64,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerIntentOutboxEntry {
-    pub(crate) operation_id: String,
-    pub(crate) intent_sequence: i64,
-    pub(crate) canonical_envelope_json: String,
+pub struct FollowerIntentOutboxEntry {
+    pub operation_id: String,
+    pub intent_sequence: i64,
+    pub canonical_envelope_json: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerIntentOutboxCandidate {
-    pub(crate) library_id: String,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) schema_version: i64,
-    pub(crate) first_intent_sequence: i64,
-    pub(crate) last_intent_sequence: i64,
-    pub(crate) previous_segment_digest: Option<String>,
-    pub(crate) canonical_envelope_bytes: i64,
-    pub(crate) transaction_count: i64,
-    pub(crate) entries: Vec<FollowerIntentOutboxEntry>,
+pub struct FollowerIntentOutboxCandidate {
+    pub library_id: String,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub schema_version: i64,
+    pub first_intent_sequence: i64,
+    pub last_intent_sequence: i64,
+    pub previous_segment_digest: Option<String>,
+    pub canonical_envelope_bytes: i64,
+    pub transaction_count: i64,
+    pub entries: Vec<FollowerIntentOutboxEntry>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct VerifiedFollowerIntentPublication {
-    pub(crate) library_id: String,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) first_intent_sequence: i64,
-    pub(crate) last_intent_sequence: i64,
-    pub(crate) previous_segment_digest: Option<String>,
-    pub(crate) published_segment_digest: String,
+pub struct VerifiedFollowerIntentPublication {
+    pub library_id: String,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub first_intent_sequence: i64,
+    pub last_intent_sequence: i64,
+    pub previous_segment_digest: Option<String>,
+    pub published_segment_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerIntentPublicationReceipt {
-    pub(crate) first_intent_sequence: i64,
-    pub(crate) last_intent_sequence: i64,
-    pub(crate) operation_count: i64,
-    pub(crate) published_segment_digest: String,
-    pub(crate) status: &'static str,
+pub struct FollowerIntentPublicationReceipt {
+    pub first_intent_sequence: i64,
+    pub last_intent_sequence: i64,
+    pub operation_count: i64,
+    pub published_segment_digest: String,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct VerifiedFollowerIntentResult {
-    pub(crate) result_operation_id: String,
-    pub(crate) result_sequence: i64,
-    pub(crate) intent_operation_id: String,
-    pub(crate) intent_sequence: i64,
-    pub(crate) status: String,
-    pub(crate) provider_receipt_digest: Option<String>,
+pub struct VerifiedFollowerIntentResult {
+    pub result_operation_id: String,
+    pub result_sequence: i64,
+    pub intent_operation_id: String,
+    pub intent_sequence: i64,
+    pub status: String,
+    pub provider_receipt_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct VerifiedFollowerResultSegment {
-    pub(crate) library_id: String,
-    pub(crate) epoch_id: String,
-    pub(crate) actor_id: String,
-    pub(crate) first_result_sequence: i64,
-    pub(crate) last_result_sequence: i64,
-    pub(crate) previous_segment_digest: Option<String>,
-    pub(crate) segment_digest: String,
-    pub(crate) entries: Vec<VerifiedFollowerIntentResult>,
-    pub(crate) imported_at_ms: i64,
+pub struct VerifiedFollowerResultSegment {
+    pub library_id: String,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub first_result_sequence: i64,
+    pub last_result_sequence: i64,
+    pub previous_segment_digest: Option<String>,
+    pub segment_digest: String,
+    pub entries: Vec<VerifiedFollowerIntentResult>,
+    pub imported_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerResultImportCursor {
-    pub(crate) next_result_sequence: i64,
-    pub(crate) latest_segment_digest: Option<String>,
+pub struct FollowerResultImportCursor {
+    pub next_result_sequence: i64,
+    pub latest_segment_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerResultImportReceipt {
-    pub(crate) first_result_sequence: i64,
-    pub(crate) last_result_sequence: i64,
-    pub(crate) result_count: i64,
-    pub(crate) segment_digest: String,
-    pub(crate) status: &'static str,
+pub struct FollowerResultImportReceipt {
+    pub first_result_sequence: i64,
+    pub last_result_sequence: i64,
+    pub result_count: i64,
+    pub segment_digest: String,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerRuntimeStatus {
-    pub(crate) state: &'static str,
-    pub(crate) library_id: Option<String>,
-    pub(crate) epoch_id: Option<String>,
-    pub(crate) actor_id: Option<String>,
-    pub(crate) checkpoint_generation: Option<i64>,
-    pub(crate) remote_ingest_sequence: Option<i64>,
-    pub(crate) pending_intent_count: i64,
-    pub(crate) published_intent_count: i64,
-    pub(crate) imported_result_count: i64,
+pub struct FollowerRuntimeStatus {
+    pub state: &'static str,
+    pub library_id: Option<String>,
+    pub epoch_id: Option<String>,
+    pub actor_id: Option<String>,
+    pub checkpoint_generation: Option<i64>,
+    pub remote_ingest_sequence: Option<i64>,
+    pub pending_intent_count: i64,
+    pub published_intent_count: i64,
+    pub imported_result_count: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct FollowerOverlayReplayReceipt {
-    pub(crate) transaction_count: i64,
-    pub(crate) operation_count: i64,
-    pub(crate) materialized_row_count: i64,
-    pub(crate) revision_advanced: bool,
+pub struct FollowerOverlayReplayReceipt {
+    pub transaction_count: i64,
+    pub operation_count: i64,
+    pub materialized_row_count: i64,
+    pub revision_advanced: bool,
 }
 
 fn canonical_frontier(authority: &AcceptedAuthorityState) -> JournalResult<String> {
@@ -339,7 +339,7 @@ fn checkpoint_actor_from_storage(
 }
 
 impl LibraryCoreJournal {
-    pub(crate) fn follower_runtime_status(&self) -> JournalResult<FollowerRuntimeStatus> {
+    pub fn follower_runtime_status(&self) -> JournalResult<FollowerRuntimeStatus> {
         let Some(anchor) = self.follower_anchor()? else {
             return Ok(FollowerRuntimeStatus {
                 state: "awaiting_checkpoint",
@@ -435,7 +435,7 @@ impl LibraryCoreJournal {
         ))
     }
 
-    pub(crate) fn follower_anchor(&self) -> JournalResult<Option<VerifiedFollowerAnchor>> {
+    pub fn follower_anchor(&self) -> JournalResult<Option<VerifiedFollowerAnchor>> {
         let stored = self
             .connection
             .query_row(
@@ -512,7 +512,7 @@ impl LibraryCoreJournal {
         Ok(Some(anchor))
     }
 
-    pub(crate) fn follower_actor_request(
+    pub fn follower_actor_request(
         &self,
         library_id: &str,
         epoch_id: &str,
@@ -541,7 +541,7 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
-    pub(crate) fn follower_actor_enrollment(
+    pub fn follower_actor_enrollment(
         &self,
         library_id: &str,
         epoch_id: &str,
@@ -574,7 +574,7 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
-    pub(super) fn follower_actor_state(
+    pub(crate) fn follower_actor_state(
         &self,
         library_id: &str,
         epoch_id: &str,
@@ -589,7 +589,8 @@ impl LibraryCoreJournal {
                         actor.enrollmentCertificateDigest,
                         actor.canonicalEnrollmentCertificateJson,
                         actor.actorChainGenesis, intent.nextIntentSequence,
-                        intent.latestOperationId, intent.latestActorChainDigest
+                        intent.latestOperationId, intent.latestActorChainDigest,
+                        actor.enrolledAtMs
                  FROM library_core_follower_actor AS actor
                  JOIN library_core_follower_anchor AS anchor
                    ON anchor.libraryId = actor.libraryId
@@ -600,7 +601,9 @@ impl LibraryCoreJournal {
                   AND intent.actorId = actor.actorId
                  WHERE actor.libraryId = ?1 AND actor.epochId = ?2
                    AND actor.actorId = ?3
-                   AND actor.enrollmentCertificateDigest IS NOT NULL;",
+                   AND actor.enrollmentCertificateDigest IS NOT NULL
+                   AND json_type(actor.canonicalEnrollmentCertificateJson,
+                                 '$.certificate_body.actor_capability_body') IS NULL;",
                 params![library_id, epoch_id, actor_id],
                 |row| {
                     Ok(super::ActorState {
@@ -616,6 +619,10 @@ impl LibraryCoreJournal {
                         next_sequence: row.get(9)?,
                         previous_operation_id: row.get(10)?,
                         previous_chain_digest: row.get(11)?,
+                        capability: super::actor_capability::ActorCapabilityState::legacy_editor(
+                            row.get(6)?,
+                            row.get(12)?,
+                        ),
                     })
                 },
             )
@@ -623,7 +630,7 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
-    pub(crate) fn active_follower_actor_state(&self) -> JournalResult<Option<super::ActorState>> {
+    pub fn active_follower_actor_state(&self) -> JournalResult<Option<super::ActorState>> {
         let Some(anchor) = self.follower_anchor()? else {
             return Ok(None);
         };
@@ -647,7 +654,7 @@ impl LibraryCoreJournal {
         )
     }
 
-    pub(crate) fn store_follower_actor_request(
+    pub fn store_follower_actor_request(
         &mut self,
         request: &StoredFollowerActorRequest,
     ) -> JournalResult<StoredFollowerActorRequest> {
@@ -1058,7 +1065,7 @@ impl LibraryCoreJournal {
         Ok(receipt("enqueued"))
     }
 
-    pub(crate) fn replay_pending_follower_overlay(
+    pub fn replay_pending_follower_overlay(
         &mut self,
     ) -> JournalResult<FollowerOverlayReplayReceipt> {
         self.replay_pending_follower_overlay_with(|journal, envelopes| {
@@ -1266,7 +1273,7 @@ impl LibraryCoreJournal {
         })
     }
 
-    pub(crate) fn follower_intent_outbox_candidate(
+    pub fn follower_intent_outbox_candidate(
         &self,
         maximum_operations: usize,
         maximum_canonical_envelope_bytes: usize,
@@ -1424,7 +1431,7 @@ impl LibraryCoreJournal {
         }))
     }
 
-    pub(crate) fn record_follower_intent_publication(
+    pub fn record_follower_intent_publication(
         &mut self,
         publication: &VerifiedFollowerIntentPublication,
     ) -> JournalResult<FollowerIntentPublicationReceipt> {
@@ -1582,7 +1589,7 @@ impl LibraryCoreJournal {
         Ok(receipt("recorded"))
     }
 
-    pub(crate) fn follower_result_import_cursor(
+    pub fn follower_result_import_cursor(
         &self,
         library_id: &str,
         epoch_id: &str,
@@ -1605,7 +1612,7 @@ impl LibraryCoreJournal {
             .map_err(Into::into)
     }
 
-    pub(crate) fn append_follower_result_segment(
+    pub fn append_follower_result_segment(
         &mut self,
         segment: &VerifiedFollowerResultSegment,
     ) -> JournalResult<FollowerResultImportReceipt> {
@@ -1808,7 +1815,7 @@ impl LibraryCoreJournal {
         Ok(anchor.clone())
     }
 
-    pub(crate) fn install_follower_anchor_in_transaction(
+    pub fn install_follower_anchor_in_transaction(
         transaction: &Transaction<'_>,
         anchor: &VerifiedFollowerAnchor,
     ) -> JournalResult<()> {
@@ -2184,6 +2191,10 @@ mod tests {
             epoch: 3,
             epoch_id: "b".repeat(64),
             actor_id: "6".repeat(64),
+            actor_capability: super::super::actor_capability::ActorCapabilityState::legacy_editor(
+                "5".repeat(64),
+                2_000,
+            ),
             canonical_envelope_bytes: 4,
             members: vec![
                 VerifiedOperation {
