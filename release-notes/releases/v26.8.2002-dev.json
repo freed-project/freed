@@ -5,55 +5,46 @@
   "dayKey": "26.8.20",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-21T00:41:49.374Z",
+  "generatedAt": "2026-08-21T01:38:10.020Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
-    "previousPublishedTag": "v26.8.1406-dev",
+    "previousPublishedTag": "v26.8.2001-dev",
     "previousPublishedDayTag": "v26.8.1406-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "f95f0194c33c31c1f3c1b31e60804bea330528b2",
+    "productCommitSha": "ddda14c99c44eb149f738246b8f142859e9175c4",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
       "range": {
         "channel": "dev",
-        "previousPublishedTag": "v26.8.1406-dev",
+        "previousPublishedTag": "v26.8.2001-dev",
         "startMode": "previous_product_commit",
-        "fromExclusiveCommitSha": "1dcf03d4baa9b4d58c402895863a57a6b5ae4295",
-        "toInclusiveProductCommitSha": "f95f0194c33c31c1f3c1b31e60804bea330528b2"
+        "fromExclusiveCommitSha": "a1dfe65d7afde00c533bbc2700ea653df53bbb2d",
+        "toInclusiveProductCommitSha": "ddda14c99c44eb149f738246b8f142859e9175c4"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
         "previousPresent": true,
-        "previousDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94",
+        "previousDigest": "sha256:6bf7d9b047d6cbbbe70687134136b148f125e934ba92f584f47180238d586955",
         "currentDigest": "sha256:6bf7d9b047d6cbbbe70687134136b148f125e934ba92f584f47180238d586955"
       },
-      "transitions": [
-        {
-          "activationId": "desktop-local-only-primary-authority-v1",
-          "gate": "F",
-          "kind": "library_core_writer_activation",
-          "rollbackTrigger": "Restore the previous Freed Desktop build before accepting any local-only mutation if provider-free startup cannot establish and read back the signed authority transition, enrolled actor, and local writer admission. After the first admitted mutation, retain the SQLite library and use roll-forward recovery because the previous build cannot safely write the new authority state.",
-          "receiptExpectations": [
-            "authority_transition_certificate",
-            "roll_forward_recovery_receipt"
-          ]
-        }
-      ],
-      "inspectionDigest": "sha256:2e9348a78382dd26516899ec4126ccf4f6840ebd497580a8de6a2a07288a43f3",
+      "transitions": [],
+      "inspectionDigest": "sha256:261a85bcfb84ef0eeb8ab94165c674bad9c5de048528eba0e68afb4e76cd4dbe",
       "decision": {
-        "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-2002-dev#sha256:9cf620adca93a6d1e82de0c61970e523b4f37bce421328b427dc22ed9f5c4269",
-        "approvedInspectionDigest": "sha256:2e9348a78382dd26516899ec4126ccf4f6840ebd497580a8de6a2a07288a43f3",
-        "approvedReleaseArtifactDigest": "sha256:be8d3d0a15744d4ce234db999a85e0e4675e83ccbaea4df398f864915b51530c"
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
       }
     },
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
+      "v26.8.2001-dev",
       "v26.8.2002-dev"
     ],
     "relatedBuildTags": [
+      "v26.8.2001-dev",
       "v26.8.2002-dev"
     ],
     "prNumbers": [
@@ -96,9 +87,11 @@
       1606,
       1610,
       1612,
-      1613
+      1613,
+      1614
     ],
     "commitSubjects": [
+      "chore: prepare v26.8.2002-dev (#1614)",
       "feat: generate SQLite Library contracts (#1613)",
       "chore: prepare v26.8.2001-dev (#1612)",
       "chore: prune vacuous blocking tests (#1610)",
@@ -148,9 +141,10 @@
     "features": [
       "Generate SQLite Library contracts",
       "Descriptor-bound Library sidecar",
-      "Enforce PWA actor capabilities"
+      "Fail-closed Library service supervisor"
     ],
     "fixes": [
+      "Enforce PWA actor capabilities",
       "Support local-only Library authority",
       "Bound Drive checkpoint pages by decoded bytes",
       "Defer checkpoint refresh until the current render settles",
@@ -163,7 +157,8 @@
       "Show honest Drive sync activity",
       "Read immutable Drive objects without browser ETags",
       "Prevent Drive sync lifecycle stalls",
-      "Stabilize Drive Library Core bootstrap"
+      "Stabilize Drive Library Core bootstrap",
+      "Route CI away from stalled Ubuntu mirrors"
     ],
     "followUps": [
       "Publish normalized typed Library checkpoints",
@@ -171,5 +166,5 @@
       "Retire remaining compatibility shell reads"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2002-dev\n\nSQLite Library contracts, a provider-free primary Library, and bounded Drive checkpoints\n\n### Features\n\n- Generate SQLite Library contracts\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n\n### Fixes\n\n- Support local-only Library authority\n- Bound Drive checkpoint pages by decoded bytes\n- Defer checkpoint refresh until the current render settles\n- Preserve PWA intents across checkpoint activation\n- Bound Library Core search work and result size\n- Repair Drive mutable revision fencing\n- Enforce one Library Core process per data root\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n- Stabilize Drive Library Core bootstrap\n\n### Follow-ups\n\n- Publish normalized typed Library checkpoints\n- Import Library checkpoints into SQLite WASM over OPFS\n- Retire remaining compatibility shell reads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2002-dev\n\nSQLite Library contracts, a provider-free primary Library, and bounded Drive checkpoints\n\n### Features\n\n- Generate SQLite Library contracts\n- Descriptor-bound Library sidecar\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Enforce PWA actor capabilities\n- Support local-only Library authority\n- Bound Drive checkpoint pages by decoded bytes\n- Defer checkpoint refresh until the current render settles\n- Preserve PWA intents across checkpoint activation\n- Bound Library Core search work and result size\n- Repair Drive mutable revision fencing\n- Enforce one Library Core process per data root\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n- Stabilize Drive Library Core bootstrap\n- Route CI away from stalled Ubuntu mirrors\n\n### Follow-ups\n\n- Publish normalized typed Library checkpoints\n- Import Library checkpoints into SQLite WASM over OPFS\n- Retire remaining compatibility shell reads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
