@@ -22,7 +22,7 @@ Last updated: 2026-08-21
 | Mutation registry | Partial foundation | Existing native and shared operation contracts cover several product writes | Every durable product write is registered, typed, atomic, capability-scoped, and consumed by a real entry point |
 | Query registry | Partial foundation | Several Freed Desktop surfaces already have bounded SQLite readers | Every Freed Desktop and PWA surface uses generated named SQL with stable keyset cursors and fixed budgets |
 | Normalized synchronization | Native round trip implemented | The v2 registry has stable registry-plus-primary-key identity, closed root and child payloads, exact binary64 fractions, bounded native export, idempotent page staging, full checkpoint digest verification, transactional activation, and lossless chunk verification. Native round trips cover all 23 record kinds with no shell record | Add the equivalent browser worker round trip, followed by operation, intent, result, and manifest integration |
-| PWA SQLite | Not started | Browser checkpoint, query, and intent behavior provides semantic source material | Official SQLite WebAssembly over OPFS passes iPhone durability, recovery, query, mutation, and synchronization tests |
+| PWA SQLite | In progress | Official SQLite WebAssembly installs the generated schema through one bounded worker over `opfs-sahpool`, persists and verifies exact contract identity, and exposes no arbitrary SQL API | OPFS query, mutation, checkpoint, recovery, and selective-content paths replace every IndexedDB Library path and pass physical iPhone durability tests |
 | Selective content plane | Design complete | Descriptor, chunk, range, hydration, and cache policies are specified | Desktop and PWA prove metadata-only, stream, partial-cache, full-cache, pinned-offline, and excluded modes |
 | Direct migration and cutover | Not started | Source census and migration contracts exist | One external-memory migration writes the final schema and activates one SQLite-only storage epoch |
 | Runtime deletion | Not started | Deletion registry is documented | Automerge, shells, shadow stores, IndexedDB Library rows, dual paths, and fallback flags are absent from runtime bundles and callers |
@@ -174,7 +174,10 @@ hours.
 
 ### 6. PWA SQLite and editable follower behavior
 
-Run official SQLite WebAssembly in one worker and persist the Library in OPFS.
+Complete the official SQLite WebAssembly worker and persist the whole Library in
+OPFS. The engine and exact schema identity are implemented. Named queries,
+mutations, normalized checkpoint activation, recovery, and the product cutover
+remain in progress.
 Use the generated schema, SQL, result DTOs, mutations, codecs, and vectors.
 
 Store canonical replica rows, indexes, search, intent outbox, result receipts,

@@ -1,5 +1,13 @@
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS library_storage_meta (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  contract_version INTEGER NOT NULL,
+  schema_version INTEGER NOT NULL,
+  protocol_version INTEGER NOT NULL,
+  schema_sha256 TEXT NOT NULL CHECK (length(schema_sha256) = 64)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_meta (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   library_id TEXT NOT NULL CHECK (length(library_id) BETWEEN 1 AND 255),

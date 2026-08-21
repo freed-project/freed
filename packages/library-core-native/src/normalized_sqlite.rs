@@ -5,7 +5,8 @@ use crate::normalized_checkpoint::{
 };
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
-    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SQL, SQLITE_SCHEMA_VERSION,
+    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL,
+    SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -108,6 +109,22 @@ pub struct NormalizedCheckpointStageStatusV2 {
 
 pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), NormalizedSqliteError> {
     connection.execute_batch(NORMALIZED_SCHEMA_SQL)?;
+    connection.execute(
+        "INSERT INTO library_storage_meta
+         (singleton_id, contract_version, schema_version, protocol_version, schema_sha256)
+         VALUES (1, ?1, ?2, ?3, ?4)
+         ON CONFLICT(singleton_id) DO UPDATE SET
+           contract_version = excluded.contract_version,
+           schema_version = excluded.schema_version,
+           protocol_version = excluded.protocol_version,
+           schema_sha256 = excluded.schema_sha256;",
+        params![
+            SQLITE_CONTRACT_VERSION,
+            SQLITE_SCHEMA_VERSION,
+            SQLITE_PROTOCOL_VERSION,
+            NORMALIZED_SCHEMA_SHA256,
+        ],
+    )?;
     connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
     Ok(())
 }
@@ -556,6 +573,23 @@ mod tests {
         assert!(!lowered.contains("payloadjson"));
         assert!(!lowered.contains("item_json"));
         assert!(!lowered.contains("docstate"));
+        let identity: (u32, u32, u32, String) = connection
+            .query_row(
+                "SELECT contract_version, schema_version, protocol_version, schema_sha256
+                 FROM library_storage_meta WHERE singleton_id = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("storage identity");
+        assert_eq!(
+            identity,
+            (
+                SQLITE_CONTRACT_VERSION,
+                SQLITE_SCHEMA_VERSION,
+                SQLITE_PROTOCOL_VERSION,
+                NORMALIZED_SCHEMA_SHA256.into(),
+            )
+        );
     }
 
     #[test]

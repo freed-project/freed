@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the product shell and signed-intent foundations exist; SQLite WebAssembly, OPFS persistence, bounded query parity, and IndexedDB Library deletion remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, and single-worker OPFS runtime are implemented; product query cutover, checkpoint activation, physical iPhone proof, and IndexedDB Library deletion remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -20,8 +20,12 @@
       for both browser TypeScript and native Rust from the shared contract.
 - [ ] Prove the iOS 17 durability floor through
       physical iPhone storage, suspension, recovery, quota, and playback tests.
-- [ ] Run official SQLite WebAssembly in one SharedWorker with a dedicated
-      worker recovery route, one connection generation, and one Library lock.
+- [x] Run official SQLite WebAssembly through one dedicated Library worker over
+      the high-performance `opfs-sahpool` VFS, with one bounded protocol, one
+      connection generation, one cross-window Library lock, exact schema
+      identity verification, and no arbitrary SQL method exposed to React.
+- [ ] Add the explicit recovery route and complete physical OPFS lifecycle
+      verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,
       and sparse optimistic overlay in OPFS-backed SQLite.
 - [ ] Import normalized typed checkpoints into a verified staging database and
