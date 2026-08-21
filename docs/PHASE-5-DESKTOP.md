@@ -61,6 +61,10 @@
         Saved and archived share one deterministic clock and always clear the
         opposing state. Like state uses an independent clock and clears its
         obsolete provider receipt. No path performs provider traffic.
+  - [x] The dormant FeedItem removal path now atomically writes a typed
+        convergent tombstone and deletes the normalized root through generated
+        SQL. Owned child rows cascade, while stale removals remain journaled
+        without replacing the winning tombstone.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

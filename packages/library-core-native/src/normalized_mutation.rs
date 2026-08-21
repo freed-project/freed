@@ -301,7 +301,7 @@ fn materialize_read_assignment(
             "normalized read mutation target does not exist",
         ))?;
     let current_clock = transaction
-        .query_row(program.current_clock_sql, [&member.entity_id], |row| {
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })
         .optional()?;
@@ -333,7 +333,7 @@ fn materialize_read_assignment(
             ));
         }
         transaction.execute(
-            program.field_clock_sql,
+            program.clock_write_sql,
             params![
                 member.entity_id,
                 verified.actor_id,
@@ -365,7 +365,7 @@ fn materialize_boolean_assignment(
             "normalized assignment payload is missing",
         ))?;
     let current_clock = transaction
-        .query_row(program.current_clock_sql, [&member.entity_id], |row| {
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })
         .optional()?;
@@ -389,13 +389,50 @@ fn materialize_boolean_assignment(
             ));
         }
         transaction.execute(
-            program.field_clock_sql,
+            program.clock_write_sql,
             params![
                 member.entity_id,
                 verified.actor_id,
                 member.actor_sequence,
                 member.operation_id,
                 assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn materialize_remove(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let removed_at = member
+        .removed_at_ms
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized removal payload is missing",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        removed_at > clock.0
+            || (removed_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        transaction.execute(program.materialize_sql, [&member.entity_id])?;
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                removed_at,
             ],
         )?;
     }
@@ -420,6 +457,7 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "remove" => materialize_remove(transaction, verified, member_index, program),
         _ => Err(NormalizedSqliteError::InvalidRequest(
             "normalized mutation payload kind is not registered",
         )),
@@ -1051,6 +1089,88 @@ mod tests {
                 })
                 .expect("journaled transactions"),
             4
+        );
+    }
+
+    #[test]
+    fn signed_feed_item_removal_cascades_children_and_keeps_the_winning_tombstone() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "INSERT INTO library_feed_item_tags (global_id, tag)
+                   VALUES ('rss:item:1', 'delete-me');
+                 INSERT INTO library_feed_item_media
+                   (global_id, ordinal, source_url, media_type)
+                   VALUES ('rss:item:1', 0, 'https://example.com/media', 'image');",
+            )
+            .expect("children");
+
+        let removal = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:remove:newer",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_100)],
+            "feed_item_remove",
+        );
+        let removal_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &removal, 2_000)
+                .expect("remove");
+        let stale_removal = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:remove:older",
+            2,
+            Some(&removal_receipt.committed_operation_id),
+            &removal_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_000)],
+            "feed_item_remove",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &stale_removal, 2_100)
+            .expect("journal stale removal");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("item count"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT
+                       (SELECT count(*) FROM library_feed_item_tags WHERE global_id = 'rss:item:1') +
+                       (SELECT count(*) FROM library_feed_item_media WHERE global_id = 'rss:item:1');",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("child count"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT deleted_at, operation_id FROM library_tombstones
+                     WHERE entity_type = 'feed_item' AND entity_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+                )
+                .expect("tombstone"),
+            (1_100, "tx:remove:newer:member:0".to_owned())
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("journaled transactions"),
+            2
         );
     }
 }

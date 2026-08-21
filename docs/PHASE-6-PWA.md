@@ -36,6 +36,8 @@
         the shared browser contract. The saved-archive program uses one coupled
         clock and like state uses an independent clock. Browser signing,
         optimistic execution, and result reconciliation remain open.
+  - [x] Include the generated FeedItem removal and tombstone program in the
+        shared browser contract. Browser execution and restore remain open.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

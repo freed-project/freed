@@ -179,6 +179,13 @@ uses the same bounded assignment rule with its own clock and clears its prior
 provider receipt when a new local assignment wins. These mutations create no
 provider traffic. Provider execution remains a separate registered mutation.
 
+FeedItem removal writes a typed tombstone and deletes the normalized root in
+the same transaction. SQLite cascades every owned child row. Removal clocks
+compare the signed removal time and then operation ID, so a stale removal is
+journaled and receipted without replacing the winning tombstone. A later
+restore must be an explicit registered mutation that defeats and removes the
+tombstone. No nullable-row convention represents deletion.
+
 A successful Primary transaction atomically commits:
 
 - complete operation members
