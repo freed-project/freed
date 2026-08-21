@@ -31,7 +31,7 @@ type FeedItemUserStateRow = (
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NormalizedMutationReceiptV1 {
+pub(crate) struct NormalizedMutationReceiptV1 {
     pub transaction_id: String,
     pub transaction_digest: String,
     pub actor_id: String,
@@ -1051,7 +1051,7 @@ fn materialize_member(
     }
 }
 
-pub fn accept_normalized_operation_transaction_v1(
+pub(crate) fn accept_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
     authority_key_pair: &Ed25519KeyPair,

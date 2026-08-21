@@ -27,6 +27,7 @@ mod library_core_sidecar;
 mod library_core_store;
 mod normalized_checkpoint;
 mod normalized_import;
+#[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
 mod normalized_query;
 mod normalized_sqlite;
@@ -80,9 +81,6 @@ pub use normalized_checkpoint::{
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
     NormalizedCheckpointActivationReceiptV2,
-};
-pub use normalized_mutation::{
-    accept_normalized_operation_transaction_v1, NormalizedMutationReceiptV1,
 };
 pub use normalized_query::{
     query_normalized_v1, NormalizedAccountDetailRequestV1, NormalizedAccountDetailResponseV1,
