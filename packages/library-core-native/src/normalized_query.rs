@@ -3675,7 +3675,7 @@ pub fn query_normalized_json_v1(
         "item_reader_body_v1" => {
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
-        "item_scan_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "background_item_page_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
         "map_markers_v1" => decode_request!(NormalizedMapMarkersRequestV1, MapMarkers),
         "person_detail_v1" => decode_request!(NormalizedPersonDetailRequestV1, PersonDetail),
         "person_graph_page_v1" => {
@@ -3773,6 +3773,23 @@ mod tests {
             Some("library_facet_summary_v1")
         );
         assert!(response.get("FacetSummary").is_none());
+
+        let scan = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "cancellationId": "cancel-scan-1",
+                "cursor": null,
+                "limit": 1,
+                "queryId": "background_item_page_v1",
+                "readerSessionId": "reader-scan-1",
+                "schemaVersion": 1
+            }),
+        )
+        .expect("query background item page");
+        assert_eq!(
+            scan.get("queryId").and_then(serde_json::Value::as_str),
+            Some("background_item_page_v1")
+        );
 
         let unknown = query_normalized_json_v1(
             &mut connection,
