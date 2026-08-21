@@ -93,7 +93,8 @@ pub use normalized_query::{
     NormalizedFeedBrowseEdgeOrderV3, NormalizedFeedBrowseFilterV1,
     NormalizedFeedBrowsePageRequestV3, NormalizedFeedBrowsePageResponseV3, NormalizedFeedCardV1,
     NormalizedFeedPageRequestV1, NormalizedFeedPageResponseV1, NormalizedFeedPageSourceV1,
-    NormalizedItemScanRequestV1, NormalizedItemScanResponseV1, NormalizedPersonDetailRequestV1,
+    NormalizedItemScanRequestV1, NormalizedItemScanResponseV1, NormalizedMapMarkerV1,
+    NormalizedMapMarkersRequestV1, NormalizedMapMarkersResponseV1, NormalizedPersonDetailRequestV1,
     NormalizedPersonDetailResponseV1, NormalizedPersonDetailV1, NormalizedPersonGraphPageRequestV1,
     NormalizedPersonGraphPageResponseV1, NormalizedPersonGraphRowV1, NormalizedPersonReachOutV1,
     NormalizedPersonTimelineRequestV1, NormalizedPersonTimelineResponseV1,
@@ -102,7 +103,8 @@ pub use normalized_query::{
     NormalizedSavedAnalyticsCountV2, NormalizedSavedAnalyticsRequestV2,
     NormalizedSavedAnalyticsResponseV2, NormalizedSavedAnalyticsWindowV2,
     NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2, NormalizedSavedFeedPageRequestV2,
-    NormalizedSavedFeedPageResponseV2,
+    NormalizedSavedFeedPageResponseV2, NormalizedStoryWallCandidateV1,
+    NormalizedStoryWallCandidatesRequestV1, NormalizedStoryWallCandidatesResponseV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

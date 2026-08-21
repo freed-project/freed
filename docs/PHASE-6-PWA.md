@@ -144,6 +144,7 @@ side effects begin.
 - **Library maintenance mutations:** Sample seeding, fingerprinted sample clearing, and bulk feed removal use the same signed Library Core operations as normal writes. SQLite executes registered bounded maintenance mutations without a JavaScript corpus scan.
 - **SQLite-only PWA:** SQLite WebAssembly over OPFS is the only PWA Library row store. Production builds reject Automerge assets, retired registry payloads, IndexedDB Library databases, legacy `/sync` routes, and rollback flags that could reactivate a retired runtime.
 - **Complete bounded reads:** Feed filters, all Saved orders, facets, Friends activity and timelines, Map, and Story Wall use registered SQLite queries beyond the visible interface window. Query pages are capped, source movement fails closed, and React retains only the visible and adjacent windows.
+- **Narrow secondary surfaces:** The OPFS SQLite engine runs `map_markers_v1` and `story_wall_candidates_v1` through the one typed worker dispatch. Map receives at most 1,000 compact location rows. Story Wall receives at most 250 compact media rows with eight media references each. Neither query returns a general FeedItem or reader body.
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu with tappable 10% zoom steps, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---

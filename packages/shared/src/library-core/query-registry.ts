@@ -133,6 +133,22 @@ import {
   LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
 } from "./surface-items-contracts.js";
 import {
+  LIBRARY_CORE_MAP_MARKERS_DEFAULT_LIMIT,
+  LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+  LIBRARY_CORE_MAP_MARKERS_NESTED_BOUNDS,
+  LIBRARY_CORE_MAP_MARKERS_PROJECTION,
+  LIBRARY_CORE_MAP_MARKERS_REQUEST_SCHEMA,
+  LIBRARY_CORE_MAP_MARKERS_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_SECONDARY_SURFACE_SOURCE_IDENTITY,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_DEFAULT_LIMIT,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA,
+} from "./secondary-surface-contracts.js";
+import {
   LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
   LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
   LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
@@ -286,6 +302,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_MAP_MARKERS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA
     | null;
@@ -311,6 +329,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_MAP_MARKERS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA
     | null;
@@ -333,6 +353,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
+    | typeof LIBRARY_CORE_MAP_MARKERS_PROJECTION
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION
     | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
     | null;
@@ -363,6 +385,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_MAP_MARKERS_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS
     | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
     | null;
@@ -456,6 +480,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_MAP_MARKERS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA;
   readonly responseSchema?:
@@ -479,6 +505,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_MAP_MARKERS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA;
   readonly projection?:
@@ -499,6 +527,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
+    | typeof LIBRARY_CORE_MAP_MARKERS_PROJECTION
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
   readonly sourceIdentity?:
@@ -525,6 +555,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_MAP_MARKERS_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS;
   /**
@@ -1025,12 +1057,34 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   map_markers_v1: plannedQuery({
-    defaultLimit: 500,
-    maximumLimit: 1_000,
-    maximumRows: 1_000,
-    totalCountIntent: "snapshot_exact",
+    defaultLimit: LIBRARY_CORE_MAP_MARKERS_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("single_page"),
+    totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["map:{normalized_filter_digest}"],
+    currentKinds: [
+      "query_normalized_v1::map_markers_v1",
+      "PwaLibraryCoreSqliteEngine.query::map_markers_v1",
+    ],
+    requestSchema: LIBRARY_CORE_MAP_MARKERS_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_MAP_MARKERS_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_MAP_MARKERS_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_SECONDARY_SURFACE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_MAP_MARKERS_NESTED_BOUNDS,
+    fullContentAllowed: false,
+    stableSort: {
+      columns: [
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   person_detail_v1: plannedQuery({
     defaultLimit: 1,
@@ -1341,12 +1395,34 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     invalidationKeyIntent: ["semantic-classification-queue"],
   }),
   story_wall_candidates_v1: plannedQuery({
-    defaultLimit: 100,
-    maximumLimit: 250,
-    maximumRows: 250,
-    totalCountIntent: "snapshot_exact",
+    defaultLimit: LIBRARY_CORE_STORY_WALL_CANDIDATES_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("single_page"),
+    totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["story-wall:{normalized_filter_digest}"],
+    currentKinds: [
+      "query_normalized_v1::story_wall_candidates_v1",
+      "PwaLibraryCoreSqliteEngine.query::story_wall_candidates_v1",
+    ],
+    requestSchema: LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_SECONDARY_SURFACE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS,
+    fullContentAllowed: false,
+    stableSort: {
+      columns: [
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
 } as const satisfies Readonly<
   Record<LibraryCoreQueryId, LibraryCoreQueryDefinition>

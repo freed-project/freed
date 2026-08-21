@@ -134,6 +134,24 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-map", {
+        cancellationId: "cancel-map-1",
+        limit: 500,
+        queryId: "map_markers_v1",
+        readerSessionId: "reader-map-1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-story-wall", {
+        cancellationId: "cancel-story-wall-1",
+        limit: 100,
+        queryId: "story_wall_candidates_v1",
+        readerSessionId: "reader-story-wall-1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-change-feed", {
         afterRevision: 0,
         cancellationId: "cancel-changes-1",

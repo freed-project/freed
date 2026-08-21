@@ -947,6 +947,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.map_markers_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.item_reader_body_v1 ||
@@ -962,6 +963,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v2 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v2
+        || definition === LIBRARY_CORE_QUERY_REGISTRY.story_wall_candidates_v1
       ) {
         expect(definition.blockers).not.toContain(
           "runtime_adapter_unimplemented",

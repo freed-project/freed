@@ -53,6 +53,10 @@ import {
   libraryCorePersonTimelinePersonDigestV1,
   parseLibraryCorePersonTimelineRequestV1,
   parseLibraryCorePersonTimelineResponseV1,
+  parseLibraryCoreMapMarkersRequestV1,
+  parseLibraryCoreMapMarkersResponseV1,
+  parseLibraryCoreStoryWallCandidatesRequestV1,
+  parseLibraryCoreStoryWallCandidatesResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
   decodeLibraryCoreIdentityPageCursorV1,
@@ -106,6 +110,12 @@ import {
   type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonTimelineRequestV1,
   type LibraryCorePersonTimelineResponseV1,
+  type LibraryCoreMapMarkerV1,
+  type LibraryCoreMapMarkersRequestV1,
+  type LibraryCoreMapMarkersResponseV1,
+  type LibraryCoreStoryWallCandidateV1,
+  type LibraryCoreStoryWallCandidatesRequestV1,
+  type LibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
@@ -901,6 +911,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemScan(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "map_markers_v1":
+        return this.#queryMapMarkers(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_detail_v1":
         return this.#queryPersonDetail(
           input,
@@ -923,6 +937,10 @@ export class PwaLibraryCoreSqliteEngine {
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "saved_feed_page_v2":
         return this.#querySavedFeedPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "story_wall_candidates_v1":
+        return this.#queryStoryWallCandidates(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
@@ -2322,6 +2340,109 @@ export class PwaLibraryCoreSqliteEngine {
       response,
       request.value,
     );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryMapMarkers(
+    input: LibraryCoreMapMarkersRequestV1,
+  ): LibraryCoreMapMarkersResponseV1 {
+    const request = parseLibraryCoreMapMarkersRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.map_markers_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite map query exceeded its row bound");
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows: LibraryCoreMapMarkerV1[] = rawRows
+      .slice(0, request.value.limit)
+      .map((row) => ({
+      authorAvatarUrl: nullableText(row.authorAvatarUrl, "map author avatar"),
+      authorDisplayName: text(row.authorDisplayName, "map author display name"),
+      authorHandle: text(row.authorHandle, "map author handle"),
+      authorId: text(row.authorId, "map author identity"),
+      capturedAt: safeInteger(row.capturedAt, "map captured time"),
+      contentText: nullableText(row.contentText, "map content text"),
+      contentType: text(row.contentType, "map content type") as never,
+      globalId: text(row.globalId, "map item identity"),
+      locationLat: row.locationLat === null ? null : Number(row.locationLat),
+      locationLng: row.locationLng === null ? null : Number(row.locationLng),
+      locationName: nullableText(row.locationName, "map location name"),
+      locationUrl: nullableText(row.locationUrl, "map location URL"),
+      platform: text(row.platform, "map platform") as never,
+      publishedAt: safeInteger(row.publishedAt, "map published time"),
+      sourceUrl: nullableText(row.sourceUrl, "map source URL"),
+      timeRangeEndsAt: nullableInteger(row.timeRangeEndsAt, "map range end"),
+      timeRangeStartsAt: nullableInteger(row.timeRangeStartsAt, "map range start"),
+      }));
+    const response = {
+      hasMore,
+      queryId: "map_markers_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreMapMarkersResponseV1(response, request.value);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryStoryWallCandidates(
+    input: LibraryCoreStoryWallCandidatesRequestV1,
+  ): LibraryCoreStoryWallCandidatesResponseV1 {
+    const request = parseLibraryCoreStoryWallCandidatesRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.story_wall_candidates_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite Story Wall query exceeded its row bound");
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows: LibraryCoreStoryWallCandidateV1[] = rawRows
+      .slice(0, request.value.limit)
+      .map((row) => ({
+      authorDisplayName: text(row.authorDisplayName, "Story Wall author display name"),
+      authorHandle: text(row.authorHandle, "Story Wall author handle"),
+      authorId: text(row.authorId, "Story Wall author identity"),
+      capturedAt: safeInteger(row.capturedAt, "Story Wall captured time"),
+      contentText: nullableText(row.contentText, "Story Wall caption"),
+      globalId: text(row.globalId, "Story Wall item identity"),
+      locationName: nullableText(row.locationName, "Story Wall location"),
+      mediaTypes: stringArray(row.mediaTypesJson, "Story Wall media types") as never,
+      mediaUrls: stringArray(row.mediaUrlsJson, "Story Wall media URLs"),
+      platform: text(row.platform, "Story Wall platform") as never,
+      publishedAt: safeInteger(row.publishedAt, "Story Wall published time"),
+      sourceUrl: nullableText(row.sourceUrl, "Story Wall source URL"),
+      }));
+    const response = {
+      hasMore,
+      queryId: "story_wall_candidates_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreStoryWallCandidatesResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

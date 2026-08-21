@@ -16,6 +16,9 @@ const SAVED_FEED_MAXIMUM_CURSOR_BYTES: usize = 5_586;
 const PERSON_TIMELINE_MAXIMUM_LIMIT: usize = 100;
 const PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PERSON_TIMELINE_MAXIMUM_CURSOR_BYTES: usize = 5_700;
+const MAP_MARKERS_MAXIMUM_LIMIT: usize = 1_000;
+const STORY_WALL_CANDIDATES_MAXIMUM_LIMIT: usize = 250;
+const SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
 const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
@@ -92,6 +95,24 @@ pub struct NormalizedPersonTimelineRequestV1 {
     pub cursor: Option<String>,
     pub limit: usize,
     pub person_id: String,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMapMarkersRequestV1 {
+    pub cancellation_id: String,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedStoryWallCandidatesRequestV1 {
+    pub cancellation_id: String,
+    pub limit: usize,
     pub reader_session_id: String,
     pub schema_version: u32,
 }
@@ -216,6 +237,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    MapMarkers(NormalizedMapMarkersRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
     PersonTimeline(NormalizedPersonTimelineRequestV1),
@@ -223,6 +245,7 @@ pub enum NormalizedQueryRequestV1 {
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
     SavedFeedPage(NormalizedSavedFeedPageRequestV2),
+    StoryWallCandidates(NormalizedStoryWallCandidatesRequestV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -344,6 +367,65 @@ pub struct NormalizedPersonTimelineResponseV1 {
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
     pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMapMarkerV1 {
+    pub author_avatar_url: Option<String>,
+    pub author_display_name: String,
+    pub author_handle: String,
+    pub author_id: String,
+    pub captured_at: i64,
+    pub content_text: Option<String>,
+    pub content_type: String,
+    pub global_id: String,
+    pub location_lat: Option<f64>,
+    pub location_lng: Option<f64>,
+    pub location_name: Option<String>,
+    pub location_url: Option<String>,
+    pub platform: String,
+    pub published_at: i64,
+    pub source_url: Option<String>,
+    pub time_range_ends_at: Option<i64>,
+    pub time_range_starts_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMapMarkersResponseV1 {
+    pub has_more: bool,
+    pub query_id: String,
+    pub rows: Vec<NormalizedMapMarkerV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedStoryWallCandidateV1 {
+    pub author_display_name: String,
+    pub author_handle: String,
+    pub author_id: String,
+    pub captured_at: i64,
+    pub content_text: Option<String>,
+    pub global_id: String,
+    pub location_name: Option<String>,
+    pub media_types: Vec<String>,
+    pub media_urls: Vec<String>,
+    pub platform: String,
+    pub published_at: i64,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedStoryWallCandidatesResponseV1 {
+    pub has_more: bool,
+    pub query_id: String,
+    pub rows: Vec<NormalizedStoryWallCandidateV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -656,6 +738,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
+    MapMarkers(NormalizedMapMarkersResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
     PersonTimeline(NormalizedPersonTimelineResponseV1),
@@ -663,6 +746,7 @@ pub enum NormalizedQueryResponseV1 {
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
     SavedFeedPage(Box<NormalizedSavedFeedPageResponseV2>),
+    StoryWallCandidates(NormalizedStoryWallCandidatesResponseV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -720,6 +804,31 @@ fn valid_lower_hex_64(value: &str) -> bool {
 
 fn valid_safe_integer(value: i64) -> bool {
     (0..=MAX_SAFE_INTEGER).contains(&value)
+}
+
+fn valid_platform(value: &str) -> bool {
+    matches!(
+        value,
+        "x" | "rss"
+            | "youtube"
+            | "reddit"
+            | "mastodon"
+            | "github"
+            | "facebook"
+            | "instagram"
+            | "linkedin"
+            | "substack"
+            | "medium"
+            | "saved"
+    )
+}
+
+fn valid_content_type(value: &str) -> bool {
+    matches!(value, "post" | "story" | "article" | "video" | "podcast")
+}
+
+fn valid_media_type(value: &str) -> bool {
+    matches!(value, "image" | "video" | "link" | "unknown")
 }
 
 fn encode_cursor(cursor: &FeedPageCursorV1) -> Result<String, NormalizedSqliteError> {
@@ -1763,6 +1872,248 @@ fn query_person_timeline(
     {
         return Err(invalid(
             "normalized person timeline response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_map_markers(
+    connection: &mut Connection,
+    request: NormalizedMapMarkersRequestV1,
+) -> Result<NormalizedMapMarkersResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=MAP_MARKERS_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized map query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "map_markers_v1")
+        .ok_or(invalid("normalized map query program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut query_rows = statement.query_map(
+        params![i64::try_from(request.limit + 1).expect("bounded map limit")],
+        |row| {
+            Ok(NormalizedMapMarkerV1 {
+                global_id: row.get(0)?,
+                platform: row.get(1)?,
+                content_type: row.get(2)?,
+                published_at: row.get(3)?,
+                captured_at: row.get(4)?,
+                author_id: row.get(5)?,
+                author_display_name: row.get(6)?,
+                author_handle: row.get(7)?,
+                author_avatar_url: row.get(8)?,
+                source_url: row.get(9)?,
+                content_text: row.get(10)?,
+                location_name: row.get(11)?,
+                location_lat: row.get(12)?,
+                location_lng: row.get(13)?,
+                location_url: row.get(14)?,
+                time_range_starts_at: row.get(15)?,
+                time_range_ends_at: row.get(16)?,
+            })
+        },
+    )?;
+    let mut rows = Vec::with_capacity(request.limit);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        let coordinates_valid = match (row.location_lat, row.location_lng) {
+            (Some(lat), Some(lng)) => {
+                lat.is_finite()
+                    && (-90.0..=90.0).contains(&lat)
+                    && lng.is_finite()
+                    && (-180.0..=180.0).contains(&lng)
+            }
+            (None, None) => row.location_name.is_some(),
+            _ => false,
+        };
+        if row.global_id.is_empty()
+            || row.global_id.len() > 4_096
+            || !valid_platform(&row.platform)
+            || !valid_content_type(&row.content_type)
+            || row.author_id.len() > 4_096
+            || row.author_handle.len() > 1_024
+            || row.author_display_name.len() > 2_048
+            || row
+                .author_avatar_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row
+                .content_text
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row
+                .source_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row
+                .location_name
+                .as_ref()
+                .is_some_and(|value| value.len() > 2_048)
+            || row
+                .location_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || !valid_safe_integer(row.published_at)
+            || !valid_safe_integer(row.captured_at)
+            || row
+                .time_range_starts_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .time_range_ends_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || !coordinates_valid
+        {
+            return Err(invalid("normalized map row is invalid"));
+        }
+        rows.push(row);
+        if rows.len() > program.maximum_scan_rows {
+            return Err(invalid("normalized map query exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let response = NormalizedMapMarkersResponseV1 {
+        has_more,
+        query_id: "map_markers_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized map response is invalid"))?
+        .len()
+        > SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("normalized map response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_story_wall_candidates(
+    connection: &mut Connection,
+    request: NormalizedStoryWallCandidatesRequestV1,
+) -> Result<NormalizedStoryWallCandidatesResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=STORY_WALL_CANDIDATES_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized Story Wall query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "story_wall_candidates_v1")
+        .ok_or(invalid("normalized Story Wall query program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut query_rows = statement.query_map(
+        params![i64::try_from(request.limit + 1).expect("bounded Story Wall limit")],
+        |row| {
+            let media_urls_json: String = row.get(10)?;
+            let media_types_json: String = row.get(11)?;
+            Ok(NormalizedStoryWallCandidateV1 {
+                global_id: row.get(0)?,
+                platform: row.get(1)?,
+                published_at: row.get(2)?,
+                captured_at: row.get(3)?,
+                author_id: row.get(4)?,
+                author_display_name: row.get(5)?,
+                author_handle: row.get(6)?,
+                source_url: row.get(7)?,
+                content_text: row.get(8)?,
+                location_name: row.get(9)?,
+                media_urls: serde_json::from_str(&media_urls_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        10,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+                media_types: serde_json::from_str(&media_types_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        11,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+            })
+        },
+    )?;
+    let mut rows = Vec::with_capacity(request.limit);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        if row.global_id.is_empty()
+            || row.global_id.len() > 4_096
+            || !valid_platform(&row.platform)
+            || row.author_id.len() > 4_096
+            || row.author_handle.len() > 1_024
+            || row.author_display_name.len() > 2_048
+            || row
+                .content_text
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row
+                .source_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row
+                .location_name
+                .as_ref()
+                .is_some_and(|value| value.len() > 2_048)
+            || !valid_safe_integer(row.published_at)
+            || !valid_safe_integer(row.captured_at)
+            || row.media_urls.is_empty()
+            || row.media_urls.len() > 8
+            || row.media_types.len() != row.media_urls.len()
+            || row.media_urls.iter().any(|value| value.len() > 8_192)
+            || row.media_types.iter().any(|value| !valid_media_type(value))
+        {
+            return Err(invalid("normalized Story Wall row is invalid"));
+        }
+        rows.push(row);
+        if rows.len() > program.maximum_scan_rows {
+            return Err(invalid(
+                "normalized Story Wall query exceeded its row bound",
+            ));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let response = NormalizedStoryWallCandidatesResponseV1 {
+        has_more,
+        query_id: "story_wall_candidates_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Story Wall response is invalid"))?
+        .len()
+        > SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized Story Wall response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -3235,6 +3586,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
             query_item_scan(connection, request)?,
         )),
+        NormalizedQueryRequestV1::MapMarkers(request) => Ok(NormalizedQueryResponseV1::MapMarkers(
+            query_map_markers(connection, request)?,
+        )),
         NormalizedQueryRequestV1::PersonDetail(request) => {
             Ok(NormalizedQueryResponseV1::PersonDetail(Box::new(
                 query_person_detail(connection, request)?,
@@ -3265,6 +3619,11 @@ pub fn query_normalized_v1(
             Ok(NormalizedQueryResponseV1::SavedFeedPage(Box::new(
                 query_saved_feed_page(connection, request)?,
             )))
+        }
+        NormalizedQueryRequestV1::StoryWallCandidates(request) => {
+            Ok(NormalizedQueryResponseV1::StoryWallCandidates(
+                query_story_wall_candidates(connection, request)?,
+            ))
         }
     }
 }
@@ -3329,6 +3688,88 @@ mod tests {
             decode_saved_feed_cursor(&saved_encoded).expect("decode saved cursor"),
             saved_cursor
         );
+    }
+
+    #[test]
+    fn native_secondary_surface_queries_return_only_bounded_view_rows() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        for query_id in ["map_markers_v1", "story_wall_candidates_v1"] {
+            let program = SQLITE_QUERY_PROGRAMS
+                .iter()
+                .find(|program| program.query_id == query_id)
+                .expect("secondary query program");
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+                .expect("secondary query plan")
+                .query_map(params![10], |row| row.get::<_, String>(3))
+                .expect("secondary plan rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("secondary plan");
+            assert!(plan
+                .iter()
+                .any(|detail| detail.contains("library_feed_items_browse")));
+            assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, content_text,
+                    location_name, location_lat, location_lng, hidden, saved, archived,
+                    updated_at)
+                   VALUES
+                     ('visible', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada',
+                      'A compact caption', 'Observatory', 34.2, -118.2, 0, 0, 0, 300),
+                     ('older', 'rss', 'article', 200, 200, 'grace', 'grace', 'Grace',
+                      'An older caption', 'Library', 34.1, -118.1, 0, 0, 0, 200),
+                     ('hidden', 'x', 'post', 400, 400, 'ada', 'ada', 'Ada',
+                      'Not visible', 'Hidden place', 1.0, 2.0, 1, 0, 0, 400);
+                 INSERT INTO library_feed_item_media
+                   (global_id, ordinal, source_url, media_type)
+                   VALUES ('visible', 0, 'https://example.test/image', 'image'),
+                          ('older', 0, 'https://example.test/older', 'image'),
+                          ('hidden', 0, 'https://example.test/hidden', 'image');",
+                "a".repeat(64)
+            ))
+            .expect("secondary fixture");
+        let map = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::MapMarkers(NormalizedMapMarkersRequestV1 {
+                cancellation_id: "cancel-map-1".to_owned(),
+                limit: 1,
+                reader_session_id: "reader-map-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("map query");
+        let NormalizedQueryResponseV1::MapMarkers(map) = map else {
+            panic!("map response");
+        };
+        assert!(map.has_more);
+        assert_eq!(map.rows[0].global_id, "visible");
+        let story = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::StoryWallCandidates(NormalizedStoryWallCandidatesRequestV1 {
+                cancellation_id: "cancel-story-1".to_owned(),
+                limit: 1,
+                reader_session_id: "reader-story-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("Story Wall query");
+        let NormalizedQueryResponseV1::StoryWallCandidates(story) = story else {
+            panic!("Story Wall response");
+        };
+        assert!(story.has_more);
+        assert_eq!(story.rows[0].media_urls, ["https://example.test/image"]);
     }
 
     #[test]

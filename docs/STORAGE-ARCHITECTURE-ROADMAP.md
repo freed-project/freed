@@ -130,6 +130,13 @@ named SQL. Use stable keyset cursors and explicit byte and row budgets.
 Add a compact invalidation stream keyed by registered topics. Views refresh
 only the pages or aggregates affected by a committed mutation.
 
+Map and Story Wall use separate result models. `map_markers_v1` returns at most
+1,000 compact location cards. `story_wall_candidates_v1` returns at most 250
+compact media candidates with eight media references each. Both programs run
+unchanged in native Rust and browser SQLite, use the visible publication index,
+read one overflow row instead of counting the corpus, and never route through
+the historical general FeedItem surface reader.
+
 Exit proof:
 
 - every view queries SQLite directly through its platform adapter

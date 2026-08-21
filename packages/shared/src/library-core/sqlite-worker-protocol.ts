@@ -94,6 +94,14 @@ import {
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreDeviceGraphLayoutMutationV1,
 } from "./device-graph-layout-mutation-contracts.js";
+import {
+  parseLibraryCoreMapMarkersRequestV1,
+  parseLibraryCoreStoryWallCandidatesRequestV1,
+  type LibraryCoreMapMarkersRequestV1,
+  type LibraryCoreMapMarkersResponseV1,
+  type LibraryCoreStoryWallCandidatesRequestV1,
+  type LibraryCoreStoryWallCandidatesResponseV1,
+} from "./secondary-surface-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -107,12 +115,14 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
+  | LibraryCoreMapMarkersRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePersonTimelineRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCoreSavedFeedPageRequestV2
+  | LibraryCoreStoryWallCandidatesRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -135,7 +145,9 @@ export type LibraryCoreSqliteQueryResponseFor<
                 ? LibraryCoreItemReaderBodyResponseV1
                 : T extends LibraryCoreItemScanRequestV1
                   ? LibraryCoreItemScanResponseV1
-                  : T extends LibraryCorePersonDetailRequestV1
+                  : T extends LibraryCoreMapMarkersRequestV1
+                    ? LibraryCoreMapMarkersResponseV1
+                    : T extends LibraryCorePersonDetailRequestV1
                     ? LibraryCorePersonDetailResponseV1
                     : T extends LibraryCorePersonGraphPageRequestV1
                       ? LibraryCorePersonGraphPageResponseV1
@@ -147,9 +159,11 @@ export type LibraryCoreSqliteQueryResponseFor<
                             ? LibraryCoreSavedAnalyticsResponseV2
                             : T extends LibraryCoreSavedFeedPageRequestV2
                               ? LibraryCoreSavedFeedPageResponseV2
-                              : T extends LibraryCorePreferencesSnapshotRequestV1
-                                ? LibraryCorePreferencesSnapshotResponseV1
-                                : never;
+                              : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                ? LibraryCoreStoryWallCandidatesResponseV1
+                                : T extends LibraryCorePreferencesSnapshotRequestV1
+                                  ? LibraryCorePreferencesSnapshotResponseV1
+                                  : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -219,12 +233,14 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemDetailResponseV1
   | LibraryCoreItemReaderBodyResponseV1
   | LibraryCoreItemScanResponseV1
+  | LibraryCoreMapMarkersResponseV1
   | LibraryCorePersonDetailResponseV1
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCorePersonTimelineResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCoreSavedAnalyticsResponseV2
   | LibraryCoreSavedFeedPageResponseV2
+  | LibraryCoreStoryWallCandidatesResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
@@ -324,6 +340,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
                     ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
                     : value.query.queryId === "background_item_page_v1"
                       ? parseLibraryCoreItemScanRequestV1(value.query)
+                      : value.query.queryId === "map_markers_v1"
+                        ? parseLibraryCoreMapMarkersRequestV1(value.query)
                       : value.query.queryId === "person_detail_v1"
                         ? parseLibraryCorePersonDetailRequestV1(value.query)
                         : value.query.queryId === "person_graph_page_v1"
@@ -346,6 +364,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                   ? parseLibraryCoreSavedFeedPageRequestV2(
                                       value.query,
                                     )
+                                  : value.query.queryId ===
+                                      "story_wall_candidates_v1"
+                                    ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                        value.query,
+                                      )
                                   : value.query.queryId ===
                                       "preferences_snapshot_v1"
                                     ? parseLibraryCorePreferencesSnapshotRequestV1(

@@ -382,7 +382,10 @@ Representative query families are:
 - Reader content
 - Person timelines
 - Friends surfaces
-- Map viewport rows
+- Map marker rows containing only location, time range, author, popup snippet,
+  and item locator fields
+- Story Wall candidate rows containing only compact caption metadata and at
+  most eight typed media references
 - Navigation counts
 - Facet summaries
 - Account and feed management

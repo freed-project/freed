@@ -468,6 +468,41 @@ describe("PWA Library Core SQLite engine", () => {
     database.exec(
       "UPDATE library_accounts SET person_id = 'person-1' WHERE id = 'account-1';",
     );
+    database.exec(`
+      UPDATE library_feed_items
+      SET location_name = 'Observatory', location_lat = 34.2, location_lng = -118.2
+      WHERE global_id = 'item-2';
+      UPDATE library_feed_items
+      SET location_name = 'Library', location_lat = 34.1, location_lng = -118.1
+      WHERE global_id = 'item-1';
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('item-1', 0, 'https://example.com/older-image', 'image');
+    `);
+    const mapMarkers = engine.query({
+      cancellationId: operationId("cancel-map-1"),
+      limit: 1,
+      queryId: "map_markers_v1" as const,
+      readerSessionId: operationId("reader-map-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(mapMarkers.hasMore).toBe(true);
+    expect(mapMarkers.rows).toMatchObject([
+      { globalId: "item-2", locationName: "Observatory" },
+    ]);
+    expect(mapMarkers.rows[0]).not.toHaveProperty("tags");
+    expect(mapMarkers.rows[0]).not.toHaveProperty("mediaUrls");
+    const storyCandidates = engine.query({
+      cancellationId: operationId("cancel-story-wall-1"),
+      limit: 1,
+      queryId: "story_wall_candidates_v1" as const,
+      readerSessionId: operationId("reader-story-wall-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(storyCandidates.hasMore).toBe(true);
+    expect(storyCandidates.rows).toMatchObject([
+      { globalId: "item-2", mediaUrls: ["https://example.com/image"] },
+    ]);
+    expect(storyCandidates.rows[0]).not.toHaveProperty("contentType");
     const scanRequest = {
       cancellationId: operationId("cancel-scan-1"),
       cursor: null,
