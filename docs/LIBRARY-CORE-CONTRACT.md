@@ -174,10 +174,11 @@ is capped at 98,304 canonical bytes. Person and Account root metadata are each
 capped at 65,536 canonical bytes. These limits reserve deterministic space for
 the closed operation and checkpoint wrappers below the 131,072-byte logical
 record ceiling. The limits count UTF-8 bytes, not JavaScript code units. Larger
-legal content uses descriptors and content-addressed chunks. The capture actor remains limited to this one
-feed-capture mutation. Declaring a future mutation does not grant it to any
-profile. Rust and TypeScript consume generated profile constants, so no second
-capability-operation registry can drift from the mutation catalog.
+legal content uses descriptors and content-addressed chunks. The capture actor
+remains limited to this one feed-capture mutation. Declaring a future mutation
+does not grant it to any profile. Rust and TypeScript consume generated profile
+constants, so no second capability-operation registry can drift from the
+mutation catalog.
 
 Each mutation definition binds:
 
@@ -826,6 +827,14 @@ object:
 Any blocking disposition prevents cutover. The migration never creates a
 shell, shadow database, dual write, alternate PWA row store, or compatibility
 checkpoint.
+
+The native FeedItem decomposer uses the generated capture materializer for the
+typed root, media, and topics. It separately preserves tags, highlights,
+content-signal scores and tags, and event candidates. Reader bodies, highlight
+text, and event evidence above 65,536 UTF-8 bytes become content-addressed blob
+descriptors and chunks inside the same target transaction. Exact descriptor and
+chunk replay is verified before the row can commit. No whole FeedItem JSON or
+shell record enters the final database.
 
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and

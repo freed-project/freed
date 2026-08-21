@@ -486,6 +486,7 @@ export async function captureDomFeed(
 | 5.42 | Execute indexed bidirectional `saved_feed_page_v2` through the native core with all four Saved orders and exact browser parity | High | ✓ Complete |
 | 5.43 | Materialize signed FeedItem capture through the generated normalized SQLite mutation program with bounded members and bytes, atomic children, preserved user state, exact retry effects, and tombstone refusal | High | ✓ Complete |
 | 5.44 | Open the final normalized Desktop database through its own descriptor-bound directory and process lease, verify its generated schema identity at startup, and register one flat closed typed native query command | High | ✓ Complete |
+| 5.45 | Decompose each historical FeedItem into generated normalized root, media, topic, tag, highlight, signal, event, descriptor, and chunk rows with exact large-content reassembly and no shell or whole-item row | High | ✓ Complete |
 
 ---
 

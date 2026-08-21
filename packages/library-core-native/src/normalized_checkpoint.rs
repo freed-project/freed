@@ -130,7 +130,7 @@ pub(crate) fn decode_fractional_payload(
     Ok(())
 }
 
-fn blob_digest(bytes: &[u8]) -> String {
+pub(crate) fn blob_digest(bytes: &[u8]) -> String {
     let mut digest = Sha256::new();
     digest.update(BLOB_CONTENT_DIGEST_PREFIX);
     digest.update(bytes);

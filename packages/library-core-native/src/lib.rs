@@ -28,6 +28,8 @@ mod library_core_store;
 mod normalized_checkpoint;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]
+mod normalized_migration;
+#[cfg_attr(not(test), allow(dead_code))]
 mod normalized_mutation;
 mod normalized_query;
 mod normalized_sqlite;
