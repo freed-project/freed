@@ -23,10 +23,16 @@
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
       define closed root and child checkpoint payload fields, and expose a
       bounded native SQLite checkpoint exporter with stable keyset cursors.
+      New and reopened databases verify Freed's fixed SQLite application ID
+      before any schema write, so a foreign file cannot be adopted by accident.
       Native staging now activates every normalized record kind atomically
       after exact digest, binary64, content, and foreign-key verification.
       The contract also generates the exact row import SQL used by native Rust
       and browser TypeScript, so checkpoint transforms cannot drift by runtime.
+- [x] Add strict normalized transaction, operation, causal-tip, replication,
+      invalidation, signed-intent, result, and sparse optimistic-field tables
+      to the shared schema. Canonical protocol members remain individually
+      bounded to 131,072 bytes and large content stays in chunk rows.
 - [ ] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story

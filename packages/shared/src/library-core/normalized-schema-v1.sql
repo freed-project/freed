@@ -1,4 +1,5 @@
 PRAGMA foreign_keys = ON;
+PRAGMA application_id = 1179796804;
 
 CREATE TABLE IF NOT EXISTS library_storage_meta (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
@@ -322,6 +323,175 @@ CREATE TABLE IF NOT EXISTS library_receipts (
   accepted_at INTEGER NOT NULL CHECK (accepted_at >= 0),
   PRIMARY KEY (actor_id, operation_id),
   CHECK (result_text IS NULL OR result_blob_digest IS NULL)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_change_state (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  revision INTEGER NOT NULL CHECK (revision >= 0)
+) STRICT;
+
+INSERT OR IGNORE INTO library_change_state (singleton_id, revision) VALUES (1, 0);
+
+CREATE TABLE IF NOT EXISTS library_transactions (
+  transaction_id TEXT PRIMARY KEY CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  authority_epoch TEXT NOT NULL CHECK (length(CAST(authority_epoch AS BLOB)) BETWEEN 1 AND 255),
+  actor_id TEXT NOT NULL REFERENCES library_actors(actor_id),
+  member_count INTEGER NOT NULL CHECK (member_count BETWEEN 1 AND 1000),
+  first_counter INTEGER NOT NULL CHECK (first_counter >= 1),
+  last_counter INTEGER NOT NULL CHECK (last_counter = first_counter + member_count - 1),
+  previous_operation_id TEXT,
+  previous_chain_digest TEXT NOT NULL CHECK (length(previous_chain_digest) = 64 AND previous_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  committed_operation_id TEXT NOT NULL,
+  committed_chain_digest TEXT NOT NULL CHECK (length(committed_chain_digest) = 64 AND committed_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_member_bytes INTEGER NOT NULL CHECK (canonical_member_bytes BETWEEN 1 AND 4194304),
+  previous_revision INTEGER NOT NULL CHECK (previous_revision >= 0),
+  committed_revision INTEGER NOT NULL CHECK (committed_revision = previous_revision + 1),
+  committed_at INTEGER NOT NULL CHECK (committed_at >= 0),
+  CHECK (
+    (first_counter = 1 AND previous_operation_id IS NULL)
+    OR (first_counter > 1 AND previous_operation_id IS NOT NULL)
+  )
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_operations (
+  operation_id TEXT PRIMARY KEY CHECK (length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_id TEXT NOT NULL REFERENCES library_transactions(transaction_id) ON DELETE CASCADE,
+  member_index INTEGER NOT NULL CHECK (member_index >= 0),
+  member_count INTEGER NOT NULL CHECK (member_count BETWEEN 1 AND 1000 AND member_index < member_count),
+  actor_id TEXT NOT NULL REFERENCES library_actors(actor_id),
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  previous_actor_operation_id TEXT,
+  previous_actor_chain_digest TEXT NOT NULL CHECK (length(previous_actor_chain_digest) = 64 AND previous_actor_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  actor_chain_digest TEXT NOT NULL CHECK (length(actor_chain_digest) = 64 AND actor_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  member_digest TEXT NOT NULL CHECK (length(member_digest) = 64 AND member_digest NOT GLOB '*[^0-9a-f]*'),
+  envelope_digest TEXT NOT NULL CHECK (length(envelope_digest) = 64 AND envelope_digest NOT GLOB '*[^0-9a-f]*'),
+  mutation_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  canonical_envelope BLOB NOT NULL CHECK (length(canonical_envelope) BETWEEN 1 AND 131072),
+  committed_at INTEGER NOT NULL CHECK (committed_at >= 0),
+  UNIQUE (transaction_id, member_index),
+  UNIQUE (actor_id, actor_counter),
+  CHECK (
+    (actor_counter = 1 AND previous_actor_operation_id IS NULL)
+    OR (actor_counter > 1 AND previous_actor_operation_id IS NOT NULL)
+  )
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS library_operations_actor_order
+  ON library_operations(actor_id, actor_counter);
+
+CREATE TABLE IF NOT EXISTS library_operation_causal_tips (
+  operation_id TEXT NOT NULL REFERENCES library_operations(operation_id) ON DELETE CASCADE,
+  tip_index INTEGER NOT NULL CHECK (tip_index >= 0),
+  actor_id TEXT NOT NULL,
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  tip_operation_id TEXT NOT NULL,
+  chain_digest TEXT NOT NULL CHECK (length(chain_digest) = 64 AND chain_digest NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY (operation_id, tip_index)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_replication_outbox (
+  operation_id TEXT PRIMARY KEY REFERENCES library_operations(operation_id) ON DELETE CASCADE,
+  actor_id TEXT NOT NULL,
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  enqueued_at INTEGER NOT NULL CHECK (enqueued_at >= 0),
+  acknowledged_at INTEGER CHECK (acknowledged_at IS NULL OR acknowledged_at >= enqueued_at),
+  UNIQUE (actor_id, actor_counter)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_replication_outbox_pending
+  ON library_replication_outbox(actor_id, actor_counter)
+  WHERE acknowledged_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS library_invalidations (
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 255),
+  topic TEXT NOT NULL CHECK (length(CAST(topic AS BLOB)) BETWEEN 1 AND 128),
+  entity_id TEXT CHECK (entity_id IS NULL OR length(CAST(entity_id AS BLOB)) BETWEEN 1 AND 2048),
+  reset_required INTEGER NOT NULL CHECK (reset_required IN (0, 1)),
+  PRIMARY KEY (revision, ordinal)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_invalidations_topic
+  ON library_invalidations(topic, revision);
+
+CREATE TABLE IF NOT EXISTS library_intent_actors (
+  actor_id TEXT PRIMARY KEY REFERENCES library_actors(actor_id) ON DELETE CASCADE,
+  next_counter INTEGER NOT NULL CHECK (next_counter >= 1),
+  previous_operation_id TEXT,
+  previous_chain_digest TEXT NOT NULL CHECK (length(previous_chain_digest) = 64 AND previous_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  CHECK (
+    (next_counter = 1 AND previous_operation_id IS NULL)
+    OR (next_counter > 1 AND previous_operation_id IS NOT NULL)
+  )
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_intent_transactions (
+  transaction_id TEXT PRIMARY KEY CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),
+  actor_id TEXT NOT NULL REFERENCES library_intent_actors(actor_id),
+  member_count INTEGER NOT NULL CHECK (member_count BETWEEN 1 AND 1000),
+  first_counter INTEGER NOT NULL CHECK (first_counter >= 1),
+  last_counter INTEGER NOT NULL CHECK (last_counter = first_counter + member_count - 1),
+  previous_operation_id TEXT,
+  previous_chain_digest TEXT NOT NULL CHECK (length(previous_chain_digest) = 64 AND previous_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  ending_operation_id TEXT NOT NULL,
+  ending_chain_digest TEXT NOT NULL CHECK (length(ending_chain_digest) = 64 AND ending_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_member_bytes INTEGER NOT NULL CHECK (canonical_member_bytes BETWEEN 1 AND 4194304),
+  canonical_header BLOB NOT NULL CHECK (length(canonical_header) BETWEEN 1 AND 131072),
+  signature BLOB NOT NULL CHECK (length(signature) BETWEEN 1 AND 512),
+  state TEXT NOT NULL CHECK (state IN ('pending', 'published', 'accepted', 'rejected')),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  published_at INTEGER,
+  resolved_at INTEGER,
+  CHECK (
+    (first_counter = 1 AND previous_operation_id IS NULL)
+    OR (first_counter > 1 AND previous_operation_id IS NOT NULL)
+  ),
+  CHECK (published_at IS NULL OR published_at >= created_at),
+  CHECK (resolved_at IS NULL OR resolved_at >= created_at)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS library_intent_transactions_pending
+  ON library_intent_transactions(actor_id, first_counter)
+  WHERE state IN ('pending', 'published');
+
+CREATE TABLE IF NOT EXISTS library_intent_members (
+  transaction_id TEXT NOT NULL REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
+  member_index INTEGER NOT NULL CHECK (member_index >= 0),
+  operation_id TEXT NOT NULL UNIQUE,
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  mutation_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  canonical_member BLOB NOT NULL CHECK (length(canonical_member) BETWEEN 1 AND 131072),
+  member_digest TEXT NOT NULL CHECK (length(member_digest) = 64 AND member_digest NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY (transaction_id, member_index)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_intent_results (
+  transaction_id TEXT PRIMARY KEY REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
+  result_digest TEXT NOT NULL CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
+  status TEXT NOT NULL CHECK (status IN ('accepted', 'rejected', 'already_applied')),
+  canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
+  received_at INTEGER NOT NULL CHECK (received_at >= 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_optimistic_fields (
+  transaction_id TEXT NOT NULL REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  field_path TEXT NOT NULL,
+  value_type TEXT NOT NULL CHECK (value_type IN ('boolean', 'integer', 'real', 'text', 'null')),
+  boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0, 1)),
+  integer_value INTEGER,
+  real_value REAL,
+  text_value TEXT CHECK (text_value IS NULL OR length(CAST(text_value AS BLOB)) <= 65536),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  PRIMARY KEY (transaction_id, entity_type, entity_id, field_path)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_checkpoint_stages (

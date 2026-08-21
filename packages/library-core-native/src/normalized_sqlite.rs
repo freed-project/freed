@@ -6,7 +6,7 @@ use crate::normalized_checkpoint::{
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
     NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL,
-    SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
+    SQLITE_APPLICATION_ID, SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -108,24 +108,53 @@ pub struct NormalizedCheckpointStageStatusV2 {
 }
 
 pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), NormalizedSqliteError> {
-    connection.execute_batch(NORMALIZED_SCHEMA_SQL)?;
-    connection.execute(
-        "INSERT INTO library_storage_meta
-         (singleton_id, contract_version, schema_version, protocol_version, schema_sha256)
-         VALUES (1, ?1, ?2, ?3, ?4)
-         ON CONFLICT(singleton_id) DO UPDATE SET
-           contract_version = excluded.contract_version,
-           schema_version = excluded.schema_version,
-           protocol_version = excluded.protocol_version,
-           schema_sha256 = excluded.schema_sha256;",
-        params![
-            SQLITE_CONTRACT_VERSION,
-            SQLITE_SCHEMA_VERSION,
-            SQLITE_PROTOCOL_VERSION,
-            NORMALIZED_SCHEMA_SHA256,
-        ],
-    )?;
-    connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
+    let user_version: u32 =
+        connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let application_id: u32 =
+        connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
+    if user_version == 0 {
+        if application_id != 0 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized SQLite application identity is foreign",
+            ));
+        }
+        connection.execute_batch(NORMALIZED_SCHEMA_SQL)?;
+        connection.execute(
+            "INSERT INTO library_storage_meta
+             (singleton_id, contract_version, schema_version, protocol_version, schema_sha256)
+             VALUES (1, ?1, ?2, ?3, ?4);",
+            params![
+                SQLITE_CONTRACT_VERSION,
+                SQLITE_SCHEMA_VERSION,
+                SQLITE_PROTOCOL_VERSION,
+                NORMALIZED_SCHEMA_SHA256,
+            ],
+        )?;
+        connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
+    } else {
+        if user_version != SQLITE_SCHEMA_VERSION || application_id != SQLITE_APPLICATION_ID {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized SQLite version identity is unsupported",
+            ));
+        }
+        let matches: bool = connection.query_row(
+            "SELECT contract_version = ?1 AND schema_version = ?2
+                    AND protocol_version = ?3 AND schema_sha256 = ?4
+             FROM library_storage_meta WHERE singleton_id = 1;",
+            params![
+                SQLITE_CONTRACT_VERSION,
+                SQLITE_SCHEMA_VERSION,
+                SQLITE_PROTOCOL_VERSION,
+                NORMALIZED_SCHEMA_SHA256,
+            ],
+            |row| row.get(0),
+        )?;
+        if !matches {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized SQLite storage identity does not match this build",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -598,6 +627,125 @@ mod tests {
                 NORMALIZED_SCHEMA_SHA256.into(),
             )
         );
+        for table in [
+            "library_transactions",
+            "library_operations",
+            "library_replication_outbox",
+            "library_invalidations",
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_intent_results",
+            "library_optimistic_fields",
+        ] {
+            let exists: i64 = connection
+                .query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?1;",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("operation table");
+            assert_eq!(exists, 1, "missing {table}");
+        }
+    }
+
+    #[test]
+    fn schema_install_refuses_a_foreign_application_identity_without_writes() {
+        let connection = Connection::open_in_memory().expect("open");
+        connection
+            .pragma_update(None, "application_id", 7)
+            .expect("foreign identity");
+        let error = install_normalized_schema_v1(&connection).expect_err("foreign database");
+        assert!(error.to_string().contains("identity is foreign"));
+        let tables: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type = 'table';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("table count");
+        assert_eq!(tables, 0);
+    }
+
+    #[test]
+    fn operation_substrate_accepts_only_bounded_normalized_protocol_rows() {
+        let mut connection = fixture();
+        let transaction = connection.transaction().expect("transaction");
+        transaction
+            .execute(
+                "INSERT INTO library_actors
+                 (actor_id, actor_kind, public_key, accepted_counter, created_at, updated_at)
+                 VALUES ('actor-1', 'desktop', 'public-key', 0, 1, 1);",
+                [],
+            )
+            .expect("actor");
+        for (transaction_id, counter, previous_operation_id, previous_revision) in [
+            ("transaction-1", 1, None, 0),
+            ("transaction-2", 2, Some("operation-1"), 1),
+        ] {
+            transaction
+                .execute(
+                    "INSERT INTO library_transactions
+                     (transaction_id, transaction_digest, library_id, authority_epoch,
+                      actor_id, member_count, first_counter, last_counter,
+                      previous_operation_id, previous_chain_digest,
+                      committed_operation_id, committed_chain_digest,
+                      canonical_member_bytes, previous_revision, committed_revision,
+                      committed_at)
+                     VALUES (?1, ?2, 'library-1', 'epoch-1', 'actor-1', 1, ?3, ?3,
+                             ?4, ?5, ?6, ?7, 131072, ?8, ?8 + 1, 1);",
+                    params![
+                        transaction_id,
+                        format!("{:064x}", counter),
+                        counter,
+                        previous_operation_id,
+                        format!("{:064x}", counter + 10),
+                        format!("operation-{counter}"),
+                        format!("{:064x}", counter + 20),
+                        previous_revision,
+                    ],
+                )
+                .expect("operation transaction");
+        }
+        transaction
+            .execute(
+                "INSERT INTO library_operations
+                 (operation_id, transaction_id, member_index, member_count,
+                  actor_id, actor_counter, previous_actor_operation_id,
+                  previous_actor_chain_digest, actor_chain_digest, member_digest,
+                  envelope_digest, mutation_id, entity_type, entity_id,
+                  canonical_envelope, committed_at)
+                 VALUES ('operation-1', 'transaction-1', 0, 1, 'actor-1', 1, NULL,
+                         ?1, ?2, ?3, ?4, 'feed_item_read_assignment',
+                         'feed_item', 'item-1', ?5, 1);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    vec![7u8; 131_072],
+                ],
+            )
+            .expect("bounded operation");
+        let oversized = transaction.execute(
+            "INSERT INTO library_operations
+             (operation_id, transaction_id, member_index, member_count,
+              actor_id, actor_counter, previous_actor_operation_id,
+              previous_actor_chain_digest, actor_chain_digest, member_digest,
+              envelope_digest, mutation_id, entity_type, entity_id,
+              canonical_envelope, committed_at)
+             VALUES ('operation-2', 'transaction-2', 0, 1, 'actor-1', 2, 'operation-1',
+                     ?1, ?2, ?3, ?4, 'feed_item_read_assignment',
+                     'feed_item', 'item-1', ?5, 1);",
+            params![
+                "b".repeat(64),
+                "c".repeat(64),
+                "d".repeat(64),
+                "e".repeat(64),
+                vec![9u8; 131_073],
+            ],
+        );
+        assert!(oversized.is_err());
+        transaction.rollback().expect("rollback");
     }
 
     #[test]

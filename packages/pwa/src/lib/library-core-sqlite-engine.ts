@@ -6,6 +6,7 @@ import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
@@ -159,7 +160,18 @@ export class PwaLibraryCoreSqliteEngine {
       })[0],
       "SQLite user_version",
     );
+    const applicationId = safeInteger(
+      this.#database.exec({
+        sql: "PRAGMA application_id;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "SQLite application_id",
+    );
     if (userVersion === 0) {
+      if (applicationId !== 0) {
+        throw new Error("PWA Library SQLite application identity is foreign");
+      }
       this.#database.exec(LIBRARY_CORE_NORMALIZED_SCHEMA_SQL);
       this.#database.exec({
         sql: `INSERT INTO library_storage_meta
@@ -177,6 +189,8 @@ export class PwaLibraryCoreSqliteEngine {
       );
     } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION) {
       throw new Error("PWA Library SQLite schema version is unsupported");
+    } else if (applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID) {
+      throw new Error("PWA Library SQLite application identity is unsupported");
     }
     this.#verifyStorageIdentity();
     for (const program of Object.values(
@@ -419,6 +433,9 @@ export class PwaLibraryCoreSqliteEngine {
                   UNION ALL SELECT count(*) FROM library_actors
                   UNION ALL SELECT count(*) FROM library_receipts
                   UNION ALL SELECT count(*) FROM library_blobs
+                  UNION ALL SELECT count(*) FROM library_transactions
+                  UNION ALL SELECT count(*) FROM library_invalidations
+                  UNION ALL SELECT count(*) FROM library_intent_transactions
                 );`,
           rowMode: 0,
           returnValue: "resultRows",
@@ -799,8 +816,17 @@ export class PwaLibraryCoreSqliteEngine {
     if (rows.length !== 1) {
       throw new Error("PWA Library SQLite storage identity is missing");
     }
+    const applicationId = safeInteger(
+      this.#database.exec({
+        sql: "PRAGMA application_id;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "SQLite application identity",
+    );
     const row = rows[0]!;
     if (
+      applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID ||
       safeInteger(row[0], "SQLite contract version") !==
         LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
       safeInteger(row[1], "SQLite schema version") !==

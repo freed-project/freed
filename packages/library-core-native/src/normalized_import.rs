@@ -225,7 +225,10 @@ pub fn finalize_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_tombstones) +
            (SELECT count(*) FROM library_actors) +
            (SELECT count(*) FROM library_receipts) +
-           (SELECT count(*) FROM library_blobs);",
+           (SELECT count(*) FROM library_blobs) +
+           (SELECT count(*) FROM library_transactions) +
+           (SELECT count(*) FROM library_invalidations) +
+           (SELECT count(*) FROM library_intent_transactions);",
         [],
         |row| row.get(0),
     )?;

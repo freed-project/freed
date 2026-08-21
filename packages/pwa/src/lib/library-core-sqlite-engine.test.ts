@@ -5,6 +5,7 @@ import sqlite3InitModule, {
 } from "@sqlite.org/sqlite-wasm";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
@@ -94,11 +95,37 @@ describe("PWA Library Core SQLite engine", () => {
     expect(status.connectionGeneration).toBe(1);
     expect(
       database.exec({
+        sql: "PRAGMA application_id;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([LIBRARY_CORE_SQLITE_APPLICATION_ID]);
+    expect(
+      database.exec({
         sql: "SELECT count(*) FROM sqlite_schema WHERE name = 'library_feed_items';",
         rowMode: 0,
         returnValue: "resultRows",
       }),
     ).toEqual([1]);
+    for (const table of [
+      "library_transactions",
+      "library_operations",
+      "library_replication_outbox",
+      "library_invalidations",
+      "library_intent_transactions",
+      "library_intent_members",
+      "library_intent_results",
+      "library_optimistic_fields",
+    ]) {
+      expect(
+        database.exec({
+          sql: "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?1;",
+          bind: [table],
+          rowMode: 0,
+          returnValue: "resultRows",
+        }),
+      ).toEqual([1]);
+    }
   });
 
   it("fails closed when durable schema identity is changed", () => {
@@ -115,6 +142,22 @@ describe("PWA Library Core SQLite engine", () => {
       sqlite3.version.libVersion,
     );
     expect(() => second.initialize()).toThrow(/does not match this build/);
+  });
+
+  it("refuses a foreign SQLite application identity before creating tables", () => {
+    database.exec("PRAGMA application_id = 7;");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    expect(() => engine.initialize()).toThrow(/identity is foreign/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM sqlite_schema WHERE type = 'table';",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
   });
 
   it("pages normalized feed rows through the bounded named query", () => {
