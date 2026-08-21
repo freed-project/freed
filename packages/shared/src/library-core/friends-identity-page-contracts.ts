@@ -31,6 +31,7 @@ const REQUEST_KEYS = [
   "schemaVersion",
 ] as const;
 const RESPONSE_KEYS = [
+  "layoutRevision",
   "nextCursor",
   "queryId",
   "rows",
@@ -165,6 +166,7 @@ export const LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS = Object.freeze({
 export interface LibraryCoreIdentityPageCursorV1 {
   readonly entityId: string;
   readonly generationId: string;
+  readonly layoutRevision: number;
   readonly projectionRevision: number;
   readonly transitionSequence: number;
 }
@@ -237,6 +239,7 @@ export interface LibraryCoreRssFeedGraphRowV1 {
 }
 
 interface LibraryCoreIdentityPageResponseV1 {
+  readonly layoutRevision: number;
   readonly nextCursor: string | null;
   readonly schemaVersion: 1;
   readonly source: LibraryCoreFeedPageSourceV1;
@@ -330,7 +333,7 @@ export function encodeLibraryCoreIdentityPageCursorV1(
     generationId: cursor.generationId as never,
     globalId: cursor.entityId as never,
     projectionRevision: cursor.projectionRevision,
-    sortAt: 0,
+    sortAt: cursor.layoutRevision,
     transitionSequence: cursor.transitionSequence,
   });
 }
@@ -339,7 +342,7 @@ export function decodeLibraryCoreIdentityPageCursorV1(
   value: unknown,
 ): LibraryCoreFeedPageParseResult<LibraryCoreIdentityPageCursorV1> {
   const decoded = decodeLibraryCoreFeedPageCursorV1(value);
-  if (!decoded.ok || decoded.value.sortAt !== 0) {
+  if (!decoded.ok) {
     return failure("identity page cursor is invalid");
   }
   return Object.freeze({
@@ -347,6 +350,7 @@ export function decodeLibraryCoreIdentityPageCursorV1(
     value: Object.freeze({
       entityId: decoded.value.globalId,
       generationId: decoded.value.generationId,
+      layoutRevision: decoded.value.sortAt,
       projectionRevision: decoded.value.projectionRevision,
       transitionSequence: decoded.value.transitionSequence,
     }),
@@ -587,6 +591,7 @@ function parseResponse<Row>(
     !source.ok ||
     record.queryId !== queryId ||
     record.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(record.layoutRevision) ||
     !Array.isArray(record.rows) ||
     record.rows.length > request.value.limit ||
     (record.nextCursor !== null && typeof record.nextCursor !== "string")
@@ -614,6 +619,7 @@ function parseResponse<Row>(
       !cursor.ok ||
       cursor.value.entityId !== previousId ||
       cursor.value.generationId !== source.value.generationId ||
+      cursor.value.layoutRevision !== record.layoutRevision ||
       cursor.value.projectionRevision !== source.value.projectionRevision ||
       cursor.value.transitionSequence !== source.value.transitionSequence
     ) {
@@ -623,6 +629,7 @@ function parseResponse<Row>(
     }
   }
   const response = Object.freeze({
+    layoutRevision: record.layoutRevision as number,
     nextCursor: record.nextCursor as string | null,
     queryId,
     rows: Object.freeze(rows),

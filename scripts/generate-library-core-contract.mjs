@@ -69,6 +69,7 @@ function assertContract(contract) {
     "contractVersion",
     "fractionalFields",
     "limits",
+    "localMutationPrograms",
     "mutationPrograms",
     "mutations",
     "protocolVersion",
@@ -201,6 +202,23 @@ function assertContract(contract) {
         ].some((sql) => sql.length === 0))
     ) {
       throw new TypeError("SQLite mutation program registry is invalid");
+    }
+  }
+  for (const [mutationId, program] of Object.entries(
+    contract.localMutationPrograms,
+  )) {
+    if (
+      !/^(account|person)_graph_position_(clear|set)_v1$/.test(mutationId) ||
+      Object.keys(program).sort().join(",") !==
+        "entityType,maximumRows,sql,targetExistsSql" ||
+      !["Account", "Person"].includes(program.entityType) ||
+      program.maximumRows !== 1 ||
+      typeof program.sql !== "string" ||
+      program.sql.length === 0 ||
+      typeof program.targetExistsSql !== "string" ||
+      program.targetExistsSql.length === 0
+    ) {
+      throw new TypeError("SQLite local mutation program registry is invalid");
     }
   }
   for (const [queryId, program] of Object.entries(contract.queryPrograms)) {
@@ -488,6 +506,9 @@ ${stringTuple(contract.capabilityProfiles.scraper)}
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.mutationPrograms, null, 2)} as const;
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
 
+export const LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS = ${JSON.stringify(contract.localMutationPrograms, null, 2)} as const;
+export type LibraryCoreSqliteLocalMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS;
+
 export const LIBRARY_CORE_QUERY_IDS = [
 ${stringTuple(contract.queries)}
 ] as const;
@@ -554,6 +575,12 @@ function rustSource(contract, schemaDigest) {
     .map(
       ([mutationId, program]) =>
         `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, payload_kind: ${JSON.stringify(program.payloadKind)}, requires_existing_target: ${program.requiresExistingTarget}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, clock_read_sql: ${JSON.stringify(program.clockReadSql)}, dependent_delete_sql: &[${program.dependentDeleteSql.map((sql) => JSON.stringify(sql)).join(", ")}], dependent_insert_sql: &[${program.dependentInsertSql.map((sql) => JSON.stringify(sql)).join(", ")}], materialize_sql: ${JSON.stringify(program.materializeSql)}, clock_write_sql: ${JSON.stringify(program.clockWriteSql)} },`,
+    )
+    .join("\n");
+  const localMutationPrograms = Object.entries(contract.localMutationPrograms)
+    .map(
+      ([mutationId, program]) =>
+        `    (${JSON.stringify(mutationId)}, ${program.maximumRows}, ${JSON.stringify(program.entityType)}, ${JSON.stringify(program.targetExistsSql)}, ${JSON.stringify(program.sql)}),`,
     )
     .join("\n");
   const importPrograms = Object.entries(checkpointImportPrograms(contract))
@@ -653,6 +680,10 @@ pub struct SqliteMutationProgram {
 
 pub const SQLITE_MUTATION_PROGRAMS: &[SqliteMutationProgram] = &[
 ${mutationPrograms}
+];
+
+pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &[
+${localMutationPrograms}
 ];
 
 pub const QUERY_IDS: &[&str] = &[

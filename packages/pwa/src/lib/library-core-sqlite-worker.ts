@@ -134,6 +134,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "mutate_device_graph_layout") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.mutateDeviceGraphLayout(request.mutation),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();

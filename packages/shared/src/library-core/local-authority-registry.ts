@@ -752,9 +752,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     migration: "retain-current-device-owner",
     cutover: {
       blocksCutover: true,
-      reason: "Pinned graph positions have no measured entry or byte limit. Gate A cannot retain this authority until a bounded policy and preservation decision are registered.",
+      reason: "The final foreign-keyed SQLite layout and one-row local mutation contract are implemented, but the active product store still owns localStorage migration, pruning, reset, and writes until the graph reader cutover replaces it.",
     },
-    sourceReferences: ["packages/ui/src/lib/device-graph-layout.ts"],
+    sourceReferences: [
+      "packages/ui/src/lib/device-graph-layout.ts",
+      "packages/shared/src/library-core/device-graph-layout-mutation-contracts.ts",
+      "packages/shared/src/library-core/normalized-schema-v1.sql",
+    ],
   },
   {
     registryKey: "device-interface-zoom",

@@ -5,6 +5,7 @@ import {
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
@@ -45,6 +46,8 @@ import {
   parseLibraryCorePersonGraphPageResponseV1,
   parseLibraryCoreRssFeedGraphPageRequestV1,
   parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCoreDeviceGraphLayoutMutationV1,
+  parseLibraryCoreDeviceGraphLayoutMutationResultV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -85,6 +88,8 @@ import {
   type LibraryCorePersonGraphPageResponseV1,
   type LibraryCoreRssFeedGraphPageRequestV1,
   type LibraryCoreRssFeedGraphPageResponseV1,
+  type LibraryCoreDeviceGraphLayoutMutationV1,
+  type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -735,6 +740,92 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  mutateDeviceGraphLayout(
+    input: LibraryCoreDeviceGraphLayoutMutationV1,
+  ): LibraryCoreDeviceGraphLayoutMutationResultV1 {
+    const parsed = parseLibraryCoreDeviceGraphLayoutMutationV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const mutation = parsed.value;
+    const program = LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS[mutation.mutationId];
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const targetExists = safeInteger(
+        this.#database.exec({
+          sql: program.targetExistsSql,
+          bind: [mutation.entityId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "device graph layout target existence",
+      );
+      if (targetExists !== 1) {
+        throw new Error("device graph layout target is unavailable");
+      }
+      this.#database.exec({
+        sql: program.sql,
+        bind:
+          "graphX" in mutation
+            ? [
+                mutation.entityId,
+                mutation.graphX,
+                mutation.graphY,
+                mutation.updatedAt,
+              ]
+            : [mutation.entityId],
+      });
+      const changed = safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "device graph layout mutation row count",
+      );
+      if (changed > program.maximumRows) {
+        throw new Error("device graph layout mutation exceeded its row bound");
+      }
+      if (changed === 1) {
+        this.#database.exec({
+          sql: `UPDATE library_device_graph_layout_state
+                SET revision = revision + 1
+                WHERE singleton_id = 1 AND revision < 9007199254740991;`,
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "device graph layout revision change",
+          ) !== 1
+        ) {
+          throw new Error("device graph layout revision cannot advance");
+        }
+      }
+      const layoutRevision = safeInteger(
+        this.#database.exec({
+          sql: "SELECT revision FROM library_device_graph_layout_state WHERE singleton_id = 1;",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "device graph layout revision",
+      );
+      const result = parseLibraryCoreDeviceGraphLayoutMutationResultV1({
+        changed: changed === 1,
+        layoutRevision,
+        mutationId: mutation.mutationId,
+        schemaVersion: 1,
+      });
+      if (!result.ok) throw new Error(result.error);
+      this.#database.exec("COMMIT;");
+      return result.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
   query<T extends LibraryCoreSqliteQueryRequest>(
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
@@ -814,6 +905,26 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("PWA Library SQLite change revisions disagree");
     }
     return Object.freeze({ generationId, sourceRevision });
+  }
+
+  #queryGraphSource(): {
+    readonly generationId: string;
+    readonly layoutRevision: number;
+    readonly sourceRevision: number;
+  } {
+    const source = this.#querySource();
+    const rows = this.#database.exec({
+      sql: "SELECT revision FROM library_device_graph_layout_state WHERE singleton_id = 1;",
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("PWA Library SQLite has no device graph layout state");
+    }
+    return Object.freeze({
+      ...source,
+      layoutRevision: safeInteger(rows[0], "device graph layout revision"),
+    });
   }
 
   #queryChangeFeed(
@@ -1132,7 +1243,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCorePersonGraphPageResponseV1 {
     const request = parseLibraryCorePersonGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, sourceRevision } = this.#querySource();
+    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1141,6 +1252,7 @@ export class PwaLibraryCoreSqliteEngine {
       cursor !== null &&
       (!cursor.ok ||
         cursor.value.generationId !== generationId ||
+        cursor.value.layoutRevision !== layoutRevision ||
         cursor.value.projectionRevision !== sourceRevision ||
         cursor.value.transitionSequence !== sourceRevision)
     ) {
@@ -1187,11 +1299,13 @@ export class PwaLibraryCoreSqliteEngine {
     }));
     const last = rows.at(-1);
     const response = {
+      layoutRevision,
       nextCursor:
         hasMore && last
           ? encodeLibraryCoreIdentityPageCursorV1({
               entityId: last.id,
               generationId,
+              layoutRevision,
               projectionRevision: sourceRevision,
               transitionSequence: sourceRevision,
             })
@@ -1218,7 +1332,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreAccountGraphPageResponseV1 {
     const request = parseLibraryCoreAccountGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, sourceRevision } = this.#querySource();
+    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1227,6 +1341,7 @@ export class PwaLibraryCoreSqliteEngine {
       cursor !== null &&
       (!cursor.ok ||
         cursor.value.generationId !== generationId ||
+        cursor.value.layoutRevision !== layoutRevision ||
         cursor.value.projectionRevision !== sourceRevision ||
         cursor.value.transitionSequence !== sourceRevision)
     ) {
@@ -1283,11 +1398,13 @@ export class PwaLibraryCoreSqliteEngine {
     }));
     const last = rows.at(-1);
     const response = {
+      layoutRevision,
       nextCursor:
         hasMore && last
           ? encodeLibraryCoreIdentityPageCursorV1({
               entityId: last.id,
               generationId,
+              layoutRevision,
               projectionRevision: sourceRevision,
               transitionSequence: sourceRevision,
             })
@@ -1314,7 +1431,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreRssFeedGraphPageResponseV1 {
     const request = parseLibraryCoreRssFeedGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, sourceRevision } = this.#querySource();
+    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1323,6 +1440,7 @@ export class PwaLibraryCoreSqliteEngine {
       cursor !== null &&
       (!cursor.ok ||
         cursor.value.generationId !== generationId ||
+        cursor.value.layoutRevision !== layoutRevision ||
         cursor.value.projectionRevision !== sourceRevision ||
         cursor.value.transitionSequence !== sourceRevision)
     ) {
@@ -1361,11 +1479,13 @@ export class PwaLibraryCoreSqliteEngine {
     }));
     const last = rows.at(-1);
     const response = {
+      layoutRevision,
       nextCursor:
         hasMore && last
           ? encodeLibraryCoreIdentityPageCursorV1({
               entityId: last.url,
               generationId,
+              layoutRevision,
               projectionRevision: sourceRevision,
               transitionSequence: sourceRevision,
             })

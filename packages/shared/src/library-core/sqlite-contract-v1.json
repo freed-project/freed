@@ -568,6 +568,32 @@
       ]
     }
   ],
+  "localMutationPrograms": {
+    "account_graph_position_clear_v1": {
+      "entityType": "Account",
+      "maximumRows": 1,
+      "sql": "DELETE FROM library_device_account_graph_layout WHERE account_id = ?1 COLLATE BINARY;",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);"
+    },
+    "account_graph_position_set_v1": {
+      "entityType": "Account",
+      "maximumRows": 1,
+      "sql": "INSERT INTO library_device_account_graph_layout (account_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(account_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);"
+    },
+    "person_graph_position_clear_v1": {
+      "entityType": "Person",
+      "maximumRows": 1,
+      "sql": "DELETE FROM library_device_person_graph_layout WHERE person_id = ?1 COLLATE BINARY;",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);"
+    },
+    "person_graph_position_set_v1": {
+      "entityType": "Person",
+      "maximumRows": 1,
+      "sql": "INSERT INTO library_device_person_graph_layout (person_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(person_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);"
+    }
+  },
   "mutationPrograms": {
     "account_person_assignment": {
       "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'account' AND entity_id = ?1 AND field_path = 'person_id';",

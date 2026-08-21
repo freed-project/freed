@@ -87,8 +87,10 @@
         removes the separate JavaScript graph activity aggregate from the
         final reader path. Person and Account rows also join foreign-keyed
         installation-local SQLite positions that never enter checkpoints or
-        replication. The typed local position writer and Freed Desktop
-        graph-worker wiring remain open.
+        replication. The extracted native core executes generated one-row set
+        and clear programs with exact-retry no-op behavior and no canonical
+        revision or outbox effect. Freed Desktop graph-worker and product
+        store wiring remain open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

@@ -5,6 +5,7 @@
 //! explicit database path, key stores, and signed timestamps. It has no Tauri,
 //! Google Drive, provider, or Automerge dependency.
 
+mod device_graph_layout;
 mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg(unix)]
@@ -32,6 +33,10 @@ mod normalized_sqlite;
 mod product_projection;
 pub mod sqlite_contract_generated;
 
+pub use device_graph_layout::{
+    mutate_device_graph_layout_v1, DeviceGraphLayoutError, DeviceGraphLayoutMutationResultV1,
+    DeviceGraphLayoutMutationV1,
+};
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request, enroll_desktop_actor,
     prepare_follower_actor_enrollment_request, sign_follower_operation_digest, ActorKeyStore,

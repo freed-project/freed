@@ -43,6 +43,7 @@ export * from "./persons-graph-contracts.js";
 export * from "./person-detail-contracts.js";
 export * from "./account-detail-contracts.js";
 export * from "./friends-identity-page-contracts.js";
+export * from "./device-graph-layout-mutation-contracts.js";
 export * from "./item-detail-contracts.js";
 export * from "./item-reader-body-contracts.js";
 export * from "./item-scan-contracts.js";

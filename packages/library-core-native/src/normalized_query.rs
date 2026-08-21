@@ -426,6 +426,7 @@ pub struct NormalizedRssFeedGraphRowV1 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageResponseV1 {
+    pub layout_revision: i64,
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedPersonGraphRowV1>,
@@ -436,6 +437,7 @@ pub struct NormalizedPersonGraphPageResponseV1 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageResponseV1 {
+    pub layout_revision: i64,
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedAccountGraphRowV1>,
@@ -446,6 +448,7 @@ pub struct NormalizedAccountGraphPageResponseV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedRssFeedGraphPageResponseV1 {
+    pub layout_revision: i64,
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedRssFeedGraphRowV1>,
@@ -668,6 +671,18 @@ fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqli
         return Err(invalid("normalized query source identity is invalid"));
     }
     Ok((source.0, source.1))
+}
+
+fn query_graph_layout_revision(connection: &Connection) -> Result<i64, NormalizedSqliteError> {
+    let revision = connection.query_row(
+        "SELECT revision FROM library_device_graph_layout_state WHERE singleton_id = 1;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if !valid_safe_integer(revision) {
+        return Err(invalid("device graph layout revision is invalid"));
+    }
+    Ok(revision)
 }
 
 fn query_feed_page(
@@ -1432,9 +1447,10 @@ fn query_person_graph_page(
         .ok_or(invalid("normalized Person graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    let layout_revision = query_graph_layout_revision(&transaction)?;
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
-        cursor.sort_at != 0
+        cursor.sort_at != layout_revision
             || cursor.generation_id != generation_id
             || cursor.transition_sequence != source_revision
             || cursor.projection_revision != source_revision
@@ -1524,13 +1540,14 @@ fn query_person_graph_page(
             generation_id: generation_id.clone(),
             transition_sequence: source_revision,
             projection_revision: source_revision,
-            sort_at: 0,
+            sort_at: layout_revision,
             global_id: last.id.clone(),
         })?)
     } else {
         None
     };
     let response = NormalizedPersonGraphPageResponseV1 {
+        layout_revision,
         next_cursor,
         query_id: "person_graph_page_v1".to_owned(),
         rows,
@@ -1571,9 +1588,10 @@ fn query_account_graph_page(
         .ok_or(invalid("normalized Account graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    let layout_revision = query_graph_layout_revision(&transaction)?;
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
-        cursor.sort_at != 0
+        cursor.sort_at != layout_revision
             || cursor.generation_id != generation_id
             || cursor.transition_sequence != source_revision
             || cursor.projection_revision != source_revision
@@ -1684,13 +1702,14 @@ fn query_account_graph_page(
             generation_id: generation_id.clone(),
             transition_sequence: source_revision,
             projection_revision: source_revision,
-            sort_at: 0,
+            sort_at: layout_revision,
             global_id: last.id.clone(),
         })?)
     } else {
         None
     };
     let response = NormalizedAccountGraphPageResponseV1 {
+        layout_revision,
         next_cursor,
         query_id: "account_graph_page_v1".to_owned(),
         rows,
@@ -1731,9 +1750,10 @@ fn query_rss_feed_graph_page(
         .ok_or(invalid("normalized RSS feed graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    let layout_revision = query_graph_layout_revision(&transaction)?;
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
-        cursor.sort_at != 0
+        cursor.sort_at != layout_revision
             || cursor.generation_id != generation_id
             || cursor.transition_sequence != source_revision
             || cursor.projection_revision != source_revision
@@ -1801,13 +1821,14 @@ fn query_rss_feed_graph_page(
             generation_id: generation_id.clone(),
             transition_sequence: source_revision,
             projection_revision: source_revision,
-            sort_at: 0,
+            sort_at: layout_revision,
             global_id: last.url.clone(),
         })?)
     } else {
         None
     };
     let response = NormalizedRssFeedGraphPageResponseV1 {
+        layout_revision,
         next_cursor,
         query_id: "rss_feed_graph_page_v1".to_owned(),
         rows,
@@ -2905,6 +2926,24 @@ mod tests {
             panic!("Person graph page response");
         };
         assert_eq!(second.rows[0].id, "person-2");
+        connection
+            .execute(
+                "UPDATE library_device_graph_layout_state SET revision = 1 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("advance layout revision");
+        let layout_error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonGraphPage(NormalizedPersonGraphPageRequestV1 {
+                cancellation_id: "cancel-person-graph-layout-stale".to_owned(),
+                cursor: person_cursor.clone(),
+                limit: 1,
+                reader_session_id: "reader-person-graph-layout-stale".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect_err("layout-stale Person graph cursor");
+        assert!(layout_error.to_string().contains("cursor is stale"));
 
         let account_request = NormalizedAccountGraphPageRequestV1 {
             cancellation_id: "cancel-account-graph".to_owned(),

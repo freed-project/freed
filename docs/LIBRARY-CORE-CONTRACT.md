@@ -206,6 +206,16 @@ There is no generic patch, toggle, merge-object, execute-SQL, or shell mutation
 route. Product conveniences such as toggles read an exact current value and
 submit a named assignment mutation with an explicit precondition.
 
+Installation-local SQLite writes use a separate generated registry. The four
+v1 graph-position programs set or clear one Person or Account position. They
+accept one closed bounded DTO, require the entity to exist inside the same
+immediate transaction, affect at most one row, and make exact retries no-ops.
+They do not require an actor capability because they cannot alter canonical
+Library state. They do not advance source revision, append invalidations or
+receipts, enter either outbox, or appear in checkpoints. This local registry is
+not an escape hatch for product data. Any mutation that should synchronize
+belongs in the signed canonical registry above.
+
 ## 7. Follower intents and Primary results
 
 A follower edit atomically writes a signed intent transaction and its sparse
@@ -321,7 +331,11 @@ Person and Account rows left-join their installation-local graph position from
 unpinned position. These tables use entity foreign keys, disappear with the
 local entity, and never enter checkpoint export, intent replication, or
 authority digests. Graph placement therefore uses SQLite without turning
-device layout into synchronized product state.
+device layout into synchronized product state. Each changed local mutation
+advances a separate safe-integer layout revision. Graph responses expose it,
+and their opaque cursors bind it alongside canonical generation and source
+revision. A position change therefore invalidates an in-progress graph scan
+without pretending that canonical Library state changed.
 All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the

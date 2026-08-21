@@ -69,6 +69,11 @@ import {
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "./normalized-checkpoint-stage-contracts.js";
+import {
+  parseLibraryCoreDeviceGraphLayoutMutationV1,
+  type LibraryCoreDeviceGraphLayoutMutationResultV1,
+  type LibraryCoreDeviceGraphLayoutMutationV1,
+} from "./device-graph-layout-mutation-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -137,6 +142,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "mutate_device_graph_layout";
+      mutation: LibraryCoreDeviceGraphLayoutMutationV1;
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "begin_normalized_checkpoint_stage";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -180,7 +191,8 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
-  | LibraryCoreNormalizedCheckpointActivationReceiptV2;
+  | LibraryCoreNormalizedCheckpointActivationReceiptV2
+  | LibraryCoreDeviceGraphLayoutMutationResultV1;
 
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
@@ -223,6 +235,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
   const expectedKeys =
     value.kind === "query"
       ? ["kind", "protocolVersion", "query", "requestId"]
+      : value.kind === "mutate_device_graph_layout"
+        ? ["kind", "mutation", "protocolVersion", "requestId"]
       : value.kind === "begin_normalized_checkpoint_stage"
         ? ["kind", "protocolVersion", "requestId", "stage"]
         : value.kind === "append_normalized_checkpoint_stage_page"
@@ -238,6 +252,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "append_normalized_checkpoint_stage_page",
       "begin_normalized_checkpoint_stage",
       "close",
+      "mutate_device_graph_layout",
       "open",
       "query",
       "status",
@@ -284,6 +299,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
                           : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
+  } else if (value.kind === "mutate_device_graph_layout") {
+    const mutation = parseLibraryCoreDeviceGraphLayoutMutationV1(value.mutation);
+    if (!mutation.ok) throw new TypeError(mutation.error);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
 }
@@ -306,6 +324,18 @@ export function createLibraryCoreSqliteQueryWorkerRequest<
     kind: "query",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     query,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
+  requestId: string,
+  mutation: LibraryCoreDeviceGraphLayoutMutationV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "mutate_device_graph_layout",
+    mutation,
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
 }

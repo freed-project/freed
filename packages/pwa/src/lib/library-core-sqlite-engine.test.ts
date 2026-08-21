@@ -315,13 +315,66 @@ describe("PWA Library Core SQLite engine", () => {
          60, 210, 'capture', NULL, NULL, 60, 210);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
-      INSERT INTO library_device_person_graph_layout
-        (person_id, graph_x, graph_y, updated_at)
-      VALUES ('person-1', 12.5, -8.25, 300);
-      INSERT INTO library_device_account_graph_layout
-        (account_id, graph_x, graph_y, updated_at)
-      VALUES ('account-1', -4.5, 6.75, 301);
     `);
+    const personPosition = {
+      entityId: "person-1",
+      graphX: 12.5,
+      graphY: -8.25,
+      mutationId: "person_graph_position_set_v1" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 300,
+    };
+    expect(engine.mutateDeviceGraphLayout(personPosition)).toMatchObject({
+      changed: true,
+      mutationId: "person_graph_position_set_v1",
+    });
+    expect(engine.mutateDeviceGraphLayout(personPosition).changed).toBe(false);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "person-1",
+        mutationId: "person_graph_position_clear_v1",
+        schemaVersion: 1,
+      }).changed,
+    ).toBe(true);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "person-1",
+        mutationId: "person_graph_position_clear_v1",
+        schemaVersion: 1,
+      }).changed,
+    ).toBe(false);
+    expect(engine.mutateDeviceGraphLayout(personPosition).changed).toBe(true);
+    expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "account-1",
+        graphX: -4.5,
+        graphY: 6.75,
+        mutationId: "account_graph_position_set_v1",
+        schemaVersion: 1,
+        updatedAt: 301,
+      }).changed,
+    ).toBe(true);
+    expect(() =>
+      engine.mutateDeviceGraphLayout({
+        entityId: "missing",
+        mutationId: "account_graph_position_clear_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow("target is unavailable");
+    expect(
+      database.exec({
+        sql: "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([7]);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_replication_outbox;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
     const secondChunk = Uint8Array.from([21, 22, 23, 24, 25, 26, 27, 28]);
@@ -498,6 +551,7 @@ describe("PWA Library Core SQLite engine", () => {
       schemaVersion: 1 as const,
     };
     const firstPersonGraphPage = engine.query(personGraphRequest);
+    expect(firstPersonGraphPage.layoutRevision).toBe(4);
     expect(firstPersonGraphPage.rows.map((row) => row.id)).toEqual([
       "person-1",
     ]);
@@ -509,10 +563,27 @@ describe("PWA Library Core SQLite engine", () => {
       graphY: -8.25,
     });
     expect(
+      engine.mutateDeviceGraphLayout({
+        entityId: "account-2",
+        graphX: 1,
+        graphY: 2,
+        mutationId: "account_graph_position_set_v1",
+        schemaVersion: 1,
+        updatedAt: 302,
+      }).layoutRevision,
+    ).toBe(5);
+    expect(() =>
+      engine.query({
+        ...personGraphRequest,
+        cursor: firstPersonGraphPage.nextCursor,
+      }),
+    ).toThrow("cursor is stale");
+    const refreshedPersonGraphPage = engine.query(personGraphRequest);
+    expect(
       engine
         .query({
           ...personGraphRequest,
-          cursor: firstPersonGraphPage.nextCursor,
+          cursor: refreshedPersonGraphPage.nextCursor,
         })
         .rows.map((row) => row.id),
     ).toEqual(["person-2"]);
@@ -525,6 +596,7 @@ describe("PWA Library Core SQLite engine", () => {
       schemaVersion: 1 as const,
     };
     const firstAccountGraphPage = engine.query(accountGraphRequest);
+    expect(firstAccountGraphPage.layoutRevision).toBe(5);
     expect(firstAccountGraphPage.rows).toMatchObject([
       {
         activityCount: 1,

@@ -26,6 +26,7 @@ describe("Friends identity page contracts", () => {
     const cursor = encodeLibraryCoreIdentityPageCursorV1({
       entityId: "person-2",
       generationId: source.generationId,
+      layoutRevision: 3,
       projectionRevision: 7,
       transitionSequence: 7,
     });
@@ -36,6 +37,7 @@ describe("Friends identity page contracts", () => {
     expect(
       parseLibraryCorePersonGraphPageResponseV1(
         {
+          layoutRevision: 3,
           nextCursor: cursor,
           queryId: "person_graph_page_v1",
           rows: [
@@ -101,6 +103,7 @@ describe("Friends identity page contracts", () => {
     expect(
       parseLibraryCoreAccountGraphPageResponseV1(
         {
+          layoutRevision: 3,
           nextCursor: null,
           queryId: "account_graph_page_v1",
           rows: [account("account-2"), account("account-1")],
@@ -116,6 +119,7 @@ describe("Friends identity page contracts", () => {
     expect(
       parseLibraryCoreRssFeedGraphPageResponseV1(
         {
+          layoutRevision: 3,
           nextCursor: null,
           queryId: "rss_feed_graph_page_v1",
           rows: [

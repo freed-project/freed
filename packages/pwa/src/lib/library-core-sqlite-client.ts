@@ -4,6 +4,7 @@ import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
+  createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
@@ -11,6 +12,8 @@ import {
   type LibraryCoreSqliteWorkerStatus,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
+  type LibraryCoreDeviceGraphLayoutMutationV1,
+  type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
@@ -60,6 +63,17 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
     return this.#send<LibraryCoreSqliteQueryResponseFor<T>>((requestId) =>
       createLibraryCoreSqliteQueryWorkerRequest(requestId, query),
+    );
+  }
+
+  mutateDeviceGraphLayout(
+    mutation: LibraryCoreDeviceGraphLayoutMutationV1,
+  ): Promise<LibraryCoreDeviceGraphLayoutMutationResultV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
+        requestId,
+        mutation,
+      ),
     );
   }
 

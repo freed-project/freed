@@ -395,6 +395,14 @@ CREATE TABLE IF NOT EXISTS library_device_person_graph_layout (
   CHECK (graph_y = graph_y AND abs(graph_y) <= 1000000000)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_device_graph_layout_state (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  revision INTEGER NOT NULL CHECK (revision >= 0)
+) STRICT;
+
+INSERT OR IGNORE INTO library_device_graph_layout_state (singleton_id, revision)
+VALUES (1, 0);
+
 CREATE TABLE IF NOT EXISTS library_device_account_graph_layout (
   account_id TEXT PRIMARY KEY REFERENCES library_accounts(id) ON DELETE CASCADE,
   graph_x REAL NOT NULL,

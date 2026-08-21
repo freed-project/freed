@@ -5,6 +5,7 @@ import {
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
+  createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
 } from "./sqlite-worker-protocol.js";
@@ -119,6 +120,30 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+  });
+
+  it("carries only closed device-local graph mutations", () => {
+    const request = createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
+      "request-layout",
+      {
+        entityId: "person-1",
+        graphX: 12.5,
+        graphY: -8.25,
+        mutationId: "person_graph_position_set_v1",
+        schemaVersion: 1,
+        updatedAt: 42,
+      },
+    );
+    expect(request.kind).toBe("mutate_device_graph_layout");
+    if (request.kind !== "mutate_device_graph_layout") {
+      throw new Error("device graph layout request lane is invalid");
+    }
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...request,
+        mutation: { ...request.mutation, canonicalRevision: 8 },
+      }),
+    ).toThrow(/device graph layout mutation is invalid/);
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {
