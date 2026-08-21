@@ -1,9 +1,7 @@
 import type {
-  Account,
   FriendCandidateConfidence,
   MapMode,
   Person,
-  RssFeed,
 } from "@freed/shared";
 import type {
   IdentityGraphActivitySummaries,
@@ -108,9 +106,9 @@ export interface IdentityGraphAtlas {
 }
 
 export interface BuildIdentityGraphAtlasInput {
-  persons: Person[];
-  accounts: Record<string, Account>;
-  feeds: Record<string, RssFeed>;
+  persons: readonly IdentityGraphPersonSource[];
+  accounts: Readonly<Record<string, IdentityGraphAccountSource>>;
+  feeds: Readonly<Record<string, IdentityGraphRssFeedSource>>;
   activitySummaries: IdentityGraphActivitySummaries;
   mode: MapMode;
   transform: ViewTransform;
@@ -121,6 +119,42 @@ export interface BuildIdentityGraphAtlasInput {
   selectedAccountId?: string | null;
   friendSuggestionStrengthByPerson?: Record<string, FriendCandidateConfidence>;
   friendSuggestionStrengthByAccount?: Record<string, FriendCandidateConfidence>;
+}
+
+export interface IdentityGraphPersonSource {
+  readonly avatarUrl?: string;
+  readonly careLevel: Person["careLevel"];
+  readonly graphPinned?: boolean;
+  readonly graphX?: number;
+  readonly graphY?: number;
+  readonly id: string;
+  readonly name: string;
+  readonly relationshipStatus: string;
+}
+
+export interface IdentityGraphAccountSource {
+  readonly activityCount?: number;
+  readonly avatarUrl?: string;
+  readonly displayName?: string;
+  readonly externalId: string;
+  readonly graphPinned?: boolean;
+  readonly graphX?: number;
+  readonly graphY?: number;
+  readonly handle?: string;
+  readonly id: string;
+  readonly kind: string;
+  readonly latestActivityAt?: number;
+  readonly personId?: string;
+  readonly provider: string;
+}
+
+export interface IdentityGraphRssFeedSource {
+  readonly activityCount?: number;
+  readonly enabled: boolean;
+  readonly imageUrl?: string;
+  readonly latestActivityAt?: number;
+  readonly title: string;
+  readonly url: string;
 }
 
 export type BuildIdentityGraphAtlasModelInput = Omit<
@@ -205,7 +239,7 @@ function initialsForLabel(label: string): string {
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
-function accountLabel(account: Account): string {
+function accountLabel(account: IdentityGraphAccountSource): string {
   return account.displayName?.trim() ||
     account.handle?.trim() ||
     account.externalId?.trim() ||
@@ -236,7 +270,7 @@ function applyPinnedPosition<T extends { graphPinned?: boolean; graphX?: number;
 
 function personActivity(
   personId: string,
-  accounts: Account[],
+  accounts: readonly IdentityGraphAccountSource[],
   summaries: Record<string, IdentityGraphActivitySummary>,
 ): { count: number; latest: number; avatarUrl: string | null } {
   let count = 0;
@@ -245,8 +279,11 @@ function personActivity(
   for (const account of accounts) {
     if (account.personId !== personId || account.kind !== "social") continue;
     const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
-    count += summary?.itemCount ?? 0;
-    latest = Math.max(latest, summary?.latestActivityAt ?? 0);
+    count += account.activityCount ?? summary?.itemCount ?? 0;
+    latest = Math.max(
+      latest,
+      account.latestActivityAt ?? summary?.latestActivityAt ?? 0,
+    );
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
   }
   return { count, latest, avatarUrl };
@@ -356,7 +393,7 @@ export function buildIdentityGraphAtlasModel({
   friendSuggestionStrengthByAccount = {},
 }: BuildIdentityGraphAtlasModelInput): IdentityGraphAtlasModel {
   const accountValues = Object.values(accounts);
-  const socialAccountsByPersonId = new Map<string, Account[]>();
+  const socialAccountsByPersonId = new Map<string, IdentityGraphAccountSource[]>();
   for (const account of accountValues) {
     if (account.kind !== "social" || !account.personId) continue;
     const siblings = socialAccountsByPersonId.get(account.personId);
@@ -439,7 +476,7 @@ export function buildIdentityGraphAtlasModel({
     const summary = activitySummaries.social[socialActivitySummaryKey(provider, account.externalId)];
     const linkedPerson = linkedPersonId ? personNodeById.get(linkedPersonId) : null;
     const label = accountLabel(account);
-    const activityCount = summary?.itemCount ?? 0;
+    const activityCount = account.activityCount ?? summary?.itemCount ?? 0;
     const radius = Math.min(linkedPerson ? 21 : 15, Math.max(10, (linkedPerson ? 12 : 10) + Math.log2(activityCount + 1.5) * 1.9));
     let fallback: { x: number; y: number };
     if (linkedPerson) {
@@ -480,7 +517,7 @@ export function buildIdentityGraphAtlasModel({
       initials: initialsForLabel(label),
       avatarUrl: account.avatarUrl ?? summary?.avatarUrl ?? null,
       activityCount,
-      latestActivityAt: summary?.latestActivityAt,
+      latestActivityAt: account.latestActivityAt ?? summary?.latestActivityAt,
       graphPinned: account.graphPinned,
       friendSuggestionConfidence: friendSuggestionStrengthByAccount[account.id],
     };
@@ -521,20 +558,21 @@ export function buildIdentityGraphAtlasModel({
     for (const feed of Object.values(feeds).filter((entry) => entry.enabled !== false)) {
       const summary = activitySummaries.rss[feed.url];
       const label = feed.title || feed.url;
+      const activityCount = feed.activityCount ?? summary?.itemCount ?? 0;
       const node: IdentityGraphAtlasNode = {
         id: `feed:${feed.url}`,
         kind: "feed",
         label,
         x: centerX,
         y: centerY,
-        radius: Math.min(12, Math.max(6, 7 + Math.log2((summary?.itemCount ?? 0) + 1.5) * 1.35)),
-        priority: 180 + (summary?.itemCount ?? 0),
+        radius: Math.min(12, Math.max(6, 7 + Math.log2(activityCount + 1.5) * 1.35)),
+        priority: 180 + activityCount,
         provider: "rss",
         feedUrl: feed.url,
         initials: initialsForLabel(label),
         avatarUrl: feed.imageUrl ?? summary?.avatarUrl ?? null,
-        activityCount: summary?.itemCount ?? 0,
-        latestActivityAt: summary?.latestActivityAt,
+        activityCount,
+        latestActivityAt: feed.latestActivityAt ?? summary?.latestActivityAt,
       };
       const bucket = providerBuckets.get("rss") ?? {
         provider: "rss",

@@ -40,6 +40,7 @@ import { FriendsGalaxyInputController } from "../../lib/friends-galaxy-input-con
 import type { FriendsGalaxyContextTarget } from "../../lib/friends-galaxy-interaction.js";
 import { FriendsGalaxyProductEngine } from "../../lib/friends-galaxy-product-engine.js";
 import type { FriendsGalaxyProductWorkerSourceInput } from "../../lib/friends-galaxy-product-worker-client.js";
+import type { FriendsGalaxySqliteGraphQuery } from "../../lib/friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
   FriendsGalaxyProductWorkerPresentationResponse,
@@ -84,6 +85,7 @@ interface FriendGraphProps {
   feeds: Record<string, RssFeed>;
   feedItems?: Record<string, FeedItem>;
   activitySummaries?: IdentityGraphActivitySummaries;
+  sqliteGraphQuery?: FriendsGalaxySqliteGraphQuery;
   mode: MapMode;
   selectedPersonId?: string | null;
   selectedAccountId?: string | null;
@@ -428,6 +430,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     feeds,
     feedItems,
     activitySummaries: activitySummariesProp,
+    sqliteGraphQuery,
     mode,
     selectedPersonId,
     selectedAccountId,
@@ -453,6 +456,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const mountedAtRef = useRef(nowMs());
   const sourceBuildStartedAtRef = useRef(mountedAtRef.current);
+  const sqliteGraphQueryRef = useRef(sqliteGraphQuery);
   const graphReadyRef = useRef(false);
   const diagnosticsOwnerRef = useRef({});
   const recoveringRef = useRef(false);
@@ -539,6 +543,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const proceduralBackgroundStarCount = BACKGROUND_STAR_COUNT;
 
   latestActivityRef.current = activitySummaries;
+  sqliteGraphQueryRef.current = sqliteGraphQuery;
 
   const personPickerOptions = useMemo(() => {
     const query = linkPickerQuery.trim().toLocaleLowerCase();
@@ -960,13 +965,25 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         sourceBuildStartedAtRef.current = nowMs();
         setSourceBuildInFlight(true);
         setGraphError(null);
-        engine.requestSource({
-          ...input,
-          source: {
-            ...input.source,
-            activitySummaries: baseline,
-          },
-        });
+        const normalizedQuery = sqliteGraphQueryRef.current;
+        if (normalizedQuery) {
+          engine.requestNormalizedSource({
+            backgroundSeed: input.backgroundSeed,
+            backgroundStarCount: input.backgroundStarCount,
+            mode: input.source.mode,
+            proceduralBackgroundStarCount: input.proceduralBackgroundStarCount,
+            sourceRevision: input.sourceRevision,
+            viewport: input.viewport,
+          }, normalizedQuery);
+        } else {
+          engine.requestSource({
+            ...input,
+            source: {
+              ...input.source,
+              activitySummaries: baseline,
+            },
+          });
+        }
       },
     });
     engine.setFieldStyle("nebula");

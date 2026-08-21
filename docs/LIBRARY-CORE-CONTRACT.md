@@ -339,7 +339,12 @@ without pretending that canonical Library state changed.
 All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the
-complete identity corpus.
+complete identity corpus. The Friends worker protocol uses an explicit begin,
+one-page append, and commit sequence. The client requests the next 128-row page
+only after the worker acknowledges the current page. The worker rejects mixed
+source or layout fences, reordered query families, discontinuous cursors,
+non-increasing identities, and a source above 100,000 semantic rows. A failed
+or superseded build preserves the last admitted scene.
 
 `item_reader_body_v1` is the only interactive reader-body byte path. The
 request names the item, selects content or preserved text, and supplies an

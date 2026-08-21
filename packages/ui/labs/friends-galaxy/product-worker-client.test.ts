@@ -99,7 +99,65 @@ function serviceResponse(
   return service.handle(worker.messages[messageIndex]!);
 }
 
+async function flushPromiseChain(): Promise<void> {
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
+}
+
 describe("Friends Galaxy product worker client", () => {
+  it("pumps one bounded SQLite graph page at a time before scene commit", async () => {
+    const worker = new FakeProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const queryIds: string[] = [];
+    const sourceReady: number[] = [];
+    const client = new FriendsGalaxyProductWorkerClient({
+      createWorker: () => worker,
+      onSourceReady: (response) => sourceReady.push(response.sourceRevision),
+      onPresentationReady: () => undefined,
+      onFailure: () => undefined,
+    });
+    const started = client.requestNormalizedSource({
+      mode: "all_content",
+      sourceRevision: 9,
+      viewport: { height: 844, width: 390 },
+    }, async (request) => {
+      queryIds.push(request.queryId);
+      return {
+        layoutRevision: 2,
+        nextCursor: null,
+        queryId: request.queryId,
+        rows: [],
+        schemaVersion: 1,
+        source: {
+          generationId: "b".repeat(64),
+          projectionRevision: 4,
+          transitionSequence: 4,
+        },
+      } as Awaited<ReturnType<Parameters<typeof client.requestNormalizedSource>[1]>>;
+    });
+    expect(started).toBe(1);
+    expect(worker.messages.map((message) => message.kind)).toEqual([
+      "normalized-source-begin",
+    ]);
+
+    worker.emit(serviceResponse(service, worker, 0));
+    await flushPromiseChain();
+    for (let index = 1; index <= 3; index += 1) {
+      expect(worker.messages.at(-1)?.kind).toBe("normalized-source-page");
+      worker.emit(serviceResponse(service, worker, index));
+      await flushPromiseChain();
+    }
+    expect(worker.messages.at(-1)?.kind).toBe("normalized-source-commit");
+    worker.emit(serviceResponse(service, worker, 4));
+
+    expect(queryIds).toEqual([
+      "person_graph_page_v1",
+      "account_graph_page_v1",
+      "rss_feed_graph_page_v1",
+    ]);
+    expect(sourceReady).toEqual([9]);
+    expect(client.sourceReady).toBe(true);
+  });
+
   it("admits one source scene and queues settled detail until it is ready", () => {
     const worker = new FakeProductWorker();
     const service = new FriendsGalaxyProductWorkerService();

@@ -4,14 +4,28 @@ import {
   validateFriendsGalaxyProductWorkerResponse,
   type FriendsGalaxyProductWorkerActivityRequest,
   type FriendsGalaxyProductWorkerActivityResponse,
+  type FriendsGalaxyProductWorkerNormalizedSourceBeginRequest,
+  type FriendsGalaxyProductWorkerNormalizedSourceCommitRequest,
+  type FriendsGalaxyProductWorkerNormalizedSourcePageRequest,
   type FriendsGalaxyProductWorkerPresentationRequest,
   type FriendsGalaxyProductWorkerPresentationResponse,
   type FriendsGalaxyProductWorkerRequest,
   type FriendsGalaxyProductWorkerSourceRequest,
   type FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
+import type {
+  LibraryCoreAccountGraphPageRequestV1,
+  LibraryCorePersonGraphPageRequestV1,
+  LibraryCoreRssFeedGraphPageRequestV1,
+} from "@freed/shared/library-core";
+import type { FriendsGalaxySqliteSourcePage } from "./friends-galaxy-sqlite-source.js";
 
 const DEFAULT_PRODUCT_WORKER_TIMEOUT_MS = 30_000;
+const NORMALIZED_SOURCE_QUERY_IDS = [
+  "person_graph_page_v1",
+  "account_graph_page_v1",
+  "rss_feed_graph_page_v1",
+] as const;
 
 export type FriendsGalaxyProductWorkerSourceInput = Omit<
   FriendsGalaxyProductWorkerSourceRequest,
@@ -27,6 +41,35 @@ export type FriendsGalaxyProductWorkerActivityInput = Omit<
   FriendsGalaxyProductWorkerActivityRequest,
   "protocolVersion" | "requestId"
 >;
+
+export type FriendsGalaxyProductWorkerNormalizedSourceInput = Omit<
+  FriendsGalaxyProductWorkerNormalizedSourceBeginRequest,
+  "kind" | "protocolVersion" | "requestId"
+>;
+
+export type FriendsGalaxySqliteGraphPageRequest =
+  | LibraryCorePersonGraphPageRequestV1
+  | LibraryCoreAccountGraphPageRequestV1
+  | LibraryCoreRssFeedGraphPageRequestV1;
+
+export type FriendsGalaxySqliteGraphQuery = (
+  request: FriendsGalaxySqliteGraphPageRequest,
+) => Promise<FriendsGalaxySqliteSourcePage>;
+
+type FriendsGalaxyProductWorkerSourceLaneRequest =
+  | FriendsGalaxyProductWorkerSourceRequest
+  | FriendsGalaxyProductWorkerNormalizedSourceBeginRequest
+  | FriendsGalaxyProductWorkerNormalizedSourcePageRequest
+  | FriendsGalaxyProductWorkerNormalizedSourceCommitRequest;
+
+interface FriendsGalaxyNormalizedSourceJob {
+  readonly query: FriendsGalaxySqliteGraphQuery;
+  readonly readerSessionId: string;
+  readonly sourceRevision: number;
+  cursor: string | null;
+  queryIndex: number;
+  queryToken: number;
+}
 
 export interface FriendsGalaxyProductWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
@@ -128,8 +171,9 @@ export class FriendsGalaxyProductWorkerClient {
   private generation = 0;
   private nextRequestId = 1;
   private currentSourceRevision: number | null = null;
-  private sourceRequest: FriendsGalaxyProductWorkerSourceRequest | null = null;
+  private sourceRequest: FriendsGalaxyProductWorkerSourceLaneRequest | null = null;
   private queuedSourceRequest: FriendsGalaxyProductWorkerSourceRequest | null = null;
+  private normalizedSourceJob: FriendsGalaxyNormalizedSourceJob | null = null;
   private residentScene: FriendsGalaxyRendererScene | null = null;
   private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
   private queuedPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
@@ -203,7 +247,7 @@ export class FriendsGalaxyProductWorkerClient {
       requestId: this.nextRequestId++,
     };
     this.currentSourceRevision = request.sourceRevision;
-    if (this.sourceRequest) {
+    if (this.sourceRequest || this.normalizedSourceJob) {
       this.queuedSourceRequest = request;
       return request.requestId;
     }
@@ -211,7 +255,42 @@ export class FriendsGalaxyProductWorkerClient {
     return request.requestId;
   }
 
+  requestNormalizedSource(
+    input: FriendsGalaxyProductWorkerNormalizedSourceInput,
+    query: FriendsGalaxySqliteGraphQuery,
+  ): number | null {
+    this.assertActive();
+    if (this.sourceRequest || this.normalizedSourceJob) return null;
+    this.inFlightPresentation = null;
+    this.queuedPresentation = null;
+    this.inFlightActivity = null;
+    this.queuedActivity = null;
+    this.latestPresentationRequestId = 0;
+    this.latestActivityRevision = -1;
+    const request: FriendsGalaxyProductWorkerNormalizedSourceBeginRequest = {
+      ...input,
+      kind: "normalized-source-begin",
+      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+      requestId: this.nextRequestId++,
+    };
+    this.currentSourceRevision = request.sourceRevision;
+    this.normalizedSourceJob = {
+      cursor: null,
+      query,
+      queryIndex: 0,
+      queryToken: 0,
+      readerSessionId: `friends-galaxy-source-${String(request.sourceRevision)}`,
+      sourceRevision: request.sourceRevision,
+    };
+    this.startSourceLane(request);
+    return request.requestId;
+  }
+
   private startSource(request: FriendsGalaxyProductWorkerSourceRequest): void {
+    this.startSourceLane(request);
+  }
+
+  private startSourceLane(request: FriendsGalaxyProductWorkerSourceLaneRequest): void {
     this.sourceRequest = request;
     try {
       if (!this.worker) {
@@ -314,6 +393,7 @@ export class FriendsGalaxyProductWorkerClient {
     this.currentSourceRevision = null;
     this.sourceRequest = null;
     this.queuedSourceRequest = null;
+    this.normalizedSourceJob = null;
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
@@ -331,7 +411,12 @@ export class FriendsGalaxyProductWorkerClient {
   private post(request: FriendsGalaxyProductWorkerRequest): void {
     if (!this.worker) throw new Error("Friends Galaxy worker is unavailable.");
     const deadline = this.now() + this.timeoutMs;
-    if (request.kind === "source") this.sourceDeadline = deadline;
+    if (
+      request.kind === "source" ||
+      request.kind === "normalized-source-begin" ||
+      request.kind === "normalized-source-page" ||
+      request.kind === "normalized-source-commit"
+    ) this.sourceDeadline = deadline;
     else if (request.kind === "presentation") this.presentationDeadline = deadline;
     else this.activityDeadline = deadline;
     this.worker.postMessage(request);
@@ -383,7 +468,7 @@ export class FriendsGalaxyProductWorkerClient {
 
   private receiveSource(
     candidate: unknown,
-    request: FriendsGalaxyProductWorkerSourceRequest,
+    request: FriendsGalaxyProductWorkerSourceLaneRequest,
   ): void {
     try {
       validateFriendsGalaxyProductWorkerResponse(candidate, request);
@@ -391,11 +476,33 @@ export class FriendsGalaxyProductWorkerClient {
         this.fail("source", candidate.message, request);
         return;
       }
+      if (
+        request.kind === "normalized-source-begin" ||
+        request.kind === "normalized-source-page"
+      ) {
+        if (candidate.kind !== "normalized-source-staged") {
+          throw new Error("Friends Galaxy worker returned the wrong normalized source response.");
+        }
+        this.sourceDeadline = 0;
+        this.sourceRequest = null;
+        const job = this.normalizedSourceJob;
+        if (!job || job.sourceRevision !== request.sourceRevision) {
+          throw new Error("Friends Galaxy normalized source job disappeared.");
+        }
+        if (request.kind === "normalized-source-page") {
+          job.cursor = request.page.nextCursor;
+          if (request.page.nextCursor === null) job.queryIndex += 1;
+        }
+        if (candidate.complete) this.commitNormalizedSource(job);
+        else this.queryNormalizedSourcePage(job);
+        return;
+      }
       if (candidate.kind !== "source-ready") {
         throw new Error("Friends Galaxy worker returned the wrong source response.");
       }
       this.sourceDeadline = 0;
       this.sourceRequest = null;
+      this.normalizedSourceJob = null;
       const queuedSource = this.queuedSourceRequest;
       if (queuedSource) {
         this.queuedSourceRequest = null;
@@ -412,11 +519,70 @@ export class FriendsGalaxyProductWorkerClient {
     }
   }
 
+  private queryNormalizedSourcePage(job: FriendsGalaxyNormalizedSourceJob): void {
+    const queryId = NORMALIZED_SOURCE_QUERY_IDS[job.queryIndex];
+    if (!queryId) {
+      this.fail(
+        "source",
+        "Friends Galaxy normalized source query sequence overflowed.",
+        null,
+      );
+      return;
+    }
+    this.sourceDeadline = this.now() + this.timeoutMs;
+    const queryToken = ++job.queryToken;
+    const queryRequest = {
+      cancellationId: `friends-galaxy-query-${String(job.sourceRevision)}-${String(job.queryIndex)}`,
+      cursor: job.cursor,
+      limit: 128,
+      queryId,
+      readerSessionId: job.readerSessionId,
+      schemaVersion: 1 as const,
+    } as FriendsGalaxySqliteGraphPageRequest;
+    Promise.resolve()
+      .then(() => job.query(queryRequest))
+      .then((page) => {
+        if (
+          this.disposed ||
+          this.normalizedSourceJob !== job ||
+          job.queryToken !== queryToken ||
+          this.sourceRequest
+        ) return;
+        const request: FriendsGalaxyProductWorkerNormalizedSourcePageRequest = {
+          cursor: job.cursor,
+          kind: "normalized-source-page",
+          page,
+          protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+          requestId: this.nextRequestId++,
+          sourceRevision: job.sourceRevision,
+        };
+        this.startSourceLane(request);
+      })
+      .catch((error: unknown) => {
+        if (
+          this.disposed ||
+          this.normalizedSourceJob !== job ||
+          job.queryToken !== queryToken
+        ) return;
+        this.fail("source", error, null);
+      });
+  }
+
+  private commitNormalizedSource(job: FriendsGalaxyNormalizedSourceJob): void {
+    const request: FriendsGalaxyProductWorkerNormalizedSourceCommitRequest = {
+      kind: "normalized-source-commit",
+      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+      requestId: this.nextRequestId++,
+      sourceRevision: job.sourceRevision,
+    };
+    this.startSourceLane(request);
+  }
+
   private receivePortFailure(
     generation: number,
     phase: "protocol" | "runtime",
     error: unknown,
-    sourceRequest: FriendsGalaxyProductWorkerSourceRequest,
+    sourceRequest: FriendsGalaxyProductWorkerSourceLaneRequest,
   ): void {
     if (generation !== this.generation || this.disposed) {
       this.droppedResponses += 1;
@@ -539,6 +705,7 @@ export class FriendsGalaxyProductWorkerClient {
     this.currentSourceRevision = null;
     this.sourceRequest = null;
     this.queuedSourceRequest = null;
+    this.normalizedSourceJob = null;
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;

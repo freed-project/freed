@@ -91,6 +91,11 @@
         and clear programs with exact-retry no-op behavior and no canonical
         revision or outbox effect. Freed Desktop graph-worker and product
         store wiring remain open.
+  - [x] The shared Friends graph engine accepts a bounded SQLite query
+        function and pumps Person, Account, and RSS pages into worker-owned
+        compact source state one page at a time. The Freed Desktop native query
+        binding remains open and the existing graph path stays active until
+        the reader cutover.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

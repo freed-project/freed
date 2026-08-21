@@ -12,7 +12,9 @@ import {
   type FriendsGalaxyProductWorkerFailure,
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
+  type FriendsGalaxyProductWorkerNormalizedSourceInput,
   type FriendsGalaxyProductWorkerSourceInput,
+  type FriendsGalaxySqliteGraphQuery,
 } from "./friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
@@ -220,6 +222,17 @@ export class FriendsGalaxyProductEngine {
     this.pendingSourceResponse = null;
     this.activityPatches = null;
     return this.worker.requestSource(input);
+  }
+
+  requestNormalizedSource(
+    input: FriendsGalaxyProductWorkerNormalizedSourceInput,
+    query: FriendsGalaxySqliteGraphQuery,
+  ): number | null {
+    this.assertActive();
+    this.latestPresentation = null;
+    this.pendingSourceResponse = null;
+    this.activityPatches = null;
+    return this.worker.requestNormalizedSource(input, query);
   }
 
   requestSettledPresentation(
