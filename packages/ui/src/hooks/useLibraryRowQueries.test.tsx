@@ -52,32 +52,10 @@ function item(globalId: string): FeedItem {
   };
 }
 
-function savedItem(
-  globalId: string,
-  savedAt: number,
-  sourceUrl: string,
-  contentType: FeedItem["contentType"] = "article",
-): FeedItem {
-  return {
-    ...item(globalId),
-    platform: "saved",
-    contentType,
-    sourceUrl,
-    userState: {
-      hidden: false,
-      saved: true,
-      savedAt,
-      archived: false,
-      tags: [],
-    },
-  };
-}
-
 function platformConfig(
   overrides: Partial<
     Pick<
       PlatformConfig,
-      | "acquireLegacyLibraryItems"
       | "readLibraryFacetSummary"
       | "readLibraryFriendsGraph"
       | "readLibraryFriendsLocationItem"
@@ -107,14 +85,12 @@ function platformConfig(
 
 function SurfaceHarness({
   onItems,
-  readFallbackItems,
   surface = "map",
 }: {
   onItems: (items: readonly FeedItem[]) => void;
-  readFallbackItems: () => FeedItem[];
   surface?: LibrarySurface;
 }) {
-  onItems(useLibrarySurfaceItems(surface, readFallbackItems, 7));
+  onItems(useLibrarySurfaceItems(surface, 7));
   return null;
 }
 
@@ -123,20 +99,20 @@ function FacetHarness({
 }: {
   onSummaries: (summaries: readonly LibraryFacetSummary[]) => void;
 }) {
-  const first = useLibraryFacetSummary([], 8);
-  const second = useLibraryFacetSummary([], 8);
+  const first = useLibraryFacetSummary(8);
+  const second = useLibraryFacetSummary(8);
   onSummaries([first, second]);
   return null;
 }
 
 function SavedAnalyticsHarness({
-  fallbackItems,
+  sourceVersion = 9,
   onState,
 }: {
-  fallbackItems: readonly FeedItem[];
+  sourceVersion?: number;
   onState: (state: LibrarySavedAnalyticsState) => void;
 }) {
-  onState(useLibrarySavedAnalytics(fallbackItems, 9));
+  onState(useLibrarySavedAnalytics(sourceVersion));
   return null;
 }
 
@@ -311,9 +287,8 @@ describe("Library row query hooks", () => {
     }
   });
 
-  it("loads bounded native rows without materializing the fallback corpus", async () => {
+  it("loads bounded native surface rows", async () => {
     const readLibrarySurfaceItems = vi.fn(async () => [item("native-map")]);
-    const readFallbackItems = vi.fn(() => [item("fallback")]);
     let current: readonly FeedItem[] = [];
     renderHarness(
       <PlatformProvider value={platformConfig({ readLibrarySurfaceItems })}>
@@ -321,7 +296,6 @@ describe("Library row query hooks", () => {
           onItems={(items) => {
             current = items;
           }}
-          readFallbackItems={readFallbackItems}
         />
       </PlatformProvider>,
     );
@@ -331,40 +305,26 @@ describe("Library row query hooks", () => {
     expect(current.map((candidate) => candidate.globalId)).toEqual([
       "native-map",
     ]);
-    expect(readFallbackItems).not.toHaveBeenCalled();
     expect(readLibrarySurfaceItems).toHaveBeenCalledOnce();
     expect(readLibrarySurfaceItems).toHaveBeenCalledWith("map");
   });
 
-  it("leases the compatibility corpus only when a native surface reader is unavailable", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const readFallbackItems = vi.fn(() => [item("fallback")]);
+  it("fails closed when the surface query boundary is unavailable", async () => {
     let current: readonly FeedItem[] = [];
     renderHarness(
-      <PlatformProvider value={platformConfig({ acquireLegacyLibraryItems })}>
+      <PlatformProvider value={platformConfig({})}>
         <SurfaceHarness
           onItems={(items) => {
             current = items;
           }}
-          readFallbackItems={readFallbackItems}
           surface="story_wall"
         />
       </PlatformProvider>,
     );
 
-    expect(current.map((candidate) => candidate.globalId)).toEqual([
-      "fallback",
-    ]);
+    expect(current).toEqual([]);
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(readFallbackItems).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    expect(release).toHaveBeenCalledOnce();
+    expect(current).toEqual([]);
   });
 
   it("shares one exact facet query across multiple consumers", async () => {
@@ -394,7 +354,7 @@ describe("Library row query hooks", () => {
     expect(current).toEqual([summary, summary]);
   });
 
-  it("loads Saved analytics natively without leasing the compatibility corpus", async () => {
+  it("loads Saved analytics through the typed query boundary", async () => {
     const analytics: LibrarySavedAnalytics = {
       totalCount: 9,
       latestSavedAt: 900,
@@ -416,19 +376,14 @@ describe("Library row query hooks", () => {
     const readLibrarySavedAnalytics = vi.fn(
       async (_request: LibrarySavedAnalyticsRequest) => analytics,
     );
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibrarySavedAnalyticsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibrarySavedAnalytics,
         })}
       >
         <SavedAnalyticsHarness
-          fallbackItems={[
-            savedItem("fallback", Date.now(), "https://fallback.example/a"),
-          ]}
           onState={(state) => {
             current = state;
           }}
@@ -446,7 +401,6 @@ describe("Library row query hooks", () => {
     const request = readLibrarySavedAnalytics.mock.calls[0][0];
     expect(request.dailyWindows).toHaveLength(7);
     expect(request.hourlyWindows).toHaveLength(24);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics?.sourceCounts,
     ).toEqual([
@@ -464,7 +418,7 @@ describe("Library row query hooks", () => {
     ]);
   });
 
-  it("refreshes native Saved analytics after an item patch without a search version change", async () => {
+  it("refreshes Saved analytics when the SQLite source version changes", async () => {
     const first: LibrarySavedAnalytics = {
       totalCount: 1,
       latestSavedAt: 100,
@@ -492,10 +446,10 @@ describe("Library row query hooks", () => {
       .mockResolvedValueOnce(second);
     const config = platformConfig({ readLibrarySavedAnalytics });
     let current: LibrarySavedAnalyticsState | null = null;
-    const renderSaved = (fallbackItems: readonly FeedItem[]) => (
+    const renderSaved = (sourceVersion: number) => (
       <PlatformProvider value={config}>
         <SavedAnalyticsHarness
-          fallbackItems={fallbackItems}
+          sourceVersion={sourceVersion}
           onState={(state) => {
             current = state;
           }}
@@ -503,13 +457,13 @@ describe("Library row query hooks", () => {
       </PlatformProvider>
     );
 
-    renderHarness(renderSaved([]));
+    renderHarness(renderSaved(9));
     await flush();
     expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
     ).toBe(1);
 
-    act(() => root?.render(renderSaved([])));
+    act(() => root?.render(renderSaved(10)));
     await flush();
 
     expect(readLibrarySavedAnalytics).toHaveBeenCalledTimes(2);
@@ -518,21 +472,14 @@ describe("Library row query hooks", () => {
     ).toBe(2);
   });
 
-  it("leases and exactly reduces the compatibility corpus without a native Saved reader", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-02-14T12:30:00-08:00"));
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const savedAt = Date.now();
+  it("fails closed when a Saved analytics query rejects", async () => {
+    const readLibrarySavedAnalytics = vi.fn(async () => {
+      throw new Error("stale source");
+    });
     let current: LibrarySavedAnalyticsState | null = null;
     renderHarness(
-      <PlatformProvider value={platformConfig({ acquireLegacyLibraryItems })}>
+      <PlatformProvider value={platformConfig({ readLibrarySavedAnalytics })}>
         <SavedAnalyticsHarness
-          fallbackItems={[
-            savedItem("one", savedAt - 1, "https://www.example.com/one"),
-            savedItem("two", savedAt, "https://example.com/two", "video"),
-            item("not-saved-platform"),
-          ]}
           onState={(state) => {
             current = state;
           }}
@@ -547,99 +494,9 @@ describe("Library row query hooks", () => {
     await flush();
     expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(false);
     expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
-    ).toBe(2);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.latestSavedAt,
-    ).toBe(savedAt);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.dailyCounts.at(
-        -1,
-      ),
-    ).toBe(2);
-    expect(
-      (
-        current as LibrarySavedAnalyticsState | null
-      )?.analytics?.hourlyCounts.at(-1),
-    ).toBe(2);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.sourceCounts,
-    ).toEqual([{ label: "example.com", count: 2 }]);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.contentMix,
-    ).toEqual([
-      { label: "article", count: 1 },
-      { label: "video", count: 1 },
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    expect(release).toHaveBeenCalledOnce();
-  });
-
-  it("waits for compatibility hydration before reducing after a native Saved read rejects", async () => {
-    const release = vi.fn();
-    let resolveAcquisition: ((release: () => void) => void) | null = null;
-    const acquireLegacyLibraryItems = vi.fn(
-      () =>
-        new Promise<() => void>((resolve) => {
-          resolveAcquisition = resolve;
-        }),
-    );
-    const readLibrarySavedAnalytics = vi.fn(
-      async (_request: LibrarySavedAnalyticsRequest) => {
-        throw new Error("stale source");
-      },
-    );
-    let current: LibrarySavedAnalyticsState | null = null;
-    const renderSaved = (fallbackItems: readonly FeedItem[]) => (
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibrarySavedAnalytics,
-        })}
-      >
-        <SavedAnalyticsHarness
-          fallbackItems={fallbackItems}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>
-    );
-    renderHarness(renderSaved([]));
-
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    await flush();
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    expect(
       (current as LibrarySavedAnalyticsState | null)?.analytics,
     ).toBeNull();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    act(() => {
-      root?.render(
-        renderSaved([
-          savedItem("fallback", Date.now(), "https://fallback.example/item"),
-        ]),
-      );
-    });
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(true);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics,
-    ).toBeNull();
-
-    await act(async () => {
-      resolveAcquisition?.(release);
-      await Promise.resolve();
-    });
-    expect((current as LibrarySavedAnalyticsState | null)?.loading).toBe(false);
-    expect(
-      (current as LibrarySavedAnalyticsState | null)?.analytics?.totalCount,
-    ).toBe(1);
+    expect(readLibrarySavedAnalytics).toHaveBeenCalledOnce();
   });
 
   it("walks a native Friends timeline past the third page, replaces each row window, and returns to newest", async () => {

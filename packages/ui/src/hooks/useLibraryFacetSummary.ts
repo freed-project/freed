@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { hasSampleDataFingerprint, type FeedItem } from "@freed/shared";
+import { useEffect, useState } from "react";
 import {
   usePlatform,
   type LibraryFacetSummary,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
-import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 export type { LibraryFacetSummary } from "../context/PlatformContext.js";
 
@@ -34,34 +32,6 @@ const EMPTY_FACET_SUMMARY: LibraryFacetSummary = Object.freeze({
   totalCount: 0,
 });
 
-function summarizeItems(items: readonly FeedItem[]): LibraryFacetSummary {
-  let archivedCount = 0;
-  let savedArchivedCount = 0;
-  let savedCount = 0;
-  let savedPlatformCount = 0;
-  let sampleItemCount = 0;
-  const tags = new Set<string>();
-  for (const item of items) {
-    if (item.userState.archived) archivedCount += 1;
-    if (item.userState.saved) savedCount += 1;
-    if (item.platform === "saved") savedPlatformCount += 1;
-    if (hasSampleDataFingerprint(item)) sampleItemCount += 1;
-    if (item.userState.saved && item.userState.archived) {
-      savedArchivedCount += 1;
-    }
-    for (const tag of item.userState.tags) tags.add(tag);
-  }
-  return {
-    archivedCount,
-    savedArchivedCount,
-    savedCount,
-    savedPlatformCount,
-    sampleItemCount,
-    tags: Array.from(tags).sort(),
-    totalCount: items.length,
-  };
-}
-
 function prepareFacetSummary(
   reader: FacetReader,
   sourceVersion: number,
@@ -88,10 +58,8 @@ function prepareFacetSummary(
 
 /** Return exact Library counts and tags without retaining row identities or bodies. */
 export function useLibraryFacetSummary(
-  fallbackItems: FeedItem[],
   sourceVersion: number,
   enabled = true,
-  allowLegacyFallback = true,
 ): LibraryFacetSummary {
   const { readLibraryFacetSummary } = usePlatform();
   const [versionedSummary, setVersionedSummary] = useState<VersionedFacetSummary | null>(() => {
@@ -100,15 +68,6 @@ export function useLibraryFacetSummary(
     return result ? { sourceVersion, summary: result } : null;
   });
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
-  const shouldFallback =
-    enabled &&
-    allowLegacyFallback &&
-    (!readLibraryFacetSummary || failedVersion === sourceVersion);
-  useLegacyLibraryItems(shouldFallback);
-  const fallback = useMemo(
-    () => (shouldFallback ? summarizeItems(fallbackItems) : null),
-    [fallbackItems, shouldFallback],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -139,8 +98,10 @@ export function useLibraryFacetSummary(
   }, [enabled, readLibraryFacetSummary, sourceVersion]);
 
   if (!enabled) return EMPTY_FACET_SUMMARY;
-  if (fallback) return fallback;
+  if (!readLibraryFacetSummary || failedVersion === sourceVersion) {
+    return EMPTY_FACET_SUMMARY;
+  }
   return versionedSummary?.sourceVersion === sourceVersion
     ? versionedSummary.summary
-    : versionedSummary?.summary ?? EMPTY_FACET_SUMMARY;
+    : EMPTY_FACET_SUMMARY;
 }

@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FeedItem } from "@freed/shared";
 import {
   usePlatform,
   type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
-import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 type SurfaceReader = NonNullable<PlatformConfig["readLibrarySurfaceItems"]>;
 
@@ -52,7 +51,6 @@ function prepareSurfaceItems(
 /** Return one bounded candidate set selected inside the platform row store. */
 export function useLibrarySurfaceItems(
   surface: LibrarySurface,
-  readFallbackItems: () => FeedItem[],
   sourceVersion: number,
 ): FeedItem[] {
   const { readLibrarySurfaceItems } = usePlatform();
@@ -66,13 +64,6 @@ export function useLibrarySurfaceItems(
     return result ? { sourceVersion, items: result } : null;
   });
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
-  const shouldFallback =
-    !readLibrarySurfaceItems || failedVersion === sourceVersion;
-  useLegacyLibraryItems(shouldFallback);
-  const fallbackItems = useMemo(
-    () => (shouldFallback ? readFallbackItems() : null),
-    [readFallbackItems, shouldFallback],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -106,8 +97,10 @@ export function useLibrarySurfaceItems(
     };
   }, [readLibrarySurfaceItems, sourceVersion, surface]);
 
-  if (fallbackItems) return fallbackItems;
+  if (!readLibrarySurfaceItems || failedVersion === sourceVersion) {
+    return EMPTY_SURFACE_ITEMS;
+  }
   return versionedItems?.sourceVersion === sourceVersion
     ? versionedItems.items
-    : versionedItems?.items ?? EMPTY_SURFACE_ITEMS;
+    : EMPTY_SURFACE_ITEMS;
 }

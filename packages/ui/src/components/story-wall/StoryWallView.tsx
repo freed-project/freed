@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   buildStoryWallManifest,
   estimateStoryWallPublishSize,
-  itemHasStoryWallMedia,
   PLATFORM_LABELS,
   selectableStoryWallYears,
   selectStoryWallItems,
@@ -319,7 +318,6 @@ interface StoryWallViewProps {
 export function StoryWallView({
   variant = "workspace",
 }: StoryWallViewProps = {}) {
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const accounts = useAppStore((s) => s.accounts);
   const preferences = useAppStore((s) => s.preferences);
@@ -336,19 +334,8 @@ export function StoryWallView({
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
-  const readFallbackStoryWallItems = useCallback(
-    () =>
-      items.filter(
-        (item) =>
-          !item.userState.hidden &&
-          !item.userState.archived &&
-          itemHasStoryWallMedia(item),
-      ),
-    [items],
-  );
   const storyWallItems = useLibrarySurfaceItems(
     "story_wall",
-    readFallbackStoryWallItems,
     searchCorpusVersion,
   );
   const availableYears = useMemo(

@@ -85,13 +85,10 @@ export function SavedSection() {
 // ── Overview pane ─────────────────────────────────────────────────────────────
 
 function OverviewPane() {
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const [selectedRange, setSelectedRange] = useState<HealthChartRange>("daily");
-  const { analytics, loading, request } = useLibrarySavedAnalytics(
-    items,
-    searchCorpusVersion,
-  );
+  const { analytics, loading, request } =
+    useLibrarySavedAnalytics(searchCorpusVersion);
 
   if (loading || !analytics) {
     return (
@@ -407,9 +404,8 @@ function ImportPane() {
 
 function ExportPane() {
   const { exportMarkdown, releaseChannel } = usePlatform();
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const [exporting, setExporting] = useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 

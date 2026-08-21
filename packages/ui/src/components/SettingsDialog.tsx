@@ -874,7 +874,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
   const existingFriendCount = Object.keys(friends).length;
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const existingItemCount = libraryFacets.totalCount;
   const sampleDataSummary = useMemo(
     () =>

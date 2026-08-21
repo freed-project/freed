@@ -137,6 +137,11 @@ unchanged in native Rust and browser SQLite, use the visible publication index,
 read one overflow row instead of counting the corpus, and never route through
 the historical general FeedItem surface reader.
 
+Map, Story Wall, Library facets, feed signal counts, and Saved analytics use
+only their closed typed SQLite readers. A missing or rejected query fails closed
+to an empty or unavailable view state. It never leases, scans, or reconstructs
+the renderer corpus.
+
 Exit proof:
 
 - every view queries SQLite directly through its platform adapter

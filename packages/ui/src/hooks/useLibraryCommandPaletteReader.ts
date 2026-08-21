@@ -265,10 +265,8 @@ export function useLibraryCommandPaletteReader({
     scanLibraryItems && !nativeReaderDisabled,
   );
   const libraryFacets = useLibraryFacetSummary(
-    fallbackItems,
     sourceVersion,
-    nativeReaderAvailable,
-    Boolean(readLibraryFacetSummary) || !nativeReaderAvailable,
+    enabled && Boolean(readLibraryFacetSummary),
   );
   const inputHasQuery = inputValue.trim().length > 0;
   const committedSearchHasQuery = searchQuery.trim().length > 0;

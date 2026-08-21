@@ -1363,7 +1363,7 @@ describe("command palette", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the explicit SearchJump rollback on compatibility hydration", async () => {
+  it("keeps SQLite facets active during the remaining SearchJump compatibility path", async () => {
     localStorage.setItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY, "1");
     const release = vi.fn();
     const acquireLegacyLibraryItems = vi.fn(async () => release);
@@ -1405,7 +1405,7 @@ describe("command palette", () => {
     await flush();
 
     expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(readLibraryFacetSummary).not.toHaveBeenCalled();
+    expect(readLibraryFacetSummary).toHaveBeenCalledOnce();
     expect(scanLibraryItems).not.toHaveBeenCalled();
   });
 

@@ -367,7 +367,7 @@ export function Header({
   const libraryItemVersion = useAppStore(
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
   );
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
@@ -712,7 +712,6 @@ export function Header({
   // projection on the healthy Desktop path, so counting the store array here
   // reported zero for every chip.
   const feedSignalCounts = useFeedSignalCounts(
-    items,
     feedSignalCountBaseFilter,
     searchCorpusVersion,
     isLibraryInitialized,

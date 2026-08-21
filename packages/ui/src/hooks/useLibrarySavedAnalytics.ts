@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FeedItem } from "@freed/shared";
 import {
   usePlatform,
   type LibrarySavedAnalytics,
@@ -9,9 +8,7 @@ import {
 import {
   createLibrarySavedAnalyticsRequest,
   normalizeLibrarySavedAnalytics,
-  summarizeLibrarySavedItems,
 } from "../lib/saved-library-analytics.js";
-import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 type SavedAnalyticsReader = NonNullable<
   PlatformConfig["readLibrarySavedAnalytics"]
@@ -19,7 +16,6 @@ type SavedAnalyticsReader = NonNullable<
 
 interface CachedSavedAnalytics {
   reader: SavedAnalyticsReader;
-  itemStateToken: object;
   sourceVersion: number;
   requestKey: string;
   promise: Promise<LibrarySavedAnalytics>;
@@ -27,7 +23,6 @@ interface CachedSavedAnalytics {
 }
 
 interface VersionedSavedAnalytics {
-  itemStateToken: object;
   sourceVersion: number;
   requestKey: string;
   analytics: LibrarySavedAnalytics;
@@ -49,14 +44,12 @@ function analyticsRequestKey(request: LibrarySavedAnalyticsRequest): string {
 
 function prepareSavedAnalytics(
   reader: SavedAnalyticsReader,
-  itemStateToken: object,
   sourceVersion: number,
   request: LibrarySavedAnalyticsRequest,
   requestKey: string,
 ): CachedSavedAnalytics {
   if (
     analyticsCache?.reader === reader &&
-    analyticsCache.itemStateToken === itemStateToken &&
     analyticsCache.sourceVersion === sourceVersion &&
     analyticsCache.requestKey === requestKey
   ) {
@@ -64,7 +57,6 @@ function prepareSavedAnalytics(
   }
   const entry: CachedSavedAnalytics = {
     reader,
-    itemStateToken,
     sourceVersion,
     requestKey,
     result: null,
@@ -81,7 +73,6 @@ function prepareSavedAnalytics(
 
 /** Read exact Saved overview aggregates without retaining the Library corpus. */
 export function useLibrarySavedAnalytics(
-  fallbackItems: readonly FeedItem[],
   sourceVersion: number,
 ): LibrarySavedAnalyticsState {
   const { readLibrarySavedAnalytics } = usePlatform();
@@ -90,32 +81,20 @@ export function useLibrarySavedAnalytics(
     [sourceVersion],
   );
   const requestKey = useMemo(() => analyticsRequestKey(request), [request]);
-  const itemStateToken = useMemo(() => ({}), [fallbackItems]);
   const [versionedAnalytics, setVersionedAnalytics] =
     useState<VersionedSavedAnalytics | null>(() => {
       if (!readLibrarySavedAnalytics) return null;
       const result = prepareSavedAnalytics(
         readLibrarySavedAnalytics,
-        itemStateToken,
         sourceVersion,
         request,
         requestKey,
       ).result;
       return result
-        ? { itemStateToken, sourceVersion, requestKey, analytics: result }
+        ? { sourceVersion, requestKey, analytics: result }
         : null;
     });
   const [failedKey, setFailedKey] = useState<string | null>(null);
-  const shouldFallback =
-    !readLibrarySavedAnalytics || failedKey === requestKey;
-  const legacyItemsReady = useLegacyLibraryItems(shouldFallback);
-  const fallback = useMemo(
-    () =>
-      shouldFallback && legacyItemsReady
-        ? summarizeLibrarySavedItems(fallbackItems, request)
-        : null,
-    [fallbackItems, legacyItemsReady, request, shouldFallback],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +108,6 @@ export function useLibrarySavedAnalytics(
 
     const prepared = prepareSavedAnalytics(
       readLibrarySavedAnalytics,
-      itemStateToken,
       sourceVersion,
       request,
       requestKey,
@@ -137,7 +115,6 @@ export function useLibrarySavedAnalytics(
     setVersionedAnalytics(
       prepared.result
         ? {
-            itemStateToken,
             sourceVersion,
             requestKey,
             analytics: prepared.result,
@@ -149,7 +126,6 @@ export function useLibrarySavedAnalytics(
         if (!cancelled) {
           setFailedKey(null);
           setVersionedAnalytics({
-            itemStateToken,
             sourceVersion,
             requestKey,
             analytics,
@@ -163,12 +139,13 @@ export function useLibrarySavedAnalytics(
     return () => {
       cancelled = true;
     };
-  }, [itemStateToken, readLibrarySavedAnalytics, request, requestKey, sourceVersion]);
+  }, [readLibrarySavedAnalytics, request, requestKey, sourceVersion]);
 
-  if (fallback) return { analytics: fallback, loading: false, request };
+  if (!readLibrarySavedAnalytics || failedKey === requestKey) {
+    return { analytics: null, loading: false, request };
+  }
   const current =
-    versionedAnalytics?.itemStateToken === itemStateToken &&
-    versionedAnalytics.sourceVersion === sourceVersion &&
+    versionedAnalytics?.sourceVersion === sourceVersion &&
     versionedAnalytics.requestKey === requestKey
       ? versionedAnalytics.analytics
       : null;

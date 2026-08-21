@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  extractLocationFromItem,
   getLocationTimelineBounds,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
@@ -31,10 +30,6 @@ type MapViewportInsets = {
 
 interface MapViewProps {
   viewportInsets?: MapViewportInsets;
-}
-
-function hasLocationSignal(item: Parameters<typeof extractLocationFromItem>[0]): boolean {
-  return Boolean(extractLocationFromItem(item));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -146,7 +141,6 @@ function labelPositionStyle(
 }
 
 export function MapView({ viewportInsets }: MapViewProps) {
-  const items = useAppStore((state) => state.items);
   const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
   const persons = useAppStore((state) => state.persons);
   const accounts = useAppStore((state) => state.accounts);
@@ -161,15 +155,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const themeId = useAppliedThemeId();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
-  const readFallbackLocationItems = useCallback(
-    () => items.filter(hasLocationSignal),
-    [items],
-  );
-  const locationItems = useLibrarySurfaceItems(
-    "map",
-    readFallbackLocationItems,
-    searchCorpusVersion,
-  );
+  const locationItems = useLibrarySurfaceItems("map", searchCorpusVersion);
   const { resolvedItems } = useResolvedLocations(locationItems, persons, accounts);
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
   const timeBounds = useMemo(

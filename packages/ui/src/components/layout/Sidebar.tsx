@@ -740,7 +740,6 @@ export function Sidebar({
   const mobileMenuTopPx = scaleInterfaceChromePx(MOBILE_MENU_TOP_PX, interfaceZoom);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -748,7 +747,7 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);

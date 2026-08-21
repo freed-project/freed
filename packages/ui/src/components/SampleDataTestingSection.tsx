@@ -30,7 +30,7 @@ export function SampleDataTestingSection() {
   const [seedDone, setSeedDone] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const sampleDataSummary = useMemo(
     () =>
       summarizeSampleData(
