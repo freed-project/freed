@@ -48,6 +48,12 @@
       requiring an accepted transaction row. Already-applied results reference
       the original immutable result digest. Product rows and revisions remain
       exclusive to accepted mutations.
+- [x] Produce bounded authority-signed rejected and already-applied envelopes
+      natively. Exact retries return the stored bytes without consuming another
+      result sequence. Rejections name no canonical operation or receipt.
+      Already-applied results prove the original accepted result and carry its
+      canonical operation, receipt, and current replacement projection. Neither
+      outcome advances the product revision or actor operation tip.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

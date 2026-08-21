@@ -280,7 +280,13 @@ canonical bytes, and actor-scoped sequence. A rejected result does not require
 an accepted transaction row and cannot fabricate one. Rejections allocate a
 result without changing canonical product rows or revisions. `already_applied`
 references the original immutable result digest. Their native admission
-branches remain required before follower write activation.
+producer reads the original accepted transaction's typed operation and receipt
+rows, derives current sparse replacement fields from normalized product rows,
+and signs a new actor-sequenced result. Exact non-accepted retry returns the
+stored bytes without allocating another sequence. Rejected and already-applied
+production never writes a product row, operation row, actor operation tip, or
+source revision. Classification and routing of every closed rejection reason
+remain required before follower write activation.
 
 ## 8. Query contract
 

@@ -357,6 +357,7 @@ loads an alternate Library engine or compatibility path.
 | 4.181 | Generated normalized `feed_item_capture_upsert` with signed admission, a 32-member transaction bound, a 131,072-byte canonical operation-envelope ceiling, atomic typed root and child materialization, user-state preservation on refresh, tombstone refusal, exact receipts, invalidation, and replication outbox effects | ✓ | High |
 | 4.182 | Native Primary accepted-result production inside the authoritative normalized mutation transaction, with active authority-key recheck, exact post-materialization replacement fields, domain-separated Ed25519 signing, immutable bounded result bytes, actor-scoped contiguous result cursors, exact response-loss replay, and whole-transaction rollback on a late result-cursor fault | ✓ | High |
 | 4.183 | Typed native follower-result outbox schema for accepted, rejected, and already-applied outcomes, with closed rejection reasons, original-result references, exact transaction digests, actor-scoped sequence identity, and no requirement to fabricate an accepted transaction row for a rejection | ✓ | High |
+| 4.184 | Native authority-signed rejected and already-applied result production through the same bounded envelope and actor result chain as acceptance, with closed reasons, original accepted-result proof, original canonical operation and receipt identities, exact sparse replacements, response-loss replay, and no product-row, operation, actor-tip, or source-revision writes | ✓ | High |
 
 ---
 

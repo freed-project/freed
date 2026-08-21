@@ -222,6 +222,53 @@ fn require_writer_admission(
 }
 
 const FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES: usize = 131_072;
+const FOLLOWER_RESULT_REJECTION_REASONS: &[&str] = &[
+    "actor_retired",
+    "capability_denied",
+    "epoch_stale",
+    "precondition_failed",
+    "target_missing",
+    "target_tombstoned",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FollowerResultOutcome<'a> {
+    Accepted,
+    AlreadyApplied { original_result_digest: &'a str },
+    Rejected { reason: &'a str },
+}
+
+struct FollowerResultProjection {
+    operation_ids: Vec<String>,
+    receipt_ids: Vec<String>,
+    replacement_fields: Vec<Value>,
+}
+
+impl<'a> FollowerResultOutcome<'a> {
+    const fn status(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::AlreadyApplied { .. } => "already_applied",
+            Self::Rejected { .. } => "rejected",
+        }
+    }
+
+    const fn rejection_reason(self) -> Option<&'a str> {
+        match self {
+            Self::Rejected { reason } => Some(reason),
+            _ => None,
+        }
+    }
+
+    const fn original_result_digest(self) -> Option<&'a str> {
+        match self {
+            Self::AlreadyApplied {
+                original_result_digest,
+            } => Some(original_result_digest),
+            _ => None,
+        }
+    }
+}
 
 fn follower_result_digest(domain: &str, value: &Value) -> Result<String, NormalizedSqliteError> {
     let input =
@@ -281,18 +328,33 @@ fn follower_result_replacement_fields(
 ) -> Result<Vec<Value>, NormalizedSqliteError> {
     let mut identities = BTreeSet::new();
     for member in &verified.members {
-        let paths: &[&str] = match member.operation_type.as_str() {
-            "feed_item_read_assignment" => &["read_at"],
-            "feed_item_saved_assignment" | "feed_item_archive_assignment" => {
-                &["archived", "archived_at", "saved", "saved_at"]
-            }
-            "feed_item_like_assignment" => &["liked", "liked_at"],
-            _ => &[],
-        };
-        for path in paths {
-            identities.insert((member.entity_id.clone(), *path));
-        }
+        extend_replacement_identities(&mut identities, &member.operation_type, &member.entity_id);
     }
+    follower_result_replacement_fields_for_identities(transaction, identities)
+}
+
+fn extend_replacement_identities(
+    identities: &mut BTreeSet<(String, &'static str)>,
+    operation_type: &str,
+    entity_id: &str,
+) {
+    let paths: &[&'static str] = match operation_type {
+        "feed_item_read_assignment" => &["read_at"],
+        "feed_item_saved_assignment" | "feed_item_archive_assignment" => {
+            &["archived", "archived_at", "saved", "saved_at"]
+        }
+        "feed_item_like_assignment" => &["liked", "liked_at"],
+        _ => &[],
+    };
+    for path in paths {
+        identities.insert((entity_id.to_owned(), *path));
+    }
+}
+
+fn follower_result_replacement_fields_for_identities(
+    transaction: &Transaction<'_>,
+    identities: BTreeSet<(String, &'static str)>,
+) -> Result<Vec<Value>, NormalizedSqliteError> {
     let mut replacements = Vec::with_capacity(identities.len());
     for (entity_id, field_path) in identities {
         let row: FeedItemUserStateRow = transaction.query_row(
@@ -359,15 +421,176 @@ fn follower_result_replacement_fields(
     Ok(replacements)
 }
 
-fn persist_follower_result(
+fn stored_follower_result(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    expected_status: &str,
+) -> Result<Option<(i64, String, Vec<u8>)>, NormalizedSqliteError> {
+    let stored = transaction
+        .query_row(
+            "SELECT transaction_digest, actor_id, status, result_sequence,
+                    result_digest, canonical_result
+             FROM library_follower_result_outbox WHERE transaction_id = ?1;",
+            [&verified.transaction_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((transaction_digest, actor_id, status, sequence, digest, bytes)) = stored else {
+        return Ok(None);
+    };
+    if transaction_digest != verified.transaction_digest
+        || actor_id != verified.actor_id
+        || status != expected_status
+    {
+        return Err(JournalError::TransactionReplayConflict {
+            transaction_id: verified.transaction_id.clone(),
+        }
+        .into());
+    }
+    Ok(Some((sequence, digest, bytes)))
+}
+
+fn require_original_accepted_result(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    original_result_digest: &str,
+) -> Result<String, NormalizedSqliteError> {
+    let original: Option<(String, String, String)> = transaction
+        .query_row(
+            "SELECT transaction_id, actor_id, status
+             FROM library_follower_result_outbox
+             WHERE result_digest = ?1;",
+            [original_result_digest],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((transaction_id, actor_id, status)) = original else {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized already-applied result has no original accepted result",
+        ));
+    };
+    if actor_id != verified.actor_id || status != "accepted" {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized already-applied result has no original accepted result",
+        ));
+    }
+    Ok(transaction_id)
+}
+
+fn original_accepted_result_projection(
+    transaction: &Transaction<'_>,
+    original_transaction_id: &str,
+) -> Result<FollowerResultProjection, NormalizedSqliteError> {
+    let mut statement = transaction.prepare(
+        "SELECT operation_id, envelope_digest, mutation_id, entity_id
+         FROM library_operations
+         WHERE transaction_id = ?1 ORDER BY member_index;",
+    )?;
+    let rows = statement
+        .query_map([original_transaction_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if rows.is_empty() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized already-applied result has no original operations",
+        ));
+    }
+    let mut identities = BTreeSet::new();
+    let mut operation_ids = Vec::with_capacity(rows.len());
+    let mut receipt_ids = Vec::with_capacity(rows.len());
+    for (operation_id, envelope_digest, mutation_id, entity_id) in rows {
+        extend_replacement_identities(&mut identities, &mutation_id, &entity_id);
+        operation_ids.push(operation_id);
+        receipt_ids.push(envelope_digest);
+    }
+    Ok(FollowerResultProjection {
+        operation_ids,
+        receipt_ids,
+        replacement_fields: follower_result_replacement_fields_for_identities(
+            transaction,
+            identities,
+        )?,
+    })
+}
+
+fn current_result_projection(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    outcome: FollowerResultOutcome<'_>,
+) -> Result<FollowerResultProjection, NormalizedSqliteError> {
+    match outcome {
+        FollowerResultOutcome::Accepted => Ok(FollowerResultProjection {
+            operation_ids: verified
+                .members
+                .iter()
+                .map(|member| member.operation_id.clone())
+                .collect(),
+            receipt_ids: verified
+                .members
+                .iter()
+                .map(|member| member.envelope_digest.clone())
+                .collect(),
+            replacement_fields: follower_result_replacement_fields(transaction, verified)?,
+        }),
+        FollowerResultOutcome::Rejected { .. } => Ok(FollowerResultProjection {
+            operation_ids: Vec::new(),
+            receipt_ids: Vec::new(),
+            replacement_fields: Vec::new(),
+        }),
+        FollowerResultOutcome::AlreadyApplied {
+            original_result_digest,
+        } => {
+            let original_transaction_id =
+                require_original_accepted_result(transaction, verified, original_result_digest)?;
+            original_accepted_result_projection(transaction, &original_transaction_id)
+        }
+    }
+}
+
+fn persist_follower_result_outcome(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
     authority_key_pair: &Ed25519KeyPair,
-    committed_revision: i64,
-    committed_at: i64,
+    authoritative_source_revision: i64,
+    resolved_at: i64,
+    outcome: FollowerResultOutcome<'_>,
 ) -> Result<(i64, String, Vec<u8>), NormalizedSqliteError> {
+    if !(0..=MAX_SAFE_INTEGER).contains(&authoritative_source_revision)
+        || !(0..=MAX_SAFE_INTEGER).contains(&resolved_at)
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result time or revision is invalid",
+        ));
+    }
+    if outcome
+        .rejection_reason()
+        .is_some_and(|reason| !FOLLOWER_RESULT_REJECTION_REASONS.contains(&reason))
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result rejection reason is invalid",
+        ));
+    }
     let (authority_key_id, epoch_number) =
         active_result_authority(transaction, verified, authority_key_pair)?;
+    if let Some(stored) = stored_follower_result(transaction, verified, outcome.status())? {
+        return Ok(stored);
+    }
+    let projection = current_result_projection(transaction, verified, outcome)?;
     transaction.execute(
         "INSERT OR IGNORE INTO library_follower_result_cursors
          (actor_id, next_result_sequence, previous_result_digest)
@@ -380,34 +603,24 @@ fn persist_follower_result(
         [&verified.actor_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    let operation_ids: Vec<&str> = verified
-        .members
-        .iter()
-        .map(|member| member.operation_id.as_str())
-        .collect();
-    let receipt_ids: Vec<&str> = verified
-        .members
-        .iter()
-        .map(|member| member.envelope_digest.as_str())
-        .collect();
     let body = json!({
         "actor_id": verified.actor_id,
-        "authoritative_source_revision": committed_revision,
+        "authoritative_source_revision": authoritative_source_revision,
         "authority_key_id": authority_key_id,
-        "canonical_operation_ids": operation_ids,
+        "canonical_operation_ids": projection.operation_ids,
         "epoch": epoch_number,
         "epoch_id": verified.epoch_id,
         "format": "freed_follower_result_v1",
         "library_id": verified.library_id,
-        "original_result_digest": null,
+        "original_result_digest": outcome.original_result_digest(),
         "previous_result_digest": previous_result_digest,
-        "receipt_ids": receipt_ids,
-        "rejection_reason": null,
-        "replacement_fields": follower_result_replacement_fields(transaction, verified)?,
-        "resolved_at_ms": committed_at,
+        "receipt_ids": projection.receipt_ids,
+        "rejection_reason": outcome.rejection_reason(),
+        "replacement_fields": projection.replacement_fields,
+        "resolved_at_ms": resolved_at,
         "result_sequence": result_sequence,
         "schema_version": 1,
-        "status": "accepted",
+        "status": outcome.status(),
         "transaction_digest": verified.transaction_digest,
         "transaction_id": verified.transaction_id,
     });
@@ -447,7 +660,7 @@ fn persist_follower_result(
           previous_result_digest, result_digest, status, rejection_reason,
           original_result_digest, authoritative_source_revision,
           canonical_result, enqueued_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', NULL, NULL, ?7, ?8, ?9);",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);",
         params![
             verified.transaction_id,
             verified.transaction_digest,
@@ -455,9 +668,12 @@ fn persist_follower_result(
             result_sequence,
             previous_result_digest,
             result_digest,
-            committed_revision,
+            outcome.status(),
+            outcome.rejection_reason(),
+            outcome.original_result_digest(),
+            authoritative_source_revision,
             canonical_result,
-            committed_at,
+            resolved_at,
         ],
     )?;
     let cursor_updated = transaction.execute(
@@ -1299,12 +1515,13 @@ pub(crate) fn accept_normalized_operation_transaction_v1(
         ));
     }
     let (follower_result_sequence, follower_result_digest, canonical_follower_result) =
-        persist_follower_result(
+        persist_follower_result_outcome(
             &transaction,
             &verified,
             authority_key_pair,
             committed_revision,
             committed_at,
+            FollowerResultOutcome::Accepted,
         )?;
     let receipt = NormalizedMutationReceiptV1 {
         transaction_id: verified.transaction_id,
@@ -1770,6 +1987,174 @@ mod tests {
             ],
         );
         assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn native_outcome_producer_signs_rejection_and_already_applied_without_product_writes() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let accepted = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &signed_envelopes(&key_pair, &enrollment),
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted result");
+        let already_envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:already-applied",
+            accepted.last_counter + 1,
+            Some(&accepted.committed_operation_id),
+            &accepted.committed_chain_digest,
+            &[("rss:item:1", 900), ("rss:item:2", 901)],
+            "feed_item_read_assignment",
+        );
+        let already_verified = verify_operation_transaction(&already_envelopes, |identity| {
+            actor_state_at(&connection, identity)
+        })
+        .expect("already-applied transaction verification");
+        let already = {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .expect("already-applied transaction");
+            let result = persist_follower_result_outcome(
+                &transaction,
+                &already_verified,
+                &key_pair,
+                accepted.committed_revision,
+                2_100,
+                FollowerResultOutcome::AlreadyApplied {
+                    original_result_digest: &accepted.follower_result_digest,
+                },
+            )
+            .expect("already-applied result");
+            transaction.commit().expect("already-applied commit");
+            result
+        };
+        let already_json: Value =
+            serde_json::from_slice(&already.2).expect("already-applied canonical result");
+        let accepted_json: Value = serde_json::from_slice(&accepted.canonical_follower_result)
+            .expect("accepted canonical result");
+        assert_eq!(already_json["status"], "already_applied");
+        assert_eq!(
+            already_json["original_result_digest"],
+            accepted.follower_result_digest
+        );
+        assert_eq!(
+            already_json["canonical_operation_ids"],
+            accepted_json["canonical_operation_ids"]
+        );
+        assert_eq!(already_json["receipt_ids"], accepted_json["receipt_ids"]);
+        assert_eq!(
+            already_json["replacement_fields"],
+            accepted_json["replacement_fields"]
+        );
+
+        let rejected_envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rejected",
+            accepted.last_counter + 1,
+            Some(&accepted.committed_operation_id),
+            &accepted.committed_chain_digest,
+            &[("rss:item:missing", 902)],
+            "feed_item_read_assignment",
+        );
+        let rejected_verified = verify_operation_transaction(&rejected_envelopes, |identity| {
+            actor_state_at(&connection, identity)
+        })
+        .expect("rejected transaction verification");
+        let rejected = {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .expect("rejected transaction");
+            let result = persist_follower_result_outcome(
+                &transaction,
+                &rejected_verified,
+                &key_pair,
+                accepted.committed_revision,
+                2_200,
+                FollowerResultOutcome::Rejected {
+                    reason: "target_missing",
+                },
+            )
+            .expect("rejected result");
+            transaction.commit().expect("rejected commit");
+            result
+        };
+        let rejected_json: Value =
+            serde_json::from_slice(&rejected.2).expect("rejected canonical result");
+        assert_eq!(rejected_json["status"], "rejected");
+        assert_eq!(rejected_json["rejection_reason"], "target_missing");
+        assert_eq!(rejected_json["canonical_operation_ids"], json!([]));
+        assert_eq!(rejected_json["receipt_ids"], json!([]));
+        assert_eq!(rejected_json["replacement_fields"], json!([]));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted transactions only"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_operations;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted operations only"),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted revision only"),
+            accepted.committed_revision
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT next_result_sequence FROM library_follower_result_cursors
+                     WHERE actor_id = ?1;",
+                    [&enrollment.actor_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("result cursor"),
+            4
+        );
+
+        let retry = {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .expect("retry transaction");
+            let result = persist_follower_result_outcome(
+                &transaction,
+                &rejected_verified,
+                &key_pair,
+                accepted.committed_revision,
+                9_999,
+                FollowerResultOutcome::Rejected {
+                    reason: "target_missing",
+                },
+            )
+            .expect("exact rejected retry");
+            transaction.commit().expect("retry commit");
+            result
+        };
+        assert_eq!(retry, rejected);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT next_result_sequence FROM library_follower_result_cursors
+                     WHERE actor_id = ?1;",
+                    [&enrollment.actor_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("unchanged result cursor"),
+            4
+        );
     }
 
     #[test]
