@@ -60,6 +60,12 @@ import {
   LIBRARY_CORE_ENTITY_ID_CODEC_V1,
   type LibraryCoreEntityIdCodec,
 } from "./protocol-scalars.js";
+import type { LibraryCoreOperationId } from "./sqlite-contract.generated.js";
+
+export {
+  LIBRARY_CORE_OPERATION_IDS,
+  type LibraryCoreOperationId,
+} from "./sqlite-contract.generated.js";
 
 export type BaseAppFunctionKey = {
   [Key in keyof BaseAppState]-?: NonNullable<BaseAppState[Key]> extends (
@@ -71,51 +77,6 @@ export type BaseAppFunctionKey = {
 
 export const LIBRARY_CORE_MAX_TRANSACTION_MEMBERS = 1_000;
 export const LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES = 4_194_304;
-
-export const LIBRARY_CORE_OPERATION_IDS = [
-  "account_person_assignment",
-  "account_remove",
-  "account_restore",
-  "account_upsert",
-  "feed_item_archive_assignment",
-  "feed_item_capture_upsert",
-  "feed_item_like_assignment",
-  "feed_item_like_sync_receipt",
-  "feed_item_read_assignment",
-  "feed_item_remove",
-  "feed_item_restore",
-  "feed_item_saved_assignment",
-  "feed_item_seen_sync_receipt",
-  "feed_items_archive_frozen",
-  "feed_items_archive_read_unsaved_frozen",
-  "feed_items_content_signals_backfill_frozen",
-  "feed_items_deduplicate_frozen",
-  "feed_items_delete_archived_frozen",
-  "feed_items_prune_archived_frozen",
-  "feed_items_read_frozen",
-  "feed_items_unarchive_saved_frozen",
-  "person_reach_out_append",
-  "person_remove_and_accounts",
-  "person_remove_detach_accounts",
-  "person_restore",
-  "person_upsert",
-  "preferences_leaf_assignment",
-  "provider_capture_snapshot_reconcile",
-  "provider_intent",
-  "rss_feed_remove_keep_items",
-  "rss_feed_remove_with_items",
-  "rss_feed_restore",
-  "rss_feed_title_assignment",
-  "rss_feed_upsert",
-  "rss_feeds_heal_untitled_frozen",
-  "rss_feeds_remove_keep_items",
-  "rss_feeds_remove_with_items",
-  "sample_library_import",
-  "sample_library_remove",
-] as const;
-
-export type LibraryCoreOperationId =
-  (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export type LibraryCoreOperationEntity =
   | LibraryCoreEntity

@@ -11,6 +11,8 @@
     "website"
   ],
   "scripts": {
+    "contracts:generate": "node scripts/generate-library-core-contract.mjs",
+    "contracts:check": "node scripts/generate-library-core-contract.mjs --check",
     "automation:actors": "node scripts/automation-actors.mjs",
     "automation:hosts": "node scripts/automation-hosts.mjs",
     "automation:control": "node scripts/automation-control.mjs",
@@ -30,7 +32,7 @@
     "test": "node scripts/run-workspace-fanout.mjs test",
     "test:friends-galaxy-lab": "vitest run packages/ui/labs/friends-galaxy/*.test.ts",
     "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test $(find scripts -maxdepth 1 -name '*.test.mjs' ! -name 'automation-control.test.mjs' ! -name 'automation-kernel-guard-cutover.test.mjs' -print | sort) && node --test scripts/automation-control.test.mjs && node --test scripts/automation-kernel-guard-cutover.test.mjs",
-    "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
+    "typecheck": "npm run contracts:check && node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:friends-galaxy-lab": "tsc -p packages/ui/labs/friends-galaxy/tsconfig.json",
     "typecheck:graph": "tsc --build --dry",
     "validate:automations": "node scripts/validate-automation-specs.mjs",

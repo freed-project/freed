@@ -13,6 +13,9 @@
 
 ## Current SQLite PWA work
 
+- [x] Consume the same generated normalized checkpoint registry, typed primary
+      key identity, protocol ceilings, and content chunk transforms as the
+      native core. The browser transform has no `00_library_shell` record.
 - [ ] Prove the iOS 17 durability floor through
       physical iPhone storage, suspension, recovery, quota, and playback tests.
 - [ ] Run official SQLite WebAssembly in one SharedWorker with a dedicated
