@@ -280,6 +280,16 @@ are fetched through `item_reader_body_v1`. Item detail and background scans do
 not return full bodies, arbitrary remainder objects, or an enlarged metadata
 response.
 
+`item_reader_body_v1` is the only interactive reader-body byte path. The
+request names the item, selects content or preserved text, and supplies an
+explicit byte offset and a range no larger than 256 KiB. The response is no
+larger than 512 KiB and contains canonical base64 for exactly that range plus
+the total content length and the inline-or-blob locator. SQLite reads one
+metadata row and no more than five intersecting 65,536-byte content chunks.
+Both native and browser runtimes reject an offset past the end. An offset at
+the exact end returns an empty range. Views can therefore stream large bodies
+without loading them into React or inventing a whole-item transport.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version

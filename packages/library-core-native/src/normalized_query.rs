@@ -1,6 +1,6 @@
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::SQLITE_QUERY_PROGRAMS;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use rusqlite::{params, Connection, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,9 @@ const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
+const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
+const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const CONTENT_CHUNK_BYTES: usize = 65_536;
 const CURSOR_FIXED_BYTES: usize = 59;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,11 +47,22 @@ pub struct NormalizedItemDetailRequestV1 {
     pub schema_version: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemReaderBodyRequestV1 {
+    pub body_kind: String,
+    pub global_id: String,
+    pub limit_bytes: usize,
+    pub offset_bytes: usize,
+    pub schema_version: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
+    ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
@@ -170,11 +184,32 @@ pub struct NormalizedItemDetailResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemReaderBodyRangeV1 {
+    pub blob_digest: Option<String>,
+    pub bytes_base64: String,
+    pub content_length: usize,
+    pub end_offset: usize,
+    pub start_offset: usize,
+    pub storage: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemReaderBodyResponseV1 {
+    pub body: Option<NormalizedItemReaderBodyRangeV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
+    ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
@@ -675,6 +710,168 @@ fn query_item_detail(
     Ok(response)
 }
 
+#[derive(Debug)]
+struct ItemReaderSqlRow {
+    storage: String,
+    blob_digest: Option<String>,
+    content_length: i64,
+    chunk_index: i64,
+    bytes: Option<Vec<u8>>,
+}
+
+fn query_item_reader_body(
+    connection: &mut Connection,
+    request: NormalizedItemReaderBodyRequestV1,
+) -> Result<NormalizedItemReaderBodyResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !matches!(request.body_kind.as_str(), "content" | "preserved")
+        || request.global_id.is_empty()
+        || request.global_id.len() > 2_048
+        || !(1..=ITEM_READER_BODY_MAXIMUM_RANGE_BYTES).contains(&request.limit_bytes)
+        || request.offset_bytes > MAX_SAFE_INTEGER as usize
+    {
+        return Err(invalid("normalized item reader body request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "item_reader_body_v1")
+        .ok_or(invalid("normalized item reader body program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(
+        params![
+            request.global_id,
+            request.body_kind,
+            i64::try_from(request.offset_bytes)
+                .map_err(|_| invalid("normalized item reader body offset is invalid"))?,
+            i64::try_from(request.limit_bytes)
+                .map_err(|_| invalid("normalized item reader body limit is invalid"))?,
+        ],
+        |row| {
+            Ok(ItemReaderSqlRow {
+                storage: row.get("bodyStorage")?,
+                blob_digest: row.get("blobDigest")?,
+                content_length: row.get("contentLength")?,
+                chunk_index: row.get("chunkIndex")?,
+                bytes: row.get("bytes")?,
+            })
+        },
+    )?;
+    let rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.1 {
+        return Err(invalid(
+            "normalized item reader body exceeded its row bound",
+        ));
+    }
+    let body = if rows.is_empty() {
+        None
+    } else {
+        let metadata = &rows[0];
+        let content_length = usize::try_from(metadata.content_length)
+            .ok()
+            .filter(|value| *value <= MAX_SAFE_INTEGER as usize)
+            .ok_or(invalid("normalized item reader body length is invalid"))?;
+        if metadata.chunk_index != -1
+            || !matches!(metadata.storage.as_str(), "inline" | "blob")
+            || (metadata.storage == "blob") != metadata.blob_digest.is_some()
+            || metadata
+                .blob_digest
+                .as_ref()
+                .is_some_and(|digest| !valid_lower_hex_64(digest))
+            || request.offset_bytes > content_length
+        {
+            return Err(invalid("normalized item reader body metadata is invalid"));
+        }
+        let end_offset = content_length.min(
+            request
+                .offset_bytes
+                .checked_add(request.limit_bytes)
+                .ok_or(invalid("normalized item reader body range overflowed"))?,
+        );
+        let range = if metadata.storage == "inline" {
+            if rows.len() != 1 {
+                return Err(invalid("normalized inline reader body returned chunk rows"));
+            }
+            let bytes = metadata
+                .bytes
+                .as_ref()
+                .ok_or(invalid("normalized inline reader body is missing"))?;
+            if bytes.len() != content_length {
+                return Err(invalid(
+                    "normalized inline reader body length is inconsistent",
+                ));
+            }
+            bytes[request.offset_bytes..end_offset].to_vec()
+        } else if request.offset_bytes == content_length {
+            if rows.len() != 1 {
+                return Err(invalid("normalized empty reader range returned chunk rows"));
+            }
+            Vec::new()
+        } else {
+            let first_chunk = request.offset_bytes / CONTENT_CHUNK_BYTES;
+            let last_chunk = (end_offset - 1) / CONTENT_CHUNK_BYTES;
+            let chunks = &rows[1..];
+            if chunks.len() != last_chunk - first_chunk + 1 {
+                return Err(invalid(
+                    "normalized item reader body chunk range is incomplete",
+                ));
+            }
+            let mut joined = Vec::with_capacity(chunks.len() * CONTENT_CHUNK_BYTES);
+            for (relative_index, chunk) in chunks.iter().enumerate() {
+                let chunk_index = first_chunk + relative_index;
+                let bytes = chunk
+                    .bytes
+                    .as_ref()
+                    .ok_or(invalid("normalized item reader body chunk is missing"))?;
+                let expected_length = CONTENT_CHUNK_BYTES
+                    .min(content_length.saturating_sub(chunk_index * CONTENT_CHUNK_BYTES));
+                if chunk.chunk_index != chunk_index as i64
+                    || chunk.storage != metadata.storage
+                    || chunk.blob_digest != metadata.blob_digest
+                    || chunk.content_length != metadata.content_length
+                    || bytes.len() != expected_length
+                {
+                    return Err(invalid("normalized item reader body chunk is inconsistent"));
+                }
+                joined.extend_from_slice(bytes);
+            }
+            let relative_start = request.offset_bytes - first_chunk * CONTENT_CHUNK_BYTES;
+            joined[relative_start..relative_start + end_offset - request.offset_bytes].to_vec()
+        };
+        Some(NormalizedItemReaderBodyRangeV1 {
+            blob_digest: metadata.blob_digest.clone(),
+            bytes_base64: BASE64_STANDARD.encode(range),
+            content_length,
+            end_offset,
+            start_offset: request.offset_bytes,
+            storage: metadata.storage.clone(),
+        })
+    };
+    let response = NormalizedItemReaderBodyResponseV1 {
+        body,
+        query_id: "item_reader_body_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized item reader body response is invalid"))?
+        .len()
+        > ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized item reader body response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 pub fn query_normalized_v1(
     connection: &mut Connection,
     request: NormalizedQueryRequestV1,
@@ -689,6 +886,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
+        NormalizedQueryRequestV1::ItemReaderBody(request) => Ok(
+            NormalizedQueryResponseV1::ItemReaderBody(query_item_reader_body(connection, request)?),
+        ),
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -996,5 +1196,144 @@ mod tests {
         assert!(!serde_json::to_string(&item)
             .expect("json")
             .contains("preservedText"));
+    }
+
+    #[test]
+    fn native_item_reader_returns_exact_bounded_inline_and_blob_ranges() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let reader_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "item_reader_body_v1")
+            .expect("reader body program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", reader_program.2))
+            .expect("reader body plan");
+        let plan = plan_statement
+            .query_map(params!["item-1", "preserved", 65_534, 6], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH item USING INDEX")));
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH chunk USING PRIMARY KEY")));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN item")));
+        drop(plan_statement);
+
+        let blob_digest = "7".repeat(64);
+        let first_chunk = vec![11_u8; 65_536];
+        let second_chunk = vec![21_u8, 22, 23, 24, 25, 26, 27, 28];
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 13, 1000);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, content_text,
+                    hidden, saved, archived, updated_at)
+                   VALUES ('item-1', 'saved', 'article', 100, 100, 'author-1',
+                           'ada', 'Ada', 'newer', 0, 1, 0, 100);",
+                "a".repeat(64),
+            ))
+            .expect("metadata fixture");
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+                 VALUES (?1, ?2, 65536, 2, 'text/plain');",
+                params![blob_digest, first_chunk.len() + second_chunk.len()],
+            )
+            .expect("blob descriptor");
+        connection
+            .execute(
+                "INSERT INTO library_blob_chunks
+                   (content_digest, chunk_index, chunk_digest, bytes)
+                 VALUES (?1, 0, ?2, ?3);",
+                params![blob_digest, "8".repeat(64), first_chunk],
+            )
+            .expect("first blob chunk");
+        connection
+            .execute(
+                "INSERT INTO library_blob_chunks
+                   (content_digest, chunk_index, chunk_digest, bytes)
+                 VALUES (?1, 1, ?2, ?3);",
+                params![blob_digest, "9".repeat(64), second_chunk],
+            )
+            .expect("second blob chunk");
+        connection
+            .execute(
+                "UPDATE library_feed_items SET preserved_text_blob_digest = ?1
+                 WHERE global_id = 'item-1';",
+                [&blob_digest],
+            )
+            .expect("attach body");
+
+        let NormalizedQueryResponseV1::ItemReaderBody(inline) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemReaderBody(NormalizedItemReaderBodyRequestV1 {
+                body_kind: "content".to_owned(),
+                global_id: "item-1".to_owned(),
+                limit_bytes: 3,
+                offset_bytes: 1,
+                schema_version: 1,
+            }),
+        )
+        .expect("inline range") else {
+            panic!("reader body response");
+        };
+        let inline = inline.body.expect("inline body");
+        assert_eq!(inline.storage, "inline");
+        assert_eq!(inline.content_length, 5);
+        assert_eq!(inline.end_offset, 4);
+        assert_eq!(
+            BASE64_STANDARD
+                .decode(inline.bytes_base64)
+                .expect("inline base64"),
+            b"ewe"
+        );
+
+        let NormalizedQueryResponseV1::ItemReaderBody(blob) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemReaderBody(NormalizedItemReaderBodyRequestV1 {
+                body_kind: "preserved".to_owned(),
+                global_id: "item-1".to_owned(),
+                limit_bytes: 6,
+                offset_bytes: 65_534,
+                schema_version: 1,
+            }),
+        )
+        .expect("blob range") else {
+            panic!("reader body response");
+        };
+        let blob = blob.body.expect("blob body");
+        assert_eq!(blob.blob_digest.as_deref(), Some(blob_digest.as_str()));
+        assert_eq!(blob.content_length, 65_544);
+        assert_eq!(blob.end_offset, 65_540);
+        assert_eq!(
+            BASE64_STANDARD
+                .decode(blob.bytes_base64)
+                .expect("blob base64"),
+            [11, 11, 21, 22, 23, 24]
+        );
+
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemReaderBody(NormalizedItemReaderBodyRequestV1 {
+                body_kind: "content".to_owned(),
+                global_id: "item-1".to_owned(),
+                limit_bytes: 1,
+                offset_bytes: 6,
+                schema_version: 1,
+            }),
+        )
+        .expect_err("offset past end");
+        assert!(error.to_string().contains("metadata is invalid"));
     }
 }

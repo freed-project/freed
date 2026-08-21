@@ -4,6 +4,10 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
+  decodeLibraryCoreCanonicalBase64,
+  encodeLibraryCoreCanonicalBase64,
+} from "./canonical-base64.js";
+import {
   createLibraryCoreMediaBlobDigestStateV1,
   digestLibraryCoreMediaBlobBytesV1,
 } from "./media-blob-transport-contracts.js";
@@ -148,34 +152,6 @@ function ownClosedRecord(
     throw new TypeError(`${label} has unknown or missing fields`);
   }
   return value as Record<string, unknown>;
-}
-
-function base64Encode(bytes: Uint8Array): string {
-  let binary = "";
-  for (let offset = 0; offset < bytes.byteLength; offset += 32_768) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
-  }
-  return btoa(binary);
-}
-
-function base64Decode(value: string): Uint8Array {
-  if (
-    value.length % 4 !== 0 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-      value,
-    )
-  ) {
-    throw new TypeError("content chunk bytesBase64 is not canonical base64");
-  }
-  const binary = atob(value);
-  const output = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    output[index] = binary.charCodeAt(index);
-  }
-  if (base64Encode(output) !== value) {
-    throw new TypeError("content chunk bytesBase64 is not canonical base64");
-  }
-  return output;
 }
 
 function canonicalPayload(
@@ -358,7 +334,7 @@ export function decodeLibraryCoreContentChunkBytesV1(
   ) {
     throw new TypeError("content chunk payload is invalid");
   }
-  const bytes = base64Decode(bytesBase64);
+  const bytes = decodeLibraryCoreCanonicalBase64(bytesBase64);
   if (
     bytes.byteLength !== byteLength ||
     digestLibraryCoreMediaBlobBytesV1(bytes) !== chunkContentDigest
@@ -472,7 +448,7 @@ export function splitLibraryCoreContentV1(input: {
         payload: {
           blobContentDigest: digest,
           byteLength: chunk.byteLength,
-          bytesBase64: base64Encode(chunk),
+          bytesBase64: encodeLibraryCoreCanonicalBase64(chunk),
           chunkContentDigest: digestLibraryCoreMediaBlobBytesV1(chunk),
           chunkIndex,
         },
@@ -544,7 +520,7 @@ export function reassembleLibraryCoreContentV1(
     ) {
       throw new TypeError("content chunk identity is invalid");
     }
-    const bytes = base64Decode(payload.bytesBase64);
+    const bytes = decodeLibraryCoreCanonicalBase64(payload.bytesBase64);
     if (
       bytes.byteLength !== payload.byteLength ||
       digestLibraryCoreMediaBlobBytesV1(bytes) !== payload.chunkContentDigest ||

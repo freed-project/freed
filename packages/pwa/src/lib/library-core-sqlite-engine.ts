@@ -23,6 +23,9 @@ import {
   parseLibraryCorePreferencesSnapshotResponseV1,
   parseLibraryCoreItemDetailRequestV1,
   parseLibraryCoreItemDetailResponseV1,
+  parseLibraryCoreItemReaderBodyRequestV1,
+  parseLibraryCoreItemReaderBodyResponseV1,
+  encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
   decodeLibraryCoreCanonicalValue,
@@ -46,6 +49,8 @@ import {
   type LibraryCorePreferencesSnapshotResponseV1,
   type LibraryCoreItemDetailRequestV1,
   type LibraryCoreItemDetailResponseV1,
+  type LibraryCoreItemReaderBodyRequestV1,
+  type LibraryCoreItemReaderBodyResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -151,6 +156,13 @@ function stringArray(
     throw new Error(`${label} is not a text array`);
   }
   return Object.freeze(parsed);
+}
+
+function blobBytes(value: SqlValue | undefined, label: string): Uint8Array {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`${label} is not SQLite bytes`);
+  }
+  return value;
 }
 
 function feedCardFromSqliteRow(
@@ -666,6 +678,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemDetail(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "item_reader_body_v1":
+        return this.#queryItemReaderBody(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -855,6 +871,126 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreItemDetailResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryItemReaderBody(
+    input: LibraryCoreItemReaderBodyRequestV1,
+  ): LibraryCoreItemReaderBodyResponseV1 {
+    const request = parseLibraryCoreItemReaderBodyRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const sourceRows = this.#database.exec({
+      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (sourceRows.length !== 1) {
+      throw new Error("PWA Library SQLite has no active Library");
+    }
+    const generationId = text(sourceRows[0]![0], "Library identity");
+    const sourceRevision = safeInteger(
+      sourceRows[0]![1],
+      "Library source revision",
+    );
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_reader_body_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        request.value.globalId,
+        request.value.bodyKind,
+        request.value.offsetBytes,
+        request.value.limitBytes,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite reader body exceeded its row bound");
+    }
+    const metadata = rows[0];
+    let body = null;
+    if (metadata !== undefined) {
+      if (safeInteger(metadata.chunkIndex, "reader metadata row") !== -1) {
+        throw new Error("PWA Library SQLite reader metadata row is missing");
+      }
+      const storage = text(metadata.bodyStorage, "reader body storage");
+      const contentLength = safeInteger(
+        metadata.contentLength,
+        "reader content length",
+      );
+      if (request.value.offsetBytes > contentLength) {
+        throw new RangeError("reader body offset exceeds content length");
+      }
+      const endOffset = Math.min(
+        contentLength,
+        request.value.offsetBytes + request.value.limitBytes,
+      );
+      let range = new Uint8Array();
+      if (request.value.offsetBytes < contentLength && storage === "inline") {
+        const bytes = blobBytes(metadata.bytes, "inline reader body");
+        if (bytes.byteLength !== contentLength) {
+          throw new Error("inline reader body length is inconsistent");
+        }
+        range = bytes.slice(request.value.offsetBytes, endOffset);
+      } else if (
+        request.value.offsetBytes < contentLength &&
+        storage === "blob"
+      ) {
+        const firstChunk = Math.floor(request.value.offsetBytes / 65_536);
+        const lastChunk = Math.floor((endOffset - 1) / 65_536);
+        const chunks = rows.slice(1);
+        if (chunks.length !== lastChunk - firstChunk + 1) {
+          throw new Error("reader body chunk range is incomplete");
+        }
+        const joined = new Uint8Array(
+          chunks.reduce(
+            (total, row) =>
+              total + blobBytes(row.bytes, "reader body chunk").byteLength,
+            0,
+          ),
+        );
+        let writeOffset = 0;
+        for (const [index, row] of chunks.entries()) {
+          if (
+            safeInteger(row.chunkIndex, "reader chunk index") !==
+            firstChunk + index
+          ) {
+            throw new Error("reader body chunks are not contiguous");
+          }
+          const bytes = blobBytes(row.bytes, "reader body chunk");
+          joined.set(bytes, writeOffset);
+          writeOffset += bytes.byteLength;
+        }
+        const relativeStart = request.value.offsetBytes - firstChunk * 65_536;
+        range = joined.slice(
+          relativeStart,
+          relativeStart + endOffset - request.value.offsetBytes,
+        );
+      }
+      body = {
+        blobDigest: nullableText(metadata.blobDigest, "reader body digest"),
+        bytesBase64: encodeLibraryCoreCanonicalBase64(range),
+        contentLength,
+        endOffset: request.value.offsetBytes + range.byteLength,
+        startOffset: request.value.offsetBytes,
+        storage,
+      };
+    }
+    const response = {
+      body,
+      queryId: "item_reader_body_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreItemReaderBodyResponseV1(
       response,
       request.value,
     );

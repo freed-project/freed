@@ -9,6 +9,7 @@ import {
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
+  decodeLibraryCoreCanonicalBase64,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   isLibraryCoreOperationInstanceId,
@@ -280,6 +281,33 @@ describe("PWA Library Core SQLite engine", () => {
       INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
       VALUES ('item-2', 0, 'https://example.com/image', 'image');
     `);
+    const blobDigest = "7".repeat(64);
+    const firstChunk = new Uint8Array(65_536).fill(11);
+    const secondChunk = Uint8Array.from([21, 22, 23, 24, 25, 26, 27, 28]);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, ?2, 65536, 2, 'text/plain');`,
+      bind: [blobDigest, firstChunk.byteLength + secondChunk.byteLength],
+    });
+    database.exec({
+      sql: `INSERT INTO library_blob_chunks
+              (content_digest, chunk_index, chunk_digest, bytes)
+            VALUES (?1, 0, ?2, ?3), (?1, 1, ?4, ?5);`,
+      bind: [
+        blobDigest,
+        "8".repeat(64),
+        firstChunk,
+        "9".repeat(64),
+        secondChunk,
+      ],
+    });
+    database.exec({
+      sql: `UPDATE library_feed_items
+            SET preserved_text_blob_digest = ?1
+            WHERE global_id = 'item-2';`,
+      bind: [blobDigest],
+    });
     const request = {
       cancellationId: operationId("cancel-1"),
       cursor: null,
@@ -310,7 +338,7 @@ describe("PWA Library Core SQLite engine", () => {
       item: {
         card: { contentText: "newer", globalId: "item-2" },
         contentBody: { blobDigest: null, storage: "inline" },
-        preservedBody: { blobDigest: null, storage: "none" },
+        preservedBody: { blobDigest, storage: "blob" },
       },
       queryId: "item_detail_v1",
       source: { projectionRevision: 7 },
@@ -322,6 +350,64 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }).item,
     ).toBeNull();
+    const inlineBody = engine.query({
+      bodyKind: "content",
+      globalId: "item-2",
+      limitBytes: 3,
+      offsetBytes: 1,
+      queryId: "item_reader_body_v1",
+      schemaVersion: 1,
+    }).body;
+    expect(inlineBody).toMatchObject({
+      blobDigest: null,
+      contentLength: 5,
+      endOffset: 4,
+      startOffset: 1,
+      storage: "inline",
+    });
+    expect(
+      new TextDecoder().decode(
+        decodeLibraryCoreCanonicalBase64(inlineBody?.bytesBase64 ?? ""),
+      ),
+    ).toBe("ewe");
+    const blobBody = engine.query({
+      bodyKind: "preserved",
+      globalId: "item-2",
+      limitBytes: 6,
+      offsetBytes: 65_534,
+      queryId: "item_reader_body_v1",
+      schemaVersion: 1,
+    }).body;
+    expect(blobBody).toMatchObject({
+      blobDigest,
+      contentLength: 65_544,
+      endOffset: 65_540,
+      startOffset: 65_534,
+      storage: "blob",
+    });
+    expect(
+      decodeLibraryCoreCanonicalBase64(blobBody?.bytesBase64 ?? ""),
+    ).toEqual(Uint8Array.from([11, 11, 21, 22, 23, 24]));
+    expect(
+      engine.query({
+        bodyKind: "preserved",
+        globalId: "missing",
+        limitBytes: 1,
+        offsetBytes: 0,
+        queryId: "item_reader_body_v1",
+        schemaVersion: 1,
+      }).body,
+    ).toBeNull();
+    expect(() =>
+      engine.query({
+        bodyKind: "content",
+        globalId: "item-2",
+        limitBytes: 1,
+        offsetBytes: 6,
+        queryId: "item_reader_body_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow(/offset exceeds content length/);
     expect(
       engine.query({
         queryId: "library_facet_summary_v1",

@@ -59,6 +59,14 @@ import {
   LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
 } from "./item-detail-contracts.js";
 import {
+  LIBRARY_CORE_ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS,
+  LIBRARY_CORE_ITEM_READER_BODY_PROJECTION,
+  LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA,
+  LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA,
+  LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY,
+} from "./item-reader-body-contracts.js";
+import {
   LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
   LIBRARY_CORE_ITEM_SCAN_PROJECTION,
   LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
@@ -214,6 +222,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
@@ -229,6 +238,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
@@ -243,6 +253,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
     | null;
@@ -252,6 +263,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
@@ -260,6 +272,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
@@ -341,6 +354,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
@@ -355,6 +369,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
@@ -367,6 +382,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
@@ -375,6 +391,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY;
   readonly nestedBounds?:
@@ -382,6 +399,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS;
   /**
@@ -750,13 +768,29 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
   item_reader_body_v1: plannedQuery({
     defaultLimit: 1,
     maximumLimit: 1,
-    maximumRows: 1,
-    maximumResponseBytes: 256 * 1_024,
+    maximumRows: 6,
+    maximumResponseBytes: LIBRARY_CORE_ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES,
     cursor: interactiveCursor("stream_offset"),
     fullContentAllowed: true,
     totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["item-body:{global_id}:{content_digest}"],
+    currentKinds: [
+      "NormalizedQueryRequestV1::ItemReaderBody",
+      "PwaLibraryCoreSqliteEngine.query:item_reader_body_v1",
+    ],
+    requestSchema: LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_ITEM_READER_BODY_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "chunkIndex", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "chunkIndex",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   library_facet_summary_v1: plannedQuery({
     // Whole-corpus aggregate, no paging. Traced from the native reader and the

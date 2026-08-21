@@ -71,6 +71,10 @@
   - [x] `item_detail_v1` performs one primary-key lookup in browser SQLite and
         returns the same closed compact card and typed reader-body locators as
         native Rust. Full reader content remains outside the metadata response.
+  - [x] `item_reader_body_v1` returns exact bounded byte ranges from inline
+        SQLite text or content-addressed chunks through the same closed worker
+        query union as native Rust. Cross-chunk ranges reassemble losslessly,
+        and no reader request can return more than 256 KiB of body bytes.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
