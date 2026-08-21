@@ -500,6 +500,7 @@ export async function captureDomFeed(
 | 5.56 | Bind Friends mode into the normalized feed query, resolve friend membership through Account and Person joins in SQLite, and remove Desktop shell and historical-item dependencies from Friends paging | High | ✓ Complete |
 | 5.57 | Route selected Person timelines through the shared `person_timeline_v1` adapter, keyed by stable Person ID, with bounded compact rows and opaque source-fenced cursors | High | ✓ Complete |
 | 5.58 | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_graph_page_v1` executors so React never compiles the identity corpus | High | ✓ Complete |
+| 5.59 | Route selected unlinked Account timelines through the shared native `account_timeline_v1` adapter, keyed by stable Account ID, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
 
 ---
 
@@ -642,6 +643,7 @@ export async function captureDomFeed(
 - [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
 - [x] Settings > Saved reads exact time, source, and content aggregates directly through `saved_analytics_v2`, without leasing or scanning a renderer item corpus.
 - [x] Friends now reads selected Person timelines through `person_timeline_v1`. The shared adapter sends one stable Person ID to the native core, retains one bounded 50-row window, and never builds a renderer-side account-key filter or calls the historical item query. Source activity summaries remain on their existing bounded reader until the normalized graph-page cutover.
+- [x] Friends now reads an unlinked Account timeline through `account_timeline_v1`. The selected detail sends one stable Account ID to native SQLite. Linked Accounts still use their Person timeline, and React never builds provider keys or filters FeedItems.
 - [x] Provider settings now read source-fenced 64-row SQLite pages. Media backup stages compact local candidates and starts provider work only after source verification, while YouTube retains compact saved-video identities instead of the renderer item corpus
 - [x] FriendEditor now reads at most 50 alphabetically ranked visible unlinked author candidates through source-fenced 64-row SQLite pages, debounces rapid searches for 150 ms, resolves exact selected-profile provenance in a final bounded save-time pass, cancels stale source results, and does not lease the full renderer item corpus unless its explicit rollback switch is set
 - [x] On the healthy default native path, SearchJump opens and searches without hydrating the renderer corpus. It uses one bounded source-fenced scan for exact Library tags, archive totals, and complex scope counts, compact aggregates for simple scopes, and one source-fenced selected item. Native reader failure or rollback acquires the compatibility fallback, while the existing Automerge bulk mutation leases it only while the user executes the action

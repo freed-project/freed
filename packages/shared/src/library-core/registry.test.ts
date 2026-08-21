@@ -36,6 +36,10 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
 } from "./person-timeline-contracts.js";
 import {
+  LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA,
+  LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA,
+} from "./account-timeline-contracts.js";
+import {
   LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
   LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
   LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
@@ -943,6 +947,7 @@ describe("Library Core query registry", () => {
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_graph_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
@@ -962,8 +967,8 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v2 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v2
-        || definition === LIBRARY_CORE_QUERY_REGISTRY.story_wall_candidates_v1
+        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v2 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.story_wall_candidates_v1
       ) {
         expect(definition.blockers).not.toContain(
           "runtime_adapter_unimplemented",
@@ -1080,14 +1085,36 @@ describe("Library Core query registry", () => {
       maximumResponseBytes: 2 * 1_048_576,
       totalCountIntent: "snapshot_exact",
     });
+    expect(LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: [
+          "query_normalized_v1::account_timeline_v1",
+          "PwaLibraryCoreSqliteEngine.query::account_timeline_v1",
+        ],
+      },
+      defaultLimit: 50,
+      maximumLimit: 100,
+      maximumRows: 100,
+      maximumResponseBytes: 2 * 1_048_576,
+      totalCountIntent: "snapshot_exact",
+    });
     expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers).not.toContain(
       "runtime_adapter_unimplemented",
     );
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1.blockers,
+    ).not.toContain("runtime_adapter_unimplemented");
     expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toEqual(
-      expect.arrayContaining(["persons_graph_v1", "person_timeline_v1"]),
+      expect.arrayContaining([
+        "account_timeline_v1",
+        "persons_graph_v1",
+        "person_timeline_v1",
+      ]),
     );
   });
 
@@ -1346,6 +1373,26 @@ describe("Library Core query registry", () => {
         LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.blockers,
       ).not.toContain(blocker);
     }
+  });
+
+  it("closes the account-timeline page contract", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_FEED_PAGE_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+      tieBreakKey: "globalId",
+    });
+    expect(LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1.stableSort).toEqual({
+      columns: [
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      nullOrdering: "all_sort_columns_not_null",
+      textCollation: "binary",
+    });
   });
 
   it("closes the Saved-analytics aggregate contract", () => {

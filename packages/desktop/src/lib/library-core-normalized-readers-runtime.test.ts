@@ -111,12 +111,15 @@ describe("Freed Desktop normalized surface readers", () => {
       }),
     ).resolves.toEqual(expect.objectContaining({ totalCount: 1 }));
 
-    expect(mocks.queryNormalizedLibrary.mock.calls.map(([request]) => request.queryId))
-      .toEqual([
-        "item_detail_v1",
-        "library_facet_summary_v1",
-        "saved_analytics_v2",
-      ]);
+    expect(
+      mocks.queryNormalizedLibrary.mock.calls.map(
+        ([request]) => request.queryId,
+      ),
+    ).toEqual([
+      "item_detail_v1",
+      "library_facet_summary_v1",
+      "saved_analytics_v2",
+    ]);
     expect(mocks.querySqliteItems).not.toHaveBeenCalled();
     expect(mocks.readSqliteItems).not.toHaveBeenCalled();
   });
@@ -125,42 +128,46 @@ describe("Freed Desktop normalized surface readers", () => {
     mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
       if (request.queryId === "map_markers_v1") {
         return {
-          rows: [{
-            authorAvatarUrl: null,
+          rows: [
+            {
+              authorAvatarUrl: null,
+              authorDisplayName: "Ada",
+              authorHandle: "ada",
+              authorId: "author-1",
+              capturedAt: 20,
+              contentText: "Map",
+              contentType: "post",
+              globalId: "x:map-1",
+              locationLat: 34.2,
+              locationLng: -118.2,
+              locationName: "Observatory",
+              locationUrl: null,
+              platform: "x",
+              publishedAt: 10,
+              sourceUrl: null,
+              timeRangeEndsAt: null,
+              timeRangeStartsAt: null,
+            },
+          ],
+        };
+      }
+      return {
+        rows: [
+          {
             authorDisplayName: "Ada",
             authorHandle: "ada",
             authorId: "author-1",
             capturedAt: 20,
-            contentText: "Map",
-            contentType: "post",
-            globalId: "x:map-1",
-            locationLat: 34.2,
-            locationLng: -118.2,
-            locationName: "Observatory",
-            locationUrl: null,
+            contentText: "Story",
+            globalId: "x:story-1",
+            locationName: null,
+            mediaTypes: ["image"],
+            mediaUrls: ["https://example.test/image.jpg"],
             platform: "x",
             publishedAt: 10,
             sourceUrl: null,
-            timeRangeEndsAt: null,
-            timeRangeStartsAt: null,
-          }],
-        };
-      }
-      return {
-        rows: [{
-          authorDisplayName: "Ada",
-          authorHandle: "ada",
-          authorId: "author-1",
-          capturedAt: 20,
-          contentText: "Story",
-          globalId: "x:story-1",
-          locationName: null,
-          mediaTypes: ["image"],
-          mediaUrls: ["https://example.test/image.jpg"],
-          platform: "x",
-          publishedAt: 10,
-          sourceUrl: null,
-        }],
+          },
+        ],
       };
     });
 
@@ -170,8 +177,11 @@ describe("Freed Desktop normalized surface readers", () => {
     await expect(readLibraryCoreSurfaceItems("story_wall")).resolves.toEqual([
       expect.objectContaining({ globalId: "x:story-1" }),
     ]);
-    expect(mocks.queryNormalizedLibrary.mock.calls.map(([request]) => request.queryId))
-      .toEqual(["map_markers_v1", "story_wall_candidates_v1"]);
+    expect(
+      mocks.queryNormalizedLibrary.mock.calls.map(
+        ([request]) => request.queryId,
+      ),
+    ).toEqual(["map_markers_v1", "story_wall_candidates_v1"]);
     expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 
@@ -198,6 +208,34 @@ describe("Freed Desktop normalized surface readers", () => {
         limit: 1,
         personId: "person-1",
         queryId: "person_timeline_v1",
+      }),
+    );
+    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
+  });
+
+  it("reads one unlinked Account timeline through the closed normalized query", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: null,
+      rows: [feedCard],
+      totalCount: 1,
+    });
+
+    await expect(
+      readLibraryCorePersonTimeline({
+        accountId: "account-1",
+        cursor: null,
+        limit: 1,
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ globalId: "x:item-1" })],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        limit: 1,
+        queryId: "account_timeline_v1",
       }),
     );
     expect(mocks.querySqliteItems).not.toHaveBeenCalled();

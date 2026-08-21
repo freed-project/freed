@@ -18,6 +18,12 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
 } from "./person-timeline-contracts.js";
 import {
+  LIBRARY_CORE_ACCOUNT_TIMELINE_DEFAULT_LIMIT,
+  LIBRARY_CORE_ACCOUNT_TIMELINE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_ACCOUNT_TIMELINE_QUERY_ID,
+  LIBRARY_CORE_ACCOUNT_TIMELINE_SCHEMA_VERSION,
+} from "./account-timeline-contracts.js";
+import {
   LIBRARY_CORE_SAVED_ANALYTICS_V2_DAILY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_V2_HOURLY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
@@ -53,6 +59,12 @@ export interface LibraryCoreNormalizedPersonTimelinePageV1 {
   readonly items: readonly FeedItem[];
   readonly nextCursor: string | null;
   readonly totalCount: number;
+}
+
+export interface LibraryCoreNormalizedAccountTimelineInputV1 {
+  readonly accountId: string;
+  readonly cursor?: string | null;
+  readonly limit?: number;
 }
 
 function operationId(
@@ -174,6 +186,34 @@ export async function readLibraryCoreNormalizedPersonTimelineV1(
     queryId: LIBRARY_CORE_PERSON_TIMELINE_QUERY_ID,
     readerSessionId: operationId(runtime, "person-timeline-reader"),
     schemaVersion: LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
+  });
+  return Object.freeze({
+    items: response.rows.map(libraryCoreFeedCardToItemV1),
+    nextCursor: response.nextCursor,
+    totalCount: response.totalCount,
+  });
+}
+
+export async function readLibraryCoreNormalizedAccountTimelineV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  input: LibraryCoreNormalizedAccountTimelineInputV1,
+): Promise<LibraryCoreNormalizedPersonTimelinePageV1> {
+  const limit = input.limit ?? LIBRARY_CORE_ACCOUNT_TIMELINE_DEFAULT_LIMIT;
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > LIBRARY_CORE_ACCOUNT_TIMELINE_MAXIMUM_LIMIT
+  ) {
+    throw new Error("Library Core account timeline request is invalid");
+  }
+  const response = await runtime.query({
+    accountId: input.accountId,
+    cancellationId: operationId(runtime, "account-timeline"),
+    cursor: input.cursor ?? null,
+    limit,
+    queryId: LIBRARY_CORE_ACCOUNT_TIMELINE_QUERY_ID,
+    readerSessionId: operationId(runtime, "account-timeline-reader"),
+    schemaVersion: LIBRARY_CORE_ACCOUNT_TIMELINE_SCHEMA_VERSION,
   });
   return Object.freeze({
     items: response.rows.map(libraryCoreFeedCardToItemV1),

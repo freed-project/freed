@@ -11,6 +11,7 @@ import {
   type LibraryFriendsLocationItemRequest,
   type LibraryFriendsGraphRequest,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
   type LibraryPersonTimelinePage,
 } from "../context/PlatformContext.js";
 import { friendActivitySourceKey } from "../lib/friends-workspace.js";
@@ -322,14 +323,14 @@ function replaceTimelinePage(
 export function useLibraryFriendsRows({
   graphRequest,
   locationSources,
-  timelinePersonId,
+  timelineIdentity,
   timelineSources,
   fallbackItems,
   sourceVersion,
 }: {
   graphRequest: LibraryFriendsGraphRequest;
   locationSources: readonly LibraryFriendsSource[];
-  timelinePersonId: string | null;
+  timelineIdentity: LibraryPersonTimelineRequest | null;
   timelineSources: readonly LibraryFriendsSource[];
   fallbackItems: readonly FeedItem[];
   sourceVersion: number;
@@ -339,7 +340,7 @@ export function useLibraryFriendsRows({
     readLibraryFriendsLocationItem,
     readLibraryPersonTimeline,
   } = usePlatform();
-  const timelineActive = timelinePersonId !== null;
+  const timelineActive = timelineIdentity !== null;
   const locationActive = locationSources.length > 0;
   const [versionedGraph, setVersionedGraph] =
     useState<VersionedFriendsGraph | null>(null);
@@ -449,7 +450,7 @@ export function useLibraryFriendsRows({
       };
     }
     void readLibraryPersonTimeline({
-      personId: timelinePersonId,
+      ...timelineIdentity,
       limit: TIMELINE_PAGE_SIZE,
       cursor: null,
     })
@@ -493,7 +494,7 @@ export function useLibraryFriendsRows({
     sourceVersion,
     timelineActive,
     timelineRetrySequence,
-    timelinePersonId,
+    timelineIdentity,
     timelineSources,
   ]);
 
@@ -757,7 +758,7 @@ export function useLibraryFriendsRows({
     (cursor: string | null) => {
       if (
         !readLibraryPersonTimeline ||
-        timelinePersonId === null ||
+        timelineIdentity === null ||
         !currentTimeline ||
         currentTimeline.loadingMore ||
         timelineAttemptMatches(
@@ -775,7 +776,7 @@ export function useLibraryFriendsRows({
       };
       setVersionedTimeline({ ...currentTimeline, loadingMore: true });
       void readLibraryPersonTimeline({
-        personId: timelinePersonId,
+        ...timelineIdentity,
         limit: TIMELINE_PAGE_SIZE,
         cursor,
       })
@@ -828,7 +829,7 @@ export function useLibraryFriendsRows({
       currentTimeline,
       readLibraryPersonTimeline,
       sourceVersion,
-      timelinePersonId,
+      timelineIdentity,
       timelineSources,
     ],
   );

@@ -139,9 +139,7 @@ export interface ScoredLibraryItem {
 export type SearchLibraryItems = (
   query: string,
   searchCorpusVersion: number,
-  visit: (
-    matches: readonly ScoredLibraryItem[],
-  ) => LibraryItemScanDecision,
+  visit: (matches: readonly ScoredLibraryItem[]) => LibraryItemScanDecision,
   options?: Readonly<{
     accountAliases?: readonly LibraryCoreSearchAccountAliasV1[];
     signal?: AbortSignal;
@@ -247,11 +245,19 @@ export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLo
   readonly sourceToken: string;
 }
 
-export interface LibraryPersonTimelineRequest {
-  readonly personId: string;
-  readonly limit?: number;
-  readonly cursor?: string | null;
-}
+export type LibraryPersonTimelineRequest =
+  | Readonly<{
+      accountId: string;
+      cursor?: string | null;
+      limit?: number;
+      personId?: never;
+    }>
+  | Readonly<{
+      accountId?: never;
+      cursor?: string | null;
+      limit?: number;
+      personId: string;
+    }>;
 
 export interface LibraryPersonTimelinePage {
   readonly items: readonly FeedItem[];

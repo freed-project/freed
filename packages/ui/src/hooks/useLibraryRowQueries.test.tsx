@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act, type ReactNode } from "react";
+import { act, useMemo, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   afterAll,
@@ -19,6 +19,7 @@ import {
   type LibraryFriendsGraph,
   type LibraryFriendsGraphRequest,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
   type LibraryPersonTimelinePage,
   type LibrarySavedAnalytics,
   type LibrarySavedAnalyticsRequest,
@@ -215,27 +216,31 @@ function FriendsHarness({
   fallbackItems,
   locationSources,
   sourceVersion,
-  timelinePersonId,
+  timelineIdentity,
   timelineSources = friendsGraphRequest.sources,
   onState,
 }: {
   fallbackItems: readonly FeedItem[];
   locationSources?: readonly LibraryFriendsSource[];
   sourceVersion: number;
-  timelinePersonId?: string | null;
+  timelineIdentity?: LibraryPersonTimelineRequest | null;
   timelineSources?: readonly LibraryFriendsSource[];
   onState: (state: LibraryFriendsRowsState) => void;
 }) {
+  const resolvedTimelineIdentity = useMemo<LibraryPersonTimelineRequest | null>(
+    () =>
+      timelineIdentity === undefined
+        ? timelineSources.length > 0
+          ? { personId: "person-1" }
+          : null
+        : timelineIdentity,
+    [timelineIdentity, timelineSources.length],
+  );
   onState(
     useLibraryFriendsRows({
       graphRequest: friendsGraphRequest,
       locationSources: locationSources ?? timelineSources,
-      timelinePersonId:
-        timelinePersonId === undefined
-          ? timelineSources.length > 0
-            ? "person-1"
-            : null
-          : timelinePersonId,
+      timelineIdentity: resolvedTimelineIdentity,
       timelineSources,
       fallbackItems,
       sourceVersion,
@@ -673,6 +678,11 @@ describe("Library row query hooks", () => {
         items: firstPage,
         totalCount: 130,
         nextCursor: "page-2",
+      })
+      .mockResolvedValueOnce({
+        items: firstPage,
+        totalCount: 130,
+        nextCursor: "page-2",
       });
     const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
@@ -681,11 +691,15 @@ describe("Library row query hooks", () => {
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
-    const renderFriends = (fallbackItems: readonly FeedItem[]) => (
+    const renderFriends = (
+      fallbackItems: readonly FeedItem[],
+      timelineIdentity?: LibraryPersonTimelineRequest,
+    ) => (
       <PlatformProvider value={config}>
         <FriendsHarness
           fallbackItems={fallbackItems}
           sourceVersion={1}
+          timelineIdentity={timelineIdentity}
           onState={(state) => {
             current = state;
           }}
@@ -776,6 +790,16 @@ describe("Library row query hooks", () => {
     });
     expect(readLibraryPersonTimeline).toHaveBeenCalledTimes(4);
     expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+
+    act(() =>
+      root?.render(renderFriends([], { accountId: "account-unlinked" })),
+    );
+    await flush();
+    expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(5, {
+      accountId: "account-unlinked",
+      limit: 50,
+      cursor: null,
+    });
   });
 
   it("keeps an exact location older than the current 50-row timeline window", async () => {

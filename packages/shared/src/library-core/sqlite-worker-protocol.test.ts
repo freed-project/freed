@@ -129,6 +129,17 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-account-timeline", {
+        accountId: "account-1",
+        cancellationId: "cancel-account-timeline-1",
+        cursor: null,
+        limit: 50,
+        queryId: "account_timeline_v1",
+        readerSessionId: "reader-account-timeline-1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-item-scan", {
         cancellationId: "cancel-scan-1",
         cursor: null,

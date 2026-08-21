@@ -7,6 +7,7 @@ import {
 } from "@freed/shared";
 import {
   readLibraryCoreNormalizedFacetSummaryV1,
+  readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
@@ -120,11 +121,9 @@ export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLo
   readonly sourceToken: string;
 }
 
-export interface LibraryPersonTimelineRequest {
-  readonly personId: string;
-  readonly limit?: number;
-  readonly cursor?: string | null;
-}
+export type LibraryPersonTimelineRequest =
+  | Readonly<{ accountId: string; cursor?: string | null; limit?: number }>
+  | Readonly<{ cursor?: string | null; limit?: number; personId: string }>;
 
 export interface LibraryPersonTimelinePage {
   readonly items: readonly FeedItem[];
@@ -446,10 +445,15 @@ export async function readLibraryCoreFriendsLocationItem(
 export async function readLibraryCorePersonTimeline(
   request: LibraryPersonTimelineRequest,
 ): Promise<LibraryPersonTimelinePage> {
-  return readLibraryCoreNormalizedPersonTimelineV1(
-    NORMALIZED_READER_RUNTIME,
-    request,
-  );
+  return "accountId" in request
+    ? readLibraryCoreNormalizedAccountTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      )
+    : readLibraryCoreNormalizedPersonTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      );
 }
 
 export async function readLibraryCoreSavedAnalytics(

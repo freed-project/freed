@@ -1817,6 +1817,17 @@ describe("PWA Library Core SQLite engine", () => {
         personId: "person-2",
       }),
     ).toThrow("different person");
+    const accountTimeline = engine.query({
+      accountId: "account-1",
+      cancellationId: operationId("cancel-account-timeline-1"),
+      cursor: null,
+      limit: 10,
+      queryId: "account_timeline_v1" as const,
+      readerSessionId: operationId("reader-account-timeline-1"),
+      schemaVersion: 1 as const,
+    });
+    expect(accountTimeline.totalCount).toBe(1);
+    expect(accountTimeline.rows.map((row) => row.globalId)).toEqual(["item-2"]);
     database.exec(
       "UPDATE library_accounts SET person_id = 'person-2' WHERE id = 'account-1';",
     );

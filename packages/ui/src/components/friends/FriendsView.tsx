@@ -29,6 +29,7 @@ import {
   useAppStore,
   usePlatform,
   type LibraryFriendsSource,
+  type LibraryPersonTimelineRequest,
 } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -746,17 +747,22 @@ export function FriendsView({
         compareUtf8Binary(left.platform, right.platform) ||
         compareUtf8Binary(left.authorId, right.authorId),
     );
-  }, [selectedAccount, selectedFriend]);
+  }, [selectedAccount?.id, selectedAccount?.personId, selectedFriend?.id]);
   const locationSources = useMemo<LibraryFriendsSource[]>(
     () => (selectedFriend ? timelineSources : []),
     [selectedFriend, timelineSources],
   );
-  const timelinePersonId =
-    selectedFriend?.id ?? selectedAccount?.personId ?? null;
+  const timelineIdentity = useMemo<LibraryPersonTimelineRequest | null>(() => {
+    if (selectedFriend) return { personId: selectedFriend.id };
+    if (!selectedAccount) return null;
+    return selectedAccount.personId
+      ? { personId: selectedAccount.personId }
+      : { accountId: selectedAccount.id };
+  }, [selectedAccount, selectedFriend]);
   const friendsRows = useLibraryFriendsRows({
     graphRequest: friendsGraphRequest,
     locationSources,
-    timelinePersonId,
+    timelineIdentity,
     timelineSources,
     fallbackItems: items,
     sourceVersion: searchCorpusVersion,

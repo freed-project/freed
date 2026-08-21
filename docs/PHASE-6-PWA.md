@@ -152,6 +152,10 @@
         trigger-maintained timeline index as native Rust. Each page reads at
         most 101 rows, returns at most 100 compact cards and 2 MiB, and binds
         continuation to both the Person identity and SQLite source fence.
+  - [x] `account_timeline_v1` names one unlinked Account and executes the same
+        indexed typed Account-to-FeedItem join as native Rust. It carries the
+        same row and byte bounds while binding continuation to the Account and
+        SQLite source fence.
   - [x] `feed_browse_page_v3` applies ranked feed filters and bidirectional
         keyset paging directly in browser SQLite through the same closed query
         program and cursor codec as native Rust. Its registered expression
@@ -402,6 +406,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.25 | Route Friends feed paging through the shared normalized bidirectional feed query, with friend membership resolved from Account and Person relations inside PWA SQLite | High | ✓ Complete |
 | 6.26 | Route selected Person timelines through the shared `person_timeline_v1` adapter backed by the PWA OPFS SQLite worker, keyed by stable Person ID | High | ✓ Complete |
 | 6.27 | Supply the Friends Galaxy worker with direct OPFS SQLite Person, Account, and RSS graph page executors so React never compiles the identity corpus | High | ✓ Complete |
+| 6.28 | Route selected unlinked Account timelines through the shared `account_timeline_v1` adapter backed by the PWA OPFS SQLite worker, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
 
 ---
 

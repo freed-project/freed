@@ -18,6 +18,7 @@ import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFacetSummaryV1,
+  readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
@@ -964,10 +965,15 @@ export const readPwaLibraryCoreFriendsGraph: NonNullable<
 export const readPwaLibraryCorePersonTimeline: NonNullable<
   PlatformConfig["readLibraryPersonTimeline"]
 > = (request) =>
-  readLibraryCoreNormalizedPersonTimelineV1(
-    NORMALIZED_READER_RUNTIME,
-    request,
-  );
+  typeof request.accountId === "string"
+    ? readLibraryCoreNormalizedAccountTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      )
+    : readLibraryCoreNormalizedPersonTimelineV1(
+        NORMALIZED_READER_RUNTIME,
+        request,
+      );
 
 /** Resolve one exact location item against its Friends source token. */
 export const readPwaLibraryCoreFriendsLocationItem: NonNullable<

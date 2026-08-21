@@ -5,6 +5,12 @@ import {
   type LibraryCoreAccountDetailResponseV1,
 } from "./account-detail-contracts.js";
 import {
+  parseLibraryCoreAccountTimelineRequestV1,
+  parseLibraryCoreAccountTimelineResponseV1,
+  type LibraryCoreAccountTimelineRequestV1,
+  type LibraryCoreAccountTimelineResponseV1,
+} from "./account-timeline-contracts.js";
+import {
   parseLibraryCoreAccountGraphPageRequestV1,
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
@@ -144,6 +150,7 @@ export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreAccountDetailRequestV1
   | LibraryCoreAccountGraphPageRequestV1
+  | LibraryCoreAccountTimelineRequestV1
   | LibraryCoreChangeFeedRequestV1
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedBrowsePageRequestV3
@@ -169,37 +176,39 @@ export type LibraryCoreSqliteQueryResponseFor<
     ? LibraryCoreAccountDetailResponseV1
     : T extends LibraryCoreAccountGraphPageRequestV1
       ? LibraryCoreAccountGraphPageResponseV1
-      : T extends LibraryCoreChangeFeedRequestV1
-        ? LibraryCoreChangeFeedResponseV1
-        : T extends LibraryCoreFeedBrowsePageRequestV3
-          ? LibraryCoreFeedBrowsePageResponseV3
-          : T extends LibraryCoreFeedPageRequestV1
-            ? LibraryCoreFeedPageResponseV1
-            : T extends LibraryCoreItemDetailRequestV1
-              ? LibraryCoreItemDetailResponseV1
-              : T extends LibraryCoreItemReaderBodyRequestV1
-                ? LibraryCoreItemReaderBodyResponseV1
-                : T extends LibraryCoreItemScanRequestV1
-                  ? LibraryCoreItemScanResponseV1
-                  : T extends LibraryCoreMapMarkersRequestV1
-                    ? LibraryCoreMapMarkersResponseV1
-                    : T extends LibraryCorePersonDetailRequestV1
-                      ? LibraryCorePersonDetailResponseV1
-                      : T extends LibraryCorePersonGraphPageRequestV1
-                        ? LibraryCorePersonGraphPageResponseV1
-                        : T extends LibraryCorePersonTimelineRequestV1
-                          ? LibraryCorePersonTimelineResponseV1
-                          : T extends LibraryCoreRssFeedGraphPageRequestV1
-                            ? LibraryCoreRssFeedGraphPageResponseV1
-                            : T extends LibraryCoreSavedAnalyticsRequestV2
-                              ? LibraryCoreSavedAnalyticsResponseV2
-                              : T extends LibraryCoreSavedFeedPageRequestV2
-                                ? LibraryCoreSavedFeedPageResponseV2
-                                : T extends LibraryCoreStoryWallCandidatesRequestV1
-                                  ? LibraryCoreStoryWallCandidatesResponseV1
-                                  : T extends LibraryCorePreferencesSnapshotRequestV1
-                                    ? LibraryCorePreferencesSnapshotResponseV1
-                                    : never;
+      : T extends LibraryCoreAccountTimelineRequestV1
+        ? LibraryCoreAccountTimelineResponseV1
+        : T extends LibraryCoreChangeFeedRequestV1
+          ? LibraryCoreChangeFeedResponseV1
+          : T extends LibraryCoreFeedBrowsePageRequestV3
+            ? LibraryCoreFeedBrowsePageResponseV3
+            : T extends LibraryCoreFeedPageRequestV1
+              ? LibraryCoreFeedPageResponseV1
+              : T extends LibraryCoreItemDetailRequestV1
+                ? LibraryCoreItemDetailResponseV1
+                : T extends LibraryCoreItemReaderBodyRequestV1
+                  ? LibraryCoreItemReaderBodyResponseV1
+                  : T extends LibraryCoreItemScanRequestV1
+                    ? LibraryCoreItemScanResponseV1
+                    : T extends LibraryCoreMapMarkersRequestV1
+                      ? LibraryCoreMapMarkersResponseV1
+                      : T extends LibraryCorePersonDetailRequestV1
+                        ? LibraryCorePersonDetailResponseV1
+                        : T extends LibraryCorePersonGraphPageRequestV1
+                          ? LibraryCorePersonGraphPageResponseV1
+                          : T extends LibraryCorePersonTimelineRequestV1
+                            ? LibraryCorePersonTimelineResponseV1
+                            : T extends LibraryCoreRssFeedGraphPageRequestV1
+                              ? LibraryCoreRssFeedGraphPageResponseV1
+                              : T extends LibraryCoreSavedAnalyticsRequestV2
+                                ? LibraryCoreSavedAnalyticsResponseV2
+                                : T extends LibraryCoreSavedFeedPageRequestV2
+                                  ? LibraryCoreSavedFeedPageResponseV2
+                                  : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                    ? LibraryCoreStoryWallCandidatesResponseV1
+                                    : T extends LibraryCorePreferencesSnapshotRequestV1
+                                      ? LibraryCorePreferencesSnapshotResponseV1
+                                      : never;
 
 /** Validates one native or browser query response against its exact request. */
 export function parseLibraryCoreSqliteQueryResponse<
@@ -210,59 +219,61 @@ export function parseLibraryCoreSqliteQueryResponse<
       ? parseLibraryCoreAccountDetailResponseV1(value, request)
       : request.queryId === "account_graph_page_v1"
         ? parseLibraryCoreAccountGraphPageResponseV1(value, request)
-        : request.queryId === "change_feed_v1"
-          ? parseLibraryCoreChangeFeedResponseV1(value, request)
-          : request.queryId === "library_facet_summary_v1"
-            ? parseLibraryCoreFacetSummaryResponseV1(value)
-            : request.queryId === "feed_browse_page_v3"
-              ? parseLibraryCoreFeedBrowsePageResponseV3(value, request)
-              : request.queryId === "feed_page_v1"
-                ? parseLibraryCoreFeedPageResponseV1(value, request)
-                : request.queryId === "item_detail_v1"
-                  ? parseLibraryCoreItemDetailResponseV1(value, request)
-                  : request.queryId === "item_reader_body_v1"
-                    ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
-                    : request.queryId === "background_item_page_v1"
-                      ? parseLibraryCoreItemScanResponseV1(value, request)
-                      : request.queryId === "map_markers_v1"
-                        ? parseLibraryCoreMapMarkersResponseV1(value, request)
-                        : request.queryId === "person_detail_v1"
-                          ? parseLibraryCorePersonDetailResponseV1(
-                              value,
-                              request,
-                            )
-                          : request.queryId === "person_graph_page_v1"
-                            ? parseLibraryCorePersonGraphPageResponseV1(
+        : request.queryId === "account_timeline_v1"
+          ? parseLibraryCoreAccountTimelineResponseV1(value, request)
+          : request.queryId === "change_feed_v1"
+            ? parseLibraryCoreChangeFeedResponseV1(value, request)
+            : request.queryId === "library_facet_summary_v1"
+              ? parseLibraryCoreFacetSummaryResponseV1(value)
+              : request.queryId === "feed_browse_page_v3"
+                ? parseLibraryCoreFeedBrowsePageResponseV3(value, request)
+                : request.queryId === "feed_page_v1"
+                  ? parseLibraryCoreFeedPageResponseV1(value, request)
+                  : request.queryId === "item_detail_v1"
+                    ? parseLibraryCoreItemDetailResponseV1(value, request)
+                    : request.queryId === "item_reader_body_v1"
+                      ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
+                      : request.queryId === "background_item_page_v1"
+                        ? parseLibraryCoreItemScanResponseV1(value, request)
+                        : request.queryId === "map_markers_v1"
+                          ? parseLibraryCoreMapMarkersResponseV1(value, request)
+                          : request.queryId === "person_detail_v1"
+                            ? parseLibraryCorePersonDetailResponseV1(
                                 value,
                                 request,
                               )
-                            : request.queryId === "person_timeline_v1"
-                              ? parseLibraryCorePersonTimelineResponseV1(
+                            : request.queryId === "person_graph_page_v1"
+                              ? parseLibraryCorePersonGraphPageResponseV1(
                                   value,
                                   request,
                                 )
-                              : request.queryId === "preferences_snapshot_v1"
-                                ? parseLibraryCorePreferencesSnapshotResponseV1(
+                              : request.queryId === "person_timeline_v1"
+                                ? parseLibraryCorePersonTimelineResponseV1(
                                     value,
+                                    request,
                                   )
-                                : request.queryId === "rss_feed_graph_page_v1"
-                                  ? parseLibraryCoreRssFeedGraphPageResponseV1(
+                                : request.queryId === "preferences_snapshot_v1"
+                                  ? parseLibraryCorePreferencesSnapshotResponseV1(
                                       value,
-                                      request,
                                     )
-                                  : request.queryId === "saved_analytics_v2"
-                                    ? parseLibraryCoreSavedAnalyticsResponseV2(
+                                  : request.queryId === "rss_feed_graph_page_v1"
+                                    ? parseLibraryCoreRssFeedGraphPageResponseV1(
                                         value,
+                                        request,
                                       )
-                                    : request.queryId === "saved_feed_page_v2"
-                                      ? parseLibraryCoreSavedFeedPageResponseV2(
+                                    : request.queryId === "saved_analytics_v2"
+                                      ? parseLibraryCoreSavedAnalyticsResponseV2(
                                           value,
-                                          request,
                                         )
-                                      : parseLibraryCoreStoryWallCandidatesResponseV1(
-                                          value,
-                                          request,
-                                        );
+                                      : request.queryId === "saved_feed_page_v2"
+                                        ? parseLibraryCoreSavedFeedPageResponseV2(
+                                            value,
+                                            request,
+                                          )
+                                        : parseLibraryCoreStoryWallCandidatesResponseV1(
+                                            value,
+                                            request,
+                                          );
   if (!parsed.ok) {
     throw new TypeError(parsed.error);
   }
@@ -354,6 +365,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreAccountDetailResponseV1
   | LibraryCoreAccountGraphPageResponseV1
+  | LibraryCoreAccountTimelineResponseV1
   | LibraryCoreChangeFeedResponseV1
   | LibraryCoreFacetSummaryResponseV1
   | LibraryCoreFeedBrowsePageResponseV3
@@ -472,55 +484,59 @@ export function parseLibraryCoreSqliteWorkerRequest(
         ? parseLibraryCoreAccountDetailRequestV1(value.query)
         : value.query.queryId === "account_graph_page_v1"
           ? parseLibraryCoreAccountGraphPageRequestV1(value.query)
-          : value.query.queryId === "library_facet_summary_v1"
-            ? parseLibraryCoreFacetSummaryRequestV1(value.query)
-            : value.query.queryId === "change_feed_v1"
-              ? parseLibraryCoreChangeFeedRequestV1(value.query)
-              : value.query.queryId === "feed_browse_page_v3"
-                ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
-                : value.query.queryId === "item_detail_v1"
-                  ? parseLibraryCoreItemDetailRequestV1(value.query)
-                  : value.query.queryId === "item_reader_body_v1"
-                    ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
-                    : value.query.queryId === "background_item_page_v1"
-                      ? parseLibraryCoreItemScanRequestV1(value.query)
-                      : value.query.queryId === "map_markers_v1"
-                        ? parseLibraryCoreMapMarkersRequestV1(value.query)
-                        : value.query.queryId === "person_detail_v1"
-                          ? parseLibraryCorePersonDetailRequestV1(value.query)
-                          : value.query.queryId === "person_graph_page_v1"
-                            ? parseLibraryCorePersonGraphPageRequestV1(
-                                value.query,
-                              )
-                            : value.query.queryId === "person_timeline_v1"
-                              ? parseLibraryCorePersonTimelineRequestV1(
+          : value.query.queryId === "account_timeline_v1"
+            ? parseLibraryCoreAccountTimelineRequestV1(value.query)
+            : value.query.queryId === "library_facet_summary_v1"
+              ? parseLibraryCoreFacetSummaryRequestV1(value.query)
+              : value.query.queryId === "change_feed_v1"
+                ? parseLibraryCoreChangeFeedRequestV1(value.query)
+                : value.query.queryId === "feed_browse_page_v3"
+                  ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
+                  : value.query.queryId === "item_detail_v1"
+                    ? parseLibraryCoreItemDetailRequestV1(value.query)
+                    : value.query.queryId === "item_reader_body_v1"
+                      ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
+                      : value.query.queryId === "background_item_page_v1"
+                        ? parseLibraryCoreItemScanRequestV1(value.query)
+                        : value.query.queryId === "map_markers_v1"
+                          ? parseLibraryCoreMapMarkersRequestV1(value.query)
+                          : value.query.queryId === "person_detail_v1"
+                            ? parseLibraryCorePersonDetailRequestV1(value.query)
+                            : value.query.queryId === "person_graph_page_v1"
+                              ? parseLibraryCorePersonGraphPageRequestV1(
                                   value.query,
                                 )
-                              : value.query.queryId === "rss_feed_graph_page_v1"
-                                ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                              : value.query.queryId === "person_timeline_v1"
+                                ? parseLibraryCorePersonTimelineRequestV1(
                                     value.query,
                                   )
-                                : value.query.queryId === "saved_analytics_v2"
-                                  ? parseLibraryCoreSavedAnalyticsRequestV2(
+                                : value.query.queryId ===
+                                    "rss_feed_graph_page_v1"
+                                  ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                       value.query,
                                     )
-                                  : value.query.queryId === "saved_feed_page_v2"
-                                    ? parseLibraryCoreSavedFeedPageRequestV2(
+                                  : value.query.queryId === "saved_analytics_v2"
+                                    ? parseLibraryCoreSavedAnalyticsRequestV2(
                                         value.query,
                                       )
                                     : value.query.queryId ===
-                                        "story_wall_candidates_v1"
-                                      ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                        "saved_feed_page_v2"
+                                      ? parseLibraryCoreSavedFeedPageRequestV2(
                                           value.query,
                                         )
                                       : value.query.queryId ===
-                                          "preferences_snapshot_v1"
-                                        ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                          "story_wall_candidates_v1"
+                                        ? parseLibraryCoreStoryWallCandidatesRequestV1(
                                             value.query,
                                           )
-                                        : parseLibraryCoreFeedPageRequestV1(
-                                            value.query,
-                                          )
+                                        : value.query.queryId ===
+                                            "preferences_snapshot_v1"
+                                          ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                              value.query,
+                                            )
+                                          : parseLibraryCoreFeedPageRequestV1(
+                                              value.query,
+                                            )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {

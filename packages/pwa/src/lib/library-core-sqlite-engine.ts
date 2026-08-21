@@ -83,6 +83,11 @@ import {
   parseLibraryCoreStoryWallCandidatesResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
+  decodeLibraryCoreAccountTimelineCursorV1,
+  encodeLibraryCoreAccountTimelineCursorV1,
+  libraryCoreAccountTimelineAccountDigestV1,
+  parseLibraryCoreAccountTimelineRequestV1,
+  parseLibraryCoreAccountTimelineResponseV1,
   decodeLibraryCoreIdentityPageCursorV1,
   encodeLibraryCoreIdentityPageCursorV1,
   parseLibraryCoreAccountGraphPageRequestV1,
@@ -142,6 +147,8 @@ import {
   type LibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
+  type LibraryCoreAccountTimelineRequestV1,
+  type LibraryCoreAccountTimelineResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
@@ -2371,6 +2378,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryAccountGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "account_timeline_v1":
+        return this.#queryAccountTimeline(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "change_feed_v1":
         return this.#queryChangeFeed(
           input,
@@ -3743,6 +3754,93 @@ export class PwaLibraryCoreSqliteEngine {
       ),
     };
     const parsed = parseLibraryCoreSavedFeedPageResponseV2(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryAccountTimeline(
+    input: LibraryCoreAccountTimelineRequestV1,
+  ): LibraryCoreAccountTimelineResponseV1 {
+    const request = parseLibraryCoreAccountTimelineRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const accountDigest = libraryCoreAccountTimelineAccountDigestV1(
+      request.value.accountId,
+    );
+    let afterPublishedAt: number | null = null;
+    let afterGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreAccountTimelineCursorV1(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.accountDigest !== accountDigest ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.transitionSequence !== sourceRevision ||
+        cursor.value.projectionRevision !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite account timeline cursor is stale");
+      }
+      afterPublishedAt = cursor.value.sortAt;
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_timeline_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        request.value.accountId,
+        afterPublishedAt,
+        afterGlobalId,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite account timeline exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows: LibraryCoreFeedCardV1[] = rawRows
+      .slice(0, request.value.limit)
+      .map(feedCardFromSqliteRow);
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last?.publishedAt !== null && last !== undefined
+          ? encodeLibraryCoreAccountTimelineCursorV1({
+              accountDigest,
+              generationId: generationId as never,
+              globalId: last.globalId,
+              projectionRevision: sourceRevision,
+              sortAt: last.publishedAt,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "account_timeline_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      totalCount: safeInteger(
+        this.#database.exec({
+          sql: program.countSql,
+          bind: [request.value.accountId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "account timeline total count",
+      ),
+    };
+    const parsed = parseLibraryCoreAccountTimelineResponseV1(
       response,
       request.value,
     );

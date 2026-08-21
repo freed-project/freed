@@ -529,6 +529,34 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
   });
 
+  it("reads one unlinked Account timeline page through normalized SQLite", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: null,
+      rows: [],
+      totalCount: 1,
+    });
+
+    await expect(
+      readPwaLibraryCorePersonTimeline({
+        accountId: "account-1",
+        cursor: null,
+        limit: 2,
+      }),
+    ).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        limit: 2,
+        queryId: "account_timeline_v1",
+      }),
+    );
+    expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
+  });
+
   it("queues user-state changes through the signed IndexedDB intent path", async () => {
     mocks.enqueueUserStateAssignments.mockResolvedValue({
       operationId: "op:assignment",

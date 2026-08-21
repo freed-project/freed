@@ -55,6 +55,10 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
 } from "./person-timeline-contracts.js";
 import {
+  LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA,
+  LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA,
+} from "./account-timeline-contracts.js";
+import {
   LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
   LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
   LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
@@ -283,6 +287,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly requestSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
@@ -310,6 +315,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly responseSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -462,6 +468,7 @@ interface PlannedQueryInput {
   readonly requestSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
@@ -487,6 +494,7 @@ interface PlannedQueryInput {
   readonly responseSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -725,6 +733,34 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       nullOrdering: "all_sort_columns_not_null",
     },
     tieBreakKey: "id",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  account_timeline_v1: plannedQuery({
+    defaultLimit: 50,
+    maximumLimit: 100,
+    maximumRows: 100,
+    maximumResponseBytes: 2 * MIB,
+    totalCountIntent: "snapshot_exact",
+    rendererCache: true,
+    invalidationKeyIntent: ["account-timeline:{account_id}"],
+    currentKinds: [
+      "query_normalized_v1::account_timeline_v1",
+      "PwaLibraryCoreSqliteEngine.query::account_timeline_v1",
+    ],
+    requestSchema: LIBRARY_CORE_ACCOUNT_TIMELINE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_FEED_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   background_item_page_v1: plannedQuery({

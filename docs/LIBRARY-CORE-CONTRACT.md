@@ -556,6 +556,17 @@ Desktop host supplies the native executor and the PWA supplies the OPFS SQLite
 worker executor. Neither host enumerates account keys or consults its
 historical item store.
 
+`account_timeline_v1` provides the same bounded card and cursor contract for
+one Account that is not linked to a Person. SQLite joins the Account's typed
+provider and external identity to visible FeedItems. The request names only
+the stable Account ID. Its opaque cursor binds that Account, the database
+generation, the source revision, the publication time, and the final item ID.
+Linked Accounts continue through `person_timeline_v1`, so a Person timeline
+combines all linked sources while an unlinked Account never impersonates a
+Person. Freed Desktop and the PWA choose between these two typed queries at the
+selected-detail boundary. React never constructs provider keys or filters a
+FeedItem corpus.
+
 `account_detail_v1` is the matching normalized point query for one visible
 Account. It reads one Account primary key, returns at most eight follow-roster
 roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.

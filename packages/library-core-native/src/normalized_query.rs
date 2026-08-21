@@ -103,6 +103,17 @@ pub struct NormalizedPersonTimelineRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountTimelineRequestV1 {
+    pub account_id: String,
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedMapMarkersRequestV1 {
     pub cancellation_id: String,
     pub limit: usize,
@@ -232,6 +243,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 pub enum NormalizedQueryRequestV1 {
     AccountDetail(NormalizedAccountDetailRequestV1),
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
+    AccountTimeline(NormalizedAccountTimelineRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
@@ -735,6 +747,7 @@ pub struct NormalizedItemReaderBodyResponseV1 {
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
+    AccountTimeline(NormalizedPersonTimelineResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
@@ -1795,28 +1808,62 @@ fn query_person_timeline(
     connection: &mut Connection,
     request: NormalizedPersonTimelineRequestV1,
 ) -> Result<NormalizedPersonTimelineResponseV1, NormalizedSqliteError> {
-    if request.schema_version != 1
-        || !(1..=PERSON_TIMELINE_MAXIMUM_LIMIT).contains(&request.limit)
-        || !valid_operation_instance_id(&request.cancellation_id)
-        || !valid_operation_instance_id(&request.reader_session_id)
-        || request.person_id.is_empty()
-        || request.person_id.len() > 4_096
+    query_identity_timeline(
+        connection,
+        request.person_id,
+        request.cancellation_id,
+        request.cursor,
+        request.limit,
+        request.reader_session_id,
+        request.schema_version,
+        "person_timeline_v1",
+    )
+}
+
+fn query_account_timeline(
+    connection: &mut Connection,
+    request: NormalizedAccountTimelineRequestV1,
+) -> Result<NormalizedPersonTimelineResponseV1, NormalizedSqliteError> {
+    query_identity_timeline(
+        connection,
+        request.account_id,
+        request.cancellation_id,
+        request.cursor,
+        request.limit,
+        request.reader_session_id,
+        request.schema_version,
+        "account_timeline_v1",
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn query_identity_timeline(
+    connection: &mut Connection,
+    identity_id: String,
+    cancellation_id: String,
+    cursor_value: Option<String>,
+    limit: usize,
+    reader_session_id: String,
+    schema_version: u32,
+    query_id: &'static str,
+) -> Result<NormalizedPersonTimelineResponseV1, NormalizedSqliteError> {
+    if schema_version != 1
+        || !(1..=PERSON_TIMELINE_MAXIMUM_LIMIT).contains(&limit)
+        || !valid_operation_instance_id(&cancellation_id)
+        || !valid_operation_instance_id(&reader_session_id)
+        || identity_id.is_empty()
+        || identity_id.len() > 4_096
     {
-        return Err(invalid(
-            "normalized person timeline query identity is invalid",
-        ));
+        return Err(invalid("normalized identity timeline query is invalid"));
     }
-    let person_digest = lower_hex(&Sha256::digest(request.person_id.as_bytes()));
+    let person_digest = lower_hex(&Sha256::digest(identity_id.as_bytes()));
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.query_id == "person_timeline_v1")
-        .ok_or(invalid(
-            "normalized person timeline query program is missing",
-        ))?;
+        .find(|program| program.query_id == query_id)
+        .ok_or(invalid("normalized identity timeline program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let cursor = request
-        .cursor
+    let cursor = cursor_value
         .as_deref()
         .map(decode_person_timeline_cursor)
         .transpose()?;
@@ -1826,36 +1873,38 @@ fn query_person_timeline(
             || cursor.page.transition_sequence != source_revision
             || cursor.page.projection_revision != source_revision
     }) {
-        return Err(invalid("normalized person timeline cursor is stale"));
+        return Err(invalid("normalized identity timeline cursor is stale"));
     }
     let mut statement = transaction.prepare(program.sql)?;
     let mut query_rows = statement.query_map(
         params![
-            request.person_id,
+            identity_id,
             cursor.as_ref().map(|cursor| cursor.page.sort_at),
             cursor
                 .as_ref()
                 .map(|cursor| cursor.page.global_id.as_str())
                 .unwrap_or(""),
-            i64::try_from(request.limit + 1).expect("bounded person timeline limit"),
+            i64::try_from(limit + 1).expect("bounded identity timeline limit"),
         ],
         feed_card,
     )?;
-    let mut cards = Vec::with_capacity(request.limit + 1);
+    let mut cards = Vec::with_capacity(limit + 1);
     for row in query_rows.by_ref() {
         cards.push(row?);
         if cards.len() > program.maximum_scan_rows {
-            return Err(invalid("normalized person timeline exceeded its row bound"));
+            return Err(invalid(
+                "normalized identity timeline exceeded its row bound",
+            ));
         }
     }
     drop(query_rows);
     drop(statement);
-    let has_more = cards.len() > request.limit;
-    cards.truncate(request.limit);
+    let has_more = cards.len() > limit;
+    cards.truncate(limit);
     let next_cursor = if has_more {
-        let last = cards
-            .last()
-            .ok_or(invalid("normalized person timeline cursor row is missing"))?;
+        let last = cards.last().ok_or(invalid(
+            "normalized identity timeline cursor row is missing",
+        ))?;
         Some(encode_person_timeline_cursor(&PersonTimelineCursorV1 {
             page: FeedPageCursorV1 {
                 generation_id: generation_id.clone(),
@@ -1863,7 +1912,7 @@ fn query_person_timeline(
                 projection_revision: source_revision,
                 sort_at: last
                     .published_at
-                    .ok_or(invalid("normalized person timeline sort time is missing"))?,
+                    .ok_or(invalid("normalized identity timeline sort time is missing"))?,
                 global_id: last.global_id.clone(),
             },
             person_digest,
@@ -1872,12 +1921,10 @@ fn query_person_timeline(
         None
     };
     let total_count: i64 =
-        transaction.query_row(program.count_sql, params![request.person_id], |row| {
-            row.get(0)
-        })?;
+        transaction.query_row(program.count_sql, params![identity_id], |row| row.get(0))?;
     let response = NormalizedPersonTimelineResponseV1 {
         next_cursor,
-        query_id: "person_timeline_v1".to_owned(),
+        query_id: query_id.to_owned(),
         rows: cards,
         schema_version: 1,
         source: NormalizedFeedPageSourceV1 {
@@ -1888,12 +1935,12 @@ fn query_person_timeline(
         total_count,
     };
     if serde_json::to_vec(&response)
-        .map_err(|_| invalid("normalized person timeline response is invalid"))?
+        .map_err(|_| invalid("normalized identity timeline response is invalid"))?
         .len()
         > PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES
     {
         return Err(invalid(
-            "normalized person timeline response exceeds its byte bound",
+            "normalized identity timeline response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -3585,6 +3632,11 @@ pub fn query_normalized_v1(
                 query_account_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::AccountTimeline(request) => {
+            Ok(NormalizedQueryResponseV1::AccountTimeline(
+                query_account_timeline(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
             query_change_feed(connection, request)?,
         )),
@@ -3685,6 +3737,9 @@ pub fn query_normalized_json_v1(
         "account_graph_page_v1" => {
             decode_request!(NormalizedAccountGraphPageRequestV1, AccountGraphPage)
         }
+        "account_timeline_v1" => {
+            decode_request!(NormalizedAccountTimelineRequestV1, AccountTimeline)
+        }
         "change_feed_v1" => decode_request!(NormalizedChangeFeedRequestV1, ChangeFeed),
         "library_facet_summary_v1" => {
             decode_request!(NormalizedFacetSummaryRequestV1, FacetSummary)
@@ -3742,6 +3797,7 @@ pub fn query_normalized_json_v1(
     match response {
         NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
@@ -4626,7 +4682,7 @@ mod tests {
     }
 
     #[test]
-    fn native_person_timeline_uses_the_derived_index_and_binds_its_cursor() {
+    fn native_identity_timelines_use_indexes_and_bind_their_cursors() {
         let mut connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
         let program = SQLITE_QUERY_PROGRAMS
@@ -4650,6 +4706,27 @@ mod tests {
         assert!(plan.iter().all(|detail| !detail.contains("SCAN timeline")));
         assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
         drop(plan_statement);
+        let account_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "account_timeline_v1")
+            .expect("account timeline program");
+        let mut account_plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", account_program.sql))
+            .expect("account timeline plan");
+        let account_plan = account_plan_statement
+            .query_map(params!["account-1", Option::<i64>::None, "", 2], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("account plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("account plan");
+        assert!(account_plan.iter().any(|detail| {
+            detail.contains("SEARCH account USING") || detail.contains("SEARCH item USING INDEX")
+        }));
+        assert!(account_plan
+            .iter()
+            .all(|detail| !detail.contains("TEMP B-TREE")));
+        drop(account_plan_statement);
 
         connection
             .execute_batch(&format!(
@@ -4719,6 +4796,24 @@ mod tests {
         )
         .expect_err("cursor for another person");
         assert!(error.to_string().contains("cursor is stale"));
+
+        let NormalizedQueryResponseV1::AccountTimeline(account_timeline) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountTimeline(NormalizedAccountTimelineRequestV1 {
+                account_id: "account-1".to_owned(),
+                cancellation_id: "cancel-account-1".to_owned(),
+                cursor: None,
+                limit: 10,
+                reader_session_id: "reader-account-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("account timeline") else {
+            panic!("account timeline response");
+        };
+        assert_eq!(account_timeline.total_count, 1);
+        assert_eq!(account_timeline.rows[0].global_id, "item-2");
+        assert_eq!(account_timeline.query_id, "account_timeline_v1");
 
         connection
             .execute(
