@@ -323,6 +323,7 @@ loads an alternate Library engine or compatibility path.
 | 4.174 | Shared `person_detail_v1` SQLite point query across native and browser dispatch, returning one closed Person header with at most 64 binary-ordered tags and the latest 20 stable reach-out events under a 512 KiB response ceiling | ✓ | High |
 | 4.175 | Shared `account_detail_v1` SQLite point query across native and browser dispatch, returning one closed Account with at most eight binary-ordered follow-roster roles, no Person or FeedItem corpus, and a 512 KiB response ceiling | ✓ | High |
 | 4.176 | Shared `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_graph_page_v1` SQLite keyset queries across native and browser dispatch, each returning at most 128 compact identity roots and 2 MiB from one source-fenced binary primary-key page without notes, contact fields, histories, polling policy, or a renderer corpus. Indexed FeedItem lookups provide Account and RSS visible activity counts, latest activity times, and RSS image fallback without a JavaScript corpus scan or separate graph aggregate | ✓ | High |
+| 4.177 | Installation-local Person and Account graph layout tables in the final SQLite schema, excluded from checkpoints, replication, and authority digests, with compact native and browser graph pages returning paired finite coordinates only for a pinned local row | ✓ | High |
 
 ---
 

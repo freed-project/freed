@@ -386,6 +386,24 @@ CREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id
 CREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external
   ON library_accounts(provider, external_id);
 
+CREATE TABLE IF NOT EXISTS library_device_person_graph_layout (
+  person_id TEXT PRIMARY KEY REFERENCES library_persons(id) ON DELETE CASCADE,
+  graph_x REAL NOT NULL,
+  graph_y REAL NOT NULL,
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  CHECK (graph_x = graph_x AND abs(graph_x) <= 1000000000),
+  CHECK (graph_y = graph_y AND abs(graph_y) <= 1000000000)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_device_account_graph_layout (
+  account_id TEXT PRIMARY KEY REFERENCES library_accounts(id) ON DELETE CASCADE,
+  graph_x REAL NOT NULL,
+  graph_y REAL NOT NULL,
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  CHECK (graph_x = graph_x AND abs(graph_x) <= 1000000000),
+  CHECK (graph_y = graph_y AND abs(graph_y) <= 1000000000)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_account_follow_roles (
   account_id TEXT NOT NULL REFERENCES library_accounts(id) ON DELETE CASCADE,
   role TEXT NOT NULL,

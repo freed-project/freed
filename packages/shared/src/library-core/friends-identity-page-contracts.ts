@@ -40,6 +40,10 @@ const RESPONSE_KEYS = [
 const PERSON_KEYS = [
   "avatarUrl",
   "careLevel",
+  "graphPinned",
+  "graphUpdatedAt",
+  "graphX",
+  "graphY",
   "id",
   "lastReachOutAt",
   "name",
@@ -55,6 +59,10 @@ const ACCOUNT_KEYS = [
   "externalId",
   "firstSeenAt",
   "followRosterActive",
+  "graphPinned",
+  "graphUpdatedAt",
+  "graphX",
+  "graphY",
   "handle",
   "id",
   "kind",
@@ -184,6 +192,10 @@ export interface LibraryCoreRssFeedGraphPageRequestV1 extends LibraryCoreIdentit
 export interface LibraryCorePersonGraphRowV1 {
   readonly avatarUrl: string | null;
   readonly careLevel: number;
+  readonly graphPinned: boolean;
+  readonly graphUpdatedAt: number | null;
+  readonly graphX: number | null;
+  readonly graphY: number | null;
   readonly id: string;
   readonly lastReachOutAt: number | null;
   readonly name: string;
@@ -200,6 +212,10 @@ export interface LibraryCoreAccountGraphRowV1 {
   readonly externalId: string;
   readonly firstSeenAt: number;
   readonly followRosterActive: boolean | null;
+  readonly graphPinned: boolean;
+  readonly graphUpdatedAt: number | null;
+  readonly graphX: number | null;
+  readonly graphY: number | null;
   readonly handle: string | null;
   readonly id: string;
   readonly kind: string;
@@ -298,6 +314,13 @@ function boundedText(
 function nullableInteger(value: unknown): number | null | undefined {
   if (value === null) return null;
   return isLibraryCoreNonnegativeSafeInteger(value) ? value : undefined;
+}
+
+function nullableFiniteNumber(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1_000_000_000
+    ? value
+    : undefined;
 }
 
 export function encodeLibraryCoreIdentityPageCursorV1(
@@ -404,6 +427,9 @@ function parsePerson(value: unknown): LibraryCorePersonGraphRowV1 | null {
   const relationshipStatus = boundedText(row.relationshipStatus, 255);
   const lastReachOutAt = nullableInteger(row.lastReachOutAt);
   const reachOutIntervalDays = nullableInteger(row.reachOutIntervalDays);
+  const graphUpdatedAt = nullableInteger(row.graphUpdatedAt);
+  const graphX = nullableFiniteNumber(row.graphX);
+  const graphY = nullableFiniteNumber(row.graphY);
   if (
     avatarUrl === undefined ||
     !id ||
@@ -411,6 +437,13 @@ function parsePerson(value: unknown): LibraryCorePersonGraphRowV1 | null {
     !relationshipStatus ||
     lastReachOutAt === undefined ||
     reachOutIntervalDays === undefined ||
+    graphUpdatedAt === undefined ||
+    graphX === undefined ||
+    graphY === undefined ||
+    typeof row.graphPinned !== "boolean" ||
+    (row.graphPinned
+      ? graphX === null || graphY === null || graphUpdatedAt === null
+      : graphX !== null || graphY !== null || graphUpdatedAt !== null) ||
     !Number.isInteger(row.careLevel) ||
     (row.careLevel as number) < 1 ||
     (row.careLevel as number) > 5 ||
@@ -421,6 +454,10 @@ function parsePerson(value: unknown): LibraryCorePersonGraphRowV1 | null {
   return Object.freeze({
     avatarUrl,
     careLevel: row.careLevel as number,
+    graphPinned: row.graphPinned,
+    graphUpdatedAt,
+    graphX,
+    graphY,
     id,
     lastReachOutAt,
     name,
@@ -441,6 +478,9 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
   const id = boundedText(row.id, 2_048);
   const kind = boundedText(row.kind, 64);
   const latestActivityAt = nullableInteger(row.latestActivityAt);
+  const graphUpdatedAt = nullableInteger(row.graphUpdatedAt);
+  const graphX = nullableFiniteNumber(row.graphX);
+  const graphY = nullableFiniteNumber(row.graphY);
   const personId = boundedText(row.personId, 2_048, true);
   const provider = boundedText(row.provider, 64);
   if (
@@ -452,6 +492,13 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     !id ||
     !kind ||
     latestActivityAt === undefined ||
+    graphUpdatedAt === undefined ||
+    graphX === undefined ||
+    graphY === undefined ||
+    typeof row.graphPinned !== "boolean" ||
+    (row.graphPinned
+      ? graphX === null || graphY === null || graphUpdatedAt === null
+      : graphX !== null || graphY !== null || graphUpdatedAt !== null) ||
     personId === undefined ||
     !provider ||
     !isLibraryCoreNonnegativeSafeInteger(row.activityCount) ||
@@ -471,6 +518,10 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     externalId,
     firstSeenAt: row.firstSeenAt,
     followRosterActive: row.followRosterActive as boolean | null,
+    graphPinned: row.graphPinned,
+    graphUpdatedAt,
+    graphX,
+    graphY,
     handle,
     id,
     kind,

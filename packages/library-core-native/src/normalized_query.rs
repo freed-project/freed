@@ -370,11 +370,15 @@ pub struct NormalizedAccountDetailResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphRowV1 {
     pub avatar_url: Option<String>,
     pub care_level: i64,
+    pub graph_pinned: bool,
+    pub graph_updated_at: Option<i64>,
+    pub graph_x: Option<f64>,
+    pub graph_y: Option<f64>,
     pub id: String,
     pub last_reach_out_at: Option<i64>,
     pub name: String,
@@ -383,7 +387,7 @@ pub struct NormalizedPersonGraphRowV1 {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphRowV1 {
     pub activity_count: i64,
@@ -393,6 +397,10 @@ pub struct NormalizedAccountGraphRowV1 {
     pub external_id: String,
     pub first_seen_at: i64,
     pub follow_roster_active: Option<bool>,
+    pub graph_pinned: bool,
+    pub graph_updated_at: Option<i64>,
+    pub graph_x: Option<f64>,
+    pub graph_y: Option<f64>,
     pub handle: Option<String>,
     pub id: String,
     pub kind: String,
@@ -415,7 +423,7 @@ pub struct NormalizedRssFeedGraphRowV1 {
     pub url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageResponseV1 {
     pub next_cursor: Option<String>,
@@ -425,7 +433,7 @@ pub struct NormalizedPersonGraphPageResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageResponseV1 {
     pub next_cursor: Option<String>,
@@ -1440,9 +1448,18 @@ fn query_person_graph_page(
             i64::try_from(request.limit + 1).expect("bounded Person graph page limit"),
         ],
         |row| {
+            let graph_pinned = match row.get::<_, i64>("graphPinned")? {
+                0 => false,
+                1 => true,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
             Ok(NormalizedPersonGraphRowV1 {
                 avatar_url: row.get("avatarUrl")?,
                 care_level: row.get("careLevel")?,
+                graph_pinned,
+                graph_updated_at: row.get("graphUpdatedAt")?,
+                graph_x: row.get("graphX")?,
+                graph_y: row.get("graphY")?,
                 id: row.get("id")?,
                 last_reach_out_at: row.get("lastReachOutAt")?,
                 name: row.get("name")?,
@@ -1473,6 +1490,18 @@ fn query_person_graph_page(
                 .as_ref()
                 .is_some_and(|value| value.len() > 8_192)
             || !(1..=5).contains(&row.care_level)
+            || row.graph_pinned != row.graph_x.is_some()
+            || row.graph_pinned != row.graph_y.is_some()
+            || row.graph_pinned != row.graph_updated_at.is_some()
+            || row
+                .graph_updated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .graph_x
+                .is_some_and(|value| !value.is_finite() || value.abs() > 1_000_000_000.0)
+            || row
+                .graph_y
+                .is_some_and(|value| !value.is_finite() || value.abs() > 1_000_000_000.0)
             || !valid_safe_integer(row.updated_at)
             || row
                 .last_reach_out_at
@@ -1566,6 +1595,11 @@ fn query_account_graph_page(
                     _ => Err(rusqlite::Error::InvalidQuery),
                 })
                 .transpose()?;
+            let graph_pinned = match row.get::<_, i64>("graphPinned")? {
+                0 => false,
+                1 => true,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
             Ok(NormalizedAccountGraphRowV1 {
                 activity_count: row.get("activityCount")?,
                 avatar_url: row.get("avatarUrl")?,
@@ -1574,6 +1608,10 @@ fn query_account_graph_page(
                 external_id: row.get("externalId")?,
                 first_seen_at: row.get("firstSeenAt")?,
                 follow_roster_active,
+                graph_pinned,
+                graph_updated_at: row.get("graphUpdatedAt")?,
+                graph_x: row.get("graphX")?,
+                graph_y: row.get("graphY")?,
                 handle: row.get("handle")?,
                 id: row.get("id")?,
                 kind: row.get("kind")?,
@@ -1612,6 +1650,18 @@ fn query_account_graph_page(
             || !bounded(&row.handle, 512)
             || !bounded(&row.display_name, 512)
             || !bounded(&row.avatar_url, 8_192)
+            || row.graph_pinned != row.graph_x.is_some()
+            || row.graph_pinned != row.graph_y.is_some()
+            || row.graph_pinned != row.graph_updated_at.is_some()
+            || row
+                .graph_updated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .graph_x
+                .is_some_and(|value| !value.is_finite() || value.abs() > 1_000_000_000.0)
+            || row
+                .graph_y
+                .is_some_and(|value| !value.is_finite() || value.abs() > 1_000_000_000.0)
             || !valid_safe_integer(row.first_seen_at)
             || !valid_safe_integer(row.activity_count)
             || !valid_safe_integer(row.last_seen_at)
@@ -2774,7 +2824,13 @@ mod tests {
                     author_id, author_handle, author_display_name, author_avatar_url, rss_feed_url,
                     hidden, saved, archived, updated_at)
                    VALUES ('account-activity', 'x', 'post', 220, 220, 'ada', 'ada', 'Ada', NULL, NULL, 0, 0, 0, 220),
-                          ('rss-activity', 'rss', 'article', 230, 230, 'alpha', 'alpha', 'Alpha', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 0, 0, 0, 230);",
+                          ('rss-activity', 'rss', 'article', 230, 230, 'alpha', 'alpha', 'Alpha', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 0, 0, 0, 230);
+                 INSERT INTO library_device_person_graph_layout
+                   (person_id, graph_x, graph_y, updated_at)
+                   VALUES ('person-1', 12.5, -8.25, 300);
+                 INSERT INTO library_device_account_graph_layout
+                   (account_id, graph_x, graph_y, updated_at)
+                   VALUES ('account-1', -4.5, 6.75, 301);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -2833,6 +2889,10 @@ mod tests {
         };
         assert_eq!(first.rows[0].id, "person-1");
         assert_eq!(first.rows[0].last_reach_out_at, Some(200));
+        assert!(first.rows[0].graph_pinned);
+        assert_eq!(first.rows[0].graph_x, Some(12.5));
+        assert_eq!(first.rows[0].graph_y, Some(-8.25));
+        assert_eq!(first.rows[0].graph_updated_at, Some(300));
         let person_cursor = first.next_cursor.clone();
         let NormalizedQueryResponseV1::PersonGraphPage(second) = query_normalized_v1(
             &mut connection,
@@ -2863,6 +2923,10 @@ mod tests {
         assert_eq!(first.rows[0].id, "account-1");
         assert_eq!(first.rows[0].activity_count, 1);
         assert_eq!(first.rows[0].latest_activity_at, Some(220));
+        assert!(first.rows[0].graph_pinned);
+        assert_eq!(first.rows[0].graph_x, Some(-4.5));
+        assert_eq!(first.rows[0].graph_y, Some(6.75));
+        assert_eq!(first.rows[0].graph_updated_at, Some(301));
         let NormalizedQueryResponseV1::AccountGraphPage(second) = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::AccountGraphPage(NormalizedAccountGraphPageRequestV1 {

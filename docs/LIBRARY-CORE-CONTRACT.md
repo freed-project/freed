@@ -315,6 +315,13 @@ activity count, and latest activity time. Its activity and image fallback use
 the RSS feed item index, with no polling or unread policy. These fields replace
 the separate whole-graph activity aggregate. JavaScript never scans FeedItems
 to assemble graph activity.
+Person and Account rows left-join their installation-local graph position from
+`library_device_person_graph_layout` and
+`library_device_account_graph_layout`. A missing local row is an explicit
+unpinned position. These tables use entity foreign keys, disappear with the
+local entity, and never enter checkpoint export, intent replication, or
+authority digests. Graph placement therefore uses SQLite without turning
+device layout into synchronized product state.
 All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the

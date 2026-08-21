@@ -167,6 +167,22 @@ function nullableInteger(
   return integer;
 }
 
+function nullableFiniteNumber(
+  value: SqlValue | undefined,
+  label: string,
+): number | null {
+  if (value === null) return null;
+  const number = typeof value === "bigint" ? Number(value) : value;
+  if (
+    typeof number !== "number" ||
+    !Number.isFinite(number) ||
+    Math.abs(number) > 1_000_000_000
+  ) {
+    throw new Error(`${label} is not a bounded SQLite number`);
+  }
+  return number;
+}
+
 function nullableBoolean(
   value: SqlValue | undefined,
   label: string,
@@ -1149,6 +1165,10 @@ export class PwaLibraryCoreSqliteEngine {
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
       avatarUrl: nullableText(row.avatarUrl, "Person graph avatar URL"),
       careLevel: safeInteger(row.careLevel, "Person graph care level"),
+      graphPinned: requiredBoolean(row.graphPinned, "Person graph pinned state"),
+      graphUpdatedAt: nullableInteger(row.graphUpdatedAt, "Person graph position update"),
+      graphX: nullableFiniteNumber(row.graphX, "Person graph x position"),
+      graphY: nullableFiniteNumber(row.graphY, "Person graph y position"),
       id: text(row.id, "Person graph identity"),
       lastReachOutAt: nullableInteger(
         row.lastReachOutAt,
@@ -1245,6 +1265,10 @@ export class PwaLibraryCoreSqliteEngine {
         row.followRosterActive,
         "Account graph follow-roster active",
       ),
+      graphPinned: requiredBoolean(row.graphPinned, "Account graph pinned state"),
+      graphUpdatedAt: nullableInteger(row.graphUpdatedAt, "Account graph position update"),
+      graphX: nullableFiniteNumber(row.graphX, "Account graph x position"),
+      graphY: nullableFiniteNumber(row.graphY, "Account graph y position"),
       handle: nullableText(row.handle, "Account graph handle"),
       id: text(row.id, "Account graph identity"),
       kind: text(row.kind, "Account graph kind"),

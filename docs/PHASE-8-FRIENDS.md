@@ -624,6 +624,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.177 | Move the PWA Friends-only feed, compact graph activity, selected-person timelines, exact location details, and Map candidates beyond the 512-card renderer window onto bounded source-fenced IndexedDB reads | High       | Done        |
 | 8.178 | Add the shared native and PWA `account_detail_v1` SQLite point query for one source-fenced Account with eight binary-ordered follow-roster roles, no Person or FeedItem corpus, and a 512 KiB response ceiling | High       | Done        |
 | 8.179 | Add compact source-fenced Person, Account, and RSS feed graph pages across native and PWA SQLite, each capped at 128 roots and 2 MiB in binary primary-key order with no notes, contact fields, histories, polling policy, or complete identity corpus sent to React. Account and RSS rows include indexed visible activity counts and latest activity times, with indexed RSS image fallback, so the final graph path needs no JavaScript FeedItem scan or separate whole-graph activity aggregate | High       | Done        |
+| 8.180 | Store final Person and Account graph pins in installation-local SQLite tables excluded from checkpoints and replication, and return paired finite coordinates through the compact native and PWA graph pages without retaining localStorage as the final layout store | High       | In progress |
 
 ---
 

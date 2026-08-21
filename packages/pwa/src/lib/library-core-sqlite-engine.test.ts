@@ -315,6 +315,12 @@ describe("PWA Library Core SQLite engine", () => {
          60, 210, 'capture', NULL, NULL, 60, 210);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
+      INSERT INTO library_device_person_graph_layout
+        (person_id, graph_x, graph_y, updated_at)
+      VALUES ('person-1', 12.5, -8.25, 300);
+      INSERT INTO library_device_account_graph_layout
+        (account_id, graph_x, graph_y, updated_at)
+      VALUES ('account-1', -4.5, 6.75, 301);
     `);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
@@ -496,6 +502,12 @@ describe("PWA Library Core SQLite engine", () => {
       "person-1",
     ]);
     expect(firstPersonGraphPage.rows[0]?.lastReachOutAt).toBe(200);
+    expect(firstPersonGraphPage.rows[0]).toMatchObject({
+      graphPinned: true,
+      graphUpdatedAt: 300,
+      graphX: 12.5,
+      graphY: -8.25,
+    });
     expect(
       engine
         .query({
@@ -514,7 +526,15 @@ describe("PWA Library Core SQLite engine", () => {
     };
     const firstAccountGraphPage = engine.query(accountGraphRequest);
     expect(firstAccountGraphPage.rows).toMatchObject([
-      { activityCount: 1, id: "account-1", latestActivityAt: 200 },
+      {
+        activityCount: 1,
+        graphPinned: true,
+        graphUpdatedAt: 301,
+        graphX: -4.5,
+        graphY: 6.75,
+        id: "account-1",
+        latestActivityAt: 200,
+      },
     ]);
     expect(
       engine

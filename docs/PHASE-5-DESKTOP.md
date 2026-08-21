@@ -85,7 +85,10 @@
         visible activity counts and latest activity times. RSS rows also use
         the latest visible item image only when the feed has no image. This
         removes the separate JavaScript graph activity aggregate from the
-        final reader path. Freed Desktop graph-worker wiring remains open.
+        final reader path. Person and Account rows also join foreign-keyed
+        installation-local SQLite positions that never enter checkpoints or
+        replication. The typed local position writer and Freed Desktop
+        graph-worker wiring remain open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past
