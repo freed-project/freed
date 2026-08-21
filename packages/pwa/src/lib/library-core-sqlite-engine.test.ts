@@ -300,6 +300,24 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
     expect(second.nextCursor).toBeNull();
+    expect(
+      engine.query({
+        queryId: "library_facet_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "library_facet_summary_v1",
+      source: { projectionRevision: 7 },
+      summary: {
+        archivedCount: 0,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 1,
+        savedPlatformCount: 1,
+        tags: ["favorite"],
+        totalCount: 3,
+      },
+    });
   });
 
   it("stages bounded normalized records idempotently and rejects changed replay", () => {
@@ -333,7 +351,7 @@ describe("PWA Library Core SQLite engine", () => {
     expect(complete.stagedCanonicalBytes).toBeGreaterThan(0);
     expect(
       engine.appendNormalizedCheckpointStagePage({
-      records,
+        records,
         stageId: stage.stageId,
       }),
     ).toEqual(complete);

@@ -86,9 +86,7 @@ export {
   type LibraryCoreQueryId,
 } from "./sqlite-contract.generated.js";
 
-export type LibraryCoreQueryAdapter =
-  | "desktop_sqlite"
-  | "pwa_sqlite_opfs";
+export type LibraryCoreQueryAdapter = "desktop_sqlite" | "pwa_sqlite_opfs";
 
 export type LibraryCoreQueryBlocker =
   | "adapter_proof_missing"
@@ -153,8 +151,7 @@ interface DurableCheckpointCursorIntent {
 }
 
 type QueryCursorIntent =
-  | InteractiveCursorIntent
-  | DurableCheckpointCursorIntent;
+  InteractiveCursorIntent | DurableCheckpointCursorIntent;
 
 interface QueryCancellationContract {
   readonly required: true;
@@ -252,6 +249,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
+  readonly sortNotApplicable: boolean;
   readonly defaultLimit: number;
   readonly maximumLimit: number;
   readonly maximumRows: number;
@@ -260,15 +258,14 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly fullContentAllowed: boolean;
   readonly cancellation: QueryCancellationContract;
   readonly totalCountIntent: "exact" | "none" | "snapshot_exact";
-  readonly rendererCachePool:
-    | typeof LIBRARY_CORE_RENDERER_CACHE_POOL.id
-    | null;
+  readonly rendererCachePool: typeof LIBRARY_CORE_RENDERER_CACHE_POOL.id | null;
   readonly invalidationKeyIntent: readonly string[];
   readonly intendedAdapters: readonly LibraryCoreQueryAdapter[];
   readonly blockers: NonEmptyQueryBlockers;
 }
 
-export type LibraryCoreQueryDefinition = PlannedBlockedLibraryCoreQueryDefinition;
+export type LibraryCoreQueryDefinition =
+  PlannedBlockedLibraryCoreQueryDefinition;
 
 const ALL_INTENDED_ADAPTERS = [
   "desktop_sqlite",
@@ -373,6 +370,7 @@ interface PlannedQueryInput {
    */
   readonly stableSort?: ResolvedQuerySortContract;
   readonly tieBreakKey?: string;
+  readonly sortNotApplicable?: boolean;
 }
 
 function nonEmptyBlockers(
@@ -401,6 +399,9 @@ function plannedQuery(
       "a resolved sort contract requires both stableSort and tieBreakKey",
     );
   }
+  if (input.sortNotApplicable && stableSort !== null) {
+    throw new Error("a query cannot declare both an ordering and no row order");
+  }
   if (stableSort && tieBreakKey) {
     // The tie-break has to be the final ordering term, not merely present
     // somewhere in it. If an earlier column followed it, rows sharing every
@@ -428,6 +429,7 @@ function plannedQuery(
     nestedBounds,
     stableSort,
     tieBreakKey,
+    sortNotApplicable: input.sortNotApplicable === true,
     defaultLimit: input.defaultLimit,
     maximumLimit: input.maximumLimit,
     maximumRows: input.maximumRows,
@@ -466,7 +468,7 @@ function plannedQuery(
           return nestedBounds === null;
         }
         if (blocker === "sort_contract_unresolved") {
-          return stableSort === null;
+          return stableSort === null && input.sortNotApplicable !== true;
         }
         return true;
       }),
@@ -763,12 +765,10 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
     sourceIdentity: LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
-    // stableSort and tieBreakKey stay null on purpose. Tags are sorted by
-    // UTF-16 code units for parity with JavaScript Array.sort(), and
-    // ResolvedQuerySortContract admits only binary UTF-8 collation. The two
-    // disagree outside the Basic Multilingual Plane, so declaring "binary"
-    // would misdescribe any library holding an emoji or CJK-extension tag.
-    // The real ordering is in LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.
+    sortNotApplicable: true,
+    // The response is one aggregate row. Its nested tag set is independently
+    // ordered by the exact binary UTF-8 contract declared in
+    // LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   library_surface_items_v1: plannedQuery({

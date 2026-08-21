@@ -18,7 +18,7 @@ describe("Library Core SQLite worker protocol", () => {
     });
   });
 
-  it("carries only the closed feed-page query contract", () => {
+  it("carries only registered closed query contracts", () => {
     const request = createLibraryCoreSqliteQueryWorkerRequest("request-2", {
       cancellationId: "cancel-1" as never,
       cursor: null,
@@ -31,6 +31,12 @@ describe("Library Core SQLite worker protocol", () => {
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-facets", {
+        queryId: "library_facet_summary_v1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {

@@ -264,7 +264,8 @@ normalized filter digest, ordering keys, projection version, database
 generation, and snapshot identity. A stale cursor returns `CURSOR_STALE`.
 
 No query may scan or sort the full corpus in JavaScript. No query returns an
-unbounded ID list. A view refreshes only invalidated pages and aggregates.
+unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
+typed summaries. A view refreshes only invalidated pages and aggregates.
 
 ## 9. Normalized checkpoint v2
 

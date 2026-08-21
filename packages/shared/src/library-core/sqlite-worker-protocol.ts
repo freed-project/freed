@@ -10,6 +10,11 @@ import type {
 } from "./feed-page-contracts.js";
 import { parseLibraryCoreFeedPageRequestV1 } from "./feed-page-contracts.js";
 import {
+  parseLibraryCoreFacetSummaryRequestV1,
+  type LibraryCoreFacetSummaryRequestV1,
+  type LibraryCoreFacetSummaryResponseV1,
+} from "./facet-summary-contracts.js";
+import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
@@ -21,13 +26,16 @@ import {
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
-export type LibraryCoreSqliteQueryRequest = LibraryCoreFeedPageRequestV1;
+export type LibraryCoreSqliteQueryRequest =
+  LibraryCoreFacetSummaryRequestV1 | LibraryCoreFeedPageRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
-> = T extends LibraryCoreFeedPageRequestV1
-  ? LibraryCoreFeedPageResponseV1
-  : never;
+> = T extends LibraryCoreFacetSummaryRequestV1
+  ? LibraryCoreFacetSummaryResponseV1
+  : T extends LibraryCoreFeedPageRequestV1
+    ? LibraryCoreFeedPageResponseV1
+    : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -81,6 +89,12 @@ export interface LibraryCoreSqliteWorkerStatus {
   readonly storage: "opfs";
 }
 
+export type LibraryCoreSqliteWorkerResult =
+  | LibraryCoreFacetSummaryResponseV1
+  | LibraryCoreFeedPageResponseV1
+  | LibraryCoreNormalizedCheckpointStageStatusV2
+  | LibraryCoreNormalizedCheckpointActivationReceiptV2;
+
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
       ok: true;
@@ -90,10 +104,7 @@ export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
       ok: true;
       requestId: string;
-      result:
-        | LibraryCoreFeedPageResponseV1
-        | LibraryCoreNormalizedCheckpointStageStatusV2
-        | LibraryCoreNormalizedCheckpointActivationReceiptV2;
+      result: LibraryCoreSqliteWorkerResult;
     }>
   | Readonly<{
       code:
@@ -158,7 +169,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
     parseLibraryCoreNormalizedCheckpointStageIdV2(value.stageId);
   } else if (value.kind === "query") {
-    const query = parseLibraryCoreFeedPageRequestV1(value.query);
+    const query =
+      isClosedRecord(value.query) &&
+      value.query.queryId === "library_facet_summary_v1"
+        ? parseLibraryCoreFacetSummaryRequestV1(value.query)
+        : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
@@ -177,10 +192,7 @@ export function createLibraryCoreSqliteWorkerRequest(
 
 export function createLibraryCoreSqliteQueryWorkerRequest<
   T extends LibraryCoreSqliteQueryRequest,
->(
-  requestId: string,
-  query: T,
-): LibraryCoreSqliteWorkerRequest {
+>(requestId: string, query: T): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind: "query",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,

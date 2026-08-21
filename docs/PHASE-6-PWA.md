@@ -60,6 +60,10 @@
         discriminated query ID selects the exact request and response types.
         The former feed-specific worker method is deleted. Future named
         queries extend the closed union instead of adding transport methods.
+  - [x] `library_facet_summary_v1` reads trigger-maintained SQLite counters,
+        saved-platform counts, and tag refcounts without scanning FeedItem
+        rows. The worker returns one source-fenced bounded summary with exact
+        binary UTF-8 tag order through the same typed query request.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

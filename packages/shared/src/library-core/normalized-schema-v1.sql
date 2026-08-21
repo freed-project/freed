@@ -168,6 +168,91 @@ CREATE TABLE IF NOT EXISTS library_feed_item_tags (
   PRIMARY KEY (global_id, tag)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_facet_summary (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  total_count INTEGER NOT NULL CHECK (total_count >= 0),
+  archived_count INTEGER NOT NULL CHECK (archived_count >= 0),
+  sample_item_count INTEGER NOT NULL CHECK (sample_item_count >= 0),
+  saved_count INTEGER NOT NULL CHECK (saved_count >= 0),
+  saved_archived_count INTEGER NOT NULL CHECK (saved_archived_count >= 0)
+) STRICT;
+
+INSERT OR IGNORE INTO library_facet_summary
+  (singleton_id, total_count, archived_count, sample_item_count,
+   saved_count, saved_archived_count)
+VALUES (1, 0, 0, 0, 0, 0);
+
+CREATE TABLE IF NOT EXISTS library_saved_platform_counts (
+  platform TEXT PRIMARY KEY,
+  item_count INTEGER NOT NULL CHECK (item_count >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_tag_counts (
+  tag TEXT PRIMARY KEY,
+  item_count INTEGER NOT NULL CHECK (item_count >= 0)
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_insert
+AFTER INSERT ON library_feed_items
+BEGIN
+  UPDATE library_facet_summary SET
+    total_count = total_count + 1,
+    archived_count = archived_count + (NEW.archived = 1),
+    sample_item_count = sample_item_count + (NEW.sample_batch_id IS NOT NULL),
+    saved_count = saved_count + (NEW.saved = 1),
+    saved_archived_count = saved_archived_count + (NEW.saved = 1 AND NEW.archived = 1)
+  WHERE singleton_id = 1;
+  INSERT INTO library_saved_platform_counts (platform, item_count)
+    SELECT NEW.platform, 1 WHERE NEW.saved = 1
+    ON CONFLICT(platform) DO UPDATE SET item_count = item_count + 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_delete
+AFTER DELETE ON library_feed_items
+BEGIN
+  UPDATE library_facet_summary SET
+    total_count = total_count - 1,
+    archived_count = archived_count - (OLD.archived = 1),
+    sample_item_count = sample_item_count - (OLD.sample_batch_id IS NOT NULL),
+    saved_count = saved_count - (OLD.saved = 1),
+    saved_archived_count = saved_archived_count - (OLD.saved = 1 AND OLD.archived = 1)
+  WHERE singleton_id = 1;
+  UPDATE library_saved_platform_counts SET item_count = item_count - 1
+    WHERE OLD.saved = 1 AND platform = OLD.platform;
+  DELETE FROM library_saved_platform_counts WHERE item_count = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_update
+AFTER UPDATE OF archived, saved, platform, sample_batch_id ON library_feed_items
+BEGIN
+  UPDATE library_facet_summary SET
+    archived_count = archived_count + (NEW.archived = 1) - (OLD.archived = 1),
+    sample_item_count = sample_item_count + (NEW.sample_batch_id IS NOT NULL) - (OLD.sample_batch_id IS NOT NULL),
+    saved_count = saved_count + (NEW.saved = 1) - (OLD.saved = 1),
+    saved_archived_count = saved_archived_count + (NEW.saved = 1 AND NEW.archived = 1) - (OLD.saved = 1 AND OLD.archived = 1)
+  WHERE singleton_id = 1;
+  UPDATE library_saved_platform_counts SET item_count = item_count - 1
+    WHERE OLD.saved = 1 AND platform = OLD.platform;
+  INSERT INTO library_saved_platform_counts (platform, item_count)
+    SELECT NEW.platform, 1 WHERE NEW.saved = 1
+    ON CONFLICT(platform) DO UPDATE SET item_count = item_count + 1;
+  DELETE FROM library_saved_platform_counts WHERE item_count = 0;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_feed_item_tag_facet_insert
+AFTER INSERT ON library_feed_item_tags
+BEGIN
+  INSERT INTO library_tag_counts (tag, item_count) VALUES (NEW.tag, 1)
+    ON CONFLICT(tag) DO UPDATE SET item_count = item_count + 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_feed_item_tag_facet_delete
+AFTER DELETE ON library_feed_item_tags
+BEGIN
+  UPDATE library_tag_counts SET item_count = item_count - 1 WHERE tag = OLD.tag;
+  DELETE FROM library_tag_counts WHERE item_count = 0;
+END;
+
 CREATE TABLE IF NOT EXISTS library_feed_item_highlights (
   global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,
   ordinal INTEGER NOT NULL CHECK (ordinal >= 0),

@@ -52,6 +52,11 @@
         2 MiB response budget. Its opaque cursor matches the TypeScript codec
         byte for byte and fails closed after the source revision changes.
         Freed Desktop command and product view wiring remain open.
+  - [x] `library_facet_summary_v1` now computes counts and the bounded tag set
+        from SQLite trigger-maintained counters and refcounts through the same
+        browser and native dispatch. It returns one source-fenced typed
+        aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
+        FeedItem rows, and never sends item rows to React.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its

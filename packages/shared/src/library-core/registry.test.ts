@@ -894,6 +894,14 @@ describe("Library Core query registry", () => {
         ["stableSort", "sort_contract_unresolved"],
         ["tieBreakKey", "sort_contract_unresolved"],
       ] as const) {
+        if (
+          definition.sortNotApplicable &&
+          (field === "stableSort" || field === "tieBreakKey")
+        ) {
+          expect(definition[field]).toBeNull();
+          expect(definition.blockers).not.toContain(blocker);
+          continue;
+        }
         expect(
           definition[field] === null,
           `${field} must move with ${blocker}`,
@@ -1067,7 +1075,7 @@ describe("Library Core query registry", () => {
     );
   });
 
-  it("closes five facet-summary fields and blocks the sort on UTF-16 collation", () => {
+  it("closes the facet summary contract with no aggregate row ordering", () => {
     expect(LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1).toMatchObject({
       status: "planned_blocked",
       requestSchema: LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
@@ -1087,18 +1095,15 @@ describe("Library Core query registry", () => {
         LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.blockers,
       ).not.toContain(blocker);
     }
-    // Tags sort by UTF-16 code units for JavaScript parity. The contract type
-    // admits only binary UTF-8 collation, and the two disagree outside the BMP,
-    // so declaring one would misdescribe the order rather than record it.
+    // The response is one aggregate row, so it has no page ordering. The
+    // nested tag set has its own exact SQLite BINARY order.
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.stableSort,
     ).toBeNull();
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.blockers,
-    ).toContain("sort_contract_unresolved");
-    expect(LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.textCollation).toBe(
-      "utf16_code_unit",
-    );
+    ).not.toContain("sort_contract_unresolved");
+    expect(LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.textCollation).toBe("binary");
   });
 
   it("closes five surface-items fields and blocks the sort on the Map defect", () => {

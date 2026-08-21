@@ -7,8 +7,8 @@ import {
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
+  type LibraryCoreSqliteWorkerResult,
   type LibraryCoreSqliteWorkerStatus,
-  type LibraryCoreFeedPageResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
@@ -22,11 +22,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 interface PendingRequest {
   readonly reject: (error: Error) => void;
   readonly resolve: (
-    value:
-      | LibraryCoreSqliteWorkerStatus
-      | LibraryCoreFeedPageResponseV1
-      | LibraryCoreNormalizedCheckpointActivationReceiptV2
-      | LibraryCoreNormalizedCheckpointStageStatusV2,
+    value: LibraryCoreSqliteWorkerResult | LibraryCoreSqliteWorkerStatus,
   ) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
 }
@@ -113,11 +109,7 @@ export class PwaLibraryCoreSqliteClient {
   }
 
   #send<
-    T extends
-      | LibraryCoreSqliteWorkerStatus
-      | LibraryCoreFeedPageResponseV1
-      | LibraryCoreNormalizedCheckpointActivationReceiptV2
-      | LibraryCoreNormalizedCheckpointStageStatusV2,
+    T extends LibraryCoreSqliteWorkerStatus | LibraryCoreSqliteWorkerResult,
   >(
     createRequest: (requestId: string) => LibraryCoreSqliteWorkerRequest,
   ): Promise<T> {

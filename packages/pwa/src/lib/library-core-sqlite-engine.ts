@@ -17,6 +17,8 @@ import {
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
+  parseLibraryCoreFacetSummaryRequestV1,
+  parseLibraryCoreFacetSummaryResponseV1,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
   decodeLibraryCoreCanonicalValue,
@@ -34,6 +36,8 @@ import {
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreFacetSummaryRequestV1,
+  type LibraryCoreFacetSummaryResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -585,9 +589,74 @@ export class PwaLibraryCoreSqliteEngine {
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
     switch (input.queryId) {
+      case "library_facet_summary_v1":
+        return this.#queryFacetSummary(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "feed_page_v1":
-        return this.#queryFeedPage(input) as LibraryCoreSqliteQueryResponseFor<T>;
+        return this.#queryFeedPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
     }
+  }
+
+  #queryFacetSummary(
+    input: LibraryCoreFacetSummaryRequestV1,
+  ): LibraryCoreFacetSummaryResponseV1 {
+    const request = parseLibraryCoreFacetSummaryRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const sourceRows = this.#database.exec({
+      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (sourceRows.length !== 1) {
+      throw new Error("PWA Library SQLite has no active Library");
+    }
+    const generationId = text(sourceRows[0]![0], "Library identity");
+    const sourceRevision = safeInteger(
+      sourceRows[0]![1],
+      "Library source revision",
+    );
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.library_facet_summary_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite facet query returned an invalid row count",
+      );
+    }
+    const row = rows[0]!;
+    const response = {
+      queryId: "library_facet_summary_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      summary: {
+        archivedCount: safeInteger(row.archivedCount, "archived count"),
+        sampleItemCount: safeInteger(row.sampleItemCount, "sample item count"),
+        savedArchivedCount: safeInteger(
+          row.savedArchivedCount,
+          "saved archived count",
+        ),
+        savedCount: safeInteger(row.savedCount, "saved count"),
+        savedPlatformCount: safeInteger(
+          row.savedPlatformCount,
+          "saved platform count",
+        ),
+        tags: stringArray(row.tagsJson, "facet tags"),
+        totalCount: safeInteger(row.totalCount, "total count"),
+      },
+    };
+    const parsed = parseLibraryCoreFacetSummaryResponseV1(response);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
   }
 
   #queryFeedPage(
@@ -837,10 +906,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  #verifyCheckpointAuthority(
-    libraryId: string,
-    authorityEpoch: string,
-  ): void {
+  #verifyCheckpointAuthority(libraryId: string, authorityEpoch: string): void {
     const matches = safeInteger(
       this.#database.exec({
         sql: `SELECT count(*)
@@ -859,9 +925,7 @@ export class PwaLibraryCoreSqliteEngine {
       "checkpoint active authority",
     );
     if (matches !== 1) {
-      throw new Error(
-        "checkpoint active authority does not match its header",
-      );
+      throw new Error("checkpoint active authority does not match its header");
     }
     const actorWithoutCapability = safeInteger(
       this.#database.exec({
