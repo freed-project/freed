@@ -46,6 +46,12 @@
       mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
       Wall, settings, exports, and diagnostics through bounded named queries.
+  - [x] The native core now dispatches `feed_page_v1` as a typed request and
+        response over the generated SQL program. One deferred SQLite snapshot
+        pins source identity, keyset paging, visible count, row limit, and the
+        2 MiB response budget. Its opaque cursor matches the TypeScript codec
+        byte for byte and fails closed after the source revision changes.
+        Freed Desktop command and product view wiring remain open.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its

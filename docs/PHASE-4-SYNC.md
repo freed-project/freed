@@ -304,6 +304,7 @@ loads an alternate Library engine or compatibility path.
 | 4.155 | Generated normalized SQLite programs for saved, archived, and liked assignments, with signed-time and operation-ID convergence, one coupled saved-archive register that cannot materialize both states, independent liked state, and no provider traffic | ✓ | High |
 | 4.156 | Generated normalized FeedItem removal with a typed convergent tombstone, SQLite child cascades, stale-removal journaling without tombstone regression, and atomic receipt, replication, invalidation, and revision effects | ✓ | High |
 | 4.157 | One closed typed browser SQLite query dispatch keyed by registered query ID, replacing query-specific worker message kinds while rejecting arbitrary SQL, table names, projection fragments, and bind lists | ✓ | High |
+| 4.158 | Native typed `feed_page_v1` dispatch over the generated SQLite program, with one source-pinned read transaction, exact TypeScript cursor bytes, stable keyset paging, stale-cursor refusal, and enforced row and response-byte bounds | ✓ | High |
 
 ---
 

@@ -251,7 +251,9 @@ from the same query ID. The worker validates the request before dispatch and
 never accepts SQL, table names, projection fragments, or arbitrary bind lists.
 Adding a named query extends this union and its generated program catalog. It
 does not add another transport method. Native hosts expose the equivalent
-typed dispatch through the Rust core.
+typed dispatch through the Rust core. Browser and native cursor codecs share
+exact golden byte vectors, so a registered query has one wire identity rather
+than platform-specific pagination behavior.
 
 Ordinary interactive queries return no more than 2 MiB. Reader content uses a
 separate ranged API. Export, backup, and migration enumerate a pinned durable
