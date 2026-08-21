@@ -84,8 +84,8 @@ function assembled(count = 2, entityId?: (index: number) => string) {
   });
 }
 
-function oversizedCaptureAssembly() {
-  const input: FeedItemCaptureUpsertTransactionMemberInputV1 = {
+function oversizedCaptureInput(): FeedItemCaptureUpsertTransactionMemberInputV1 {
+  return {
     operation_id: "op:capture:oversized",
     library_id: HEX.library,
     epoch: 1,
@@ -126,19 +126,6 @@ function oversizedCaptureAssembly() {
     },
     created_at_ms: 1_000,
   };
-  const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
-    input,
-    {
-      digest(domain: LibraryCoreConstructionDigestDomain, value: unknown) {
-        return digest(domain, value);
-      },
-    },
-  );
-  return assembleLibraryCoreTransactionV1([member], HEX.chain, {
-    digest(domain, value) {
-      return digest(domain, value);
-    },
-  });
 }
 
 describe("Library Core operation envelope finalization", () => {
@@ -287,16 +274,16 @@ describe("Library Core operation envelope finalization", () => {
     expect(signOperation).not.toHaveBeenCalled();
   });
 
-  it("rejects one operation envelope above the logical wire-record ceiling", async () => {
-    const signOperation = vi.fn(async () => HEX.signature);
-    await expect(
-      finalizeLibraryCoreTransactionV1(oversizedCaptureAssembly(), {
-        signOperation,
-        digest(domain, value) {
-          return digest(domain, value);
+  it("rejects oversized capture payloads before transaction assembly", () => {
+    expect(() =>
+      FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        oversizedCaptureInput(),
+        {
+          digest(domain: LibraryCoreConstructionDigestDomain, value: unknown) {
+            return digest(domain, value);
+          },
         },
-      }),
-    ).rejects.toThrow(/131,072/);
-    expect(signOperation).not.toHaveBeenCalled();
+      ),
+    ).toThrow(/98,304/);
   });
 });

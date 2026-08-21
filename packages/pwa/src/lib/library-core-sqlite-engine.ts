@@ -1586,22 +1586,58 @@ export class PwaLibraryCoreSqliteEngine {
       const envelope = decoded as Readonly<
         Record<string, LibraryCoreCanonicalValue>
       >;
+      const canonicalText = (
+        value: LibraryCoreCanonicalValue | undefined,
+        label: string,
+      ): string => {
+        if (typeof value !== "string") {
+          throw new Error(`${label} is invalid`);
+        }
+        return value;
+      };
+      const canonicalSafeInteger = (
+        value: LibraryCoreCanonicalValue | undefined,
+        label: string,
+      ): number => {
+        if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+          throw new Error(`${label} is invalid`);
+        }
+        return value;
+      };
+      const operationType = canonicalText(
+        envelope.operation_type,
+        "accepted follower operation type",
+      );
+      const entityType = canonicalText(
+        envelope.entity_type,
+        "accepted follower entity type",
+      );
+      const entityId = canonicalText(
+        envelope.entity_id,
+        "accepted follower entity ID",
+      );
+      const actorId = canonicalText(
+        envelope.actor_id,
+        "accepted follower actor ID",
+      );
+      const actorSequence = canonicalSafeInteger(
+        envelope.actor_sequence,
+        "accepted follower actor sequence",
+      );
+      const operationId = canonicalText(
+        envelope.operation_id,
+        "accepted follower operation ID",
+      );
       if (
-        typeof envelope.operation_type !== "string" ||
-        typeof envelope.entity_type !== "string" ||
-        typeof envelope.entity_id !== "string" ||
-        typeof envelope.actor_id !== "string" ||
-        typeof envelope.actor_sequence !== "number" ||
-        !Number.isSafeInteger(envelope.actor_sequence) ||
-        typeof envelope.operation_id !== "string" ||
+        actorSequence < 1 ||
         envelope.payload === null ||
         typeof envelope.payload !== "object" ||
         Array.isArray(envelope.payload)
       ) {
         throw new Error("accepted follower intent materializer is unavailable");
       }
-      const program = sqliteMutationProgram(envelope.operation_type);
-      if (envelope.entity_type !== program.entityType) {
+      const program = sqliteMutationProgram(operationType);
+      if (entityType !== program.entityType) {
         throw new Error("accepted follower intent entity type is invalid");
       }
       const payload = envelope.payload as Readonly<
@@ -1645,7 +1681,7 @@ export class PwaLibraryCoreSqliteEngine {
       const clockWins = (sourceAt: number): boolean => {
         const clock = this.#database.exec({
           sql: program.clockReadSql,
-          bind: [envelope.entity_id],
+          bind: [entityId],
           rowMode: "array",
           returnValue: "resultRows",
         });
@@ -1657,17 +1693,17 @@ export class PwaLibraryCoreSqliteEngine {
         const currentOperation = text(clock[0]![1], "field clock operation ID");
         return (
           sourceAt > currentAt ||
-          (sourceAt === currentAt && envelope.operation_id < currentOperation)
+          (sourceAt === currentAt && operationId < currentOperation)
         );
       };
       const writeClock = (sourceAt: number): void => {
         this.#database.exec({
           sql: program.clockWriteSql,
           bind: [
-            envelope.entity_id,
-            envelope.actor_id,
-            envelope.actor_sequence,
-            envelope.operation_id,
+            entityId,
+            actorId,
+            actorSequence,
+            operationId,
             sourceAt,
           ],
         });
@@ -1693,17 +1729,17 @@ export class PwaLibraryCoreSqliteEngine {
           bind:
             program.payloadKind === "account_upsert" ||
             program.payloadKind === "person_upsert"
-              ? [envelope.entity_id, recordJson]
-              : [envelope.entity_id, recordJson, resolvedAt],
+              ? [entityId, recordJson]
+              : [entityId, recordJson, resolvedAt],
         });
         if (changed() !== 0) {
           for (const sql of program.dependentDeleteSql) {
-            this.#database.exec({ sql, bind: [envelope.entity_id] });
+            this.#database.exec({ sql, bind: [entityId] });
           }
           for (const sql of program.dependentInsertSql) {
             this.#database.exec({
               sql,
-              bind: [envelope.entity_id, recordJson],
+              bind: [entityId, recordJson],
             });
           }
         }
@@ -1762,15 +1798,15 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: program.materializeSql,
           bind: [
-            envelope.entity_id,
-            envelope.operation_id,
+            entityId,
+            operationId,
             loggedAt,
             channel,
             notes,
           ],
         });
         for (const sql of program.dependentDeleteSql) {
-          this.#database.exec({ sql, bind: [envelope.entity_id] });
+          this.#database.exec({ sql, bind: [entityId] });
         }
         continue;
       }
@@ -1782,11 +1818,11 @@ export class PwaLibraryCoreSqliteEngine {
         );
         if (clockWins(removedAt)) {
           for (const sql of program.dependentDeleteSql) {
-            this.#database.exec({ sql, bind: [envelope.entity_id] });
+            this.#database.exec({ sql, bind: [entityId] });
           }
           this.#database.exec({
             sql: program.materializeSql,
-            bind: [envelope.entity_id],
+            bind: [entityId],
           });
           writeClock(removedAt);
         }
@@ -1817,7 +1853,7 @@ export class PwaLibraryCoreSqliteEngine {
         if (clockWins(assignedAt)) {
           this.#database.exec({
             sql: program.materializeSql,
-            bind: [assignedValue as SqlValue, resolvedAt, envelope.entity_id],
+            bind: [assignedValue as SqlValue, resolvedAt, entityId],
           });
           if (changed() !== 1) {
             throw new Error("accepted follower assignment target changed");

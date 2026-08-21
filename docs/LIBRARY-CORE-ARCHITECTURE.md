@@ -894,6 +894,15 @@ One short-lived native migration executable:
 It never calls a source-sized Automerge load and never turns its source decoder
 into a permanent application service.
 
+The bounded native decomposer now maps historical FeedItem rows plus the RSS,
+Person, Account, reach-out, follow-role, and preference portions of the old
+shell into final tables. The generated contract is the shared authority for
+preference field disposition in Rust and TypeScript. Local display state,
+local model endpoints, local graph placement, old cloud scheduler fields, and
+other compatibility-only values do not enter canonical SQLite. Invalid foreign
+keys, oversized metadata, malformed preference shapes, and unregistered nested
+policies abort the caller's one migration transaction.
+
 ### 16.2 Cutover
 
 Cutover:

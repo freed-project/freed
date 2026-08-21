@@ -36,6 +36,7 @@ import type {
   XAccount,
   XCapturePreferences,
 } from "./types.js";
+import { LIBRARY_CORE_PREFERENCE_WRITE_POLICIES } from "./library-core/sqlite-contract.generated.js";
 
 /**
  * Every field on a synchronized schema type must have an explicit write
@@ -122,71 +123,19 @@ export function deleteBehaviorOf(
   return typeof policy === "string" ? undefined : policy.delete;
 }
 
-export const WEIGHT_PREFERENCES_WRITE_POLICY = {
-  recency: "sync",
-  platforms: "nested",
-  topics: "nested",
-  authors: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
+export const WEIGHT_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.weights satisfies ExhaustiveSyncWritePolicy<WeightPreferences>;
 
-export const ULYSSES_PREFERENCES_WRITE_POLICY = {
-  enabled: "sync",
-  blockedPlatforms: "nested",
-  allowedPaths: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
+export const ULYSSES_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ulysses satisfies ExhaustiveSyncWritePolicy<UlyssesPreferences>;
 
-export const SYNC_PREFERENCES_WRITE_POLICY = {
-  cloudProvider: "compatibility-only",
-  autoBackup: "compatibility-only",
-  backupFrequency: "compatibility-only",
-} as const satisfies ExhaustiveSyncWritePolicy<SyncPreferences>;
+export const SYNC_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.sync satisfies ExhaustiveSyncWritePolicy<SyncPreferences>;
 
-export const READING_ENHANCEMENTS_WRITE_POLICY = {
-  focusMode: "sync",
-  focusIntensity: "sync",
-  markReadOnScroll: "sync",
-  showReadInGrayscale: "sync",
-  dualColumnMode: "device-local",
-} as const satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
+export const READING_ENHANCEMENTS_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.reading satisfies ExhaustiveSyncWritePolicy<ReadingEnhancements>;
 
-export const DISPLAY_PREFERENCES_WRITE_POLICY = {
-  itemsPerPage: "compatibility-only",
-  compactMode: "compatibility-only",
-  themeId: "device-local",
-  showEngagementCounts: "sync",
-  animationIntensity: "sync",
-  reading: "nested",
-  sidebarWidth: "device-local",
-  sidebarMode: "device-local",
-  friendsSidebarWidth: "device-local",
-  friendsSidebarOpen: "device-local",
-  friendsMode: "device-local",
-  friendAvatarTint: "compatibility-only",
-  debugPanelWidth: "device-local",
-  mapMode: "device-local",
-  mapTimeMode: "device-local",
-  feedSignalMode: "device-local",
-  feedSignalModes: "device-local",
-  savedContentSortMode: "device-local",
-  archivePruneDays: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
+export const DISPLAY_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.display satisfies ExhaustiveSyncWritePolicy<DisplayPreferences>;
 
-export const X_ACCOUNT_WRITE_POLICY = {
-  id: "sync",
-  handle: "sync",
-  displayName: "sync",
-  avatarUrl: "sync",
-  addedAt: "sync",
-  note: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<XAccount>;
+export const X_ACCOUNT_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xAccount satisfies ExhaustiveSyncWritePolicy<XAccount>;
 
-export const X_CAPTURE_PREFERENCES_WRITE_POLICY = {
-  mode: "sync",
-  whitelist: "nested",
-  blacklist: "nested",
-  includeRetweets: "sync",
-  includeReplies: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
+export const X_CAPTURE_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.xCapture satisfies ExhaustiveSyncWritePolicy<XCapturePreferences>;
 
 export const FB_GROUP_INFO_WRITE_POLICY = {
   id: "sync",
@@ -194,70 +143,19 @@ export const FB_GROUP_INFO_WRITE_POLICY = {
   url: "sync",
 } as const satisfies ExhaustiveSyncWritePolicy<FbGroupInfo>;
 
-export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY = {
-  knownGroups: "device-local",
-  excludedGroupIds: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
+export const FACEBOOK_CAPTURE_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.facebookCapture satisfies ExhaustiveSyncWritePolicy<FacebookCapturePreferences>;
 
-export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY = {
-  dismissedSuggestionIds: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
+export const FRIEND_SUGGESTION_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.friendSuggestions satisfies ExhaustiveSyncWritePolicy<FriendSuggestionPreferences>;
 
-export const AI_PREFERENCES_WRITE_POLICY = {
-  provider: "device-local",
-  model: "device-local",
-  ollamaUrl: "device-local",
-  autoSummarize: "sync",
-  extractTopics: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
+export const AI_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.ai satisfies ExhaustiveSyncWritePolicy<AIPreferences>;
 
-export const STORY_WALL_STYLE_WRITE_POLICY = {
-  palette: "sync",
-  typographyScale: "sync",
-  mediaDensity: "sync",
-  captionsEnabled: "sync",
-  locationGroupingEnabled: "sync",
-  dateGroupingEnabled: "sync",
-  motionLevel: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
+export const STORY_WALL_STYLE_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallStyle satisfies ExhaustiveSyncWritePolicy<StoryWallStylePreferences>;
 
-export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY = {
-  provider: "sync",
-  repoName: "sync",
-  branch: "sync",
-  directory: "sync",
-  pagesUrl: "sync",
-  lastPublishedAt: "sync",
-  lastError: "device-local",
-  status: "device-local",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
+export const STORY_WALL_PUBLISH_TARGET_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWallPublishTarget satisfies ExhaustiveSyncWritePolicy<StoryWallPublishTarget>;
 
-export const STORY_WALL_PREFERENCES_WRITE_POLICY = {
-  enabled: "sync",
-  selectedYears: "nested",
-  includedPlatforms: "nested",
-  includedAccountIds: "nested",
-  visibilityDefault: "sync",
-  layoutPreset: "sync",
-  style: "nested",
-  embedModeEnabled: "sync",
-  publishTarget: "nested",
-  featuredItemIds: "nested",
-  hiddenItemIds: "nested",
-  lastReviewedAt: "sync",
-} as const satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
+export const STORY_WALL_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.storyWall satisfies ExhaustiveSyncWritePolicy<StoryWallPreferences>;
 
-export const USER_PREFERENCES_WRITE_POLICY = {
-  weights: "nested",
-  ulysses: "nested",
-  sync: "compatibility-only",
-  display: "nested",
-  xCapture: "nested",
-  fbCapture: "nested",
-  friendSuggestions: "nested",
-  ai: "nested",
-  storyWall: "nested",
-} as const satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
+export const USER_PREFERENCES_WRITE_POLICY = LIBRARY_CORE_PREFERENCE_WRITE_POLICIES.user satisfies ExhaustiveSyncWritePolicy<UserPreferences>;
 
 export const REACH_OUT_LOG_WRITE_POLICY = {
   loggedAt: "sync",

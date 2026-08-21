@@ -836,6 +836,16 @@ descriptors and chunks inside the same target transaction. Exact descriptor and
 chunk replay is verified before the row can commit. No whole FeedItem JSON or
 shell record enters the final database.
 
+The shell decomposer writes RSS feeds, Persons, Accounts, Person tags,
+reach-out events, Account follow roles, and typed preference leaves through the
+same generated mutation programs used after activation. It inserts Persons
+before Accounts and refuses a dangling Person reference. Reach-out rows use a
+deterministic content-bound migration identity and retain the source order and
+exact optional fields. Preference ownership lives in the executable SQLite
+contract source consumed by both TypeScript and Rust. Device-local fields and
+compatibility-only fields are excluded before `json_tree` creates canonical
+preference nodes. The decomposer never stores or hashes the source shell.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

@@ -72,6 +72,7 @@ function assertContract(contract) {
     "localMutationPrograms",
     "mutationPrograms",
     "mutations",
+    "preferenceWritePolicies",
     "protocolVersion",
     "queries",
     "queryPrograms",
@@ -114,6 +115,53 @@ function assertContract(contract) {
   }
   assertSortedUnique(contract.mutations, "mutations");
   assertSortedUnique(contract.queries, "queries");
+  const preferencePolicyKeys = Object.keys(
+    contract.preferenceWritePolicies,
+  ).sort();
+  const expectedPreferencePolicyKeys = [
+    "ai",
+    "display",
+    "facebookCapture",
+    "friendSuggestions",
+    "reading",
+    "storyWall",
+    "storyWallPublishTarget",
+    "storyWallStyle",
+    "sync",
+    "ulysses",
+    "user",
+    "weights",
+    "xAccount",
+    "xCapture",
+  ];
+  if (
+    preferencePolicyKeys.join(",") !== expectedPreferencePolicyKeys.join(",")
+  ) {
+    throw new TypeError("SQLite preference write policy registry is invalid");
+  }
+  const preferenceDispositions = new Set([
+    "compatibility-only",
+    "device-local",
+    "nested",
+    "sync",
+  ]);
+  for (const [policyName, policy] of Object.entries(
+    contract.preferenceWritePolicies,
+  )) {
+    if (
+      policy === null ||
+      typeof policy !== "object" ||
+      Array.isArray(policy) ||
+      Object.keys(policy).length === 0 ||
+      Object.entries(policy).some(
+        ([field, disposition]) =>
+          !/^[a-z][A-Za-z0-9]*$/.test(field) ||
+          !preferenceDispositions.has(disposition),
+      )
+    ) {
+      throw new TypeError(`${policyName} preference write policy is invalid`);
+    }
+  }
   const capabilityProfileKeys = Object.keys(contract.capabilityProfiles).sort();
   if (
     capabilityProfileKeys.join(",") !== "legacyEditor,primaryWriter,scraper"
@@ -501,6 +549,7 @@ export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS = ${contra
 export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.followerIntentTransactionBytes} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
+export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = ${JSON.stringify(contract.preferenceWritePolicies, null, 2)} as const;
 
 export const LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY = ${entries} as const;
 export const LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS = ${JSON.stringify(contract.fractionalFields, null, 2)} as const;
@@ -643,6 +692,8 @@ pub const NORMALIZED_SCHEMA_SHA256: &str =
     ${JSON.stringify(schemaDigest)};
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
+pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
+    ${JSON.stringify(JSON.stringify(contract.preferenceWritePolicies))};
 
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
