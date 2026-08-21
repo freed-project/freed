@@ -341,12 +341,15 @@ CREATE TABLE IF NOT EXISTS library_person_tags (
 
 CREATE TABLE IF NOT EXISTS library_person_reach_outs (
   person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,
-  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 19),
+  reach_out_id TEXT NOT NULL CHECK (length(CAST(reach_out_id AS BLOB)) BETWEEN 1 AND 255),
   logged_at INTEGER NOT NULL CHECK (logged_at >= 0),
   channel TEXT,
   notes TEXT,
-  PRIMARY KEY (person_id, ordinal)
+  PRIMARY KEY (person_id, reach_out_id)
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_person_reach_outs_recent
+  ON library_person_reach_outs(person_id, logged_at DESC, reach_out_id);
 
 CREATE TABLE IF NOT EXISTS library_accounts (
   id TEXT PRIMARY KEY,
@@ -895,7 +898,7 @@ UNION ALL
 SELECT '31_person_tag', json_array(person_id, tag), json_object('tag', tag), NULL
 FROM library_person_tags
 UNION ALL
-SELECT '32_person_reach_out', json_array(person_id, ordinal),
+SELECT '32_person_reach_out', json_array(person_id, reach_out_id),
   json_object('channel', channel, 'loggedAt', logged_at, 'notes', notes), NULL
 FROM library_person_reach_outs
 UNION ALL

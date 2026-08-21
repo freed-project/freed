@@ -567,6 +567,60 @@ fn materialize_remove(
     Ok(())
 }
 
+fn materialize_person_reach_out_append(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload: Value = serde_json::from_str(member.person_json.as_deref().ok_or(
+        NormalizedSqliteError::InvalidRequest("normalized Person reach-out payload is missing"),
+    )?)
+    .map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized Person reach-out payload is invalid")
+    })?;
+    let logged_at = payload
+        .get("logged_at_ms")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Person reach-out payload is invalid",
+        ))?;
+    let channel = match payload.get("channel") {
+        Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        _ => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized Person reach-out payload is invalid",
+            ));
+        }
+    };
+    let notes = match payload.get("notes") {
+        Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        _ => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized Person reach-out payload is invalid",
+            ));
+        }
+    };
+    transaction.execute(
+        program.materialize_sql,
+        params![
+            member.entity_id,
+            member.operation_id,
+            logged_at,
+            channel,
+            notes
+        ],
+    )?;
+    for sql in program.dependent_delete_sql {
+        transaction.execute(sql, [&member.entity_id])?;
+    }
+    Ok(())
+}
+
 fn materialize_member(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -595,6 +649,9 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "person_reach_out_append" => {
+            materialize_person_reach_out_append(transaction, verified, member_index, program)
+        }
         "remove" => materialize_remove(transaction, verified, member_index, program),
         "account_upsert" => {
             let member = &verified.members[member_index];
@@ -1950,20 +2007,13 @@ mod tests {
         assert_eq!(
             connection
                 .query_row(
-                    "SELECT ordinal, logged_at, channel, notes
-                     FROM library_person_reach_outs WHERE person_id = 'person:new';",
+                    "SELECT count(*) FROM library_person_reach_outs
+                     WHERE person_id = 'person:new';",
                     [],
-                    |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, i64>(1)?,
-                            row.get::<_, String>(2)?,
-                            row.get::<_, String>(3)?,
-                        ))
-                    },
+                    |row| row.get::<_, i64>(0),
                 )
-                .expect("normalized reach-out"),
-            (0, 1_000, "text".to_owned(), "Hello".to_owned())
+                .expect("separate reach-out relation"),
+            0
         );
 
         let remove = signed_envelopes_from_tip(
@@ -2014,6 +2064,67 @@ mod tests {
                 .expect("Person child count"),
             0
         );
+    }
+
+    #[test]
+    fn signed_person_reach_out_append_uses_stable_ids_and_keeps_latest_twenty() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:reach-out:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("person:reach-out", 1_000)],
+            "person_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert Person");
+        let entities = (0..21)
+            .map(|index| ("person:reach-out", 1_000 + index))
+            .collect::<Vec<_>>();
+        let reaches = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:reach-out:append",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &entities,
+            "person_reach_out_append",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &reaches, 2_100)
+            .expect("append reach-out events");
+
+        let rows = connection
+            .prepare(
+                "SELECT reach_out_id, logged_at, channel, notes
+                 FROM library_person_reach_outs
+                 WHERE person_id = 'person:reach-out'
+                 ORDER BY logged_at ASC, reach_out_id ASC;",
+            )
+            .expect("prepare reach-out query")
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .expect("query reach-outs")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect reach-outs");
+        assert_eq!(rows.len(), 20);
+        assert_eq!(rows.first().expect("oldest retained").1, 1_001);
+        assert_eq!(rows.last().expect("newest retained").1, 1_020);
+        assert!(rows.iter().all(|row| {
+            row.0.starts_with("tx:person:reach-out:append:member:")
+                && row.2 == "text"
+                && row.3 == "Hello"
+        }));
     }
 
     #[test]

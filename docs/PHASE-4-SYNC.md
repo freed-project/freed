@@ -314,10 +314,11 @@ loads an alternate Library engine or compatibility path.
 | 4.165 | Generated Account, Person with linked Accounts, RSS feed retaining items, and RSS feed with items removal programs, with verified signed admission, declared relationship deletes, convergent typed tombstones, exact retry receipts, replication outbox rows, invalidations, and revisions in one native SQLite transaction | ✓ | High |
 | 4.166 | Generated normalized RSS feed upsert with closed signed payload verification, exact sample-data fingerprint validation, typed scalar column writes, committed-time revision, and tombstone-protected no-resurrection semantics | ✓ | High |
 | 4.167 | Generated normalized Account upsert with closed signed payload verification, typed root columns, contract-owned follow-role replacement, SQLite-enforced person and provider identity, and tombstone-protected no-resurrection semantics | ✓ | High |
-| 4.168 | Generated normalized Person upsert with closed signed payload verification, typed root columns, contract-owned tag and bounded reach-out replacement, reusable dependent statement lists, and tombstone-protected no-resurrection semantics | ✓ | High |
+| 4.168 | Generated normalized Person upsert with closed signed payload verification, typed root columns, contract-owned tag replacement, and tombstone-protected no-resurrection semantics | ✓ | High |
 | 4.169 | Generated normalized preference assignment with shared pre-signing bounds, exact native node bounds, deep object merge, atomic scalar and array subtree replacement, and typed markers that preserve explicit empty arrays and objects without storing a settings document | ✓ | High |
 | 4.170 | Generated RSS feed title assignment with a closed bounded payload, verified signed admission, deterministic timestamp and operation-ID field clock, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
 | 4.171 | Generated Account person assignment with a closed bounded nullable person ID, verified signed admission, deterministic timestamp and operation-ID field clock, SQLite-enforced person references, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
+| 4.172 | Generated Person reach-out append with a closed bounded event payload, accepted-operation row identity, deterministic latest-twenty retention, stable checkpoint identity, and strict separation from Person upsert | ✓ | High |
 
 ---
 

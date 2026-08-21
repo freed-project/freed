@@ -117,11 +117,12 @@
         one verified transaction. Person references and provider identity
         constraints remain enforced by SQLite, and a removed Account cannot be
         resurrected within the storage epoch.
-  - [x] Person upsert now writes its typed root columns and replaces both its
-        normalized tag set and bounded reach-out sequence through generated
-        statement lists in one verified transaction. The executor contains no
-        child-table-specific Person policy, and a removed Person cannot be
-        resurrected within the storage epoch.
+  - [x] Person upsert writes its typed root columns and normalized tag set in
+        one verified transaction. Reach-out events use their own closed append
+        mutation, accepted-operation row identity, and deterministic
+        latest-twenty retention. Person profile writes cannot erase event
+        history, and a removed Person cannot be resurrected within the storage
+        epoch.
   - [x] Preference assignment now deep-merges object patches and atomically
         replaces scalar or array subtrees through generated SQL. Typed object
         and array markers preserve explicit empty containers. Shared signing

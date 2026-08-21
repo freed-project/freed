@@ -816,4 +816,4 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - Friend suggestions use local identity metadata, content signals, item ids, counts, and optional local Integrated AI enrichment only. They do not send social content or contacts to cloud providers.
 - Nominatim queries go only to `nominatim.openstreetmap.org` (no Freed servers)
 - Device contact import is one-shot; no live OS contacts sync
-- `reachOutLog` syncs across user's own devices via the existing Automerge relay
+- Reach-out events sync through signed SQLite operations and normalized typed checkpoints. The UI projects the latest bounded event window from SQLite.

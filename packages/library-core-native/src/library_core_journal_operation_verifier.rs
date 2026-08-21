@@ -57,6 +57,7 @@ const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
 const RSS_FEED_TITLE_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "title"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
+const PERSON_REACH_OUT_APPEND_PAYLOAD_KEYS: [&str; 3] = ["channel", "logged_at_ms", "notes"];
 const ACCOUNT_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["account"];
 const ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "person_id"];
 const RSS_FEED_KEYS: [&str; 10] = [
@@ -71,7 +72,7 @@ const RSS_FEED_KEYS: [&str; 10] = [
     "trackUnread",
     "url",
 ];
-const PERSON_KEYS: [&str; 13] = [
+const PERSON_KEYS: [&str; 12] = [
     "avatarUrl",
     "bio",
     "careLevel",
@@ -80,7 +81,6 @@ const PERSON_KEYS: [&str; 13] = [
     "name",
     "notes",
     "reachOutIntervalDays",
-    "reachOutLog",
     "relationshipStatus",
     "sampleDataFingerprint",
     "tags",
@@ -796,7 +796,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "RssFeed"
     } else if operation_type == "preferences_leaf_assignment" {
         "UserPreferences"
-    } else if operation_type == "person_upsert" || operation_type == "person_remove_and_accounts" {
+    } else if matches!(
+        operation_type.as_str(),
+        "person_reach_out_append" | "person_upsert" | "person_remove_and_accounts"
+    ) {
         "Person"
     } else if matches!(
         operation_type.as_str(),
@@ -1031,6 +1034,42 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             let canonical =
                 encode_canonical_value(&Value::Object(person.clone()), MAX_PERSON_BYTES)
                     .map_err(|_| invalid(index, "person"))?;
+            (
+                None,
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "person_reach_out_append" => {
+            let payload_object = exact_object(
+                payload,
+                &PERSON_REACH_OUT_APPEND_PAYLOAD_KEYS,
+                index,
+                "payload",
+            )?;
+            match payload_object.get("channel") {
+                Some(Value::Null) => {}
+                Some(Value::String(value))
+                    if matches!(
+                        value.as_str(),
+                        "phone" | "text" | "email" | "in_person" | "other"
+                    ) => {}
+                _ => return Err(invalid(index, "channel")),
+            }
+            safe_integer(payload_object, "logged_at_ms", index)?;
+            match payload_object.get("notes") {
+                Some(Value::Null) => {}
+                Some(Value::String(value)) if value.len() <= 65_536 => {}
+                _ => return Err(invalid(index, "notes")),
+            }
+            let canonical = encode_canonical_value(payload, MAX_TRANSACTION_ENVELOPE_BYTES)
+                .map_err(|_| invalid(index, "person_reach_out_append"))?;
             (
                 None,
                 None,
@@ -1509,13 +1548,6 @@ pub(crate) mod tests {
                             "reachOutIntervalDays": 30,
                             "notes": "Keep in touch",
                             "tags": ["local", "friend"],
-                            "reachOutLog": [
-                                {
-                                    "loggedAt": timestamp_ms,
-                                    "channel": "text",
-                                    "notes": "Hello"
-                                }
-                            ],
                             "sampleDataFingerprint": {
                                 "marker": "freed.sample-data.v1",
                                 "batchId": "batch:verified",
@@ -1525,6 +1557,11 @@ pub(crate) mod tests {
                             "createdAt": timestamp_ms,
                             "updatedAt": timestamp_ms
                         }
+                    }),
+                    "person_reach_out_append" => json!({
+                        "channel": "text",
+                        "logged_at_ms": timestamp_ms,
+                        "notes": "Hello"
                     }),
                     "person_remove_and_accounts" => {
                         json!({ "removed_at_ms": timestamp_ms })
@@ -1564,7 +1601,8 @@ pub(crate) mod tests {
                 "RssFeed"
             } else if operation_type == "preferences_leaf_assignment" {
                 "UserPreferences"
-            } else if operation_type == "person_upsert"
+            } else if operation_type == "person_reach_out_append"
+                || operation_type == "person_upsert"
                 || operation_type == "person_remove_and_accounts"
             {
                 "Person"

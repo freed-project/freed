@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn shared_registry_is_sorted_and_legacy_policy_cannot_grow_implicitly() {
-        assert_eq!(canonical_operation_types().len(), 16);
+        assert_eq!(canonical_operation_types().len(), 17);
         assert_eq!(
             legacy_editor_operation_types(),
             [
@@ -270,7 +270,9 @@ mod tests {
                 "rss_feed_upsert",
             ]
         );
-        assert_eq!(primary_writer_operation_types().len(), 16);
+        assert_eq!(primary_writer_operation_types().len(), 17);
+        assert!(primary_writer_operation_types().contains(&"person_reach_out_append"));
+        assert!(!legacy_editor_operation_types().contains(&"person_reach_out_append"));
         assert!(primary_writer_operation_types().contains(&"rss_feed_title_assignment"));
         assert!(!legacy_editor_operation_types().contains(&"rss_feed_title_assignment"));
         assert_eq!(scraper_operation_types(), ["feed_item_capture_upsert"]);

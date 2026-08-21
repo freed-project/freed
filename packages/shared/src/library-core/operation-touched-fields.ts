@@ -127,15 +127,16 @@ export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  * Traced from `addPerson` and `updatePerson`, plus the friend and connection
  * surfaces that funnel into them.
  *
- * Both store a whole sanitized person, and `updatePerson` accepts an arbitrary
- * partial through the same sanitizer, so between them any synchronized person
- * leaf can be written. The four graph leaves are device-local and excluded.
- *
- * Checked against reality: all twenty-two `persons` registry leaves agree with
- * what lands through the add and update paths, no exceptions.
+ * Person scalar fields and tags are written by this operation. Reach-out
+ * history is a separate stable-identity event relation and can only change
+ * through `person_reach_out_append`. The four graph leaves are device-local.
  */
 export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
-  LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS;
+  Object.freeze(
+    LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS.filter(
+      (key) => !key.includes(".reachOutLog[]."),
+    ),
+  );
 
 /**
  * Traced from `addAccount` and `updateAccount`.
@@ -159,7 +160,7 @@ export const ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
  */
 export const PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS =
   Object.freeze(
-    PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+    LIBRARY_CORE_PERSON_OPERATION_FIELD_KEYS.filter((key) =>
       key.includes(".reachOutLog[]."),
     ),
   );

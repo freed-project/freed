@@ -31,6 +31,7 @@
       "feed_item_read_assignment",
       "feed_item_remove",
       "feed_item_saved_assignment",
+      "person_reach_out_append",
       "person_remove_and_accounts",
       "person_upsert",
       "preferences_leaf_assignment",
@@ -126,7 +127,7 @@
     },
     "32_person_reach_out": {
       "table": "library_person_reach_outs",
-      "primaryKeyColumns": ["person_id", "ordinal"]
+      "primaryKeyColumns": ["person_id", "reach_out_id"]
     },
     "40_account": {
       "table": "library_accounts",
@@ -688,12 +689,10 @@
       "clockWriteSql": "",
       "currentValueSql": "",
       "dependentDeleteSql": [
-        "DELETE FROM library_person_tags WHERE person_id = ?1;",
-        "DELETE FROM library_person_reach_outs WHERE person_id = ?1;"
+        "DELETE FROM library_person_tags WHERE person_id = ?1;"
       ],
       "dependentInsertSql": [
-        "INSERT OR IGNORE INTO library_person_tags (person_id, tag) SELECT ?1, value FROM json_each(?2, '$.tags');",
-        "INSERT INTO library_person_reach_outs (person_id, ordinal, logged_at, channel, notes) SELECT ?1, CAST(key AS INTEGER), json_extract(value, '$.loggedAt'), json_extract(value, '$.channel'), json_extract(value, '$.notes') FROM json_each(?2, '$.reachOutLog');"
+        "INSERT OR IGNORE INTO library_person_tags (person_id, tag) SELECT ?1, value FROM json_each(?2, '$.tags');"
       ],
       "entityType": "Person",
       "invalidationTopic": "person",
@@ -702,6 +701,22 @@
       "payloadKind": "person_upsert",
       "requiresExistingTarget": false,
       "targetExistsSql": "SELECT 1;"
+    },
+    "person_reach_out_append": {
+      "clockReadSql": "",
+      "clockWriteSql": "",
+      "currentValueSql": "",
+      "dependentDeleteSql": [
+        "DELETE FROM library_person_reach_outs WHERE person_id = ?1 AND reach_out_id NOT IN (SELECT reach_out_id FROM library_person_reach_outs WHERE person_id = ?1 ORDER BY logged_at DESC, reach_out_id COLLATE BINARY ASC LIMIT 20);"
+      ],
+      "dependentInsertSql": [],
+      "entityType": "Person",
+      "invalidationTopic": "person",
+      "materializeSql": "INSERT OR IGNORE INTO library_person_reach_outs (person_id, reach_out_id, logged_at, channel, notes) VALUES (?1, ?2, ?3, ?4, ?5);",
+      "maximumMembers": 256,
+      "payloadKind": "person_reach_out_append",
+      "requiresExistingTarget": true,
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1);"
     },
     "person_remove_and_accounts": {
       "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1;",

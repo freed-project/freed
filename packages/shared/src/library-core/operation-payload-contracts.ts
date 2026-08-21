@@ -73,6 +73,12 @@ export interface PersonUpsertPayloadV1 {
   readonly person: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
+export interface PersonReachOutAppendPayloadV1 {
+  readonly channel: "phone" | "text" | "email" | "in_person" | "other" | null;
+  readonly logged_at_ms: number;
+  readonly notes: string | null;
+}
+
 export interface PersonRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
@@ -141,6 +147,11 @@ const RSS_FEED_TITLE_ASSIGNMENT_KEYS = ["assigned_at_ms", "title"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const PERSON_UPSERT_KEYS = ["person"] as const;
+const PERSON_REACH_OUT_APPEND_KEYS = [
+  "channel",
+  "logged_at_ms",
+  "notes",
+] as const;
 const PERSON_REMOVE_KEYS = ["removed_at_ms"] as const;
 const ACCOUNT_UPSERT_KEYS = ["account"] as const;
 const ACCOUNT_REMOVE_KEYS = ["removed_at_ms"] as const;
@@ -628,6 +639,11 @@ function validatePersonUpsertPayload(
     const person = decoded as Readonly<
       Record<string, LibraryCoreCanonicalValue>
     >;
+    if (Object.prototype.hasOwnProperty.call(person, "reachOutLog")) {
+      return invalid(
+        "person.reachOutLog must use person_reach_out_append operations",
+      );
+    }
     if (
       typeof person.id !== "string" ||
       person.id.length === 0 ||
@@ -678,39 +694,6 @@ function validatePersonUpsertPayload(
     ) {
       return invalid("person.tags must be bounded strings");
     }
-    if (person.reachOutLog !== undefined) {
-      if (
-        !Array.isArray(person.reachOutLog) ||
-        person.reachOutLog.length > 20
-      ) {
-        return invalid("person.reachOutLog must be a bounded array");
-      }
-      const channels = new Set([
-        "phone",
-        "text",
-        "email",
-        "in_person",
-        "other",
-      ]);
-      for (const entry of person.reachOutLog) {
-        if (
-          typeof entry !== "object" ||
-          entry === null ||
-          Array.isArray(entry) ||
-          Object.keys(entry).some(
-            (key) => !["loggedAt", "channel", "notes"].includes(key),
-          ) ||
-          !Number.isSafeInteger(entry.loggedAt) ||
-          (entry.loggedAt as number) < 0 ||
-          (entry.channel !== undefined &&
-            (typeof entry.channel !== "string" ||
-              !channels.has(entry.channel))) ||
-          (entry.notes !== undefined && typeof entry.notes !== "string")
-        ) {
-          return invalid("person.reachOutLog contains an invalid entry");
-        }
-      }
-    }
     if (person.sampleDataFingerprint !== undefined) {
       const fingerprint = person.sampleDataFingerprint;
       if (
@@ -755,6 +738,49 @@ function validatePersonUpsertPayload(
       error instanceof Error ? error.message : "person is not canonical",
     );
   }
+}
+
+function validatePersonReachOutAppendPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<PersonReachOutAppendPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const record = value as Readonly<Record<string, unknown>>;
+  const keys = Object.getOwnPropertyNames(record);
+  if (
+    keys.length !== PERSON_REACH_OUT_APPEND_KEYS.length ||
+    keys.some((key, index) => key !== PERSON_REACH_OUT_APPEND_KEYS[index])
+  ) {
+    return invalid(
+      "payload must contain only channel, logged_at_ms, and notes",
+    );
+  }
+  const channels = new Set(["phone", "text", "email", "in_person", "other"]);
+  if (
+    record.channel !== null &&
+    (typeof record.channel !== "string" || !channels.has(record.channel))
+  ) {
+    return invalid("channel must be null or a supported channel");
+  }
+  if (!isLibraryCoreNonnegativeSafeInteger(record.logged_at_ms)) {
+    return invalid("logged_at_ms must be a nonnegative safe integer");
+  }
+  if (
+    record.notes !== null &&
+    (typeof record.notes !== "string" ||
+      new TextEncoder().encode(record.notes).byteLength > 65_536)
+  ) {
+    return invalid("notes must be null or a bounded string");
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      channel: record.channel as PersonReachOutAppendPayloadV1["channel"],
+      logged_at_ms: record.logged_at_ms,
+      notes: record.notes as string | null,
+    }),
+  };
 }
 
 function validatePersonRemovePayload(
@@ -1135,6 +1161,17 @@ export const PERSON_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "person_upsert",
   PersonUpsertPayloadV1
+>;
+
+export const PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "person_reach_out_append_payload_v1",
+  schemaVersion: 1,
+  operationType: "person_reach_out_append",
+  canonicalKeys: PERSON_REACH_OUT_APPEND_KEYS,
+  validate: validatePersonReachOutAppendPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "person_reach_out_append",
+  PersonReachOutAppendPayloadV1
 >;
 
 export const PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA = Object.freeze({

@@ -8,6 +8,7 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
@@ -315,6 +316,44 @@ describe("Library Core operation payload contracts", () => {
         person: { ...person, graphX: 12 },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
+        person: {
+          ...person,
+          reachOutLog: [{ loggedAt: 3, channel: "text" }],
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("accepts one closed reach-out event and rejects ambiguous absence", () => {
+    expect(
+      PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate({
+        channel: "in_person",
+        logged_at_ms: 1_783_000_000_000,
+        notes: null,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        channel: "in_person",
+        logged_at_ms: 1_783_000_000_000,
+        notes: null,
+      },
+    });
+    for (const invalid of [
+      { logged_at_ms: 1, notes: null },
+      { channel: undefined, logged_at_ms: 1, notes: null },
+      { channel: "chat", logged_at_ms: 1, notes: null },
+      { channel: null, logged_at_ms: -1, notes: null },
+      { channel: null, logged_at_ms: 1, notes: undefined },
+      { channel: null, logged_at_ms: 1, notes: "😀".repeat(16_385) },
+      { channel: null, logged_at_ms: 1, notes: null, extra: true },
+    ]) {
+      expect(
+        PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 
   it("accepts a synchronized Account and rejects unknown providers and graph fields", () => {

@@ -9,6 +9,7 @@ import {
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreConstructionDigestDomain,
   type FeedItemReadAssignmentTransactionMemberInputV1,
 } from "./operation-envelope-contracts.js";
@@ -269,5 +270,34 @@ describe("Library Core read-assignment transaction-member schema", () => {
         },
       ),
     ).toThrow(/member digest/);
+  });
+});
+
+describe("Library Core reach-out transaction-member schema", () => {
+  it("constructs a stable Person event whose operation ID becomes row identity", () => {
+    const input = {
+      ...validInput(),
+      operation_id: "op:reach-out:fixture:1",
+      transaction_id: "tx:reach-out:fixture:1",
+      entity_id: "person:fixture",
+      payload: {
+        channel: "text",
+        logged_at_ms: 1_783_000_000_000,
+        notes: "Checked in",
+      },
+    };
+    const result =
+      PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(input, {
+        digest,
+      });
+
+    expect(result.body).toMatchObject({
+      operation_id: "op:reach-out:fixture:1",
+      operation_type: "person_reach_out_append",
+      entity_type: "Person",
+      entity_id: "person:fixture",
+      payload: input.payload,
+    });
+    expect(result.member_digest).toMatch(/^[0-9a-f]{64}$/);
   });
 });

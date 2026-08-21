@@ -1306,8 +1306,8 @@ mod tests {
                    (url, title, enabled, track_unread, updated_at)
                  VALUES ('https://example.com/feed', 'Example', 1, 0, 1000);
                  INSERT INTO library_person_reach_outs
-                   (person_id, ordinal, logged_at, channel, notes)
-                 VALUES ('person-1', 0, 980, 'email', 'hello');
+                   (person_id, reach_out_id, logged_at, channel, notes)
+                 VALUES ('person-1', 'reach-out-1', 980, 'email', 'hello');
                  INSERT INTO library_accounts
                    (id, person_id, kind, provider, external_id, first_seen_at,
                     last_seen_at, discovered_from, created_at, updated_at)

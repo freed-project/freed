@@ -84,6 +84,7 @@ import {
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
@@ -99,6 +100,7 @@ import {
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
+  PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
@@ -285,8 +287,12 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // Traced from `logReachOut`, which appends one sanitized entry and writes
   // nothing else on the person.
   person_reach_out_append: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema:
+      PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `addFeedItem` / `updateFeedItem`. Feed items are keyed by
   // globalId, the same key space the read assignment codec was justified
@@ -686,7 +692,7 @@ describe("Library Core operation registry", () => {
       "library-core-v1:persons.{personId}.reachOutLog[].notes",
     ]);
     for (const key of PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS) {
-      expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+      expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(key);
     }
     expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length).toBeGreaterThan(
       PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS.length,

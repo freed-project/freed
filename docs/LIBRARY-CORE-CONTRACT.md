@@ -337,7 +337,7 @@ The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version
 | `20_rss_feed` | feed ID | normalized RSS row |
 | `30_person` | person ID | normalized person row |
 | `31_person_tag` | person ID and tag | one person tag |
-| `32_person_reach_out` | person ID and ordinal | one bounded reach-out entry |
+| `32_person_reach_out` | person ID and stable reach-out ID | one bounded reach-out event |
 | `40_account` | account ID | normalized account row |
 | `41_account_follow_role` | account ID and role | one provider roster role |
 | `50_preference` | typed node path | one synchronized preference scalar or container marker |
@@ -439,12 +439,13 @@ Account tombstone blocks later resurrection. The contract owns both the root
 statement and dependent role statements, so no runtime adapter can invent a
 second materialization policy.
 
-Person upsert follows the same rule for a wider aggregate. One verified payload
-writes the typed Person root and replaces both the normalized tag set and the
-bounded reach-out sequence. The generated contract carries ordered lists of
-dependent delete and insert statements, so aggregates can own multiple child
-tables without adding table-specific branches to the native executor. A Person
-tombstone blocks later root and child resurrection.
+Person upsert writes the typed Person root and replaces its normalized tag set.
+Reach-out history is not nested mutation state. Each event uses a closed
+`person_reach_out_append` payload and the accepted operation ID as its stable
+row identity. SQLite keeps the latest twenty events by logged time and binary
+event ID, so concurrent delivery order cannot change the retained set. Person
+upserts cannot replace or erase event history. A Person tombstone blocks later
+root and event writes.
 
 Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a

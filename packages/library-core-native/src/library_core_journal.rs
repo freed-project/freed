@@ -865,6 +865,23 @@ pub(crate) fn validate_transaction(
                     });
                 }
             }
+            "person_reach_out_append" => {
+                if member.entity_type != "Person"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_none()
+                    || member.account_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "person_reach_out_append",
+                    });
+                }
+            }
             "person_remove_and_accounts" => {
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
