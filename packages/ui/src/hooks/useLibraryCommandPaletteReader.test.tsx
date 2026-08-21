@@ -56,7 +56,7 @@ describe("useLibraryCommandPaletteReader", () => {
     const store = ((selector: (value: BaseAppState) => unknown) => selector(state)) as
       PlatformConfig["store"];
     store.getState = () => state;
-    const scanLibraryItems = vi.fn(async () => undefined);
+    const openBoundedFeedReader = vi.fn();
     const readLibraryFacetSummary = vi.fn(async () => ({
       archivedCount: 8,
       sampleItemCount: 0,
@@ -69,7 +69,7 @@ describe("useLibraryCommandPaletteReader", () => {
     let latest: ReturnType<typeof useLibraryCommandPaletteReader> | null = null;
     const config = {
       store,
-      scanLibraryItems,
+      openBoundedFeedReader,
       readLibraryFacetSummary,
     } as unknown as PlatformConfig;
 
@@ -97,7 +97,7 @@ describe("useLibraryCommandPaletteReader", () => {
       await Promise.resolve();
     });
 
-    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
     expect(readLibraryFacetSummary).toHaveBeenCalledOnce();
     expect(latest).toMatchObject({
       archivedUnsavedCount: 5,
@@ -106,5 +106,81 @@ describe("useLibraryCommandPaletteReader", () => {
       tags: ["favorite"],
       unreadScopeCount: 34,
     });
+  });
+
+  it("uses the Friends-only typed feed reader for complex identity counts", async () => {
+    const state = {
+      activeFilter: {},
+      activeView: "feed",
+      accounts: {},
+      archivableCountByPlatform: {},
+      archivableFeedCounts: {},
+      archiveItems: vi.fn(),
+      feedUnreadCounts: {},
+      friends: {},
+      libraryItemVersion: 9,
+      markItemsAsRead: vi.fn(),
+      persons: {},
+      searchCorpusVersion: 9,
+      totalArchivableCount: 0,
+      totalUnreadCount: 0,
+      unreadCountByPlatform: {},
+    } as unknown as BaseAppState;
+    const store = ((selector: (value: BaseAppState) => unknown) =>
+      selector(state)) as PlatformConfig["store"];
+    store.getState = () => state;
+    const close = vi.fn(async () => {});
+    const openBoundedFeedReader = vi.fn();
+    const openBoundedFriendsFeedReader = vi.fn(async () => ({
+      totalCount: 0,
+      readNext: async () => [],
+      close,
+    }));
+    const config = {
+      store,
+      openBoundedFeedReader,
+      openBoundedFriendsFeedReader,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 0,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        tags: [],
+        totalCount: 0,
+      }),
+    } as unknown as PlatformConfig;
+
+    function Harness() {
+      useLibraryCommandPaletteReader({
+        activeFilter: {},
+        activeView: "feed",
+        commandScopeItems: [],
+        enabled: true,
+        identityMode: "friends",
+        inputValue: "",
+        searchQuery: "",
+        selectedItemId: null,
+        sourceVersion: 9,
+      });
+      return null;
+    }
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={config}>
+          <Harness />
+        </PlatformProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
+    expect(openBoundedFriendsFeedReader).toHaveBeenCalledWith(
+      {},
+      expect.any(Number),
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 });

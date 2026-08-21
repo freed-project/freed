@@ -6,15 +6,10 @@ import {
   useState,
 } from "react";
 import {
-  isFriendAuthoredItem,
-  matchesLibraryCoreFeedBrowseFilterV1,
   normalizeLibraryCoreFeedBrowseFilterV1,
-  type Account,
   type BaseAppState,
   type FeedItem,
   type FilterOptions,
-  type Friend,
-  type Person,
 } from "@freed/shared";
 
 import { usePlatform } from "../context/PlatformContext.js";
@@ -31,11 +26,8 @@ interface ScopeCounts {
 }
 
 interface PaletteScanState extends ScopeCounts {
-  readonly archivedUnsavedCount: number;
-  readonly savedArchivedCount: number;
   readonly sourceVersion: number;
   readonly status: "idle" | "loading" | "ready" | "failed";
-  readonly tags: readonly string[];
 }
 
 interface ItemDetailState {
@@ -71,22 +63,33 @@ const EMPTY_COUNTS: ScopeCounts = Object.freeze({
   archivableCount: 0,
   unreadCount: 0,
 });
-const MAXIMUM_PALETTE_TAGS = 4_096;
-const MAXIMUM_PALETTE_TAG_BYTES = 1_024;
-const MAXIMUM_PALETTE_TAG_SET_BYTES = 8 * 1_048_576;
-const TAG_ENCODER = new TextEncoder();
 function emptyPaletteScan(
   status: PaletteScanState["status"],
   sourceVersion: number,
 ): PaletteScanState {
   return {
     ...EMPTY_COUNTS,
-    archivedUnsavedCount: 0,
-    savedArchivedCount: 0,
     sourceVersion,
     status,
-    tags: [],
   };
+}
+
+function useStableFilter(activeFilter: FilterOptions) {
+  const candidate = normalizeLibraryCoreFeedBrowseFilterV1(activeFilter);
+  const signature = JSON.stringify(candidate);
+  const stable = useRef({
+    input: activeFilter,
+    normalized: candidate,
+    signature,
+  });
+  if (stable.current.signature !== signature) {
+    stable.current = {
+      input: activeFilter,
+      normalized: candidate,
+      signature,
+    };
+  }
+  return stable.current;
 }
 
 function compactScopeCounts(
@@ -139,58 +142,11 @@ function compactScopeCounts(
   };
 }
 
-function itemMatchesScope(
-  item: FeedItem,
-  filter: ReturnType<typeof normalizeLibraryCoreFeedBrowseFilterV1>,
-  identityMode: "friends" | "all_content",
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>,
-  friends: Record<string, Friend>,
-): boolean {
-  return (
-    (identityMode !== "friends" ||
-      isFriendAuthoredItem(item, persons, accounts, friends)) &&
-    matchesLibraryCoreFeedBrowseFilterV1(item, filter)
-  );
-}
-
-function collectScopeActionIds(
-  state: BaseAppState,
-  filter: ReturnType<typeof normalizeLibraryCoreFeedBrowseFilterV1>,
-  identityMode: "friends" | "all_content",
-  kind: "archive" | "read",
-): string[] {
-  const ids: string[] = [];
-  for (const item of state.items) {
-    if (
-      !itemMatchesScope(
-        item,
-        filter,
-        identityMode,
-        state.persons,
-        state.accounts,
-        state.friends,
-      )
-    ) {
-      continue;
-    }
-    if (item.userState.hidden || item.userState.archived) continue;
-    const eligible =
-      kind === "read"
-        ? !item.userState.readAt
-        : item.userState.readAt && !item.userState.saved;
-    if (eligible) {
-      ids.push(item.globalId);
-    }
-  }
-  return ids;
-}
-
 /**
  * Supply command-palette Library facts without mounting the Desktop corpus.
  *
- * Bulk execution scans bounded SQLite pages and retains only the matching
- * entity IDs needed for the mutation. Missing or failed readers fail closed.
+ * Complex scope counts and bulk execution traverse the same filtered bounded
+ * SQLite feed reader as the visible Feed. Missing or failed readers fail closed.
  */
 export function useLibraryCommandPaletteReader({
   activeFilter,
@@ -205,9 +161,10 @@ export function useLibraryCommandPaletteReader({
 }: UseLibraryCommandPaletteReaderOptions): LibraryCommandPaletteReaderResult {
   const platform = usePlatform();
   const {
+    openBoundedFeedReader,
+    openBoundedFriendsFeedReader,
     readLibraryFacetSummary,
     readLibraryItemDetail,
-    scanLibraryItems,
     store,
   } = platform;
   const archivableCountByPlatform = store(
@@ -236,15 +193,17 @@ export function useLibraryCommandPaletteReader({
       unreadCountByPlatform,
     ],
   );
-  const normalizedFilter = useMemo(
-    () => normalizeLibraryCoreFeedBrowseFilterV1(activeFilter),
-    [activeFilter],
-  );
+  const stableFilter = useStableFilter(activeFilter);
+  const normalizedFilter = stableFilter.normalized;
+  const normalizedFilterSignature = stableFilter.signature;
   const compactCounts = useMemo(
     () => compactScopeCounts(activeFilter, identityMode, compactInputs),
     [activeFilter, compactInputs, identityMode],
   );
-  const scanReaderAvailable = Boolean(scanLibraryItems);
+  const openScopeReader =
+    identityMode === "friends"
+      ? openBoundedFriendsFeedReader
+      : openBoundedFeedReader;
   const libraryFacets = useLibraryFacetSummary(
     sourceVersion,
     enabled && Boolean(readLibraryFacetSummary),
@@ -252,7 +211,6 @@ export function useLibraryCommandPaletteReader({
   const inputHasQuery = inputValue.trim().length > 0;
   const committedSearchHasQuery = searchQuery.trim().length > 0;
   const queryIsCommitted = inputValue.trim() === searchQuery.trim();
-  const normalizedFilterSignature = JSON.stringify(normalizedFilter);
   const queryFenceKey = JSON.stringify([
     sourceVersion,
     inputValue,
@@ -263,12 +221,10 @@ export function useLibraryCommandPaletteReader({
   ]);
   const latestQueryFenceKey = useRef(queryFenceKey);
   latestQueryFenceKey.current = queryFenceKey;
-  const scanComplexScope = Boolean(
+  const readComplexScope = Boolean(
     activeView === "feed" && !inputHasQuery && compactCounts === null,
   );
-  const scanNeedsFacets = !readLibraryFacetSummary;
-  const scanNeeded =
-    enabled && scanReaderAvailable && (scanComplexScope || scanNeedsFacets);
+  const scopeReadNeeded = enabled && Boolean(openScopeReader) && readComplexScope;
   const [paletteScan, setPaletteScan] = useState<PaletteScanState>(() =>
     emptyPaletteScan("idle", sourceVersion),
   );
@@ -280,72 +236,36 @@ export function useLibraryCommandPaletteReader({
   });
 
   useEffect(() => {
-    if (!scanNeeded || !scanLibraryItems) {
+    if (!scopeReadNeeded || !openScopeReader) {
       setPaletteScan(emptyPaletteScan("idle", sourceVersion));
       return;
     }
 
     let cancelled = false;
+    let reader: Awaited<ReturnType<typeof openScopeReader>> | null = null;
+    let readerClosed = false;
+    const closeReader = async () => {
+      if (!reader || readerClosed) return;
+      readerClosed = true;
+      await reader.close();
+    };
     let unreadCount = 0;
     let archivableCount = 0;
-    let archivedUnsavedCount = 0;
-    let savedArchivedCount = 0;
-    let tagBytes = 0;
-    const tags = new Set<string>();
-    const graphSnapshot = store.getState();
     setPaletteScan(emptyPaletteScan("loading", sourceVersion));
     void (async () => {
-      await scanLibraryItems((page) => {
-        if (cancelled) return "stop";
-        for (const item of page) {
-          if (scanNeedsFacets) {
-            for (const tag of item.userState.tags ?? []) {
-              if (!tags.has(tag)) {
-                const encodedBytes = TAG_ENCODER.encode(tag).byteLength;
-                if (
-                  tags.size >= MAXIMUM_PALETTE_TAGS ||
-                  encodedBytes > MAXIMUM_PALETTE_TAG_BYTES ||
-                  tagBytes + encodedBytes > MAXIMUM_PALETTE_TAG_SET_BYTES
-                ) {
-                  throw new Error("SearchJump tag set exceeds its bounded contract");
-                }
-                tagBytes += encodedBytes;
-              }
-              tags.add(tag);
-            }
-            if (item.userState.archived) {
-              if (item.userState.saved) savedArchivedCount += 1;
-              else archivedUnsavedCount += 1;
-            }
-          }
-          if (
-            item.userState.hidden ||
-            !scanComplexScope ||
-            item.userState.archived ||
-            !itemMatchesScope(
-              item,
-              normalizedFilter,
-              identityMode,
-              graphSnapshot.persons,
-              graphSnapshot.accounts,
-              graphSnapshot.friends,
-            )
-          ) {
-            continue;
-          }
-          if (!item.userState.readAt) unreadCount += 1;
-          else if (!item.userState.saved) archivableCount += 1;
-        }
-        return "continue";
-      });
+      reader = await openScopeReader(stableFilter.input, Date.now());
+      while (!cancelled) {
+        const page = await reader.readNext();
+        if (page.length === 0) break;
+        const counts = getFeedActionCounts(page);
+        unreadCount += counts.unreadCount;
+        archivableCount += counts.archivableCount;
+      }
       if (!cancelled) {
         setPaletteScan({
           archivableCount,
-          archivedUnsavedCount,
-          savedArchivedCount,
           sourceVersion,
           status: "ready",
-          tags: Array.from(tags).sort(),
           unreadCount,
         });
       }
@@ -354,19 +274,21 @@ export function useLibraryCommandPaletteReader({
         if (!cancelled) {
           setPaletteScan(emptyPaletteScan("failed", sourceVersion));
         }
+      })
+      .finally(() => {
+        void closeReader();
       });
     return () => {
       cancelled = true;
+      void closeReader();
     };
   }, [
-    identityMode,
     normalizedFilter,
-    scanLibraryItems,
-    scanComplexScope,
-    scanNeedsFacets,
-    scanNeeded,
+    normalizedFilterSignature,
+    openScopeReader,
+    scopeReadNeeded,
+    stableFilter,
     sourceVersion,
-    store,
   ]);
 
   useEffect(() => {
@@ -450,23 +372,25 @@ export function useLibraryCommandPaletteReader({
         else await currentState.archiveItems(ids);
         return;
       }
-      if (!scanLibraryItems) return;
+      if (!openScopeReader) return;
 
       const ids: string[] = [];
-      await scanLibraryItems((page) => {
-        if (latestQueryFenceKey.current !== queryFenceKey) return "stop";
-        const state = store.getState();
-        if (!matchesCurrentScope(state)) return "stop";
-        ids.push(
-          ...collectScopeActionIds(
-            { ...state, items: [...page] },
-            normalizedFilter,
-            identityMode,
-            kind,
-          ),
-        );
-        return "continue";
-      });
+      const reader = await openScopeReader(stableFilter.input, Date.now());
+      try {
+        while (latestQueryFenceKey.current === queryFenceKey) {
+          const state = store.getState();
+          if (!matchesCurrentScope(state)) return;
+          const page = await reader.readNext();
+          if (page.length === 0) break;
+          ids.push(
+            ...(kind === "read"
+              ? collectUnreadFeedActionIds(page)
+              : collectArchivableFeedActionIds(page)),
+          );
+        }
+      } finally {
+        await reader.close();
+      }
       if (latestQueryFenceKey.current !== queryFenceKey) return;
       const state = store.getState();
       if (!matchesCurrentScope(state)) return;
@@ -476,35 +400,29 @@ export function useLibraryCommandPaletteReader({
     [
       activeView,
       commandScopeItems,
-      identityMode,
       inputHasQuery,
       normalizedFilter,
       normalizedFilterSignature,
+      openScopeReader,
       queryFenceKey,
       queryIsCommitted,
-      scanLibraryItems,
       sourceVersion,
+      stableFilter,
       store,
     ],
   );
 
   return {
     archivableScopeCount: scopeCounts.archivableCount,
-    archivedUnsavedCount: scanNeedsFacets && paletteScanReady
-      ? paletteScan.archivedUnsavedCount
-      : Math.max(
-          0,
-          libraryFacets.archivedCount - libraryFacets.savedArchivedCount,
-        ),
+    archivedUnsavedCount: Math.max(
+      0,
+      libraryFacets.archivedCount - libraryFacets.savedArchivedCount,
+    ),
     archiveScopeRead: () => runScopeAction("archive"),
     markScopeRead: () => runScopeAction("read"),
-    savedArchivedCount: scanNeedsFacets && paletteScanReady
-      ? paletteScan.savedArchivedCount
-      : libraryFacets.savedArchivedCount,
+    savedArchivedCount: libraryFacets.savedArchivedCount,
     selectedItem,
-    tags: scanNeedsFacets && paletteScanReady
-      ? paletteScan.tags
-      : libraryFacets.tags,
+    tags: libraryFacets.tags,
     unreadScopeCount: scopeCounts.unreadCount,
   };
 }

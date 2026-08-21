@@ -611,8 +611,8 @@ export interface PlatformConfig {
 
   /**
    * Open one source-pinned, paged feed reader backed by platform-local row
-   * storage. Shared UI falls back to its current in-memory feed when absent or
-   * when the reader rejects stale source identity.
+   * storage. Missing or stale readers fail closed without consulting app-store
+   * item state.
    */
   openBoundedFeedReader?: (
     filter: FilterOptions,
@@ -621,8 +621,8 @@ export interface PlatformConfig {
 
   /**
    * Open one source-pinned Friends-only feed reader. The platform computes
-   * membership from the exact Person, Account, and legacy Friend source bound
-   * to the selected local generation.
+   * membership from the exact Person and Account relations bound to the
+   * selected local generation.
    */
   openBoundedFriendsFeedReader?: (
     filter: FilterOptions,

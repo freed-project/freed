@@ -4,7 +4,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
 import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person } from "@freed/shared";
-import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
+import type {
+  BoundedFeedReader,
+  PlatformConfig,
+} from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { SettingsDialog } from "../../../ui/src/components/SettingsDialog.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
@@ -278,6 +281,25 @@ function createPlatform(store: PlatformConfig["store"], overrides: Partial<Platf
     GoogleContactsSettingsContent: null,
     ...overrides,
   };
+}
+
+function boundedReader(items: readonly FeedItem[]): BoundedFeedReader {
+  let read = false;
+  return {
+    totalCount: items.length,
+    async readNext() {
+      if (read) return [];
+      read = true;
+      return items;
+    },
+    async close() {},
+  };
+}
+
+function boundedReaderFactory(
+  items: readonly FeedItem[],
+): NonNullable<PlatformConfig["openBoundedFeedReader"]> {
+  return async () => boundedReader(items);
 }
 
 function ShortcutProbe({ onShortcut }: { onShortcut: () => void }) {
@@ -816,12 +838,6 @@ describe("command palette", () => {
       contentType: "post",
       userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
     });
-    const hiddenByContentFilter = createItem({
-      globalId: "instagram:story-read",
-      platform: "instagram",
-      contentType: "story",
-      userState: { hidden: false, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
-    });
     const unreadPost = createItem({
       globalId: "instagram:unread-post",
       platform: "instagram",
@@ -836,20 +852,13 @@ describe("command palette", () => {
     });
     const store = createTestStore({
       activeFilter: { platform: "instagram", socialContentFilter: "posts" },
-      items: [visibleReadPost, hiddenByContentFilter, unreadPost, savedPost],
+      items: [visibleReadPost, unreadPost, savedPost],
       archiveItems,
       toggleArchived,
     });
-    const scopedItems = [
-      visibleReadPost,
-      hiddenByContentFilter,
-      unreadPost,
-      savedPost,
-    ];
+    const scopedItems = [visibleReadPost, unreadPost, savedPost];
     const platform = createPlatform(store, {
-      scanLibraryItems: async (visit) => {
-        await visit(scopedItems);
-      },
+      openBoundedFeedReader: boundedReaderFactory(scopedItems),
     });
     const render = renderNode(
       createElement(
@@ -955,53 +964,23 @@ describe("command palette", () => {
   });
 
   it("reads SearchJump facets and simple-scope counts without hydrating the Desktop corpus", async () => {
-    const scannedItems = [
-      createItem({
-        globalId: "visible-archived",
-        userState: {
-          hidden: false,
-          saved: false,
-          archived: true,
-          readAt: 10,
-          tags: ["Architecture"],
-          highlights: [],
-        },
-      }),
-      createItem({
-        globalId: "visible-saved-archived",
-        userState: {
-          hidden: false,
-          saved: true,
-          archived: true,
-          readAt: 11,
-          tags: ["Research"],
-          highlights: [],
-        },
-      }),
-      createItem({
-        globalId: "hidden-archived",
-        userState: {
-          hidden: true,
-          saved: true,
-          archived: true,
-          readAt: 12,
-          tags: ["Secret"],
-          highlights: [],
-        },
-      }),
-    ];
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit(scannedItems);
-      },
-    );
+    const openBoundedFeedReader = vi.fn(boundedReaderFactory([]));
     const store = createTestStore({
       items: [],
       totalArchivableCount: 9,
       totalUnreadCount: 17,
     });
     const platform = createPlatform(store, {
-      scanLibraryItems,
+      openBoundedFeedReader,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 3,
+        sampleItemCount: 0,
+        savedArchivedCount: 2,
+        savedCount: 2,
+        savedPlatformCount: 0,
+        tags: ["Architecture", "Research", "Secret"],
+        totalCount: 3,
+      }),
     });
     const render = renderNode(
       createElement(
@@ -1012,7 +991,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    expect(scanLibraryItems).not.toHaveBeenCalled();
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
 
     const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
@@ -1025,45 +1004,7 @@ describe("command palette", () => {
     expect(document.querySelector("[data-testid='search-command-action-go-tag-Research']")).not.toBeNull();
     expect(document.querySelector("[data-testid='search-command-action-go-tag-Secret']")).not.toBeNull();
     expect(document.querySelector("[data-testid='search-command-action-scope-unarchive-saved']")).not.toBeNull();
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-  });
-
-  it("fails closed when a native SearchJump tag exceeds its byte bound", async () => {
-    const oversizedTag = "x".repeat(1_025);
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit([createItem({
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            tags: [oversizedTag],
-            highlights: [],
-          },
-        })]);
-      },
-    );
-    const store = createTestStore({ items: [] });
-    const platform = createPlatform(store, {
-      scanLibraryItems,
-    });
-    const render = renderNode(
-      createElement(
-        PlatformProvider,
-        { value: platform, children: createElement(SearchJumpField) },
-      ),
-    );
-    cleanups.push(render.cleanup);
-    await flush();
-
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
-    expect(input).not.toBeNull();
-    act(() => input!.focus());
-    await flush();
-    await flush();
-
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(document.body.textContent).not.toContain(oversizedTag);
+    expect(openBoundedFeedReader).not.toHaveBeenCalled();
   });
 
   it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
@@ -1074,31 +1015,21 @@ describe("command palette", () => {
       contentType: "article",
       userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
     });
-    const hiddenStory = createItem({
-      globalId: "instagram:hidden-story",
-      platform: "instagram",
-      contentType: "article",
-      userState: { hidden: true, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
-    });
     const savedPost = createItem({
       globalId: "instagram:saved-post",
       platform: "rss",
       contentType: "article",
       userState: { hidden: false, saved: true, archived: false, readAt: 12, tags: [], highlights: [] },
     });
-    const scannedItems = [visibleReadPost, hiddenStory, savedPost];
+    const scopedItems = [visibleReadPost, savedPost];
     const store = createTestStore({
       activeFilter: { platform: "rss" },
       archiveItems,
       items: [],
     });
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (visit) => {
-        await visit(scannedItems);
-      },
-    );
+    const openBoundedFeedReader = vi.fn(boundedReaderFactory(scopedItems));
     const platform = createPlatform(store, {
-      scanLibraryItems,
+      openBoundedFeedReader,
     });
     const render = renderNode(
       createElement(
@@ -1114,7 +1045,11 @@ describe("command palette", () => {
     act(() => input!.focus());
     await flush();
 
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
+    expect(openBoundedFeedReader).toHaveBeenCalledWith(
+      { platform: "rss" },
+      expect.any(Number),
+    );
     changeInput(input!, "archive");
     await flush();
     expect(
@@ -1141,17 +1076,21 @@ describe("command palette", () => {
   });
 
   it("fails closed across SQLite reader errors and recovers on a newer source", async () => {
-    let scanFails = true;
+    let readerFails = true;
     let detailFails = true;
     const selectedItem = createItem({ globalId: "selected" });
     const store = createTestStore({
+      activeFilter: { tags: ["Research"] },
       items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+    const openBoundedFeedReader = vi.fn<
+      NonNullable<PlatformConfig["openBoundedFeedReader"]>
+    >(
       async () => {
-        if (scanFails) throw new Error("scan unavailable");
+        if (readerFails) throw new Error("reader unavailable");
+        return boundedReader([]);
       },
     );
     const readLibraryItemDetail = vi.fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>(
@@ -1161,8 +1100,17 @@ describe("command palette", () => {
       },
     );
     const platform = createPlatform(store, {
+      openBoundedFeedReader,
       readLibraryItemDetail,
-      scanLibraryItems,
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 0,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        tags: ["Research"],
+        totalCount: 0,
+      }),
     });
     const render = renderNode(
       createElement(
@@ -1184,7 +1132,7 @@ describe("command palette", () => {
 
     act(() => store.setState({ persons: {}, accounts: {}, friends: {} }));
     await flush();
-    expect(scanLibraryItems).toHaveBeenCalledOnce();
+    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
     expect(readLibraryItemDetail).toHaveBeenCalledOnce();
 
     act(() => store.setState({ libraryItemVersion: 2 }));
@@ -1193,10 +1141,10 @@ describe("command palette", () => {
     ).toBeNull();
     await flush();
     await flush();
-    expect(scanLibraryItems).toHaveBeenCalledTimes(2);
+    expect(openBoundedFeedReader).toHaveBeenCalledTimes(2);
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
 
-    scanFails = false;
+    readerFails = false;
     detailFails = false;
     act(() => store.setState({ libraryItemVersion: 3 }));
     await flush();
@@ -1204,18 +1152,18 @@ describe("command palette", () => {
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
     ).not.toBeNull();
-    expect(scanLibraryItems).toHaveBeenCalledTimes(3);
+    expect(openBoundedFeedReader).toHaveBeenCalledTimes(3);
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(3);
   });
 
-  it("cancels a bounded scope scan without falling back to corpus hydration", async () => {
-    let visit: Parameters<NonNullable<PlatformConfig["scanLibraryItems"]>>[0] | null = null;
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async (nextVisit) => {
-        visit = nextVisit;
-        await new Promise<void>(() => {});
-      },
-    );
+  it("closes an in-flight bounded scope reader when SearchJump unmounts", async () => {
+    const close = vi.fn(async () => {});
+    const readNext = vi.fn(async () => new Promise<readonly FeedItem[]>(() => {}));
+    const openBoundedFeedReader = vi.fn(async () => ({
+      totalCount: 17_000,
+      readNext,
+      close,
+    }));
     const store = createTestStore({ activeFilter: { tags: ["Research"] } });
     const platform = createPlatform(store, {
       readLibraryFacetSummary: async () => ({
@@ -1227,7 +1175,7 @@ describe("command palette", () => {
         tags: ["Research"],
         totalCount: 17_000,
       }),
-      scanLibraryItems,
+      openBoundedFeedReader,
     });
     const render = renderNode(
       createElement(
@@ -1241,10 +1189,11 @@ describe("command palette", () => {
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
-    expect(visit).not.toBeNull();
+    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
+    expect(readNext).toHaveBeenCalledOnce();
 
     render.cleanup();
-    expect(await visit!([])).toBe("stop");
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("keeps the newest source-fenced selected item and ignores a stale detail response", async () => {
@@ -1267,7 +1216,6 @@ describe("command palette", () => {
     });
     const platform = createPlatform(store, {
       readLibraryItemDetail,
-      scanLibraryItems: async () => {},
     });
     const render = renderNode(
       createElement(

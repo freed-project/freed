@@ -506,6 +506,7 @@ export async function captureDomFeed(
 | 5.62 | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search SQLite readers, with no corpus lease, renderer sort, or reader-failure authority switch | High | ✓ Complete |
 | 5.63 | Make shared search use only normalized SQLite search pages, retain at most 100 ranked cards, and delete the renderer MiniSearch index, corpus filter, scan fallback, and package dependency | High | ✓ Complete |
 | 5.64 | Delete SearchJump's rollback key, compatibility corpus lease, renderer-derived facets, and selected-item fallback so missing or failed SQLite readers fail closed | High | ✓ Complete |
+| 5.65 | Route SearchJump complex counts and bulk selection through the typed source-fenced feed reader and delete its generic whole-item scanner dependency | High | ✓ Complete |
 
 ---
 
