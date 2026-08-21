@@ -18,7 +18,7 @@
       `packages/library-core-native` so Freed Desktop and the headless Primary
       call the same Rust core.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
+      IDs, and 31 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
       defines the 16-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
@@ -112,6 +112,13 @@
         entity rows, and missing revisions fail closed. Normalized checkpoint
         activation emits one explicit Library reset notice. Freed Desktop view
         subscription wiring remains open.
+  - [x] `feed_browse_page_v3` now executes the complete ranked-feed filter and
+        bidirectional keyset order in the extracted native core. Forward and
+        reverse reads share one registered expression index, inspect at most
+        129 rows for a 128-row result, and bind both edge cursors to the exact
+        generation and revision. The final tie-break is the normalized global
+        ID, so no renderer source-enumeration sequence enters SQLite or the
+        cursor. Freed Desktop product view wiring remains open.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its

@@ -275,6 +275,19 @@ A cursor is opaque to the interface layer and binds the query version,
 normalized filter digest, ordering keys, projection version, database
 generation, and snapshot identity. A stale cursor returns `CURSOR_STALE`.
 
+`feed_browse_page_v3` is the normalized ranked feed query. SQLite applies the
+archived, hidden, platform, author, RSS feed, social-content, saved, tag, and
+signal filters before paging. Its final order is rounded priority descending,
+publication time descending, then binary global ID ascending. The global ID is
+the stable primary-key tie-break. Historical renderer enumeration order is not
+stored, checkpointed, or encoded in the V3 cursor. The reverse program mirrors
+the keyset comparisons and order, then the adapter restores canonical row
+order before returning the page. Both programs use the registered
+`library_feed_items_browse_rank_all` expression index and may read at most 129
+rows for a 128-row result. Next and previous cursors bind the database
+generation and exact source revision. A filter change starts a new query
+instead of reusing a cursor from another result set.
+
 No query may scan or sort the full corpus in JavaScript. No query returns an
 unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
 typed summaries. A view refreshes only invalidated pages and aggregates.

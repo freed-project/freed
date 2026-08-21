@@ -11,6 +11,7 @@ const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
+const FEED_BROWSE_MAXIMUM_CURSOR_BYTES: usize = 5_560;
 const PERSON_TIMELINE_MAXIMUM_LIMIT: usize = 100;
 const PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PERSON_TIMELINE_MAXIMUM_CURSOR_BYTES: usize = 5_700;
@@ -38,6 +39,35 @@ pub struct NormalizedFeedPageRequestV1 {
     pub cursor: Option<String>,
     pub limit: usize,
     pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFeedBrowseFilterV1 {
+    pub archived_only: bool,
+    pub author_id: Option<String>,
+    pub feed_url: Option<String>,
+    pub platform: Option<String>,
+    pub saved_only: bool,
+    pub schema_version: u32,
+    pub show_hidden: bool,
+    pub signals: Vec<String>,
+    pub social_content_filter: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFeedBrowsePageRequestV3 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub direction: String,
+    pub filter: NormalizedFeedBrowseFilterV1,
+    pub limit: usize,
+    pub ranking_clock_ms: i64,
+    pub reader_session_id: String,
+    pub recommendation_order_schema_version: u32,
     pub schema_version: u32,
 }
 
@@ -152,6 +182,7 @@ pub enum NormalizedQueryRequestV1 {
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
+    FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
     FeedPage(NormalizedFeedPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
@@ -209,6 +240,31 @@ pub struct NormalizedFeedCardV1 {
 pub struct NormalizedFeedPageResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
+    pub rows: Vec<NormalizedFeedCardV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFeedBrowseEdgeOrderV3 {
+    pub global_id: String,
+    pub priority: i64,
+    pub published_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFeedBrowsePageResponseV3 {
+    pub filter: NormalizedFeedBrowseFilterV1,
+    pub next_cursor: Option<String>,
+    pub next_order: Option<NormalizedFeedBrowseEdgeOrderV3>,
+    pub previous_cursor: Option<String>,
+    pub previous_order: Option<NormalizedFeedBrowseEdgeOrderV3>,
+    pub query_id: String,
+    pub ranking_clock_ms: i64,
+    pub recommendation_order_schema_version: u32,
     pub rows: Vec<NormalizedFeedCardV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
@@ -510,6 +566,7 @@ pub enum NormalizedQueryResponseV1 {
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
+    FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
     FeedPage(NormalizedFeedPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
@@ -527,6 +584,17 @@ struct FeedPageCursorV1 {
     transition_sequence: i64,
     projection_revision: i64,
     sort_at: i64,
+    global_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FeedBrowseCursorV2 {
+    filter_digest: String,
+    generation_id: String,
+    transition_sequence: i64,
+    projection_revision: i64,
+    priority: i64,
+    published_at: i64,
     global_id: String,
 }
 
@@ -623,6 +691,85 @@ fn decode_cursor(value: &str) -> Result<FeedPageCursorV1, NormalizedSqliteError>
         transition_sequence: read_safe_u64(&bytes[33..41])?,
         projection_revision: read_safe_u64(&bytes[41..49])?,
         sort_at: read_safe_u64(&bytes[49..57])?,
+        global_id,
+    })
+}
+
+fn encode_feed_browse_cursor(cursor: &FeedBrowseCursorV2) -> Result<String, NormalizedSqliteError> {
+    if !valid_lower_hex_64(&cursor.filter_digest)
+        || !valid_lower_hex_64(&cursor.generation_id)
+        || !valid_safe_integer(cursor.transition_sequence)
+        || !valid_safe_integer(cursor.projection_revision)
+        || !(0..=100).contains(&cursor.priority)
+        || !valid_safe_integer(cursor.published_at)
+        || cursor.global_id.is_empty()
+        || cursor.global_id.len() > 4_096
+        || cursor.global_id.len() > usize::from(u16::MAX)
+    {
+        return Err(invalid("normalized browse cursor identity is invalid"));
+    }
+    let mut bytes = Vec::with_capacity(92 + cursor.global_id.len());
+    bytes.push(2);
+    for pair in cursor.generation_id.as_bytes().chunks_exact(2) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| invalid("normalized browse cursor identity is invalid"))?;
+        bytes.push(
+            u8::from_str_radix(text, 16)
+                .map_err(|_| invalid("normalized browse cursor identity is invalid"))?,
+        );
+    }
+    for pair in cursor.filter_digest.as_bytes().chunks_exact(2) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| invalid("normalized browse cursor identity is invalid"))?;
+        bytes.push(
+            u8::from_str_radix(text, 16)
+                .map_err(|_| invalid("normalized browse cursor identity is invalid"))?,
+        );
+    }
+    bytes.extend_from_slice(&(cursor.transition_sequence as u64).to_be_bytes());
+    bytes.extend_from_slice(&(cursor.projection_revision as u64).to_be_bytes());
+    bytes.push(cursor.priority as u8);
+    bytes.extend_from_slice(&(cursor.published_at as u64).to_be_bytes());
+    bytes.extend_from_slice(&(cursor.global_id.len() as u16).to_be_bytes());
+    bytes.extend_from_slice(cursor.global_id.as_bytes());
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn decode_feed_browse_cursor(value: &str) -> Result<FeedBrowseCursorV2, NormalizedSqliteError> {
+    if value.is_empty() || value.len() > FEED_BROWSE_MAXIMUM_CURSOR_BYTES {
+        return Err(invalid("normalized browse cursor is outside its bound"));
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| invalid("normalized browse cursor encoding is invalid"))?;
+    if bytes.len() < 92 || bytes[0] != 2 {
+        return Err(invalid("normalized browse cursor encoding is invalid"));
+    }
+    let global_id_length = usize::from(u16::from_be_bytes([bytes[90], bytes[91]]));
+    if bytes.len() != 92 + global_id_length {
+        return Err(invalid("normalized browse cursor length is invalid"));
+    }
+    let generation_id = lower_hex(&bytes[1..33]);
+    let filter_digest = lower_hex(&bytes[33..65]);
+    let priority = i64::from(bytes[81]);
+    let global_id = std::str::from_utf8(&bytes[92..])
+        .map_err(|_| invalid("normalized browse cursor entity is invalid"))?
+        .to_owned();
+    if !valid_lower_hex_64(&generation_id)
+        || !valid_lower_hex_64(&filter_digest)
+        || !(0..=100).contains(&priority)
+        || global_id.is_empty()
+        || global_id.len() > 4_096
+    {
+        return Err(invalid("normalized browse cursor identity is invalid"));
+    }
+    Ok(FeedBrowseCursorV2 {
+        filter_digest,
+        generation_id,
+        transition_sequence: read_safe_u64(&bytes[65..73])?,
+        projection_revision: read_safe_u64(&bytes[73..81])?,
+        priority,
+        published_at: read_safe_u64(&bytes[82..90])?,
         global_id,
     })
 }
@@ -777,7 +924,7 @@ fn query_feed_page(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "feed_page_v1")
+        .find(|program| program.query_id == "feed_page_v1")
         .ok_or(invalid("normalized feed query program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
@@ -789,7 +936,7 @@ fn query_feed_page(
     }) {
         return Err(invalid("normalized feed query cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mut rows = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.sort_at),
@@ -804,7 +951,7 @@ fn query_feed_page(
     let mut cards = Vec::with_capacity(request.limit + 1);
     for row in rows.by_ref() {
         cards.push(row?);
-        if cards.len() > program.1 {
+        if cards.len() > program.maximum_scan_rows {
             return Err(invalid("normalized feed query exceeded its row bound"));
         }
     }
@@ -828,7 +975,7 @@ fn query_feed_page(
     } else {
         None
     };
-    let total_count: i64 = transaction.query_row(program.3, [], |row| row.get(0))?;
+    let total_count: i64 = transaction.query_row(program.count_sql, [], |row| row.get(0))?;
     let response = NormalizedFeedPageResponseV1 {
         next_cursor,
         query_id: "feed_page_v1".to_owned(),
@@ -854,6 +1001,265 @@ fn query_feed_page(
     Ok(response)
 }
 
+const FEED_BROWSE_SIGNAL_IDS: &[&str] = &[
+    "alert",
+    "announcement",
+    "deal",
+    "deadline",
+    "discussion",
+    "essay",
+    "event",
+    "how_to",
+    "life_update",
+    "media",
+    "moment",
+    "news",
+    "opportunity",
+    "place",
+    "product_update",
+    "promotion",
+    "recommendation",
+    "reference",
+    "request",
+    "transaction",
+];
+
+fn valid_feed_browse_text(value: &str) -> bool {
+    value.len() <= 8_192 && value.chars().count() <= 2_048
+}
+
+fn valid_canonical_filter_set(values: &[String], allowed: Option<&[&str]>) -> bool {
+    values.len() <= 32
+        && values.iter().all(|value| {
+            valid_feed_browse_text(value)
+                && allowed.is_none_or(|allowed| allowed.contains(&value.as_str()))
+        })
+        && values
+            .windows(2)
+            .all(|pair| pair[0].encode_utf16().cmp(pair[1].encode_utf16()).is_lt())
+}
+
+fn valid_feed_browse_filter(filter: &NormalizedFeedBrowseFilterV1) -> bool {
+    filter.schema_version == 1
+        && [
+            filter.author_id.as_deref(),
+            filter.feed_url.as_deref(),
+            filter.platform.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .all(valid_feed_browse_text)
+        && matches!(
+            filter.social_content_filter.as_str(),
+            "all" | "posts" | "stories"
+        )
+        && valid_canonical_filter_set(&filter.tags, None)
+        && valid_canonical_filter_set(&filter.signals, Some(FEED_BROWSE_SIGNAL_IDS))
+}
+
+fn feed_browse_filter_digest(
+    filter: &NormalizedFeedBrowseFilterV1,
+) -> Result<String, NormalizedSqliteError> {
+    let bytes = serde_json::to_vec(&(
+        filter.schema_version,
+        filter.archived_only,
+        &filter.author_id,
+        &filter.feed_url,
+        &filter.platform,
+        filter.saved_only,
+        filter.show_hidden,
+        &filter.signals,
+        &filter.social_content_filter,
+        &filter.tags,
+    ))
+    .map_err(|_| invalid("normalized browse filter is invalid"))?;
+    Ok(lower_hex(&Sha256::digest(bytes)))
+}
+
+fn query_feed_browse_page(
+    connection: &mut Connection,
+    request: NormalizedFeedBrowsePageRequestV3,
+) -> Result<NormalizedFeedBrowsePageResponseV3, NormalizedSqliteError> {
+    if request.schema_version != 3
+        || request.recommendation_order_schema_version != 1
+        || !valid_safe_integer(request.ranking_clock_ms)
+        || !(1..=FEED_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !matches!(request.direction.as_str(), "next" | "previous")
+        || (request.direction == "previous" && request.cursor.is_none())
+        || !valid_feed_browse_filter(&request.filter)
+    {
+        return Err(invalid("normalized browse query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "feed_browse_page_v3")
+        .ok_or(invalid("normalized browse query program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let filter_digest = feed_browse_filter_digest(&request.filter)?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_feed_browse_cursor)
+        .transpose()?;
+    if cursor
+        .as_ref()
+        .is_some_and(|cursor| cursor.filter_digest != filter_digest)
+    {
+        return Err(invalid(
+            "normalized browse query cursor belongs to a different filter",
+        ));
+    }
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized browse query cursor is stale"));
+    }
+    let tags_json = serde_json::to_string(&request.filter.tags)
+        .map_err(|_| invalid("normalized browse tags are invalid"))?;
+    let signals_json = serde_json::to_string(&request.filter.signals)
+        .map_err(|_| invalid("normalized browse signals are invalid"))?;
+    let query_sql = if request.direction == "previous" {
+        program
+            .reverse_sql
+            .ok_or(invalid("normalized browse reverse query is missing"))?
+    } else {
+        program.sql
+    };
+    let mut statement = transaction.prepare(query_sql)?;
+    let mut query_rows = statement.query_map(
+        params![
+            i64::from(request.filter.archived_only),
+            i64::from(request.filter.show_hidden),
+            request.filter.platform.as_deref(),
+            request.filter.author_id.as_deref(),
+            request.filter.feed_url.as_deref(),
+            request.filter.social_content_filter,
+            i64::from(request.filter.saved_only),
+            tags_json,
+            signals_json,
+            cursor.as_ref().map(|cursor| cursor.priority),
+            cursor.as_ref().map(|cursor| cursor.published_at),
+            cursor
+                .as_ref()
+                .map(|cursor| cursor.global_id.as_str())
+                .unwrap_or(""),
+            i64::try_from(request.limit + 1).expect("bounded browse limit"),
+        ],
+        |row| Ok((feed_card(row)?, row.get::<_, i64>("browsePriority")?)),
+    )?;
+    let mut selected = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        if !(0..=100).contains(&row.1) {
+            return Err(invalid("normalized browse priority is invalid"));
+        }
+        selected.push(row);
+        if selected.len() > program.maximum_scan_rows {
+            return Err(invalid("normalized browse query exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more_in_direction = selected.len() > request.limit;
+    selected.truncate(request.limit);
+    if request.direction == "previous" {
+        selected.reverse();
+    }
+    let make_edge = |row: &(NormalizedFeedCardV1, i64)| {
+        let published_at = row
+            .0
+            .published_at
+            .ok_or(invalid("normalized browse sort time is missing"))?;
+        let order = NormalizedFeedBrowseEdgeOrderV3 {
+            global_id: row.0.global_id.clone(),
+            priority: row.1,
+            published_at,
+        };
+        let cursor = encode_feed_browse_cursor(&FeedBrowseCursorV2 {
+            filter_digest: filter_digest.clone(),
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            priority: row.1,
+            published_at,
+            global_id: row.0.global_id.clone(),
+        })?;
+        Ok::<_, NormalizedSqliteError>((cursor, order))
+    };
+    let next_available = if request.direction == "next" {
+        has_more_in_direction
+    } else {
+        !selected.is_empty()
+    };
+    let previous_available = if request.direction == "previous" {
+        has_more_in_direction
+    } else {
+        request.cursor.is_some() && !selected.is_empty()
+    };
+    let next = if next_available {
+        selected.last().map(make_edge).transpose()?
+    } else {
+        None
+    };
+    let previous = if previous_available {
+        selected.first().map(make_edge).transpose()?
+    } else {
+        None
+    };
+    let total_count: i64 = transaction.query_row(
+        program.count_sql,
+        params![
+            i64::from(request.filter.archived_only),
+            i64::from(request.filter.show_hidden),
+            request.filter.platform.as_deref(),
+            request.filter.author_id.as_deref(),
+            request.filter.feed_url.as_deref(),
+            request.filter.social_content_filter,
+            i64::from(request.filter.saved_only),
+            serde_json::to_string(&request.filter.tags)
+                .map_err(|_| invalid("normalized browse tags are invalid"))?,
+            serde_json::to_string(&request.filter.signals)
+                .map_err(|_| invalid("normalized browse signals are invalid"))?,
+        ],
+        |row| row.get(0),
+    )?;
+    if !valid_safe_integer(total_count) {
+        return Err(invalid("normalized browse total count is invalid"));
+    }
+    let response = NormalizedFeedBrowsePageResponseV3 {
+        filter: request.filter,
+        next_cursor: next.as_ref().map(|edge| edge.0.clone()),
+        next_order: next.map(|edge| edge.1),
+        previous_cursor: previous.as_ref().map(|edge| edge.0.clone()),
+        previous_order: previous.map(|edge| edge.1),
+        query_id: "feed_browse_page_v3".to_owned(),
+        ranking_clock_ms: request.ranking_clock_ms,
+        recommendation_order_schema_version: 1,
+        rows: selected.into_iter().map(|row| row.0).collect(),
+        schema_version: 3,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        total_count,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized browse response is invalid"))?
+        .len()
+        > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("normalized browse response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_person_timeline(
     connection: &mut Connection,
     request: NormalizedPersonTimelineRequestV1,
@@ -872,7 +1278,7 @@ fn query_person_timeline(
     let person_digest = lower_hex(&Sha256::digest(request.person_id.as_bytes()));
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "person_timeline_v1")
+        .find(|program| program.query_id == "person_timeline_v1")
         .ok_or(invalid(
             "normalized person timeline query program is missing",
         ))?;
@@ -891,7 +1297,7 @@ fn query_person_timeline(
     }) {
         return Err(invalid("normalized person timeline cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mut query_rows = statement.query_map(
         params![
             request.person_id,
@@ -907,7 +1313,7 @@ fn query_person_timeline(
     let mut cards = Vec::with_capacity(request.limit + 1);
     for row in query_rows.by_ref() {
         cards.push(row?);
-        if cards.len() > program.1 {
+        if cards.len() > program.maximum_scan_rows {
             return Err(invalid("normalized person timeline exceeded its row bound"));
         }
     }
@@ -935,7 +1341,9 @@ fn query_person_timeline(
         None
     };
     let total_count: i64 =
-        transaction.query_row(program.3, params![request.person_id], |row| row.get(0))?;
+        transaction.query_row(program.count_sql, params![request.person_id], |row| {
+            row.get(0)
+        })?;
     let response = NormalizedPersonTimelineResponseV1 {
         next_cursor,
         query_id: "person_timeline_v1".to_owned(),
@@ -974,7 +1382,7 @@ fn query_item_scan(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "background_item_page_v1")
+        .find(|program| program.query_id == "background_item_page_v1")
         .ok_or(invalid("normalized item scan program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
@@ -987,7 +1395,7 @@ fn query_item_scan(
     }) {
         return Err(invalid("normalized item scan cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mut rows = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
@@ -998,7 +1406,7 @@ fn query_item_scan(
     let mut cards = Vec::with_capacity(request.limit + 1);
     for row in rows.by_ref() {
         cards.push(row?);
-        if cards.len() > program.1 {
+        if cards.len() > program.maximum_scan_rows {
             return Err(invalid("normalized item scan exceeded its row bound"));
         }
     }
@@ -1085,11 +1493,11 @@ fn query_change_feed(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "change_feed_v1")
+        .find(|program| program.query_id == "change_feed_v1")
         .ok_or(invalid("normalized change-feed program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, current_revision) = query_source(&transaction)?;
-    let change_revision: i64 = transaction.query_row(program.3, [], |row| row.get(0))?;
+    let change_revision: i64 = transaction.query_row(program.count_sql, [], |row| row.get(0))?;
     if current_revision != change_revision {
         return Err(invalid("normalized change-feed revisions disagree"));
     }
@@ -1117,7 +1525,7 @@ fn query_change_feed(
     } else {
         (current_revision, request.after_revision, 255)
     };
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mut query_rows = statement.query_map(
         params![
             upper_revision,
@@ -1130,7 +1538,7 @@ fn query_change_feed(
     let mut rows = Vec::with_capacity(request.limit + 1);
     for row in query_rows.by_ref() {
         rows.push(row?);
-        if rows.len() > program.1 {
+        if rows.len() > program.maximum_scan_rows {
             return Err(invalid("normalized change feed exceeded its row bound"));
         }
     }
@@ -1197,11 +1605,11 @@ fn query_facet_summary(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "library_facet_summary_v1")
+        .find(|program| program.query_id == "library_facet_summary_v1")
         .ok_or(invalid("normalized facet query program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let summary = transaction.query_row(program.2, [], |row| {
+    let summary = transaction.query_row(program.sql, [], |row| {
         Ok(NormalizedFacetSummaryV1 {
             archived_count: row.get("archivedCount")?,
             sample_item_count: row.get("sampleItemCount")?,
@@ -1263,11 +1671,11 @@ fn query_preferences_snapshot(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "preferences_snapshot_v1")
+        .find(|program| program.query_id == "preferences_snapshot_v1")
         .ok_or(invalid("normalized preferences query program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map([], |row| {
         Ok(NormalizedPreferenceLeafV1 {
             boolean_value: optional_boolean(row, "booleanValue")?,
@@ -1281,7 +1689,7 @@ fn query_preferences_snapshot(
     })?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS || rows.len() >= program.1 {
+    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS || rows.len() >= program.maximum_scan_rows {
         return Err(invalid("normalized preferences exceed their row bound"));
     }
     for row in &rows {
@@ -1377,11 +1785,11 @@ fn query_person_detail(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "person_detail_v1")
+        .find(|program| program.query_id == "person_detail_v1")
         .ok_or(invalid("normalized person detail program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(params![request.person_id], |row| {
         let reach_outs_json: String = row.get("reachOutsJson")?;
         let reach_outs: Vec<NormalizedPersonReachOutV1> = serde_json::from_str(&reach_outs_json)
@@ -1412,7 +1820,7 @@ fn query_person_detail(
     })?;
     let mut persons = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if persons.len() > program.1 {
+    if persons.len() > program.maximum_scan_rows {
         return Err(invalid("normalized person detail exceeded its row bound"));
     }
     if let Some(person) = persons.first() {
@@ -1499,11 +1907,11 @@ fn query_account_detail(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "account_detail_v1")
+        .find(|program| program.query_id == "account_detail_v1")
         .ok_or(invalid("normalized account detail program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(params![request.account_id], |row| {
         let follow_roster_active = row
             .get::<_, Option<i64>>("followRosterActive")?
@@ -1542,7 +1950,7 @@ fn query_account_detail(
     })?;
     let mut accounts = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if accounts.len() > program.1 {
+    if accounts.len() > program.maximum_scan_rows {
         return Err(invalid("normalized account detail exceeded its row bound"));
     }
     if let Some(account) = accounts.first() {
@@ -1629,7 +2037,7 @@ fn query_person_graph_page(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "person_graph_page_v1")
+        .find(|program| program.query_id == "person_graph_page_v1")
         .ok_or(invalid("normalized Person graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
@@ -1643,7 +2051,7 @@ fn query_person_graph_page(
     }) {
         return Err(invalid("normalized Person graph page cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
@@ -1673,7 +2081,7 @@ fn query_person_graph_page(
     )?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > program.1 {
+    if rows.len() > program.maximum_scan_rows {
         return Err(invalid(
             "normalized Person graph page exceeded its row bound",
         ));
@@ -1770,7 +2178,7 @@ fn query_account_graph_page(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "account_graph_page_v1")
+        .find(|program| program.query_id == "account_graph_page_v1")
         .ok_or(invalid("normalized Account graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
@@ -1784,7 +2192,7 @@ fn query_account_graph_page(
     }) {
         return Err(invalid("normalized Account graph page cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
@@ -1829,7 +2237,7 @@ fn query_account_graph_page(
     )?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > program.1 {
+    if rows.len() > program.maximum_scan_rows {
         return Err(invalid(
             "normalized Account graph page exceeded its row bound",
         ));
@@ -1932,7 +2340,7 @@ fn query_rss_feed_graph_page(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "rss_feed_graph_page_v1")
+        .find(|program| program.query_id == "rss_feed_graph_page_v1")
         .ok_or(invalid("normalized RSS feed graph page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
@@ -1946,7 +2354,7 @@ fn query_rss_feed_graph_page(
     }) {
         return Err(invalid("normalized RSS feed graph page cursor is stale"));
     }
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
@@ -1971,7 +2379,7 @@ fn query_rss_feed_graph_page(
     )?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > program.1 {
+    if rows.len() > program.maximum_scan_rows {
         return Err(invalid(
             "normalized RSS feed graph page exceeded its row bound",
         ));
@@ -2050,11 +2458,11 @@ fn query_item_detail(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "item_detail_v1")
+        .find(|program| program.query_id == "item_detail_v1")
         .ok_or(invalid("normalized item detail program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let rows = statement.query_map(params![request.global_id], |row| {
         Ok(NormalizedItemDetailV1 {
             card: feed_card(row)?,
@@ -2063,7 +2471,7 @@ fn query_item_detail(
         })
     })?;
     let mut items = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-    if items.len() > program.1 {
+    if items.len() > program.maximum_scan_rows {
         return Err(invalid("normalized item detail exceeded its row bound"));
     }
     drop(statement);
@@ -2115,11 +2523,11 @@ fn query_item_reader_body(
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.0 == "item_reader_body_v1")
+        .find(|program| program.query_id == "item_reader_body_v1")
         .ok_or(invalid("normalized item reader body program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let mut statement = transaction.prepare(program.2)?;
+    let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(
         params![
             request.global_id,
@@ -2141,7 +2549,7 @@ fn query_item_reader_body(
     )?;
     let rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > program.1 {
+    if rows.len() > program.maximum_scan_rows {
         return Err(invalid(
             "normalized item reader body exceeded its row bound",
         ));
@@ -2274,6 +2682,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::FacetSummary(request) => Ok(
             NormalizedQueryResponseV1::FacetSummary(query_facet_summary(connection, request)?),
         ),
+        NormalizedQueryRequestV1::FeedBrowsePage(request) => {
+            Ok(NormalizedQueryResponseV1::FeedBrowsePage(Box::new(
+                query_feed_browse_page(connection, request)?,
+            )))
+        }
         NormalizedQueryRequestV1::FeedPage(request) => Ok(NormalizedQueryResponseV1::FeedPage(
             query_feed_page(connection, request)?,
         )),
@@ -2332,6 +2745,202 @@ mod tests {
             "AaqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAAAAAAAAAAwAAAAAAAAAIgAAAZ5wRIgAAAh4Oml0ZW0tMQ"
         );
         assert_eq!(decode_cursor(&encoded).expect("decode cursor"), cursor);
+        let browse_cursor = FeedBrowseCursorV2 {
+            filter_digest: "60d920ddd5b896d7e24cb500f1ad80958fdaa871fa9707dad0faaf2631d75bb2"
+                .to_owned(),
+            generation_id: "a".repeat(64),
+            transition_sequence: 12,
+            projection_revision: 34,
+            priority: 91,
+            published_at: 1_780_000_000_000,
+            global_id: "x:item-1".to_owned(),
+        };
+        let browse_encoded =
+            encode_feed_browse_cursor(&browse_cursor).expect("encode browse cursor");
+        assert_eq!(
+            browse_encoded,
+            "AqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYNkg3dW4ltfiTLUA8a2AlY_aqHH6lwfa0PqvJjHXW7IAAAAAAAAADAAAAAAAAAAiWwAAAZ5wRIgAAAh4Oml0ZW0tMQ"
+        );
+        assert_eq!(
+            decode_feed_browse_cursor(&browse_encoded).expect("decode browse cursor"),
+            browse_cursor
+        );
+    }
+
+    #[test]
+    fn native_feed_browse_pages_both_directions_through_the_rank_index() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "feed_browse_page_v3")
+            .expect("browse program");
+        for sql in [
+            program.sql,
+            program.reverse_sql.expect("reverse browse program"),
+        ] {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .expect("browse query plan");
+            let plan = statement
+                .query_map(
+                    params![
+                        0,
+                        0,
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        "posts",
+                        0,
+                        "[]",
+                        "[]",
+                        Option::<i64>::None,
+                        Option::<i64>::None,
+                        "",
+                        3
+                    ],
+                    |row| row.get::<_, String>(3),
+                )
+                .expect("browse plan rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("browse plan");
+            assert!(plan
+                .iter()
+                .any(|detail| detail.contains("library_feed_items_browse_rank_all")));
+            assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, rss_feed_url,
+                    priority, hidden, saved, archived, updated_at)
+                   VALUES
+                     ('a', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 1, 0, 300),
+                     ('b', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 0, 0, 300),
+                     ('c', 'saved', 'article', 400, 400, 'grace', 'grace', 'Grace', 'https://example.com/feed', 80, 0, 0, 0, 400),
+                     ('story', 'x', 'story', 500, 500, 'ada', 'ada', 'Ada', NULL, 95, 0, 0, 0, 500),
+                     ('hidden', 'x', 'post', 600, 600, 'ada', 'ada', 'Ada', NULL, 100, 1, 0, 0, 600),
+                     ('archived', 'x', 'post', 700, 700, 'ada', 'ada', 'Ada', NULL, 99, 0, 0, 1, 700);
+                 INSERT INTO library_feed_item_tags (global_id, tag)
+                   VALUES ('a', 'important');
+                 INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+                   VALUES ('a', 'essay', 1.0, 1);",
+                "a".repeat(64)
+            ))
+            .expect("browse fixture");
+        let filter = NormalizedFeedBrowseFilterV1 {
+            archived_only: false,
+            author_id: None,
+            feed_url: None,
+            platform: None,
+            saved_only: false,
+            schema_version: 1,
+            show_hidden: false,
+            signals: vec![],
+            social_content_filter: "posts".to_owned(),
+            tags: vec![],
+        };
+        assert_eq!(
+            feed_browse_filter_digest(&NormalizedFeedBrowseFilterV1 {
+                archived_only: false,
+                author_id: None,
+                feed_url: None,
+                platform: Some("x".to_owned()),
+                saved_only: true,
+                schema_version: 1,
+                show_hidden: false,
+                signals: vec!["essay".to_owned()],
+                social_content_filter: "posts".to_owned(),
+                tags: vec!["important".to_owned()],
+            })
+            .expect("filter digest"),
+            "60d920ddd5b896d7e24cb500f1ad80958fdaa871fa9707dad0faaf2631d75bb2"
+        );
+        let request = NormalizedFeedBrowsePageRequestV3 {
+            cancellation_id: "cancel-browse-1".to_owned(),
+            cursor: None,
+            direction: "next".to_owned(),
+            filter,
+            limit: 2,
+            ranking_clock_ms: 1_000,
+            reader_session_id: "reader-browse-1".to_owned(),
+            recommendation_order_schema_version: 1,
+            schema_version: 3,
+        };
+        let NormalizedQueryResponseV1::FeedBrowsePage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FeedBrowsePage(request.clone()),
+        )
+        .expect("first browse page") else {
+            panic!("browse response");
+        };
+        assert_eq!(first.total_count, 3);
+        assert_eq!(
+            first
+                .rows
+                .iter()
+                .map(|row| row.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert!(first.previous_cursor.is_none());
+        let NormalizedQueryResponseV1::FeedBrowsePage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FeedBrowsePage(NormalizedFeedBrowsePageRequestV3 {
+                cursor: first.next_cursor.clone(),
+                ..request.clone()
+            }),
+        )
+        .expect("second browse page") else {
+            panic!("browse response");
+        };
+        assert_eq!(second.rows[0].global_id, "c");
+        assert!(second.next_cursor.is_none());
+        let NormalizedQueryResponseV1::FeedBrowsePage(previous) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FeedBrowsePage(NormalizedFeedBrowsePageRequestV3 {
+                cursor: second.previous_cursor,
+                direction: "previous".to_owned(),
+                ..request.clone()
+            }),
+        )
+        .expect("previous browse page") else {
+            panic!("browse response");
+        };
+        assert_eq!(
+            previous
+                .rows
+                .iter()
+                .map(|row| row.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert!(previous.previous_cursor.is_none());
+        assert!(previous.next_cursor.is_some());
+        let changed_filter = NormalizedFeedBrowseFilterV1 {
+            saved_only: true,
+            ..request.filter.clone()
+        };
+        let changed_filter_error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FeedBrowsePage(NormalizedFeedBrowsePageRequestV3 {
+                cursor: first.next_cursor,
+                filter: changed_filter,
+                ..request
+            }),
+        )
+        .expect_err("changed filter cursor");
+        assert!(changed_filter_error
+            .to_string()
+            .contains("belongs to a different filter"));
     }
 
     #[test]
@@ -2340,10 +2949,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let facet_program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "library_facet_summary_v1")
+            .find(|program| program.query_id == "library_facet_summary_v1")
             .expect("facet program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", facet_program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", facet_program.sql))
             .expect("facet query plan");
         let plan = plan_statement
             .query_map([], |row| row.get::<_, String>(3))
@@ -2503,10 +3112,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "person_timeline_v1")
+            .find(|program| program.query_id == "person_timeline_v1")
             .expect("person timeline program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
             .expect("person timeline plan");
         let plan = plan_statement
             .query_map(params!["person-1", Option::<i64>::None, "", 2], |row| {
@@ -2626,10 +3235,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "background_item_page_v1")
+            .find(|program| program.query_id == "background_item_page_v1")
             .expect("item scan program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
             .expect("item scan plan");
         let plan = plan_statement
             .query_map(params![Option::<String>::None, 3], |row| {
@@ -2728,10 +3337,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "change_feed_v1")
+            .find(|program| program.query_id == "change_feed_v1")
             .expect("change-feed program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
             .expect("change-feed plan");
         let plan = plan_statement
             .query_map(params![7, 0, 255, 5], |row| row.get::<_, String>(3))
@@ -2926,10 +3535,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let item_program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "item_detail_v1")
+            .find(|program| program.query_id == "item_detail_v1")
             .expect("item detail program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", item_program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", item_program.sql))
             .expect("item detail plan");
         let plan = plan_statement
             .query_map(["item-1"], |row| row.get::<_, String>(3))
@@ -3078,10 +3687,10 @@ mod tests {
             .expect("fixture");
         let account_program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "account_detail_v1")
+            .find(|program| program.query_id == "account_detail_v1")
             .expect("account detail program");
         let plan = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", account_program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", account_program.sql))
             .expect("account detail plan")
             .query_map(params!["account-1"], |row| row.get::<_, String>(3))
             .expect("plan rows")
@@ -3174,10 +3783,10 @@ mod tests {
         ] {
             let program = SQLITE_QUERY_PROGRAMS
                 .iter()
-                .find(|program| program.0 == query_id)
+                .find(|program| program.query_id == query_id)
                 .expect("graph page program");
             let plan = connection
-                .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
                 .expect("graph page plan")
                 .query_map(params![Option::<String>::None, 2], |row| {
                     row.get::<_, String>(3)
@@ -3361,10 +3970,10 @@ mod tests {
         install_normalized_schema_v1(&connection).expect("schema");
         let reader_program = SQLITE_QUERY_PROGRAMS
             .iter()
-            .find(|program| program.0 == "item_reader_body_v1")
+            .find(|program| program.query_id == "item_reader_body_v1")
             .expect("reader body program");
         let mut plan_statement = connection
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", reader_program.2))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", reader_program.sql))
             .expect("reader body plan");
         let plan = plan_statement
             .query_map(params!["item-1", "preserved", 65_534, 6], |row| {

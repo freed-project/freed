@@ -24,8 +24,9 @@
 > registry now produce exact bounded native checkpoint pages directly from
 > SQLite. Native staging accepts bounded canonical pages, rejects changed
 > replay, verifies the complete digest and content graph, and activates all
-> normalized rows in one transaction. Browser import, complete mutation and
-> query cutover, PWA SQLite, selective content, one-epoch migration,
+> normalized rows in one transaction. Browser SQLite activation and fourteen
+> equivalent generated query programs are implemented. Complete mutation and
+> product query cutover, selective content, one-epoch migration,
 > retired-runtime deletion, and physical-device acceptance remain open.
 
 ## Current SQLite sync work
@@ -42,8 +43,12 @@
 - [ ] Freeze one generated protocol registry for normalized checkpoint records,
       operation segments, signed intents, results, content descriptors, range
       indexes, manifests, and control tuples.
-- [ ] Remove the Library shell checkpoint record and every whole FeedItem JSON
+- [x] Remove the Library shell checkpoint record and every whole FeedItem JSON
       checkpoint row.
+- [x] Generate equivalent native Rust and browser SQLite ranked-feed programs
+      with complete filters, forward and reverse keyset paging, source-fenced
+      cursors, a 129-row scan ceiling, and no historical source-enumeration
+      field.
 - [x] Stage and activate typed normalized records through bounded native SQLite
       transactions. Exact replay is idempotent, changed replay fails, finite
       fractions use exact binary64 wrappers, incomplete content and foreign

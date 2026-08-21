@@ -131,20 +131,55 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    const browse = createLibraryCoreSqliteQueryWorkerRequest(
+      "request-feed-browse",
+      {
+        cancellationId: "cancel-feed-browse" as never,
+        cursor: null,
+        direction: "next",
+        filter: {
+          archivedOnly: false,
+          authorId: null,
+          feedUrl: null,
+          platform: null,
+          savedOnly: false,
+          schemaVersion: 1,
+          showHidden: false,
+          signals: [],
+          socialContentFilter: "all",
+          tags: [],
+        },
+        limit: 64,
+        queryId: "feed_browse_page_v3",
+        rankingClockMs: 1_000,
+        readerSessionId: "reader-feed-browse" as never,
+        recommendationOrderSchemaVersion: 1,
+        schemaVersion: 3,
+      },
+    );
+    expect(browse.kind).toBe("query");
+    if (browse.kind !== "query") throw new Error("browse query is invalid");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...browse,
+        query: { ...browse.query, sourceSequence: 7 },
+      }),
+    ).toThrow(/browse request fields do not match schema version 3/);
   });
 
   it("carries only closed device-local graph mutations", () => {
-    const request = createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
-      "request-layout",
-      {
-        entityId: "person-1",
-        graphX: 12.5,
-        graphY: -8.25,
-        mutationId: "person_graph_position_set_v1",
-        schemaVersion: 1,
-        updatedAt: 42,
-      },
-    );
+    const request =
+      createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
+        "request-layout",
+        {
+          entityId: "person-1",
+          graphX: 12.5,
+          graphY: -8.25,
+          mutationId: "person_graph_position_set_v1",
+          schemaVersion: 1,
+          updatedAt: 42,
+        },
+      );
     expect(request.kind).toBe("mutate_device_graph_layout");
     if (request.kind !== "mutate_device_graph_layout") {
       throw new Error("device graph layout request lane is invalid");

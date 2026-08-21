@@ -31,6 +31,11 @@ import type {
 } from "./feed-page-contracts.js";
 import { parseLibraryCoreFeedPageRequestV1 } from "./feed-page-contracts.js";
 import {
+  parseLibraryCoreFeedBrowsePageRequestV3,
+  type LibraryCoreFeedBrowsePageRequestV3,
+  type LibraryCoreFeedBrowsePageResponseV3,
+} from "./feed-browse-page-contracts.js";
+import {
   parseLibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryResponseV1,
@@ -87,6 +92,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreAccountGraphPageRequestV1
   | LibraryCoreChangeFeedRequestV1
   | LibraryCoreFacetSummaryRequestV1
+  | LibraryCoreFeedBrowsePageRequestV3
   | LibraryCoreFeedPageRequestV1
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
@@ -107,25 +113,27 @@ export type LibraryCoreSqliteQueryResponseFor<
       ? LibraryCoreAccountGraphPageResponseV1
       : T extends LibraryCoreChangeFeedRequestV1
         ? LibraryCoreChangeFeedResponseV1
-        : T extends LibraryCoreFeedPageRequestV1
-          ? LibraryCoreFeedPageResponseV1
-          : T extends LibraryCoreItemDetailRequestV1
-            ? LibraryCoreItemDetailResponseV1
-            : T extends LibraryCoreItemReaderBodyRequestV1
-              ? LibraryCoreItemReaderBodyResponseV1
-              : T extends LibraryCoreItemScanRequestV1
-                ? LibraryCoreItemScanResponseV1
-                : T extends LibraryCorePersonDetailRequestV1
-                  ? LibraryCorePersonDetailResponseV1
-                  : T extends LibraryCorePersonGraphPageRequestV1
-                    ? LibraryCorePersonGraphPageResponseV1
-                    : T extends LibraryCorePersonTimelineRequestV1
-                      ? LibraryCorePersonTimelineResponseV1
-                      : T extends LibraryCoreRssFeedGraphPageRequestV1
-                        ? LibraryCoreRssFeedGraphPageResponseV1
-                        : T extends LibraryCorePreferencesSnapshotRequestV1
-                          ? LibraryCorePreferencesSnapshotResponseV1
-                          : never;
+        : T extends LibraryCoreFeedBrowsePageRequestV3
+          ? LibraryCoreFeedBrowsePageResponseV3
+          : T extends LibraryCoreFeedPageRequestV1
+            ? LibraryCoreFeedPageResponseV1
+            : T extends LibraryCoreItemDetailRequestV1
+              ? LibraryCoreItemDetailResponseV1
+              : T extends LibraryCoreItemReaderBodyRequestV1
+                ? LibraryCoreItemReaderBodyResponseV1
+                : T extends LibraryCoreItemScanRequestV1
+                  ? LibraryCoreItemScanResponseV1
+                  : T extends LibraryCorePersonDetailRequestV1
+                    ? LibraryCorePersonDetailResponseV1
+                    : T extends LibraryCorePersonGraphPageRequestV1
+                      ? LibraryCorePersonGraphPageResponseV1
+                      : T extends LibraryCorePersonTimelineRequestV1
+                        ? LibraryCorePersonTimelineResponseV1
+                        : T extends LibraryCoreRssFeedGraphPageRequestV1
+                          ? LibraryCoreRssFeedGraphPageResponseV1
+                          : T extends LibraryCorePreferencesSnapshotRequestV1
+                            ? LibraryCorePreferencesSnapshotResponseV1
+                            : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -190,6 +198,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreAccountGraphPageResponseV1
   | LibraryCoreChangeFeedResponseV1
   | LibraryCoreFacetSummaryResponseV1
+  | LibraryCoreFeedBrowsePageResponseV3
   | LibraryCoreFeedPageResponseV1
   | LibraryCoreItemDetailResponseV1
   | LibraryCoreItemReaderBodyResponseV1
@@ -246,13 +255,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout"
         ? ["kind", "mutation", "protocolVersion", "requestId"]
-      : value.kind === "begin_normalized_checkpoint_stage"
-        ? ["kind", "protocolVersion", "requestId", "stage"]
-        : value.kind === "append_normalized_checkpoint_stage_page"
-          ? ["kind", "page", "protocolVersion", "requestId"]
-          : value.kind === "activate_normalized_checkpoint_stage"
-            ? ["kind", "protocolVersion", "requestId", "stageId"]
-            : ["kind", "protocolVersion", "requestId"];
+        : value.kind === "begin_normalized_checkpoint_stage"
+          ? ["kind", "protocolVersion", "requestId", "stage"]
+          : value.kind === "append_normalized_checkpoint_stage_page"
+            ? ["kind", "page", "protocolVersion", "requestId"]
+            : value.kind === "activate_normalized_checkpoint_stage"
+              ? ["kind", "protocolVersion", "requestId", "stageId"]
+              : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -289,31 +298,40 @@ export function parseLibraryCoreSqliteWorkerRequest(
             ? parseLibraryCoreFacetSummaryRequestV1(value.query)
             : value.query.queryId === "change_feed_v1"
               ? parseLibraryCoreChangeFeedRequestV1(value.query)
-              : value.query.queryId === "item_detail_v1"
-                ? parseLibraryCoreItemDetailRequestV1(value.query)
-                : value.query.queryId === "item_reader_body_v1"
-                  ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
-                  : value.query.queryId === "background_item_page_v1"
-                    ? parseLibraryCoreItemScanRequestV1(value.query)
-                    : value.query.queryId === "person_detail_v1"
-                      ? parseLibraryCorePersonDetailRequestV1(value.query)
-                      : value.query.queryId === "person_graph_page_v1"
-                        ? parseLibraryCorePersonGraphPageRequestV1(value.query)
-                        : value.query.queryId === "person_timeline_v1"
-                          ? parseLibraryCorePersonTimelineRequestV1(value.query)
-                          : value.query.queryId === "rss_feed_graph_page_v1"
-                            ? parseLibraryCoreRssFeedGraphPageRequestV1(
+              : value.query.queryId === "feed_browse_page_v3"
+                ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
+                : value.query.queryId === "item_detail_v1"
+                  ? parseLibraryCoreItemDetailRequestV1(value.query)
+                  : value.query.queryId === "item_reader_body_v1"
+                    ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
+                    : value.query.queryId === "background_item_page_v1"
+                      ? parseLibraryCoreItemScanRequestV1(value.query)
+                      : value.query.queryId === "person_detail_v1"
+                        ? parseLibraryCorePersonDetailRequestV1(value.query)
+                        : value.query.queryId === "person_graph_page_v1"
+                          ? parseLibraryCorePersonGraphPageRequestV1(
+                              value.query,
+                            )
+                          : value.query.queryId === "person_timeline_v1"
+                            ? parseLibraryCorePersonTimelineRequestV1(
                                 value.query,
                               )
-                            : value.query.queryId === "preferences_snapshot_v1"
-                              ? parseLibraryCorePreferencesSnapshotRequestV1(
+                            : value.query.queryId === "rss_feed_graph_page_v1"
+                              ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                   value.query,
                                 )
-                              : parseLibraryCoreFeedPageRequestV1(value.query)
+                              : value.query.queryId ===
+                                  "preferences_snapshot_v1"
+                                ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                    value.query,
+                                  )
+                                : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {
-    const mutation = parseLibraryCoreDeviceGraphLayoutMutationV1(value.mutation);
+    const mutation = parseLibraryCoreDeviceGraphLayoutMutationV1(
+      value.mutation,
+    );
     if (!mutation.ok) throw new TypeError(mutation.error);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;

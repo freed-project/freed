@@ -14,12 +14,17 @@ import {
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
   decodeLibraryCoreFeedPageCursorV1,
+  decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
   encodeLibraryCoreChangeFeedCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
+  encodeLibraryCoreFeedBrowsePageCursorV2,
+  libraryCoreFeedBrowseFilterDigestV1,
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
+  parseLibraryCoreFeedBrowsePageRequestV3,
+  parseLibraryCoreFeedBrowsePageResponseV3,
   parseLibraryCoreChangeFeedRequestV1,
   parseLibraryCoreChangeFeedResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
@@ -73,6 +78,8 @@ import {
   type LibraryCoreChangeFeedResponseV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreFeedBrowsePageRequestV3,
+  type LibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryResponseV1,
   type LibraryCorePreferencesSnapshotRequestV1,
@@ -853,6 +860,10 @@ export class PwaLibraryCoreSqliteEngine {
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "feed_page_v1":
         return this.#queryFeedPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "feed_browse_page_v3":
+        return this.#queryFeedBrowsePage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "item_detail_v1":
@@ -1872,6 +1883,136 @@ export class PwaLibraryCoreSqliteEngine {
       );
     }
     const parsed = parseLibraryCoreFeedPageResponseV1(response, request.value);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryFeedBrowsePage(
+    input: LibraryCoreFeedBrowsePageRequestV3,
+  ): LibraryCoreFeedBrowsePageResponseV3 {
+    const request = parseLibraryCoreFeedBrowsePageRequestV3(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const filterDigest = libraryCoreFeedBrowseFilterDigestV1(
+      request.value.filter,
+    );
+    let cursorPriority: number | null = null;
+    let cursorPublishedAt: number | null = null;
+    let cursorGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreFeedBrowsePageCursorV2(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.generationId !== generationId ||
+        cursor.value.transitionSequence !== sourceRevision ||
+        cursor.value.projectionRevision !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite browse cursor is stale");
+      }
+      cursorPriority = cursor.value.priority;
+      cursorPublishedAt = cursor.value.publishedAt;
+      cursorGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.feed_browse_page_v3;
+    const filterBindings: SqlValue[] = [
+      request.value.filter.archivedOnly ? 1 : 0,
+      request.value.filter.showHidden ? 1 : 0,
+      request.value.filter.platform,
+      request.value.filter.authorId,
+      request.value.filter.feedUrl,
+      request.value.filter.socialContentFilter,
+      request.value.filter.savedOnly ? 1 : 0,
+      JSON.stringify(request.value.filter.tags),
+      JSON.stringify(request.value.filter.signals),
+    ];
+    const rawRows = this.#database.exec({
+      sql:
+        request.value.direction === "previous"
+          ? program.reverseSql
+          : program.sql,
+      bind: [
+        ...filterBindings,
+        cursorPriority,
+        cursorPublishedAt,
+        cursorGlobalId,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite browse query exceeded its row bound");
+    }
+    const hasMoreInDirection = rawRows.length > request.value.limit;
+    const selectedRows = rawRows.slice(0, request.value.limit);
+    if (request.value.direction === "previous") selectedRows.reverse();
+    const rows = selectedRows.map((row) => ({
+      card: feedCardFromSqliteRow(row),
+      priority: safeInteger(row.browsePriority, "browse priority"),
+    }));
+    if (rows.some((row) => row.priority < 0 || row.priority > 100)) {
+      throw new Error("PWA Library SQLite browse priority is invalid");
+    }
+    const edge = (row: (typeof rows)[number] | undefined) =>
+      row
+        ? {
+            cursor: encodeLibraryCoreFeedBrowsePageCursorV2({
+              filterDigest,
+              generationId: generationId as never,
+              globalId: row.card.globalId,
+              priority: row.priority,
+              projectionRevision: sourceRevision,
+              publishedAt: row.card.publishedAt ?? 0,
+              transitionSequence: sourceRevision,
+            }),
+            order: {
+              globalId: row.card.globalId,
+              priority: row.priority,
+              publishedAt: row.card.publishedAt ?? 0,
+            },
+          }
+        : null;
+    const nextAvailable =
+      request.value.direction === "next" ? hasMoreInDirection : rows.length > 0;
+    const previousAvailable =
+      request.value.direction === "previous"
+        ? hasMoreInDirection
+        : request.value.cursor !== null && rows.length > 0;
+    const next = nextAvailable ? edge(rows.at(-1)) : null;
+    const previous = previousAvailable ? edge(rows[0]) : null;
+    const response = {
+      filter: request.value.filter,
+      nextCursor: next?.cursor ?? null,
+      nextOrder: next?.order ?? null,
+      previousCursor: previous?.cursor ?? null,
+      previousOrder: previous?.order ?? null,
+      queryId: "feed_browse_page_v3" as const,
+      rankingClockMs: request.value.rankingClockMs,
+      recommendationOrderSchemaVersion:
+        request.value.recommendationOrderSchemaVersion,
+      rows: rows.map((row) => row.card),
+      schemaVersion: 3 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      totalCount: safeInteger(
+        this.#database.exec({
+          sql: program.countSql,
+          bind: filterBindings,
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "browse total count",
+      ),
+    };
+    const parsed = parseLibraryCoreFeedBrowsePageResponseV3(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

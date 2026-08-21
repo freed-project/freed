@@ -1396,10 +1396,17 @@ describe("Library Core query registry", () => {
       maximumResponseBytes: 2 * 1_048_576,
       totalCountIntent: "snapshot_exact",
     });
-    // Backward paging must not introduce a second ordering.
-    expect(LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.stableSort).toEqual(
-      LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v1.stableSort,
-    );
+    // Backward paging mirrors one normalized primary-key order. The legacy
+    // source-enumeration sequence is not part of the final SQLite model.
+    expect(LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.stableSort).toEqual({
+      columns: [
+        { column: "priority", direction: "desc" },
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    });
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.blockers,
     ).not.toContain("runtime_adapter_unimplemented");

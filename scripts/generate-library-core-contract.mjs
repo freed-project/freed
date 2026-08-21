@@ -113,8 +113,7 @@ function assertContract(contract) {
   assertSortedUnique(contract.queries, "queries");
   const capabilityProfileKeys = Object.keys(contract.capabilityProfiles).sort();
   if (
-    capabilityProfileKeys.join(",") !==
-    "legacyEditor,primaryWriter,scraper"
+    capabilityProfileKeys.join(",") !== "legacyEditor,primaryWriter,scraper"
   ) {
     throw new TypeError("SQLite contract capability profiles are invalid");
   }
@@ -172,9 +171,7 @@ function assertContract(contract) {
         "remove",
         "rss_feed_upsert",
         "text_assignment",
-      ].includes(
-        program.payloadKind,
-      ) ||
+      ].includes(program.payloadKind) ||
       typeof program.requiresExistingTarget !== "boolean" ||
       !Number.isSafeInteger(program.maximumMembers) ||
       program.maximumMembers < 1 ||
@@ -222,12 +219,18 @@ function assertContract(contract) {
     }
   }
   for (const [queryId, program] of Object.entries(contract.queryPrograms)) {
+    const queryProgramKeys = Object.keys(program).sort().join(",");
     if (
       !contract.queries.includes(queryId) ||
-      Object.keys(program).sort().join(",") !==
-        "countSql,maximumScanRows,sql" ||
+      ![
+        "countSql,maximumScanRows,sql",
+        "countSql,maximumScanRows,reverseSql,sql",
+      ].includes(queryProgramKeys) ||
       typeof program.sql !== "string" ||
       program.sql.length === 0 ||
+      (program.reverseSql !== undefined &&
+        (typeof program.reverseSql !== "string" ||
+          program.reverseSql.length === 0)) ||
       typeof program.countSql !== "string" ||
       program.countSql.length === 0 ||
       !Number.isSafeInteger(program.maximumScanRows) ||
@@ -568,7 +571,7 @@ function rustSource(contract, schemaDigest) {
   const queryPrograms = Object.entries(contract.queryPrograms)
     .map(
       ([queryId, program]) =>
-        `    (${JSON.stringify(queryId)}, ${program.maximumScanRows}, ${JSON.stringify(program.sql)}, ${JSON.stringify(program.countSql)}),`,
+        `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql)}, reverse_sql: ${program.reverseSql === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql)})`}, count_sql: ${JSON.stringify(program.countSql)} },`,
     )
     .join("\n");
   const mutationPrograms = Object.entries(contract.mutationPrograms)
@@ -690,7 +693,16 @@ pub const QUERY_IDS: &[&str] = &[
 ${queries}
 ];
 
-pub const SQLITE_QUERY_PROGRAMS: &[(&str, usize, &str, &str)] = &[
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteQueryProgram {
+    pub query_id: &'static str,
+    pub maximum_scan_rows: usize,
+    pub sql: &'static str,
+    pub reverse_sql: Option<&'static str>,
+    pub count_sql: &'static str,
+}
+
+pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 ${queryPrograms}
 ];
 

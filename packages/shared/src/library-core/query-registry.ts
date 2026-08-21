@@ -830,7 +830,6 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       columns: [
         { column: "priority", direction: "desc" },
         { column: "publishedAt", direction: "desc" },
-        { column: "sourceSequence", direction: "asc" },
         { column: "globalId", direction: "asc" },
       ],
       textCollation: "binary",

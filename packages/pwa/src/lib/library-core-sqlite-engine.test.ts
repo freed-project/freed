@@ -6,6 +6,7 @@ import sqlite3InitModule, {
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
@@ -16,6 +17,7 @@ import {
   splitLibraryCoreContentV1,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreOperationInstanceId,
+  type LibraryCoreFeedBrowseFilterV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -827,6 +829,143 @@ describe("PWA Library Core SQLite engine", () => {
         cursor: firstRssFeedGraphPage.nextCursor,
       }),
     ).toThrow(/cursor is stale/);
+  });
+
+  it("pages the ranked feed forward and backward through one indexed contract", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, rss_feed_url,
+         priority, hidden, saved, archived, updated_at)
+      VALUES
+        ('a', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 1, 0, 300),
+        ('b', 'x', 'post', 300, 300, 'ada', 'ada', 'Ada', NULL, 90.4, 0, 0, 0, 300),
+        ('c', 'saved', 'article', 400, 400, 'grace', 'grace', 'Grace', 'https://example.com/feed', 80, 0, 0, 0, 400),
+        ('story', 'x', 'story', 500, 500, 'ada', 'ada', 'Ada', NULL, 95, 0, 0, 0, 500),
+        ('hidden', 'x', 'post', 600, 600, 'ada', 'ada', 'Ada', NULL, 100, 1, 0, 0, 600),
+        ('archived', 'x', 'post', 700, 700, 'ada', 'ada', 'Ada', NULL, 99, 0, 0, 1, 700);
+      INSERT INTO library_feed_item_tags (global_id, tag)
+      VALUES ('a', 'important');
+      INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+      VALUES ('a', 'essay', 1.0, 1);
+    `);
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.feed_browse_page_v3;
+    const planBindings = [
+      0,
+      0,
+      null,
+      null,
+      null,
+      "posts",
+      0,
+      "[]",
+      "[]",
+      null,
+      null,
+      "",
+      3,
+    ];
+    for (const sql of [program.sql, program.reverseSql]) {
+      const details = database
+        .exec({
+          sql: `EXPLAIN QUERY PLAN ${sql}`,
+          bind: planBindings,
+          rowMode: "array",
+          returnValue: "resultRows",
+        })
+        .map((row) => String((row as unknown[])[3]));
+      expect(
+        details.some((detail) =>
+          detail.includes("library_feed_items_browse_rank_all"),
+        ),
+      ).toBe(true);
+      expect(details.every((detail) => !detail.includes("TEMP B-TREE"))).toBe(
+        true,
+      );
+    }
+    const filter: LibraryCoreFeedBrowseFilterV1 = {
+      archivedOnly: false,
+      authorId: null,
+      feedUrl: null,
+      platform: null,
+      savedOnly: false,
+      schemaVersion: 1 as const,
+      showHidden: false,
+      signals: [] as const,
+      socialContentFilter: "posts" as const,
+      tags: [] as const,
+    };
+    const request = {
+      cancellationId: operationId("cancel-browse-1"),
+      cursor: null,
+      direction: "next" as const,
+      filter,
+      limit: 2,
+      queryId: "feed_browse_page_v3" as const,
+      rankingClockMs: 1_000,
+      readerSessionId: operationId("reader-browse-1"),
+      recommendationOrderSchemaVersion: 1 as const,
+      schemaVersion: 3 as const,
+    };
+    const first = engine.query(request);
+    expect(first.totalCount).toBe(3);
+    expect(first.rows.map((row) => row.globalId)).toEqual(["a", "b"]);
+    expect(first.previousCursor).toBeNull();
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.query({ ...request, cursor: first.nextCursor });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["c"]);
+    expect(second.nextCursor).toBeNull();
+    expect(second.previousCursor).not.toBeNull();
+    const previous = engine.query({
+      ...request,
+      cursor: second.previousCursor,
+      direction: "previous",
+    });
+    expect(previous.rows.map((row) => row.globalId)).toEqual(["a", "b"]);
+    expect(previous.nextCursor).not.toBeNull();
+    expect(previous.previousCursor).toBeNull();
+
+    const matching = (filterOverrides: Partial<typeof filter>) =>
+      engine
+        .query({
+          ...request,
+          filter: { ...filter, ...filterOverrides },
+          limit: 10,
+        })
+        .rows.map((row) => row.globalId);
+    expect(matching({ savedOnly: true })).toEqual(["a"]);
+    expect(matching({ tags: ["important"] })).toEqual(["a"]);
+    expect(matching({ signals: ["essay"] })).toEqual(["a"]);
+    expect(matching({ platform: "rss" })).toEqual(["c"]);
+    expect(matching({ showHidden: true })).toEqual(["hidden", "a", "b", "c"]);
+    expect(matching({ archivedOnly: true })).toEqual(["archived"]);
+    expect(matching({ socialContentFilter: "stories" })).toEqual(["story"]);
+    expect(() =>
+      engine.query({
+        ...request,
+        cursor: first.nextCursor,
+        filter: { ...filter, savedOnly: true },
+      }),
+    ).toThrow("cursor belongs to a different filter");
+
+    database.exec(
+      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1; UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor }),
+    ).toThrow("browse cursor is stale");
   });
 
   it("stages bounded normalized records idempotently and rejects changed replay", () => {

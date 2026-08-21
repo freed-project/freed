@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS library_feed_items (
   liked_at INTEGER,
   liked_synced_at INTEGER,
   seen_synced_at INTEGER,
-  priority REAL,
+  priority REAL CHECK (priority IS NULL OR (priority >= 0 AND priority <= 100)),
   priority_computed_at INTEGER,
   source_url TEXT,
   sample_batch_id TEXT,
@@ -145,6 +145,13 @@ CREATE TABLE IF NOT EXISTS library_feed_items (
 
 CREATE INDEX IF NOT EXISTS library_feed_items_browse
   ON library_feed_items(archived, hidden, published_at DESC, global_id);
+CREATE INDEX IF NOT EXISTS library_feed_items_browse_rank_all
+  ON library_feed_items(
+    archived,
+    CAST(round(COALESCE(priority, 0)) AS INTEGER) DESC,
+    published_at DESC,
+    global_id
+  );
 CREATE INDEX IF NOT EXISTS library_feed_items_saved
   ON library_feed_items(saved, archived, saved_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_author

@@ -2,9 +2,7 @@ import {
   parseLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowseFilterV1,
 } from "./feed-browse-filter-contract.js";
-import {
-  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
-} from "./feed-recommendation-order-contract.js";
+import { LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION } from "./feed-recommendation-order-contract.js";
 import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
@@ -23,6 +21,7 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import { sha256LowerHex } from "./sha256.js";
 
 export const LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID =
   "feed_browse_page_v1" as const;
@@ -163,7 +162,7 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA = Object.freeze({
     "recommendationOrderSchemaVersion",
     "schemaVersion",
   ]),
-  cursorCodec: "library_core_feed_browse_page_cursor_v1",
+  cursorCodec: "library_core_feed_browse_page_cursor_v2",
   maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
   maximumCursorBytes: LIBRARY_CORE_FEED_BROWSE_PAGE_MAXIMUM_CURSOR_BYTES,
 });
@@ -190,9 +189,16 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA = Object.freeze({
   maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
 });
 
-/** V3 adds a traversal direction, not a different compact row projection. */
-export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_PROJECTION =
-  LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION;
+/**
+ * V3 is the normalized SQLite order. The historical shadow reader needed a
+ * source-enumeration sequence because it rebuilt rows from an object map.
+ * Normalized authority has a stable primary key, so globalId is the final
+ * binary tie-break and no migration-only enumeration field survives.
+ */
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_PROJECTION = Object.freeze({
+  ...LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION,
+  orderedColumns: Object.freeze(["priority", "publishedAt", "globalId"]),
+});
 
 export interface LibraryCoreFeedBrowsePageCursorV1 {
   readonly generationId: LibraryCoreLowercaseHex64;
@@ -212,8 +218,7 @@ export interface LibraryCoreFeedBrowsePageRequestV1 {
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID;
   readonly rankingClockMs: number;
   readonly readerSessionId: LibraryCoreOperationInstanceId;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION;
 }
 
@@ -228,8 +233,7 @@ export interface LibraryCoreFeedBrowsePageResponseV1 {
   }> | null;
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID;
   readonly rankingClockMs: number;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly rows: readonly LibraryCoreFeedCardV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
@@ -241,8 +245,7 @@ export type LibraryCoreFeedBrowseIdentityModeV2 =
 
 export interface LibraryCoreFeedBrowseBindingFilterV2 {
   readonly filter: LibraryCoreFeedBrowseFilterV1;
-  readonly friendsPredicateSchemaVersion:
-    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly friendsPredicateSchemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
   readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
 }
 
@@ -250,22 +253,19 @@ export interface LibraryCoreFeedBrowsePageRequestV2 {
   readonly cancellationId: LibraryCoreOperationInstanceId;
   readonly cursor: string | null;
   readonly filter: LibraryCoreFeedBrowseFilterV1;
-  readonly friendsPredicateSchemaVersion:
-    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly friendsPredicateSchemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
   readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly limit: number;
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID;
   readonly rankingClockMs: number;
   readonly readerSessionId: LibraryCoreOperationInstanceId;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION;
 }
 
 export interface LibraryCoreFeedBrowsePageResponseV2 {
   readonly filter: LibraryCoreFeedBrowseFilterV1;
-  readonly friendsPredicateSchemaVersion:
-    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly friendsPredicateSchemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
   readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly nextCursor: string | null;
   readonly nextOrder: Readonly<{
@@ -276,8 +276,7 @@ export interface LibraryCoreFeedBrowsePageResponseV2 {
   }> | null;
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID;
   readonly rankingClockMs: number;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly rows: readonly LibraryCoreFeedCardV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
@@ -296,8 +295,7 @@ export interface LibraryCoreFeedBrowsePageRequestV3 {
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID;
   readonly rankingClockMs: number;
   readonly readerSessionId: LibraryCoreOperationInstanceId;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION;
 }
 
@@ -305,7 +303,16 @@ interface LibraryCoreFeedBrowsePageEdgeOrderV3 {
   readonly globalId: LibraryCoreEntityId;
   readonly priority: number;
   readonly publishedAt: number;
-  readonly sourceSequence: number;
+}
+
+export interface LibraryCoreFeedBrowsePageCursorV2 {
+  readonly filterDigest: LibraryCoreLowercaseHex64;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly transitionSequence: number;
+  readonly projectionRevision: number;
+  readonly priority: number;
+  readonly publishedAt: number;
+  readonly globalId: LibraryCoreEntityId;
 }
 
 export interface LibraryCoreFeedBrowsePageResponseV3 {
@@ -316,8 +323,7 @@ export interface LibraryCoreFeedBrowsePageResponseV3 {
   readonly previousOrder: Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null;
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID;
   readonly rankingClockMs: number;
-  readonly recommendationOrderSchemaVersion:
-    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly recommendationOrderSchemaVersion: typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly rows: readonly LibraryCoreFeedCardV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
@@ -350,6 +356,32 @@ const NEXT_ORDER_KEYS = [
   "publishedAt",
   "sourceSequence",
 ] as const;
+const V3_EDGE_ORDER_KEYS = ["globalId", "priority", "publishedAt"] as const;
+const V3_CURSOR_VERSION = 2;
+const V3_CURSOR_FIXED_BYTES = 92;
+
+export function libraryCoreFeedBrowseFilterDigestV1(
+  value: LibraryCoreFeedBrowseFilterV1,
+): LibraryCoreLowercaseHex64 {
+  const filter = parseLibraryCoreFeedBrowseFilterV1(value);
+  if (!filter.ok) throw new TypeError(filter.error);
+  return sha256LowerHex(
+    TEXT_ENCODER.encode(
+      JSON.stringify([
+        filter.value.schemaVersion,
+        filter.value.archivedOnly,
+        filter.value.authorId,
+        filter.value.feedUrl,
+        filter.value.platform,
+        filter.value.savedOnly,
+        filter.value.showHidden,
+        filter.value.signals,
+        filter.value.socialContentFilter,
+        filter.value.tags,
+      ]),
+    ),
+  );
+}
 
 function success<T>(value: T): LibraryCoreFeedPageParseResult<T> {
   return Object.freeze({ ok: true, value });
@@ -377,8 +409,8 @@ function closedRecord(
   if (
     ownKeys.length !== keys.length ||
     ownKeys.some((key) => typeof key !== "string" || !keys.includes(key)) ||
-    keys.some((key) =>
-      !descriptors[key]?.enumerable || !("value" in descriptors[key])
+    keys.some(
+      (key) => !descriptors[key]?.enumerable || !("value" in descriptors[key]),
     )
   ) {
     return failure(
@@ -553,15 +585,104 @@ export function decodeLibraryCoreFeedBrowsePageCursorV1(
   ) {
     return failure("cursor identity is invalid");
   }
-  return success(Object.freeze({
-    generationId,
-    transitionSequence: Number(transitionSequence),
-    projectionRevision: Number(projectionRevision),
-    priority,
-    publishedAt: Number(publishedAt),
-    sourceSequence: Number(sourceSequence),
-    globalId,
-  }));
+  return success(
+    Object.freeze({
+      generationId,
+      transitionSequence: Number(transitionSequence),
+      projectionRevision: Number(projectionRevision),
+      priority,
+      publishedAt: Number(publishedAt),
+      sourceSequence: Number(sourceSequence),
+      globalId,
+    }),
+  );
+}
+
+export function encodeLibraryCoreFeedBrowsePageCursorV2(
+  cursor: LibraryCoreFeedBrowsePageCursorV2,
+): string {
+  if (
+    !isLibraryCoreLowercaseHex64(cursor.filterDigest) ||
+    !isLibraryCoreLowercaseHex64(cursor.generationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.transitionSequence) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.projectionRevision) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.priority) ||
+    cursor.priority > 100 ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.publishedAt) ||
+    !isLibraryCoreEntityId(cursor.globalId)
+  ) {
+    throw new TypeError("invalid Library Core feed-browse cursor");
+  }
+  const globalId = TEXT_ENCODER.encode(cursor.globalId);
+  const bytes = new Uint8Array(V3_CURSOR_FIXED_BYTES + globalId.length);
+  const view = new DataView(bytes.buffer);
+  bytes[0] = V3_CURSOR_VERSION;
+  bytes.set(lowerHexToBytes(cursor.generationId), 1);
+  bytes.set(lowerHexToBytes(cursor.filterDigest), 33);
+  view.setBigUint64(65, BigInt(cursor.transitionSequence), false);
+  view.setBigUint64(73, BigInt(cursor.projectionRevision), false);
+  bytes[81] = cursor.priority;
+  view.setBigUint64(82, BigInt(cursor.publishedAt), false);
+  view.setUint16(90, globalId.length, false);
+  bytes.set(globalId, V3_CURSOR_FIXED_BYTES);
+  return encodeBase64Url(bytes);
+}
+
+export function decodeLibraryCoreFeedBrowsePageCursorV2(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageCursorV2> {
+  if (typeof value !== "string") return failure("cursor must be a string");
+  const bytes = decodeBase64Url(value);
+  if (
+    !bytes ||
+    bytes.length < V3_CURSOR_FIXED_BYTES ||
+    bytes[0] !== V3_CURSOR_VERSION
+  ) {
+    return failure("cursor has invalid encoding or version");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const globalIdLength = view.getUint16(90, false);
+  if (bytes.length !== V3_CURSOR_FIXED_BYTES + globalIdLength) {
+    return failure("cursor length does not match its entity identity");
+  }
+  const generationId = bytesToLowerHex(bytes.subarray(1, 33));
+  const filterDigest = bytesToLowerHex(bytes.subarray(33, 65));
+  const transitionSequence = view.getBigUint64(65, false);
+  const projectionRevision = view.getBigUint64(73, false);
+  const priority = bytes[81]!;
+  const publishedAt = view.getBigUint64(82, false);
+  if (
+    transitionSequence > BigInt(Number.MAX_SAFE_INTEGER) ||
+    projectionRevision > BigInt(Number.MAX_SAFE_INTEGER) ||
+    publishedAt > BigInt(Number.MAX_SAFE_INTEGER) ||
+    priority > 100
+  ) {
+    return failure("cursor contains an unsafe ordering value");
+  }
+  let globalId: string;
+  try {
+    globalId = FATAL_TEXT_DECODER.decode(bytes.subarray(V3_CURSOR_FIXED_BYTES));
+  } catch {
+    return failure("cursor entity identity is not valid UTF-8");
+  }
+  if (
+    !isLibraryCoreLowercaseHex64(generationId) ||
+    !isLibraryCoreLowercaseHex64(filterDigest) ||
+    !isLibraryCoreEntityId(globalId)
+  ) {
+    return failure("cursor identity is invalid");
+  }
+  return success(
+    Object.freeze({
+      filterDigest,
+      generationId,
+      transitionSequence: Number(transitionSequence),
+      projectionRevision: Number(projectionRevision),
+      priority,
+      publishedAt: Number(publishedAt),
+      globalId,
+    }),
+  );
 }
 
 export function parseLibraryCoreFeedBrowsePageRequestV1(
@@ -591,18 +712,20 @@ export function parseLibraryCoreFeedBrowsePageRequestV1(
     const cursor = decodeLibraryCoreFeedBrowsePageCursorV1(input.cursor);
     if (!cursor.ok) return failure(cursor.error);
   }
-  return success(Object.freeze({
-    cancellationId: input.cancellationId,
-    cursor: input.cursor,
-    filter: filter.value,
-    limit: input.limit,
-    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
-    rankingClockMs: input.rankingClockMs,
-    readerSessionId: input.readerSessionId,
-    recommendationOrderSchemaVersion:
-      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
-    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
-  }));
+  return success(
+    Object.freeze({
+      cancellationId: input.cancellationId,
+      cursor: input.cursor,
+      filter: filter.value,
+      limit: input.limit,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+      rankingClockMs: input.rankingClockMs,
+      readerSessionId: input.readerSessionId,
+      recommendationOrderSchemaVersion:
+        LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+    }),
+  );
 }
 
 export function parseLibraryCoreFeedBrowsePageResponseV1(
@@ -644,8 +767,9 @@ export function parseLibraryCoreFeedBrowsePageResponseV1(
     }
     const parsed = parseLibraryCoreFeedCardV1(descriptor.value);
     if (!parsed.ok) return failure(parsed.error);
-    serializedRowsBytes += TEXT_ENCODER.encode(JSON.stringify(parsed.value))
-      .length + (index > 0 ? 1 : 0);
+    serializedRowsBytes +=
+      TEXT_ENCODER.encode(JSON.stringify(parsed.value)).length +
+      (index > 0 ? 1 : 0);
     rows.push(parsed.value);
   }
   if (
@@ -716,7 +840,7 @@ export function parseLibraryCoreFeedBrowsePageResponseV1(
   if (
     serializedRowsBytes +
       TEXT_ENCODER.encode(JSON.stringify({ ...response, rows: [] })).length >
-        LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+    LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
   ) {
     return failure("browse response exceeds the feed-page byte ceiling");
   }
@@ -734,8 +858,7 @@ function feedBrowsePageRequestV1FromV2(
     queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
     rankingClockMs: request.rankingClockMs,
     readerSessionId: request.readerSessionId,
-    recommendationOrderSchemaVersion:
-      request.recommendationOrderSchemaVersion,
+    recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   };
 }
@@ -767,21 +890,23 @@ function parseLibraryCoreFeedBrowsePageRequestV2(
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   });
   if (!parsedV1.ok) return failure(parsedV1.error);
-  return success(Object.freeze({
-    cancellationId: parsedV1.value.cancellationId,
-    cursor: parsedV1.value.cursor,
-    filter: parsedV1.value.filter,
-    friendsPredicateSchemaVersion:
-      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
-    identityMode: input.identityMode,
-    limit: parsedV1.value.limit,
-    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
-    rankingClockMs: parsedV1.value.rankingClockMs,
-    readerSessionId: parsedV1.value.readerSessionId,
-    recommendationOrderSchemaVersion:
-      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
-    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
-  }));
+  return success(
+    Object.freeze({
+      cancellationId: parsedV1.value.cancellationId,
+      cursor: parsedV1.value.cursor,
+      filter: parsedV1.value.filter,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: input.identityMode,
+      limit: parsedV1.value.limit,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+      rankingClockMs: parsedV1.value.rankingClockMs,
+      readerSessionId: parsedV1.value.readerSessionId,
+      recommendationOrderSchemaVersion:
+        LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+    }),
+  );
 }
 
 export function parseLibraryCoreFeedBrowsePageResponseV2(
@@ -802,18 +927,21 @@ export function parseLibraryCoreFeedBrowsePageResponseV2(
   ) {
     return failure("browse response identity or bounds are invalid");
   }
-  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1({
-    filter: input.filter,
-    nextCursor: input.nextCursor,
-    nextOrder: input.nextOrder,
-    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
-    rankingClockMs: input.rankingClockMs,
-    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
-    rows: input.rows,
-    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
-    source: input.source,
-    totalCount: input.totalCount,
-  }, feedBrowsePageRequestV1FromV2(request.value));
+  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1(
+    {
+      filter: input.filter,
+      nextCursor: input.nextCursor,
+      nextOrder: input.nextOrder,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+      rankingClockMs: input.rankingClockMs,
+      recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+      rows: input.rows,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+      source: input.source,
+      totalCount: input.totalCount,
+    },
+    feedBrowsePageRequestV1FromV2(request.value),
+  );
   if (!parsedV1.ok) return failure(parsedV1.error);
   const response: LibraryCoreFeedBrowsePageResponseV2 = Object.freeze({
     filter: parsedV1.value.filter,
@@ -853,19 +981,18 @@ function feedBrowsePageRequestV1FromV3(
 ): LibraryCoreFeedBrowsePageRequestV1 {
   return {
     cancellationId: request.cancellationId,
-    cursor: request.cursor,
+    cursor: null,
     filter: request.filter,
     limit: request.limit,
     queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
     rankingClockMs: request.rankingClockMs,
     readerSessionId: request.readerSessionId,
-    recommendationOrderSchemaVersion:
-      request.recommendationOrderSchemaVersion,
+    recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   };
 }
 
-function parseLibraryCoreFeedBrowsePageRequestV3(
+export function parseLibraryCoreFeedBrowsePageRequestV3(
   value: unknown,
 ): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageRequestV3> {
   const record = closedRecord(value, V3_REQUEST_KEYS, "browse request", 3);
@@ -886,7 +1013,7 @@ function parseLibraryCoreFeedBrowsePageRequestV3(
   }
   const parsedV1 = parseLibraryCoreFeedBrowsePageRequestV1({
     cancellationId: input.cancellationId,
-    cursor: input.cursor,
+    cursor: null,
     filter: input.filter,
     limit: input.limit,
     queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
@@ -896,19 +1023,31 @@ function parseLibraryCoreFeedBrowsePageRequestV3(
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   });
   if (!parsedV1.ok) return failure(parsedV1.error);
-  return success(Object.freeze({
-    cancellationId: parsedV1.value.cancellationId,
-    cursor: parsedV1.value.cursor,
-    direction: input.direction,
-    filter: parsedV1.value.filter,
-    limit: parsedV1.value.limit,
-    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
-    rankingClockMs: parsedV1.value.rankingClockMs,
-    readerSessionId: parsedV1.value.readerSessionId,
-    recommendationOrderSchemaVersion:
-      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
-    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
-  }));
+  if (input.cursor !== null) {
+    const cursor = decodeLibraryCoreFeedBrowsePageCursorV2(input.cursor);
+    if (!cursor.ok) return failure("browse request cursor is invalid");
+    if (
+      cursor.value.filterDigest !==
+      libraryCoreFeedBrowseFilterDigestV1(parsedV1.value.filter)
+    ) {
+      return failure("browse request cursor belongs to a different filter");
+    }
+  }
+  return success(
+    Object.freeze({
+      cancellationId: parsedV1.value.cancellationId,
+      cursor: input.cursor as string | null,
+      direction: input.direction,
+      filter: parsedV1.value.filter,
+      limit: parsedV1.value.limit,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+      rankingClockMs: parsedV1.value.rankingClockMs,
+      readerSessionId: parsedV1.value.readerSessionId,
+      recommendationOrderSchemaVersion:
+        LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+    }),
+  );
 }
 
 /**
@@ -921,11 +1060,10 @@ function parseFeedBrowseEdge(
   cursorValue: unknown,
   orderValue: unknown,
   boundRow: LibraryCoreFeedCardV1 | undefined,
+  filterDigest: LibraryCoreLowercaseHex64,
   source: LibraryCoreFeedPageSourceV1,
   label: string,
-): LibraryCoreFeedPageParseResult<
-  Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null
-> {
+): LibraryCoreFeedPageParseResult<Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null> {
   if (cursorValue === null && orderValue === null) return success(null);
   if (
     (cursorValue === null) !== (orderValue === null) ||
@@ -933,10 +1071,10 @@ function parseFeedBrowseEdge(
   ) {
     return failure(`browse ${label} cursor and order must agree`);
   }
-  const cursor = decodeLibraryCoreFeedBrowsePageCursorV1(cursorValue);
+  const cursor = decodeLibraryCoreFeedBrowsePageCursorV2(cursorValue);
   const order = closedRecord(
     orderValue,
-    NEXT_ORDER_KEYS,
+    V3_EDGE_ORDER_KEYS,
     `browse ${label} order`,
   );
   if (
@@ -947,24 +1085,24 @@ function parseFeedBrowseEdge(
     !isLibraryCoreNonnegativeSafeInteger(order.value.priority) ||
     order.value.priority > 100 ||
     !isLibraryCoreNonnegativeSafeInteger(order.value.publishedAt) ||
-    !isLibraryCoreNonnegativeSafeInteger(order.value.sourceSequence) ||
+    cursor.value.filterDigest !== filterDigest ||
     cursor.value.generationId !== source.generationId ||
     cursor.value.transitionSequence !== source.transitionSequence ||
     cursor.value.projectionRevision !== source.projectionRevision ||
     cursor.value.globalId !== boundRow.globalId ||
     cursor.value.globalId !== order.value.globalId ||
     cursor.value.priority !== order.value.priority ||
-    cursor.value.publishedAt !== order.value.publishedAt ||
-    cursor.value.sourceSequence !== order.value.sourceSequence
+    cursor.value.publishedAt !== order.value.publishedAt
   ) {
     return failure(`browse ${label} cursor does not bind its source and row`);
   }
-  return success(Object.freeze({
-    globalId: order.value.globalId,
-    priority: order.value.priority,
-    publishedAt: order.value.publishedAt,
-    sourceSequence: order.value.sourceSequence,
-  }));
+  return success(
+    Object.freeze({
+      globalId: order.value.globalId,
+      priority: order.value.priority,
+      publishedAt: order.value.publishedAt,
+    }),
+  );
 }
 
 export function parseLibraryCoreFeedBrowsePageResponseV3(
@@ -982,37 +1120,53 @@ export function parseLibraryCoreFeedBrowsePageResponseV3(
   ) {
     return failure("browse response identity or bounds are invalid");
   }
-  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1({
-    filter: input.filter,
-    nextCursor: input.nextCursor,
-    nextOrder: input.nextOrder,
-    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
-    rankingClockMs: input.rankingClockMs,
-    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
-    rows: input.rows,
-    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
-    source: input.source,
-    totalCount: input.totalCount,
-  }, feedBrowsePageRequestV1FromV3(request.value));
+  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1(
+    {
+      filter: input.filter,
+      nextCursor: null,
+      nextOrder: null,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+      rankingClockMs: input.rankingClockMs,
+      recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+      rows: input.rows,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+      source: input.source,
+      totalCount: input.totalCount,
+    },
+    feedBrowsePageRequestV1FromV3(request.value),
+  );
   if (!parsedV1.ok) return failure(parsedV1.error);
   const rows = parsedV1.value.rows;
+  const filterDigest = libraryCoreFeedBrowseFilterDigestV1(
+    parsedV1.value.filter,
+  );
+  const next = parseFeedBrowseEdge(
+    input.nextCursor,
+    input.nextOrder,
+    rows.at(-1),
+    filterDigest,
+    parsedV1.value.source,
+    "next",
+  );
+  if (!next.ok) return failure(next.error);
   const previous = parseFeedBrowseEdge(
     input.previousCursor,
     input.previousOrder,
     rows[0],
+    filterDigest,
     parsedV1.value.source,
     "previous",
   );
   if (!previous.ok) return failure(previous.error);
   // An empty page has no edge to resume from in either direction. Leaving a
   // leading cursor here would let a session resume from a row it never saw.
-  if (rows.length === 0 && previous.value !== null) {
+  if (rows.length === 0 && (next.value !== null || previous.value !== null)) {
     return failure("browse response cannot bind an edge without rows");
   }
   const response: LibraryCoreFeedBrowsePageResponseV3 = Object.freeze({
     filter: parsedV1.value.filter,
-    nextCursor: parsedV1.value.nextCursor,
-    nextOrder: parsedV1.value.nextOrder,
+    nextCursor: input.nextCursor as string | null,
+    nextOrder: next.value,
     previousCursor: input.previousCursor as string | null,
     previousOrder: previous.value,
     queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,

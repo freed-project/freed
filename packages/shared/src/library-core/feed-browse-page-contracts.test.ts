@@ -10,12 +10,15 @@ import {
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   decodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV1,
+  encodeLibraryCoreFeedBrowsePageCursorV2,
+  libraryCoreFeedBrowseFilterDigestV1,
   libraryCoreFeedBrowseBindingFilterV2,
   parseLibraryCoreFeedBrowsePageRequestV1,
   parseLibraryCoreFeedBrowsePageResponseV1,
   parseLibraryCoreFeedBrowsePageResponseV2,
   parseLibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFeedBrowsePageCursorV1,
+  type LibraryCoreFeedBrowsePageCursorV2,
 } from "./feed-browse-page-contracts.js";
 import type { LibraryCoreFeedBrowseFilterV1 } from "./feed-browse-filter-contract.js";
 
@@ -36,14 +39,26 @@ function cursor(
   overrides: Partial<LibraryCoreFeedBrowsePageCursorV1> = {},
 ): LibraryCoreFeedBrowsePageCursorV1 {
   return {
-    generationId:
-      "a".repeat(64) as LibraryCoreFeedBrowsePageCursorV1["generationId"],
+    generationId: "a".repeat(
+      64,
+    ) as LibraryCoreFeedBrowsePageCursorV1["generationId"],
     transitionSequence: 12,
     projectionRevision: 34,
     priority: 91,
     publishedAt: 1_780_000_000_000,
     sourceSequence: 56,
     globalId: "x:item-1" as LibraryCoreFeedBrowsePageCursorV1["globalId"],
+    ...overrides,
+  };
+}
+
+function cursorV2(
+  overrides: Partial<LibraryCoreFeedBrowsePageCursorV2> = {},
+): LibraryCoreFeedBrowsePageCursorV2 {
+  const { sourceSequence: _sourceSequence, ...value } = cursor();
+  return {
+    ...value,
+    filterDigest: libraryCoreFeedBrowseFilterDigestV1(FILTER),
     ...overrides,
   };
 }
@@ -139,35 +154,46 @@ describe("Library Core feed-browse page protocol", () => {
       value: expected,
     });
     expect(() =>
-      encodeLibraryCoreFeedBrowsePageCursorV1(cursor({ priority: 101 }))
+      encodeLibraryCoreFeedBrowsePageCursorV1(cursor({ priority: 101 })),
     ).toThrow("invalid Library Core feed-browse cursor");
   });
 
   it("snapshots one canonical filter and binds its ranking contract", () => {
+    expect(libraryCoreFeedBrowseFilterDigestV1(FILTER)).toBe(
+      "60d920ddd5b896d7e24cb500f1ad80958fdaa871fa9707dad0faaf2631d75bb2",
+    );
     const parsed = parseLibraryCoreFeedBrowsePageRequestV1(request());
     expect(parsed).toStrictEqual({
       ok: true,
       value: request(),
     });
     expect(
-      parseLibraryCoreFeedBrowsePageRequestV1(request({
-        filter: { ...FILTER, tags: ["z", "a"] },
-      })),
+      parseLibraryCoreFeedBrowsePageRequestV1(
+        request({
+          filter: { ...FILTER, tags: ["z", "a"] },
+        }),
+      ),
     ).toMatchObject({ ok: false });
     expect(
-      parseLibraryCoreFeedBrowsePageRequestV1(request({
-        recommendationOrderSchemaVersion: 2,
-      })),
+      parseLibraryCoreFeedBrowsePageRequestV1(
+        request({
+          recommendationOrderSchemaVersion: 2,
+        }),
+      ),
     ).toMatchObject({ ok: false });
     expect(
-      parseLibraryCoreFeedBrowsePageRequestV1(request({
-        filter: { ...FILTER, platform: "x".repeat(8_193) },
-      })),
+      parseLibraryCoreFeedBrowsePageRequestV1(
+        request({
+          filter: { ...FILTER, platform: "x".repeat(8_193) },
+        }),
+      ),
     ).toMatchObject({ ok: false });
     expect(
-      parseLibraryCoreFeedBrowsePageRequestV1(request({
-        identityMode: "friends",
-      })),
+      parseLibraryCoreFeedBrowsePageRequestV1(
+        request({
+          identityMode: "friends",
+        }),
+      ),
     ).toMatchObject({ ok: false });
   });
 
@@ -212,10 +238,13 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV1(response, request()),
     ).toMatchObject({ ok: true });
     expect(
-      parseLibraryCoreFeedBrowsePageResponseV1({
-        ...response,
-        nextOrder: { ...response.nextOrder, priority: 90 },
-      }, request()),
+      parseLibraryCoreFeedBrowsePageResponseV1(
+        {
+          ...response,
+          nextOrder: { ...response.nextOrder, priority: 90 },
+        },
+        request(),
+      ),
     ).toMatchObject({ ok: false });
   });
 
@@ -249,22 +278,31 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV2(response, requestV2()),
     ).toMatchObject({ ok: true });
     expect(
-      parseLibraryCoreFeedBrowsePageResponseV2({
-        ...response,
-        identityMode: "all_content",
-      }, requestV2()),
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        {
+          ...response,
+          identityMode: "all_content",
+        },
+        requestV2(),
+      ),
     ).toMatchObject({ ok: false });
     expect(
-      parseLibraryCoreFeedBrowsePageResponseV2({
-        ...response,
-        friendsPredicateSchemaVersion: 2,
-      }, requestV2()),
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        {
+          ...response,
+          friendsPredicateSchemaVersion: 2,
+        },
+        requestV2(),
+      ),
     ).toMatchObject({ ok: false });
     expect(
-      parseLibraryCoreFeedBrowsePageResponseV2({
-        ...response,
-        identityMode: "all_content",
-      }, requestV2({ identityMode: "all_content" })),
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        {
+          ...response,
+          identityMode: "all_content",
+        },
+        requestV2({ identityMode: "all_content" }),
+      ),
     ).toMatchObject({ ok: true });
     expect(
       parseLibraryCoreFeedBrowsePageResponseV2(
@@ -287,7 +325,10 @@ describe("Library Core feed-browse page protocol", () => {
   });
 
   it("requires one explicit V3 direction and a cursor to walk backward", () => {
-    const encoded = encodeLibraryCoreFeedBrowsePageCursorV1(cursor());
+    const encoded = encodeLibraryCoreFeedBrowsePageCursorV2(cursorV2());
+    expect(encoded).toBe(
+      "AqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYNkg3dW4ltfiTLUA8a2AlY_aqHH6lwfa0PqvJjHXW7IAAAAAAAAADAAAAAAAAAAiWwAAAZ5wRIgAAAh4Oml0ZW0tMQ",
+    );
     // The request contract is enforced through the response parser, which
     // validates its bound request before reading a single row.
     const emptyPage = {
@@ -312,9 +353,21 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV3(emptyPage, request);
 
     expect(parseWith(requestV3())).toMatchObject({ ok: true });
+    const previousResult = parseWith(
+      requestV3({ direction: "previous", cursor: encoded }),
+    );
+    expect(previousResult).toMatchObject({ ok: true });
     expect(
-      parseWith(requestV3({ direction: "previous", cursor: encoded })),
-    ).toMatchObject({ ok: true });
+      parseWith(
+        requestV3({
+          cursor: encoded,
+          filter: { ...FILTER, savedOnly: false },
+        }),
+      ),
+    ).toMatchObject({
+      error: "browse request cursor belongs to a different filter",
+      ok: false,
+    });
     // A backward page has no meaning without a leading row to resume from.
     expect(parseWith(requestV3({ direction: "previous" }))).toMatchObject({
       ok: false,
@@ -334,13 +387,13 @@ describe("Library Core feed-browse page protocol", () => {
     ).toMatchObject({ ok: false });
     expect(parseWith(requestV3({ extra: true }))).toMatchObject({ ok: false });
     // A V3 request must not satisfy the closed V1 parser either.
-    expect(
-      parseLibraryCoreFeedBrowsePageRequestV1(requestV3()),
-    ).toMatchObject({ ok: false });
+    expect(parseLibraryCoreFeedBrowsePageRequestV1(requestV3())).toMatchObject({
+      ok: false,
+    });
   });
 
   it("binds both V3 traversal edges to the rows and source they claim", () => {
-    const leading = encodeLibraryCoreFeedBrowsePageCursorV1(cursor());
+    const leading = encodeLibraryCoreFeedBrowsePageCursorV2(cursorV2());
     const response = {
       filter: FILTER,
       nextCursor: leading,
@@ -348,14 +401,12 @@ describe("Library Core feed-browse page protocol", () => {
         globalId: "x:item-1",
         priority: 91,
         publishedAt: 1_780_000_000_000,
-        sourceSequence: 56,
       },
       previousCursor: leading,
       previousOrder: {
         globalId: "x:item-1",
         priority: 91,
         publishedAt: 1_780_000_000_000,
-        sourceSequence: 56,
       },
       queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
       rankingClockMs: 1_780_000_100_000,
@@ -399,10 +450,10 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV3(
         {
           ...response,
-          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV1(
-            cursor({
+          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV2(
+            cursorV2({
               globalId:
-                "x:other" as LibraryCoreFeedBrowsePageCursorV1["globalId"],
+                "x:other" as LibraryCoreFeedBrowsePageCursorV2["globalId"],
             }),
           ),
         },
@@ -414,8 +465,8 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV3(
         {
           ...response,
-          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV1(
-            cursor({ projectionRevision: 35 }),
+          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV2(
+            cursorV2({ projectionRevision: 35 }),
           ),
         },
         requestV3(),
