@@ -409,6 +409,15 @@ Incomplete transactions, missing sequence, duplicate changed bytes, chain
 forks, unknown operations, missing blobs, or signature failure block segment
 admission and frontier advancement.
 
+Removal mutations declare root and relationship deletes in the executable
+contract. Account removal, Person removal with linked Accounts, and both RSS
+feed removal policies execute those generated statements only after signature,
+capability, writer admission, causal tip, target, and replay verification. The
+winning root and dependent deletes, typed tombstone, operation rows, receipt,
+replication outbox, invalidation, and source revision commit in one SQLite
+transaction. A stale removal is journaled but cannot replace the winning
+tombstone or repeat relationship effects.
+
 Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a
 transport adapter for these immutable objects. Provider endpoints, headers,

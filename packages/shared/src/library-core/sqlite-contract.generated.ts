@@ -676,10 +676,23 @@ export const LIBRARY_CORE_SCRAPER_OPERATION_IDS = Object.freeze([
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
 
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
+  "account_remove": {
+    "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1;",
+    "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('account', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
+    "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1;",
+    "dependentDeleteSql": "",
+    "entityType": "Account",
+    "invalidationTopic": "account",
+    "materializeSql": "DELETE FROM library_accounts WHERE id = ?1;",
+    "maximumMembers": 256,
+    "payloadKind": "remove",
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1);"
+  },
   "feed_item_archive_assignment": {
     "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'saved_archive_state';",
     "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'saved_archive_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
     "currentValueSql": "SELECT archived_at FROM library_feed_items WHERE global_id = ?1;",
+    "dependentDeleteSql": "",
     "entityType": "FeedItem",
     "invalidationTopic": "feed_item",
     "materializeSql": "UPDATE library_feed_items SET saved = 0, saved_at = NULL, archived = ?1, archived_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, updated_at = ?3 WHERE global_id = ?4;",
@@ -691,6 +704,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'liked_state';",
     "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'liked_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
     "currentValueSql": "SELECT liked_at FROM library_feed_items WHERE global_id = ?1;",
+    "dependentDeleteSql": "",
     "entityType": "FeedItem",
     "invalidationTopic": "feed_item",
     "materializeSql": "UPDATE library_feed_items SET liked = ?1, liked_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, liked_synced_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
@@ -702,6 +716,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'read_at';",
     "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'read_at', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
     "currentValueSql": "SELECT read_at FROM library_feed_items WHERE global_id = ?1;",
+    "dependentDeleteSql": "",
     "entityType": "FeedItem",
     "invalidationTopic": "feed_item",
     "materializeSql": "UPDATE library_feed_items SET read_at = ?1, updated_at = ?3 WHERE global_id = ?4;",
@@ -713,6 +728,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1;",
     "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('feed_item', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
     "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1;",
+    "dependentDeleteSql": "",
     "entityType": "FeedItem",
     "invalidationTopic": "feed_item",
     "materializeSql": "DELETE FROM library_feed_items WHERE global_id = ?1;",
@@ -724,12 +740,49 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'saved_archive_state';",
     "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'saved_archive_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
     "currentValueSql": "SELECT saved_at FROM library_feed_items WHERE global_id = ?1;",
+    "dependentDeleteSql": "",
     "entityType": "FeedItem",
     "invalidationTopic": "feed_item",
     "materializeSql": "UPDATE library_feed_items SET saved = ?1, saved_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, archived = 0, archived_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
     "maximumMembers": 256,
     "payloadKind": "boolean_assignment",
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+  },
+  "person_remove_and_accounts": {
+    "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1;",
+    "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('person', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
+    "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1;",
+    "dependentDeleteSql": "DELETE FROM library_accounts WHERE person_id = ?1;",
+    "entityType": "Person",
+    "invalidationTopic": "person",
+    "materializeSql": "DELETE FROM library_persons WHERE id = ?1;",
+    "maximumMembers": 256,
+    "payloadKind": "remove",
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
+  },
+  "rss_feed_remove_keep_items": {
+    "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1;",
+    "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('rss_feed', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
+    "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1;",
+    "dependentDeleteSql": "",
+    "entityType": "RssFeed",
+    "invalidationTopic": "rss_feed",
+    "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
+    "maximumMembers": 256,
+    "payloadKind": "remove",
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
+  },
+  "rss_feed_remove_with_items": {
+    "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1;",
+    "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('rss_feed', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
+    "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1;",
+    "dependentDeleteSql": "DELETE FROM library_feed_items WHERE rss_feed_url = ?1;",
+    "entityType": "RssFeed",
+    "invalidationTopic": "rss_feed",
+    "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
+    "maximumMembers": 256,
+    "payloadKind": "remove",
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
   }
 } as const;
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;

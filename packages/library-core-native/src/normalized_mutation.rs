@@ -424,6 +424,9 @@ fn materialize_remove(
             || (removed_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
     });
     if wins {
+        if !program.dependent_delete_sql.is_empty() {
+            transaction.execute(program.dependent_delete_sql, [&member.entity_id])?;
+        }
         transaction.execute(program.materialize_sql, [&member.entity_id])?;
         transaction.execute(
             program.clock_write_sql,
@@ -1171,6 +1174,149 @@ mod tests {
                 })
                 .expect("journaled transactions"),
             2
+        );
+    }
+
+    #[test]
+    fn signed_entity_removals_apply_declared_relationship_deletes_and_tombstones() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'friend', 5, 900, 1000);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES
+                     ('account-linked', 'person-1', 'social', 'x', 'linked', 'Linked', 900, 1000, 'capture', 900, 1000),
+                     ('account-direct', NULL, 'social', 'x', 'direct', 'Direct', 900, 1000, 'capture', 900, 1000);
+                 INSERT INTO library_rss_feeds
+                   (url, title, enabled, track_unread, updated_at)
+                   VALUES
+                     ('feed:keep', 'Keep', 1, 1, 1000),
+                     ('feed:remove', 'Remove', 1, 1, 1000);
+                 UPDATE library_feed_items SET rss_feed_url = 'feed:keep'
+                   WHERE global_id = 'rss:item:1';
+                 UPDATE library_feed_items SET rss_feed_url = 'feed:remove'
+                   WHERE global_id = 'rss:item:2';",
+            )
+            .expect("removal fixtures");
+
+        let account = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:remove",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("account-direct", 1_100)],
+            "account_remove",
+        );
+        let account_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &account, 2_000)
+                .expect("remove account");
+        let person = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:remove",
+            2,
+            Some(&account_receipt.committed_operation_id),
+            &account_receipt.committed_chain_digest,
+            &[("person-1", 1_200)],
+            "person_remove_and_accounts",
+        );
+        let person_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &person, 2_100)
+                .expect("remove person and accounts");
+        let keep_feed = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:feed:keep-items",
+            3,
+            Some(&person_receipt.committed_operation_id),
+            &person_receipt.committed_chain_digest,
+            &[("feed:keep", 1_300)],
+            "rss_feed_remove_keep_items",
+        );
+        let keep_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &keep_feed, 2_200)
+                .expect("remove feed and keep items");
+        let remove_feed = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:feed:remove-items",
+            4,
+            Some(&keep_receipt.committed_operation_id),
+            &keep_receipt.committed_chain_digest,
+            &[("feed:remove", 1_400)],
+            "rss_feed_remove_with_items",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &remove_feed, 2_300)
+            .expect("remove feed and items");
+
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_accounts;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("remaining accounts"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_persons;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("remaining persons"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_rss_feeds;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("remaining feeds"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("retained feed item"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_feed_items WHERE global_id = 'rss:item:2';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("removed feed item"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_tombstones
+                     WHERE entity_type IN ('account', 'person', 'rss_feed');",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("entity tombstones"),
+            4
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("revision"),
+            4
         );
     }
 }

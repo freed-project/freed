@@ -102,6 +102,11 @@
         convergent tombstone and deletes the normalized root through generated
         SQL. Owned child rows cascade, while stale removals remain journaled
         without replacing the winning tombstone.
+  - [x] Account removal, Person removal with linked Accounts, RSS feed removal
+        that retains items, and RSS feed removal with its items now use four
+        generated mutation programs. Relationship deletes, root deletes,
+        convergent tombstones, exact receipts, invalidations, and revisions
+        commit in the same verified native transaction.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration
