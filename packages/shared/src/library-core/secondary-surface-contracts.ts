@@ -1,4 +1,4 @@
-import type { ContentType, MediaType, Platform } from "../types.js";
+import type { ContentType, FeedItem, MediaType, Platform } from "../types.js";
 import {
   LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
   parseLibraryCoreFeedPageSourceV1,
@@ -221,6 +221,89 @@ export interface LibraryCoreStoryWallCandidatesResponseV1 {
   readonly rows: readonly LibraryCoreStoryWallCandidateV1[];
   readonly schemaVersion: 1;
   readonly source: LibraryCoreFeedPageSourceV1;
+}
+
+/** Convert one compact normalized Map row into the shared visible-card model. */
+export function libraryCoreMapMarkerToItemV1(
+  row: LibraryCoreMapMarkerV1,
+): FeedItem {
+  const hasCoordinates = row.locationLat !== null && row.locationLng !== null;
+  return {
+    globalId: row.globalId,
+    platform: row.platform,
+    contentType: row.contentType,
+    capturedAt: row.capturedAt,
+    publishedAt: row.publishedAt,
+    author: {
+      id: row.authorId,
+      handle: row.authorHandle,
+      displayName: row.authorDisplayName,
+      ...(row.authorAvatarUrl ? { avatarUrl: row.authorAvatarUrl } : {}),
+    },
+    content: {
+      ...(row.contentText ? { text: row.contentText } : {}),
+      mediaUrls: [],
+      mediaTypes: [],
+    },
+    location: {
+      name: row.locationName ?? "",
+      ...(hasCoordinates
+        ? { coordinates: { lat: row.locationLat!, lng: row.locationLng! } }
+        : {}),
+      ...(row.locationUrl ? { url: row.locationUrl } : {}),
+      source: "text_extraction",
+    },
+    ...(row.timeRangeStartsAt !== null
+      ? {
+          timeRange: {
+            startsAt: row.timeRangeStartsAt,
+            ...(row.timeRangeEndsAt !== null
+              ? { endsAt: row.timeRangeEndsAt }
+              : {}),
+            kind: "event" as const,
+          },
+        }
+      : {}),
+    userState: { hidden: false, saved: false, archived: false, tags: [] },
+    topics: [],
+    ...(row.sourceUrl ? { sourceUrl: row.sourceUrl } : {}),
+  };
+}
+
+/** Convert one compact normalized Story Wall row into its visible-card model. */
+export function libraryCoreStoryWallCandidateToItemV1(
+  row: LibraryCoreStoryWallCandidateV1,
+): FeedItem {
+  return {
+    globalId: row.globalId,
+    platform: row.platform,
+    contentType: "post",
+    capturedAt: row.capturedAt,
+    publishedAt: row.publishedAt,
+    author: {
+      id: row.authorId,
+      handle: row.authorHandle,
+      displayName: row.authorDisplayName,
+    },
+    content: {
+      ...(row.contentText ? { text: row.contentText } : {}),
+      mediaUrls: [...row.mediaUrls],
+      mediaTypes: row.mediaTypes.map((value): MediaType =>
+        value === "unknown" ? "link" : value,
+      ),
+    },
+    ...(row.locationName
+      ? {
+          location: {
+            name: row.locationName,
+            source: "text_extraction" as const,
+          },
+        }
+      : {}),
+    userState: { hidden: false, saved: false, archived: false, tags: [] },
+    topics: [],
+    ...(row.sourceUrl ? { sourceUrl: row.sourceUrl } : {}),
+  };
 }
 
 function success<T>(value: T): LibraryCoreFeedPageParseResult<T> {

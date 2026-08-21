@@ -494,6 +494,7 @@ export async function captureDomFeed(
 | 5.50 | Verify one private descriptor-bound Desktop authority selector against signed normalized SQLite and fence every historical database, journal, store, backup, restore, clear, and mutation opening path once selected | High | ✓ Complete |
 | 5.51 | Publish the Desktop selector through a private flushed pending file, atomic fixed-name rename, directory flush, exact readback verification, and idempotent response-loss replay without overwriting another epoch | High | ✓ Complete |
 | 5.52 | Route the ordinary feed, Saved feed, and signal counts through the closed normalized query command, preserve opaque bidirectional keyset cursors and bounded compact rows, and remove their dependency on the historical item query | High | ✓ Complete |
+| 5.53 | Route item detail, Library facets, Saved analytics, Map, and Story Wall through their closed normalized query projections and one shared compact-row view transform | High | ✓ Complete |
 
 ---
 
@@ -634,7 +635,7 @@ export async function captureDomFeed(
 - [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
 - [x] Desktop outbox and article-fetch discovery now stream lossless, generation-pinned SQLite pages with stable keyset cursors instead of traversing the full renderer item corpus
 - [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
-- [x] Settings > Saved now reads exact time, source, and content aggregates from the authenticated SQLite generation without leasing the full renderer item corpus, while unavailable or stale derived state fails closed to the compatibility reducer
+- [x] Settings > Saved reads exact time, source, and content aggregates directly through `saved_analytics_v2`, without leasing or scanning a renderer item corpus.
 - [x] Friends now reads source activity summaries and 50-row person timeline pages from the authenticated SQLite generation, preserving suggestion and ordering parity without retaining the full renderer item corpus
 - [x] Provider settings now read source-fenced 64-row SQLite pages. Media backup stages compact local candidates and starts provider work only after source verification, while YouTube retains compact saved-video identities instead of the renderer item corpus
 - [x] FriendEditor now reads at most 50 alphabetically ranked visible unlinked author candidates through source-fenced 64-row SQLite pages, debounces rapid searches for 150 ms, resolves exact selected-profile provenance in a final bounded save-time pass, cancels stale source results, and does not lease the full renderer item corpus unless its explicit rollback switch is set
@@ -652,7 +653,7 @@ export async function captureDomFeed(
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. The prior renderer MiniSearch path remains only as the browser-test fallback.
 - [x] Map candidates are classified when SQLite rows are written and ordered through a partial location timeline index, so opening Map does not scan and sort the full Library before returning its bounded page.
-- [x] The extracted native Library Core executes the final `map_markers_v1` and `story_wall_candidates_v1` programs as compact source-fenced rows. Their responses exclude full FeedItems, reader bodies, tags, signals, highlights, and unrelated state. Product adapter replacement of the historical general surface reader is the next reader-cutover step.
+- [x] Map and Story Wall call `map_markers_v1` and `story_wall_candidates_v1` directly. Their compact source-fenced rows exclude reader bodies, tags, signals, highlights, and unrelated state. Their row-to-visible-card transform lives in the shared contract package instead of a Desktop-only adapter.
 - [x] Freed Desktop and PWA keep a bundled geographic map style that uses the same OpenFreeMap vector tiles and glyphs when the remote style document is unavailable. A transient style-endpoint failure no longer leaves the map background blank, and the live OpenFreeMap style remains preferred when it loads.
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)

@@ -4,7 +4,14 @@ import {
   parseLibraryCoreSqliteQueryResponse,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
+  type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
+
+export function createDesktopLibraryCoreOperationId(
+  prefix: string,
+): LibraryCoreOperationInstanceId {
+  return `${prefix}:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+}
 
 /** Run one closed, bounded Library Core query against Freed Desktop SQLite. */
 export async function queryNormalizedLibrary<

@@ -6,13 +6,31 @@ import {
   type FeedItem,
 } from "@freed/shared";
 import {
+  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
+  LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
+  LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+  LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
+  LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
   LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT,
+  LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
+  LIBRARY_CORE_SAVED_ANALYTICS_V2_SCHEMA_VERSION,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
+  LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
+  libraryCoreFeedCardToItemV1,
+  libraryCoreMapMarkerToItemV1,
+  libraryCoreStoryWallCandidateToItemV1,
 } from "@freed/shared/library-core";
+import {
+  createDesktopLibraryCoreOperationId,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
 import {
   querySqliteItems,
   readSqliteItems,
-  readSqliteLibraryFacetSummary,
 } from "./sqlite-library";
 
 const ITEM_SCAN_PAGE_LIMIT = 64;
@@ -156,8 +174,8 @@ export interface LibraryCoreSavedAnalytics {
 
 export type LibraryCoreSurface = "map" | "story_wall";
 const SURFACE_LIMITS: Readonly<Record<LibraryCoreSurface, number>> = Object.freeze({
-  map: 10_000,
-  story_wall: 250,
+  map: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
+  story_wall: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
 });
 
 export interface LibraryCoreItemScanPage {
@@ -196,24 +214,26 @@ async function scanSqlitePages(
   }
 }
 
-function incrementCount(counts: Map<string, number>, label: string): void {
-  counts.set(label, (counts.get(label) ?? 0) + 1);
-}
-
-function sortedCounts(counts: Map<string, number>): LibraryCoreSavedAnalyticsLabeledCount[] {
-  return [...counts].map(([label, count]) => ({ label, count }))
-    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-}
-
 export async function readLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null> {
   if (!globalId || new TextEncoder().encode(globalId).length > 4_096) {
     throw new Error("Library Core item identity is invalid");
   }
-  return (await readSqliteItems([globalId]))[0] ?? null;
+  const response = await queryNormalizedLibrary({
+    globalId,
+    queryId: LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
+  });
+  return response.item === null
+    ? null
+    : libraryCoreFeedCardToItemV1(response.item.card);
 }
 
 export async function readLibraryCoreFacetSummary(): Promise<LibraryCoreFacetSummary> {
-  return readSqliteLibraryFacetSummary();
+  const response = await queryNormalizedLibrary({
+    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  });
+  return response.summary;
 }
 
 export async function readLibraryCoreFriendsGraph(
@@ -427,39 +447,39 @@ export async function readLibraryCoreSavedAnalytics(
       !validWindows(request.hourlyWindows, LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT)) {
     throw new Error("Library Core saved analytics windows are invalid");
   }
-  const sourceCounts = new Map<string, number>();
-  const contentMix = new Map<string, number>();
-  const dailyCounts = request.dailyWindows.map(() => 0);
-  const hourlyCounts = request.hourlyWindows.map(() => 0);
-  let latestSavedAt: number | null = null;
-  let totalCount = 0;
-  await scanSqlitePages({ saved: true, showHidden: true }, (item) => {
-    totalCount += 1;
-    incrementCount(sourceCounts, item.platform);
-    incrementCount(contentMix, item.contentType);
-    const savedAt = item.userState.savedAt ?? item.userState.readAt ?? item.capturedAt;
-    latestSavedAt = Math.max(latestSavedAt ?? 0, savedAt);
-    request.dailyWindows.forEach((window, index) => { if (savedAt >= window.startMs && savedAt < window.endMs) dailyCounts[index]! += 1; });
-    request.hourlyWindows.forEach((window, index) => { if (savedAt >= window.startMs && savedAt < window.endMs) hourlyCounts[index]! += 1; });
+  return queryNormalizedLibrary({
+    dailyWindows: request.dailyWindows,
+    hourlyWindows: request.hourlyWindows,
+    queryId: LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_SAVED_ANALYTICS_V2_SCHEMA_VERSION,
   });
-  return { contentMix: sortedCounts(contentMix), dailyCounts, hourlyCounts, latestSavedAt, sourceCounts: sortedCounts(sourceCounts), totalCount };
 }
 
 export async function readLibraryCoreSurfaceItems(surface: LibraryCoreSurface): Promise<readonly FeedItem[]> {
-  const rows: FeedItem[] = [];
-  await scanSqlitePages({
-    showHidden: false,
-    includeTotalCount: false,
-    ...(surface === "map" ? { locationCandidate: true } : { hasMedia: true }),
-  }, (item) => {
-    if (rows.length >= SURFACE_LIMITS[surface]) return "stop";
-    const matches = surface === "map"
-      ? extractLocationFromItem(item) !== null
-      : !item.userState.archived && (item.content.mediaUrls?.length ?? 0) > 0;
-    if (matches) rows.push(item);
-    return rows.length >= SURFACE_LIMITS[surface] ? "stop" : undefined;
+  const cancellationId = createDesktopLibraryCoreOperationId(
+    `desktop-${surface}`,
+  );
+  const readerSessionId = createDesktopLibraryCoreOperationId(
+    `desktop-${surface}-reader`,
+  );
+  if (surface === "map") {
+    const response = await queryNormalizedLibrary({
+      cancellationId,
+      limit: SURFACE_LIMITS.map,
+      queryId: LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
+    });
+    return response.rows.map(libraryCoreMapMarkerToItemV1);
+  }
+  const response = await queryNormalizedLibrary({
+    cancellationId,
+    limit: SURFACE_LIMITS.story_wall,
+    queryId: LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
+    readerSessionId,
+    schemaVersion: LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
   });
-  return rows;
+  return response.rows.map(libraryCoreStoryWallCandidateToItemV1);
 }
 
 export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemScanSession> {

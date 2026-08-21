@@ -20,11 +20,13 @@ import {
   type LibraryCoreFeedBrowseDirectionV3,
   type LibraryCoreFeedBrowseFilterInputV1,
   type LibraryCoreFeedBrowseFilterV1,
-  type LibraryCoreOperationInstanceId,
   type LibraryCoreSavedFeedCardV1,
 } from "@freed/shared/library-core";
 import { getDocState } from "./library-client";
-import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
+import {
+  createDesktopLibraryCoreOperationId,
+  queryNormalizedLibrary,
+} from "./library-core-normalized-query-client";
 import { querySqliteItems } from "./sqlite-library";
 
 export interface BoundedDesktopFeedPage {
@@ -43,10 +45,6 @@ export interface BoundedDesktopFeedReader {
   close(): Promise<void>;
 }
 
-function operationId(prefix: string): LibraryCoreOperationInstanceId {
-  return `${prefix}:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-}
-
 async function openNormalizedFeedReader(
   filterInput: LibraryCoreFeedBrowseFilterInputV1,
   rankingClockMs: number,
@@ -56,7 +54,7 @@ async function openNormalizedFeedReader(
   );
   if (!parsed.ok) throw new Error(parsed.error);
   const filter = parsed.value;
-  const readerSessionId = operationId("desktop-feed-reader");
+  const readerSessionId = createDesktopLibraryCoreOperationId("desktop-feed-reader");
   let nextCursor: string | null = null;
   let started = false;
   let closed = false;
@@ -66,7 +64,7 @@ async function openNormalizedFeedReader(
     direction: LibraryCoreFeedBrowseDirectionV3,
   ): Promise<BoundedDesktopFeedPage & { readonly totalCount: number }> => {
     const page = await queryNormalizedLibrary({
-      cancellationId: operationId("desktop-feed-page"),
+      cancellationId: createDesktopLibraryCoreOperationId("desktop-feed-page"),
       cursor,
       direction,
       filter,
@@ -136,7 +134,7 @@ export async function openSortedSqliteFeedReader(
   );
   if (!parsed.ok) throw new Error(parsed.error);
   const savedFilter = parsed.value;
-  const readerSessionId = operationId("desktop-saved-reader");
+  const readerSessionId = createDesktopLibraryCoreOperationId("desktop-saved-reader");
   let nextCursor: string | null = null;
   let started = false;
   let closed = false;
@@ -151,7 +149,7 @@ export async function openSortedSqliteFeedReader(
     direction: LibraryCoreFeedBrowseDirectionV3,
   ): Promise<BoundedDesktopFeedPage & { readonly totalCount: number }> => {
     const page = await queryNormalizedLibrary({
-      cancellationId: operationId("desktop-saved-page"),
+      cancellationId: createDesktopLibraryCoreOperationId("desktop-saved-page"),
       cursor,
       direction,
       filter: savedFilter,
@@ -276,14 +274,14 @@ export async function readDesktopFeedSignalCounts(
       signals: preset.mode === "all" ? [] : preset.signals,
     };
     const page = await queryNormalizedLibrary({
-      cancellationId: operationId("desktop-signal-count"),
+      cancellationId: createDesktopLibraryCoreOperationId("desktop-signal-count"),
       cursor: null,
       direction: "next",
       filter: signalFilter,
       limit: 1,
       queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
       rankingClockMs,
-      readerSessionId: operationId("desktop-signal-reader"),
+      readerSessionId: createDesktopLibraryCoreOperationId("desktop-signal-reader"),
       recommendationOrderSchemaVersion:
         LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
       schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,

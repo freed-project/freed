@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  libraryCoreMapMarkerToItemV1,
+  libraryCoreStoryWallCandidateToItemV1,
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
@@ -88,5 +90,47 @@ describe("secondary surface query contracts", () => {
       source,
       shellJson: {},
     }, request).ok).toBe(false);
+  });
+
+  it("projects compact surface rows without a whole-item payload", () => {
+    const mapItem = libraryCoreMapMarkerToItemV1({
+      authorAvatarUrl: null,
+      authorDisplayName: "Ada",
+      authorHandle: "ada",
+      authorId: "author-1",
+      capturedAt: 10,
+      contentText: "At the observatory",
+      contentType: "post",
+      globalId: "x:map-1",
+      locationLat: 34.2,
+      locationLng: -118.2,
+      locationName: "Observatory",
+      locationUrl: null,
+      platform: "x",
+      publishedAt: 10,
+      sourceUrl: null,
+      timeRangeEndsAt: 30,
+      timeRangeStartsAt: 20,
+    });
+    expect(mapItem.location?.coordinates).toEqual({ lat: 34.2, lng: -118.2 });
+    expect(mapItem.timeRange).toEqual({ startsAt: 20, endsAt: 30, kind: "event" });
+
+    const storyItem = libraryCoreStoryWallCandidateToItemV1({
+      authorDisplayName: "Ada",
+      authorHandle: "ada",
+      authorId: "author-1",
+      capturedAt: 10,
+      contentText: "Caption",
+      globalId: "x:story-1",
+      locationName: null,
+      mediaTypes: ["video", "unknown"],
+      mediaUrls: ["https://example.test/video.mp4", "https://example.test/raw"],
+      platform: "x",
+      publishedAt: 10,
+      sourceUrl: null,
+    });
+    expect(storyItem.content.mediaTypes).toEqual(["video", "link"]);
+    expect(storyItem.content.mediaUrls).toHaveLength(2);
+    expect(storyItem).not.toHaveProperty("shellJson");
   });
 });

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./library-core-normalized-query-client", () => ({
+  createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 vi.mock("./sqlite-library", () => ({

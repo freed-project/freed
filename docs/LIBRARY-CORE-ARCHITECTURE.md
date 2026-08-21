@@ -952,6 +952,11 @@ enter React. Cursor strings remain opaque. No adapter invents offsets or calls
 the historical item query. The Friends feed stays on its old reader only until
 the normalized query contract expresses the Friends predicate inside SQLite.
 
+Item detail, maintained Library facets, Saved analytics, Map, and Story Wall
+use the same native client. Map and Story Wall receive specialized compact rows
+instead of FeedItems. One shared transform creates the visible-card fields used
+by product UI, so Desktop and PWA do not define separate projection semantics.
+
 ### 16.2 Cutover
 
 Cutover:
