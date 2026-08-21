@@ -472,7 +472,7 @@ function App() {
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
-      queryLibraryFriendsGraphPage: queryPwaNormalizedLibrary,
+      queryLibraryCore: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
       readLibrarySurfaceItems: readPwaLibraryCoreSurfaceItems,

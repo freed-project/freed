@@ -1566,7 +1566,7 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsGraph
           : undefined,
-      queryLibraryFriendsGraphPage:
+      queryLibraryCore:
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
           : undefined,

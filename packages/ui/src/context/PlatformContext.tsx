@@ -36,13 +36,13 @@ import type {
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
+import type { LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
 import type {
   ImportSummary,
   ProgressFn,
 } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
-import type { FriendsGalaxySqliteGraphQuery } from "../lib/friends-galaxy-product-worker-client.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -677,8 +677,8 @@ export interface PlatformConfig {
     request: LibraryFriendsGraphRequest,
   ) => Promise<LibraryFriendsGraph>;
 
-  /** Page the normalized Friends identity graph directly from local SQLite. */
-  queryLibraryFriendsGraphPage?: FriendsGalaxySqliteGraphQuery;
+  /** Execute one registered, bounded, typed query against local SQLite. */
+  queryLibraryCore?: LibraryCoreNormalizedQueryExecutor;
 
   /** One bounded source-keyed Friends timeline page from the local row store. */
   readLibraryPersonTimeline?: (

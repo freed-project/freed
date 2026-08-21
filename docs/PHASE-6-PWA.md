@@ -414,6 +414,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.29 | Hydrate synchronized PWA preferences through the shared bounded `preferences_snapshot_v1` transform instead of the selected IndexedDB shell | High | ✓ Complete |
 | 6.30 | Run Friends activity and source-fenced location resolution through `persons_graph_v1` and normalized item detail in OPFS SQLite, then delete the PWA IndexedDB read model and its scan-based tests | High | ✓ Complete |
 | 6.31 | Resolve explicit archive eligibility and toggle state from normalized SQLite item detail before creating signed follower intents | High | ✓ Complete |
+| 6.32 | Expose the OPFS SQLite typed query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning browser FeedItem rows | High | ✓ Complete |
 
 ---
 

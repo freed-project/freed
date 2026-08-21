@@ -501,6 +501,7 @@ export async function captureDomFeed(
 | 5.57 | Route selected Person timelines through the shared `person_timeline_v1` adapter, keyed by stable Person ID, with bounded compact rows and opaque source-fenced cursors | High | ✓ Complete |
 | 5.58 | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_graph_page_v1` executors so React never compiles the identity corpus | High | ✓ Complete |
 | 5.59 | Route selected unlinked Account timelines through the shared native `account_timeline_v1` adapter, keyed by stable Account ID, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
+| 5.60 | Expose one generic typed normalized query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning the Desktop item corpus | High | ✓ Complete |
 
 ---
 

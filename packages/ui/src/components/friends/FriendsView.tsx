@@ -654,7 +654,7 @@ export function FriendsView({
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile();
 
-  const { googleContacts, queryLibraryFriendsGraphPage } = usePlatform();
+  const { googleContacts, queryLibraryCore } = usePlatform();
   const contactSync = useContactSyncContext();
   const friendsWorkspaceIndexes = useMemo(
     () => buildFriendsWorkspaceIndexes(accounts, {}),
@@ -2163,7 +2163,7 @@ export function FriendsView({
                 accounts={graphEntities.accounts}
                 feeds={feeds}
                 activitySummaries={graphActivitySummaries}
-                sqliteGraphQuery={queryLibraryFriendsGraphPage}
+                sqliteGraphQuery={queryLibraryCore}
                 mode={effectiveMode}
                 selectedPersonId={selectedPerson?.id ?? null}
                 selectedAccountId={selectedAccount?.id ?? null}

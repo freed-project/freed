@@ -1070,7 +1070,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         keys: [
           "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled",
           "freed.libraryCore.feedBrowseReaderV1.disabled",
-          "freed.libraryCore.friendEditorReaderV1.disabled",
           "freed.libraryCore.friendsFeedReaderV1.disabled",
           "freed.libraryCore.friendsReaderV1.disabled",
           "freed.libraryCore.itemDetailReaderV1.disabled",
@@ -2697,15 +2696,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       '"freed.libraryCore.savedFeedReaderV1.disabled"',
     ],
     registeredKeys: ["freed.libraryCore.savedFeedReaderV1.disabled"],
-  },
-  {
-    registryKey: "library-core-derived-runtime",
-    sourcePath: "packages/ui/src/components/friends/FriendEditor.tsx",
-    sourceTokens: [
-      "FRIEND_EDITOR_READER_DISABLED_KEY =",
-      '"freed.libraryCore.friendEditorReaderV1.disabled"',
-    ],
-    registeredKeys: ["freed.libraryCore.friendEditorReaderV1.disabled"],
   },
   {
     registryKey: "library-core-derived-runtime",
