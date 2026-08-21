@@ -288,6 +288,13 @@ production never writes a product row, operation row, actor operation tip, or
 source revision. Classification and routing of every closed rejection reason
 remain required before follower write activation.
 
+Target admission runs after signature, transaction, writer, actor, capability,
+and program verification, under the same immediate SQLite transaction used for
+acceptance. A required root absent from both its typed table and the registered
+tombstone namespace produces `target_missing`. A matching typed tombstone
+produces `target_tombstoned`. The signed result binds the current source
+revision. It commits only the immutable result row and actor result cursor.
+
 ## 8. Query contract
 
 The generated query registry contains bounded SQLite queries only. Whole

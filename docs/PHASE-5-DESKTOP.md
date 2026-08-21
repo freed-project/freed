@@ -54,6 +54,11 @@
       Already-applied results prove the original accepted result and carry its
       canonical operation, receipt, and current replacement projection. Neither
       outcome advances the product revision or actor operation tip.
+- [x] Resolve a verified mutation against its target under the same immediate
+      SQLite transaction used for admission. A missing root returns
+      `target_missing`. A matching typed tombstone returns `target_tombstoned`.
+      Both results bind the current source revision and commit only the result
+      outbox row and actor-scoped result cursor.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

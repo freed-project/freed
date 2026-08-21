@@ -48,6 +48,23 @@ pub(crate) struct NormalizedMutationReceiptV1 {
     pub canonical_follower_result: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NormalizedFollowerResultReceiptV1 {
+    pub transaction_id: String,
+    pub transaction_digest: String,
+    pub actor_id: String,
+    pub status: &'static str,
+    pub follower_result_digest: String,
+    pub follower_result_sequence: i64,
+    pub canonical_follower_result: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NormalizedMutationResolutionV1 {
+    Accepted(NormalizedMutationReceiptV1),
+    FollowerResult(NormalizedFollowerResultReceiptV1),
+}
+
 fn actor_state_at(
     connection: &Connection,
     identity: &OperationIdentity,
@@ -1270,12 +1287,12 @@ fn materialize_member(
     }
 }
 
-pub(crate) fn accept_normalized_operation_transaction_v1(
+pub(crate) fn resolve_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
     authority_key_pair: &Ed25519KeyPair,
     committed_at: i64,
-) -> Result<NormalizedMutationReceiptV1, NormalizedSqliteError> {
+) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
     if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized mutation commit time is invalid",
@@ -1320,7 +1337,7 @@ pub(crate) fn accept_normalized_operation_transaction_v1(
     }
     if let Some(receipt) = stored_receipt(&transaction, &verified)? {
         transaction.commit()?;
-        return Ok(receipt);
+        return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
     }
     let first = &verified.members[0];
     let last = verified
@@ -1331,10 +1348,32 @@ pub(crate) fn accept_normalized_operation_transaction_v1(
         || actor.previous_operation_id != first.previous_actor_operation_id
         || actor.previous_chain_digest != first.previous_actor_chain_digest
     {
-        return Err(JournalError::StaleActorTip {
-            actor_id: verified.actor_id.clone(),
-        }
-        .into());
+        let source_revision: i64 = transaction.query_row(
+            "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
+            [],
+            |row| row.get(0),
+        )?;
+        let (sequence, digest, canonical) = persist_follower_result_outcome(
+            &transaction,
+            &verified,
+            authority_key_pair,
+            source_revision,
+            committed_at,
+            FollowerResultOutcome::Rejected {
+                reason: "precondition_failed",
+            },
+        )?;
+        let receipt = NormalizedFollowerResultReceiptV1 {
+            transaction_id: verified.transaction_id,
+            transaction_digest: verified.transaction_digest,
+            actor_id: verified.actor_id,
+            status: "rejected",
+            follower_result_digest: digest,
+            follower_result_sequence: sequence,
+            canonical_follower_result: canonical,
+        };
+        transaction.commit()?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
     require_causal_tips(&transaction, &verified)?;
     for member in &verified.members {
@@ -1346,9 +1385,43 @@ pub(crate) fn accept_normalized_operation_transaction_v1(
                 row.get(0)
             })?;
         if !exists {
-            return Err(NormalizedSqliteError::InvalidRequest(
-                "normalized mutation target does not exist",
-            ));
+            let tombstoned: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM library_tombstones
+                   WHERE entity_type = ?1 AND entity_id = ?2
+                 );",
+                params![program.invalidation_topic, member.entity_id],
+                |row| row.get(0),
+            )?;
+            let source_revision: i64 = transaction.query_row(
+                "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
+                [],
+                |row| row.get(0),
+            )?;
+            let reason = if tombstoned {
+                "target_tombstoned"
+            } else {
+                "target_missing"
+            };
+            let (sequence, digest, canonical) = persist_follower_result_outcome(
+                &transaction,
+                &verified,
+                authority_key_pair,
+                source_revision,
+                committed_at,
+                FollowerResultOutcome::Rejected { reason },
+            )?;
+            let receipt = NormalizedFollowerResultReceiptV1 {
+                transaction_id: verified.transaction_id,
+                transaction_digest: verified.transaction_digest,
+                actor_id: verified.actor_id,
+                status: "rejected",
+                follower_result_digest: digest,
+                follower_result_sequence: sequence,
+                canonical_follower_result: canonical,
+            };
+            transaction.commit()?;
+            return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
         }
     }
     let previous_revision: i64 = transaction.query_row(
@@ -1540,7 +1613,26 @@ pub(crate) fn accept_normalized_operation_transaction_v1(
         canonical_follower_result,
     };
     transaction.commit()?;
-    Ok(receipt)
+    Ok(NormalizedMutationResolutionV1::Accepted(receipt))
+}
+
+pub(crate) fn accept_normalized_operation_transaction_v1(
+    connection: &mut Connection,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+) -> Result<NormalizedMutationReceiptV1, NormalizedSqliteError> {
+    match resolve_normalized_operation_transaction_v1(
+        connection,
+        canonical_envelopes,
+        authority_key_pair,
+        committed_at,
+    )? {
+        NormalizedMutationResolutionV1::Accepted(receipt) => Ok(receipt),
+        NormalizedMutationResolutionV1::FollowerResult(_) => Err(
+            NormalizedSqliteError::InvalidRequest("normalized mutation was rejected"),
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -2060,30 +2152,21 @@ mod tests {
             &[("rss:item:missing", 902)],
             "feed_item_read_assignment",
         );
-        let rejected_verified = verify_operation_transaction(&rejected_envelopes, |identity| {
-            actor_state_at(&connection, identity)
-        })
-        .expect("rejected transaction verification");
-        let rejected = {
-            let transaction = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .expect("rejected transaction");
-            let result = persist_follower_result_outcome(
-                &transaction,
-                &rejected_verified,
-                &key_pair,
-                accepted.committed_revision,
-                2_200,
-                FollowerResultOutcome::Rejected {
-                    reason: "target_missing",
-                },
-            )
-            .expect("rejected result");
-            transaction.commit().expect("rejected commit");
-            result
+        let rejected = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &rejected_envelopes,
+            &key_pair,
+            2_200,
+        )
+        .expect("rejected result")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("missing target cannot be accepted")
+            }
         };
-        let rejected_json: Value =
-            serde_json::from_slice(&rejected.2).expect("rejected canonical result");
+        let rejected_json: Value = serde_json::from_slice(&rejected.canonical_follower_result)
+            .expect("rejected canonical result");
         assert_eq!(rejected_json["status"], "rejected");
         assert_eq!(rejected_json["rejection_reason"], "target_missing");
         assert_eq!(rejected_json["canonical_operation_ids"], json!([]));
@@ -2125,23 +2208,18 @@ mod tests {
             4
         );
 
-        let retry = {
-            let transaction = connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)
-                .expect("retry transaction");
-            let result = persist_follower_result_outcome(
-                &transaction,
-                &rejected_verified,
-                &key_pair,
-                accepted.committed_revision,
-                9_999,
-                FollowerResultOutcome::Rejected {
-                    reason: "target_missing",
-                },
-            )
-            .expect("exact rejected retry");
-            transaction.commit().expect("retry commit");
-            result
+        let retry = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &rejected_envelopes,
+            &key_pair,
+            9_999,
+        )
+        .expect("exact rejected retry")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("missing target retry cannot be accepted")
+            }
         };
         assert_eq!(retry, rejected);
         assert_eq!(
@@ -2154,6 +2232,89 @@ mod tests {
                 )
                 .expect("unchanged result cursor"),
             4
+        );
+    }
+
+    #[test]
+    fn resolver_distinguishes_a_tombstone_from_a_never_seen_target() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let removal_envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:remove-before-rejection",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_900)],
+            "feed_item_remove",
+        );
+        let removal = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &removal_envelopes,
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted removal");
+        let stale_target_envelopes = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:read-tombstone",
+            removal.last_counter + 1,
+            Some(&removal.committed_operation_id),
+            &removal.committed_chain_digest,
+            &[("rss:item:1", 2_050)],
+            "feed_item_read_assignment",
+        );
+        let rejection = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_target_envelopes,
+            &key_pair,
+            2_100,
+        )
+        .expect("tombstone rejection")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("a tombstoned target cannot be accepted")
+            }
+        };
+        let canonical: Value = serde_json::from_slice(&rejection.canonical_follower_result)
+            .expect("canonical tombstone rejection");
+        assert_eq!(canonical["rejection_reason"], "target_tombstoned");
+        assert_eq!(canonical["authoritative_source_revision"], 1);
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted transaction count"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT accepted_counter FROM library_actors;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted actor tip"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted source revision"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_follower_result_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("accepted plus rejected results"),
+            2
         );
     }
 
