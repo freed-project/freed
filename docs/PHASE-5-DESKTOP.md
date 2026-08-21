@@ -59,6 +59,10 @@
       `target_missing`. A matching typed tombstone returns `target_tombstoned`.
       Both results bind the current source revision and commit only the result
       outbox row and actor-scoped result cursor.
+- [x] Resolve a cryptographically valid transaction that no longer extends the
+      accepted actor tip as `precondition_failed`. The Primary signs the current
+      source revision and advances only the follower result chain. The stale
+      transaction cannot create an accepted operation or change product state.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

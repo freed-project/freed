@@ -294,6 +294,10 @@ acceptance. A required root absent from both its typed table and the registered
 tombstone namespace produces `target_missing`. A matching typed tombstone
 produces `target_tombstoned`. The signed result binds the current source
 revision. It commits only the immutable result row and actor result cursor.
+A transaction with valid canonical bytes, chain construction, and actor
+signatures that no longer extends the accepted actor tip produces
+`precondition_failed` under that same transaction. It cannot become an
+accepted operation or advance the product revision.
 
 ## 8. Query contract
 

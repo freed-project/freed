@@ -2319,6 +2319,79 @@ mod tests {
     }
 
     #[test]
+    fn resolver_signs_a_stale_actor_tip_as_a_precondition_failure() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let accepted = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &signed_envelopes(&key_pair, &enrollment),
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted transaction");
+        let stale_fork = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:stale-fork",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 2_050)],
+            "feed_item_read_assignment",
+        );
+        let rejection = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_fork,
+            &key_pair,
+            2_100,
+        )
+        .expect("precondition rejection")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("a stale actor fork cannot be accepted")
+            }
+        };
+        let canonical: Value = serde_json::from_slice(&rejection.canonical_follower_result)
+            .expect("canonical precondition rejection");
+        assert_eq!(canonical["rejection_reason"], "precondition_failed");
+        assert_eq!(canonical["authoritative_source_revision"], 1);
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted transaction count"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT accepted_counter FROM library_actors;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted actor counter"),
+            accepted.last_counter
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("accepted revision"),
+            accepted.committed_revision
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_follower_result_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("accepted plus rejected results"),
+            2
+        );
+    }
+
+    #[test]
     fn signature_failure_and_lost_writer_admission_cannot_mutate_or_replay() {
         let (mut connection, key_pair, enrollment) = fixture();
         let mut tampered = signed_envelopes(&key_pair, &enrollment);
