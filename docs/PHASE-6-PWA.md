@@ -394,6 +394,7 @@ export function filterByAuthor(
 | 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High       | ✓ Complete                                                                                       |
 | 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie     | High       | ✓ Complete                                                                                       |
 | 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity                    | High       | ✓ Complete                                                                                       |
+| 6.22 | Validate every browser and native SQLite query response through one shared request-bound typed dispatcher before a client receives it     | High       | ✓ Complete                                                                                       |
 
 ---
 

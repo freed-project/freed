@@ -1,12 +1,16 @@
 import {
   parseLibraryCoreAccountDetailRequestV1,
+  parseLibraryCoreAccountDetailResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
 } from "./account-detail-contracts.js";
 import {
   parseLibraryCoreAccountGraphPageRequestV1,
+  parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
+  parseLibraryCorePersonGraphPageResponseV1,
   parseLibraryCoreRssFeedGraphPageRequestV1,
+  parseLibraryCoreRssFeedGraphPageResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
@@ -16,6 +20,7 @@ import {
 } from "./friends-identity-page-contracts.js";
 import {
   parseLibraryCoreChangeFeedRequestV1,
+  parseLibraryCoreChangeFeedResponseV1,
   type LibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedResponseV1,
 } from "./change-feed-contracts.js";
@@ -29,54 +34,67 @@ import type {
   LibraryCoreFeedPageRequestV1,
   LibraryCoreFeedPageResponseV1,
 } from "./feed-page-contracts.js";
-import { parseLibraryCoreFeedPageRequestV1 } from "./feed-page-contracts.js";
+import {
+  parseLibraryCoreFeedPageRequestV1,
+  parseLibraryCoreFeedPageResponseV1,
+} from "./feed-page-contracts.js";
 import {
   parseLibraryCoreFeedBrowsePageRequestV3,
+  parseLibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFeedBrowsePageRequestV3,
   type LibraryCoreFeedBrowsePageResponseV3,
 } from "./feed-browse-page-contracts.js";
 import {
   parseLibraryCoreFacetSummaryRequestV1,
+  parseLibraryCoreFacetSummaryResponseV1,
   type LibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryResponseV1,
 } from "./facet-summary-contracts.js";
 import {
   parseLibraryCoreSavedAnalyticsRequestV2,
+  parseLibraryCoreSavedAnalyticsResponseV2,
   type LibraryCoreSavedAnalyticsRequestV2,
   type LibraryCoreSavedAnalyticsResponseV2,
 } from "./saved-analytics-v2-contracts.js";
 import {
   parseLibraryCoreSavedFeedPageRequestV2,
+  parseLibraryCoreSavedFeedPageResponseV2,
   type LibraryCoreSavedFeedPageRequestV2,
   type LibraryCoreSavedFeedPageResponseV2,
 } from "./saved-feed-page-contracts.js";
 import {
   parseLibraryCorePreferencesSnapshotRequestV1,
+  parseLibraryCorePreferencesSnapshotResponseV1,
   type LibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotResponseV1,
 } from "./preferences-snapshot-contracts.js";
 import {
   parseLibraryCoreItemDetailRequestV1,
+  parseLibraryCoreItemDetailResponseV1,
   type LibraryCoreItemDetailRequestV1,
   type LibraryCoreItemDetailResponseV1,
 } from "./item-detail-contracts.js";
 import {
   parseLibraryCoreItemReaderBodyRequestV1,
+  parseLibraryCoreItemReaderBodyResponseV1,
   type LibraryCoreItemReaderBodyRequestV1,
   type LibraryCoreItemReaderBodyResponseV1,
 } from "./item-reader-body-contracts.js";
 import {
   parseLibraryCoreItemScanRequestV1,
+  parseLibraryCoreItemScanResponseV1,
   type LibraryCoreItemScanRequestV1,
   type LibraryCoreItemScanResponseV1,
 } from "./item-scan-contracts.js";
 import {
   parseLibraryCorePersonDetailRequestV1,
+  parseLibraryCorePersonDetailResponseV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
 } from "./person-detail-contracts.js";
 import {
   parseLibraryCorePersonTimelineRequestV1,
+  parseLibraryCorePersonTimelineResponseV1,
   type LibraryCorePersonTimelineRequestV1,
   type LibraryCorePersonTimelineResponseV1,
 } from "./person-timeline-contracts.js";
@@ -112,7 +130,9 @@ import {
 } from "./follower-result-contracts.js";
 import {
   parseLibraryCoreMapMarkersRequestV1,
+  parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
+  parseLibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreMapMarkersRequestV1,
   type LibraryCoreMapMarkersResponseV1,
   type LibraryCoreStoryWallCandidatesRequestV1,
@@ -180,6 +200,74 @@ export type LibraryCoreSqliteQueryResponseFor<
                                   : T extends LibraryCorePreferencesSnapshotRequestV1
                                     ? LibraryCorePreferencesSnapshotResponseV1
                                     : never;
+
+/** Validates one native or browser query response against its exact request. */
+export function parseLibraryCoreSqliteQueryResponse<
+  T extends LibraryCoreSqliteQueryRequest,
+>(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
+  const parsed =
+    request.queryId === "account_detail_v1"
+      ? parseLibraryCoreAccountDetailResponseV1(value, request)
+      : request.queryId === "account_graph_page_v1"
+        ? parseLibraryCoreAccountGraphPageResponseV1(value, request)
+        : request.queryId === "change_feed_v1"
+          ? parseLibraryCoreChangeFeedResponseV1(value, request)
+          : request.queryId === "library_facet_summary_v1"
+            ? parseLibraryCoreFacetSummaryResponseV1(value)
+            : request.queryId === "feed_browse_page_v3"
+              ? parseLibraryCoreFeedBrowsePageResponseV3(value, request)
+              : request.queryId === "feed_page_v1"
+                ? parseLibraryCoreFeedPageResponseV1(value, request)
+                : request.queryId === "item_detail_v1"
+                  ? parseLibraryCoreItemDetailResponseV1(value, request)
+                  : request.queryId === "item_reader_body_v1"
+                    ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
+                    : request.queryId === "background_item_page_v1"
+                      ? parseLibraryCoreItemScanResponseV1(value, request)
+                      : request.queryId === "map_markers_v1"
+                        ? parseLibraryCoreMapMarkersResponseV1(value, request)
+                        : request.queryId === "person_detail_v1"
+                          ? parseLibraryCorePersonDetailResponseV1(
+                              value,
+                              request,
+                            )
+                          : request.queryId === "person_graph_page_v1"
+                            ? parseLibraryCorePersonGraphPageResponseV1(
+                                value,
+                                request,
+                              )
+                            : request.queryId === "person_timeline_v1"
+                              ? parseLibraryCorePersonTimelineResponseV1(
+                                  value,
+                                  request,
+                                )
+                              : request.queryId === "preferences_snapshot_v1"
+                                ? parseLibraryCorePreferencesSnapshotResponseV1(
+                                    value,
+                                  )
+                                : request.queryId === "rss_feed_graph_page_v1"
+                                  ? parseLibraryCoreRssFeedGraphPageResponseV1(
+                                      value,
+                                      request,
+                                    )
+                                  : request.queryId === "saved_analytics_v2"
+                                    ? parseLibraryCoreSavedAnalyticsResponseV2(
+                                        value,
+                                      )
+                                    : request.queryId === "saved_feed_page_v2"
+                                      ? parseLibraryCoreSavedFeedPageResponseV2(
+                                          value,
+                                          request,
+                                        )
+                                      : parseLibraryCoreStoryWallCandidatesResponseV1(
+                                          value,
+                                          request,
+                                        );
+  if (!parsed.ok) {
+    throw new TypeError(parsed.error);
+  }
+  return parsed.value as LibraryCoreSqliteQueryResponseFor<T>;
+}
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{

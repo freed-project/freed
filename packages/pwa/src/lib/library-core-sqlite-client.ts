@@ -10,6 +10,7 @@ import {
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
+  parseLibraryCoreSqliteQueryResponse,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -75,7 +76,7 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
     return this.#send<LibraryCoreSqliteQueryResponseFor<T>>((requestId) =>
       createLibraryCoreSqliteQueryWorkerRequest(requestId, query),
-    );
+    ).then((response) => parseLibraryCoreSqliteQueryResponse(response, query));
   }
 
   mutateDeviceGraphLayout(

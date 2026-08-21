@@ -11,6 +11,7 @@ import {
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
+  parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreSqliteWorkerRequest,
 } from "./sqlite-worker-protocol.js";
 
@@ -224,6 +225,40 @@ describe("Library Core SQLite worker protocol", () => {
         sortMode: "shortest_read",
       }).kind,
     ).toBe("query");
+  });
+
+  it("validates native and browser query responses through one dispatcher", () => {
+    const request = {
+      queryId: "library_facet_summary_v1" as const,
+      schemaVersion: 1 as const,
+    };
+    const response = {
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 0,
+        transitionSequence: 0,
+      },
+      summary: {
+        archivedCount: 0,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        tags: [],
+        totalCount: 0,
+      },
+    };
+    expect(parseLibraryCoreSqliteQueryResponse(response, request)).toEqual(
+      response,
+    );
+    expect(() =>
+      parseLibraryCoreSqliteQueryResponse(
+        { ...response, sql: "SELECT 1" },
+        request,
+      ),
+    ).toThrow(/facet summary response is invalid/);
   });
 
   it("carries only closed device-local graph mutations", () => {

@@ -81,6 +81,13 @@ discriminator, deserializes the remaining fields into the exact generated
 request type, and returns the exact response DTO. Unknown query IDs and extra
 fields fail closed. Raw SQL never crosses the native boundary.
 
+Native and browser responses pass through one shared TypeScript dispatcher
+bound to the original typed request before reaching a client. The dispatcher
+selects the registered response parser by `queryId`, checks source fences,
+cursors, row and byte bounds, nested limits, and exact closed fields, and
+returns the request-specific response type. A host cannot widen or reinterpret
+the result shape.
+
 ### 3.2 Browser core
 
 The PWA runs official SQLite WebAssembly in a dedicated worker and persists the
