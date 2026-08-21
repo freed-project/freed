@@ -71,7 +71,7 @@ The architecture has these non-negotiable properties:
 11. Desktop, headless, and PWA behavior derives from one executable contract
     source and the same checked-in SQL.
 12. Source migration logic is short lived and isolated. It is not a
-   permanent runtime compatibility engine.
+    permanent runtime compatibility engine.
 
 ## 2. Outcome
 
@@ -445,17 +445,17 @@ The initial registry inventory is deliberately broad. It includes at least the
 following distinct semantic mutations, with separate versions where payload or
 merge meaning differs:
 
-| family | mutation inventory |
-| --- | --- |
+| family                        | mutation inventory                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | FeedItem identity and content | `feed_item_capture`, `feed_item_replace_content`, `feed_item_set_published_time`, `feed_item_set_author`, `feed_item_set_feed`, `feed_item_set_source`, `feed_item_set_story_kind`, `feed_item_add_media`, `feed_item_remove_media`, `feed_item_set_preserved_text`, `feed_item_remove`, `feed_item_restore` |
-| Reader state | `item_assign_read`, `item_assign_saved`, `item_assign_archived`, `item_assign_liked`, `item_set_read_position`, `item_set_playback_position`, `item_add_highlight`, `item_update_highlight`, `item_remove_highlight`, `item_add_note`, `item_update_note`, `item_remove_note` |
-| Organization | `item_add_tag`, `item_remove_tag`, `tag_create`, `tag_rename`, `tag_move`, `tag_remove`, `collection_create`, `collection_rename`, `collection_add_item`, `collection_remove_item`, `collection_remove` |
-| Feeds and sources | `feed_create`, `feed_update_identity`, `feed_rename`, `feed_set_enabled`, `feed_set_unread_tracking`, `feed_set_refresh_policy`, `feed_remove`, `feed_remove_with_items`, `source_set_capture_policy`, `source_set_ranking_policy` |
-| People and accounts | `person_create`, `person_update_profile`, `person_set_relationship`, `person_record_reach_out`, `person_remove`, `account_create`, `account_update_profile`, `account_link_person`, `account_unlink_person`, `account_remove`, `identity_merge`, `identity_split` |
-| Preferences and ranking | `preference_assign`, `ranking_weight_assign`, `ranking_rule_create`, `ranking_rule_update`, `ranking_rule_remove`, `accessibility_preference_assign`, `content_policy_assign`, `synced_hydration_intent_assign` |
-| Imports and maintenance | `saved_link_capture`, `markdown_import_batch`, `sample_seed_batch`, `sample_clear_batch`, `bulk_mark_read`, `bulk_archive`, `bulk_unarchive`, `bulk_remove`, `duplicate_consolidate`, `repair_relationship`, `repair_content_reference` |
-| Content plane | `content_descriptor_register`, `content_descriptor_replace`, `content_reference_attach`, `content_reference_detach`, `content_availability_confirm`, `content_tombstone` |
-| Authority and actors | `actor_enroll`, `actor_retire`, `actor_capability_replace`, `writer_epoch_transfer`, `intent_accept`, `intent_reject`, `quarantine_accept`, `quarantine_reject`, `repair_certificate_apply`, `compaction_commit` |
+| Reader state                  | `item_assign_read`, `item_assign_saved`, `item_assign_archived`, `item_assign_liked`, `item_set_read_position`, `item_set_playback_position`, `item_add_highlight`, `item_update_highlight`, `item_remove_highlight`, `item_add_note`, `item_update_note`, `item_remove_note`                                |
+| Organization                  | `item_add_tag`, `item_remove_tag`, `tag_create`, `tag_rename`, `tag_move`, `tag_remove`, `collection_create`, `collection_rename`, `collection_add_item`, `collection_remove_item`, `collection_remove`                                                                                                      |
+| Feeds and sources             | `feed_create`, `feed_update_identity`, `feed_rename`, `feed_set_enabled`, `feed_set_unread_tracking`, `feed_set_refresh_policy`, `feed_remove`, `feed_remove_with_items`, `source_set_capture_policy`, `source_set_ranking_policy`                                                                           |
+| People and accounts           | `person_create`, `person_update_profile`, `person_set_relationship`, `person_record_reach_out`, `person_remove`, `account_create`, `account_update_profile`, `account_link_person`, `account_unlink_person`, `account_remove`, `identity_merge`, `identity_split`                                            |
+| Preferences and ranking       | `preference_assign`, `ranking_weight_assign`, `ranking_rule_create`, `ranking_rule_update`, `ranking_rule_remove`, `accessibility_preference_assign`, `content_policy_assign`, `synced_hydration_intent_assign`                                                                                              |
+| Imports and maintenance       | `saved_link_capture`, `markdown_import_batch`, `sample_seed_batch`, `sample_clear_batch`, `bulk_mark_read`, `bulk_archive`, `bulk_unarchive`, `bulk_remove`, `duplicate_consolidate`, `repair_relationship`, `repair_content_reference`                                                                      |
+| Content plane                 | `content_descriptor_register`, `content_descriptor_replace`, `content_reference_attach`, `content_reference_detach`, `content_availability_confirm`, `content_tombstone`                                                                                                                                     |
+| Authority and actors          | `actor_enroll`, `actor_retire`, `actor_capability_replace`, `writer_epoch_transfer`, `intent_accept`, `intent_reject`, `quarantine_accept`, `quarantine_reject`, `repair_certificate_apply`, `compaction_commit`                                                                                             |
 
 This inventory is not a license to combine operations behind generic payloads.
 Contract generation must census every durable call site and fail until each
@@ -944,18 +944,21 @@ fixed selector name, flushes the bound directory, and reads the exact record
 back through the same verifier. A different existing selector is never
 overwritten. Exact response-loss replay is idempotent.
 
-Freed Desktop product adapters call the same closed query protocol as browser
-SQLite. The ordinary feed uses `feed_browse_page_v3`, Saved uses
+Freed Desktop and PWA product adapters call one shared query orchestration
+layer. The host supplies only a typed executor. Freed Desktop's executor calls
+the native core. The PWA executor calls its dedicated SQLite WebAssembly
+worker. The ordinary feed uses `feed_browse_page_v3`, Saved uses
 `saved_feed_page_v2`, and signal counts issue one-row bounded browse queries.
-The native response is parsed against the exact request before compact cards
-enter React. Cursor strings remain opaque. No adapter invents offsets or calls
-the historical item query. The Friends feed stays on its old reader only until
-the normalized query contract expresses the Friends predicate inside SQLite.
+Every response is parsed against the exact request before compact cards enter
+React. Cursor strings remain opaque. No adapter invents offsets, duplicates
+platform-specific pagination logic, or calls a whole-Library query. The
+Friends feed moves to this layer when its complete predicate is registered in
+SQLite.
 
 Item detail, maintained Library facets, Saved analytics, Map, and Story Wall
 use the same native client. Map and Story Wall receive specialized compact rows
-instead of FeedItems. One shared transform creates the visible-card fields used
-by product UI, so Desktop and PWA do not define separate projection semantics.
+instead of FeedItems. Shared transforms create the visible-card fields used by
+product UI, so Desktop and PWA do not define separate projection semantics.
 
 ### 16.2 Cutover
 
@@ -1033,18 +1036,18 @@ cookies, actor private keys, authority private keys, and secrets.
 
 Initial gates are:
 
-| Operation | Budget |
-| --- | ---: |
-| Warm bounded page query p95 | 50 ms |
-| Cold bounded page query p95 | 150 ms |
-| Navigation counts p95 | 100 ms |
-| Search p95 | 150 ms |
-| Commit and materialize 1,000 captured items | 500 ms |
-| Settled renderer Library DTO state | 48 MiB |
-| Burst renderer Library DTO state | 64 MiB |
-| Native checkpoint response | 1 MiB source bytes |
-| Decoded checkpoint page | 2 MiB and 128 records |
-| Logical checkpoint record | Initial 128 KiB protocol ceiling, frozen after required physical measurements |
+| Operation                                   |                                                                        Budget |
+| ------------------------------------------- | ----------------------------------------------------------------------------: |
+| Warm bounded page query p95                 |                                                                         50 ms |
+| Cold bounded page query p95                 |                                                                        150 ms |
+| Navigation counts p95                       |                                                                        100 ms |
+| Search p95                                  |                                                                        150 ms |
+| Commit and materialize 1,000 captured items |                                                                        500 ms |
+| Settled renderer Library DTO state          |                                                                        48 MiB |
+| Burst renderer Library DTO state            |                                                                        64 MiB |
+| Native checkpoint response                  |                                                            1 MiB source bytes |
+| Decoded checkpoint page                     |                                                         2 MiB and 128 records |
+| Logical checkpoint record                   | Initial 128 KiB protocol ceiling, frozen after required physical measurements |
 
 Every page query must return its first bounded result without decoding or
 scanning the complete corpus. Larger corpus validation runs at 100,000 items.

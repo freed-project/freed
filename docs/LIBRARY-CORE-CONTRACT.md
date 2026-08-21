@@ -494,12 +494,13 @@ generation, and source revision. Native Rust and browser SQLite share the same
 program registry and exact cursor bytes. No caller can supply SQL or ask
 application code to sort a Saved corpus.
 
-Freed Desktop invokes these two queries through one generic native client that
-first validates the closed request with the shared protocol and then validates
-the native response against that exact request. The ordinary feed, Saved feed,
-and signal counts use this boundary directly. They retain only compact card
-pages and opaque keyset cursors. They do not call the historical item query or
-reconstruct a Library shell.
+Freed Desktop and the PWA invoke these queries through one shared bounded feed
+adapter. Each host supplies a typed query executor. Freed Desktop calls the
+native core and the PWA calls its dedicated SQLite WebAssembly worker. The
+shared dispatcher validates each closed request and its exact response. The
+ordinary feed, Saved feed, and signal counts retain only compact card pages and
+opaque keyset cursors. They do not call a whole-Library query or reconstruct a
+Library shell.
 
 The same client executes `item_detail_v1`,
 `library_facet_summary_v1`, `saved_analytics_v2`, `map_markers_v1`, and

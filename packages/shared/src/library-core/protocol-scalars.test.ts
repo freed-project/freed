@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createLibraryCoreOperationInstanceId,
   LIBRARY_CORE_ENTITY_ID_CODEC_V1,
   LIBRARY_CORE_MAX_ENTITY_ID_UTF8_BYTES,
   isLibraryCoreEd25519PublicKeyHex,
@@ -68,6 +69,15 @@ describe("Library Core protocol scalar codecs", () => {
     ]) {
       expect(isLibraryCoreOperationInstanceId(invalid)).toBe(false);
     }
+  });
+
+  it("constructs operation identities through the shared bounded codec", () => {
+    expect(createLibraryCoreOperationInstanceId("pwa-query", "abc-123")).toBe(
+      "pwa-query:abc-123",
+    );
+    expect(() =>
+      createLibraryCoreOperationInstanceId("bad prefix", "id"),
+    ).toThrow("operation identity is invalid");
   });
 
   it("accepts only nonempty Unicode-scalar entity IDs within 4,096 UTF-8 bytes", () => {

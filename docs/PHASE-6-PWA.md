@@ -365,36 +365,39 @@ export function filterByAuthor(
 }
 ```
 
-**Note:** Ranking algorithm runs on Desktop/OpenClaw (see Phase 5). PWA is a thin client that displays and filters.
+**Note:** Each operational environment runs the same registered ranking and
+filter query against its local SQLite database. The PWA does this inside its
+SQLite WebAssembly worker and keeps only bounded visible pages in React.
 
 ---
 
 ## Tasks
 
-| Task | Description                                                                                                                               | Complexity |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 6.1  | Vite + React + Tailwind scaffold                                                                                                          | Low        |
-| 6.2  | AppShell layout (sidebar + timeline)                                                                                                      | Medium     |
-| 6.3  | Feed components (list, item, expanded)                                                                                                    | Medium     |
-| 6.4  | Virtual scrolling (1000+ items)                                                                                                           | Medium     |
-| 6.5  | Focus mode text renderer                                                                                                                  | Low        |
-| 6.6  | Feed ranking algorithm                                                                                                                    | Medium     |
-| 6.7  | Platform/author filters                                                                                                                   | Low        |
-| 6.8  | Settings panel                                                                                                                            | Medium     |
-| 6.9  | RSS sync status dashboard                                                                                                                 | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML) |
-| 6.10 | Connect to sync layer                                                                                                                     | Medium     |
-| 6.11 | PWA manifest + service worker                                                                                                             | Medium     |
-| 6.12 | Offline support + image caching                                                                                                           | High       |
-| 6.13 | Add to homescreen prompt                                                                                                                  | Low        |
-| 6.14 | First-run legal gate with local-only acceptance storage                                                                                   | Low        |
-| 6.15 | URL navigation state with browser back/forward support                                                                                    | Low        |
-| 6.16 | Public-safe bundles and private GitHub vulnerability reports                                                                              | Medium     |
-| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                                                   | High       | ✓ Complete                                                                                       |
-| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary                                 | Medium     | ✓ Complete                                                                                       |
-| 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High       | ✓ Complete                                                                                       |
-| 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie     | High       | ✓ Complete                                                                                       |
-| 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity                    | High       | ✓ Complete                                                                                       |
-| 6.22 | Validate every browser and native SQLite query response through one shared request-bound typed dispatcher before a client receives it     | High       | ✓ Complete                                                                                       |
+| Task | Description                                                                                                                                                                       | Complexity |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 6.1  | Vite + React + Tailwind scaffold                                                                                                                                                  | Low        |
+| 6.2  | AppShell layout (sidebar + timeline)                                                                                                                                              | Medium     |
+| 6.3  | Feed components (list, item, expanded)                                                                                                                                            | Medium     |
+| 6.4  | Virtual scrolling (1000+ items)                                                                                                                                                   | Medium     |
+| 6.5  | Focus mode text renderer                                                                                                                                                          | Low        |
+| 6.6  | Feed ranking algorithm                                                                                                                                                            | Medium     |
+| 6.7  | Platform/author filters                                                                                                                                                           | Low        |
+| 6.8  | Settings panel                                                                                                                                                                    | Medium     |
+| 6.9  | RSS sync status dashboard                                                                                                                                                         | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML) |
+| 6.10 | Connect to sync layer                                                                                                                                                             | Medium     |
+| 6.11 | PWA manifest + service worker                                                                                                                                                     | Medium     |
+| 6.12 | Offline support + image caching                                                                                                                                                   | High       |
+| 6.13 | Add to homescreen prompt                                                                                                                                                          | Low        |
+| 6.14 | First-run legal gate with local-only acceptance storage                                                                                                                           | Low        |
+| 6.15 | URL navigation state with browser back/forward support                                                                                                                            | Low        |
+| 6.16 | Public-safe bundles and private GitHub vulnerability reports                                                                                                                      | Medium     |
+| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                                                                                           | High       | ✓ Complete                                                                                       |
+| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary                                                                         | Medium     | ✓ Complete                                                                                       |
+| 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter                                         | High       | ✓ Complete                                                                                       |
+| 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie                                             | High       | ✓ Complete                                                                                       |
+| 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity                                                            | High       | ✓ Complete                                                                                       |
+| 6.22 | Validate every browser and native SQLite query response through one shared request-bound typed dispatcher before a client receives it                                             | High       | ✓ Complete                                                                                       |
+| 6.23 | Route ordinary feed, Saved feed, and signal counts through one shared normalized query adapter backed by the PWA OPFS SQLite worker, with bounded compact rows and opaque cursors | High       | ✓ Complete                                                                                       |
 
 ---
 

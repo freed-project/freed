@@ -162,6 +162,13 @@ export class PwaLibraryCoreSqliteClient {
     return status;
   }
 
+  dispose(error = new Error("PWA Library SQLite client was disposed")): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#failAll(error);
+    this.#worker.terminate();
+  }
+
   #request(
     kind: LibraryCoreSqliteWorkerRequest["kind"],
   ): Promise<LibraryCoreSqliteWorkerStatus> {

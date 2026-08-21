@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  createLibraryCoreOperationInstanceId,
   createLibraryCoreSqliteQueryWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
   type LibraryCoreSqliteQueryRequest,
@@ -10,7 +11,7 @@ import {
 export function createDesktopLibraryCoreOperationId(
   prefix: string,
 ): LibraryCoreOperationInstanceId {
-  return `${prefix}:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  return createLibraryCoreOperationInstanceId(prefix, crypto.randomUUID());
 }
 
 /** Run one closed, bounded Library Core query against Freed Desktop SQLite. */

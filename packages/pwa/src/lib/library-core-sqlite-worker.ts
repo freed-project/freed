@@ -4,10 +4,11 @@ import {
   type LibraryCoreSqliteWorkerResponse,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
-
-const DATABASE_FILENAME = "/freed-library-core-v1.sqlite3";
-const OWNERSHIP_LOCK = "freed-library-core-sqlite-opfs-v1";
-const VFS_DIRECTORY = "/freed-library-core-sqlite-opfs-v1";
+import {
+  PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
+  PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
+  PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
+} from "./library-core-sqlite-storage";
 
 interface WorkerScope {
   close(): void;
@@ -29,7 +30,7 @@ async function acquireOwnership(): Promise<void> {
     rejectAcquired = reject;
   });
   ownershipTask = navigator.locks.request(
-    OWNERSHIP_LOCK,
+    PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
     { ifAvailable: true, mode: "exclusive" },
     async (lock) => {
       if (!lock) {
@@ -53,11 +54,13 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
   try {
     const sqlite3 = await sqlite3InitModule();
     const pool = await sqlite3.installOpfsSAHPoolVfs({
-      directory: VFS_DIRECTORY,
+      directory: PWA_LIBRARY_CORE_SQLITE_VFS_DIRECTORY,
       initialCapacity: 6,
       name: "freed-opfs-sahpool-v1",
     });
-    const database = new pool.OpfsSAHPoolDb(DATABASE_FILENAME);
+    const database = new pool.OpfsSAHPoolDb(
+      PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
+    );
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,

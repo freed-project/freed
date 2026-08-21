@@ -15,6 +15,9 @@ import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
   LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
+  openLibraryCoreNormalizedFeedReaderV1,
+  openLibraryCoreNormalizedSavedFeedReaderV1,
+  readLibraryCoreNormalizedFeedSignalCountsV1,
   isLibraryCoreSearchAccountAliasV1,
   isLibraryCoreSearchQueryV1,
   parseLibraryCoreControlPointerV1,
@@ -57,6 +60,10 @@ import {
   type PwaLibraryCoreSearchSourceV1,
 } from "./library-core-search-index";
 import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
+import {
+  queryPwaNormalizedLibrary,
+  resetPwaNormalizedLibrary,
+} from "./library-core-sqlite-runtime";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
@@ -90,6 +97,10 @@ const READY_INTENT_OVERLAY_RECOVERY = Object.freeze({
 }) satisfies PwaLibraryCoreIntentOverlayRecoveryStateV1;
 let intentOverlayRecoveryState: PwaLibraryCoreIntentOverlayRecoveryStateV1 =
   READY_INTENT_OVERLAY_RECOVERY;
+const NORMALIZED_READER_RUNTIME = Object.freeze({
+  query: queryPwaNormalizedLibrary,
+  randomId: () => crypto.randomUUID(),
+});
 
 function getPortableStore(): ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
@@ -883,12 +894,16 @@ export async function readPwaLibraryCoreItemDetail(
   return row as unknown as FeedItem;
 }
 
-/** Open a complete filtered feed through a bounded IndexedDB projection. */
+/** Open a filtered feed through the shared bounded SQLite query adapter. */
 export async function openPwaLibraryCoreFeedReader(
   filter: FilterOptions,
   rankingClockMs = Date.now(),
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openFeedReader(filter, rankingClockMs);
+  return openLibraryCoreNormalizedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    rankingClockMs,
+  );
 }
 
 /** Open the complete Person-first Friends feed through bounded IndexedDB pages. */
@@ -899,18 +914,18 @@ export async function openPwaLibraryCoreFriendsFeedReader(
   return getIndexedDbReaders().openFriendsFeedReader(filter, rankingClockMs);
 }
 
-/** Open every Saved sort mode through one bounded IndexedDB projection. */
+/** Open every Saved sort mode through the shared bounded SQLite query adapter. */
 export async function openPwaLibraryCoreSavedFeedReader(
   filter: FilterOptions,
   sortMode: Parameters<
     NonNullable<PlatformConfig["openBoundedSavedFeedReader"]>
   >[1],
-  rankingClockMs: number,
+  _rankingClockMs: number,
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openSavedFeedReader(
+  return openLibraryCoreNormalizedSavedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
     filter,
     sortMode,
-    rankingClockMs,
   );
 }
 
@@ -919,10 +934,15 @@ export const readPwaLibraryCoreFacetSummary: NonNullable<
   PlatformConfig["readLibraryFacetSummary"]
 > = () => getIndexedDbReaders().readFacetSummary();
 
-/** Count every signal chip from the complete selected IndexedDB generation. */
+/** Count every signal chip through bounded normalized SQLite queries. */
 export const readPwaLibraryCoreFeedSignalCounts: NonNullable<
   PlatformConfig["readFeedSignalCounts"]
-> = (filter) => getIndexedDbReaders().readFeedSignalCounts(filter);
+> = (filter) =>
+  readLibraryCoreNormalizedFeedSignalCountsV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    Date.now(),
+  );
 
 /** Read exact Saved overview aggregates from bounded IndexedDB scans. */
 export const readPwaLibraryCoreSavedAnalytics: NonNullable<
@@ -1159,8 +1179,9 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
 }
 
 registerPwaFactoryResetQuiesceHandler(
-  "library-core-indexeddb",
+  "library-core-storage",
   async () => {
+    await resetPwaNormalizedLibrary();
     await indexedDbReaders?.quiesce();
     indexedDbReaders = null;
     await portableStore?.quiesce();

@@ -4,6 +4,7 @@ export * from "./change-feed-contracts.js";
 export * from "./sqlite-contract.generated.js";
 export * from "./normalized-checkpoint-contracts.js";
 export * from "./normalized-checkpoint-stage-contracts.js";
+export * from "./normalized-feed-readers.js";
 export * from "./sqlite-worker-protocol.js";
 export * from "./actor-enrollment-verification.js";
 export * from "./actor-enrollment-contracts.js";
