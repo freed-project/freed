@@ -811,7 +811,7 @@ describe("command palette", () => {
     expect(document.body.textContent).toContain("https://broken.example/feed.xml");
   });
 
-  it("archives current scope read items with one visible ID batch", async () => {
+  it("archives current scope read items from bounded SQLite pages", async () => {
     const archiveItems = vi.fn(async () => {});
     const toggleArchived = vi.fn(async () => {});
     const visibleReadPost = createItem({
@@ -844,7 +844,17 @@ describe("command palette", () => {
       archiveItems,
       toggleArchived,
     });
-    const platform = createPlatform(store);
+    const scopedItems = [
+      visibleReadPost,
+      hiddenByContentFilter,
+      unreadPost,
+      savedPost,
+    ];
+    const platform = createPlatform(store, {
+      scanLibraryItems: async (visit) => {
+        await visit(scopedItems);
+      },
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,

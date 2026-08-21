@@ -335,7 +335,6 @@ export function SearchJumpField({
   const feeds = useAppStore((s) => s.feeds);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -386,14 +385,10 @@ export function SearchJumpField({
   const inlineBlurTimerRef = useRef<number | null>(null);
 
   const { filteredItems: commandScopeItems } = useSearchResults(
-    items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
   const {

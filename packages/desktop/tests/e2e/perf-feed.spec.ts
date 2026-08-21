@@ -9,7 +9,7 @@
  *   1. Cold load         - time from navigate() to isInitialized with 3k items
  *   2. Scroll            - frame budget while fast-scrolling 3k-item feed
  *   3. Mark-as-read      - hydrateFromDoc cost across 20 rapid mutations
- *   4. Search input      - async MiniSearch index preparation while typing a query
+ *   4. Search input      - bounded SQLite search while typing a query
  *   5. Reader view open  - simultaneous setSelectedItem + markAsRead with 3k items
  *   6. CPU profile       - V8 call-stack profile of markAsRead with 3k items
  */
@@ -475,7 +475,7 @@ test.describe("Reader view open (the worst offender)", () => {
    * This is the double-whammy: clicking a card fires setSelectedItem() AND
    * markAsRead() simultaneously. markAsRead triggers an Automerge mutation ->
    * hydrateFromDoc (O(n) sort + rank) -> items array recreated ->
-   * useSearchResults MiniSearch rebuild, all while React mounts the heavy
+   * bounded SQLite search refresh, all while React mounts the heavy
    * ReaderView component and starts its async content waterfall.
    *
    * We measure the time from click to ReaderView visible (first meaningful paint

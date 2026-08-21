@@ -504,6 +504,7 @@ export async function captureDomFeed(
 | 5.60 | Expose one generic typed normalized query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning the Desktop item corpus | High | ✓ Complete |
 | 5.61 | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed SQLite readers, with no renderer corpus lease or scan fallback | High | ✓ Complete |
 | 5.62 | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search SQLite readers, with no corpus lease, renderer sort, or reader-failure authority switch | High | ✓ Complete |
+| 5.63 | Make shared search use only normalized SQLite search pages, retain at most 100 ranked cards, and delete the renderer MiniSearch index, corpus filter, scan fallback, and package dependency | High | ✓ Complete |
 
 ---
 
@@ -546,7 +547,7 @@ export async function captureDomFeed(
 - [x] Browser desktop preview now guards native-only LinkedIn auth listeners, background social refresh paths, and local snapshot controls, so opening Settings and switching themes no longer crashes the preview
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
 - [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
-- [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
+- [x] Search does not build or retain a renderer index, and item-state mutations cannot trigger search-index work in React
 - [x] Safe user-triggered document mutations project visible UI changes immediately, roll back on worker failure, and leave destructive or repair operations source-of-truth first
 - [x] Visible-scope archive read actions batch filtered read items through one Automerge worker mutation, so large Instagram cleanup does not loop through one archive toggle per post
 - [x] macOS DMG is notarized in CI releases
@@ -661,7 +662,7 @@ export async function captureDomFeed(
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
 - [x] Freed Desktop unified feed rows now use the local card density setting as a fixed-height virtualization contract, with matching loading skeletons, post cards and story rows sharing each selected height, side media wells, density-aware clamped previews, toolbar overflow access for narrower desktop widths, a local interface zoom slider for root display scale, and no row remeasurement when media loads
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
-- [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. The prior renderer MiniSearch path remains only as the browser-test fallback.
+- [x] Full-library search runs natively against the active SQLite Library, scores one row at a time, streams at most 32 cards per page, strips preserved HTML, and lets React retain only the best 100 filtered cards. No renderer MiniSearch index, corpus filter, scan fallback, or browser-test compatibility path remains.
 - [x] Map candidates are classified when SQLite rows are written and ordered through a partial location timeline index, so opening Map does not scan and sort the full Library before returning its bounded page.
 - [x] Map and Story Wall call `map_markers_v1` and `story_wall_candidates_v1` directly. Their compact source-fenced rows exclude reader bodies, tags, signals, highlights, and unrelated state. Their row-to-visible-card transform lives in the shared contract package instead of a Desktop-only adapter.
 - [x] Freed Desktop and PWA keep a bundled geographic map style that uses the same OpenFreeMap vector tiles and glyphs when the remote style document is unavailable. A transient style-endpoint failure no longer leaves the map background blank, and the live OpenFreeMap style remains preferred when it loads.
@@ -734,8 +735,8 @@ export async function captureDomFeed(
 > without rebuilding the full desktop feed projection.
 > Desktop search now scans and scores the active SQLite Library one row at a
 > time in the native process. It streams at most 32 result cards per page and
-> React retains the best 100 filtered cards, so typing no longer builds a corpus-wide MiniSearch
-> heap or clones the full `FeedItem[]`. The desktop perf harness also switched from Chromium's broken
+> React retains the best 100 filtered cards, so typing never builds a renderer
+> search heap or clones the full `FeedItem[]`. The desktop perf harness also switched from Chromium's broken
 > zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
 > preserved-text search scenario, so memory regressions stop passing CI by
 > emitting a very confident `0.0 MB`.

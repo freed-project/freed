@@ -12,7 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, FilterOptions } from "@freed/shared";
 
 import {
   PlatformProvider,
@@ -20,31 +20,9 @@ import {
 } from "../context/PlatformContext";
 import { type SearchResults, useSearchResults } from "./useSearchResults";
 
-const EMPTY_RECORD = {};
-const EMPTY_FILTER = {};
-const EMPTY_ITEMS: FeedItem[] = [];
+const EMPTY_FILTER: FilterOptions = {};
 
-type SearchPersons = Parameters<typeof useSearchResults>[5];
-type SearchAccounts = Parameters<typeof useSearchResults>[6];
-type SearchFriends = Parameters<typeof useSearchResults>[7];
-
-function createPlatformStore(
-  getState: () => {
-    persons: SearchPersons;
-    accounts: SearchAccounts;
-    friends: SearchFriends;
-  } = () => ({
-    persons: EMPTY_RECORD,
-    accounts: EMPTY_RECORD,
-    friends: EMPTY_RECORD,
-  }),
-): PlatformConfig["store"] {
-  const store = (() => undefined) as unknown as PlatformConfig["store"];
-  store.getState = getState as PlatformConfig["store"]["getState"];
-  return store;
-}
-
-function item(index: number): FeedItem {
+function item(index: number, priority = index): FeedItem {
   return {
     globalId: `rss:item-${index.toString().padStart(3, "0")}`,
     platform: "rss",
@@ -68,37 +46,38 @@ function item(index: number): FeedItem {
       tags: [],
     },
     topics: [],
-    priority: index,
+    priority,
     sourceUrl: `https://example.com/${index}`,
   };
 }
 
+function platformConfig(
+  searchLibraryItems?: PlatformConfig["searchLibraryItems"],
+): PlatformConfig {
+  return {
+    store: (() => undefined) as unknown as PlatformConfig["store"],
+    searchLibraryItems,
+  } as PlatformConfig;
+}
+
 function Harness({
-  items = EMPTY_ITEMS,
   query = "needle",
-  resultSourceVersion,
-  persons = EMPTY_RECORD,
-  accounts = EMPTY_RECORD,
-  friends = EMPTY_RECORD,
+  filter = EMPTY_FILTER,
+  identityMode = "all_content",
+  resultSourceVersion = 41,
   onResult,
 }: {
-  items?: FeedItem[];
   query?: string;
+  filter?: FilterOptions;
+  identityMode?: "friends" | "all_content";
   resultSourceVersion?: number;
-  persons?: SearchPersons;
-  accounts?: SearchAccounts;
-  friends?: SearchFriends;
   onResult: (result: SearchResults) => void;
 }) {
   const result = useSearchResults(
-    items,
     query,
-    EMPTY_FILTER,
+    filter,
     41,
-    "all_content",
-    persons,
-    accounts,
-    friends,
+    identityMode,
     resultSourceVersion,
   );
   useEffect(() => {
@@ -135,404 +114,173 @@ describe("SQLite-streamed Library search", () => {
     vi.restoreAllMocks();
   });
 
-  it("prefers the persistent row-store search projection over a corpus scan", async () => {
-    const corpus = Array.from({ length: 101 }, (_, index) => item(index));
-    const searchLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["searchLibraryItems"]>
-    >(async (_query, _version, visit) => {
-      for (let offset = 0; offset < corpus.length; offset += 17) {
-        if (
-          visit(
-            corpus.slice(offset, offset + 17).map((entry, index) => ({
-              item: entry,
-              score: corpus.length - offset - index,
-            })),
-          ) === "stop"
-        ) {
-          return;
-        }
-      }
-    });
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
-    >(async () => undefined);
-    const platform = {
-      store: createPlatformStore(),
-      scanLibraryItems,
-      searchLibraryItems,
-    } as unknown as PlatformConfig;
+  async function render(
+    platform: PlatformConfig,
+    props: Omit<Parameters<typeof Harness>[0], "onResult"> = {},
+  ): Promise<{ latest: () => SearchResults | null }> {
     let latest: SearchResults | null = null;
-
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => {
       root?.render(
         <PlatformProvider value={platform}>
-          <Harness
-            onResult={(result) => {
-              latest = result;
-            }}
-          />
+          <Harness {...props} onResult={(result) => (latest = result)} />
         </PlatformProvider>,
       );
+      await Promise.resolve();
     });
+    return { latest: () => latest };
+  }
 
-    for (
-      let attempt = 0;
-      attempt < 100 && latest?.resultCount !== 101;
-      attempt += 1
-    ) {
+  async function settleUntil(predicate: () => boolean): Promise<void> {
+    for (let attempt = 0; attempt < 50 && !predicate(); attempt += 1) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
+  }
 
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
+  it("does no Library work for an empty query", async () => {
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async () => undefined);
+    const result = await render(platformConfig(searchLibraryItems), {
+      query: "  ",
+    });
+
+    expect(searchLibraryItems).not.toHaveBeenCalled();
+    expect(result.latest()).toEqual({
+      filteredItems: [],
+      isSearching: false,
+      resultCount: 0,
+    });
+  });
+
+  it("forwards normalized filters and identity to SQLite", async () => {
+    const searchLibraryItems = vi.fn<
+      NonNullable<PlatformConfig["searchLibraryItems"]>
+    >(async (_query, _version, visit) => {
+      visit([{ item: item(1), score: 2 }]);
+    });
+    const result = await render(platformConfig(searchLibraryItems), {
+      filter: { savedOnly: true },
+      identityMode: "friends",
+    });
+    await settleUntil(() => result.latest()?.resultCount === 1);
+
     expect(searchLibraryItems).toHaveBeenCalledWith(
       "needle",
       41,
       expect.any(Function),
       expect.objectContaining({
-        filter: {},
-        identityMode: "all_content",
+        filter: expect.objectContaining({ savedOnly: true }),
+        identityMode: "friends",
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(scanLibraryItems).not.toHaveBeenCalled();
-    expect(latest?.resultCount).toBe(101);
-    expect(latest?.filteredItems).toHaveLength(100);
-    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
+    expect(result.latest()?.filteredItems.map(({ globalId }) => globalId)).toEqual([
+      "rss:item-001",
+    ]);
   });
 
-  it("does not serialize the Account corpus into the SQLite search request", async () => {
-    const accounts = {
-      z: {
-        id: "z",
-        kind: "social",
-        provider: "rss",
-        externalId: "author",
-        displayName: "Later duplicate",
-      },
-      a: {
-        id: "a",
-        kind: "social",
-        provider: "rss",
-        externalId: "author",
-        displayName: "Canonical alias",
-      },
-      long: {
-        id: "long",
-        kind: "social",
-        provider: "rss",
-        externalId: "x".repeat(4_097),
-        displayName: "Over bound",
-      },
-    } as unknown as SearchAccounts;
-    const searchLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["searchLibraryItems"]>
-    >(async () => undefined);
-    const platform = {
-      store: createPlatformStore(() => ({
-        persons: EMPTY_RECORD,
-        accounts,
-        friends: EMPTY_RECORD,
-      })),
-      searchLibraryItems,
-    } as unknown as PlatformConfig;
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness accounts={accounts} onResult={() => undefined} />
-        </PlatformProvider>,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
-    expect(searchLibraryItems.mock.calls[0]?.[3]).toMatchObject({
-      filter: {},
-      identityMode: "all_content",
-    });
-    expect(searchLibraryItems.mock.calls[0]?.[3]).not.toHaveProperty(
-      "accountAliases",
-    );
-  });
-
-  it("retains only the first 100 ordered persistent matches", async () => {
-    const corpus = Array.from({ length: 101 }, (_, index) => item(index));
+  it("counts every SQLite match while retaining only the best 100", async () => {
+    const corpus = Array.from({ length: 121 }, (_, index) => item(index));
     const searchLibraryItems = vi.fn<
       NonNullable<PlatformConfig["searchLibraryItems"]>
     >(async (_query, _version, visit) => {
-      for (let offset = 0; offset < corpus.length; offset += 17) {
-        if (
-          visit(
-            corpus.slice(offset, offset + 17).map((entry, index) => ({
-              item: entry,
-              score: corpus.length - offset - index,
-            })),
-          ) === "stop"
-        )
-          return;
+      for (let offset = 0; offset < corpus.length; offset += 13) {
+        visit(
+          corpus.slice(offset, offset + 13).map((entry) => ({
+            item: entry,
+            score: 500 - Number(entry.globalId.slice(-3)),
+          })),
+        );
       }
     });
-    const platform = {
-      store: createPlatformStore(),
-      searchLibraryItems,
-    } as unknown as PlatformConfig;
-    let latest: SearchResults | null = null;
+    const result = await render(platformConfig(searchLibraryItems));
+    await settleUntil(() => result.latest()?.resultCount === 121);
 
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            onResult={(result) => {
-              latest = result;
-            }}
-          />
-        </PlatformProvider>,
-      );
-    });
-
-    for (
-      let attempt = 0;
-      attempt < 100 && latest?.resultCount !== 101;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
-    expect(latest?.resultCount).toBe(101);
-    expect(latest?.filteredItems).toHaveLength(100);
-    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
-    expect(latest?.filteredItems.at(-1)?.globalId).toBe("rss:item-001");
+    expect(result.latest()?.resultCount).toBe(121);
+    expect(result.latest()?.filteredItems).toHaveLength(100);
+    expect(result.latest()?.filteredItems[0]?.globalId).toBe("rss:item-120");
+    expect(result.latest()?.filteredItems.at(-1)?.globalId).toBe(
+      "rss:item-021",
+    );
   });
 
-  it("does not invoke persistent search until a query is active", async () => {
+  it("aborts a stale query and publishes only its replacement", async () => {
+    const releases = new Map<string, () => void>();
     const searchLibraryItems = vi.fn<
       NonNullable<PlatformConfig["searchLibraryItems"]>
-    >(async () => undefined);
-    const platform = {
-      store: createPlatformStore(),
-      searchLibraryItems,
-    } as unknown as PlatformConfig;
-
+    >(async (query, _version, visit, options) => {
+      await new Promise<void>((resolve) => releases.set(query, resolve));
+      if (!options?.signal?.aborted) {
+        visit([{ item: item(query === "first" ? 1 : 2), score: 1 }]);
+      }
+    });
+    let latest: SearchResults | null = null;
+    const platform = platformConfig(searchLibraryItems);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+
     await act(async () => {
       root?.render(
         <PlatformProvider value={platform}>
-          <Harness query="" onResult={() => undefined} />
+          <Harness query="first" onResult={(result) => (latest = result)} />
+        </PlatformProvider>,
+      );
+      await Promise.resolve();
+    });
+    const firstSignal = searchLibraryItems.mock.calls[0]?.[3]?.signal;
+    await act(async () => {
+      root?.render(
+        <PlatformProvider value={platform}>
+          <Harness query="second" onResult={(result) => (latest = result)} />
         </PlatformProvider>,
       );
       await Promise.resolve();
     });
 
-    expect(searchLibraryItems).not.toHaveBeenCalled();
-
+    expect(firstSignal?.aborted).toBe(true);
     await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness query="needle" onResult={() => undefined} />
-        </PlatformProvider>,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      releases.get("first")?.();
+      releases.get("second")?.();
+      await Promise.resolve();
     });
-
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
+    await settleUntil(() => latest?.resultCount === 1);
+    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-002");
   });
 
-  it("refreshes queried user state through the persistent search source", async () => {
-    let sourceItem = item(1);
-    let releaseRefresh: (() => void) | null = null;
-    const refreshBlocked = new Promise<void>((resolve) => {
-      releaseRefresh = resolve;
-    });
-    let searchCount = 0;
-    const searchLibraryItems = vi.fn<
+  it("fails closed for invalid, absent, or rejected SQLite search", async () => {
+    const invalidSearch = vi.fn<
       NonNullable<PlatformConfig["searchLibraryItems"]>
-    >(async (_query, _version, visit) => {
-      searchCount += 1;
-      if (searchCount === 2) await refreshBlocked;
-      visit([{ item: sourceItem, score: 1 }]);
-    });
-    const platform = {
-      store: createPlatformStore(),
-      searchLibraryItems,
-    } as unknown as PlatformConfig;
-    const latest = { current: null as SearchResults | null };
-    const onResult = (result: SearchResults) => {
-      latest.current = result;
-    };
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness resultSourceVersion={1} onResult={onResult} />
-        </PlatformProvider>,
-      );
-    });
-
-    for (
-      let attempt = 0;
-      attempt < 100 &&
-      latest.current?.filteredItems[0]?.userState.saved !== false;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
-    expect(latest.current?.filteredItems[0]?.userState.saved).toBe(false);
-
-    sourceItem = {
-      ...sourceItem,
-      userState: { ...sourceItem.userState, saved: true },
-    };
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness resultSourceVersion={2} onResult={onResult} />
-        </PlatformProvider>,
-      );
-    });
-
-    expect(searchLibraryItems).toHaveBeenCalledTimes(2);
-    expect(latest.current?.filteredItems).toEqual([]);
-
-    await act(async () => {
-      releaseRefresh?.();
-      await refreshBlocked;
-    });
-
-    for (
-      let attempt = 0;
-      attempt < 100 &&
-      latest.current?.filteredItems[0]?.userState.saved !== true;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-    expect(searchLibraryItems).toHaveBeenCalledTimes(2);
-    expect(latest.current?.filteredItems[0]?.userState.saved).toBe(true);
-  });
-
-  it("fails closed when governed persistent search rejects a query", async () => {
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
     >(async () => undefined);
-    const searchLibraryItems = vi.fn<
+    const invalid = await render(platformConfig(invalidSearch), {
+      query: "x".repeat(1_025),
+    });
+    expect(invalidSearch).not.toHaveBeenCalled();
+    expect(invalid.latest()?.searchUnavailable).toBe(true);
+
+    await act(async () => root?.unmount());
+    root = null;
+    container?.remove();
+    container = null;
+    const absent = await render(platformConfig(), { query: "needle" });
+    expect(absent.latest()?.searchUnavailable).toBe(true);
+
+    await act(async () => root?.unmount());
+    root = null;
+    container?.remove();
+    container = null;
+    const rejectedSearch = vi.fn<
       NonNullable<PlatformConfig["searchLibraryItems"]>
     >(async () => {
-      throw new Error("persistent projection unavailable");
+      throw new Error("SQLite unavailable");
     });
-    const acquireLegacyLibraryItems = vi.fn();
-    const platform = {
-      store: createPlatformStore(),
-      scanLibraryItems,
-      searchLibraryItems,
-      acquireLegacyLibraryItems,
-    } as unknown as PlatformConfig;
-    let latest: SearchResults | null = null;
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            items={[item(1)]}
-            onResult={(result) => {
-              latest = result;
-            }}
-          />
-        </PlatformProvider>,
-      );
-    });
-
-    for (
-      let attempt = 0;
-      attempt < 100 && latest?.searchUnavailable !== true;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-
-    expect(searchLibraryItems).toHaveBeenCalledOnce();
-    expect(scanLibraryItems).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-    expect(latest).toMatchObject({
-      filteredItems: [],
-      isSearching: true,
-      resultCount: 0,
-      searchUnavailable: true,
-    });
-  });
-
-  it("rejects over-bound queries before any persistent or legacy search work", async () => {
-    const scanLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["scanLibraryItems"]>
-    >(async () => undefined);
-    const searchLibraryItems = vi.fn<
-      NonNullable<PlatformConfig["searchLibraryItems"]>
-    >(async () => undefined);
-    const acquireLegacyLibraryItems = vi.fn();
-    const platform = {
-      store: createPlatformStore(),
-      scanLibraryItems,
-      searchLibraryItems,
-      acquireLegacyLibraryItems,
-    } as unknown as PlatformConfig;
-    let latest: SearchResults | null = null;
-
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <PlatformProvider value={platform}>
-          <Harness
-            query={"x".repeat(1_025)}
-            onResult={(result) => {
-              latest = result;
-            }}
-          />
-        </PlatformProvider>,
-      );
-    });
-
-    for (
-      let attempt = 0;
-      attempt < 100 && latest?.searchUnavailable !== true;
-      attempt += 1
-    ) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-    expect(searchLibraryItems).not.toHaveBeenCalled();
-    expect(scanLibraryItems).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-    expect(latest?.searchUnavailable).toBe(true);
+    const rejected = await render(platformConfig(rejectedSearch));
+    await settleUntil(() => rejected.latest()?.searchUnavailable === true);
+    expect(rejected.latest()?.searchUnavailable).toBe(true);
   });
 });

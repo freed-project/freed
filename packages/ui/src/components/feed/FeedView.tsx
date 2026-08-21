@@ -390,9 +390,7 @@ export function FeedView() {
   } = platform;
   const canAddFeeds = !!addRssFeed;
   const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -598,17 +596,13 @@ export function FeedView() {
     [markItemsAsRead, patchBoundedItems],
   );
 
-  // useSearchResults handles both the search and the normal ranked+filtered path.
-  // When searchQuery is empty it behaves identically to the previous useMemo.
+  // Search is a separate bounded SQLite window. Ordinary browsing comes from
+  // the feed query above and never falls back to a renderer-held corpus.
   const { filteredItems, isSearching } = useSearchResults(
-    EMPTY_FEED_ITEMS,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
   const visibleItems = useMemo(() => {

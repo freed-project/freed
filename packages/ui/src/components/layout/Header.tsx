@@ -358,7 +358,6 @@ export function Header({
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
-  const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
@@ -390,14 +389,10 @@ export function Header({
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
   const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
-    items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
-    persons,
-    accounts,
-    friends,
     libraryItemVersion,
   );
   const selectedItem = useMemo(
