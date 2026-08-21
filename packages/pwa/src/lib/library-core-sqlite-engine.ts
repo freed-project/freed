@@ -6,6 +6,7 @@ import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
+  LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
@@ -1062,6 +1063,9 @@ export class PwaLibraryCoreSqliteEngine {
           ),
         ];
       }
+      if (envelope.operation_type === "feed_item_capture_upsert") {
+        return [];
+      }
       throw new TypeError(
         `follower optimistic materialization does not support ${envelope.operation_type}`,
       );
@@ -1166,21 +1170,27 @@ export class PwaLibraryCoreSqliteEngine {
             `follower actor capability denies ${envelope.operation_type}`,
           );
         }
+        const program =
+          LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS[
+            envelope.operation_type as keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS
+          ];
+        if (!program) {
+          throw new Error(
+            `follower intent mutation program is absent for ${envelope.operation_type}`,
+          );
+        }
         const targetExists = safeInteger(
           this.#database.exec({
-            sql: `SELECT count(*) FROM library_feed_items
-                  WHERE global_id = ?1
-                    AND NOT EXISTS (
-                      SELECT 1 FROM library_tombstones
-                      WHERE entity_type = 'FeedItem' AND entity_id = ?1
-                    );`,
-            bind: [envelope.entity_id],
+            sql: program.targetExistsSql,
+            bind: program.targetExistsSql.includes("?1")
+              ? [envelope.entity_id]
+              : [],
             rowMode: 0,
             returnValue: "resultRows",
           })[0],
           "follower optimistic target count",
         );
-        if (targetExists !== 1) {
+        if (program.requiresExistingTarget && targetExists !== 1) {
           throw new Error("follower optimistic target is unavailable");
         }
       }
@@ -1510,6 +1520,87 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  #materializeAcceptedFollowerIntent(
+    transactionId: string,
+    resolvedAt: number,
+  ): void {
+    const rows = this.#database.exec({
+      sql: `SELECT canonical_member FROM library_intent_members
+            WHERE transaction_id = ?1 ORDER BY member_index;`,
+      bind: [transactionId],
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    if (rows.length === 0) {
+      throw new Error("accepted follower intent has no stored members");
+    }
+    for (const value of rows) {
+      const decoded = decodeLibraryCoreCanonicalValue(
+        bytes(value, "accepted follower intent canonical member"),
+      );
+      if (
+        decoded === null ||
+        typeof decoded !== "object" ||
+        Array.isArray(decoded)
+      ) {
+        throw new Error("accepted follower intent member is not canonical");
+      }
+      const envelope = decoded as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      if (
+        envelope.operation_type !== "feed_item_capture_upsert" ||
+        envelope.entity_type !== "FeedItem" ||
+        typeof envelope.entity_id !== "string" ||
+        envelope.payload === null ||
+        typeof envelope.payload !== "object" ||
+        Array.isArray(envelope.payload)
+      ) {
+        throw new Error("accepted follower intent materializer is unavailable");
+      }
+      const payload = envelope.payload as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      if (
+        payload.item === null ||
+        typeof payload.item !== "object" ||
+        Array.isArray(payload.item)
+      ) {
+        throw new Error("accepted FeedItem capture payload is invalid");
+      }
+      const program =
+        LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert;
+      const itemJson = JSON.stringify(payload.item);
+      this.#database.exec({
+        sql: program.materializeSql,
+        bind: [envelope.entity_id, itemJson, resolvedAt],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "accepted FeedItem capture materialization",
+        ) !== 1
+      ) {
+        throw new Error(
+          "accepted FeedItem capture target was not materialized",
+        );
+      }
+      for (const sql of program.dependentDeleteSql) {
+        this.#database.exec({ sql, bind: [envelope.entity_id] });
+      }
+      for (const sql of program.dependentInsertSql) {
+        this.#database.exec({
+          sql,
+          bind: [envelope.entity_id, itemJson],
+        });
+      }
+    }
+  }
+
   async applyFollowerResult(
     input: LibraryCoreFollowerResultApplyV1,
   ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
@@ -1750,6 +1841,15 @@ export class PwaLibraryCoreSqliteEngine {
       }
 
       if (envelope.authoritative_source_revision > sourceRevision) {
+        if (
+          envelope.status === "accepted" &&
+          envelope.replacement_fields.length === 0
+        ) {
+          this.#materializeAcceptedFollowerIntent(
+            envelope.transaction_id,
+            envelope.resolved_at_ms,
+          );
+        }
         for (const field of replacements) {
           const value =
             field.value_type === "boolean"

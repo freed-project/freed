@@ -75,8 +75,11 @@
   - [x] Include the generated normalized FeedItem capture program in the shared
         browser contract with a 32-member transaction bound, 131,072-byte
         canonical item ceiling, typed root and child SQL, refresh-safe user
-        state ownership, and tombstone refusal. Browser signed-intent execution
-        remains open.
+        state ownership, and tombstone refusal. Browser SQLite now accepts the
+        signed capture as an intent without changing canonical rows, then
+        materializes the exact stored payload through that generated program
+        only after a valid accepted Primary result advances the source
+        revision.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

@@ -25,6 +25,7 @@ import {
   encodeLibraryCoreSignatureInput,
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
@@ -929,6 +930,221 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([[1_600, "rejected", currentEpochId, epochId, 0, 4]]);
+  });
+
+  it("materializes an accepted signed FeedItem capture through the generated program", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 2_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);
+            `,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-capture', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('capture-capability', ?1, 2, 'scraper', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES ('capture-capability', 'feed_item_capture_upsert');`,
+    });
+    const item = {
+      author: { displayName: "Ada", handle: "ada", id: "author-1" },
+      capturedAt: 1_500,
+      content: {
+        mediaTypes: ["image"],
+        mediaUrls: ["https://example.com/image.jpg"],
+        text: "A bounded capture",
+      },
+      contentType: "post",
+      globalId: "captured-item-1",
+      platform: "saved",
+      publishedAt: 1_400,
+      topics: ["sqlite"],
+      userState: {
+        archived: false,
+        hidden: false,
+        saved: false,
+        tags: [],
+      },
+    };
+    const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 1_500,
+        entity_id: item.globalId,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 1_500,
+        library_id: libraryId,
+        operation_id: "capture-operation-1",
+        payload: { item },
+        previous_actor_operation_id: null,
+        transaction_id: "capture-transaction-1",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    const envelopeBytes = finalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+    const intent = await engine.commitFollowerIntent({ envelopeBytes });
+    expect(intent.optimisticFieldCount).toBe(0);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_feed_items;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 1,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["canonical-capture-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: ["capture-receipt-1"],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 2_100,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "capture-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    const resultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedResult,
+      result_body_digest: resultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: resultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    await engine.applyFollowerResult({ canonicalResultBytes: resultBytes });
+    expect(
+      database.exec({
+        sql: `SELECT global_id, content_text, saved, archived, updated_at,
+                     (SELECT source_url FROM library_feed_item_media
+                      WHERE global_id = 'captured-item-1' AND ordinal = 0),
+                     (SELECT topic FROM library_feed_item_topics
+                      WHERE global_id = 'captured-item-1')
+              FROM library_feed_items WHERE global_id = 'captured-item-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        "captured-item-1",
+        "A bounded capture",
+        0,
+        0,
+        2_100,
+        "https://example.com/image.jpg",
+        "sqlite",
+      ],
+    ]);
   });
 
   it("refuses a foreign SQLite application identity before creating tables", () => {

@@ -367,6 +367,15 @@ resolved transaction fails without altering the intent, optimistic overlay,
 actor tip, or canonical projection. The mutation does not perform cloud I/O or
 interpret provider receipts.
 
+An accepted FeedItem capture result materializes the follower's exact stored
+signed member through the generated `feed_item_capture_upsert` program. Intent
+commit does not write a canonical FeedItem and needs no shell-shaped optimistic
+copy. Result admission reopens the immutable canonical envelope, requires the
+closed FeedItem capture payload, and runs the same generated root, media, and
+topic SQL used by the native Primary before advancing the local source
+revision. Refresh preserves synchronized user state by contract. Tombstones,
+oversized members, absent programs, and changed signed bytes fail closed.
+
 Native result export is one actor-bound keyset page over
 `(actor_id, result_sequence)`. The request carries the actor and, after the
 first page, the exact prior sequence and digest. A page returns at most 128
