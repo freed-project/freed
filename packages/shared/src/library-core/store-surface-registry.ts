@@ -203,6 +203,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
       "person_timeline_v1",
       "persons_graph_v1",
       "saved_analytics_v1",
+      "search_page_v1",
     ],
     activationBlocker:
       "ranked feed array retains a corpus-sized renderer projection",

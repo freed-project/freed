@@ -59,6 +59,16 @@ import {
   LIBRARY_CORE_ACCOUNT_TIMELINE_RESPONSE_SCHEMA,
 } from "./account-timeline-contracts.js";
 import {
+  LIBRARY_CORE_SEARCH_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_SEARCH_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_SEARCH_PAGE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_SEARCH_PAGE_NESTED_BOUNDS,
+  LIBRARY_CORE_SEARCH_PAGE_PROJECTION,
+  LIBRARY_CORE_SEARCH_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_SEARCH_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SEARCH_PAGE_SOURCE_IDENTITY,
+} from "./search-page-contracts.js";
+import {
   LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
   LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
   LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
@@ -311,6 +321,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SEARCH_PAGE_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
@@ -339,6 +350,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SEARCH_PAGE_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
@@ -363,6 +375,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION
     | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
+    | typeof LIBRARY_CORE_SEARCH_PAGE_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY
@@ -378,6 +391,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_SEARCH_PAGE_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS
@@ -395,6 +409,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS
     | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_SEARCH_PAGE_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
@@ -490,7 +505,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_MAP_MARKERS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SEARCH_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
@@ -516,7 +532,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_MAP_MARKERS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SEARCH_PAGE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
@@ -538,7 +555,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_MAP_MARKERS_PROJECTION
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_PROJECTION
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
-    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
+    | typeof LIBRARY_CORE_SEARCH_PAGE_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY
@@ -551,7 +569,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
-    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY;
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_SEARCH_PAGE_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS
@@ -566,7 +585,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_MAP_MARKERS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_STORY_WALL_CANDIDATES_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
-    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS;
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_SEARCH_PAGE_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -1417,12 +1437,29 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   search_page_v1: plannedQuery({
-    defaultLimit: 50,
-    maximumLimit: 100,
-    maximumRows: 100,
-    totalCountIntent: "snapshot_exact",
+    defaultLimit: LIBRARY_CORE_SEARCH_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_SEARCH_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_SEARCH_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_SEARCH_PAGE_MAXIMUM_RESPONSE_BYTES,
+    totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["search:{normalized_query_digest}"],
+    currentKinds: [
+      "query_normalized_v1::search_page_v1",
+      "PwaLibraryCoreSqliteEngine.query::search_page_v1",
+    ],
+    requestSchema: LIBRARY_CORE_SEARCH_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_SEARCH_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_SEARCH_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_SEARCH_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_SEARCH_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "globalId", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   semantic_classification_claim_v1: plannedQuery({
     defaultLimit: 50,

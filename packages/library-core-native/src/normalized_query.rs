@@ -6,6 +6,7 @@ use base64::Engine;
 use rusqlite::{params, Connection, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
@@ -35,6 +36,16 @@ const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTENT_CHUNK_BYTES: usize = 65_536;
 const CURSOR_FIXED_BYTES: usize = 59;
+const SEARCH_MAXIMUM_LIMIT: usize = 32;
+const SEARCH_MAXIMUM_SCAN_ROWS: usize = 256;
+const SEARCH_MAXIMUM_QUERY_BYTES: usize = 1_024;
+const SEARCH_MAXIMUM_QUERY_TERMS: usize = 32;
+const SEARCH_MAXIMUM_DOCUMENT_TERMS: usize = 384;
+const SEARCH_MAXIMUM_ALIAS_TERMS: usize = 16;
+const SEARCH_MAXIMUM_TOKEN_BYTES: usize = 1_024;
+const SEARCH_MAXIMUM_TOKEN_SCALARS: usize = 256;
+const SEARCH_MAXIMUM_SCORE_WORK: usize = 65_536;
+const SEARCH_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -109,6 +120,21 @@ pub struct NormalizedAccountTimelineRequestV1 {
     pub cursor: Option<String>,
     pub limit: usize,
     pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSearchPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub filter: NormalizedFeedBrowseFilterV1,
+    pub friends_predicate_schema_version: u32,
+    pub identity_mode: String,
+    pub limit: usize,
+    pub query: String,
+    pub reader_session_id: String,
+    pub recommendation_order_schema_version: u32,
     pub schema_version: u32,
 }
 
@@ -259,6 +285,7 @@ pub enum NormalizedQueryRequestV1 {
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
     SavedFeedPage(NormalizedSavedFeedPageRequestV2),
+    SearchPage(NormalizedSearchPageRequestV1),
     StoryWallCandidates(NormalizedStoryWallCandidatesRequestV1),
 }
 
@@ -383,6 +410,25 @@ pub struct NormalizedPersonTimelineResponseV1 {
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
     pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSearchPageRowV1 {
+    pub card: NormalizedFeedCardV1,
+    pub priority: i64,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSearchPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedSearchPageRowV1>,
+    pub scanned_rows: usize,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -763,6 +809,7 @@ pub enum NormalizedQueryResponseV1 {
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
     SavedFeedPage(Box<NormalizedSavedFeedPageResponseV2>),
+    SearchPage(NormalizedSearchPageResponseV1),
     StoryWallCandidates(NormalizedStoryWallCandidatesResponseV1),
 }
 
@@ -773,6 +820,12 @@ struct FeedPageCursorV1 {
     projection_revision: i64,
     sort_at: i64,
     global_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SearchPageCursorV1 {
+    page: FeedPageCursorV1,
+    search_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -918,6 +971,164 @@ fn decode_cursor(value: &str) -> Result<FeedPageCursorV1, NormalizedSqliteError>
         sort_at: read_safe_u64(&bytes[49..57])?,
         global_id,
     })
+}
+
+fn encode_search_cursor(cursor: &SearchPageCursorV1) -> Result<String, NormalizedSqliteError> {
+    if !valid_lower_hex_64(&cursor.search_digest) {
+        return Err(invalid("normalized search cursor digest is invalid"));
+    }
+    Ok(format!(
+        "1.{}.{}",
+        encode_cursor(&cursor.page)?,
+        cursor.search_digest
+    ))
+}
+
+fn decode_search_cursor(value: &str) -> Result<SearchPageCursorV1, NormalizedSqliteError> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 3 || parts[0] != "1" || !valid_lower_hex_64(parts[2]) {
+        return Err(invalid("normalized search cursor encoding is invalid"));
+    }
+    Ok(SearchPageCursorV1 {
+        page: decode_cursor(parts[1])?,
+        search_digest: parts[2].to_owned(),
+    })
+}
+
+fn search_terms(value: &str, maximum_terms: usize) -> Vec<String> {
+    let mut terms = Vec::new();
+    let mut current = String::new();
+    let mut current_bytes = 0_usize;
+    let mut current_scalars = 0_usize;
+    let mut overflow = false;
+    for character in value
+        .nfkd()
+        .flat_map(char::to_lowercase)
+        .filter(|character| !is_combining_mark(*character))
+    {
+        if character.is_alphanumeric() || matches!(character, '_' | '@' | '#') {
+            if overflow {
+                continue;
+            }
+            current_bytes += character.len_utf8();
+            current_scalars += 1;
+            if current_bytes > SEARCH_MAXIMUM_TOKEN_BYTES
+                || current_scalars > SEARCH_MAXIMUM_TOKEN_SCALARS
+            {
+                current.clear();
+                overflow = true;
+                continue;
+            }
+            current.push(character);
+        } else {
+            if !overflow && !current.is_empty() && !terms.contains(&current) {
+                terms.push(std::mem::take(&mut current));
+                if terms.len() == maximum_terms {
+                    return terms;
+                }
+            } else {
+                current.clear();
+            }
+            current_bytes = 0;
+            current_scalars = 0;
+            overflow = false;
+        }
+    }
+    if terms.len() < maximum_terms && !overflow && !current.is_empty() && !terms.contains(&current)
+    {
+        terms.push(current);
+    }
+    terms
+}
+
+fn bounded_search_edit_distance(left: &str, right: &str, maximum: usize) -> usize {
+    if left.len() > SEARCH_MAXIMUM_TOKEN_BYTES || right.len() > SEARCH_MAXIMUM_TOKEN_BYTES {
+        return maximum + 1;
+    }
+    let left = left.chars().collect::<Vec<_>>();
+    let right = right.chars().collect::<Vec<_>>();
+    if left.len() > SEARCH_MAXIMUM_TOKEN_SCALARS
+        || right.len() > SEARCH_MAXIMUM_TOKEN_SCALARS
+        || left.len().abs_diff(right.len()) > maximum
+    {
+        return maximum + 1;
+    }
+    let mut previous = (0..=right.len()).collect::<Vec<_>>();
+    for (left_index, left_character) in left.iter().enumerate() {
+        let mut current = vec![left_index + 1];
+        let mut row_minimum = left_index + 1;
+        for (right_index, right_character) in right.iter().enumerate() {
+            let value = std::cmp::min(
+                std::cmp::min(current[right_index] + 1, previous[right_index + 1] + 1),
+                previous[right_index] + usize::from(left_character != right_character),
+            );
+            current.push(value);
+            row_minimum = row_minimum.min(value);
+        }
+        if row_minimum > maximum {
+            return maximum + 1;
+        }
+        previous = current;
+    }
+    previous[right.len()]
+}
+
+fn search_term_score(query: &str, candidate: &str, weight: f64) -> f64 {
+    if candidate == query {
+        return weight * 4.0;
+    }
+    if candidate.starts_with(query) {
+        return weight * 3.0;
+    }
+    if query.chars().count() < 4 {
+        return 0.0;
+    }
+    let maximum = std::cmp::max(1, query.chars().count() / 5);
+    let distance = bounded_search_edit_distance(query, candidate, maximum);
+    if distance <= maximum {
+        weight * 2.0 - distance as f64 / 10.0
+    } else {
+        0.0
+    }
+}
+
+fn collect_search_field(
+    value: &str,
+    weight: f64,
+    maximum_terms: usize,
+    fields: &mut Vec<(String, f64)>,
+) {
+    if fields.len() >= maximum_terms {
+        return;
+    }
+    for term in search_terms(value, maximum_terms - fields.len()) {
+        fields.push((term, weight));
+    }
+}
+
+fn score_search_fields(fields: &[(String, f64)], query_terms: &[String]) -> f64 {
+    let mut remaining_work = SEARCH_MAXIMUM_SCORE_WORK;
+    let mut total = 0.0;
+    for query in query_terms {
+        let mut best = 0.0_f64;
+        for (candidate, weight) in fields {
+            if candidate == query || candidate.starts_with(query) {
+                best = best.max(search_term_score(query, candidate, *weight));
+                continue;
+            }
+            let work = (query.chars().count() + 1).saturating_mul(candidate.chars().count() + 1);
+            if work > remaining_work {
+                continue;
+            }
+            remaining_work -= work;
+            best = best.max(search_term_score(query, candidate, *weight));
+        }
+        if best == 0.0 {
+            return 0.0;
+        }
+        total += best;
+    }
+    total
 }
 
 fn encode_feed_browse_cursor(cursor: &FeedBrowseCursorV2) -> Result<String, NormalizedSqliteError> {
@@ -1210,6 +1421,90 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         source_url: row.get("sourceUrl")?,
         tags: string_array(row, "tagsJson", 32, 1_024)?,
     })
+}
+
+fn search_fields(row: &Row<'_>) -> rusqlite::Result<Vec<(String, f64)>> {
+    let optional = |name: &str| -> rusqlite::Result<String> {
+        Ok(row.get::<_, Option<String>>(name)?.unwrap_or_default())
+    };
+    let joined = |name: &str, maximum: usize| -> rusqlite::Result<String> {
+        Ok(string_array(row, name, maximum, 2_048)?.join(" "))
+    };
+    let mut fields = Vec::new();
+    let base_limit = SEARCH_MAXIMUM_DOCUMENT_TERMS - SEARCH_MAXIMUM_ALIAS_TERMS;
+    collect_search_field(&optional("linkPreviewTitle")?, 4.0, base_limit, &mut fields);
+    collect_search_field(
+        &format!(
+            "{} {}",
+            joined("searchTopicsJson", 64)?,
+            joined("contentSignalTagsJson", 32)?
+        ),
+        3.0,
+        base_limit,
+        &mut fields,
+    );
+    collect_search_field(
+        &[
+            optional("searchEventTitle")?,
+            optional("searchEventLocation")?,
+            optional("searchEventEvidence")?,
+            optional("locationName")?,
+        ]
+        .join(" "),
+        3.0,
+        base_limit,
+        &mut fields,
+    );
+    collect_search_field(&joined("tagsJson", 32)?, 3.0, base_limit, &mut fields);
+    for name in ["authorDisplayName", "authorHandle", "authorId"] {
+        collect_search_field(&optional(name)?, 3.0, base_limit, &mut fields);
+    }
+    for name in [
+        "searchContentText",
+        "searchLinkDescription",
+        "searchRssFeedTitle",
+    ] {
+        collect_search_field(&optional(name)?, 2.0, base_limit, &mut fields);
+    }
+    collect_search_field(
+        &joined("searchHighlightsJson", 8)?,
+        2.0,
+        base_limit,
+        &mut fields,
+    );
+    collect_search_field(
+        &optional("searchPreservedText")?,
+        1.0,
+        base_limit,
+        &mut fields,
+    );
+    collect_search_field(
+        &optional("searchAccountAliases")?,
+        3.0,
+        SEARCH_MAXIMUM_DOCUMENT_TERMS,
+        &mut fields,
+    );
+    Ok(fields)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchDigestInput<'a> {
+    filter: &'a NormalizedFeedBrowseFilterV1,
+    identity_mode: &'a str,
+    query: &'a str,
+}
+
+fn search_request_digest(
+    request: &NormalizedSearchPageRequestV1,
+) -> Result<String, NormalizedSqliteError> {
+    let bytes = serde_json::to_vec(&SearchDigestInput {
+        filter: &request.filter,
+        identity_mode: &request.identity_mode,
+        query: &request.query,
+    })
+    .map_err(|_| invalid("normalized search binding is invalid"))?;
+    Ok(lower_hex(&Sha256::digest(bytes)))
 }
 
 fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
@@ -1799,6 +2094,140 @@ fn query_saved_feed_page(
         > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
     {
         return Err(invalid("normalized saved response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_search_page(
+    connection: &mut Connection,
+    request: NormalizedSearchPageRequestV1,
+) -> Result<NormalizedSearchPageResponseV1, NormalizedSqliteError> {
+    let query_terms = search_terms(&request.query, SEARCH_MAXIMUM_QUERY_TERMS);
+    if request.schema_version != 1
+        || request.friends_predicate_schema_version != 1
+        || request.recommendation_order_schema_version != 1
+        || !matches!(request.identity_mode.as_str(), "all_content" | "friends")
+        || !(1..=SEARCH_MAXIMUM_LIMIT).contains(&request.limit)
+        || request.query.len() > SEARCH_MAXIMUM_QUERY_BYTES
+        || query_terms.is_empty()
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !valid_feed_browse_filter(&request.filter)
+    {
+        return Err(invalid("normalized search query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "search_page_v1")
+        .ok_or(invalid("normalized search query program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let search_digest = search_request_digest(&request)?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_search_cursor)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.search_digest != search_digest
+            || cursor.page.generation_id != generation_id
+            || cursor.page.transition_sequence != source_revision
+            || cursor.page.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized search cursor is stale or mismatched"));
+    }
+    let tags_json = serde_json::to_string(&request.filter.tags)
+        .map_err(|_| invalid("normalized search tags are invalid"))?;
+    let signals_json = serde_json::to_string(&request.filter.signals)
+        .map_err(|_| invalid("normalized search signals are invalid"))?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut query_rows = statement.query_map(
+        params![
+            i64::from(request.filter.archived_only),
+            i64::from(request.filter.show_hidden),
+            request.filter.platform.as_deref(),
+            request.filter.author_id.as_deref(),
+            request.filter.feed_url.as_deref(),
+            request.filter.social_content_filter,
+            i64::from(request.filter.saved_only),
+            tags_json,
+            signals_json,
+            request.identity_mode,
+            cursor
+                .as_ref()
+                .map(|cursor| cursor.page.global_id.as_str())
+                .unwrap_or(""),
+            i64::try_from(SEARCH_MAXIMUM_SCAN_ROWS).expect("bounded search scan"),
+        ],
+        |row| {
+            let card = feed_card(row)?;
+            let priority = row.get::<_, i64>("searchPriority")?;
+            let fields = search_fields(row)?;
+            Ok((card, priority, fields))
+        },
+    )?;
+    let mut scanned_rows = 0_usize;
+    let mut last_scanned_global_id = None;
+    let mut matches = Vec::new();
+    for row in query_rows.by_ref() {
+        let (card, priority, fields) = row?;
+        scanned_rows += 1;
+        if scanned_rows > program.maximum_scan_rows || !(0..=100).contains(&priority) {
+            return Err(invalid("normalized search scan row is invalid"));
+        }
+        last_scanned_global_id = Some(card.global_id.clone());
+        let score = score_search_fields(&fields, &query_terms);
+        if score > 0.0 {
+            matches.push(NormalizedSearchPageRowV1 {
+                card,
+                priority,
+                score,
+            });
+            if matches.len() == request.limit {
+                break;
+            }
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let next_cursor = if matches.len() == request.limit || scanned_rows == SEARCH_MAXIMUM_SCAN_ROWS
+    {
+        last_scanned_global_id
+            .map(|global_id| {
+                encode_search_cursor(&SearchPageCursorV1 {
+                    page: FeedPageCursorV1 {
+                        generation_id: generation_id.clone(),
+                        transition_sequence: source_revision,
+                        projection_revision: source_revision,
+                        sort_at: 0,
+                        global_id,
+                    },
+                    search_digest: search_digest.clone(),
+                })
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    let response = NormalizedSearchPageResponseV1 {
+        next_cursor,
+        query_id: "search_page_v1".to_owned(),
+        rows: matches,
+        scanned_rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized search response is invalid"))?
+        .len()
+        > SEARCH_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("normalized search response exceeds its byte bound"));
     }
     transaction.commit()?;
     Ok(response)
@@ -3694,6 +4123,9 @@ pub fn query_normalized_v1(
                 query_saved_feed_page(connection, request)?,
             )))
         }
+        NormalizedQueryRequestV1::SearchPage(request) => Ok(NormalizedQueryResponseV1::SearchPage(
+            query_search_page(connection, request)?,
+        )),
         NormalizedQueryRequestV1::StoryWallCandidates(request) => {
             Ok(NormalizedQueryResponseV1::StoryWallCandidates(
                 query_story_wall_candidates(connection, request)?,
@@ -3773,6 +4205,9 @@ pub fn query_normalized_json_v1(
         "saved_feed_page_v2" => {
             decode_request!(NormalizedSavedFeedPageRequestV2, SavedFeedPage)
         }
+        "search_page_v1" => {
+            decode_request!(NormalizedSearchPageRequestV1, SearchPage)
+        }
         "story_wall_candidates_v1" => {
             decode_request!(NormalizedStoryWallCandidatesRequestV1, StoryWallCandidates)
         }
@@ -3813,6 +4248,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::RssFeedGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedAnalytics(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedFeedPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::SearchPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::StoryWallCandidates(response) => encode_response!(response),
     }
 }
@@ -3869,6 +4305,55 @@ mod tests {
             Some("background_item_page_v1")
         );
 
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'friend', 5, 1, 1);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, handle, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada-remote',
+                           'ada', 'Countess Ada', 1, 1, 'capture', 1, 1);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, content_text,
+                    hidden, saved, archived, updated_at)
+                   VALUES ('item-1', 'x', 'article', 1, 1, 'ada-remote', 'ada',
+                           'Ada', 'Analytical engine architecture', 0, 0, 0, 1);",
+            )
+            .expect("search fixture");
+        let search = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "cancellationId": "cancel-search-1",
+                "cursor": null,
+                "filter": {
+                    "archivedOnly": false,
+                    "authorId": null,
+                    "feedUrl": null,
+                    "platform": null,
+                    "savedOnly": false,
+                    "schemaVersion": 1,
+                    "showHidden": false,
+                    "signals": [],
+                    "socialContentFilter": "all",
+                    "tags": []
+                },
+                "friendsPredicateSchemaVersion": 1,
+                "identityMode": "friends",
+                "limit": 32,
+                "query": "countess",
+                "queryId": "search_page_v1",
+                "readerSessionId": "reader-search-1",
+                "recommendationOrderSchemaVersion": 1,
+                "schemaVersion": 1
+            }),
+        )
+        .expect("query search page");
+        assert_eq!(search["rows"].as_array().map(Vec::len), Some(1));
+        assert_eq!(search["rows"][0]["card"]["globalId"], "item-1");
+
         let unknown = query_normalized_json_v1(
             &mut connection,
             serde_json::json!({"queryId": "raw_sql_v1", "sql": "SELECT 1"}),
@@ -3903,6 +4388,42 @@ mod tests {
             "AaqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAAAAAAAAAAwAAAAAAAAAIgAAAZ5wRIgAAAh4Oml0ZW0tMQ"
         );
         assert_eq!(decode_cursor(&encoded).expect("decode cursor"), cursor);
+        let search_request = NormalizedSearchPageRequestV1 {
+            cancellation_id: "search-cancel".to_owned(),
+            cursor: None,
+            filter: NormalizedFeedBrowseFilterV1 {
+                archived_only: false,
+                author_id: None,
+                feed_url: None,
+                platform: None,
+                saved_only: false,
+                schema_version: 1,
+                show_hidden: false,
+                signals: vec![],
+                social_content_filter: "all".to_owned(),
+                tags: vec![],
+            },
+            friends_predicate_schema_version: 1,
+            identity_mode: "all_content".to_owned(),
+            limit: 32,
+            query: "SQLite architecture".to_owned(),
+            reader_session_id: "search-reader".to_owned(),
+            recommendation_order_schema_version: 1,
+            schema_version: 1,
+        };
+        assert_eq!(
+            search_request_digest(&search_request).expect("search digest"),
+            "5aceb922b5490c747e1453b87623add2482561f353921c833b39cb02c938b1cf"
+        );
+        let search_cursor = SearchPageCursorV1 {
+            page: cursor.clone(),
+            search_digest: "b".repeat(64),
+        };
+        let search_encoded = encode_search_cursor(&search_cursor).expect("encode search cursor");
+        assert_eq!(
+            decode_search_cursor(&search_encoded).expect("decode search cursor"),
+            search_cursor
+        );
         let browse_cursor = FeedBrowseCursorV2 {
             filter_digest: "60d920ddd5b896d7e24cb500f1ad80958fdaa871fa9707dad0faaf2631d75bb2"
                 .to_owned(),

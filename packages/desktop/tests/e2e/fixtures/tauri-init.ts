@@ -451,39 +451,6 @@ export function tauriInitScript(): string {
           totalCount: items.length,
         };
       },
-      search_sqlite_library_items: (args) => {
-        var request = args.request || {};
-        var state = sqliteState();
-        if (request.expectedRevision !== state.revision) {
-          throw new Error('SQLite Library changed during its bounded search');
-        }
-        var candidates = Object.values(state.items)
-          .filter(function(item) {
-            return !item.__deleted
-              && (!request.afterGlobalId || String(item.globalId) > request.afterGlobalId);
-          })
-          .sort(function(left, right) {
-            return String(left.globalId).localeCompare(String(right.globalId));
-          });
-        var query = String(request.query || '').toLowerCase();
-        var limit = Math.max(1, Math.min(request.limit || 32, 32));
-        var scanned = 0;
-        var matches = [];
-        var lastScanned = null;
-        while (scanned < candidates.length && scanned < 256 && matches.length < limit) {
-          var item = candidates[scanned];
-          lastScanned = String(item.globalId);
-          if (JSON.stringify(item).toLowerCase().includes(query)) {
-            matches.push({ itemJson: JSON.stringify(item), score: 1 });
-          }
-          scanned += 1;
-        }
-        return {
-          matches: matches,
-          nextAfterGlobalId: scanned < candidates.length ? lastScanned : null,
-          sourceRevision: state.revision,
-        };
-      },
       fetch_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"connections":[],"nextSyncToken":"test-sync-token"}') }),
       google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}') }),

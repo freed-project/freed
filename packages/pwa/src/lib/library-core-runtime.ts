@@ -14,7 +14,6 @@ import {
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
-  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFacetSummaryV1,
@@ -23,9 +22,8 @@ import {
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
+  searchLibraryCoreNormalizedItemsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
-  isLibraryCoreSearchAccountAliasV1,
-  isLibraryCoreSearchQueryV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateAssignmentFieldV1,
@@ -61,10 +59,6 @@ import {
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
   type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
-import {
-  PwaLibraryCoreSearchIndex,
-  type PwaLibraryCoreSearchSourceV1,
-} from "./library-core-search-index";
 import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
 import {
   queryPwaNormalizedLibrary,
@@ -72,7 +66,6 @@ import {
 } from "./library-core-sqlite-runtime";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
-const SEARCH_DATABASE_NAME = "freed-library-core-search-v1";
 const READ_MODEL_DATABASE_NAME = "freed-library-core-read-model-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
@@ -88,7 +81,6 @@ let lastState: LibraryState | null = null;
 let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
 > | null = null;
-let searchIndex: PwaLibraryCoreSearchIndex | null = null;
 let indexedDbReaders: ReturnType<
   typeof createPwaLibraryCoreIndexedDbReaders
 > | null = null;
@@ -119,43 +111,6 @@ function getPortableStore(): ReturnType<
   });
   return portableStore;
 }
-
-function getSearchIndex(): PwaLibraryCoreSearchIndex {
-  searchIndex ??= new PwaLibraryCoreSearchIndex({
-    databaseName: SEARCH_DATABASE_NAME,
-    indexedDb: globalThis.indexedDB,
-    keyRange: globalThis.IDBKeyRange,
-  });
-  return searchIndex;
-}
-
-function searchSourceFromReceipt(
-  receipt: PwaLibraryCoreSelectedCheckpointReceiptV1,
-): PwaLibraryCoreSearchSourceV1 {
-  return {
-    corpusVersion: receipt.selectionSequence,
-    sourceToken: JSON.stringify([
-      receipt.libraryId,
-      receipt.generationId,
-      receipt.selectionSequence,
-    ]),
-  };
-}
-
-async function readCurrentSearchSource(
-  expectedCorpusVersion?: number,
-): Promise<PwaLibraryCoreSearchSourceV1> {
-  const receipt = await getPortableStore().readSelectedCheckpointReceipt();
-  if (!receipt) throw new Error("Selected PWA Library is unavailable");
-  if (
-    expectedCorpusVersion !== undefined &&
-    receipt.selectionSequence !== expectedCorpusVersion
-  ) {
-    throw new Error("Selected PWA Library changed before search admission");
-  }
-  return searchSourceFromReceipt(receipt);
-}
-
 function getIndexedDbReaders(): ReturnType<
   typeof createPwaLibraryCoreIndexedDbReaders
 > {
@@ -365,7 +320,6 @@ export async function enqueuePwaLibraryCoreReadAssignments(
       entityIds: batch,
       readAtMs,
     });
-    await refreshPersistentSearchItems(batch);
   }
 }
 
@@ -539,9 +493,6 @@ export async function enqueuePwaLibraryCoreFeedItemRemove(
     entityId: globalId,
     removedAtMs: Date.now(),
   });
-  if (searchIndex && lastState) {
-    await searchIndex.removeItems(await readCurrentSearchSource(), [globalId]);
-  }
 }
 
 /** Queue one signed FeedItem capture and expose it from local IndexedDB. */
@@ -561,9 +512,6 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
   const flush = async () => {
     if (batch.length === 0) return;
     await getPortableStore().enqueueFeedItemCaptures(batch);
-    if (searchIndex && lastState) {
-      await searchIndex.updateItems(await readCurrentSearchSource(), batch);
-    }
     batch = [];
     identities = new Set<string>();
   };
@@ -603,9 +551,6 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
     removedAtMs: Date.now(),
     url,
   });
-  if (includeItems && searchIndex) {
-    await searchIndex.invalidate();
-  }
   const state = await readSelectedState();
   if (state) publishState(state);
 }
@@ -776,22 +721,6 @@ async function enqueuePwaLibraryCoreUserStateAssignments(
       field,
     })),
   );
-  await refreshPersistentSearchItems(globalIds);
-}
-
-async function refreshPersistentSearchItems(
-  globalIds: readonly string[],
-): Promise<void> {
-  if (!searchIndex || !lastState) return;
-  const items: FeedItem[] = [];
-  for (const globalId of globalIds) {
-    const row = await getPortableStore().readSelectedMaterializedRow(
-      "10_feed_items",
-      globalId,
-    );
-    if (row?.globalId === globalId) items.push(row as unknown as FeedItem);
-  }
-  await searchIndex.updateItems(await readCurrentSearchSource(), items);
 }
 
 /**
@@ -851,39 +780,23 @@ export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
   await assertSourceCurrent();
 };
 
-/** Search the selected Library through a persistent IndexedDB projection. */
+/** Search the selected Library directly through normalized OPFS SQLite. */
 export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
   query,
-  searchCorpusVersion,
+  _searchCorpusVersion,
   visit,
   options,
-) => {
-  if (!isLibraryCoreSearchQueryV1(query)) {
-    throw new Error("Library Core search query exceeds its byte limit");
-  }
-  const index = getSearchIndex();
-  const source = await readCurrentSearchSource(searchCorpusVersion);
-  await index.ensureBuilt(source, scanPwaLibraryCoreItems, options?.signal);
-  const aliasEntries = options?.accountAliases ?? [];
-  if (aliasEntries.length > LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT) {
-    throw new Error("Library Core search account alias count is invalid");
-  }
-  const accountAliases = new Map<string, string>();
-  for (const entry of aliasEntries) {
-    if (!isLibraryCoreSearchAccountAliasV1(entry)) {
-      throw new Error("Library Core search account alias is invalid");
-    }
-    const key = `${entry.platform}:${entry.authorId}`;
-    if (accountAliases.has(key)) {
-      throw new Error("Library Core search account alias is duplicated");
-    }
-    accountAliases.set(key, entry.aliases);
-  }
-  await index.search(query, source, visit, {
-    accountAliases,
-    signal: options?.signal,
-  });
-};
+) =>
+  searchLibraryCoreNormalizedItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    {
+      filter: options?.filter ?? {},
+      identityMode: options?.identityMode ?? "all_content",
+      query,
+      signal: options?.signal,
+    },
+    visit,
+  );
 
 /** Read one compact item detail through normalized SQLite. */
 export async function readPwaLibraryCoreItemDetail(
@@ -990,16 +903,6 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState>
   const state = await readSelectedState();
   if (!state) {
     throw new Error("Imported SQLite Library checkpoint has no readable shell");
-  }
-  if (searchIndex) {
-    if (lastState?.searchCorpusVersion !== state.searchCorpusVersion) {
-      await searchIndex.invalidate();
-    } else {
-      await searchIndex.updateItems(
-        await readCurrentSearchSource(state.searchCorpusVersion),
-        state.items,
-      );
-    }
   }
   publishState(state);
   return state;
@@ -1203,8 +1106,6 @@ registerPwaFactoryResetQuiesceHandler(
     indexedDbReaders = null;
     await portableStore?.quiesce();
     portableStore = null;
-    await searchIndex?.close();
-    searchIndex = null;
     lastState = null;
     libraryReadModelRevision = 0;
     intentOverlayRecoveryState = READY_INTENT_OVERLAY_RECOVERY;
@@ -1228,7 +1129,6 @@ registerPwaFactoryResetQuiesceHandler(
         );
       });
     await deleteDatabase(DATABASE_NAME);
-    await deleteDatabase(SEARCH_DATABASE_NAME);
     await deleteDatabase(READ_MODEL_DATABASE_NAME);
   },
   25,

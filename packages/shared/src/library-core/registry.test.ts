@@ -968,6 +968,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v2 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v2 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.search_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.story_wall_candidates_v1
       ) {
         expect(definition.blockers).not.toContain(

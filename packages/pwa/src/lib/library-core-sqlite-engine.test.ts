@@ -1828,6 +1828,34 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(accountTimeline.totalCount).toBe(1);
     expect(accountTimeline.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    const search = engine.query({
+      cancellationId: operationId("cancel-search-1"),
+      cursor: null,
+      filter: {
+        archivedOnly: false,
+        authorId: null,
+        feedUrl: null,
+        platform: null,
+        savedOnly: false,
+        schemaVersion: 1,
+        showHidden: false,
+        signals: [],
+        socialContentFilter: "all",
+        tags: [],
+      },
+      friendsPredicateSchemaVersion: 1,
+      identityMode: "friends",
+      limit: 32,
+      query: "Ada",
+      queryId: "search_page_v1" as const,
+      readerSessionId: operationId("reader-search-1"),
+      recommendationOrderSchemaVersion: 1,
+      schemaVersion: 1 as const,
+    });
+    expect(search.scannedRows).toBe(2);
+    expect(search.rows.map((row) => row.card.globalId)).toEqual(["item-2"]);
+    expect(search.rows[0]?.score).toBeGreaterThan(0);
+    expect(search.nextCursor).toBeNull();
     database.exec(
       "UPDATE library_accounts SET person_id = 'person-2' WHERE id = 'account-1';",
     );

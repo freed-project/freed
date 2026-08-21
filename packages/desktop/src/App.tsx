@@ -5,6 +5,7 @@ import {
   type ProviderRiskId,
   type ReleaseChannel,
 } from "@freed/shared";
+import { searchLibraryCoreNormalizedItemsV1 } from "@freed/shared/library-core";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
@@ -193,7 +194,7 @@ import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
-import { isSqliteLibraryActive, searchSqliteItemsPage } from "./lib/sqlite-library";
+import { isSqliteLibraryActive } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
@@ -264,32 +265,23 @@ const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
 
 const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
   query,
-  searchCorpusVersion,
+  _searchCorpusVersion,
   visit,
   options,
-) => {
-  let afterGlobalId: string | null = null;
-  for (;;) {
-    if (options?.signal?.aborted) {
-      throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
-    }
-    const page = await searchSqliteItemsPage(
+) =>
+  searchLibraryCoreNormalizedItemsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    {
+      filter: options?.filter ?? {},
+      identityMode: options?.identityMode ?? "all_content",
       query,
-      afterGlobalId,
-      searchCorpusVersion,
-      options?.accountAliases ?? [],
-    );
-    if (page.sourceRevision !== searchCorpusVersion) {
-      throw new Error("SQLite Library changed during its bounded search");
-    }
-    if (page.matches.length > 0 && visit(page.matches) === "stop") return;
-    if (!page.nextAfterGlobalId) return;
-    if (page.nextAfterGlobalId === afterGlobalId) {
-      throw new Error("SQLite Library search cursor did not advance");
-    }
-    afterGlobalId = page.nextAfterGlobalId;
-  }
-};
+      signal: options?.signal,
+    },
+    visit,
+  );
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";

@@ -36,12 +36,8 @@ import {
 } from "@freed/shared";
 import {
   compareLibraryCoreSearchIdentityV1,
-  isLibraryCoreSearchAccountAliasV1,
   isLibraryCoreSearchQueryV1,
-  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
-  LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES,
   LIBRARY_CORE_SEARCH_RETAINED_RESULT_LIMIT,
-  type LibraryCoreSearchAccountAliasV1,
 } from "@freed/shared/library-core";
 import type {
   Account,
@@ -120,74 +116,6 @@ function accountSignature(accounts: Record<string, Account>): string {
     )
     .sort()
     .join("|");
-}
-
-const searchTextEncoder = new TextEncoder();
-
-function boundedAliasText(value: string): string {
-  if (
-    searchTextEncoder.encode(value).byteLength <=
-    LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES
-  ) {
-    return value;
-  }
-  const scalars = Array.from(value);
-  let low = 0;
-  let high = scalars.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (
-      searchTextEncoder.encode(scalars.slice(0, middle).join("")).byteLength <=
-      LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_MAXIMUM_BYTES
-    ) {
-      low = middle;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return scalars.slice(0, low).join("");
-}
-
-function libraryCoreSearchAccountAliases(
-  accounts: Record<string, Account>,
-): readonly LibraryCoreSearchAccountAliasV1[] {
-  const entries = Object.values(accounts)
-    .filter(
-      (account) => account.kind === "social" && searchText(account.externalId),
-    )
-    .sort((left, right) => {
-      const leftKey = `${left.provider}:${searchText(left.externalId)}`;
-      const rightKey = `${right.provider}:${searchText(right.externalId)}`;
-      return (
-        (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0) ||
-        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-      );
-    })
-    .map((account) => {
-      const authorId = searchText(account.externalId);
-      const aliases = [
-        account.displayName,
-        account.handle,
-        account.handle?.startsWith("@") ? account.handle.slice(1) : undefined,
-        authorId,
-        authorId.slice(-8),
-      ]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .join(" ");
-      return {
-        aliases: boundedAliasText(aliases),
-        authorId,
-        platform: account.provider,
-      } satisfies LibraryCoreSearchAccountAliasV1;
-    });
-  const accepted = new Map<string, LibraryCoreSearchAccountAliasV1>();
-  for (const entry of entries) {
-    if (!isLibraryCoreSearchAccountAliasV1(entry)) continue;
-    const key = accountKey(entry.platform, entry.authorId);
-    if (!accepted.has(key)) accepted.set(key, Object.freeze(entry));
-    if (accepted.size === LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT) break;
-  }
-  return Object.freeze([...accepted.values()]);
 }
 
 function toSearchDoc(
@@ -526,7 +454,8 @@ async function computePersistentSearchResults(args: {
       return "continue";
     },
     {
-      accountAliases: libraryCoreSearchAccountAliases(args.accounts),
+      filter: args.activeFilter,
+      identityMode: args.identityMode,
       signal: args.signal,
     },
   );

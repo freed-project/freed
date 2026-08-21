@@ -195,6 +195,14 @@ and the sparse optimistic overlay in SQLite. A narrow IndexedDB keystore may
 remain only for nonextractable keys when WebKit provides no suitable
 alternative.
 
+`search_page_v1` is implemented in both SQLite runtimes. It applies normalized
+feed and Friends predicates in SQL, resolves Account aliases from Account rows,
+scans a maximum of 256 primary-key-ordered candidates, and returns at most 32
+closed scored cards. Desktop and PWA use the same TypeScript contract, generated
+SQL, source-bound cursor, digest vector, and deterministic Rust and TypeScript
+scoring rules. The historical PWA IndexedDB search database and Desktop JSON-row
+search command are removed.
+
 Exit proof:
 
 - iOS 17 physical-device tests cover persistence, suspension, worker loss,

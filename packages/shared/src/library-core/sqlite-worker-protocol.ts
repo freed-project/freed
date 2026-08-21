@@ -144,6 +144,12 @@ import {
   type LibraryCoreStoryWallCandidatesRequestV1,
   type LibraryCoreStoryWallCandidatesResponseV1,
 } from "./secondary-surface-contracts.js";
+import {
+  parseLibraryCoreSearchPageRequestV1,
+  parseLibraryCoreSearchPageResponseV1,
+  type LibraryCoreSearchPageRequestV1,
+  type LibraryCoreSearchPageResponseV1,
+} from "./search-page-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -165,6 +171,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCoreSavedFeedPageRequestV2
+  | LibraryCoreSearchPageRequestV1
   | LibraryCoreStoryWallCandidatesRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
@@ -204,6 +211,8 @@ export type LibraryCoreSqliteQueryResponseFor<
                                 ? LibraryCoreSavedAnalyticsResponseV2
                                 : T extends LibraryCoreSavedFeedPageRequestV2
                                   ? LibraryCoreSavedFeedPageResponseV2
+                                  : T extends LibraryCoreSearchPageRequestV1
+                                    ? LibraryCoreSearchPageResponseV1
                                   : T extends LibraryCoreStoryWallCandidatesRequestV1
                                     ? LibraryCoreStoryWallCandidatesResponseV1
                                     : T extends LibraryCorePreferencesSnapshotRequestV1
@@ -270,6 +279,11 @@ export function parseLibraryCoreSqliteQueryResponse<
                                             value,
                                             request,
                                           )
+                                        : request.queryId === "search_page_v1"
+                                          ? parseLibraryCoreSearchPageResponseV1(
+                                              value,
+                                              request,
+                                            )
                                         : parseLibraryCoreStoryWallCandidatesResponseV1(
                                             value,
                                             request,
@@ -380,6 +394,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCoreSavedAnalyticsResponseV2
   | LibraryCoreSavedFeedPageResponseV2
+  | LibraryCoreSearchPageResponseV1
   | LibraryCoreStoryWallCandidatesResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
@@ -529,6 +544,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                         ? parseLibraryCoreStoryWallCandidatesRequestV1(
                                             value.query,
                                           )
+                                        : value.query.queryId ===
+                                            "search_page_v1"
+                                          ? parseLibraryCoreSearchPageRequestV1(
+                                              value.query,
+                                            )
                                         : value.query.queryId ===
                                             "preferences_snapshot_v1"
                                           ? parseLibraryCorePreferencesSnapshotRequestV1(

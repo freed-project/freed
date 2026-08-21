@@ -5,6 +5,7 @@ import {
   readLibraryCoreNormalizedFeedSignalCountsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
+import { searchLibraryCoreNormalizedItemsV1 } from "./normalized-surface-readers.js";
 
 const feedCard = (globalId: string) => ({
   archived: false,
@@ -38,6 +39,47 @@ const feedCard = (globalId: string) => ({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it("streams source-fenced SQLite search pages without retaining a corpus", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nextCursor: "opaque-search-next",
+        rows: [{ card: feedCard("match"), priority: 91, score: 12 }],
+      })
+      .mockResolvedValueOnce({ nextCursor: null, rows: [] }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn(() => "continue" as const);
+
+    await searchLibraryCoreNormalizedItemsV1(
+      { query, randomId: () => "test" },
+      {
+        filter: { platform: "rss" },
+        identityMode: "friends",
+        query: "bounded",
+      },
+      visit,
+    );
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        cursor: null,
+        identityMode: "friends",
+        queryId: "search_page_v1",
+      }),
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: "opaque-search-next" }),
+    );
+    expect(visit).toHaveBeenCalledWith([
+      expect.objectContaining({
+        item: expect.objectContaining({ globalId: "match", priority: 91 }),
+        score: 12,
+      }),
+    ]);
+  });
+
   it("uses opaque bidirectional pages without platform storage logic", async () => {
     const query = vi.fn(async () => ({
       rows: [feedCard("first")],

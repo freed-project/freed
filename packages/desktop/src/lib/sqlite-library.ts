@@ -1092,17 +1092,6 @@ export async function readSqliteLibraryFacetSummary(): Promise<SqliteLibraryFace
   };
 }
 
-interface SqliteSearchMatch {
-  itemJson: string;
-  score: number;
-}
-
-interface SqliteSearchPage {
-  matches: SqliteSearchMatch[];
-  nextAfterGlobalId: string | null;
-  sourceRevision: number;
-}
-
 export interface SqliteLibraryBackupSummary {
   backupId: string;
   fileName: string;
@@ -1646,40 +1635,6 @@ async function collectSqliteItemIds(
     offset = page.nextOffset;
   }
   return ids;
-}
-
-export async function searchSqliteItemsPage(
-  query: string,
-  afterGlobalId: string | null,
-  expectedRevision: number,
-  accountAliases: readonly {
-    aliases: string;
-    authorId: string;
-    platform: string;
-  }[],
-  limit = 32,
-): Promise<{
-  matches: Array<{ item: FeedItem; score: number }>;
-  nextAfterGlobalId: string | null;
-  sourceRevision: number;
-}> {
-  const page = await invoke<SqliteSearchPage>("search_sqlite_library_items", {
-    request: {
-      query,
-      afterGlobalId,
-      expectedRevision,
-      accountAliases,
-      limit,
-    },
-  });
-  return {
-    matches: page.matches.map(({ itemJson, score }) => ({
-      item: decodeJson(itemJson) as FeedItem,
-      score,
-    })),
-    nextAfterGlobalId: page.nextAfterGlobalId,
-    sourceRevision: page.sourceRevision,
-  };
 }
 
 async function mutateItems(

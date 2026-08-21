@@ -88,6 +88,14 @@ import {
   libraryCoreAccountTimelineAccountDigestV1,
   parseLibraryCoreAccountTimelineRequestV1,
   parseLibraryCoreAccountTimelineResponseV1,
+  decodeLibraryCoreSearchPageCursorV1,
+  encodeLibraryCoreSearchPageCursorV1,
+  libraryCoreSearchPageRequestDigestV1,
+  parseLibraryCoreSearchPageRequestV1,
+  parseLibraryCoreSearchPageResponseV1,
+  scoreLibraryCoreSearchFieldsWithBudgetV1,
+  tokenizeLibraryCoreSearchTextV1,
+  isLibraryCoreEntityId,
   decodeLibraryCoreIdentityPageCursorV1,
   encodeLibraryCoreIdentityPageCursorV1,
   parseLibraryCoreAccountGraphPageRequestV1,
@@ -149,6 +157,9 @@ import {
   type LibraryCoreAccountDetailResponseV1,
   type LibraryCoreAccountTimelineRequestV1,
   type LibraryCoreAccountTimelineResponseV1,
+  type LibraryCoreSearchFieldV1,
+  type LibraryCoreSearchPageRequestV1,
+  type LibraryCoreSearchPageResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
@@ -385,6 +396,53 @@ function savedFeedCardFromSqliteRow(
   });
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.value;
+}
+
+function searchScoreFromSqliteRow(
+  row: Record<string, SqlValue>,
+  queryTerms: readonly string[],
+): number {
+  const fields: LibraryCoreSearchFieldV1[] = [];
+  let termCount = 0;
+  const collect = (value: string, weight: number, maximumTerms = 368) => {
+    if (termCount >= maximumTerms || value.length === 0) return;
+    const terms = tokenizeLibraryCoreSearchTextV1(
+      value,
+      maximumTerms - termCount,
+    );
+    if (terms.length === 0) return;
+    fields.push(Object.freeze({ terms, weight }));
+    termCount += terms.length;
+  };
+  const nullableSearchText = (key: string) =>
+    row[key] === null ? "" : text(row[key], `search ${key}`);
+  const joined = (key: string) => stringArray(row[key], `search ${key}`).join(" ");
+  collect(nullableSearchText("linkPreviewTitle"), 4);
+  collect(`${joined("searchTopicsJson")} ${joined("contentSignalTagsJson")}`, 3);
+  collect(
+    [
+      nullableSearchText("searchEventTitle"),
+      nullableSearchText("searchEventLocation"),
+      nullableSearchText("searchEventEvidence"),
+      nullableSearchText("locationName"),
+    ].join(" "),
+    3,
+  );
+  collect(joined("tagsJson"), 3);
+  collect(nullableSearchText("authorDisplayName"), 3);
+  collect(nullableSearchText("authorHandle"), 3);
+  collect(nullableSearchText("authorId"), 3);
+  collect(nullableSearchText("searchContentText"), 2);
+  collect(nullableSearchText("searchLinkDescription"), 2);
+  collect(nullableSearchText("searchRssFeedTitle"), 2);
+  collect(joined("searchHighlightsJson"), 2);
+  collect(nullableSearchText("searchPreservedText"), 1);
+  collect(nullableSearchText("searchAccountAliases"), 3, 384);
+  return scoreLibraryCoreSearchFieldsWithBudgetV1(
+    fields,
+    queryTerms,
+    65_536,
+  ).score;
 }
 
 export class PwaLibraryCoreSqliteEngine {
@@ -2438,6 +2496,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#querySavedFeedPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "search_page_v1":
+        return this.#querySearchPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "story_wall_candidates_v1":
         return this.#queryStoryWallCandidates(
           input,
@@ -3754,6 +3816,109 @@ export class PwaLibraryCoreSqliteEngine {
       ),
     };
     const parsed = parseLibraryCoreSavedFeedPageResponseV2(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #querySearchPage(
+    input: LibraryCoreSearchPageRequestV1,
+  ): LibraryCoreSearchPageResponseV1 {
+    const request = parseLibraryCoreSearchPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const searchDigest = libraryCoreSearchPageRequestDigestV1(request.value);
+    let afterGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreSearchPageCursorV1(request.value.cursor);
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.searchDigest !== searchDigest ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.transitionSequence !== sourceRevision ||
+        cursor.value.projectionRevision !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite search cursor is stale");
+      }
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.search_page_v1;
+    const filter = request.value.filter;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        filter.archivedOnly ? 1 : 0,
+        filter.showHidden ? 1 : 0,
+        filter.platform,
+        filter.authorId,
+        filter.feedUrl,
+        filter.socialContentFilter,
+        filter.savedOnly ? 1 : 0,
+        JSON.stringify(filter.tags),
+        JSON.stringify(filter.signals),
+        request.value.identityMode,
+        afterGlobalId,
+        program.maximumScanRows,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite search exceeded its scan bound");
+    }
+    const queryTerms = tokenizeLibraryCoreSearchTextV1(request.value.query, 32);
+    const rows: LibraryCoreSearchPageResponseV1["rows"][number][] = [];
+    let scannedRows = 0;
+    let lastScanned: Record<string, SqlValue> | undefined;
+    for (const row of rawRows) {
+      scannedRows += 1;
+      lastScanned = row;
+      const score = searchScoreFromSqliteRow(row, queryTerms);
+      if (score > 0) {
+        rows.push({
+          card: feedCardFromSqliteRow(row),
+          priority: safeInteger(row.searchPriority, "search priority"),
+          score,
+        });
+      }
+      if (rows.length === request.value.limit) break;
+    }
+    const nextCursor =
+      (rows.length === request.value.limit ||
+        scannedRows === program.maximumScanRows) &&
+      lastScanned
+        ? (() => {
+            const globalId = text(lastScanned.globalId, "search scan edge");
+            if (!isLibraryCoreEntityId(globalId)) {
+              throw new Error(
+                "PWA Library SQLite search returned an invalid entity identity",
+              );
+            }
+            return encodeLibraryCoreSearchPageCursorV1({
+              generationId: generationId as never,
+              globalId,
+              projectionRevision: sourceRevision,
+              searchDigest,
+              sortAt: 0,
+              transitionSequence: sourceRevision,
+            });
+          })()
+        : null;
+    const response = {
+      nextCursor,
+      queryId: "search_page_v1" as const,
+      rows,
+      scannedRows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreSearchPageResponseV1(
       response,
       request.value,
     );

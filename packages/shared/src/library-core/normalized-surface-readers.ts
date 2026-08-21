@@ -41,6 +41,22 @@ import {
   libraryCoreMapMarkerToItemV1,
   libraryCoreStoryWallCandidateToItemV1,
 } from "./secondary-surface-contracts.js";
+import {
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  parseLibraryCoreFeedBrowseFilterV1,
+  type LibraryCoreFeedBrowseFilterInputV1,
+} from "./feed-browse-filter-contract.js";
+import {
+  LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+  type LibraryCoreFeedBrowseIdentityModeV2,
+} from "./feed-browse-page-contracts.js";
+import { LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION } from "./feed-recommendation-order-contract.js";
+import {
+  LIBRARY_CORE_SEARCH_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_SEARCH_PAGE_QUERY_ID,
+  LIBRARY_CORE_SEARCH_PAGE_SCHEMA_VERSION,
+  type LibraryCoreSearchPageResponseV1,
+} from "./search-page-contracts.js";
 
 export interface LibraryCoreNormalizedSavedAnalyticsInputV1 {
   readonly dailyWindows: readonly LibraryCoreSavedAnalyticsWindowV2[];
@@ -65,6 +81,18 @@ export interface LibraryCoreNormalizedAccountTimelineInputV1 {
   readonly accountId: string;
   readonly cursor?: string | null;
   readonly limit?: number;
+}
+
+export interface LibraryCoreNormalizedSearchInputV1 {
+  readonly filter: LibraryCoreFeedBrowseFilterInputV1;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
+  readonly query: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface LibraryCoreNormalizedSearchMatchV1 {
+  readonly item: FeedItem;
+  readonly score: number;
 }
 
 function operationId(
@@ -220,4 +248,57 @@ export async function readLibraryCoreNormalizedAccountTimelineV1(
     nextCursor: response.nextCursor,
     totalCount: response.totalCount,
   });
+}
+
+export async function searchLibraryCoreNormalizedItemsV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  input: LibraryCoreNormalizedSearchInputV1,
+  visit: (
+    matches: readonly LibraryCoreNormalizedSearchMatchV1[],
+  ) => "continue" | "stop",
+): Promise<void> {
+  const parsedFilter = parseLibraryCoreFeedBrowseFilterV1(
+    normalizeLibraryCoreFeedBrowseFilterV1(input.filter),
+  );
+  if (!parsedFilter.ok) throw new TypeError(parsedFilter.error);
+  const readerSessionId = operationId(runtime, "search-reader");
+  let cursor: string | null = null;
+  do {
+    if (input.signal?.aborted) {
+      throw input.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    const response: LibraryCoreSearchPageResponseV1 = await runtime.query({
+      cancellationId: operationId(runtime, "search-page"),
+      cursor,
+      filter: parsedFilter.value,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: input.identityMode,
+      limit: LIBRARY_CORE_SEARCH_PAGE_DEFAULT_LIMIT,
+      query: input.query,
+      queryId: LIBRARY_CORE_SEARCH_PAGE_QUERY_ID,
+      readerSessionId,
+      recommendationOrderSchemaVersion:
+        LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+      schemaVersion: LIBRARY_CORE_SEARCH_PAGE_SCHEMA_VERSION,
+    });
+    if (
+      response.rows.length > 0 &&
+      visit(
+        response.rows.map((row) => ({
+          item: {
+            ...libraryCoreFeedCardToItemV1(row.card),
+            priority: row.priority,
+          },
+          score: row.score,
+        })),
+      ) === "stop"
+    ) {
+      return;
+    }
+    if (response.nextCursor === cursor) {
+      throw new Error("SQLite Library search cursor did not advance");
+    }
+    cursor = response.nextCursor;
+  } while (cursor !== null);
 }

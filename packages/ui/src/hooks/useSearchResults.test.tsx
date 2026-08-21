@@ -194,7 +194,8 @@ describe("SQLite-streamed Library search", () => {
       41,
       expect.any(Function),
       expect.objectContaining({
-        accountAliases: [],
+        filter: {},
+        identityMode: "all_content",
         signal: expect.any(AbortSignal),
       }),
     );
@@ -204,7 +205,7 @@ describe("SQLite-streamed Library search", () => {
     expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-100");
   });
 
-  it("deduplicates aliases and omits over-bound canonical account identities", async () => {
+  it("does not serialize the Account corpus into the SQLite search request", async () => {
     const accounts = {
       z: {
         id: "z",
@@ -253,13 +254,13 @@ describe("SQLite-streamed Library search", () => {
     });
 
     expect(searchLibraryItems).toHaveBeenCalledOnce();
-    expect(searchLibraryItems.mock.calls[0]?.[3]?.accountAliases).toEqual([
-      {
-        aliases: "Canonical alias author author",
-        authorId: "author",
-        platform: "rss",
-      },
-    ]);
+    expect(searchLibraryItems.mock.calls[0]?.[3]).toMatchObject({
+      filter: {},
+      identityMode: "all_content",
+    });
+    expect(searchLibraryItems.mock.calls[0]?.[3]).not.toHaveProperty(
+      "accountAliases",
+    );
   });
 
   it("retains only the first 100 ordered persistent matches", async () => {

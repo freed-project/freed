@@ -36,7 +36,6 @@ import type {
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
-import type { LibraryCoreSearchAccountAliasV1 } from "@freed/shared/library-core";
 import type {
   ImportSummary,
   ProgressFn,
@@ -131,7 +130,7 @@ export interface ScoredLibraryItem {
 }
 
 /**
- * Stream scored matches from a platform-owned persistent search projection.
+ * Stream scored matches from the platform's selected normalized SQLite source.
  *
  * The platform keeps the corpus and index outside React memory. Shared UI may
  * retain a bounded result set, but must not collect every match.
@@ -141,7 +140,8 @@ export type SearchLibraryItems = (
   searchCorpusVersion: number,
   visit: (matches: readonly ScoredLibraryItem[]) => LibraryItemScanDecision,
   options?: Readonly<{
-    accountAliases?: readonly LibraryCoreSearchAccountAliasV1[];
+    filter?: FilterOptions;
+    identityMode?: "all_content" | "friends";
     signal?: AbortSignal;
   }>,
 ) => Promise<void>;

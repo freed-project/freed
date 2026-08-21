@@ -140,6 +140,32 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-search", {
+        cancellationId: "cancel-search-1",
+        cursor: null,
+        filter: {
+          archivedOnly: false,
+          authorId: null,
+          feedUrl: null,
+          platform: null,
+          savedOnly: false,
+          schemaVersion: 1,
+          showHidden: false,
+          signals: [],
+          socialContentFilter: "all",
+          tags: [],
+        },
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "all_content",
+        limit: 32,
+        query: "SQLite",
+        queryId: "search_page_v1",
+        readerSessionId: "reader-search-1",
+        recommendationOrderSchemaVersion: 1,
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-item-scan", {
         cancellationId: "cancel-scan-1",
         cursor: null,
