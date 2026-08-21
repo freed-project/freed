@@ -37,6 +37,13 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-item", {
+        globalId: "item-1",
+        queryId: "item_detail_v1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {

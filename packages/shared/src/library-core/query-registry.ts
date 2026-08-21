@@ -243,6 +243,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
     | null;
   readonly sourceIdentity:
@@ -366,6 +367,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
   readonly sourceIdentity?:
@@ -512,13 +514,11 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     invalidationKeyIntent: ["account:{account_id}", "person:{person_id}"],
   }),
   background_item_page_v1: plannedQuery({
-    // The bounded item scan behind scanLibraryItems. Traced from the native
-    // reader: 64 rows per page, keyset cursor, and a per-page row budget of
-    // 8 MiB less 64 KiB of framing.
+    // Background metadata traversal. Reader bodies use item_reader_body_v1.
     defaultLimit: 64,
     maximumLimit: 64,
     maximumRows: 64,
-    maximumResponseBytes: 8 * MIB - 64 * 1_024,
+    maximumResponseBytes: 2 * MIB,
     cursor: interactiveCursor("keyset"),
     totalCountIntent: "none",
     rendererCache: false,
@@ -533,7 +533,6 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_ITEM_SCAN_PROJECTION,
     sourceIdentity: LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
-    fullContentAllowed: true,
     // Keyset on the unique globalId primary key, ascending. Two statements
     // rather than a nullable-cursor expression precisely so the index can
     // satisfy the order without a temp B-tree.
@@ -725,11 +724,7 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     defaultLimit: 1,
     maximumLimit: 1,
     maximumRows: 1,
-    // Traced from the native reader. This lookup selects contentBlob and
-    // preservedBlob, so it carries full reader content and its real ceiling is
-    // 8 MiB, not the 2 MiB default this entry previously fell back to.
     maximumResponseBytes: LIBRARY_CORE_ITEM_DETAIL_MAXIMUM_RESPONSE_BYTES,
-    fullContentAllowed: true,
     cursor: interactiveCursor("single_page"),
     totalCountIntent: "none",
     rendererCache: true,
@@ -743,9 +738,7 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
     sourceIdentity: LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
-    // A point lookup on the unique globalId primary key. The result is at most
-    // one row, so this order is total and globalId is genuinely the tie-break
-    // rather than a placeholder.
+    // A point lookup on the unique globalId primary key.
     stableSort: {
       columns: [{ column: "globalId", direction: "asc" }],
       textCollation: "binary",

@@ -1145,7 +1145,7 @@ describe("Library Core query registry", () => {
     ).toEqual({ map: false, story_wall: true });
   });
 
-  it("closes the bounded item-scan contract and shares the item-detail row", () => {
+  it("closes the bounded background metadata scan separately from item detail", () => {
     expect(LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1).toMatchObject({
       status: "planned_blocked",
       requestSchema: LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
@@ -1154,7 +1154,7 @@ describe("Library Core query registry", () => {
       sourceIdentity: LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
       nestedBounds: LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
       tieBreakKey: "globalId",
-      fullContentAllowed: true,
+      fullContentAllowed: false,
     });
     for (const blocker of [
       "request_schema_unresolved",
@@ -1168,17 +1168,12 @@ describe("Library Core query registry", () => {
         LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.blockers,
       ).not.toContain(blocker);
     }
-    // ITEM_SCAN_COLUMNS is byte-identical to the item_detail SELECT, so the two
-    // must share one projection. If either grows a column, both move together.
-    expect(LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.projection).toBe(
-      LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.projection,
-    );
     expect(
-      LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.stableSort,
-    ).toEqual(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.stableSort);
+      LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.projection,
+    ).not.toBe(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.projection);
   });
 
-  it("closes the item-detail contract and records that it carries full content", () => {
+  it("closes item detail as metadata with separate reader body locators", () => {
     expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1).toMatchObject({
       status: "planned_blocked",
       requestSchema: LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA,
@@ -1200,17 +1195,13 @@ describe("Library Core query registry", () => {
         blocker,
       );
     }
-    // The lookup selects contentBlob and preservedBlob, so it really does carry
-    // full reader content and its ceiling is 8 MiB rather than the ordinary
-    // 2 MiB this entry previously defaulted to.
-    expect(LIBRARY_CORE_ITEM_DETAIL_PROJECTION.fullContentAllowed).toBe(true);
-    // Assert the registry entry itself, not just the contract constant.
+    expect(LIBRARY_CORE_ITEM_DETAIL_PROJECTION.fullContentAllowed).toBe(false);
     expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.fullContentAllowed).toBe(
-      true,
+      false,
     );
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.maximumResponseBytes,
-    ).toBe(8 * 1_048_576);
+    ).toBe(2 * 1_048_576);
   });
 
   it("closes five persons-graph contract fields and keeps the sort blocked", () => {

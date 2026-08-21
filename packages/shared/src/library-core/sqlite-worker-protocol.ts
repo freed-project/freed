@@ -20,6 +20,11 @@ import {
   type LibraryCorePreferencesSnapshotResponseV1,
 } from "./preferences-snapshot-contracts.js";
 import {
+  parseLibraryCoreItemDetailRequestV1,
+  type LibraryCoreItemDetailRequestV1,
+  type LibraryCoreItemDetailResponseV1,
+} from "./item-detail-contracts.js";
+import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
@@ -34,6 +39,7 @@ export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedPageRequestV1
+  | LibraryCoreItemDetailRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -42,9 +48,11 @@ export type LibraryCoreSqliteQueryResponseFor<
   ? LibraryCoreFacetSummaryResponseV1
   : T extends LibraryCoreFeedPageRequestV1
     ? LibraryCoreFeedPageResponseV1
-    : T extends LibraryCorePreferencesSnapshotRequestV1
-      ? LibraryCorePreferencesSnapshotResponseV1
-      : never;
+    : T extends LibraryCoreItemDetailRequestV1
+      ? LibraryCoreItemDetailResponseV1
+      : T extends LibraryCorePreferencesSnapshotRequestV1
+        ? LibraryCorePreferencesSnapshotResponseV1
+        : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -101,6 +109,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFacetSummaryResponseV1
   | LibraryCoreFeedPageResponseV1
+  | LibraryCoreItemDetailResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2;
@@ -182,9 +191,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
     const query = isClosedRecord(value.query)
       ? value.query.queryId === "library_facet_summary_v1"
         ? parseLibraryCoreFacetSummaryRequestV1(value.query)
-        : value.query.queryId === "preferences_snapshot_v1"
-          ? parseLibraryCorePreferencesSnapshotRequestV1(value.query)
-          : parseLibraryCoreFeedPageRequestV1(value.query)
+        : value.query.queryId === "item_detail_v1"
+          ? parseLibraryCoreItemDetailRequestV1(value.query)
+          : value.query.queryId === "preferences_snapshot_v1"
+            ? parseLibraryCorePreferencesSnapshotRequestV1(value.query)
+            : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   }

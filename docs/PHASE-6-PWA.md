@@ -68,6 +68,9 @@
         browser SQLite through the shared typed query request. It preserves all
         five value kinds, exact binary UTF-8 path order, and the shared 512-row
         and 2 MiB response ceilings without materializing a settings shell.
+  - [x] `item_detail_v1` performs one primary-key lookup in browser SQLite and
+        returns the same closed compact card and typed reader-body locators as
+        native Rust. Full reader content remains outside the metadata response.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

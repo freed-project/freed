@@ -37,10 +37,18 @@ pub struct NormalizedPreferencesSnapshotRequestV1 {
     pub schema_version: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemDetailRequestV1 {
+    pub global_id: String,
+    pub schema_version: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
+    ItemDetail(NormalizedItemDetailRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
@@ -138,10 +146,35 @@ pub struct NormalizedPreferencesSnapshotResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemBodyLocatorV1 {
+    pub blob_digest: Option<String>,
+    pub storage: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemDetailV1 {
+    pub card: NormalizedFeedCardV1,
+    pub content_body: NormalizedItemBodyLocatorV1,
+    pub preserved_body: NormalizedItemBodyLocatorV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemDetailResponseV1 {
+    pub item: Option<NormalizedItemDetailV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
+    ItemDetail(Box<NormalizedItemDetailResponseV1>),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
@@ -568,6 +601,80 @@ fn query_preferences_snapshot(
     Ok(response)
 }
 
+fn body_locator(
+    row: &Row<'_>,
+    storage_column: &str,
+    digest_column: &str,
+) -> rusqlite::Result<NormalizedItemBodyLocatorV1> {
+    let storage: String = row.get(storage_column)?;
+    let blob_digest: Option<String> = row.get(digest_column)?;
+    if !matches!(storage.as_str(), "blob" | "inline" | "none")
+        || (storage == "blob") != blob_digest.is_some()
+        || blob_digest
+            .as_ref()
+            .is_some_and(|digest| !valid_lower_hex_64(digest))
+    {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(NormalizedItemBodyLocatorV1 {
+        blob_digest,
+        storage,
+    })
+}
+
+fn query_item_detail(
+    connection: &mut Connection,
+    request: NormalizedItemDetailRequestV1,
+) -> Result<NormalizedItemDetailResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.global_id.is_empty()
+        || request.global_id.len() > 2_048
+    {
+        return Err(invalid("normalized item detail identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "item_detail_v1")
+        .ok_or(invalid("normalized item detail program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.2)?;
+    let rows = statement.query_map(params![request.global_id], |row| {
+        Ok(NormalizedItemDetailV1 {
+            card: feed_card(row)?,
+            content_body: body_locator(row, "contentBodyStorage", "contentBodyBlobDigest")?,
+            preserved_body: body_locator(row, "preservedBodyStorage", "preservedBodyBlobDigest")?,
+        })
+    })?;
+    let mut items = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    if items.len() > program.1 {
+        return Err(invalid("normalized item detail exceeded its row bound"));
+    }
+    drop(statement);
+    let item = items.pop();
+    let response = NormalizedItemDetailResponseV1 {
+        item,
+        query_id: "item_detail_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized item detail response is invalid"))?
+        .len()
+        > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized item detail response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 pub fn query_normalized_v1(
     connection: &mut Connection,
     request: NormalizedQueryRequestV1,
@@ -578,6 +685,9 @@ pub fn query_normalized_v1(
         ),
         NormalizedQueryRequestV1::FeedPage(request) => Ok(NormalizedQueryResponseV1::FeedPage(
             query_feed_page(connection, request)?,
+        )),
+        NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
+            Box::new(query_item_detail(connection, request)?),
         )),
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
@@ -817,5 +927,74 @@ mod tests {
         assert_eq!(response.rows[0].integer_value, Some(3));
         assert_eq!(response.rows[2].real_value, Some(0.5));
         assert_eq!(response.rows[3].text_value.as_deref(), Some("neon"));
+    }
+
+    #[test]
+    fn native_item_detail_returns_metadata_and_body_locators_without_bodies() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let item_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "item_detail_v1")
+            .expect("item detail program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", item_program.2))
+            .expect("item detail plan");
+        let plan = plan_statement
+            .query_map(["item-1"], |row| row.get::<_, String>(3))
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH item USING INDEX")));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN item")));
+        drop(plan_statement);
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 11, 1000);
+                 INSERT INTO library_blobs
+                   (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+                   VALUES ('{}', 70000, 65536, 2, 'text/plain');
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, content_text,
+                    preserved_text_blob_digest, hidden, saved, archived, updated_at)
+                   VALUES
+                     ('item-1', 'saved', 'article', 100, 100, 'author-1', 'ada',
+                      'Ada', 'preview and body', '{}', 1, 1, 1, 100);",
+                "a".repeat(64),
+                "b".repeat(64),
+                "b".repeat(64),
+            ))
+            .expect("fixture");
+        let NormalizedQueryResponseV1::ItemDetail(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 {
+                global_id: "item-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("item detail") else {
+            panic!("item detail response");
+        };
+        let response = *response;
+        let item = response.item.expect("item");
+        assert_eq!(item.card.global_id, "item-1");
+        assert_eq!(item.card.content_text.as_deref(), Some("preview and body"));
+        assert_eq!(item.content_body.storage, "inline");
+        assert_eq!(item.content_body.blob_digest, None);
+        assert_eq!(item.preserved_body.storage, "blob");
+        let digest = "b".repeat(64);
+        assert_eq!(
+            item.preserved_body.blob_digest.as_deref(),
+            Some(digest.as_str())
+        );
+        assert!(!serde_json::to_string(&item)
+            .expect("json")
+            .contains("preservedText"));
     }
 }

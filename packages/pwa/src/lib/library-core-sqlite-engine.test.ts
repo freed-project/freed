@@ -302,6 +302,28 @@ describe("PWA Library Core SQLite engine", () => {
     expect(second.nextCursor).toBeNull();
     expect(
       engine.query({
+        globalId: "item-2",
+        queryId: "item_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      item: {
+        card: { contentText: "newer", globalId: "item-2" },
+        contentBody: { blobDigest: null, storage: "inline" },
+        preservedBody: { blobDigest: null, storage: "none" },
+      },
+      queryId: "item_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        globalId: "missing",
+        queryId: "item_detail_v1",
+        schemaVersion: 1,
+      }).item,
+    ).toBeNull();
+    expect(
+      engine.query({
         queryId: "library_facet_summary_v1",
         schemaVersion: 1,
       }),

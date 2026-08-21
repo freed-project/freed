@@ -273,6 +273,13 @@ binary path order. Each leaf contains exactly one boolean, integer, real, text,
 or null value. Neither native nor browser code reconstructs a monolithic
 settings object at the storage or transport boundary.
 
+`item_detail_v1` is a metadata point query. It reuses the compact feed-card
+projection and returns only typed locators that say whether each reader body is
+absent, inline in SQLite, or stored as a content-addressed blob. The body bytes
+are fetched through `item_reader_body_v1`. Item detail and background scans do
+not return full bodies, arbitrary remainder objects, or an enlarged metadata
+response.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version

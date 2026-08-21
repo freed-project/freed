@@ -62,6 +62,11 @@
         response preserves boolean, integer, real, text, and null values,
         rejects mismatched value columns, and enforces 512-row and 2 MiB
         ceilings without constructing a settings shell.
+  - [x] `item_detail_v1` now performs one primary-key SQLite lookup and returns
+        the shared compact card plus typed reader-body locators. It never
+        returns a full body or catch-all object, and the response uses the
+        ordinary 2 MiB ceiling. Background item scans are metadata-only and no
+        longer alias the historical full-content detail projection.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its
