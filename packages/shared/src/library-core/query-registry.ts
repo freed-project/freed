@@ -876,6 +876,8 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     currentKinds: [
       "read_library_core_feed_browse_page",
       "openBoundedDesktopFeedReader",
+      "openBoundedDesktopFriendsFeedReader",
+      "openPwaLibraryCoreFriendsFeedReader",
     ],
     requestSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA,
     responseSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,

@@ -42,6 +42,7 @@ import {
   encodeLibraryCoreChangeFeedCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV2,
+  libraryCoreFeedBrowseBindingDigestV3,
   libraryCoreFeedBrowseFilterDigestV1,
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
@@ -1699,13 +1700,7 @@ export class PwaLibraryCoreSqliteEngine {
       const writeClock = (sourceAt: number): void => {
         this.#database.exec({
           sql: program.clockWriteSql,
-          bind: [
-            entityId,
-            actorId,
-            actorSequence,
-            operationId,
-            sourceAt,
-          ],
+          bind: [entityId, actorId, actorSequence, operationId, sourceAt],
         });
       };
 
@@ -1797,13 +1792,7 @@ export class PwaLibraryCoreSqliteEngine {
         }
         this.#database.exec({
           sql: program.materializeSql,
-          bind: [
-            entityId,
-            operationId,
-            loggedAt,
-            channel,
-            notes,
-          ],
+          bind: [entityId, operationId, loggedAt, channel, notes],
         });
         for (const sql of program.dependentDeleteSql) {
           this.#database.exec({ sql, bind: [entityId] });
@@ -3491,8 +3480,9 @@ export class PwaLibraryCoreSqliteEngine {
     const request = parseLibraryCoreFeedBrowsePageRequestV3(input);
     if (!request.ok) throw new TypeError(request.error);
     const { generationId, sourceRevision } = this.#querySource();
-    const filterDigest = libraryCoreFeedBrowseFilterDigestV1(
+    const filterDigest = libraryCoreFeedBrowseBindingDigestV3(
       request.value.filter,
+      request.value.identityMode,
     );
     let cursorPriority: number | null = null;
     let cursorPublishedAt: number | null = null;
@@ -3524,6 +3514,7 @@ export class PwaLibraryCoreSqliteEngine {
       request.value.filter.savedOnly ? 1 : 0,
       JSON.stringify(request.value.filter.tags),
       JSON.stringify(request.value.filter.signals),
+      request.value.identityMode,
     ];
     const rawRows = this.#database.exec({
       sql:
@@ -3582,6 +3573,9 @@ export class PwaLibraryCoreSqliteEngine {
     const previous = previousAvailable ? edge(rows[0]) : null;
     const response = {
       filter: request.value.filter,
+      friendsPredicateSchemaVersion:
+        request.value.friendsPredicateSchemaVersion,
+      identityMode: request.value.identityMode,
       nextCursor: next?.cursor ?? null,
       nextOrder: next?.order ?? null,
       previousCursor: previous?.cursor ?? null,

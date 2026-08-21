@@ -502,6 +502,12 @@ ordinary feed, Saved feed, and signal counts retain only compact card pages and
 opaque keyset cursors. They do not call a whole-Library query or reconstruct a
 Library shell.
 
+Friends uses `feed_browse_page_v3` with `identityMode = "friends"`. SQLite
+resolves each row through the unique Account provider and external identity,
+then requires its Person to have relationship status `friend`. The identity
+mode and Friends predicate schema version are bound into every cursor digest,
+so a cursor from all-content mode cannot cross into Friends mode.
+
 One shared secondary-surface adapter executes `item_detail_v1`,
 `library_facet_summary_v1`, `saved_analytics_v2`, `map_markers_v1`, and
 `story_wall_candidates_v1` through the host executor. Map and Story Wall rows

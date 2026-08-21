@@ -2,22 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
-  querySqliteItems: vi.fn(),
 }));
 
 vi.mock("./library-core-normalized-query-client", () => ({
   createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
-vi.mock("./sqlite-library", () => ({
-  querySqliteItems: mocks.querySqliteItems,
-}));
-vi.mock("./library-client", () => ({
-  getDocState: vi.fn(() => null),
-}));
-
 const {
   openBoundedDesktopFeedReader,
+  openBoundedDesktopFriendsFeedReader,
   openSortedSqliteFeedReader,
   readDesktopFeedSignalCounts,
 } = await import("./library-core-feed-browse-reader-runtime");
@@ -56,7 +49,6 @@ const feedCard = (globalId: string) => ({
 describe("normalized SQLite bounded feed reader", () => {
   beforeEach(() => {
     mocks.queryNormalizedLibrary.mockReset();
-    mocks.querySqliteItems.mockReset();
   });
 
   it("opens the ordinary feed through the typed normalized query boundary", async () => {
@@ -101,7 +93,28 @@ describe("normalized SQLite bounded feed reader", () => {
       previousCursor: null,
     });
     expect(mocks.queryNormalizedLibrary).toHaveBeenCalledOnce();
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
+  });
+
+  it("queries Friends through the normalized relational predicate", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      rows: [feedCard("friend")],
+      nextCursor: null,
+      previousCursor: null,
+      totalCount: 1,
+    });
+
+    const reader = await openBoundedDesktopFriendsFeedReader({}, 123_456);
+
+    await expect(reader.readNext()).resolves.toEqual([
+      expect.objectContaining({ globalId: "friend" }),
+    ]);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "friends",
+        queryId: "feed_browse_page_v3",
+      }),
+    );
   });
 
   it("reads Saved through its normalized keyset query", async () => {
@@ -129,7 +142,6 @@ describe("normalized SQLite bounded feed reader", () => {
         filter: expect.objectContaining({ savedOnly: true }),
       }),
     );
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 
   it("counts signal presets without the historical item query", async () => {
@@ -145,12 +157,13 @@ describe("normalized SQLite bounded feed reader", () => {
     expect(counts.all).toBe(42);
     expect(mocks.queryNormalizedLibrary).toHaveBeenCalledTimes(6);
     for (const [request] of mocks.queryNormalizedLibrary.mock.calls) {
-      expect(request).toEqual(expect.objectContaining({
-        limit: 1,
-        queryId: "feed_browse_page_v3",
-        filter: expect.objectContaining({ platform: "rss" }),
-      }));
+      expect(request).toEqual(
+        expect.objectContaining({
+          limit: 1,
+          queryId: "feed_browse_page_v3",
+          filter: expect.objectContaining({ platform: "rss" }),
+        }),
+      );
     }
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 });

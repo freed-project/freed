@@ -68,6 +68,8 @@ pub struct NormalizedFeedBrowsePageRequestV3 {
     pub cursor: Option<String>,
     pub direction: String,
     pub filter: NormalizedFeedBrowseFilterV1,
+    pub friends_predicate_schema_version: u32,
+    pub identity_mode: String,
     pub limit: usize,
     pub ranking_clock_ms: i64,
     pub reader_session_id: String,
@@ -312,6 +314,8 @@ pub struct NormalizedFeedBrowseEdgeOrderV3 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFeedBrowsePageResponseV3 {
     pub filter: NormalizedFeedBrowseFilterV1,
+    pub friends_predicate_schema_version: u32,
+    pub identity_mode: String,
     pub next_cursor: Option<String>,
     pub next_order: Option<NormalizedFeedBrowseEdgeOrderV3>,
     pub previous_cursor: Option<String>,
@@ -1388,11 +1392,25 @@ fn feed_browse_filter_digest(
     Ok(lower_hex(&Sha256::digest(bytes)))
 }
 
+fn feed_browse_binding_digest(
+    filter: &NormalizedFeedBrowseFilterV1,
+    identity_mode: &str,
+) -> Result<String, NormalizedSqliteError> {
+    if !matches!(identity_mode, "all_content" | "friends") {
+        return Err(invalid("normalized browse identity mode is invalid"));
+    }
+    let bytes = serde_json::to_vec(&(1, identity_mode, feed_browse_filter_digest(filter)?))
+        .map_err(|_| invalid("normalized browse binding is invalid"))?;
+    Ok(lower_hex(&Sha256::digest(bytes)))
+}
+
 fn query_feed_browse_page(
     connection: &mut Connection,
     request: NormalizedFeedBrowsePageRequestV3,
 ) -> Result<NormalizedFeedBrowsePageResponseV3, NormalizedSqliteError> {
     if request.schema_version != 3
+        || request.friends_predicate_schema_version != 1
+        || !matches!(request.identity_mode.as_str(), "all_content" | "friends")
         || request.recommendation_order_schema_version != 1
         || !valid_safe_integer(request.ranking_clock_ms)
         || !(1..=FEED_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
@@ -1410,7 +1428,7 @@ fn query_feed_browse_page(
         .ok_or(invalid("normalized browse query program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
-    let filter_digest = feed_browse_filter_digest(&request.filter)?;
+    let filter_digest = feed_browse_binding_digest(&request.filter, &request.identity_mode)?;
     let cursor = request
         .cursor
         .as_deref()
@@ -1454,6 +1472,7 @@ fn query_feed_browse_page(
             i64::from(request.filter.saved_only),
             tags_json,
             signals_json,
+            request.identity_mode.as_str(),
             cursor.as_ref().map(|cursor| cursor.priority),
             cursor.as_ref().map(|cursor| cursor.published_at),
             cursor
@@ -1537,6 +1556,7 @@ fn query_feed_browse_page(
                 .map_err(|_| invalid("normalized browse tags are invalid"))?,
             serde_json::to_string(&request.filter.signals)
                 .map_err(|_| invalid("normalized browse signals are invalid"))?,
+            request.identity_mode.as_str(),
         ],
         |row| row.get(0),
     )?;
@@ -1545,6 +1565,8 @@ fn query_feed_browse_page(
     }
     let response = NormalizedFeedBrowsePageResponseV3 {
         filter: request.filter,
+        friends_predicate_schema_version: request.friends_predicate_schema_version,
+        identity_mode: request.identity_mode,
         next_cursor: next.as_ref().map(|edge| edge.0.clone()),
         next_order: next.map(|edge| edge.1),
         previous_cursor: previous.as_ref().map(|edge| edge.0.clone()),
@@ -3976,6 +3998,7 @@ mod tests {
                         0,
                         "[]",
                         "[]",
+                        "all_content",
                         Option::<i64>::None,
                         Option::<i64>::None,
                         "",
@@ -4014,7 +4037,18 @@ mod tests {
                  INSERT INTO library_feed_item_tags (global_id, tag)
                    VALUES ('a', 'important');
                  INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
-                   VALUES ('a', 'essay', 1.0, 1);",
+                   VALUES ('a', 'essay', 1.0, 1);
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES
+                     ('person-ada', 'Ada', 'friend', 5, 1, 1),
+                     ('person-grace', 'Grace', 'connection', 3, 1, 1);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES
+                     ('account-ada', 'person-ada', 'social', 'x', 'ada', 1, 1, 'capture', 1, 1),
+                     ('account-grace', 'person-grace', 'social', 'saved', 'grace', 1, 1, 'capture', 1, 1);",
                 "a".repeat(64)
             ))
             .expect("browse fixture");
@@ -4051,6 +4085,8 @@ mod tests {
             cursor: None,
             direction: "next".to_owned(),
             filter,
+            friends_predicate_schema_version: 1,
+            identity_mode: "all_content".to_owned(),
             limit: 2,
             ranking_clock_ms: 1_000,
             reader_session_id: "reader-browse-1".to_owned(),
@@ -4107,6 +4143,26 @@ mod tests {
         );
         assert!(previous.previous_cursor.is_none());
         assert!(previous.next_cursor.is_some());
+        let NormalizedQueryResponseV1::FeedBrowsePage(friends) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FeedBrowsePage(NormalizedFeedBrowsePageRequestV3 {
+                cursor: None,
+                identity_mode: "friends".to_owned(),
+                limit: 10,
+                ..request.clone()
+            }),
+        )
+        .expect("friends browse page") else {
+            panic!("friends browse response");
+        };
+        assert_eq!(
+            friends
+                .rows
+                .iter()
+                .map(|row| row.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
         let changed_filter = NormalizedFeedBrowseFilterV1 {
             saved_only: true,
             ..request.filter.clone()

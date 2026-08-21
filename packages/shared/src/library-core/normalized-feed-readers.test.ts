@@ -59,8 +59,33 @@ describe("cross-platform normalized feed readers", () => {
     });
     expect(query).toHaveBeenCalledWith(
       expect.objectContaining({
+        identityMode: "all_content",
         queryId: "feed_browse_page_v3",
         rankingClockMs: 100,
+      }),
+    );
+  });
+
+  it("binds Friends to the closed SQLite identity predicate", async () => {
+    const query = vi.fn(async () => ({
+      rows: [feedCard("friend")],
+      nextCursor: null,
+      previousCursor: null,
+      totalCount: 1,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await openLibraryCoreNormalizedFeedReaderV1(
+      { query, randomId: () => "test" },
+      {},
+      100,
+      "friends",
+    );
+
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "friends",
+        queryId: "feed_browse_page_v3",
       }),
     );
   });

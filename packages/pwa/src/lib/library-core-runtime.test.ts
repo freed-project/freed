@@ -98,6 +98,7 @@ import {
   enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   initializePwaLibraryCoreState,
+  openPwaLibraryCoreFriendsFeedReader,
   readPwaLibraryCoreIntentOverlayRecoveryState,
   readPwaLibraryCoreItemDetail,
   readPwaLibraryCoreSelectedCheckpointReceipt,
@@ -477,6 +478,26 @@ describe("PWA Library Core bounded scanner", () => {
       schemaVersion: 1,
     });
     expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
+  });
+
+  it("opens Friends through the normalized relational predicate", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: null,
+      previousCursor: null,
+      rows: [],
+      totalCount: 0,
+    });
+
+    const reader = await openPwaLibraryCoreFriendsFeedReader({}, 100);
+
+    expect(reader.totalCount).toBe(0);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "friends",
+        queryId: "feed_browse_page_v3",
+      }),
+    );
   });
 
   it("queues user-state changes through the signed IndexedDB intent path", async () => {

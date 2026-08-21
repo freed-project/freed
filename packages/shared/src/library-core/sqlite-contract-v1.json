@@ -160,7 +160,9 @@
       "rss_feed_title_assignment",
       "rss_feed_upsert"
     ],
-    "scraper": ["feed_item_capture_upsert"]
+    "scraper": [
+      "feed_item_capture_upsert"
+    ]
   },
   "limits": {
     "checkpointRecordCanonicalBytes": 131072,
@@ -173,97 +175,173 @@
     "followerIntentTransactionBytes": 4194304
   },
   "fractionalFields": {
-    "10_feed_item": ["locationLat", "locationLng", "priority"],
-    "16_feed_item_signal_score": ["score"],
-    "17_feed_item_event": ["confidence"],
-    "50_preference": ["realValue"]
+    "10_feed_item": [
+      "locationLat",
+      "locationLng",
+      "priority"
+    ],
+    "16_feed_item_signal_score": [
+      "score"
+    ],
+    "17_feed_item_event": [
+      "confidence"
+    ],
+    "50_preference": [
+      "realValue"
+    ]
   },
   "checkpointImports": {
     "00_checkpoint_header": {
       "table": "library_meta",
       "primaryKeyColumns": [],
-      "constantColumns": { "singleton_id": 1 },
-      "fieldColumns": { "checkpointId": null, "createdAtMs": "updated_at" }
+      "constantColumns": {
+        "singleton_id": 1
+      },
+      "fieldColumns": {
+        "checkpointId": null,
+        "createdAtMs": "updated_at"
+      }
     },
     "01_authority_epoch": {
       "table": "library_authority_epochs",
-      "primaryKeyColumns": ["epoch_id"]
+      "primaryKeyColumns": [
+        "epoch_id"
+      ]
     },
     "02_authority_frontier": {
       "table": "library_authority_frontier",
-      "primaryKeyColumns": ["epoch_id", "ordinal"]
+      "primaryKeyColumns": [
+        "epoch_id",
+        "ordinal"
+      ]
     },
     "03_active_authority": {
       "table": "library_active_authority",
-      "primaryKeyColumns": ["active_key"],
-      "fieldColumns": { "activeKey": null },
-      "identityPayloadFields": { "activeKey": 0 }
+      "primaryKeyColumns": [
+        "active_key"
+      ],
+      "fieldColumns": {
+        "activeKey": null
+      },
+      "identityPayloadFields": {
+        "activeKey": 0
+      }
     },
     "10_feed_item": {
       "table": "library_feed_items",
-      "primaryKeyColumns": ["global_id"]
+      "primaryKeyColumns": [
+        "global_id"
+      ]
     },
     "11_feed_item_media": {
       "table": "library_feed_item_media",
-      "primaryKeyColumns": ["global_id", "ordinal"]
+      "primaryKeyColumns": [
+        "global_id",
+        "ordinal"
+      ]
     },
     "12_feed_item_topic": {
       "table": "library_feed_item_topics",
-      "primaryKeyColumns": ["global_id", "topic"],
-      "identityPayloadFields": { "topic": 1 }
+      "primaryKeyColumns": [
+        "global_id",
+        "topic"
+      ],
+      "identityPayloadFields": {
+        "topic": 1
+      }
     },
     "13_feed_item_tag": {
       "table": "library_feed_item_tags",
-      "primaryKeyColumns": ["global_id", "tag"],
-      "identityPayloadFields": { "tag": 1 }
+      "primaryKeyColumns": [
+        "global_id",
+        "tag"
+      ],
+      "identityPayloadFields": {
+        "tag": 1
+      }
     },
     "14_feed_item_highlight": {
       "table": "library_feed_item_highlights",
-      "primaryKeyColumns": ["global_id", "ordinal"],
-      "fieldColumns": { "text": "text_value" }
+      "primaryKeyColumns": [
+        "global_id",
+        "ordinal"
+      ],
+      "fieldColumns": {
+        "text": "text_value"
+      }
     },
     "15_feed_item_signal": {
       "table": "library_feed_item_signals",
-      "primaryKeyColumns": ["global_id"]
+      "primaryKeyColumns": [
+        "global_id"
+      ]
     },
     "16_feed_item_signal_score": {
       "table": "library_feed_item_signal_scores",
-      "primaryKeyColumns": ["global_id", "signal"],
-      "identityPayloadFields": { "signal": 1 }
+      "primaryKeyColumns": [
+        "global_id",
+        "signal"
+      ],
+      "identityPayloadFields": {
+        "signal": 1
+      }
     },
     "17_feed_item_event": {
       "table": "library_feed_item_events",
-      "primaryKeyColumns": ["global_id"]
+      "primaryKeyColumns": [
+        "global_id"
+      ]
     },
     "20_rss_feed": {
       "table": "library_rss_feeds",
-      "primaryKeyColumns": ["url"]
+      "primaryKeyColumns": [
+        "url"
+      ]
     },
     "30_person": {
       "table": "library_persons",
-      "primaryKeyColumns": ["id"]
+      "primaryKeyColumns": [
+        "id"
+      ]
     },
     "31_person_tag": {
       "table": "library_person_tags",
-      "primaryKeyColumns": ["person_id", "tag"],
-      "identityPayloadFields": { "tag": 1 }
+      "primaryKeyColumns": [
+        "person_id",
+        "tag"
+      ],
+      "identityPayloadFields": {
+        "tag": 1
+      }
     },
     "32_person_reach_out": {
       "table": "library_person_reach_outs",
-      "primaryKeyColumns": ["person_id", "reach_out_id"]
+      "primaryKeyColumns": [
+        "person_id",
+        "reach_out_id"
+      ]
     },
     "40_account": {
       "table": "library_accounts",
-      "primaryKeyColumns": ["id"]
+      "primaryKeyColumns": [
+        "id"
+      ]
     },
     "41_account_follow_role": {
       "table": "library_account_follow_roles",
-      "primaryKeyColumns": ["account_id", "role"],
-      "identityPayloadFields": { "role": 1 }
+      "primaryKeyColumns": [
+        "account_id",
+        "role"
+      ],
+      "identityPayloadFields": {
+        "role": 1
+      }
     },
     "50_preference": {
       "table": "library_preferences",
-      "primaryKeyColumns": ["path"]
+      "primaryKeyColumns": [
+        "path"
+      ]
     },
     "60_relationship": {
       "table": "library_relationships",
@@ -277,38 +355,66 @@
     },
     "70_field_clock": {
       "table": "library_field_clocks",
-      "primaryKeyColumns": ["entity_type", "entity_id", "field_path"]
+      "primaryKeyColumns": [
+        "entity_type",
+        "entity_id",
+        "field_path"
+      ]
     },
     "80_tombstone": {
       "table": "library_tombstones",
-      "primaryKeyColumns": ["entity_type", "entity_id"]
+      "primaryKeyColumns": [
+        "entity_type",
+        "entity_id"
+      ]
     },
     "90_actor_state": {
       "table": "library_actors",
-      "primaryKeyColumns": ["actor_id"]
+      "primaryKeyColumns": [
+        "actor_id"
+      ]
     },
     "91_actor_capability": {
       "table": "library_actor_capabilities",
-      "primaryKeyColumns": ["capability_id"]
+      "primaryKeyColumns": [
+        "capability_id"
+      ]
     },
     "92_actor_capability_mutation": {
       "table": "library_actor_capability_mutations",
-      "primaryKeyColumns": ["capability_id", "mutation_id"],
-      "identityPayloadFields": { "mutationId": 1 }
+      "primaryKeyColumns": [
+        "capability_id",
+        "mutation_id"
+      ],
+      "identityPayloadFields": {
+        "mutationId": 1
+      }
     },
     "a0_receipt": {
       "table": "library_receipts",
-      "primaryKeyColumns": ["actor_id", "operation_id"]
+      "primaryKeyColumns": [
+        "actor_id",
+        "operation_id"
+      ]
     },
     "b0_blob_descriptor": {
       "table": "library_blobs",
-      "primaryKeyColumns": ["content_digest"],
-      "fieldColumns": { "blobContentDigest": null },
-      "identityPayloadFields": { "blobContentDigest": 0 }
+      "primaryKeyColumns": [
+        "content_digest"
+      ],
+      "fieldColumns": {
+        "blobContentDigest": null
+      },
+      "identityPayloadFields": {
+        "blobContentDigest": 0
+      }
     },
     "b1_content_chunk": {
       "table": "library_blob_chunks",
-      "primaryKeyColumns": ["content_digest", "chunk_index"],
+      "primaryKeyColumns": [
+        "content_digest",
+        "chunk_index"
+      ],
       "fieldColumns": {
         "blobContentDigest": null,
         "byteLength": null,
@@ -316,7 +422,10 @@
         "chunkContentDigest": "chunk_digest",
         "chunkIndex": null
       },
-      "identityPayloadFields": { "blobContentDigest": 0, "chunkIndex": 1 }
+      "identityPayloadFields": {
+        "blobContentDigest": 0,
+        "chunkIndex": 1
+      }
     }
   },
   "checkpointRecords": [
@@ -440,37 +549,58 @@
       "registryKey": "11_feed_item_media",
       "primaryKey": "ordinal",
       "payload": "feed_item_media",
-      "fields": ["blobContentDigest", "mediaType", "sourceUrl"]
+      "fields": [
+        "blobContentDigest",
+        "mediaType",
+        "sourceUrl"
+      ]
     },
     {
       "registryKey": "12_feed_item_topic",
       "primaryKey": "pair",
       "payload": "feed_item_topic",
-      "fields": ["topic"]
+      "fields": [
+        "topic"
+      ]
     },
     {
       "registryKey": "13_feed_item_tag",
       "primaryKey": "pair",
       "payload": "feed_item_tag",
-      "fields": ["tag"]
+      "fields": [
+        "tag"
+      ]
     },
     {
       "registryKey": "14_feed_item_highlight",
       "primaryKey": "ordinal",
       "payload": "feed_item_highlight",
-      "fields": ["createdAt", "note", "text", "textBlobDigest"]
+      "fields": [
+        "createdAt",
+        "note",
+        "text",
+        "textBlobDigest"
+      ]
     },
     {
       "registryKey": "15_feed_item_signal",
       "primaryKey": "text",
       "payload": "feed_item_signal",
-      "fields": ["inferredAt", "method", "version"]
+      "fields": [
+        "inferredAt",
+        "method",
+        "version"
+      ]
     },
     {
       "registryKey": "16_feed_item_signal_score",
       "primaryKey": "pair",
       "payload": "feed_item_signal_score",
-      "fields": ["score", "signal", "tagged"]
+      "fields": [
+        "score",
+        "signal",
+        "tagged"
+      ]
     },
     {
       "registryKey": "17_feed_item_event",
@@ -533,13 +663,19 @@
       "registryKey": "31_person_tag",
       "primaryKey": "pair",
       "payload": "person_tag",
-      "fields": ["tag"]
+      "fields": [
+        "tag"
+      ]
     },
     {
       "registryKey": "32_person_reach_out",
       "primaryKey": "ordinal",
       "payload": "person_reach_out",
-      "fields": ["channel", "loggedAt", "notes"]
+      "fields": [
+        "channel",
+        "loggedAt",
+        "notes"
+      ]
     },
     {
       "registryKey": "40_account",
@@ -574,7 +710,9 @@
       "registryKey": "41_account_follow_role",
       "primaryKey": "pair",
       "payload": "account_follow_role",
-      "fields": ["role"]
+      "fields": [
+        "role"
+      ]
     },
     {
       "registryKey": "50_preference",
@@ -593,19 +731,34 @@
       "registryKey": "60_relationship",
       "primaryKey": "relationship",
       "payload": "relationship",
-      "fields": ["createdAt", "metadataBlobDigest", "metadataText", "updatedAt"]
+      "fields": [
+        "createdAt",
+        "metadataBlobDigest",
+        "metadataText",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "70_field_clock",
       "primaryKey": "field",
       "payload": "field_clock",
-      "fields": ["actorId", "counter", "operationId", "updatedAt"]
+      "fields": [
+        "actorId",
+        "counter",
+        "operationId",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "80_tombstone",
       "primaryKey": "entity",
       "payload": "tombstone",
-      "fields": ["actorId", "counter", "deletedAt", "operationId"]
+      "fields": [
+        "actorId",
+        "counter",
+        "deletedAt",
+        "operationId"
+      ]
     },
     {
       "registryKey": "90_actor_state",
@@ -651,7 +804,9 @@
       "registryKey": "92_actor_capability_mutation",
       "primaryKey": "pair",
       "payload": "actor_capability_mutation",
-      "fields": ["mutationId"]
+      "fields": [
+        "mutationId"
+      ]
     },
     {
       "registryKey": "a0_receipt",
@@ -1056,9 +1211,9 @@
     },
     "feed_browse_page_v3": {
       "maximumScanRows": 129,
-      "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1));",
-      "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, CAST(round(COALESCE(item.priority, 0)) AS INTEGER) AS browsePriority FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (?10 IS NULL OR CAST(round(COALESCE(item.priority, 0)) AS INTEGER) < ?10 OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?10 AND item.published_at < ?11) OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?10 AND item.published_at = ?11 AND item.global_id > ?12 COLLATE BINARY)) ORDER BY CAST(round(COALESCE(item.priority, 0)) AS INTEGER) DESC, item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT ?13;",
-      "reverseSql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, CAST(round(COALESCE(item.priority, 0)) AS INTEGER) AS browsePriority FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) > ?10 OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?10 AND item.published_at > ?11) OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?10 AND item.published_at = ?11 AND item.global_id < ?12 COLLATE BINARY)) ORDER BY CAST(round(COALESCE(item.priority, 0)) AS INTEGER) ASC, item.published_at ASC, item.global_id COLLATE BINARY DESC LIMIT ?13;"
+      "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (?10 = 'all_content' OR EXISTS (SELECT 1 FROM library_accounts AS friend_account JOIN library_persons AS friend_person ON friend_person.id = friend_account.person_id WHERE friend_account.provider = item.platform AND friend_account.external_id = item.author_id AND friend_person.relationship_status = 'friend'));",
+      "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, CAST(round(COALESCE(item.priority, 0)) AS INTEGER) AS browsePriority FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (?10 = 'all_content' OR EXISTS (SELECT 1 FROM library_accounts AS friend_account JOIN library_persons AS friend_person ON friend_person.id = friend_account.person_id WHERE friend_account.provider = item.platform AND friend_account.external_id = item.author_id AND friend_person.relationship_status = 'friend')) AND (?11 IS NULL OR CAST(round(COALESCE(item.priority, 0)) AS INTEGER) < ?11 OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?11 AND item.published_at < ?12) OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?11 AND item.published_at = ?12 AND item.global_id > ?13 COLLATE BINARY)) ORDER BY CAST(round(COALESCE(item.priority, 0)) AS INTEGER) DESC, item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT ?14;",
+      "reverseSql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, CAST(round(COALESCE(item.priority, 0)) AS INTEGER) AS browsePriority FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.archived = ?1 AND (?2 = 1 OR item.hidden = 0) AND (?3 IS NULL OR (?3 = 'rss' AND (item.platform = 'rss' OR item.rss_feed_url IS NOT NULL)) OR (?3 <> 'rss' AND item.platform = ?3)) AND (?4 IS NULL OR item.author_id = ?4) AND (?5 IS NULL OR item.rss_feed_url = ?5) AND (?6 = 'all' OR (?6 = 'stories' AND item.content_type = 'story') OR (?6 = 'posts' AND item.content_type <> 'story')) AND (?7 = 0 OR item.saved = 1) AND (json_array_length(?8) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_tags AS wanted_tag JOIN json_each(?8) AS requested_tag ON requested_tag.value = wanted_tag.tag WHERE wanted_tag.global_id = item.global_id)) AND (json_array_length(?9) = 0 OR EXISTS (SELECT 1 FROM library_feed_item_signal_scores AS wanted_signal JOIN json_each(?9) AS requested_signal ON requested_signal.value = wanted_signal.signal WHERE wanted_signal.global_id = item.global_id AND wanted_signal.tagged = 1)) AND (?10 = 'all_content' OR EXISTS (SELECT 1 FROM library_accounts AS friend_account JOIN library_persons AS friend_person ON friend_person.id = friend_account.person_id WHERE friend_account.provider = item.platform AND friend_account.external_id = item.author_id AND friend_person.relationship_status = 'friend')) AND (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) > ?11 OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?11 AND item.published_at > ?12) OR (CAST(round(COALESCE(item.priority, 0)) AS INTEGER) = ?11 AND item.published_at = ?12 AND item.global_id < ?13 COLLATE BINARY)) ORDER BY CAST(round(COALESCE(item.priority, 0)) AS INTEGER) ASC, item.published_at ASC, item.global_id COLLATE BINARY DESC LIMIT ?14;"
     },
     "feed_page_v1": {
       "maximumScanRows": 129,

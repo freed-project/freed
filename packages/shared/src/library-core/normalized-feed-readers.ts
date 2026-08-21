@@ -7,7 +7,9 @@ import type {
 import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   type LibraryCoreFeedBrowseDirectionV3,
+  type LibraryCoreFeedBrowseIdentityModeV2,
 } from "./feed-browse-page-contracts.js";
 import {
   normalizeLibraryCoreFeedBrowseFilterV1,
@@ -69,6 +71,7 @@ export async function openLibraryCoreNormalizedFeedReaderV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   filterInput: LibraryCoreFeedBrowseFilterInputV1,
   rankingClockMs: number,
+  identityMode: LibraryCoreFeedBrowseIdentityModeV2 = "all_content",
 ): Promise<LibraryCoreNormalizedFeedReader> {
   const parsed = parseLibraryCoreFeedBrowseFilterV1(
     normalizeLibraryCoreFeedBrowseFilterV1(filterInput),
@@ -91,6 +94,9 @@ export async function openLibraryCoreNormalizedFeedReaderV1(
       cursor,
       direction,
       filter,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode,
       limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
       queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
       rankingClockMs,
@@ -241,6 +247,9 @@ export async function readLibraryCoreNormalizedFeedSignalCountsV1(
         cursor: null,
         direction: "next",
         filter: signalFilter,
+        friendsPredicateSchemaVersion:
+          LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+        identityMode: "all_content",
         limit: 1,
         queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
         rankingClockMs,

@@ -185,6 +185,8 @@ describe("Library Core SQLite worker protocol", () => {
           socialContentFilter: "all",
           tags: [],
         },
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "all_content",
         limit: 64,
         queryId: "feed_browse_page_v3",
         rankingClockMs: 1_000,

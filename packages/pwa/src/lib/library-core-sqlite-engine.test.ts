@@ -2280,6 +2280,17 @@ describe("PWA Library Core SQLite engine", () => {
       VALUES ('a', 'important');
       INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
       VALUES ('a', 'essay', 1.0, 1);
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES
+        ('person-ada', 'Ada', 'friend', 5, 1, 1),
+        ('person-grace', 'Grace', 'connection', 3, 1, 1);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, first_seen_at,
+         last_seen_at, discovered_from, created_at, updated_at)
+      VALUES
+        ('account-ada', 'person-ada', 'social', 'x', 'ada', 1, 1, 'capture', 1, 1),
+        ('account-grace', 'person-grace', 'social', 'saved', 'grace', 1, 1, 'capture', 1, 1);
     `);
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.feed_browse_page_v3;
     const planBindings = [
@@ -2292,6 +2303,7 @@ describe("PWA Library Core SQLite engine", () => {
       0,
       "[]",
       "[]",
+      "all_content",
       null,
       null,
       "",
@@ -2332,6 +2344,8 @@ describe("PWA Library Core SQLite engine", () => {
       cursor: null,
       direction: "next" as const,
       filter,
+      friendsPredicateSchemaVersion: 1 as const,
+      identityMode: "all_content" as const,
       limit: 2,
       queryId: "feed_browse_page_v3" as const,
       rankingClockMs: 1_000,
@@ -2372,6 +2386,18 @@ describe("PWA Library Core SQLite engine", () => {
     expect(matching({ showHidden: true })).toEqual(["hidden", "a", "b", "c"]);
     expect(matching({ archivedOnly: true })).toEqual(["archived"]);
     expect(matching({ socialContentFilter: "stories" })).toEqual(["story"]);
+    expect(
+      engine
+        .query({ ...request, identityMode: "friends", limit: 10 })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["a", "b"]);
+    expect(() =>
+      engine.query({
+        ...request,
+        cursor: first.nextCursor,
+        identityMode: "friends",
+      }),
+    ).toThrow("cursor belongs to a different filter");
     expect(() =>
       engine.query({
         ...request,

@@ -910,7 +910,12 @@ export async function openPwaLibraryCoreFriendsFeedReader(
   filter: FilterOptions,
   rankingClockMs: number,
 ): Promise<BoundedFeedReader> {
-  return getIndexedDbReaders().openFriendsFeedReader(filter, rankingClockMs);
+  return openLibraryCoreNormalizedFeedReaderV1(
+    NORMALIZED_READER_RUNTIME,
+    filter,
+    rankingClockMs,
+    "friends",
+  );
 }
 
 /** Open every Saved sort mode through the shared bounded SQLite query adapter. */

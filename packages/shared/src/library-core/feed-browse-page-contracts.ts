@@ -155,6 +155,8 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA = Object.freeze({
     "cursor",
     "direction",
     "filter",
+    "friendsPredicateSchemaVersion",
+    "identityMode",
     "limit",
     "queryId",
     "rankingClockMs",
@@ -173,6 +175,8 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA = Object.freeze({
   queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
   canonicalKeys: Object.freeze([
     "filter",
+    "friendsPredicateSchemaVersion",
+    "identityMode",
     "nextCursor",
     "nextOrder",
     "previousCursor",
@@ -291,6 +295,8 @@ export interface LibraryCoreFeedBrowsePageRequestV3 {
   readonly cursor: string | null;
   readonly direction: LibraryCoreFeedBrowseDirectionV3;
   readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly friendsPredicateSchemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly limit: number;
   readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID;
   readonly rankingClockMs: number;
@@ -317,6 +323,8 @@ export interface LibraryCoreFeedBrowsePageCursorV2 {
 
 export interface LibraryCoreFeedBrowsePageResponseV3 {
   readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly friendsPredicateSchemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly nextCursor: string | null;
   readonly nextOrder: Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null;
   readonly previousCursor: string | null;
@@ -378,6 +386,24 @@ export function libraryCoreFeedBrowseFilterDigestV1(
         filter.value.signals,
         filter.value.socialContentFilter,
         filter.value.tags,
+      ]),
+    ),
+  );
+}
+
+export function libraryCoreFeedBrowseBindingDigestV3(
+  filter: LibraryCoreFeedBrowseFilterV1,
+  identityMode: LibraryCoreFeedBrowseIdentityModeV2,
+): LibraryCoreLowercaseHex64 {
+  if (!isLibraryCoreFeedBrowseIdentityModeV2(identityMode)) {
+    throw new TypeError("invalid Library Core feed-browse identity mode");
+  }
+  return sha256LowerHex(
+    TEXT_ENCODER.encode(
+      JSON.stringify([
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+        identityMode,
+        libraryCoreFeedBrowseFilterDigestV1(filter),
       ]),
     ),
   );
@@ -1001,6 +1027,9 @@ export function parseLibraryCoreFeedBrowsePageRequestV3(
   if (
     input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID ||
     input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION ||
+    input.friendsPredicateSchemaVersion !==
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION ||
+    !isLibraryCoreFeedBrowseIdentityModeV2(input.identityMode) ||
     !isLibraryCoreFeedBrowseDirectionV3(input.direction)
   ) {
     return failure("browse request identity or bounds are invalid");
@@ -1028,7 +1057,10 @@ export function parseLibraryCoreFeedBrowsePageRequestV3(
     if (!cursor.ok) return failure("browse request cursor is invalid");
     if (
       cursor.value.filterDigest !==
-      libraryCoreFeedBrowseFilterDigestV1(parsedV1.value.filter)
+      libraryCoreFeedBrowseBindingDigestV3(
+        parsedV1.value.filter,
+        input.identityMode,
+      )
     ) {
       return failure("browse request cursor belongs to a different filter");
     }
@@ -1039,6 +1071,9 @@ export function parseLibraryCoreFeedBrowsePageRequestV3(
       cursor: input.cursor as string | null,
       direction: input.direction,
       filter: parsedV1.value.filter,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: input.identityMode,
       limit: parsedV1.value.limit,
       queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
       rankingClockMs: parsedV1.value.rankingClockMs,
@@ -1116,7 +1151,10 @@ export function parseLibraryCoreFeedBrowsePageResponseV3(
   const input = record.value;
   if (
     input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID ||
-    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION
+    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION ||
+    input.friendsPredicateSchemaVersion !==
+      request.value.friendsPredicateSchemaVersion ||
+    input.identityMode !== request.value.identityMode
   ) {
     return failure("browse response identity or bounds are invalid");
   }
@@ -1137,8 +1175,9 @@ export function parseLibraryCoreFeedBrowsePageResponseV3(
   );
   if (!parsedV1.ok) return failure(parsedV1.error);
   const rows = parsedV1.value.rows;
-  const filterDigest = libraryCoreFeedBrowseFilterDigestV1(
+  const filterDigest = libraryCoreFeedBrowseBindingDigestV3(
     parsedV1.value.filter,
+    request.value.identityMode,
   );
   const next = parseFeedBrowseEdge(
     input.nextCursor,
@@ -1165,6 +1204,9 @@ export function parseLibraryCoreFeedBrowsePageResponseV3(
   }
   const response: LibraryCoreFeedBrowsePageResponseV3 = Object.freeze({
     filter: parsedV1.value.filter,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode: request.value.identityMode,
     nextCursor: input.nextCursor as string | null,
     nextOrder: next.value,
     previousCursor: input.previousCursor as string | null,

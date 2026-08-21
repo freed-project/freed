@@ -11,6 +11,7 @@ import {
   decodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV2,
+  libraryCoreFeedBrowseBindingDigestV3,
   libraryCoreFeedBrowseFilterDigestV1,
   libraryCoreFeedBrowseBindingFilterV2,
   parseLibraryCoreFeedBrowsePageRequestV1,
@@ -58,7 +59,7 @@ function cursorV2(
   const { sourceSequence: _sourceSequence, ...value } = cursor();
   return {
     ...value,
-    filterDigest: libraryCoreFeedBrowseFilterDigestV1(FILTER),
+    filterDigest: libraryCoreFeedBrowseBindingDigestV3(FILTER, "all_content"),
     ...overrides,
   };
 }
@@ -102,6 +103,9 @@ function requestV3(overrides: Record<string, unknown> = {}) {
     cursor: null,
     direction: "next",
     filter: FILTER,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode: "all_content",
     limit: 64,
     queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
     rankingClockMs: 1_780_000_100_000,
@@ -327,12 +331,15 @@ describe("Library Core feed-browse page protocol", () => {
   it("requires one explicit V3 direction and a cursor to walk backward", () => {
     const encoded = encodeLibraryCoreFeedBrowsePageCursorV2(cursorV2());
     expect(encoded).toBe(
-      "AqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYNkg3dW4ltfiTLUA8a2AlY_aqHH6lwfa0PqvJjHXW7IAAAAAAAAADAAAAAAAAAAiWwAAAZ5wRIgAAAh4Oml0ZW0tMQ",
+      "AqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqjUiL4MhdEaI8xRpNC-OSBt6nELE0CxhKIuFM9Vug-t8AAAAAAAAADAAAAAAAAAAiWwAAAZ5wRIgAAAh4Oml0ZW0tMQ",
     );
     // The request contract is enforced through the response parser, which
     // validates its bound request before reading a single row.
     const emptyPage = {
       filter: FILTER,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: "all_content",
       nextCursor: null,
       nextOrder: null,
       previousCursor: null,
@@ -396,6 +403,9 @@ describe("Library Core feed-browse page protocol", () => {
     const leading = encodeLibraryCoreFeedBrowsePageCursorV2(cursorV2());
     const response = {
       filter: FILTER,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: "all_content",
       nextCursor: leading,
       nextOrder: {
         globalId: "x:item-1",

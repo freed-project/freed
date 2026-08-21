@@ -497,6 +497,7 @@ export async function captureDomFeed(
 | 5.53 | Route item detail, Library facets, Saved analytics, Map, and Story Wall through their closed normalized query projections and one shared compact-row view transform                                                                                                                                        | High       | ✓ Complete |
 | 5.54 | Extract ordinary feed, Saved feed, and signal-count orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor                                                                                                                                             | High       | ✓ Complete |
 | 5.55 | Extract item detail, Library facets, Saved analytics, Map, and Story Wall orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor | High | ✓ Complete |
+| 5.56 | Bind Friends mode into the normalized feed query, resolve friend membership through Account and Person joins in SQLite, and remove Desktop shell and historical-item dependencies from Friends paging | High | ✓ Complete |
 
 ---
 

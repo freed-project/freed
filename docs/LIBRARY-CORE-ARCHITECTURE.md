@@ -951,9 +951,11 @@ worker. The ordinary feed uses `feed_browse_page_v3`, Saved uses
 `saved_feed_page_v2`, and signal counts issue one-row bounded browse queries.
 Every response is parsed against the exact request before compact cards enter
 React. Cursor strings remain opaque. No adapter invents offsets, duplicates
-platform-specific pagination logic, or calls a whole-Library query. The
-Friends feed moves to this layer when its complete predicate is registered in
-SQLite.
+platform-specific pagination logic, or calls a whole-Library query. Friends
+uses the same query with a closed identity mode. SQLite resolves membership by
+joining FeedItem provider and author identity to Account, then Account to a
+Person whose relationship status is `friend`. The identity mode and predicate
+schema are part of the request, response, and opaque cursor digest.
 
 Item detail, maintained Library facets, Saved analytics, Map, and Story Wall
 use one shared secondary-surface adapter. Each host supplies the same executor
