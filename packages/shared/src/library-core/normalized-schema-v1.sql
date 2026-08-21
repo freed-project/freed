@@ -749,12 +749,16 @@ CREATE TABLE IF NOT EXISTS library_follower_result_cursors (
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_follower_result_outbox (
-  transaction_id TEXT PRIMARY KEY REFERENCES library_transactions(transaction_id) ON DELETE CASCADE,
+  transaction_id TEXT PRIMARY KEY CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),
   actor_id TEXT NOT NULL REFERENCES library_actors(actor_id),
   result_sequence INTEGER NOT NULL CHECK (result_sequence >= 1),
   previous_result_digest TEXT CHECK (previous_result_digest IS NULL OR (length(previous_result_digest) = 64 AND previous_result_digest NOT GLOB '*[^0-9a-f]*')),
   result_digest TEXT NOT NULL CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
-  authoritative_source_revision INTEGER NOT NULL CHECK (authoritative_source_revision >= 1),
+  status TEXT NOT NULL CHECK (status IN ('accepted', 'rejected', 'already_applied')),
+  rejection_reason TEXT CHECK (rejection_reason IN ('actor_retired', 'capability_denied', 'epoch_stale', 'precondition_failed', 'target_missing', 'target_tombstoned')),
+  original_result_digest TEXT REFERENCES library_follower_result_outbox(result_digest),
+  authoritative_source_revision INTEGER NOT NULL CHECK (authoritative_source_revision >= 0),
   canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
   enqueued_at INTEGER NOT NULL CHECK (enqueued_at >= 0),
   acknowledged_at INTEGER CHECK (acknowledged_at IS NULL OR acknowledged_at >= enqueued_at),
@@ -763,6 +767,11 @@ CREATE TABLE IF NOT EXISTS library_follower_result_outbox (
   CHECK (
     (result_sequence = 1 AND previous_result_digest IS NULL)
     OR (result_sequence > 1 AND previous_result_digest IS NOT NULL)
+  ),
+  CHECK (
+    (status = 'accepted' AND rejection_reason IS NULL AND original_result_digest IS NULL)
+    OR (status = 'rejected' AND rejection_reason IS NOT NULL AND original_result_digest IS NULL)
+    OR (status = 'already_applied' AND rejection_reason IS NULL AND original_result_digest IS NOT NULL)
   )
 ) STRICT, WITHOUT ROWID;
 

@@ -43,6 +43,11 @@
       revision, receipts, replication entries, and invalidations commit or
       roll back together. Exact retry returns the stored result without a new
       signature or sequence.
+- [x] Model accepted, rejected, and already-applied follower outcomes as closed
+      typed outbox rows. Rejected results carry one registered reason without
+      requiring an accepted transaction row. Already-applied results reference
+      the original immutable result digest. Product rows and revisions remain
+      exclusive to accepted mutations.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

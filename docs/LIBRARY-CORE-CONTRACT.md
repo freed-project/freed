@@ -274,10 +274,13 @@ Receipt identities are the accepted operation envelope digests, so they are
 bounded, immutable, and already bound to the corresponding receipt row.
 
 Rejection and `already_applied` production use the same closed result envelope
-and outbox. They do not create a second mutation path. Rejections allocate a
-result without changing canonical product rows. `already_applied` references
-the original result digest. Their native admission branches remain required
-before follower write activation.
+and outbox. The typed outbox stores the transaction digest, outcome, closed
+rejection reason or original result reference, authoritative revision, exact
+canonical bytes, and actor-scoped sequence. A rejected result does not require
+an accepted transaction row and cannot fabricate one. Rejections allocate a
+result without changing canonical product rows or revisions. `already_applied`
+references the original immutable result digest. Their native admission
+branches remain required before follower write activation.
 
 ## 8. Query contract
 

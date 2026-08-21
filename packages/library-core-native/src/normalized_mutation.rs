@@ -443,11 +443,14 @@ fn persist_follower_result(
     })?;
     transaction.execute(
         "INSERT INTO library_follower_result_outbox
-         (transaction_id, actor_id, result_sequence, previous_result_digest,
-          result_digest, authoritative_source_revision, canonical_result, enqueued_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
+         (transaction_id, transaction_digest, actor_id, result_sequence,
+          previous_result_digest, result_digest, status, rejection_reason,
+          original_result_digest, authoritative_source_revision,
+          canonical_result, enqueued_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'accepted', NULL, NULL, ?7, ?8, ?9);",
         params![
             verified.transaction_id,
+            verified.transaction_digest,
             verified.actor_id,
             result_sequence,
             previous_result_digest,
@@ -1691,6 +1694,82 @@ mod tests {
                 .expect("rolled back projection"),
             None
         );
+    }
+
+    #[test]
+    fn follower_result_outbox_models_every_closed_outcome_without_a_fake_commit() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let accepted = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &signed_envelopes(&key_pair, &enrollment),
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted result");
+        connection
+            .execute(
+                "INSERT INTO library_follower_result_outbox
+                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                  previous_result_digest, result_digest, status, rejection_reason,
+                  original_result_digest, authoritative_source_revision,
+                  canonical_result, enqueued_at)
+                 VALUES ('already-applied-transaction', ?1, ?2, 2, ?3, ?4,
+                         'already_applied', NULL, ?3, 1, x'7b7d', 2100);",
+                params![
+                    "b".repeat(64),
+                    enrollment.actor_id,
+                    accepted.follower_result_digest,
+                    "d".repeat(64),
+                ],
+            )
+            .expect("already applied result without accepted transaction row");
+        connection
+            .execute(
+                "INSERT INTO library_follower_result_outbox
+                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                  previous_result_digest, result_digest, status, rejection_reason,
+                  original_result_digest, authoritative_source_revision,
+                  canonical_result, enqueued_at)
+                 VALUES ('rejected-transaction', ?1, ?2, 3, ?3, ?4,
+                         'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
+                params![
+                    "c".repeat(64),
+                    enrollment.actor_id,
+                    "d".repeat(64),
+                    "e".repeat(64),
+                ],
+            )
+            .expect("rejected result without accepted transaction row");
+        let outcomes: String = connection
+            .query_row(
+                "SELECT group_concat(status || ':' || coalesce(rejection_reason, 'none'), ',')
+                 FROM (SELECT status, rejection_reason
+                       FROM library_follower_result_outbox
+                       ORDER BY result_sequence);",
+                [],
+                |row| row.get(0),
+            )
+            .expect("typed result outcomes");
+        assert_eq!(
+            outcomes,
+            "accepted:none,already_applied:none,rejected:target_missing"
+        );
+        let invalid = connection.execute(
+            "INSERT INTO library_follower_result_outbox
+             (transaction_id, transaction_digest, actor_id, result_sequence,
+              previous_result_digest, result_digest, status, rejection_reason,
+              original_result_digest, authoritative_source_revision,
+              canonical_result, enqueued_at)
+             VALUES ('invalid-rejection', ?1, ?2, 4, ?3, ?4,
+                     'rejected', NULL, NULL, 1, x'7b7d', 2300);",
+            params![
+                "f".repeat(64),
+                enrollment.actor_id,
+                "e".repeat(64),
+                "1".repeat(64),
+            ],
+        );
+        assert!(invalid.is_err());
     }
 
     #[test]
