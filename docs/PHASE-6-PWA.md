@@ -56,6 +56,10 @@
         WebAssembly with a source-fenced keyset cursor, at most 129 scanned
         rows for a 128-row response, exact response-byte enforcement, and a
         closed worker request that cannot carry arbitrary SQL.
+  - [x] All browser queries now cross one typed `query` worker request whose
+        discriminated query ID selects the exact request and response types.
+        The former feed-specific worker method is deleted. Future named
+        queries extend the closed union instead of adding transport methods.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

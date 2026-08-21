@@ -245,6 +245,14 @@ Every query declares:
 - cancellation behavior and cursor expiry
 - renderer cache and invalidation topics
 
+Browser callers cross one closed `query` worker request. Its payload is a
+discriminated union of registered request types and its return type is selected
+from the same query ID. The worker validates the request before dispatch and
+never accepts SQL, table names, projection fragments, or arbitrary bind lists.
+Adding a named query extends this union and its generated program catalog. It
+does not add another transport method. Native hosts expose the equivalent
+typed dispatch through the Rust core.
+
 Ordinary interactive queries return no more than 2 MiB. Reader content uses a
 separate ranged API. Export, backup, and migration enumerate a pinned durable
 checkpoint through bounded pages.

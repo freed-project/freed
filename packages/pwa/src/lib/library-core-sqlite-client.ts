@@ -3,13 +3,14 @@ import {
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
-  createLibraryCoreSqliteFeedPageWorkerRequest,
+  createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerStatus,
-  type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreSqliteQueryRequest,
+  type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
@@ -58,11 +59,11 @@ export class PwaLibraryCoreSqliteClient {
     return this.#request("status");
   }
 
-  queryFeedPage(
-    query: LibraryCoreFeedPageRequestV1,
-  ): Promise<LibraryCoreFeedPageResponseV1> {
-    return this.#send<LibraryCoreFeedPageResponseV1>((requestId) =>
-      createLibraryCoreSqliteFeedPageWorkerRequest(requestId, query),
+  query<T extends LibraryCoreSqliteQueryRequest>(
+    query: T,
+  ): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+    return this.#send<LibraryCoreSqliteQueryResponseFor<T>>((requestId) =>
+      createLibraryCoreSqliteQueryWorkerRequest(requestId, query),
     );
   }
 

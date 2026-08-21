@@ -34,6 +34,8 @@ import {
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreSqliteQueryRequest,
+  type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
@@ -579,7 +581,16 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  queryFeedPage(
+  query<T extends LibraryCoreSqliteQueryRequest>(
+    input: T,
+  ): LibraryCoreSqliteQueryResponseFor<T> {
+    switch (input.queryId) {
+      case "feed_page_v1":
+        return this.#queryFeedPage(input) as LibraryCoreSqliteQueryResponseFor<T>;
+    }
+  }
+
+  #queryFeedPage(
     input: LibraryCoreFeedPageRequestV1,
   ): LibraryCoreFeedPageResponseV1 {
     const request = parseLibraryCoreFeedPageRequestV1(input);

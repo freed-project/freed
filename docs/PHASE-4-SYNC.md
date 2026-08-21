@@ -303,6 +303,7 @@ loads an alternate Library engine or compatibility path.
 | 4.154 | One executable SQLite contract source for capability-operation profiles and mutation identities, with generated Rust and TypeScript bindings, frozen legacy editor and capture-only scraper grants, and deletion of the duplicate actor-operation JSON registry | ✓ | High |
 | 4.155 | Generated normalized SQLite programs for saved, archived, and liked assignments, with signed-time and operation-ID convergence, one coupled saved-archive register that cannot materialize both states, independent liked state, and no provider traffic | ✓ | High |
 | 4.156 | Generated normalized FeedItem removal with a typed convergent tombstone, SQLite child cascades, stale-removal journaling without tombstone regression, and atomic receipt, replication, invalidation, and revision effects | ✓ | High |
+| 4.157 | One closed typed browser SQLite query dispatch keyed by registered query ID, replacing query-specific worker message kinds while rejecting arbitrary SQL, table names, projection fragments, and bind lists | ✓ | High |
 
 ---
 

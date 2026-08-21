@@ -8,6 +8,7 @@ import type {
   LibraryCoreFeedPageRequestV1,
   LibraryCoreFeedPageResponseV1,
 } from "./feed-page-contracts.js";
+import { parseLibraryCoreFeedPageRequestV1 } from "./feed-page-contracts.js";
 import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
@@ -19,6 +20,14 @@ import {
 } from "./normalized-checkpoint-stage-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
+
+export type LibraryCoreSqliteQueryRequest = LibraryCoreFeedPageRequestV1;
+
+export type LibraryCoreSqliteQueryResponseFor<
+  T extends LibraryCoreSqliteQueryRequest,
+> = T extends LibraryCoreFeedPageRequestV1
+  ? LibraryCoreFeedPageResponseV1
+  : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -37,9 +46,9 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
-      kind: "query_feed_page";
+      kind: "query";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
-      query: LibraryCoreFeedPageRequestV1;
+      query: LibraryCoreSqliteQueryRequest;
       requestId: string;
     }>
   | Readonly<{
@@ -114,7 +123,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
   }
   const keys = Object.keys(value).sort();
   const expectedKeys =
-    value.kind === "query_feed_page"
+    value.kind === "query"
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "begin_normalized_checkpoint_stage"
         ? ["kind", "protocolVersion", "requestId", "stage"]
@@ -132,7 +141,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "begin_normalized_checkpoint_stage",
       "close",
       "open",
-      "query_feed_page",
+      "query",
       "status",
     ].includes(String(value.kind)) ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
@@ -148,6 +157,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
     parseLibraryCoreNormalizedCheckpointStageIdV2(value.stageId);
+  } else if (value.kind === "query") {
+    const query = parseLibraryCoreFeedPageRequestV1(value.query);
+    if (!query.ok) throw new TypeError(query.error);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
 }
@@ -163,12 +175,14 @@ export function createLibraryCoreSqliteWorkerRequest(
   });
 }
 
-export function createLibraryCoreSqliteFeedPageWorkerRequest(
+export function createLibraryCoreSqliteQueryWorkerRequest<
+  T extends LibraryCoreSqliteQueryRequest,
+>(
   requestId: string,
-  query: LibraryCoreFeedPageRequestV1,
+  query: T,
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
-    kind: "query_feed_page",
+    kind: "query",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     query,
     requestId,

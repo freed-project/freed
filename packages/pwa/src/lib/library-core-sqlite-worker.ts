@@ -126,11 +126,11 @@ scope.onmessage = (event) => {
         });
         return;
       }
-      if (request.kind === "query_feed_page") {
+      if (request.kind === "query") {
         scope.postMessage({
           ok: true,
           requestId,
-          result: active.queryFeedPage(request.query),
+          result: active.query(request.query),
         });
         return;
       }

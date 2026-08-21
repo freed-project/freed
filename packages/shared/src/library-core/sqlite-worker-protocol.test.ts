@@ -4,7 +4,7 @@ import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
-  createLibraryCoreSqliteFeedPageWorkerRequest,
+  createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
 } from "./sqlite-worker-protocol.js";
@@ -19,7 +19,7 @@ describe("Library Core SQLite worker protocol", () => {
   });
 
   it("carries only the closed feed-page query contract", () => {
-    const request = createLibraryCoreSqliteFeedPageWorkerRequest("request-2", {
+    const request = createLibraryCoreSqliteQueryWorkerRequest("request-2", {
       cancellationId: "cancel-1" as never,
       cursor: null,
       limit: 64,
@@ -27,7 +27,7 @@ describe("Library Core SQLite worker protocol", () => {
       readerSessionId: "reader-1" as never,
       schemaVersion: 1,
     });
-    expect(request.kind).toBe("query_feed_page");
+    expect(request.kind).toBe("query");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

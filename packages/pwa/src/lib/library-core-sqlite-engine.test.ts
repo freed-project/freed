@@ -288,13 +288,13 @@ describe("PWA Library Core SQLite engine", () => {
       readerSessionId: operationId("reader-1"),
       schemaVersion: 1 as const,
     };
-    const first = engine.queryFeedPage(request);
+    const first = engine.query(request);
     expect(first.totalCount).toBe(2);
     expect(first.rows.map((row) => row.globalId)).toEqual(["item-2"]);
     expect(first.rows[0]?.tags).toEqual(["favorite"]);
     expect(first.rows[0]?.mediaUrls).toEqual(["https://example.com/image"]);
     expect(first.nextCursor).not.toBeNull();
-    const second = engine.queryFeedPage({
+    const second = engine.query({
       ...request,
       cursor: first.nextCursor,
     });
