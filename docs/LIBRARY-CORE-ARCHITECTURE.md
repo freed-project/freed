@@ -956,9 +956,11 @@ Friends feed moves to this layer when its complete predicate is registered in
 SQLite.
 
 Item detail, maintained Library facets, Saved analytics, Map, and Story Wall
-use the same native client. Map and Story Wall receive specialized compact rows
-instead of FeedItems. Shared transforms create the visible-card fields used by
-product UI, so Desktop and PWA do not define separate projection semantics.
+use one shared secondary-surface adapter. Each host supplies the same executor
+used by its feed adapter. Map and Story Wall receive specialized compact rows
+instead of general FeedItems. Shared transforms create the visible-card fields
+used by product UI, so Desktop and PWA do not define separate request or
+projection semantics.
 
 ### 16.2 Cutover
 

@@ -502,11 +502,11 @@ ordinary feed, Saved feed, and signal counts retain only compact card pages and
 opaque keyset cursors. They do not call a whole-Library query or reconstruct a
 Library shell.
 
-The same client executes `item_detail_v1`,
+One shared secondary-surface adapter executes `item_detail_v1`,
 `library_facet_summary_v1`, `saved_analytics_v2`, `map_markers_v1`, and
-`story_wall_candidates_v1`. Map and Story Wall rows use shared closed
-row-to-visible-card transforms. The transforms do not hydrate reader bodies or
-invent a general FeedItem query.
+`story_wall_candidates_v1` through the host executor. Map and Story Wall rows
+use shared closed row-to-visible-card transforms. The transforms do not hydrate
+reader bodies or invent a general FeedItem query.
 
 Synchronized preferences are normalized typed SQLite nodes. The
 `preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite

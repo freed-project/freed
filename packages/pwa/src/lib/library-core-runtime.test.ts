@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   discoverActorEnrollments: vi.fn(),
   discoverControl: vi.fn(),
   importCheckpoint: vi.fn(),
+  queryNormalizedLibrary: vi.fn(),
+  resetNormalizedLibrary: vi.fn(),
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
@@ -70,6 +72,11 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
 
 vi.mock("./factory-reset-coordinator", () => ({
   registerPwaFactoryResetQuiesceHandler: vi.fn(),
+}));
+
+vi.mock("./library-core-sqlite-runtime", () => ({
+  queryPwaNormalizedLibrary: mocks.queryNormalizedLibrary,
+  resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
 }));
 
 import {
@@ -173,6 +180,8 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.discoverActorEnrollments.mockResolvedValue([]);
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
+    mocks.queryNormalizedLibrary.mockReset();
+    mocks.resetNormalizedLibrary.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemCaptures.mockReset();
@@ -423,20 +432,51 @@ describe("PWA Library Core bounded scanner", () => {
     );
   });
 
-  it("reads one complete item from IndexedDB without consulting Automerge", async () => {
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      globalId: "item-9",
-      preservedContent: { html: "<p>Saved locally</p>" },
+  it("reads one compact item through the normalized SQLite executor", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      item: {
+        card: {
+          archived: false,
+          authorAvatarUrl: null,
+          authorDisplayName: "Reader",
+          authorHandle: "reader",
+          authorId: "reader-1",
+          capturedAt: 20,
+          contentSignalTags: [],
+          contentText: "Saved locally",
+          contentType: "post",
+          engagementComments: null,
+          engagementLikes: null,
+          eventConfidenceBasisPoints: null,
+          eventStartsAt: null,
+          globalId: "item-9",
+          liked: false,
+          likedAt: null,
+          likedSyncedAt: null,
+          linkPreviewTitle: null,
+          locationName: null,
+          mediaTypes: [],
+          mediaUrls: [],
+          platform: "rss",
+          publishedAt: 10,
+          readAt: null,
+          readingTimeMinutes: null,
+          saved: false,
+          sourceUrl: null,
+          tags: [],
+        },
+      },
     });
 
-    await expect(readPwaLibraryCoreItemDetail("item-9")).resolves.toEqual({
-      globalId: "item-9",
-      preservedContent: { html: "<p>Saved locally</p>" },
-    });
-    expect(mocks.readSelectedMaterializedRow).toHaveBeenCalledWith(
-      "10_feed_items",
-      "item-9",
+    await expect(readPwaLibraryCoreItemDetail("item-9")).resolves.toEqual(
+      expect.objectContaining({ globalId: "item-9" }),
     );
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith({
+      globalId: "item-9",
+      queryId: "item_detail_v1",
+      schemaVersion: 1,
+    });
+    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("queues user-state changes through the signed IndexedDB intent path", async () => {

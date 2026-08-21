@@ -398,6 +398,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity                                                            | High       | ✓ Complete                                                                                       |
 | 6.22 | Validate every browser and native SQLite query response through one shared request-bound typed dispatcher before a client receives it                                             | High       | ✓ Complete                                                                                       |
 | 6.23 | Route ordinary feed, Saved feed, and signal counts through one shared normalized query adapter backed by the PWA OPFS SQLite worker, with bounded compact rows and opaque cursors | High       | ✓ Complete                                                                                       |
+| 6.24 | Route item detail, Library facets, Saved analytics, Map, and Story Wall through one shared normalized secondary-surface adapter backed by PWA OPFS SQLite | High | ✓ Complete |
 
 ---
 

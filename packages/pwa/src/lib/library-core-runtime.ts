@@ -17,7 +17,11 @@ import {
   LIBRARY_CORE_SEARCH_ACCOUNT_ALIAS_LIMIT,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
+  readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
+  readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedSavedAnalyticsV1,
+  readLibraryCoreNormalizedSurfaceItemsV1,
   isLibraryCoreSearchAccountAliasV1,
   isLibraryCoreSearchQueryV1,
   parseLibraryCoreControlPointerV1,
@@ -879,19 +883,14 @@ export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
   });
 };
 
-/** Read one complete FeedItem from the selected IndexedDB generation. */
+/** Read one compact item detail through normalized SQLite. */
 export async function readPwaLibraryCoreItemDetail(
   globalId: string,
 ): Promise<FeedItem | null> {
-  const row = await getPortableStore().readSelectedMaterializedRow(
-    "10_feed_items",
+  return readLibraryCoreNormalizedItemDetailV1(
+    NORMALIZED_READER_RUNTIME,
     globalId,
   );
-  if (row === null) return null;
-  if (row.globalId !== globalId) {
-    throw new Error("Selected PWA Library item identity is inconsistent");
-  }
-  return row as unknown as FeedItem;
 }
 
 /** Open a filtered feed through the shared bounded SQLite query adapter. */
@@ -932,7 +931,7 @@ export async function openPwaLibraryCoreSavedFeedReader(
 /** Read exact full-library facets without consulting the renderer window. */
 export const readPwaLibraryCoreFacetSummary: NonNullable<
   PlatformConfig["readLibraryFacetSummary"]
-> = () => getIndexedDbReaders().readFacetSummary();
+> = () => readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME);
 
 /** Count every signal chip through bounded normalized SQLite queries. */
 export const readPwaLibraryCoreFeedSignalCounts: NonNullable<
@@ -944,10 +943,11 @@ export const readPwaLibraryCoreFeedSignalCounts: NonNullable<
     Date.now(),
   );
 
-/** Read exact Saved overview aggregates from bounded IndexedDB scans. */
+/** Read exact Saved overview aggregates through normalized SQLite. */
 export const readPwaLibraryCoreSavedAnalytics: NonNullable<
   PlatformConfig["readLibrarySavedAnalytics"]
-> = (request) => getIndexedDbReaders().readSavedAnalytics(request);
+> = (request) =>
+  readLibraryCoreNormalizedSavedAnalyticsV1(NORMALIZED_READER_RUNTIME, request);
 
 /** Read compact Friends graph activity from bounded IndexedDB scans. */
 export const readPwaLibraryCoreFriendsGraph: NonNullable<
@@ -964,10 +964,11 @@ export const readPwaLibraryCoreFriendsLocationItem: NonNullable<
   PlatformConfig["readLibraryFriendsLocationItem"]
 > = (request) => getIndexedDbReaders().readFriendsLocationItem(request);
 
-/** Read bounded Map or Story Wall candidates from the complete Library. */
+/** Read bounded Map or Story Wall candidates through normalized SQLite. */
 export const readPwaLibraryCoreSurfaceItems: NonNullable<
   PlatformConfig["readLibrarySurfaceItems"]
-> = (surface) => getIndexedDbReaders().readSurfaceItems(surface);
+> = (surface) =>
+  readLibraryCoreNormalizedSurfaceItemsV1(NORMALIZED_READER_RUNTIME, surface);
 
 async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState> {
   const state = await readSelectedState();

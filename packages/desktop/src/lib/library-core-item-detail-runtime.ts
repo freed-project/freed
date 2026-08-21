@@ -6,32 +6,13 @@ import {
   type FeedItem,
 } from "@freed/shared";
 import {
-  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-  LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
-  LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
-  LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
-  LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
-  LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
-  LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
-  LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT,
-  LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
-  LIBRARY_CORE_SAVED_ANALYTICS_V2_SCHEMA_VERSION,
-  LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
-  LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
-  LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
-  libraryCoreFeedCardToItemV1,
-  libraryCoreMapMarkerToItemV1,
-  libraryCoreStoryWallCandidateToItemV1,
+  readLibraryCoreNormalizedFacetSummaryV1,
+  readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedSavedAnalyticsV1,
+  readLibraryCoreNormalizedSurfaceItemsV1,
 } from "@freed/shared/library-core";
-import {
-  createDesktopLibraryCoreOperationId,
-  queryNormalizedLibrary,
-} from "./library-core-normalized-query-client";
-import {
-  querySqliteItems,
-  readSqliteItems,
-} from "./sqlite-library";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
+import { querySqliteItems, readSqliteItems } from "./sqlite-library";
 
 const ITEM_SCAN_PAGE_LIMIT = 64;
 const MAXIMUM_FRIEND_GRAPH_KEYS = 5_000;
@@ -127,7 +108,11 @@ export interface LibraryFriendsGraph {
 }
 
 export type LibraryFriendsLocationOwner =
-  | { readonly kind: "social"; readonly platform: string; readonly authorId: string }
+  | {
+      readonly kind: "social";
+      readonly platform: string;
+      readonly authorId: string;
+    }
   | { readonly kind: "rss"; readonly feedUrl: string };
 
 export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLocationCandidate {
@@ -173,9 +158,9 @@ export interface LibraryCoreSavedAnalytics {
 }
 
 export type LibraryCoreSurface = "map" | "story_wall";
-const SURFACE_LIMITS: Readonly<Record<LibraryCoreSurface, number>> = Object.freeze({
-  map: LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT,
-  story_wall: LIBRARY_CORE_STORY_WALL_CANDIDATES_MAXIMUM_LIMIT,
+const NORMALIZED_READER_RUNTIME = Object.freeze({
+  query: queryNormalizedLibrary,
+  randomId: () => crypto.randomUUID(),
 });
 
 export interface LibraryCoreItemScanPage {
@@ -190,7 +175,10 @@ export interface LibraryCoreItemScanSession {
 
 function assertFriendsRequest(request: LibraryFriendsGraphRequest): void {
   const count = request.sources.length + request.rssFeedUrls.length;
-  if (count > MAXIMUM_FRIEND_GRAPH_KEYS || request.recentWindow.endMs < request.recentWindow.startMs) {
+  if (
+    count > MAXIMUM_FRIEND_GRAPH_KEYS ||
+    request.recentWindow.endMs < request.recentWindow.startMs
+  ) {
     throw new Error("Library Core Friends graph request is invalid");
   }
 }
@@ -208,32 +196,23 @@ async function scanSqlitePages(
       includeTotalCount: false,
     });
     for (const item of page.items) {
-      if (await visit(item) === "stop") return;
+      if ((await visit(item)) === "stop") return;
     }
     offset = page.nextOffset;
   }
 }
 
-export async function readLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null> {
-  if (!globalId || new TextEncoder().encode(globalId).length > 4_096) {
-    throw new Error("Library Core item identity is invalid");
-  }
-  const response = await queryNormalizedLibrary({
+export async function readLibraryCoreItemDetail(
+  globalId: string,
+): Promise<FeedItem | null> {
+  return readLibraryCoreNormalizedItemDetailV1(
+    NORMALIZED_READER_RUNTIME,
     globalId,
-    queryId: LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
-  });
-  return response.item === null
-    ? null
-    : libraryCoreFeedCardToItemV1(response.item.card);
+  );
 }
 
 export async function readLibraryCoreFacetSummary(): Promise<LibraryCoreFacetSummary> {
-  const response = await queryNormalizedLibrary({
-    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-  });
-  return response.summary;
+  return readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME);
 }
 
 export async function readLibraryCoreFriendsGraph(
@@ -251,7 +230,8 @@ export async function readLibraryCoreFriendsGraph(
     locationCandidates: LibraryFriendsGraphLocationCandidate[];
     signalCounts: Map<ContentSignal, number>;
   }
-  const socialKey = (platform: string, authorId: string) => JSON.stringify([platform, authorId]);
+  const socialKey = (platform: string, authorId: string) =>
+    JSON.stringify([platform, authorId]);
   const socialAccumulators = new Map<string, SocialAccumulator>();
   for (const source of request.sources) {
     socialAccumulators.set(socialKey(source.platform, source.authorId), {
@@ -268,27 +248,48 @@ export async function readLibraryCoreFriendsGraph(
   }
   if (request.sources.length > 0) {
     await scanSqlitePages(
-      { authorKeys: request.sources, showHidden: true, includeTotalCount: false },
+      {
+        authorKeys: request.sources,
+        showHidden: true,
+        includeTotalCount: false,
+      },
       (item) => {
         if (item.userState.hidden) return;
-        const accumulator = socialAccumulators.get(socialKey(item.platform, item.author.id));
+        const accumulator = socialAccumulators.get(
+          socialKey(item.platform, item.author.id),
+        );
         if (!accumulator) return;
         accumulator.itemCount += 1;
-        accumulator.latestActivityAt = Math.max(accumulator.latestActivityAt, item.publishedAt);
-        if (item.publishedAt >= request.recentWindow.startMs && item.publishedAt < request.recentWindow.endMs) {
+        accumulator.latestActivityAt = Math.max(
+          accumulator.latestActivityAt,
+          item.publishedAt,
+        );
+        if (
+          item.publishedAt >= request.recentWindow.startMs &&
+          item.publishedAt < request.recentWindow.endMs
+        ) {
           accumulator.recentCount += 1;
         }
         if (accumulator.sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
-          accumulator.sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
+          accumulator.sampleItems.push({
+            globalId: item.globalId,
+            publishedAt: item.publishedAt,
+          });
         }
-        if (item.author.avatarUrl &&
-            (accumulator.avatarPublishedAt === null || item.publishedAt > accumulator.avatarPublishedAt)) {
+        if (
+          item.author.avatarUrl &&
+          (accumulator.avatarPublishedAt === null ||
+            item.publishedAt > accumulator.avatarPublishedAt)
+        ) {
           accumulator.avatarUrl = item.author.avatarUrl;
           accumulator.avatarGlobalId = item.globalId;
           accumulator.avatarPublishedAt = item.publishedAt;
         }
-        if (extractLocationFromItem(item) &&
-            accumulator.locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+        if (
+          extractLocationFromItem(item) &&
+          accumulator.locationCandidates.length <
+            MAXIMUM_FRIEND_LOCATION_CANDIDATES
+        ) {
           accumulator.locationCandidates.push({
             effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
             globalId: item.globalId,
@@ -296,31 +297,38 @@ export async function readLibraryCoreFriendsGraph(
           });
         }
         for (const signal of item.contentSignals?.tags ?? []) {
-          accumulator.signalCounts.set(signal, (accumulator.signalCounts.get(signal) ?? 0) + 1);
+          accumulator.signalCounts.set(
+            signal,
+            (accumulator.signalCounts.get(signal) ?? 0) + 1,
+          );
         }
       },
     );
   }
-  const social = request.sources.map((source): LibraryFriendsGraphSocialActivity => {
-    const accumulator = socialAccumulators.get(socialKey(source.platform, source.authorId))!;
-    return {
-      ...source,
-      itemCount: accumulator.itemCount,
-      latestActivityAt: accumulator.latestActivityAt,
-      hasLocation: accumulator.locationCandidates.length > 0,
-      locationCandidateCount: accumulator.locationCandidates.length,
-      locationCandidates: accumulator.locationCandidates,
-      avatarGlobalId: accumulator.avatarGlobalId,
-      avatarPublishedAt: accumulator.avatarPublishedAt,
-      avatarUrl: accumulator.avatarUrl,
-      sampleItems: accumulator.sampleItems,
-      recentCount: accumulator.recentCount,
-      signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
-        label,
-        count: accumulator.signalCounts.get(label) ?? 0,
-      })),
-    };
-  });
+  const social = request.sources.map(
+    (source): LibraryFriendsGraphSocialActivity => {
+      const accumulator = socialAccumulators.get(
+        socialKey(source.platform, source.authorId),
+      )!;
+      return {
+        ...source,
+        itemCount: accumulator.itemCount,
+        latestActivityAt: accumulator.latestActivityAt,
+        hasLocation: accumulator.locationCandidates.length > 0,
+        locationCandidateCount: accumulator.locationCandidates.length,
+        locationCandidates: accumulator.locationCandidates,
+        avatarGlobalId: accumulator.avatarGlobalId,
+        avatarPublishedAt: accumulator.avatarPublishedAt,
+        avatarUrl: accumulator.avatarUrl,
+        sampleItems: accumulator.sampleItems,
+        recentCount: accumulator.recentCount,
+        signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
+          label,
+          count: accumulator.signalCounts.get(label) ?? 0,
+        })),
+      };
+    },
+  );
 
   interface RssAccumulator {
     itemCount: number;
@@ -331,36 +339,50 @@ export async function readLibraryCoreFriendsGraph(
     sampleItems: LibraryFriendsGraphSampleItem[];
     locationCandidates: LibraryFriendsGraphLocationCandidate[];
   }
-  const rssAccumulators = new Map<string, RssAccumulator>(request.rssFeedUrls.map((feedUrl) => [
-    feedUrl,
-    {
-      itemCount: 0,
-      latestActivityAt: 0,
-      avatarUrl: null,
-      avatarGlobalId: null,
-      avatarPublishedAt: null,
-      sampleItems: [],
-      locationCandidates: [],
-    },
-  ]));
+  const rssAccumulators = new Map<string, RssAccumulator>(
+    request.rssFeedUrls.map((feedUrl) => [
+      feedUrl,
+      {
+        itemCount: 0,
+        latestActivityAt: 0,
+        avatarUrl: null,
+        avatarGlobalId: null,
+        avatarPublishedAt: null,
+        sampleItems: [],
+        locationCandidates: [],
+      },
+    ]),
+  );
   if (rssAccumulators.size > 0) {
     await scanSqlitePages({ platform: "rss", showHidden: true }, (item) => {
       const feedUrl = item.rssSource?.feedUrl;
       const accumulator = feedUrl ? rssAccumulators.get(feedUrl) : undefined;
       if (!accumulator || item.userState.hidden) return;
       accumulator.itemCount += 1;
-      accumulator.latestActivityAt = Math.max(accumulator.latestActivityAt, item.publishedAt);
+      accumulator.latestActivityAt = Math.max(
+        accumulator.latestActivityAt,
+        item.publishedAt,
+      );
       if (accumulator.sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
-        accumulator.sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
+        accumulator.sampleItems.push({
+          globalId: item.globalId,
+          publishedAt: item.publishedAt,
+        });
       }
-      if (item.author.avatarUrl &&
-          (accumulator.avatarPublishedAt === null || item.publishedAt > accumulator.avatarPublishedAt)) {
+      if (
+        item.author.avatarUrl &&
+        (accumulator.avatarPublishedAt === null ||
+          item.publishedAt > accumulator.avatarPublishedAt)
+      ) {
         accumulator.avatarUrl = item.author.avatarUrl;
         accumulator.avatarGlobalId = item.globalId;
         accumulator.avatarPublishedAt = item.publishedAt;
       }
-      if (extractLocationFromItem(item) &&
-          accumulator.locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+      if (
+        extractLocationFromItem(item) &&
+        accumulator.locationCandidates.length <
+          MAXIMUM_FRIEND_LOCATION_CANDIDATES
+      ) {
         accumulator.locationCandidates.push({
           effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
           globalId: item.globalId,
@@ -369,23 +391,27 @@ export async function readLibraryCoreFriendsGraph(
       }
     });
   }
-  const rss = request.rssFeedUrls.map((feedUrl): LibraryFriendsGraphRssActivity => {
-    const accumulator = rssAccumulators.get(feedUrl)!;
-    return {
-      feedUrl,
-      itemCount: accumulator.itemCount,
-      latestActivityAt: accumulator.latestActivityAt,
-      hasLocation: accumulator.locationCandidates.length > 0,
-      locationCandidateCount: accumulator.locationCandidates.length,
-      locationCandidates: accumulator.locationCandidates,
-      avatarGlobalId: accumulator.avatarGlobalId,
-      avatarPublishedAt: accumulator.avatarPublishedAt,
-      avatarUrl: accumulator.avatarUrl,
-      sampleItems: accumulator.sampleItems,
-    };
-  });
+  const rss = request.rssFeedUrls.map(
+    (feedUrl): LibraryFriendsGraphRssActivity => {
+      const accumulator = rssAccumulators.get(feedUrl)!;
+      return {
+        feedUrl,
+        itemCount: accumulator.itemCount,
+        latestActivityAt: accumulator.latestActivityAt,
+        hasLocation: accumulator.locationCandidates.length > 0,
+        locationCandidateCount: accumulator.locationCandidates.length,
+        locationCandidates: accumulator.locationCandidates,
+        avatarGlobalId: accumulator.avatarGlobalId,
+        avatarPublishedAt: accumulator.avatarPublishedAt,
+        avatarUrl: accumulator.avatarUrl,
+        sampleItems: accumulator.sampleItems,
+      };
+    },
+  );
 
-  const totalItemCount = (await querySqliteItems({ showHidden: true, limit: 1 })).totalCount;
+  const totalItemCount = (
+    await querySqliteItems({ showHidden: true, limit: 1 })
+  ).totalCount;
   return { sourceToken: "sqlite", totalItemCount, social, rss };
 }
 
@@ -394,16 +420,27 @@ export async function readLibraryCoreFriendsLocationItem(
 ): Promise<FeedItem | null> {
   const item = (await readSqliteItems([request.globalId]))[0] ?? null;
   if (!item) return null;
-  const ownerMatches = request.owner.kind === "social"
-    ? item.platform === request.owner.platform && item.author.id === request.owner.authorId
-    : item.platform === "rss" && item.rssSource?.feedUrl === request.owner.feedUrl;
+  const ownerMatches =
+    request.owner.kind === "social"
+      ? item.platform === request.owner.platform &&
+        item.author.id === request.owner.authorId
+      : item.platform === "rss" &&
+        item.rssSource?.feedUrl === request.owner.feedUrl;
   const effectiveAt = item.timeRange?.startsAt ?? item.publishedAt;
   if (
-    request.sourceToken !== "sqlite" || !ownerMatches || item.publishedAt !== request.publishedAt ||
-    effectiveAt !== request.effectiveAt || item.userState.hidden ||
-    !isLocationItemVisibleInTimeMode(item, "current", request.referenceTimeMs) ||
+    request.sourceToken !== "sqlite" ||
+    !ownerMatches ||
+    item.publishedAt !== request.publishedAt ||
+    effectiveAt !== request.effectiveAt ||
+    item.userState.hidden ||
+    !isLocationItemVisibleInTimeMode(
+      item,
+      "current",
+      request.referenceTimeMs,
+    ) ||
     extractLocationFromItem(item) === null
-  ) throw new Error("SQLite Friends location item is inconsistent");
+  )
+    throw new Error("SQLite Friends location item is inconsistent");
   return item;
 }
 
@@ -411,12 +448,21 @@ export async function readLibraryCorePersonTimeline(
   request: LibraryPersonTimelineRequest,
 ): Promise<LibraryPersonTimelinePage> {
   const limit = request.limit ?? DEFAULT_PERSON_TIMELINE_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAXIMUM_PERSON_TIMELINE_LIMIT || request.sources.length === 0) {
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > MAXIMUM_PERSON_TIMELINE_LIMIT ||
+    request.sources.length === 0
+  ) {
     throw new Error("Library Core person timeline request is invalid");
   }
-  const rawOffset = request.cursor?.startsWith("sqlite:") ? Number.parseInt(request.cursor.slice(7), 10) : 0;
-  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
-  const onlySource = request.sources.length === 1 ? request.sources[0] : undefined;
+  const rawOffset = request.cursor?.startsWith("sqlite:")
+    ? Number.parseInt(request.cursor.slice(7), 10)
+    : 0;
+  const offset =
+    Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+  const onlySource =
+    request.sources.length === 1 ? request.sources[0] : undefined;
   const page = await querySqliteItems({
     platform: onlySource?.platform,
     authorId: onlySource?.authorId,
@@ -428,58 +474,29 @@ export async function readLibraryCorePersonTimeline(
   const items = page.items;
   const totalCount = page.totalCount;
   const next = offset + items.length;
-  return { items, totalCount, nextCursor: next < totalCount ? `sqlite:${next}` : null };
-}
-
-function validWindows(
-  windows: readonly LibraryCoreSavedAnalyticsWindow[],
-  count: number,
-): boolean {
-  return windows.length === count && windows.every((window) =>
-    Number.isSafeInteger(window.startMs) && Number.isSafeInteger(window.endMs) && window.endMs >= window.startMs
-  );
+  return {
+    items,
+    totalCount,
+    nextCursor: next < totalCount ? `sqlite:${next}` : null,
+  };
 }
 
 export async function readLibraryCoreSavedAnalytics(
   request: LibraryCoreSavedAnalyticsRequest,
 ): Promise<LibraryCoreSavedAnalytics> {
-  if (!validWindows(request.dailyWindows, LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT) ||
-      !validWindows(request.hourlyWindows, LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT)) {
-    throw new Error("Library Core saved analytics windows are invalid");
-  }
-  return queryNormalizedLibrary({
-    dailyWindows: request.dailyWindows,
-    hourlyWindows: request.hourlyWindows,
-    queryId: LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_SAVED_ANALYTICS_V2_SCHEMA_VERSION,
-  });
+  return readLibraryCoreNormalizedSavedAnalyticsV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 }
 
-export async function readLibraryCoreSurfaceItems(surface: LibraryCoreSurface): Promise<readonly FeedItem[]> {
-  const cancellationId = createDesktopLibraryCoreOperationId(
-    `desktop-${surface}`,
+export async function readLibraryCoreSurfaceItems(
+  surface: LibraryCoreSurface,
+): Promise<readonly FeedItem[]> {
+  return readLibraryCoreNormalizedSurfaceItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    surface,
   );
-  const readerSessionId = createDesktopLibraryCoreOperationId(
-    `desktop-${surface}-reader`,
-  );
-  if (surface === "map") {
-    const response = await queryNormalizedLibrary({
-      cancellationId,
-      limit: SURFACE_LIMITS.map,
-      queryId: LIBRARY_CORE_MAP_MARKERS_QUERY_ID,
-      readerSessionId,
-      schemaVersion: LIBRARY_CORE_MAP_MARKERS_SCHEMA_VERSION,
-    });
-    return response.rows.map(libraryCoreMapMarkerToItemV1);
-  }
-  const response = await queryNormalizedLibrary({
-    cancellationId,
-    limit: SURFACE_LIMITS.story_wall,
-    queryId: LIBRARY_CORE_STORY_WALL_CANDIDATES_QUERY_ID,
-    readerSessionId,
-    schemaVersion: LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
-  });
-  return response.rows.map(libraryCoreStoryWallCandidateToItemV1);
 }
 
 export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemScanSession> {
@@ -498,7 +515,9 @@ export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemS
       offset = page.nextOffset;
       return { items: page.items, done: offset === null };
     },
-    async close(): Promise<void> { closed = true; },
+    async close(): Promise<void> {
+      closed = true;
+    },
   };
 }
 
@@ -525,7 +544,9 @@ async function scanLibraryCoreItemsExclusive(
       offset = page.nextOffset;
       if (offset === null) return;
     }
-  } finally { /* The native query owns no persistent cursor. */ }
+  } finally {
+    /* The native query owns no persistent cursor. */
+  }
 }
 
 export async function scanLibraryCoreItems(
@@ -533,9 +554,17 @@ export async function scanLibraryCoreItems(
   filter: LibraryCoreItemScanFilter = {},
 ): Promise<void> {
   while (activeItemScan !== null) {
-    try { await activeItemScan; } catch { /* A failed consumer cannot block the next scan. */ }
+    try {
+      await activeItemScan;
+    } catch {
+      /* A failed consumer cannot block the next scan. */
+    }
   }
   const current = scanLibraryCoreItemsExclusive(visitPage, filter);
   activeItemScan = current;
-  try { await current; } finally { if (activeItemScan === current) activeItemScan = null; }
+  try {
+    await current;
+  } finally {
+    if (activeItemScan === current) activeItemScan = null;
+  }
 }

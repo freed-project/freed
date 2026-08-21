@@ -496,6 +496,7 @@ export async function captureDomFeed(
 | 5.52 | Route the ordinary feed, Saved feed, and signal counts through the closed normalized query command, preserve opaque bidirectional keyset cursors and bounded compact rows, and remove their dependency on the historical item query                                                                        | High       | ✓ Complete |
 | 5.53 | Route item detail, Library facets, Saved analytics, Map, and Story Wall through their closed normalized query projections and one shared compact-row view transform                                                                                                                                        | High       | ✓ Complete |
 | 5.54 | Extract ordinary feed, Saved feed, and signal-count orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor                                                                                                                                             | High       | ✓ Complete |
+| 5.55 | Extract item detail, Library facets, Saved analytics, Map, and Story Wall orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor | High | ✓ Complete |
 
 ---
 
