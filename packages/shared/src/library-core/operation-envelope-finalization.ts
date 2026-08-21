@@ -28,6 +28,7 @@ import {
 } from "./operation-transaction-contracts.js";
 
 export const LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES = 4_194_304;
+export const LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES = 131_072;
 
 const FINALIZED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 const PLACEHOLDER_SIGNATURE = "0".repeat(128);
@@ -154,6 +155,15 @@ export async function finalizeLibraryCoreTransactionV1(
   const memberByteLengths = assembled.members.map((member) =>
     canonicalEnvelopeBytes(member.signing_body, PLACEHOLDER_SIGNATURE),
   );
+  if (
+    memberByteLengths.some(
+      (byteLength) => byteLength > LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES,
+    )
+  ) {
+    throw new RangeError(
+      "one canonical operation envelope exceeds 131,072 bytes",
+    );
+  }
   const canonicalEnvelopeByteTotal = memberByteLengths.reduce(
     (total, byteLength) => {
       const next = total + byteLength;

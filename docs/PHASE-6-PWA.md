@@ -38,6 +38,11 @@
         optimistic execution, and result reconciliation remain open.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
+  - [x] Include the generated normalized FeedItem capture program in the shared
+        browser contract with a 32-member transaction bound, 131,072-byte
+        canonical item ceiling, typed root and child SQL, refresh-safe user
+        state ownership, and tombstone refusal. Browser signed-intent execution
+        remains open.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

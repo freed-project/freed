@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
@@ -14,6 +15,32 @@ import {
 } from "./operation-payload-contracts.js";
 
 describe("Library Core operation payload contracts", () => {
+  it("bounds one canonical FeedItem capture below the logical wire-record ceiling", () => {
+    expect(
+      FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+        item: {
+          globalId: "saved:bounded",
+          platform: "saved",
+          contentType: "article",
+          capturedAt: 1,
+          publishedAt: 1,
+          author: { id: "author", handle: "ada", displayName: "Ada" },
+          content: { text: "x".repeat(65_536), mediaUrls: [], mediaTypes: [] },
+          topics: [],
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA.validate({
+        item: {
+          globalId: "saved:too-large",
+          content: { text: "x".repeat(131_072) },
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
   it("snapshots the exact feed-item read assignment payload", () => {
     const input = { read_at_ms: 1_783_000_000_000 };
     const result = FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate(input);

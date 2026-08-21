@@ -7,11 +7,12 @@ import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
 import { stripDeviceLocalPreferenceUpdates } from "../preferences.js";
 import {
   sanitizeAccountWrite,
+  sanitizeFeedItemWrite,
   sanitizePersonWrite,
 } from "../sync-write-policy.js";
-import type { Account, Person, UserPreferences } from "../types.js";
+import type { Account, FeedItem, Person, UserPreferences } from "../types.js";
 
-const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
+const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 131_072;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
 const PREFERENCES_PATCH_MAXIMUM_NODES = 512;
@@ -178,6 +179,12 @@ function invalid<T>(reason: string): LibraryCorePayloadValidationResult<T> {
   return { ok: false, code: "invalid", reason };
 }
 
+function isCanonicalObject(
+  value: LibraryCoreCanonicalValue | undefined,
+): value is Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function validateFeedItemReadAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemReadAssignmentPayloadV1> {
@@ -265,6 +272,72 @@ function validateFeedItemCaptureUpsertPayload(
       globalId.length > 4_096
     ) {
       return invalid("item.globalId must be a bounded nonempty string");
+    }
+    const author = canonicalItem.author;
+    const content = canonicalItem.content;
+    const userState = canonicalItem.userState;
+    const topics = canonicalItem.topics;
+    if (
+      !isCanonicalObject(author) ||
+      !isCanonicalObject(content) ||
+      !isCanonicalObject(userState)
+    ) {
+      return invalid("item must match the closed normalized FeedItem capture shape");
+    }
+    if (
+      typeof canonicalItem.platform !== "string" ||
+      canonicalItem.platform.length === 0 ||
+      typeof canonicalItem.contentType !== "string" ||
+      canonicalItem.contentType.length === 0 ||
+      !isLibraryCoreNonnegativeSafeInteger(canonicalItem.capturedAt) ||
+      !isLibraryCoreNonnegativeSafeInteger(canonicalItem.publishedAt) ||
+      typeof author.id !== "string" ||
+      typeof author.handle !== "string" ||
+      typeof author.displayName !== "string" ||
+      !Array.isArray(content.mediaUrls) ||
+      !Array.isArray(content.mediaTypes) ||
+      content.mediaUrls.length > 32 ||
+      content.mediaTypes.length !== content.mediaUrls.length ||
+      content.mediaUrls.some(
+        (entry) => typeof entry !== "string" || entry.length === 0,
+      ) ||
+      content.mediaTypes.some((entry) => typeof entry !== "string") ||
+      !Array.isArray(topics) ||
+      topics.length > 64 ||
+      topics.some((entry) => typeof entry !== "string" || entry.length === 0) ||
+      typeof userState.hidden !== "boolean" ||
+      typeof userState.saved !== "boolean" ||
+      typeof userState.archived !== "boolean" ||
+      !Array.isArray(userState.tags) ||
+      userState.tags.length !== 0 ||
+      Object.hasOwn(userState, "highlights") ||
+      Object.hasOwn(canonicalItem, "contentSignals") ||
+      Object.hasOwn(canonicalItem, "eventCandidate")
+    ) {
+      return invalid("item must match the closed normalized FeedItem capture shape");
+    }
+    if (
+      (typeof content.text === "string" &&
+        new TextEncoder().encode(content.text).byteLength > 65_536) ||
+      (isCanonicalObject(canonicalItem.preservedContent) &&
+        typeof canonicalItem.preservedContent.text === "string" &&
+        new TextEncoder().encode(canonicalItem.preservedContent.text).byteLength >
+          65_536)
+    ) {
+      return invalid("large FeedItem bodies require a content descriptor");
+    }
+    const synchronizedItem = sanitizeFeedItemWrite(
+      canonicalItem as unknown as Partial<FeedItem>,
+    ) as LibraryCoreCanonicalValue;
+    const synchronizedEncoded = encodeLibraryCoreCanonicalValue(
+      synchronizedItem,
+      { maximumBytes: FEED_ITEM_CAPTURE_MAXIMUM_BYTES },
+    );
+    if (
+      synchronizedEncoded.byteLength !== encoded.byteLength ||
+      synchronizedEncoded.some((byte, index) => byte !== encoded[index])
+    ) {
+      return invalid("item contains a noncanonical or device-local field");
     }
     return {
       ok: true,

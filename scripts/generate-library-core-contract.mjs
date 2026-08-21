@@ -163,6 +163,7 @@ function assertContract(contract) {
       ![
         "account_upsert",
         "boolean_assignment",
+        "feed_item_capture_upsert",
         "person_upsert",
         "preferences_leaf_assignment",
         "nullable_text_assignment",
@@ -187,6 +188,7 @@ function assertContract(contract) {
       program.targetExistsSql.length === 0 ||
       (![
         "account_upsert",
+        "feed_item_capture_upsert",
         "person_upsert",
         "person_reach_out_append",
         "preferences_leaf_assignment",

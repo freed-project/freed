@@ -8,7 +8,9 @@ import {
   type LibraryCoreDigestDomain,
 } from "./canonical-codec.js";
 import {
+  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
@@ -76,6 +78,63 @@ function assembled(count = 2, entityId?: (index: number) => string) {
     ),
   );
   return assembleLibraryCoreTransactionV1(members, HEX.chain, {
+    digest(domain, value) {
+      return digest(domain, value);
+    },
+  });
+}
+
+function oversizedCaptureAssembly() {
+  const input: FeedItemCaptureUpsertTransactionMemberInputV1 = {
+    operation_id: "op:capture:oversized",
+    library_id: HEX.library,
+    epoch: 1,
+    epoch_id: HEX.epoch,
+    actor_id: HEX.actor,
+    actor_sequence: 1,
+    previous_actor_operation_id: null,
+    causal_frontier: [],
+    hlc_wall_ms: 1_000,
+    hlc_counter: 0,
+    transaction_id: "tx:capture:oversized",
+    transaction_member_index: 0,
+    transaction_member_count: 1,
+    entity_id: "saved:oversized",
+    payload: {
+      item: {
+        globalId: "saved:oversized",
+        platform: "saved",
+        contentType: "article",
+        capturedAt: 1,
+        publishedAt: 1,
+        author: { id: "author", handle: "ada", displayName: "Ada" },
+        content: {
+          mediaUrls: Array.from(
+            { length: 16 },
+            (_, index) => `https://example.com/${String(index)}/${"x".repeat(8_070)}`,
+          ),
+          mediaTypes: Array.from({ length: 16 }, () => "image"),
+        },
+        topics: [],
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+      },
+    },
+    created_at_ms: 1_000,
+  };
+  const member = FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+    input,
+    {
+      digest(domain: LibraryCoreConstructionDigestDomain, value: unknown) {
+        return digest(domain, value);
+      },
+    },
+  );
+  return assembleLibraryCoreTransactionV1([member], HEX.chain, {
     digest(domain, value) {
       return digest(domain, value);
     },
@@ -225,6 +284,19 @@ describe("Library Core operation envelope finalization", () => {
         },
       }),
     ).rejects.toThrow(/4,194,304/);
+    expect(signOperation).not.toHaveBeenCalled();
+  });
+
+  it("rejects one operation envelope above the logical wire-record ceiling", async () => {
+    const signOperation = vi.fn(async () => HEX.signature);
+    await expect(
+      finalizeLibraryCoreTransactionV1(oversizedCaptureAssembly(), {
+        signOperation,
+        digest(domain, value) {
+          return digest(domain, value);
+        },
+      }),
+    ).rejects.toThrow(/131,072/);
     expect(signOperation).not.toHaveBeenCalled();
   });
 });

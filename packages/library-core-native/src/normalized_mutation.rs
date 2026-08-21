@@ -674,6 +674,28 @@ fn materialize_member(
             }
             Ok(())
         }
+        "feed_item_capture_upsert" => {
+            let member = &verified.members[member_index];
+            let item = member
+                .item_json
+                .as_deref()
+                .ok_or(NormalizedSqliteError::InvalidRequest(
+                    "normalized FeedItem capture payload is missing",
+                ))?;
+            let changed = transaction.execute(
+                program.materialize_sql,
+                params![member.entity_id, item, committed_at],
+            )?;
+            if changed != 0 {
+                for sql in program.dependent_delete_sql {
+                    transaction.execute(sql, [&member.entity_id])?;
+                }
+                for sql in program.dependent_insert_sql {
+                    transaction.execute(sql, params![member.entity_id, item])?;
+                }
+            }
+            Ok(())
+        }
         "person_upsert" => {
             let member = &verified.members[member_index];
             let person =
@@ -1378,6 +1400,177 @@ mod tests {
                 })
                 .expect("journaled transactions"),
             4
+        );
+    }
+
+    #[test]
+    fn signed_feed_item_capture_materializes_normalized_rows_and_preserves_user_state() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let first_payload = serde_json::json!({
+            "item": {
+                "globalId": "saved:capture:1",
+                "platform": "saved",
+                "contentType": "article",
+                "capturedAt": 900,
+                "publishedAt": 800,
+                "author": {
+                    "id": "author:ada",
+                    "handle": "ada",
+                    "displayName": "Ada Lovelace",
+                    "avatarUrl": "https://example.com/ada.jpg"
+                },
+                "content": {
+                    "text": "First bounded body",
+                    "mediaUrls": ["https://example.com/one.jpg"],
+                    "mediaTypes": ["image"],
+                    "linkPreview": {
+                        "url": "https://example.com/article",
+                        "title": "Analytical Engine"
+                    }
+                },
+                "engagement": { "likes": 10, "comments": 2 },
+                "location": {
+                    "name": "London",
+                    "coordinates": {
+                        "lat": { "bits": "4049800000000000", "codec": "ieee754_binary64_hex_v1" },
+                        "lng": { "bits": "c000000000000000", "codec": "ieee754_binary64_hex_v1" }
+                    },
+                    "source": "explicit"
+                },
+                "topics": ["computing", "history"],
+                "userState": { "hidden": false, "saved": false, "archived": false, "tags": [] },
+                "sourceUrl": "https://example.com/source"
+            }
+        });
+        let first = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:capture:first",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("saved:capture:1", 1_000)],
+            "feed_item_capture_upsert",
+            Some(&first_payload),
+        );
+        let first_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &first, 2_000)
+                .expect("capture FeedItem");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT platform, content_type, content_text, author_display_name,
+                            location_lat, location_lng, saved, updated_at
+                     FROM library_feed_items WHERE global_id = 'saved:capture:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, f64>(4)?,
+                        row.get::<_, f64>(5)?,
+                        row.get::<_, i64>(6)?,
+                        row.get::<_, i64>(7)?,
+                    )),
+                )
+                .expect("normalized FeedItem"),
+            (
+                "saved".to_owned(),
+                "article".to_owned(),
+                "First bounded body".to_owned(),
+                "Ada Lovelace".to_owned(),
+                51.0,
+                -2.0,
+                0,
+                2_000,
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT
+                       (SELECT count(*) FROM library_feed_item_media WHERE global_id = 'saved:capture:1') +
+                       (SELECT count(*) FROM library_feed_item_topics WHERE global_id = 'saved:capture:1');",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("normalized children"),
+            3
+        );
+
+        let save = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:capture:save",
+            2,
+            Some(&first_receipt.committed_operation_id),
+            &first_receipt.committed_chain_digest,
+            &[("saved:capture:1", 2_100)],
+            "feed_item_saved_assignment",
+        );
+        let save_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &save, 2_100)
+                .expect("save captured FeedItem");
+        connection
+            .execute(
+                "INSERT INTO library_feed_item_tags (global_id, tag)
+                 VALUES ('saved:capture:1', 'personal');",
+                [],
+            )
+            .expect("user tag");
+
+        let second_payload = serde_json::json!({
+            "item": {
+                "globalId": "saved:capture:1",
+                "platform": "saved",
+                "contentType": "article",
+                "capturedAt": 1_100,
+                "publishedAt": 800,
+                "author": { "id": "author:ada", "handle": "ada", "displayName": "Ada Lovelace" },
+                "content": {
+                    "text": "Refreshed bounded body",
+                    "mediaUrls": ["https://example.com/two.mp4"],
+                    "mediaTypes": ["video"]
+                },
+                "topics": ["computing"],
+                "userState": { "hidden": true, "saved": false, "archived": true, "tags": [] }
+            }
+        });
+        let second = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:capture:refresh",
+            3,
+            Some(&save_receipt.committed_operation_id),
+            &save_receipt.committed_chain_digest,
+            &[("saved:capture:1", 2_200)],
+            "feed_item_capture_upsert",
+            Some(&second_payload),
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &second, 2_200)
+            .expect("refresh captured FeedItem");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT content_text, hidden, saved, archived,
+                            (SELECT count(*) FROM library_feed_item_media WHERE global_id = item.global_id),
+                            (SELECT count(*) FROM library_feed_item_topics WHERE global_id = item.global_id),
+                            (SELECT count(*) FROM library_feed_item_tags WHERE global_id = item.global_id)
+                     FROM library_feed_items AS item WHERE global_id = 'saved:capture:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, i64>(5)?,
+                        row.get::<_, i64>(6)?,
+                    )),
+                )
+                .expect("refreshed normalized FeedItem"),
+            ("Refreshed bounded body".to_owned(), 0, 1, 0, 1, 1, 1)
         );
     }
 

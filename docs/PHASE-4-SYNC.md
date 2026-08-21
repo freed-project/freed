@@ -24,7 +24,7 @@
 > registry now produce exact bounded native checkpoint pages directly from
 > SQLite. Native staging accepts bounded canonical pages, rejects changed
 > replay, verifies the complete digest and content graph, and activates all
-> normalized rows in one transaction. Browser SQLite activation and fifteen
+> normalized rows in one transaction. Browser SQLite activation and 16
 > equivalent generated query programs are implemented, including one-row
 > normalized Saved analytics. Complete mutation and
 > product query cutover, selective content, one-epoch migration,
@@ -62,6 +62,12 @@
       bind the filter digest, sort, generation, revision, and complete order
       key. One request reads at most 129 rows and returns at most 128 compact
       Saved cards without an application-side corpus scan or sort.
+- [x] Generate the normalized `feed_item_capture_upsert` mutation program.
+      Signed capture writes typed FeedItem source columns, media, and topics
+      atomically, preserves established user state on refresh, refuses
+      tombstone resurrection, and caps the complete canonical operation
+      envelope at 131,072 bytes. Larger content remains a descriptor and chunk
+      concern.
 - [x] Stage and activate typed normalized records through bounded native SQLite
       transactions. Exact replay is idempotent, changed replay fails, finite
       fractions use exact binary64 wrappers, incomplete content and foreign
@@ -345,6 +351,7 @@ loads an alternate Library engine or compatibility path.
 | 4.178 | Four generated installation-local graph-position mutation programs with closed shared DTOs, native and PWA SQLite execution, one-row bounds, transactional entity checks, idempotent set and clear semantics, atomic local layout revision advancement, and no canonical revision, invalidation, receipt, checkpoint, actor, or outbox effect | ✓ | High |
 | 4.179 | Shared `person_timeline_v1` query across native and browser SQLite, using a trigger-maintained Person and FeedItem relation with indexed publication order, a 100-row and 2 MiB response bound, exact counts, and cursors bound to Person identity plus the canonical source fence | ✓ | High |
 | 4.180 | Shared `saved_feed_page_v2` query across native and browser SQLite, with four closed generated sort variants, dedicated expression indexes, forward and reverse keyset paging, complete feed filters, exact counts, a 129-row scan ceiling, and byte-identical cursors bound to filter, sort, generation, source revision, and full order key | ✓ | High |
+| 4.181 | Generated normalized `feed_item_capture_upsert` with signed admission, a 32-member transaction bound, a 131,072-byte canonical operation-envelope ceiling, atomic typed root and child materialization, user-state preservation on refresh, tombstone refusal, exact receipts, invalidation, and replication outbox effects | ✓ | High |
 
 ---
 

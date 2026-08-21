@@ -110,7 +110,8 @@ const ACCOUNT_KEYS: [&str; 22] = [
     "sampleDataFingerprint",
     "updatedAt",
 ];
-const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
+const MAX_CAPTURE_ITEM_BYTES: usize = 131_072;
+const MAX_OPERATION_ENVELOPE_BYTES: usize = 131_072;
 const MAX_RSS_FEED_BYTES: usize = 65_536;
 const MAX_PREFERENCES_PATCH_BYTES: usize = 262_144;
 const MAX_PREFERENCE_NODES: usize = 512;
@@ -609,6 +610,232 @@ fn exact_object<'a>(
     Ok(object)
 }
 
+fn validate_capture_object_keys(
+    object: &Map<String, Value>,
+    allowed: &[&str],
+    index: usize,
+    field: &'static str,
+) -> JournalResult<()> {
+    if object.keys().any(|key| !allowed.contains(&key.as_str())) {
+        return Err(invalid(index, field));
+    }
+    Ok(())
+}
+
+fn validate_feed_item_capture(item: &Map<String, Value>, index: usize) -> JournalResult<()> {
+    validate_capture_object_keys(
+        item,
+        &[
+            "author",
+            "capturedAt",
+            "content",
+            "contentType",
+            "engagement",
+            "fbGroup",
+            "globalId",
+            "location",
+            "platform",
+            "preservedContent",
+            "publishedAt",
+            "rssSource",
+            "sampleDataFingerprint",
+            "sourceUrl",
+            "timeRange",
+            "topics",
+            "userState",
+        ],
+        index,
+        "item_fields",
+    )?;
+    for key in ["globalId", "platform", "contentType"] {
+        if item
+            .get(key)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return Err(invalid(index, "item_fields"));
+        }
+    }
+    for key in ["capturedAt", "publishedAt"] {
+        if item
+            .get(key)
+            .and_then(Value::as_i64)
+            .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+        {
+            return Err(invalid(index, "item_fields"));
+        }
+    }
+    let author = item
+        .get("author")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid(index, "item_author"))?;
+    validate_capture_object_keys(
+        author,
+        &["avatarUrl", "displayName", "handle", "id"],
+        index,
+        "item_author",
+    )?;
+    for key in ["id", "handle", "displayName"] {
+        if author.get(key).and_then(Value::as_str).is_none() {
+            return Err(invalid(index, "item_author"));
+        }
+    }
+    let content = item
+        .get("content")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid(index, "item_content"))?;
+    validate_capture_object_keys(
+        content,
+        &["linkPreview", "mediaTypes", "mediaUrls", "text"],
+        index,
+        "item_content",
+    )?;
+    let media_urls = content
+        .get("mediaUrls")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid(index, "item_media"))?;
+    let media_types = content
+        .get("mediaTypes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid(index, "item_media"))?;
+    if media_urls.len() > 32
+        || media_types.len() != media_urls.len()
+        || media_urls
+            .iter()
+            .any(|value| value.as_str().is_none_or(str::is_empty))
+        || media_types.iter().any(|value| value.as_str().is_none())
+    {
+        return Err(invalid(index, "item_media"));
+    }
+    if content
+        .get("text")
+        .and_then(Value::as_str)
+        .is_some_and(|text| text.len() > 65_536)
+    {
+        return Err(invalid(index, "item_content_descriptor"));
+    }
+    for (key, allowed, field) in [
+        (
+            "engagement",
+            ["comments", "likes", "reposts", "views"].as_slice(),
+            "item_engagement",
+        ),
+        (
+            "location",
+            ["coordinates", "name", "source", "url"].as_slice(),
+            "item_location",
+        ),
+        (
+            "timeRange",
+            ["endsAt", "kind", "startsAt"].as_slice(),
+            "item_time_range",
+        ),
+        (
+            "rssSource",
+            ["feedTitle", "feedUrl", "siteUrl"].as_slice(),
+            "item_rss_source",
+        ),
+        ("fbGroup", ["id", "name", "url"].as_slice(), "item_fb_group"),
+        (
+            "preservedContent",
+            [
+                "author",
+                "preservedAt",
+                "publishedAt",
+                "readingTime",
+                "text",
+                "wordCount",
+            ]
+            .as_slice(),
+            "item_preserved_content",
+        ),
+        (
+            "sampleDataFingerprint",
+            ["batchId", "generatedAt", "generatorVersion", "marker"].as_slice(),
+            "item_sample_fingerprint",
+        ),
+    ] {
+        if let Some(value) = item.get(key) {
+            let object = value.as_object().ok_or_else(|| invalid(index, field))?;
+            validate_capture_object_keys(object, allowed, index, field)?;
+        }
+    }
+    if let Some(link_preview) = content.get("linkPreview") {
+        let object = link_preview
+            .as_object()
+            .ok_or_else(|| invalid(index, "item_link_preview"))?;
+        validate_capture_object_keys(
+            object,
+            &["description", "title", "url"],
+            index,
+            "item_link_preview",
+        )?;
+    }
+    if let Some(coordinates) = item
+        .get("location")
+        .and_then(Value::as_object)
+        .and_then(|location| location.get("coordinates"))
+    {
+        let object = coordinates
+            .as_object()
+            .ok_or_else(|| invalid(index, "item_location_coordinates"))?;
+        validate_capture_object_keys(object, &["lat", "lng"], index, "item_location_coordinates")?;
+    }
+    let topics = item
+        .get("topics")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid(index, "item_topics"))?;
+    if topics.len() > 64
+        || topics
+            .iter()
+            .any(|value| value.as_str().is_none_or(str::is_empty))
+    {
+        return Err(invalid(index, "item_topics"));
+    }
+    let user_state = item
+        .get("userState")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid(index, "item_user_state"))?;
+    validate_capture_object_keys(
+        user_state,
+        &[
+            "archived",
+            "archivedAt",
+            "hidden",
+            "liked",
+            "likedAt",
+            "likedSyncedAt",
+            "readAt",
+            "saved",
+            "savedAt",
+            "seenSyncedAt",
+            "tags",
+        ],
+        index,
+        "item_user_state",
+    )?;
+    if ["hidden", "saved", "archived"]
+        .iter()
+        .any(|key| user_state.get(*key).and_then(Value::as_bool).is_none())
+        || user_state
+            .get("tags")
+            .and_then(Value::as_array)
+            .is_none_or(|tags| !tags.is_empty())
+    {
+        return Err(invalid(index, "item_user_state"));
+    }
+    if item
+        .get("preservedContent")
+        .and_then(Value::as_object)
+        .and_then(|content| content.get("text"))
+        .and_then(Value::as_str)
+        .is_some_and(|text| text.len() > 65_536)
+    {
+        return Err(invalid(index, "item_content_descriptor"));
+    }
+    Ok(())
+}
+
 fn required_string(
     object: &Map<String, Value>,
     key: &'static str,
@@ -782,6 +1009,9 @@ fn parse_causal_tips(value: &Value, index: usize) -> JournalResult<Vec<VerifiedC
 }
 
 fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
+    if bytes.is_empty() || bytes.len() > MAX_OPERATION_ENVELOPE_BYTES {
+        return Err(invalid(index, "canonical_envelope"));
+    }
     let decoded = decode_canonical_value(bytes, MAX_TRANSACTION_ENVELOPE_BYTES)
         .map_err(|_| invalid(index, "canonical_envelope"))?;
     let value = decoded.into_value();
@@ -880,6 +1110,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 .get("item")
                 .and_then(Value::as_object)
                 .ok_or_else(|| invalid(index, "item"))?;
+            validate_feed_item_capture(item, index)?;
             if item.get("globalId").and_then(Value::as_str) != Some(entity_id.as_str()) {
                 return Err(invalid(index, "item_identity"));
             }
@@ -1498,6 +1729,18 @@ pub(crate) mod tests {
                 .unwrap_or_else(|| match operation_type {
                     "feed_item_capture_upsert" => json!({
                         "item": {
+                            "author": {
+                                "displayName": "Verified Author",
+                                "handle": "verified",
+                                "id": "author:verified"
+                            },
+                            "capturedAt": timestamp_ms,
+                            "content": {
+                                "mediaTypes": [],
+                                "mediaUrls": [],
+                                "text": "Verified bounded capture"
+                            },
+                            "contentType": "article",
                             "globalId": entity_id,
                             "location": {
                                 "coordinates": {
@@ -1514,7 +1757,14 @@ pub(crate) mod tests {
                                 "source": "explicit"
                             },
                             "platform": "saved",
-                            "userState": { "saved": true }
+                            "publishedAt": timestamp_ms,
+                            "topics": [],
+                            "userState": {
+                                "archived": false,
+                                "hidden": false,
+                                "saved": true,
+                                "tags": []
+                            }
                         }
                     }),
                     "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),

@@ -152,11 +152,16 @@ sample-library, repair, bulk, restore, and tombstone behavior.
 Actor capability profiles live in this same executable contract. Generation
 fails if a profile names an undeclared mutation. The Primary writer profile
 grows only as verified mutation implementations land. It currently admits 18
-verified mutations: 17 generated normalized SQL programs plus the existing
-bounded `feed_item_capture_upsert` path. The capture actor remains limited to
-that feed-capture mutation. Declaring a future mutation does not grant it to
-any profile. Rust and TypeScript consume generated profile constants, so no
-second capability-operation registry can drift from the mutation catalog.
+verified mutations through 18 generated normalized SQL programs. This now
+includes `feed_item_capture_upsert`, which atomically materializes FeedItem
+source fields, media, and topics into normalized tables while preserving
+existing user state and refusing tombstone resurrection. One canonical capture
+item and its complete signed operation envelope must each fit the 131,072-byte
+logical-record ceiling. Larger legal content uses descriptors and
+content-addressed chunks. The capture actor remains limited to this one
+feed-capture mutation. Declaring a future mutation does not grant it to any
+profile. Rust and TypeScript consume generated profile constants, so no second
+capability-operation registry can drift from the mutation catalog.
 
 Each mutation definition binds:
 

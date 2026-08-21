@@ -18,9 +18,9 @@
       `packages/library-core-native` so Freed Desktop and the headless Primary
       call the same Rust core.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 32 bounded query IDs for Rust and TypeScript from one executable
+      IDs, and 33 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
-      defines the 16-mutation Primary writer capability and the
+      defines the 18-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
       constants, and no parallel actor-operation registry remains.
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
@@ -44,6 +44,11 @@
       capability names an unregistered mutation.
 - [ ] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
+  - [x] `feed_item_capture_upsert` executes through generated normalized SQL
+        instead of the retired JSON product projection. One signed transaction
+        carries at most 32 capture members. Each item is capped at 131,072
+        canonical bytes, root, media, and topic rows commit atomically, refresh
+        preserves user-owned state, and tombstones prevent resurrection.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
       Wall, settings, exports, and diagnostics through bounded named queries.
   - [x] The native core now dispatches `feed_page_v1` as a typed request and
@@ -426,6 +431,7 @@ export async function captureDomFeed(
 | 5.40 | Global toolbar background activity monitor                               | Medium     |
 | 5.41 | Multi-Desktop registration and duplicate provider request warning        | Low        |
 | 5.42 | Execute indexed bidirectional `saved_feed_page_v2` through the native core with all four Saved orders and exact browser parity | High | ✓ Complete |
+| 5.43 | Materialize signed FeedItem capture through the generated normalized SQLite mutation program with bounded members and bytes, atomic children, preserved user state, exact retry effects, and tombstone refusal | High | ✓ Complete |
 
 ---
 

@@ -724,6 +724,15 @@ hydration are different facts.
 Every follower synchronizes small content descriptors and authoritative
 references. Each device independently decides which bytes to hydrate.
 
+FeedItem capture follows the same separation. The signed capture mutation
+materializes bounded inline metadata, media references, and topics into
+normalized SQLite tables. Re-capture refreshes source-owned fields without
+overwriting saved, archived, liked, read, tag, or highlight state. A tombstone
+blocks re-capture. The complete signed operation envelope cannot exceed one
+131,072-byte canonical record. Longer bodies and media bytes enter through
+content descriptors and content-addressed chunks, never a larger FeedItem
+object.
+
 ### 13.1 Descriptor
 
 A content descriptor includes:
