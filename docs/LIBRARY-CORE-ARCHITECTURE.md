@@ -944,6 +944,14 @@ fixed selector name, flushes the bound directory, and reads the exact record
 back through the same verifier. A different existing selector is never
 overwritten. Exact response-loss replay is idempotent.
 
+Freed Desktop product adapters call the same closed query protocol as browser
+SQLite. The ordinary feed uses `feed_browse_page_v3`, Saved uses
+`saved_feed_page_v2`, and signal counts issue one-row bounded browse queries.
+The native response is parsed against the exact request before compact cards
+enter React. Cursor strings remain opaque. No adapter invents offsets or calls
+the historical item query. The Friends feed stays on its old reader only until
+the normalized query contract expresses the Friends predicate inside SQLite.
+
 ### 16.2 Cutover
 
 Cutover:

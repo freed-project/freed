@@ -494,6 +494,13 @@ generation, and source revision. Native Rust and browser SQLite share the same
 program registry and exact cursor bytes. No caller can supply SQL or ask
 application code to sort a Saved corpus.
 
+Freed Desktop invokes these two queries through one generic native client that
+first validates the closed request with the shared protocol and then validates
+the native response against that exact request. The ordinary feed, Saved feed,
+and signal counts use this boundary directly. They retain only compact card
+pages and opaque keyset cursors. They do not call the historical item query or
+reconstruct a Library shell.
+
 Synchronized preferences are normalized typed SQLite nodes. The
 `preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite
 binary path order. Scalar rows use a `v:` path prefix. Object markers use `o:`
