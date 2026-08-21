@@ -102,9 +102,10 @@
         convergent tombstone and deletes the normalized root through generated
         SQL. Owned child rows cascade, while stale removals remain journaled
         without replacing the winning tombstone.
-  - [x] Account removal, Person removal with linked Accounts, RSS feed removal
-        that retains items, and RSS feed removal with its items now use four
-        generated mutation programs. Relationship deletes, root deletes,
+  - [x] Account removal, both Person removal policies, and both RSS feed
+        removal policies use generated mutation programs. A Person removal can
+        delete linked Accounts or preserve them while SQLite atomically clears
+        their Person references. Relationship effects, root deletes,
         convergent tombstones, exact receipts, invalidations, and revisions
         commit in the same verified native transaction.
   - [x] RSS feed upsert now verifies one closed signed payload and writes its

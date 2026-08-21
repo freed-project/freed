@@ -798,7 +798,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "UserPreferences"
     } else if matches!(
         operation_type.as_str(),
-        "person_reach_out_append" | "person_upsert" | "person_remove_and_accounts"
+        "person_reach_out_append"
+            | "person_upsert"
+            | "person_remove_and_accounts"
+            | "person_remove_detach_accounts"
     ) {
         "Person"
     } else if matches!(
@@ -933,7 +936,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
             )
         }
-        "feed_item_remove" | "person_remove_and_accounts" | "account_remove" => {
+        "feed_item_remove"
+        | "person_remove_and_accounts"
+        | "person_remove_detach_accounts"
+        | "account_remove" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
                 None,
@@ -1563,7 +1569,7 @@ pub(crate) mod tests {
                         "logged_at_ms": timestamp_ms,
                         "notes": "Hello"
                     }),
-                    "person_remove_and_accounts" => {
+                    "person_remove_and_accounts" | "person_remove_detach_accounts" => {
                         json!({ "removed_at_ms": timestamp_ms })
                     }
                     "account_upsert" => json!({
@@ -1604,6 +1610,7 @@ pub(crate) mod tests {
             } else if operation_type == "person_reach_out_append"
                 || operation_type == "person_upsert"
                 || operation_type == "person_remove_and_accounts"
+                || operation_type == "person_remove_detach_accounts"
             {
                 "Person"
             } else if matches!(

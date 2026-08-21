@@ -319,6 +319,7 @@ loads an alternate Library engine or compatibility path.
 | 4.170 | Generated RSS feed title assignment with a closed bounded payload, verified signed admission, deterministic timestamp and operation-ID field clock, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
 | 4.171 | Generated Account person assignment with a closed bounded nullable person ID, verified signed admission, deterministic timestamp and operation-ID field clock, SQLite-enforced person references, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
 | 4.172 | Generated Person reach-out append with a closed bounded event payload, accepted-operation row identity, deterministic latest-twenty retention, stable checkpoint identity, and strict separation from Person upsert | ✓ | High |
+| 4.173 | Generated Person detach removal with closed signed admission, SQLite foreign-key detachment that preserves linked Accounts, convergent Person tombstone, and atomic receipt, outbox, invalidation, and revision effects | ✓ | High |
 
 ---
 

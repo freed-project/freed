@@ -648,6 +648,7 @@ export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([
   "feed_item_saved_assignment",
   "person_reach_out_append",
   "person_remove_and_accounts",
+  "person_remove_detach_accounts",
   "person_upsert",
   "preferences_leaf_assignment",
   "rss_feed_remove_keep_items",
@@ -686,6 +687,7 @@ export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS = Object.freeze([
   "feed_item_saved_assignment",
   "person_reach_out_append",
   "person_remove_and_accounts",
+  "person_remove_detach_accounts",
   "person_upsert",
   "preferences_leaf_assignment",
   "rss_feed_remove_keep_items",
@@ -856,6 +858,20 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "dependentDeleteSql": [
       "DELETE FROM library_accounts WHERE person_id = ?1;"
     ],
+    "dependentInsertSql": [],
+    "entityType": "Person",
+    "invalidationTopic": "person",
+    "materializeSql": "DELETE FROM library_persons WHERE id = ?1;",
+    "maximumMembers": 256,
+    "payloadKind": "remove",
+    "requiresExistingTarget": true,
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
+  },
+  "person_remove_detach_accounts": {
+    "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1;",
+    "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('person', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",
+    "currentValueSql": "SELECT deleted_at FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1;",
+    "dependentDeleteSql": [],
     "dependentInsertSql": [],
     "entityType": "Person",
     "invalidationTopic": "person",

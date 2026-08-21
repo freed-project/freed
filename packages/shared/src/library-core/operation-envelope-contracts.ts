@@ -11,6 +11,7 @@ import {
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
+  PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -362,7 +363,9 @@ export interface PersonRemoveTransactionMemberBodyV1 {
   readonly transaction_id: LibraryCoreOperationInstanceId;
   readonly transaction_member_index: number;
   readonly transaction_member_count: number;
-  readonly operation_type: "person_remove_and_accounts";
+  readonly operation_type:
+    | "person_remove_and_accounts"
+    | "person_remove_detach_accounts";
   readonly entity_type: "Person";
   readonly entity_id: LibraryCoreEntityId;
   readonly payload: PersonRemovePayloadV1;
@@ -802,7 +805,9 @@ function constructEntityTransactionMember(
         readonly entityType: "Person";
       }
     | {
-        readonly operationType: "person_remove_and_accounts";
+        readonly operationType:
+          | "person_remove_and_accounts"
+          | "person_remove_detach_accounts";
         readonly validatePayload: typeof PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Person";
       }
@@ -1106,10 +1111,16 @@ function constructPersonReachOutAppendTransactionMember(
 function constructPersonRemoveTransactionMember(
   input: PersonRemoveTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
+  operationType:
+    | "person_remove_and_accounts"
+    | "person_remove_detach_accounts" = "person_remove_and_accounts",
 ): LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1> {
   return constructEntityTransactionMember(input, dependencies, {
-    operationType: "person_remove_and_accounts",
-    validatePayload: PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate,
+    operationType,
+    validatePayload:
+      operationType === "person_remove_and_accounts"
+        ? PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA.validate
+        : PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA.validate,
     entityType: "Person",
   }) as LibraryCoreTransactionMemberConstruction<PersonRemoveTransactionMemberBodyV1>;
 }
@@ -1324,6 +1335,27 @@ export const PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
   }) satisfies LibraryCoreTransactionMemberSchema<
     PersonRemoveTransactionMemberInputV1,
   PersonRemoveTransactionMemberBodyV1
+  >;
+
+export const PERSON_REMOVE_DETACH_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA =
+  Object.freeze({
+    schemaId: "person_remove_detach_accounts_transaction_member_v1",
+    schemaVersion: 1,
+    operationType: "person_remove_detach_accounts",
+    entityType: "Person",
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: PersonRemoveTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructPersonRemoveTransactionMember(
+        input,
+        dependencies,
+        "person_remove_detach_accounts",
+      ),
+  }) satisfies LibraryCoreTransactionMemberSchema<
+    PersonRemoveTransactionMemberInputV1,
+    PersonRemoveTransactionMemberBodyV1
   >;
 
 export const ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA = Object.freeze({

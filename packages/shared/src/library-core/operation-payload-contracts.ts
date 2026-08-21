@@ -1185,6 +1185,17 @@ export const PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA = Object.freeze({
   PersonRemovePayloadV1
 >;
 
+export const PERSON_REMOVE_DETACH_ACCOUNTS_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "person_remove_detach_accounts_payload_v1",
+  schemaVersion: 1,
+  operationType: "person_remove_detach_accounts",
+  canonicalKeys: PERSON_REMOVE_KEYS,
+  validate: validatePersonRemovePayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "person_remove_detach_accounts",
+  PersonRemovePayloadV1
+>;
+
 /** Closed payload for idempotent local PWA user-state assignments. */
 function userStateAssignmentPayloadSchema(
   operationType: FeedItemUserStateAssignmentOperationTypeV1,

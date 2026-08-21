@@ -1607,6 +1607,67 @@ mod tests {
     }
 
     #[test]
+    fn signed_person_detach_removal_preserves_linked_accounts() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person:detach', 'Ada', 'friend', 5, 900, 1000);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account:detach', 'person:detach', 'social', 'x',
+                           'detach', 'Detached', 900, 1000, 'capture', 900, 1000);",
+            )
+            .expect("detach fixtures");
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:detach",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("person:detach", 1_100)],
+            "person_remove_detach_accounts",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_000)
+            .expect("remove Person and detach Accounts");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_persons WHERE id = 'person:detach';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Person count"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT person_id FROM library_accounts WHERE id = 'account:detach';",
+                    [],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .expect("detached Account"),
+            None
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT deleted_at FROM library_tombstones
+                     WHERE entity_type = 'person' AND entity_id = 'person:detach';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Person tombstone"),
+            1_100
+        );
+    }
+
+    #[test]
     fn signed_rss_feed_upsert_materializes_normalized_columns_without_resurrection() {
         let (mut connection, key_pair, enrollment) = fixture();
         let upsert = signed_envelopes_from_tip(

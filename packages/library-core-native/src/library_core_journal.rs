@@ -882,7 +882,7 @@ pub(crate) fn validate_transaction(
                     });
                 }
             }
-            "person_remove_and_accounts" => {
+            "person_remove_and_accounts" | "person_remove_detach_accounts" => {
                 if member.entity_type != "Person"
                     || member.item_json.is_some()
                     || member.rss_feed_json.is_some()

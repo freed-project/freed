@@ -416,10 +416,12 @@ forks, unknown operations, missing blobs, or signature failure block segment
 admission and frontier advancement.
 
 Removal mutations declare root and relationship deletes in the executable
-contract. Account removal, Person removal with linked Accounts, and both RSS
-feed removal policies execute those generated statements only after signature,
-capability, writer admission, causal tip, target, and replay verification. The
-winning root and dependent deletes, typed tombstone, operation rows, receipt,
+contract. Account removal, both Person removal policies, and both RSS feed
+removal policies execute those generated statements only after signature,
+capability, writer admission, causal tip, target, and replay verification.
+Person removal either deletes linked Accounts or preserves them and lets the
+declared SQLite foreign key detach their Person reference. The winning root
+and relationship effects, typed tombstone, operation rows, receipt,
 replication outbox, invalidation, and source revision commit in one SQLite
 transaction. A stale removal is journaled but cannot replace the winning
 tombstone or repeat relationship effects.
