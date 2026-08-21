@@ -48,7 +48,10 @@
     "checkpointPageDecodedBytes": 2097152,
     "checkpointPageRecords": 128,
     "nativeExportResponseBytes": 1048576,
-    "contentChunkBytes": 65536
+    "contentChunkBytes": 65536,
+    "followerIntentPageRecords": 128,
+    "followerIntentTransactionMembers": 1000,
+    "followerIntentTransactionBytes": 4194304
   },
   "fractionalFields": {
     "10_feed_item": ["locationLat", "locationLng", "priority"],

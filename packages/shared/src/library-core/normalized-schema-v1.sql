@@ -856,6 +856,39 @@ CREATE TABLE IF NOT EXISTS library_intent_members (
 CREATE INDEX IF NOT EXISTS library_intent_members_actor_page
   ON library_intent_members(actor_id, actor_counter, operation_id, transaction_id);
 
+CREATE TABLE IF NOT EXISTS library_primary_intent_stage_transactions (
+  transaction_id TEXT PRIMARY KEY CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
+  transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),
+  actor_id TEXT NOT NULL CHECK (length(CAST(actor_id AS BLOB)) BETWEEN 1 AND 255),
+  intent_epoch INTEGER NOT NULL CHECK (intent_epoch >= 1),
+  intent_epoch_id TEXT NOT NULL CHECK (length(CAST(intent_epoch_id AS BLOB)) BETWEEN 1 AND 255),
+  member_count INTEGER NOT NULL CHECK (member_count BETWEEN 1 AND 1000),
+  first_counter INTEGER NOT NULL CHECK (first_counter >= 1),
+  last_counter INTEGER NOT NULL CHECK (last_counter = first_counter + member_count - 1),
+  received_count INTEGER NOT NULL CHECK (received_count BETWEEN 0 AND member_count),
+  canonical_member_bytes INTEGER NOT NULL CHECK (canonical_member_bytes BETWEEN 0 AND 4194304),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
+  UNIQUE (transaction_id, actor_id)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS library_primary_intent_stage_complete
+  ON library_primary_intent_stage_transactions(updated_at, transaction_id)
+  WHERE received_count = member_count;
+
+CREATE TABLE IF NOT EXISTS library_primary_intent_stage_members (
+  transaction_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  member_index INTEGER NOT NULL CHECK (member_index BETWEEN 0 AND 999),
+  actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
+  operation_id TEXT NOT NULL CHECK (length(CAST(operation_id AS BLOB)) BETWEEN 1 AND 255),
+  canonical_member BLOB NOT NULL CHECK (length(canonical_member) BETWEEN 1 AND 131072),
+  PRIMARY KEY (transaction_id, member_index),
+  UNIQUE (actor_id, actor_counter),
+  FOREIGN KEY (transaction_id, actor_id)
+    REFERENCES library_primary_intent_stage_transactions(transaction_id, actor_id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_intent_results (
   transaction_id TEXT PRIMARY KEY REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
   actor_id TEXT NOT NULL REFERENCES library_intent_actors(actor_id),

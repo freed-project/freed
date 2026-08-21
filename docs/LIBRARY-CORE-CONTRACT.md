@@ -341,6 +341,22 @@ pending page. The signed actor chain inside each canonical envelope remains the
 admission proof. The query uses the actor-counter index with no offset, table
 scan, or temporary sort.
 
+The Primary admits browser intent pages through dedicated SQLite staging
+tables that are excluded from checkpoints, materialized-state digests, and
+replication. One page carries at most 128 records. One transaction carries at
+most 1,000 members and 4,194,304 canonical member bytes. Each received member
+is inserted or recognized as an exact retry under one immediate staging
+transaction. Reusing a transaction, counter, operation, or member identity
+with changed bytes fails closed. Incomplete transactions cannot call an
+authoritative mutation program. Once every member is present, the Primary
+rederives the transaction, actor, epoch, counter range, operation IDs, member
+indexes, and digest from the signed canonical envelopes and compares them with
+every typed transport field. Only an exact match enters the existing atomic
+resolver. A crash or late authority fault leaves a complete resumable staging
+transaction and no partial Library state. Acceptance or signed rejection
+deletes staging after the authoritative transaction commits. Replayed records
+then resolve against the immutable result outbox instead of recreating staging.
+
 Native result export is one actor-bound keyset page over
 `(actor_id, result_sequence)`. The request carries the actor and, after the
 first page, the exact prior sequence and digest. A page returns at most 128

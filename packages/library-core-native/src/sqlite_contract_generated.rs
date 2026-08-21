@@ -10,8 +10,11 @@ pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = 2097152;
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
+pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
+pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
+pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "d2921da46fcc95616228140abe28a8875384bb017b7dd3ee4d92f2fa4d9c03ba";
+    "b82ac2c1131531e0ff7c6a5bd30ad14bd925e04924231c5ea90780bb009db507";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 

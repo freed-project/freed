@@ -100,6 +100,9 @@ function assertContract(contract) {
     checkpointRecordCanonicalBytes: 131_072,
     contentChunkBytes: 65_536,
     nativeExportResponseBytes: 1_048_576,
+    followerIntentPageRecords: 128,
+    followerIntentTransactionMembers: 1_000,
+    followerIntentTransactionBytes: 4_194_304,
   });
   if (
     Object.keys(limits).length !== Object.keys(expectedLimits).length ||
@@ -493,6 +496,9 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.lim
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.limits.nativeExportResponseBytes} as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = ${contract.limits.contentChunkBytes} as const;
+export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
+export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.followerIntentTransactionMembers} as const;
+export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.followerIntentTransactionBytes} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 
@@ -630,6 +636,9 @@ pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.check
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.limits.nativeExportResponseBytes};
 pub const CONTENT_CHUNK_BYTES: usize = ${contract.limits.contentChunkBytes};
+pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.followerIntentPageRecords};
+pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.followerIntentTransactionMembers};
+pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES: usize = ${contract.limits.followerIntentTransactionBytes};
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     ${JSON.stringify(schemaDigest)};
 pub const NORMALIZED_SCHEMA_SQL: &str =

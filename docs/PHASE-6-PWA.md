@@ -59,6 +59,11 @@
         and transaction, one legal 131,072-byte member always fits, and the
         indexed query uses no offset, table scan, temporary sort, shell, or
         reconstructed transaction object.
+  - [x] Generate the follower-intent page, transaction-member, and canonical
+        byte ceilings from the shared SQLite contract for both Rust and
+        TypeScript. The Primary stages exact members outside authoritative
+        state, rederives every typed identity from the signed canonical bytes,
+        and invokes the atomic resolver only for a complete transaction.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
   - [x] Include the generated normalized FeedItem capture program in the shared
