@@ -7,6 +7,7 @@ import {
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
+  createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
@@ -261,6 +262,22 @@ describe("Library Core SQLite worker protocol", () => {
     }
     bytes[0] = 9;
     expect(request.commit.envelopeBytes[0]).toEqual(Uint8Array.of(1, 2, 3));
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+  });
+
+  it("carries only closed actor-bound follower intent pages", () => {
+    const request = createLibraryCoreSqliteFollowerIntentPageWorkerRequest(
+      "request-intent-page",
+      {
+        actorId: "actor-1",
+        cursor: null,
+        limit: 128,
+        schemaVersion: 1,
+      },
+    );
+    expect(request.kind).toBe("page_follower_intents");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

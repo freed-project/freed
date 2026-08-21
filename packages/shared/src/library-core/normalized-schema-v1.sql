@@ -828,7 +828,8 @@ CREATE TABLE IF NOT EXISTS library_intent_transactions (
     OR (first_counter > 1 AND previous_operation_id IS NOT NULL)
   ),
   CHECK (published_at IS NULL OR published_at >= created_at),
-  CHECK (resolved_at IS NULL OR resolved_at >= created_at)
+  CHECK (resolved_at IS NULL OR resolved_at >= created_at),
+  UNIQUE (transaction_id, actor_id)
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS library_intent_transactions_pending
@@ -836,7 +837,8 @@ CREATE INDEX IF NOT EXISTS library_intent_transactions_pending
   WHERE state IN ('pending', 'published');
 
 CREATE TABLE IF NOT EXISTS library_intent_members (
-  transaction_id TEXT NOT NULL REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
+  transaction_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
   member_index INTEGER NOT NULL CHECK (member_index >= 0),
   operation_id TEXT NOT NULL UNIQUE,
   actor_counter INTEGER NOT NULL CHECK (actor_counter >= 1),
@@ -845,8 +847,14 @@ CREATE TABLE IF NOT EXISTS library_intent_members (
   entity_id TEXT NOT NULL,
   canonical_member BLOB NOT NULL CHECK (length(canonical_member) BETWEEN 1 AND 131072),
   member_digest TEXT NOT NULL CHECK (length(member_digest) = 64 AND member_digest NOT GLOB '*[^0-9a-f]*'),
-  PRIMARY KEY (transaction_id, member_index)
+  PRIMARY KEY (transaction_id, member_index),
+  UNIQUE (actor_id, actor_counter),
+  FOREIGN KEY (transaction_id, actor_id)
+    REFERENCES library_intent_transactions(transaction_id, actor_id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_intent_members_actor_page
+  ON library_intent_members(actor_id, actor_counter, operation_id, transaction_id);
 
 CREATE TABLE IF NOT EXISTS library_intent_results (
   transaction_id TEXT PRIMARY KEY REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,

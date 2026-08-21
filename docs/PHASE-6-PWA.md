@@ -52,6 +52,13 @@
         settles the intent in one immediate transaction. Exact retries return
         the durable receipt. Changed bytes, gaps, incomplete projections, stale
         authority, and a late cursor fault cannot partially settle the result.
+  - [x] Page pending and published signed intent members directly from browser
+        SQLite through one closed actor-bound worker request. Each page returns
+        at most 128 exact canonical members and 1,048,576 serialized bytes in
+        actor-counter order. The cursor must name the exact stored operation
+        and transaction, one legal 131,072-byte member always fits, and the
+        indexed query uses no offset, table scan, temporary sort, shell, or
+        reconstructed transaction object.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
   - [x] Include the generated normalized FeedItem capture program in the shared
@@ -339,29 +346,29 @@ export function filterByAuthor(
 
 ## Tasks
 
-| Task | Description                                                                                               | Complexity |
-| ---- | --------------------------------------------------------------------------------------------------------- | ---------- |
-| 6.1  | Vite + React + Tailwind scaffold                                                                          | Low        |
-| 6.2  | AppShell layout (sidebar + timeline)                                                                      | Medium     |
-| 6.3  | Feed components (list, item, expanded)                                                                    | Medium     |
-| 6.4  | Virtual scrolling (1000+ items)                                                                           | Medium     |
-| 6.5  | Focus mode text renderer                                                                                  | Low        |
-| 6.6  | Feed ranking algorithm                                                                                    | Medium     |
-| 6.7  | Platform/author filters                                                                                   | Low        |
-| 6.8  | Settings panel                                                                                            | Medium     |
-| 6.9  | RSS sync status dashboard                                                                                 | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML) |
-| 6.10 | Connect to sync layer                                                                                     | Medium     |
-| 6.11 | PWA manifest + service worker                                                                             | Medium     |
-| 6.12 | Offline support + image caching                                                                           | High       |
-| 6.13 | Add to homescreen prompt                                                                                  | Low        |
-| 6.14 | First-run legal gate with local-only acceptance storage                                                   | Low        |
-| 6.15 | URL navigation state with browser back/forward support                                                    | Low        |
-| 6.16 | Public-safe bundles and private GitHub vulnerability reports                                              | Medium     |
-| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                   | High       | ✓ Complete                                                                                       |
-| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium     | ✓ Complete                                                                                       |
-| 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High | ✓ Complete |
-| 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie | High | ✓ Complete |
-| 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity | High | ✓ Complete |
+| Task | Description                                                                                                                               | Complexity |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 6.1  | Vite + React + Tailwind scaffold                                                                                                          | Low        |
+| 6.2  | AppShell layout (sidebar + timeline)                                                                                                      | Medium     |
+| 6.3  | Feed components (list, item, expanded)                                                                                                    | Medium     |
+| 6.4  | Virtual scrolling (1000+ items)                                                                                                           | Medium     |
+| 6.5  | Focus mode text renderer                                                                                                                  | Low        |
+| 6.6  | Feed ranking algorithm                                                                                                                    | Medium     |
+| 6.7  | Platform/author filters                                                                                                                   | Low        |
+| 6.8  | Settings panel                                                                                                                            | Medium     |
+| 6.9  | RSS sync status dashboard                                                                                                                 | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML) |
+| 6.10 | Connect to sync layer                                                                                                                     | Medium     |
+| 6.11 | PWA manifest + service worker                                                                                                             | Medium     |
+| 6.12 | Offline support + image caching                                                                                                           | High       |
+| 6.13 | Add to homescreen prompt                                                                                                                  | Low        |
+| 6.14 | First-run legal gate with local-only acceptance storage                                                                                   | Low        |
+| 6.15 | URL navigation state with browser back/forward support                                                                                    | Low        |
+| 6.16 | Public-safe bundles and private GitHub vulnerability reports                                                                              | Medium     |
+| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                                                   | High       | ✓ Complete                                                                                       |
+| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary                                 | Medium     | ✓ Complete                                                                                       |
+| 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High       | ✓ Complete                                                                                       |
+| 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie     | High       | ✓ Complete                                                                                       |
+| 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity                    | High       | ✓ Complete                                                                                       |
 
 ---
 

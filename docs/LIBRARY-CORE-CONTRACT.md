@@ -327,6 +327,20 @@ signatures that no longer extends the accepted actor tip produces
 `precondition_failed` under that same transaction. It cannot become an
 accepted operation or advance the product revision.
 
+Browser intent export is one actor-bound keyset page over exact signed members
+in `(actor_id, actor_counter)` order. The request carries the actor and, after
+the first page, the exact prior counter, operation ID, and transaction ID. A
+page returns at most 128 closed typed member records and at most 1,048,576
+serialized response bytes. It measures the complete serialized page before
+admitting each member, preserves the canonical envelope JSON byte for byte,
+and never reconstructs or transports a whole transaction object. A legal
+131,072-byte operation envelope always fits the default page. Cross-actor
+cursor reuse, an identity alias, invalid UTF-8, and a response bound too small
+for one member fail closed. Resolved transactions may leave counter gaps in a
+pending page. The signed actor chain inside each canonical envelope remains the
+admission proof. The query uses the actor-counter index with no offset, table
+scan, or temporary sort.
+
 Native result export is one actor-bound keyset page over
 `(actor_id, result_sequence)`. The request carries the actor and, after the
 first page, the exact prior sequence and digest. A page returns at most 128
@@ -541,34 +555,33 @@ entity projection or reader content.
 
 ## 9. Normalized checkpoint v2
 
-The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version
-2. The append-only registry begins with:
+The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version 2. The append-only registry begins with:
 
-| Registry key | Primary key | Purpose |
-| --- | --- | --- |
-| `00_checkpoint_header` | singleton | Library, epoch, schema, registry, frontier, and state commitment |
-| `10_feed_item` | item ID | normalized feed-item row |
-| `11_feed_item_media` | item ID and ordinal | one media rendition reference |
-| `12_feed_item_topic` | item ID and topic | one topic |
-| `13_feed_item_tag` | item ID and tag | one user tag |
-| `14_feed_item_highlight` | item ID and ordinal | one bounded highlight |
-| `15_feed_item_signal` | item ID | signal classifier metadata |
-| `16_feed_item_signal_score` | item ID and signal | one signal score and tag decision |
-| `17_feed_item_event` | item ID | one event candidate |
-| `20_rss_feed` | feed ID | normalized RSS row |
-| `30_person` | person ID | normalized person row |
-| `31_person_tag` | person ID and tag | one person tag |
-| `32_person_reach_out` | person ID and stable reach-out ID | one bounded reach-out event |
-| `40_account` | account ID | normalized account row |
-| `41_account_follow_role` | account ID and role | one provider roster role |
-| `50_preference` | typed node path | one synchronized preference scalar or container marker |
-| `60_relationship` | typed relationship tuple | one normalized relationship |
-| `70_field_clock` | entity and field tuple | one accepted field clock |
-| `80_tombstone` | entity tuple | one entity tombstone |
-| `90_actor_state` | actor ID | enrolled actor and accepted tip |
-| `a0_receipt` | receipt kind and ID | retained authoritative receipt |
-| `b0_blob_descriptor` | content digest | content metadata and chunk plan |
-| `b1_content_chunk` | content digest and chunk index | bounded content bytes when included |
+| Registry key                | Primary key                       | Purpose                                                          |
+| --------------------------- | --------------------------------- | ---------------------------------------------------------------- |
+| `00_checkpoint_header`      | singleton                         | Library, epoch, schema, registry, frontier, and state commitment |
+| `10_feed_item`              | item ID                           | normalized feed-item row                                         |
+| `11_feed_item_media`        | item ID and ordinal               | one media rendition reference                                    |
+| `12_feed_item_topic`        | item ID and topic                 | one topic                                                        |
+| `13_feed_item_tag`          | item ID and tag                   | one user tag                                                     |
+| `14_feed_item_highlight`    | item ID and ordinal               | one bounded highlight                                            |
+| `15_feed_item_signal`       | item ID                           | signal classifier metadata                                       |
+| `16_feed_item_signal_score` | item ID and signal                | one signal score and tag decision                                |
+| `17_feed_item_event`        | item ID                           | one event candidate                                              |
+| `20_rss_feed`               | feed ID                           | normalized RSS row                                               |
+| `30_person`                 | person ID                         | normalized person row                                            |
+| `31_person_tag`             | person ID and tag                 | one person tag                                                   |
+| `32_person_reach_out`       | person ID and stable reach-out ID | one bounded reach-out event                                      |
+| `40_account`                | account ID                        | normalized account row                                           |
+| `41_account_follow_role`    | account ID and role               | one provider roster role                                         |
+| `50_preference`             | typed node path                   | one synchronized preference scalar or container marker           |
+| `60_relationship`           | typed relationship tuple          | one normalized relationship                                      |
+| `70_field_clock`            | entity and field tuple            | one accepted field clock                                         |
+| `80_tombstone`              | entity tuple                      | one entity tombstone                                             |
+| `90_actor_state`            | actor ID                          | enrolled actor and accepted tip                                  |
+| `a0_receipt`                | receipt kind and ID               | retained authoritative receipt                                   |
+| `b0_blob_descriptor`        | content digest                    | content metadata and chunk plan                                  |
+| `b1_content_chunk`          | content digest and chunk index    | bounded content bytes when included                              |
 
 The executable registry is authoritative. This table is explanatory. No
 registry key or payload kind may contain `shell`. Identity is registry key plus
@@ -785,16 +798,16 @@ unbounded list of identities.
 
 Initial blocking budgets at 25,000 representative items are:
 
-| Operation | Budget |
-| --- | ---: |
-| Warm bounded page query p95 | 50 ms |
-| Cold bounded page query p95 | 150 ms |
-| Navigation counts p95 | 100 ms |
-| Search p95 | 150 ms |
-| Commit and materialize 1,000 captured items | 500 ms |
-| Logical checkpoint record | 131,072 canonical bytes |
-| Decoded checkpoint page | 2,097,152 bytes and 128 records |
-| Native export response | 1,048,576 source bytes |
+| Operation                                   |                          Budget |
+| ------------------------------------------- | ------------------------------: |
+| Warm bounded page query p95                 |                           50 ms |
+| Cold bounded page query p95                 |                          150 ms |
+| Navigation counts p95                       |                          100 ms |
+| Search p95                                  |                          150 ms |
+| Commit and materialize 1,000 captured items |                          500 ms |
+| Logical checkpoint record                   |         131,072 canonical bytes |
+| Decoded checkpoint page                     | 2,097,152 bytes and 128 records |
+| Native export response                      |          1,048,576 source bytes |
 
 Renderer retained Library DTOs have one shared 48 MiB settled pool and 64 MiB
 burst pool. SQLite cache budgets are selected from 32 MiB, 64 MiB, and 128 MiB

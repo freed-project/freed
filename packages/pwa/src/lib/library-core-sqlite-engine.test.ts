@@ -347,12 +347,7 @@ describe("PWA Library Core SQLite engine", () => {
                issued_at, retired_at)
             VALUES ('capability-1', ?1, 2, 'editor', 'library_wide', NULL, NULL,
                     ?2, ?3, ?4, '{}', 1, NULL);`,
-      bind: [
-        actorId,
-        "cc".repeat(32),
-        "dd".repeat(32),
-        "ee".repeat(32),
-      ],
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
     });
     database.exec({
       sql: `INSERT INTO library_actor_capability_mutations
@@ -367,27 +362,28 @@ describe("PWA Library Core SQLite engine", () => {
             VALUES ('item-1', 'saved', 'article', 1, 1, 'author-1', 'ada',
                     'Ada', 0, 0, 0, 1);`,
     });
-    const member = FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-      {
-        actor_id: actorId,
-        actor_sequence: 1,
-        causal_frontier: [],
-        created_at_ms: 1_500,
-        entity_id: "item-1",
-        epoch: 1,
-        epoch_id: epochId,
-        hlc_counter: 0,
-        hlc_wall_ms: 1_500,
-        library_id: libraryId,
-        operation_id: "intent-operation-1",
-        payload: { read_at_ms: 1_400 },
-        previous_actor_operation_id: null,
-        transaction_id: "intent-transaction-1",
-        transaction_member_count: 1,
-        transaction_member_index: 0,
-      },
-      { digest: coreDigest },
-    );
+    const member =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 1,
+          causal_frontier: [],
+          created_at_ms: 1_500,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 1_500,
+          library_id: libraryId,
+          operation_id: "intent-operation-1",
+          payload: { read_at_ms: 1_400 },
+          previous_actor_operation_id: null,
+          transaction_id: "intent-transaction-1",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
     const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
       digest: coreDigest,
     });
@@ -432,6 +428,71 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([[2, "intent-operation-1"]]);
+    const intentPage = engine.pageFollowerIntents({
+      actorId,
+      cursor: null,
+      limit: 128,
+      schemaVersion: 1,
+    });
+    expect(intentPage).toEqual({
+      actorId,
+      done: true,
+      nextCursor: {
+        actorCounter: 1,
+        operationId: "intent-operation-1",
+        transactionId: "intent-transaction-1",
+      },
+      records: [
+        {
+          actorCounter: 1,
+          actorId,
+          canonicalEnvelopeJson: new TextDecoder().decode(envelopeBytes[0]),
+          intentEpoch: 1,
+          intentEpochId: epochId,
+          memberCount: 1,
+          memberIndex: 0,
+          operationId: "intent-operation-1",
+          state: "pending",
+          transactionDigest: finalized.transaction_digest,
+          transactionId: "intent-transaction-1",
+        },
+      ],
+      schemaVersion: 1,
+    });
+    expect(() =>
+      engine.pageFollowerIntents({
+        actorId,
+        cursor: {
+          ...intentPage.nextCursor!,
+          operationId: "different-operation",
+        },
+        limit: 128,
+        schemaVersion: 1,
+      }),
+    ).toThrow(/does not name a stored member/);
+    const intentPlan = database.exec({
+      sql: `EXPLAIN QUERY PLAN
+            SELECT member.actor_counter, member.operation_id,
+                   member.transaction_id
+            FROM library_intent_members AS member
+            JOIN library_intent_transactions AS intent
+              ON intent.transaction_id = member.transaction_id
+             AND intent.actor_id = member.actor_id
+            WHERE member.actor_id = ?1
+              AND member.actor_counter > ?2
+              AND intent.state IN ('pending', 'published')
+            ORDER BY member.actor_counter
+            LIMIT ?3;`,
+      bind: [actorId, 0, 129],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    expect(intentPlan.map((row) => String(row[3])).join("\n")).toMatch(
+      /library_intent_members_actor_page/,
+    );
+    expect(intentPlan.map((row) => String(row[3])).join("\n")).not.toMatch(
+      /USE TEMP B-TREE/,
+    );
 
     const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
       actor_id: actorId,
@@ -496,9 +557,9 @@ describe("PWA Library Core SQLite engine", () => {
       status: "accepted",
       transactionId: "intent-transaction-1",
     });
-    expect(
-      await engine.applyFollowerResult({ canonicalResultBytes }),
-    ).toEqual(resultReceipt);
+    expect(await engine.applyFollowerResult({ canonicalResultBytes })).toEqual(
+      resultReceipt,
+    );
     expect(
       database.exec({
         sql: `SELECT read_at, (SELECT count(*) FROM library_optimistic_fields),
@@ -519,7 +580,11 @@ describe("PWA Library Core SQLite engine", () => {
     ).rejects.toThrow(/changed bytes|canonical/);
 
     const decoded = decodeLibraryCoreCanonicalValue(envelopeBytes[0]!);
-    if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
+    if (
+      decoded === null ||
+      typeof decoded !== "object" ||
+      Array.isArray(decoded)
+    ) {
       throw new Error("test follower envelope is not a record");
     }
     const changed = [
@@ -681,7 +746,9 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([[1_400, 8, 1, 1, "pending", 2]]);
 
     database.exec("DROP TRIGGER fail_follower_result_cursor;");
-    await engine.applyFollowerResult({ canonicalResultBytes: secondResultBytes });
+    await engine.applyFollowerResult({
+      canonicalResultBytes: secondResultBytes,
+    });
     const thirdMember =
       FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
         {

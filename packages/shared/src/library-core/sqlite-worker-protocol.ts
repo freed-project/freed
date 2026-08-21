@@ -98,6 +98,9 @@ import {
   parseLibraryCoreFollowerIntentCommitV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
+  parseLibraryCoreFollowerIntentPageRequestV1,
+  type LibraryCoreFollowerIntentPageRequestV1,
+  type LibraryCoreFollowerIntentPageResponseV1,
 } from "./follower-intent-contracts.js";
 import {
   parseLibraryCoreFollowerResultApplyV1,
@@ -158,22 +161,22 @@ export type LibraryCoreSqliteQueryResponseFor<
                   : T extends LibraryCoreMapMarkersRequestV1
                     ? LibraryCoreMapMarkersResponseV1
                     : T extends LibraryCorePersonDetailRequestV1
-                    ? LibraryCorePersonDetailResponseV1
-                    : T extends LibraryCorePersonGraphPageRequestV1
-                      ? LibraryCorePersonGraphPageResponseV1
-                      : T extends LibraryCorePersonTimelineRequestV1
-                        ? LibraryCorePersonTimelineResponseV1
-                        : T extends LibraryCoreRssFeedGraphPageRequestV1
-                          ? LibraryCoreRssFeedGraphPageResponseV1
-                          : T extends LibraryCoreSavedAnalyticsRequestV2
-                            ? LibraryCoreSavedAnalyticsResponseV2
-                            : T extends LibraryCoreSavedFeedPageRequestV2
-                              ? LibraryCoreSavedFeedPageResponseV2
-                              : T extends LibraryCoreStoryWallCandidatesRequestV1
-                                ? LibraryCoreStoryWallCandidatesResponseV1
-                                : T extends LibraryCorePreferencesSnapshotRequestV1
-                                  ? LibraryCorePreferencesSnapshotResponseV1
-                                  : never;
+                      ? LibraryCorePersonDetailResponseV1
+                      : T extends LibraryCorePersonGraphPageRequestV1
+                        ? LibraryCorePersonGraphPageResponseV1
+                        : T extends LibraryCorePersonTimelineRequestV1
+                          ? LibraryCorePersonTimelineResponseV1
+                          : T extends LibraryCoreRssFeedGraphPageRequestV1
+                            ? LibraryCoreRssFeedGraphPageResponseV1
+                            : T extends LibraryCoreSavedAnalyticsRequestV2
+                              ? LibraryCoreSavedAnalyticsResponseV2
+                              : T extends LibraryCoreSavedFeedPageRequestV2
+                                ? LibraryCoreSavedFeedPageResponseV2
+                                : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                  ? LibraryCoreStoryWallCandidatesResponseV1
+                                  : T extends LibraryCorePreferencesSnapshotRequestV1
+                                    ? LibraryCorePreferencesSnapshotResponseV1
+                                    : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -206,6 +209,12 @@ export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
       commit: LibraryCoreFollowerIntentCommitV1;
       kind: "commit_follower_intent";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "page_follower_intents";
+      page: LibraryCoreFollowerIntentPageRequestV1;
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
     }>
@@ -268,6 +277,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1
   | LibraryCoreFollowerIntentCommitResultV1
+  | LibraryCoreFollowerIntentPageResponseV1
   | LibraryCoreFollowerResultApplyReceiptV1;
 
 export type LibraryCoreSqliteWorkerResponse =
@@ -313,17 +323,19 @@ export function parseLibraryCoreSqliteWorkerRequest(
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout"
         ? ["kind", "mutation", "protocolVersion", "requestId"]
-      : value.kind === "commit_follower_intent"
+        : value.kind === "commit_follower_intent"
           ? ["commit", "kind", "protocolVersion", "requestId"]
-        : value.kind === "apply_follower_result"
-          ? ["apply", "kind", "protocolVersion", "requestId"]
-        : value.kind === "begin_normalized_checkpoint_stage"
-          ? ["kind", "protocolVersion", "requestId", "stage"]
-          : value.kind === "append_normalized_checkpoint_stage_page"
+          : value.kind === "page_follower_intents"
             ? ["kind", "page", "protocolVersion", "requestId"]
-            : value.kind === "activate_normalized_checkpoint_stage"
-              ? ["kind", "protocolVersion", "requestId", "stageId"]
-              : ["kind", "protocolVersion", "requestId"];
+            : value.kind === "apply_follower_result"
+              ? ["apply", "kind", "protocolVersion", "requestId"]
+              : value.kind === "begin_normalized_checkpoint_stage"
+                ? ["kind", "protocolVersion", "requestId", "stage"]
+                : value.kind === "append_normalized_checkpoint_stage_page"
+                  ? ["kind", "page", "protocolVersion", "requestId"]
+                  : value.kind === "activate_normalized_checkpoint_stage"
+                    ? ["kind", "protocolVersion", "requestId", "stageId"]
+                    : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -336,6 +348,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "commit_follower_intent",
       "mutate_device_graph_layout",
       "open",
+      "page_follower_intents",
       "query",
       "status",
     ].includes(String(value.kind)) ||
@@ -372,41 +385,41 @@ export function parseLibraryCoreSqliteWorkerRequest(
                       ? parseLibraryCoreItemScanRequestV1(value.query)
                       : value.query.queryId === "map_markers_v1"
                         ? parseLibraryCoreMapMarkersRequestV1(value.query)
-                      : value.query.queryId === "person_detail_v1"
-                        ? parseLibraryCorePersonDetailRequestV1(value.query)
-                        : value.query.queryId === "person_graph_page_v1"
-                          ? parseLibraryCorePersonGraphPageRequestV1(
-                              value.query,
-                            )
-                          : value.query.queryId === "person_timeline_v1"
-                            ? parseLibraryCorePersonTimelineRequestV1(
+                        : value.query.queryId === "person_detail_v1"
+                          ? parseLibraryCorePersonDetailRequestV1(value.query)
+                          : value.query.queryId === "person_graph_page_v1"
+                            ? parseLibraryCorePersonGraphPageRequestV1(
                                 value.query,
                               )
-                            : value.query.queryId === "rss_feed_graph_page_v1"
-                              ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                            : value.query.queryId === "person_timeline_v1"
+                              ? parseLibraryCorePersonTimelineRequestV1(
                                   value.query,
                                 )
-                              : value.query.queryId === "saved_analytics_v2"
-                                ? parseLibraryCoreSavedAnalyticsRequestV2(
+                              : value.query.queryId === "rss_feed_graph_page_v1"
+                                ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                     value.query,
                                   )
-                                : value.query.queryId === "saved_feed_page_v2"
-                                  ? parseLibraryCoreSavedFeedPageRequestV2(
+                                : value.query.queryId === "saved_analytics_v2"
+                                  ? parseLibraryCoreSavedAnalyticsRequestV2(
                                       value.query,
                                     )
-                                  : value.query.queryId ===
-                                      "story_wall_candidates_v1"
-                                    ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                  : value.query.queryId === "saved_feed_page_v2"
+                                    ? parseLibraryCoreSavedFeedPageRequestV2(
                                         value.query,
                                       )
-                                  : value.query.queryId ===
-                                      "preferences_snapshot_v1"
-                                    ? parseLibraryCorePreferencesSnapshotRequestV1(
-                                        value.query,
-                                      )
-                                    : parseLibraryCoreFeedPageRequestV1(
-                                        value.query,
-                                      )
+                                    : value.query.queryId ===
+                                        "story_wall_candidates_v1"
+                                      ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                          value.query,
+                                        )
+                                      : value.query.queryId ===
+                                          "preferences_snapshot_v1"
+                                        ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                            value.query,
+                                          )
+                                        : parseLibraryCoreFeedPageRequestV1(
+                                            value.query,
+                                          )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {
@@ -419,6 +432,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
     return Object.freeze({
       commit,
       kind: "commit_follower_intent",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
+  } else if (value.kind === "page_follower_intents") {
+    return Object.freeze({
+      kind: "page_follower_intents",
+      page: parseLibraryCoreFollowerIntentPageRequestV1(value.page),
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
@@ -452,6 +472,18 @@ export function createLibraryCoreSqliteFollowerIntentCommitWorkerRequest(
   return parseLibraryCoreSqliteWorkerRequest({
     commit,
     kind: "commit_follower_intent",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteFollowerIntentPageWorkerRequest(
+  requestId: string,
+  page: LibraryCoreFollowerIntentPageRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "page_follower_intents",
+    page,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });

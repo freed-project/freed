@@ -10,17 +10,22 @@ import {
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_OPERATION_IDS,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
   type LibraryCoreCanonicalValue,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
+  type LibraryCoreFollowerIntentPageRequestV1,
+  type LibraryCoreFollowerIntentPageResponseV1,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreAcceptedActorStateV1,
   encodeLibraryCoreDigestInput,
   parseLibraryCoreFollowerIntentCommitV1,
+  parseLibraryCoreFollowerIntentPageRequestV1,
+  parseLibraryCoreFollowerIntentPageResponseV1,
   parseLibraryCoreFollowerResultApplyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
@@ -156,6 +161,8 @@ const checkpointDigestPrefix = Uint8Array.from(
   "freed.library-core.v2/digest-records/normalized-checkpoint\u0000",
   (character) => character.charCodeAt(0),
 );
+const strictUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const textEncoder = new TextEncoder();
 
 function lengthBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(8);
@@ -198,6 +205,13 @@ function safeInteger(value: SqlValue | undefined, label: string): number {
 function text(value: SqlValue | undefined, label: string): string {
   if (typeof value !== "string") {
     throw new Error(`${label} is not SQLite text`);
+  }
+  return value;
+}
+
+function bytes(value: SqlValue | undefined, label: string): Uint8Array {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`${label} is not a SQLite blob`);
   }
   return value;
 }
@@ -944,7 +958,9 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (actorRows.length !== 1) {
-      throw new Error("follower intent actor is unavailable in the active epoch");
+      throw new Error(
+        "follower intent actor is unavailable in the active epoch",
+      );
     }
     const actor = actorRows[0]!;
     const actorState = Object.freeze({
@@ -953,7 +969,10 @@ export class PwaLibraryCoreSqliteEngine {
       epoch: safeInteger(actor[1], "follower intent epoch"),
       epoch_id: text(actor[2], "follower intent epoch ID"),
       library_id: text(actor[0], "follower intent Library ID"),
-      next_actor_sequence: safeInteger(actor[5], "follower intent next counter"),
+      next_actor_sequence: safeInteger(
+        actor[5],
+        "follower intent next counter",
+      ),
       previous_actor_operation_id: nullableText(
         actor[6],
         "follower intent previous operation",
@@ -1015,7 +1034,11 @@ export class PwaLibraryCoreSqliteEngine {
         return payload.assigned === true
           ? [
               effect("archived", "boolean", true),
-              effect("archived_at", "integer", payload.assigned_at_ms as number),
+              effect(
+                "archived_at",
+                "integer",
+                payload.assigned_at_ms as number,
+              ),
               effect("saved", "boolean", false),
               effect("saved_at", "null", null),
             ]
@@ -1030,7 +1053,9 @@ export class PwaLibraryCoreSqliteEngine {
           effect(
             "liked_at",
             payload.assigned === true ? "integer" : "null",
-            payload.assigned === true ? (payload.assigned_at_ms as number) : null,
+            payload.assigned === true
+              ? (payload.assigned_at_ms as number)
+              : null,
           ),
         ];
       }
@@ -1085,7 +1110,9 @@ export class PwaLibraryCoreSqliteEngine {
         text(tip[9], "current follower actor public key") !==
           actorState.actor_public_key
       ) {
-        throw new Error("follower intent authority changed during verification");
+        throw new Error(
+          "follower intent authority changed during verification",
+        );
       }
       const nextCounter =
         tip[3] === null
@@ -1104,7 +1131,9 @@ export class PwaLibraryCoreSqliteEngine {
         previousOperation !== actorState.previous_actor_operation_id ||
         previousDigest !== actorState.previous_actor_chain_digest
       ) {
-        throw new Error("follower intent actor tip changed during verification");
+        throw new Error(
+          "follower intent actor tip changed during verification",
+        );
       }
       for (const member of verified.members) {
         const envelope = member.envelope;
@@ -1197,12 +1226,13 @@ export class PwaLibraryCoreSqliteEngine {
         const envelope = member.envelope;
         this.#database.exec({
           sql: `INSERT INTO library_intent_members
-                  (transaction_id, member_index, operation_id, actor_counter,
+                  (transaction_id, actor_id, member_index, operation_id, actor_counter,
                    mutation_id, entity_type, entity_id, canonical_member,
                    member_digest)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);`,
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
           bind: [
             verified.transaction_body.transaction_id,
+            actorState.actor_id,
             memberIndex,
             envelope.operation_id,
             envelope.actor_sequence,
@@ -1227,7 +1257,11 @@ export class PwaLibraryCoreSqliteEngine {
             effect.entityId,
             effect.fieldPath,
             effect.valueType,
-            effect.valueType === "boolean" ? (effect.value === true ? 1 : 0) : null,
+            effect.valueType === "boolean"
+              ? effect.value === true
+                ? 1
+                : 0
+              : null,
             effect.valueType === "integer" ? effect.value : null,
             effect.createdAt,
           ],
@@ -1276,6 +1310,124 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  pageFollowerIntents(
+    input: LibraryCoreFollowerIntentPageRequestV1,
+  ): LibraryCoreFollowerIntentPageResponseV1 {
+    const request = parseLibraryCoreFollowerIntentPageRequestV1(input);
+    if (request.cursor !== null) {
+      const cursorRows = this.#database.exec({
+        sql: `SELECT operation_id, transaction_id
+              FROM library_intent_members
+              WHERE actor_id = ?1 AND actor_counter = ?2;`,
+        bind: [request.actorId, request.cursor.actorCounter],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        cursorRows.length !== 1 ||
+        text(cursorRows[0]![0], "follower intent cursor operation") !==
+          request.cursor.operationId ||
+        text(cursorRows[0]![1], "follower intent cursor transaction") !==
+          request.cursor.transactionId
+      ) {
+        throw new Error(
+          "follower intent page cursor does not name a stored member",
+        );
+      }
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT member.actor_counter, member.operation_id,
+                   member.transaction_id, member.member_index,
+                   member.canonical_member, intent.transaction_digest,
+                   intent.intent_epoch, intent.intent_epoch_id,
+                   intent.member_count, intent.state
+            FROM library_intent_members AS member
+            JOIN library_intent_transactions AS intent
+              ON intent.transaction_id = member.transaction_id
+             AND intent.actor_id = member.actor_id
+            WHERE member.actor_id = ?1
+              AND member.actor_counter > ?2
+              AND intent.state IN ('pending', 'published')
+            ORDER BY member.actor_counter
+            LIMIT ?3;`,
+      bind: [
+        request.actorId,
+        request.cursor?.actorCounter ?? 0,
+        request.limit + 1,
+      ],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const records: Array<
+      LibraryCoreFollowerIntentPageResponseV1["records"][number]
+    > = [];
+    let stoppedForBytes = false;
+    for (const row of rows.slice(0, request.limit)) {
+      const state = text(row[9], "follower intent state");
+      if (state !== "pending" && state !== "published") {
+        throw new Error("follower intent page contains a resolved transaction");
+      }
+      const candidate = Object.freeze({
+        actorCounter: safeInteger(row[0], "follower intent actor counter"),
+        actorId: request.actorId,
+        canonicalEnvelopeJson: strictUtf8Decoder.decode(
+          bytes(row[4], "follower intent canonical member"),
+        ),
+        intentEpoch: safeInteger(row[6], "follower intent epoch"),
+        intentEpochId: text(row[7], "follower intent epoch ID"),
+        memberCount: safeInteger(row[8], "follower intent member count"),
+        memberIndex: safeInteger(row[3], "follower intent member index"),
+        operationId: text(row[1], "follower intent operation ID"),
+        state,
+        transactionDigest: text(row[5], "follower intent transaction digest"),
+        transactionId: text(row[2], "follower intent transaction ID"),
+      });
+      const candidateRecords = [...records, candidate];
+      const candidateResponse = {
+        actorId: request.actorId,
+        done: false,
+        nextCursor: {
+          actorCounter: candidate.actorCounter,
+          operationId: candidate.operationId,
+          transactionId: candidate.transactionId,
+        },
+        records: candidateRecords,
+        schemaVersion: 1,
+      };
+      if (
+        textEncoder.encode(JSON.stringify(candidateResponse)).byteLength >
+        LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES
+      ) {
+        if (records.length === 0) {
+          throw new Error(
+            "one follower intent record exceeds the page boundary",
+          );
+        }
+        stoppedForBytes = true;
+        break;
+      }
+      records.push(candidate);
+    }
+    const last = records.at(-1);
+    return parseLibraryCoreFollowerIntentPageResponseV1({
+      actorId: request.actorId,
+      done:
+        !stoppedForBytes &&
+        rows.length <= request.limit &&
+        records.length === rows.length,
+      nextCursor:
+        last === undefined
+          ? null
+          : {
+              actorCounter: last.actorCounter,
+              operationId: last.operationId,
+              transactionId: last.transactionId,
+            },
+      records,
+      schemaVersion: 1,
+    });
   }
 
   async applyFollowerResult(
@@ -1355,18 +1507,23 @@ export class PwaLibraryCoreSqliteEngine {
         returnValue: "resultRows",
       });
       if (currentAuthority.length !== 1) {
-        throw new Error("follower result authority changed during verification");
+        throw new Error(
+          "follower result authority changed during verification",
+        );
       }
       const current = currentAuthority[0]!;
       if (
         text(current[0], "current result Library ID") !== authority.libraryId ||
         safeInteger(current[1], "current result epoch") !== authority.epoch ||
         text(current[2], "current result epoch ID") !== authority.epochId ||
-        text(current[3], "current result key ID") !== authority.authorityKeyId ||
+        text(current[3], "current result key ID") !==
+          authority.authorityKeyId ||
         text(current[4], "current result public key") !==
           authority.authorityPublicKey
       ) {
-        throw new Error("follower result authority changed during verification");
+        throw new Error(
+          "follower result authority changed during verification",
+        );
       }
       const sourceRevision = safeInteger(
         current[5],
@@ -1398,7 +1555,8 @@ export class PwaLibraryCoreSqliteEngine {
       if (
         text(transaction[0], "follower result transaction digest") !==
           envelope.transaction_digest ||
-        text(transaction[1], "follower result actor ID") !== envelope.actor_id ||
+        text(transaction[1], "follower result actor ID") !==
+          envelope.actor_id ||
         safeInteger(transaction[5], "follower result intent epoch") !==
           envelope.intent_epoch ||
         text(transaction[6], "follower result intent epoch ID") !==
@@ -1454,17 +1612,20 @@ export class PwaLibraryCoreSqliteEngine {
         rowMode: "array",
         returnValue: "resultRows",
       });
-      const replacements = [...envelope.replacement_fields].sort((left, right) => {
-        const leftKey = `${left.entity_type}\u0000${left.entity_id}\u0000${left.field_path}`;
-        const rightKey = `${right.entity_type}\u0000${right.entity_id}\u0000${right.field_path}`;
-        return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-      });
+      const replacements = [...envelope.replacement_fields].sort(
+        (left, right) => {
+          const leftKey = `${left.entity_type}\u0000${left.entity_id}\u0000${left.field_path}`;
+          const rightKey = `${right.entity_type}\u0000${right.entity_id}\u0000${right.field_path}`;
+          return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+        },
+      );
       if (
         optimisticRows.length !== replacements.length ||
         optimisticRows.some((row, index) => {
           const replacement = replacements[index]!;
           return (
-            text(row[0], "optimistic entity type") !== replacement.entity_type ||
+            text(row[0], "optimistic entity type") !==
+              replacement.entity_type ||
             text(row[1], "optimistic entity ID") !== replacement.entity_id ||
             text(row[2], "optimistic field path") !== replacement.field_path
           );
@@ -1674,9 +1835,7 @@ export class PwaLibraryCoreSqliteEngine {
       resultSequence: safeInteger(row[1], "stored follower result sequence"),
       sourceRevision,
       status: text(row[3], "stored follower result status") as
-        | "accepted"
-        | "already_applied"
-        | "rejected",
+        "accepted" | "already_applied" | "rejected",
       transactionId,
     });
   }
@@ -1694,7 +1853,10 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (transactions.length === 0) return null;
     const transaction = transactions[0]!;
-    const memberCount = safeInteger(transaction[1], "stored intent member count");
+    const memberCount = safeInteger(
+      transaction[1],
+      "stored intent member count",
+    );
     const members = this.#database.exec({
       sql: `SELECT canonical_member FROM library_intent_members
             WHERE transaction_id = ?1 ORDER BY member_index;`,
@@ -3235,23 +3397,29 @@ export class PwaLibraryCoreSqliteEngine {
     const rows: LibraryCoreMapMarkerV1[] = rawRows
       .slice(0, request.value.limit)
       .map((row) => ({
-      authorAvatarUrl: nullableText(row.authorAvatarUrl, "map author avatar"),
-      authorDisplayName: text(row.authorDisplayName, "map author display name"),
-      authorHandle: text(row.authorHandle, "map author handle"),
-      authorId: text(row.authorId, "map author identity"),
-      capturedAt: safeInteger(row.capturedAt, "map captured time"),
-      contentText: nullableText(row.contentText, "map content text"),
-      contentType: text(row.contentType, "map content type") as never,
-      globalId: text(row.globalId, "map item identity"),
-      locationLat: row.locationLat === null ? null : Number(row.locationLat),
-      locationLng: row.locationLng === null ? null : Number(row.locationLng),
-      locationName: nullableText(row.locationName, "map location name"),
-      locationUrl: nullableText(row.locationUrl, "map location URL"),
-      platform: text(row.platform, "map platform") as never,
-      publishedAt: safeInteger(row.publishedAt, "map published time"),
-      sourceUrl: nullableText(row.sourceUrl, "map source URL"),
-      timeRangeEndsAt: nullableInteger(row.timeRangeEndsAt, "map range end"),
-      timeRangeStartsAt: nullableInteger(row.timeRangeStartsAt, "map range start"),
+        authorAvatarUrl: nullableText(row.authorAvatarUrl, "map author avatar"),
+        authorDisplayName: text(
+          row.authorDisplayName,
+          "map author display name",
+        ),
+        authorHandle: text(row.authorHandle, "map author handle"),
+        authorId: text(row.authorId, "map author identity"),
+        capturedAt: safeInteger(row.capturedAt, "map captured time"),
+        contentText: nullableText(row.contentText, "map content text"),
+        contentType: text(row.contentType, "map content type") as never,
+        globalId: text(row.globalId, "map item identity"),
+        locationLat: row.locationLat === null ? null : Number(row.locationLat),
+        locationLng: row.locationLng === null ? null : Number(row.locationLng),
+        locationName: nullableText(row.locationName, "map location name"),
+        locationUrl: nullableText(row.locationUrl, "map location URL"),
+        platform: text(row.platform, "map platform") as never,
+        publishedAt: safeInteger(row.publishedAt, "map published time"),
+        sourceUrl: nullableText(row.sourceUrl, "map source URL"),
+        timeRangeEndsAt: nullableInteger(row.timeRangeEndsAt, "map range end"),
+        timeRangeStartsAt: nullableInteger(
+          row.timeRangeStartsAt,
+          "map range start",
+        ),
       }));
     const response = {
       hasMore,
@@ -3264,7 +3432,10 @@ export class PwaLibraryCoreSqliteEngine {
         transitionSequence: sourceRevision,
       },
     };
-    const parsed = parseLibraryCoreMapMarkersResponseV1(response, request.value);
+    const parsed = parseLibraryCoreMapMarkersResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }
@@ -3283,24 +3454,32 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (rawRows.length > program.maximumScanRows) {
-      throw new Error("PWA Library SQLite Story Wall query exceeded its row bound");
+      throw new Error(
+        "PWA Library SQLite Story Wall query exceeded its row bound",
+      );
     }
     const hasMore = rawRows.length > request.value.limit;
     const rows: LibraryCoreStoryWallCandidateV1[] = rawRows
       .slice(0, request.value.limit)
       .map((row) => ({
-      authorDisplayName: text(row.authorDisplayName, "Story Wall author display name"),
-      authorHandle: text(row.authorHandle, "Story Wall author handle"),
-      authorId: text(row.authorId, "Story Wall author identity"),
-      capturedAt: safeInteger(row.capturedAt, "Story Wall captured time"),
-      contentText: nullableText(row.contentText, "Story Wall caption"),
-      globalId: text(row.globalId, "Story Wall item identity"),
-      locationName: nullableText(row.locationName, "Story Wall location"),
-      mediaTypes: stringArray(row.mediaTypesJson, "Story Wall media types") as never,
-      mediaUrls: stringArray(row.mediaUrlsJson, "Story Wall media URLs"),
-      platform: text(row.platform, "Story Wall platform") as never,
-      publishedAt: safeInteger(row.publishedAt, "Story Wall published time"),
-      sourceUrl: nullableText(row.sourceUrl, "Story Wall source URL"),
+        authorDisplayName: text(
+          row.authorDisplayName,
+          "Story Wall author display name",
+        ),
+        authorHandle: text(row.authorHandle, "Story Wall author handle"),
+        authorId: text(row.authorId, "Story Wall author identity"),
+        capturedAt: safeInteger(row.capturedAt, "Story Wall captured time"),
+        contentText: nullableText(row.contentText, "Story Wall caption"),
+        globalId: text(row.globalId, "Story Wall item identity"),
+        locationName: nullableText(row.locationName, "Story Wall location"),
+        mediaTypes: stringArray(
+          row.mediaTypesJson,
+          "Story Wall media types",
+        ) as never,
+        mediaUrls: stringArray(row.mediaUrlsJson, "Story Wall media URLs"),
+        platform: text(row.platform, "Story Wall platform") as never,
+        publishedAt: safeInteger(row.publishedAt, "Story Wall published time"),
+        sourceUrl: nullableText(row.sourceUrl, "Story Wall source URL"),
       }));
     const response = {
       hasMore,
@@ -3313,7 +3492,10 @@ export class PwaLibraryCoreSqliteEngine {
         transitionSequence: sourceRevision,
       },
     };
-    const parsed = parseLibraryCoreStoryWallCandidatesResponseV1(response, request.value);
+    const parsed = parseLibraryCoreStoryWallCandidatesResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

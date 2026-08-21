@@ -150,6 +150,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "page_follower_intents") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.pageFollowerIntents(request.page),
+        });
+        return;
+      }
       if (request.kind === "apply_follower_result") {
         scope.postMessage({
           ok: true,
