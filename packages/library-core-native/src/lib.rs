@@ -82,8 +82,8 @@ pub use normalized_mutation::{
 pub use normalized_query::{
     query_normalized_v1, NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1,
     NormalizedFacetSummaryV1, NormalizedFeedCardV1, NormalizedFeedPageRequestV1,
-    NormalizedFeedPageResponseV1, NormalizedFeedPageSourceV1, NormalizedQueryRequestV1,
-    NormalizedQueryResponseV1,
+    NormalizedFeedPageResponseV1, NormalizedFeedPageSourceV1, NormalizedItemScanRequestV1,
+    NormalizedItemScanResponseV1, NormalizedQueryRequestV1, NormalizedQueryResponseV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

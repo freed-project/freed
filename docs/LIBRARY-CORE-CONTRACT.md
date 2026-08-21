@@ -290,6 +290,15 @@ Both native and browser runtimes reject an offset past the end. An offset at
 the exact end returns an empty range. Views can therefore stream large bodies
 without loading them into React or inventing a whole-item transport.
 
+`background_item_page_v1` is the compact corpus traversal for maintenance and
+background jobs. It orders every normalized FeedItem by binary `globalId`,
+including hidden and archived records, and returns at most 64 metadata cards
+after reading at most 65 rows. Its opaque cursor binds the final identity to
+the exact Library generation and source revision. SQLite satisfies the order
+from the FeedItem primary key. The query has no offset, no total count, and no
+reader-body bytes. A job that needs content follows an explicit locator through
+the ranged reader or selective content plane.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version

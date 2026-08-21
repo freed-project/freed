@@ -71,6 +71,12 @@
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past
         the body fail closed. Freed Desktop view wiring remains open.
+  - [x] `background_item_page_v1` now traverses compact metadata in binary
+        global ID order through a source-fenced primary-key cursor. Each native
+        request returns at most 64 rows, reads at most 65, includes hidden and
+        archived records needed by background jobs, and never carries reader
+        bodies or uses offset paging. Freed Desktop background job wiring
+        remains open.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its

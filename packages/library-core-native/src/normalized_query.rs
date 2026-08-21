@@ -9,6 +9,8 @@ const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
+const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
+const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
@@ -21,6 +23,16 @@ const CURSOR_FIXED_BYTES: usize = 59;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFeedPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemScanRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
@@ -63,6 +75,7 @@ pub enum NormalizedQueryRequestV1 {
     FeedPage(NormalizedFeedPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
+    ItemScan(NormalizedItemScanRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
@@ -116,6 +129,16 @@ pub struct NormalizedFeedPageResponseV1 {
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
     pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemScanResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedFeedCardV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +233,7 @@ pub enum NormalizedQueryResponseV1 {
     FeedPage(NormalizedFeedPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
+    ItemScan(NormalizedItemScanResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
@@ -474,6 +498,89 @@ fn query_feed_page(
     {
         return Err(invalid(
             "normalized feed query response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_item_scan(
+    connection: &mut Connection,
+    request: NormalizedItemScanRequestV1,
+) -> Result<NormalizedItemScanResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=ITEM_SCAN_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized item scan identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "background_item_page_v1")
+        .ok_or(invalid("normalized item scan program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.sort_at != 0
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized item scan cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.2)?;
+    let mut rows = statement.query_map(
+        params![
+            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+            i64::try_from(request.limit + 1).expect("bounded item scan limit"),
+        ],
+        feed_card,
+    )?;
+    let mut cards = Vec::with_capacity(request.limit + 1);
+    for row in rows.by_ref() {
+        cards.push(row?);
+        if cards.len() > program.1 {
+            return Err(invalid("normalized item scan exceeded its row bound"));
+        }
+    }
+    drop(rows);
+    drop(statement);
+    let has_more = cards.len() > request.limit;
+    cards.truncate(request.limit);
+    let next_cursor = if has_more {
+        let last = cards
+            .last()
+            .ok_or(invalid("normalized item scan cursor row is missing"))?;
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            sort_at: 0,
+            global_id: last.global_id.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedItemScanResponseV1 {
+        next_cursor,
+        query_id: "background_item_page_v1".to_owned(),
+        rows: cards,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized item scan response is invalid"))?
+        .len()
+        > ITEM_SCAN_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized item scan response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -889,6 +996,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemReaderBody(request) => Ok(
             NormalizedQueryResponseV1::ItemReaderBody(query_item_reader_body(connection, request)?),
         ),
+        NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
+            query_item_scan(connection, request)?,
+        )),
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -1073,6 +1183,105 @@ mod tests {
             }),
         )
         .expect_err("stale cursor");
+        assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_item_scan_uses_primary_key_pages_and_includes_background_rows() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "background_item_page_v1")
+            .expect("item scan program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .expect("item scan plan");
+        let plan = plan_statement
+            .query_map(params![Option::<String>::None, 3], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH item USING INDEX")));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN item")));
+        assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        drop(plan_statement);
+
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, hidden, saved,
+                    archived, updated_at)
+                   VALUES
+                     ('item-2', 'saved', 'article', 200, 200, 'author-1', 'ada',
+                      'Ada', 0, 1, 1, 200),
+                     ('item-1', 'rss', 'article', 100, 100, 'author-2', 'grace',
+                      'Grace', 0, 0, 0, 100),
+                     ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden',
+                      'Hidden', 1, 0, 0, 300);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedItemScanRequestV1 {
+            cancellation_id: "cancel-scan-1".to_owned(),
+            cursor: None,
+            limit: 2,
+            reader_session_id: "reader-scan-1".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::ItemScan(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemScan(request.clone()),
+        )
+        .expect("first item scan page") else {
+            panic!("item scan response");
+        };
+        assert_eq!(
+            first
+                .rows
+                .iter()
+                .map(|row| row.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["hidden", "item-1"]
+        );
+        let cursor = first.next_cursor.expect("item scan cursor");
+        let NormalizedQueryResponseV1::ItemScan(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemScan(NormalizedItemScanRequestV1 {
+                cursor: Some(cursor.clone()),
+                ..request.clone()
+            }),
+        )
+        .expect("second item scan page") else {
+            panic!("item scan response");
+        };
+        assert_eq!(second.rows[0].global_id, "item-2");
+        assert_eq!(second.rows[0].archived, Some(true));
+        assert!(second.next_cursor.is_none());
+
+        connection
+            .execute(
+                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("advance revision");
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ItemScan(NormalizedItemScanRequestV1 {
+                cursor: Some(cursor),
+                ..request
+            }),
+        )
+        .expect_err("stale item scan cursor");
         assert!(error.to_string().contains("cursor is stale"));
     }
 

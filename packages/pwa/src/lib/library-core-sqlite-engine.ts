@@ -25,6 +25,10 @@ import {
   parseLibraryCoreItemDetailResponseV1,
   parseLibraryCoreItemReaderBodyRequestV1,
   parseLibraryCoreItemReaderBodyResponseV1,
+  decodeLibraryCoreItemScanCursorV1,
+  encodeLibraryCoreItemScanCursorV1,
+  parseLibraryCoreItemScanRequestV1,
+  parseLibraryCoreItemScanResponseV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -51,6 +55,8 @@ import {
   type LibraryCoreItemDetailResponseV1,
   type LibraryCoreItemReaderBodyRequestV1,
   type LibraryCoreItemReaderBodyResponseV1,
+  type LibraryCoreItemScanRequestV1,
+  type LibraryCoreItemScanResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -682,6 +688,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemReaderBody(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "background_item_page_v1":
+        return this.#queryItemScan(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -994,6 +1004,76 @@ export class PwaLibraryCoreSqliteEngine {
       response,
       request.value,
     );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryItemScan(
+    input: LibraryCoreItemScanRequestV1,
+  ): LibraryCoreItemScanResponseV1 {
+    const request = parseLibraryCoreItemScanRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const sourceRows = this.#database.exec({
+      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (sourceRows.length !== 1) {
+      throw new Error("PWA Library SQLite has no active Library");
+    }
+    const generationId = text(sourceRows[0]![0], "Library identity");
+    const sourceRevision = safeInteger(
+      sourceRows[0]![1],
+      "Library source revision",
+    );
+    let afterGlobalId: string | null = null;
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreItemScanCursorV1(request.value.cursor);
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite item scan cursor is stale");
+      }
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.background_item_page_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [afterGlobalId, request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite item scan exceeded its row bound");
+    }
+    const hasMore = rows.length > request.value.limit;
+    const cards = rows
+      .slice(0, request.value.limit)
+      .map((row) => feedCardFromSqliteRow(row));
+    const last = cards.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreItemScanCursorV1({
+              generationId: generationId as never,
+              globalId: last.globalId,
+              projectionRevision: sourceRevision,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "background_item_page_v1" as const,
+      rows: cards,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreItemScanResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

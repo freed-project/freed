@@ -328,6 +328,26 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
     expect(second.nextCursor).toBeNull();
+    const scanRequest = {
+      cancellationId: operationId("cancel-scan-1"),
+      cursor: null,
+      limit: 2,
+      queryId: "background_item_page_v1" as const,
+      readerSessionId: operationId("reader-scan-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstScan = engine.query(scanRequest);
+    expect(firstScan.rows.map((row) => row.globalId)).toEqual([
+      "hidden",
+      "item-1",
+    ]);
+    expect(firstScan.nextCursor).not.toBeNull();
+    const secondScan = engine.query({
+      ...scanRequest,
+      cursor: firstScan.nextCursor,
+    });
+    expect(secondScan.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(secondScan.nextCursor).toBeNull();
     expect(
       engine.query({
         globalId: "item-2",
@@ -452,6 +472,12 @@ describe("PWA Library Core SQLite engine", () => {
       ],
       source: { projectionRevision: 7 },
     });
+    database.exec(
+      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.query({ ...scanRequest, cursor: firstScan.nextCursor }),
+    ).toThrow(/cursor is stale/);
   });
 
   it("stages bounded normalized records idempotently and rejects changed replay", () => {

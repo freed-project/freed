@@ -75,6 +75,11 @@
         SQLite text or content-addressed chunks through the same closed worker
         query union as native Rust. Cross-chunk ranges reassemble losslessly,
         and no reader request can return more than 256 KiB of body bytes.
+  - [x] `background_item_page_v1` uses the same source-fenced binary identity
+        cursor as native Rust to traverse compact background metadata. Browser
+        SQLite returns at most 64 rows from a 65-row primary-key read, includes
+        hidden and archived records, and never returns reader bodies or accepts
+        arbitrary SQL.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

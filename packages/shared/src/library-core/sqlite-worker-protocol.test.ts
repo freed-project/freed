@@ -54,6 +54,16 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-item-scan", {
+        cancellationId: "cancel-scan-1",
+        cursor: null,
+        limit: 64,
+        queryId: "background_item_page_v1",
+        readerSessionId: "reader-scan-1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {
