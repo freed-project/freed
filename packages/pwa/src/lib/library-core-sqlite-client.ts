@@ -1,5 +1,7 @@
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
+  createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
+  createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteFeedPageWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
@@ -7,6 +9,9 @@ import {
   type LibraryCoreSqliteWorkerStatus,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreBeginNormalizedCheckpointStageV2,
+  type LibraryCoreNormalizedCheckpointStagePageV2,
+  type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "@freed/shared/library-core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -14,7 +19,10 @@ const REQUEST_TIMEOUT_MS = 30_000;
 interface PendingRequest {
   readonly reject: (error: Error) => void;
   readonly resolve: (
-    value: LibraryCoreSqliteWorkerStatus | LibraryCoreFeedPageResponseV1,
+    value:
+      | LibraryCoreSqliteWorkerStatus
+      | LibraryCoreFeedPageResponseV1
+      | LibraryCoreNormalizedCheckpointStageStatusV2,
   ) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
 }
@@ -33,7 +41,9 @@ export class PwaLibraryCoreSqliteClient {
       this.#receive(event.data);
     });
     this.#worker.addEventListener("error", () => {
-      this.#failAll(new Error("PWA Library SQLite worker stopped unexpectedly"));
+      this.#failAll(
+        new Error("PWA Library SQLite worker stopped unexpectedly"),
+      );
     });
   }
 
@@ -50,6 +60,22 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreFeedPageResponseV1> {
     return this.#send<LibraryCoreFeedPageResponseV1>((requestId) =>
       createLibraryCoreSqliteFeedPageWorkerRequest(requestId, query),
+    );
+  }
+
+  beginNormalizedCheckpointStage(
+    stage: LibraryCoreBeginNormalizedCheckpointStageV2,
+  ): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteBeginCheckpointWorkerRequest(requestId, stage),
+    );
+  }
+
+  appendNormalizedCheckpointStagePage(
+    page: LibraryCoreNormalizedCheckpointStagePageV2,
+  ): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteAppendCheckpointPageWorkerRequest(requestId, page),
     );
   }
 
@@ -71,15 +97,19 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
-  #send<T extends LibraryCoreSqliteWorkerStatus | LibraryCoreFeedPageResponseV1>(
+  #send<
+    T extends
+      | LibraryCoreSqliteWorkerStatus
+      | LibraryCoreFeedPageResponseV1
+      | LibraryCoreNormalizedCheckpointStageStatusV2,
+  >(
     createRequest: (requestId: string) => LibraryCoreSqliteWorkerRequest,
   ): Promise<T> {
     if (this.#closed) {
       return Promise.reject(new Error("PWA Library SQLite client is closed"));
     }
     if (
-      this.#pending.size >=
-      LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS
+      this.#pending.size >= LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS
     ) {
       return Promise.reject(
         new Error("PWA Library SQLite request queue is full"),

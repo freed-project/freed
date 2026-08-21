@@ -31,6 +31,10 @@
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.
+  - [x] Stage closed normalized records directly in browser SQLite with the
+        exact 128-record and 2,097,152-byte page ceilings, canonical byte
+        identity, idempotent replay, and changed-replay rejection. IndexedDB
+        and Library shells do not participate in staging.
 - [ ] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.
   - [x] `feed_page_v1` executes the generated normalized SQL in SQLite
@@ -187,7 +191,7 @@ export interface FocusOptions {
 
 export function applyFocusMode(
   text: string,
-  options: FocusOptions
+  options: FocusOptions,
 ): TextSegment[] {
   if (!options.enabled) return [{ text, emphasis: false }];
 
@@ -227,7 +231,7 @@ export function sortFeedItems(items: FeedItem[]): FeedItem[] {
 // Optional: local filtering (doesn't recompute scores)
 export function filterByPlatform(
   items: FeedItem[],
-  platform: Platform | null
+  platform: Platform | null,
 ): FeedItem[] {
   if (!platform) return items;
   return items.filter((item) => item.platform === platform);
@@ -235,7 +239,7 @@ export function filterByPlatform(
 
 export function filterByAuthor(
   items: FeedItem[],
-  authorId: string | null
+  authorId: string | null,
 ): FeedItem[] {
   if (!authorId) return items;
   return items.filter((item) => item.author.id === authorId);
@@ -248,26 +252,26 @@ export function filterByAuthor(
 
 ## Tasks
 
-| Task | Description                            | Complexity |
-| ---- | -------------------------------------- | ---------- |
-| 6.1  | Vite + React + Tailwind scaffold       | Low        |
-| 6.2  | AppShell layout (sidebar + timeline)   | Medium     |
-| 6.3  | Feed components (list, item, expanded) | Medium     |
-| 6.4  | Virtual scrolling (1000+ items)        | Medium     |
-| 6.5  | Focus mode text renderer               | Low        |
-| 6.6  | Feed ranking algorithm                 | Medium     |
-| 6.7  | Platform/author filters                | Low        |
-| 6.8  | Settings panel                         | Medium     |
-| 6.9  | RSS sync status dashboard              | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML)
-| 6.10 | Connect to sync layer                  | Medium     |
-| 6.11 | PWA manifest + service worker          | Medium     |
-| 6.12 | Offline support + image caching        | High       |
-| 6.13 | Add to homescreen prompt               | Low        |
-| 6.14 | First-run legal gate with local-only acceptance storage | Low |
-| 6.15 | URL navigation state with browser back/forward support | Low |
-| 6.16 | Public-safe bundles and private GitHub vulnerability reports | Medium |
-| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall | High | ✓ Complete |
-| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium | ✓ Complete |
+| Task | Description                                                                                               | Complexity |
+| ---- | --------------------------------------------------------------------------------------------------------- | ---------- |
+| 6.1  | Vite + React + Tailwind scaffold                                                                          | Low        |
+| 6.2  | AppShell layout (sidebar + timeline)                                                                      | Medium     |
+| 6.3  | Feed components (list, item, expanded)                                                                    | Medium     |
+| 6.4  | Virtual scrolling (1000+ items)                                                                           | Medium     |
+| 6.5  | Focus mode text renderer                                                                                  | Low        |
+| 6.6  | Feed ranking algorithm                                                                                    | Medium     |
+| 6.7  | Platform/author filters                                                                                   | Low        |
+| 6.8  | Settings panel                                                                                            | Medium     |
+| 6.9  | RSS sync status dashboard                                                                                 | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML) |
+| 6.10 | Connect to sync layer                                                                                     | Medium     |
+| 6.11 | PWA manifest + service worker                                                                             | Medium     |
+| 6.12 | Offline support + image caching                                                                           | High       |
+| 6.13 | Add to homescreen prompt                                                                                  | Low        |
+| 6.14 | First-run legal gate with local-only acceptance storage                                                   | Low        |
+| 6.15 | URL navigation state with browser back/forward support                                                    | Low        |
+| 6.16 | Public-safe bundles and private GitHub vulnerability reports                                              | Medium     |
+| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                   | High       | ✓ Complete                                                                                       |
+| 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium     | ✓ Complete                                                                                       |
 
 ---
 

@@ -33,7 +33,9 @@ async function acquireOwnership(): Promise<void> {
     { ifAvailable: true, mode: "exclusive" },
     async (lock) => {
       if (!lock) {
-        rejectAcquired?.(new Error("PWA Library SQLite is already open in another app window"));
+        rejectAcquired?.(
+          new Error("PWA Library SQLite is already open in another app window"),
+        );
         return;
       }
       resolveAcquired?.();
@@ -76,7 +78,8 @@ function failure(
   requestId: string,
   error: unknown,
 ): LibraryCoreSqliteWorkerResponse {
-  const message = error instanceof Error ? error.message : "PWA Library SQLite failed";
+  const message =
+    error instanceof Error ? error.message : "PWA Library SQLite failed";
   return {
     code: message.includes("already open")
       ? "library_busy"
@@ -97,6 +100,22 @@ scope.onmessage = (event) => {
       requestId = request.requestId;
       const active = request.kind === "open" ? await open() : engine;
       if (!active) throw new Error("PWA Library SQLite is not open");
+      if (request.kind === "begin_normalized_checkpoint_stage") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.beginNormalizedCheckpointStage(request.stage),
+        });
+        return;
+      }
+      if (request.kind === "append_normalized_checkpoint_stage_page") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.appendNormalizedCheckpointStagePage(request.page),
+        });
+        return;
+      }
       if (request.kind === "query_feed_page") {
         scope.postMessage({
           ok: true,

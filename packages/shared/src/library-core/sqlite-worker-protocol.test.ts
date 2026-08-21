@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createLibraryCoreNormalizedCheckpointRecordV2 } from "./normalized-checkpoint-contracts.js";
 import {
+  createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
+  createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteFeedPageWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
@@ -16,16 +19,52 @@ describe("Library Core SQLite worker protocol", () => {
 
   it("carries only the closed feed-page query contract", () => {
     const request = createLibraryCoreSqliteFeedPageWorkerRequest("request-2", {
-      cancellationId: "cancel-1",
+      cancellationId: "cancel-1" as never,
       cursor: null,
       limit: 64,
       queryId: "feed_page_v1",
-      readerSessionId: "reader-1",
+      readerSessionId: "reader-1" as never,
       schemaVersion: 1,
     });
     expect(request.kind).toBe("query_feed_page");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+  });
+
+  it("carries closed bounded normalized checkpoint stage requests", () => {
+    const begin = createLibraryCoreSqliteBeginCheckpointWorkerRequest(
+      "request-3",
+      {
+        authorityEpoch: "epoch-1",
+        createdAt: 1_000,
+        expectedCheckpointDigest: "a".repeat(64) as never,
+        expectedRecordCount: 1,
+        libraryId: "library-1",
+        sourceRevision: 7,
+        stageId: "stage-1",
+      },
+    );
+    expect(begin.kind).toBe("begin_normalized_checkpoint_stage");
+    const record = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: "epoch-1",
+        checkpointId: "library-1:epoch-1:7",
+        createdAtMs: 1_000,
+        libraryId: "library-1",
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    const append = createLibraryCoreSqliteAppendCheckpointPageWorkerRequest(
+      "request-4",
+      { records: [record], stageId: "stage-1" },
+    );
+    expect(append.kind).toBe("append_normalized_checkpoint_stage_page");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
   });
 

@@ -21,6 +21,7 @@ import {
   isLibraryCoreNonnegativeSafeInteger,
   type LibraryCoreLowercaseHex64,
 } from "./protocol-scalars.js";
+import { LibraryCoreSha256 } from "./sha256.js";
 
 export type LibraryCoreNormalizedCheckpointPrimaryKeyV2 =
   | string
@@ -58,6 +59,10 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 const binary64Buffer = new ArrayBuffer(8);
 const binary64View = new DataView(binary64Buffer);
+const checkpointDigestPrefix = Uint8Array.from(
+  "freed.library-core.v2/digest-records/normalized-checkpoint\u0000",
+  (character) => character.charCodeAt(0),
+);
 
 function encodeBinary64(value: number): Readonly<Record<string, string>> {
   if (!Number.isFinite(value)) {
@@ -83,7 +88,11 @@ function decodeBinary64(value: unknown): number {
   ) {
     throw new TypeError("checkpoint fractional wrapper identity is invalid");
   }
-  binary64View.setUint32(0, Number.parseInt(wrapper.bits.slice(0, 8), 16), false);
+  binary64View.setUint32(
+    0,
+    Number.parseInt(wrapper.bits.slice(0, 8), 16),
+    false,
+  );
   binary64View.setUint32(4, Number.parseInt(wrapper.bits.slice(8), 16), false);
   const decoded = binary64View.getFloat64(0, false);
   if (!Number.isFinite(decoded)) {
@@ -96,16 +105,18 @@ function encodeFractionalPayload(
   registryKey: LibraryCoreCheckpointRegistryKey,
   payload: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
-  const fields = (
-    LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS as Partial<
-      Record<LibraryCoreCheckpointRegistryKey, readonly string[]>
-    >
-  )[registryKey] ?? [];
+  const fields =
+    (
+      LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS as Partial<
+        Record<LibraryCoreCheckpointRegistryKey, readonly string[]>
+      >
+    )[registryKey] ?? [];
   if (fields.length === 0) return payload;
   const output = { ...payload };
   for (const field of fields) {
     const value = output[field];
-    if (value === null || value === undefined || Number.isSafeInteger(value)) continue;
+    if (value === null || value === undefined || Number.isSafeInteger(value))
+      continue;
     if (typeof value === "number") {
       output[field] = encodeBinary64(value);
     } else {
@@ -150,7 +161,9 @@ function base64Encode(bytes: Uint8Array): string {
 function base64Decode(value: string): Uint8Array {
   if (
     value.length % 4 !== 0 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
   ) {
     throw new TypeError("content chunk bytesBase64 is not canonical base64");
   }
@@ -201,11 +214,7 @@ function boundedPrimaryKey(
     }),
   );
   if (codec === "singleton" && snapshot === "checkpoint") return snapshot;
-  if (
-    codec === "text" &&
-    typeof snapshot === "string" &&
-    snapshot.length > 0
-  ) {
+  if (codec === "text" && typeof snapshot === "string" && snapshot.length > 0) {
     return snapshot;
   }
   if (codec === "digest" && isLibraryCoreLowercaseHex64(snapshot)) {
@@ -291,9 +300,78 @@ export function parseLibraryCoreNormalizedCheckpointRecordV2(
   }
   return createLibraryCoreNormalizedCheckpointRecordV2({
     registryKey: registryEntry(record.registryKey).registryKey,
-    primaryKey: record.primaryKey as LibraryCoreNormalizedCheckpointPrimaryKeyV2,
-    payload: record.payload as Readonly<Record<string, LibraryCoreCanonicalValue>>,
+    primaryKey:
+      record.primaryKey as LibraryCoreNormalizedCheckpointPrimaryKeyV2,
+    payload: record.payload as Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >,
   });
+}
+
+export function encodeLibraryCoreNormalizedCheckpointRecordV2(
+  record: LibraryCoreNormalizedCheckpointRecordV2,
+): Uint8Array {
+  return Uint8Array.from(
+    encodeLibraryCoreCanonicalValue(
+      parseLibraryCoreNormalizedCheckpointRecordV2(
+        record,
+      ) as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES },
+    ),
+  );
+}
+
+function compareBytes(left: Uint8Array, right: Uint8Array): number {
+  const length = Math.min(left.byteLength, right.byteLength);
+  for (let index = 0; index < length; index += 1) {
+    const difference = left[index]! - right[index]!;
+    if (difference !== 0) return difference;
+  }
+  return left.byteLength - right.byteLength;
+}
+
+function canonicalLengthBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, BigInt(length), false);
+  return bytes;
+}
+
+export function digestLibraryCoreNormalizedCheckpointRecordsV2(
+  records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+): LibraryCoreLowercaseHex64 {
+  const encoded = records.map((record) => {
+    const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+    return {
+      canonical: encodeLibraryCoreNormalizedCheckpointRecordV2(parsed),
+      primaryKey: encodeLibraryCoreCanonicalValue(parsed.primaryKey, {
+        maximumBytes: 4_096,
+      }),
+      registryKey: parsed.registryKey,
+    };
+  });
+  encoded.sort((left, right) =>
+    left.registryKey === right.registryKey
+      ? compareBytes(left.primaryKey, right.primaryKey)
+      : left.registryKey < right.registryKey
+        ? -1
+        : 1,
+  );
+  for (let index = 1; index < encoded.length; index += 1) {
+    const previous = encoded[index - 1]!;
+    const current = encoded[index]!;
+    if (
+      previous.registryKey === current.registryKey &&
+      compareBytes(previous.primaryKey, current.primaryKey) === 0
+    ) {
+      throw new TypeError("checkpoint record identity is duplicated");
+    }
+  }
+  const digest = new LibraryCoreSha256().update(checkpointDigestPrefix);
+  for (const record of encoded) {
+    digest.update(canonicalLengthBytes(record.canonical.byteLength));
+    digest.update(record.canonical);
+  }
+  return digest.digestLowerHex();
 }
 
 export function libraryCoreNormalizedCheckpointRecordIdentityV2(
@@ -319,7 +397,9 @@ export function splitLibraryCoreContentV1(input: {
     throw new TypeError("content mediaType must be bounded nonempty text");
   }
   const digest = digestLibraryCoreMediaBlobBytesV1(input.bytes);
-  const chunkCount = Math.ceil(input.bytes.byteLength / LIBRARY_CORE_CONTENT_CHUNK_BYTES);
+  const chunkCount = Math.ceil(
+    input.bytes.byteLength / LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+  );
   const records: LibraryCoreNormalizedCheckpointRecordV2[] = [
     createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "b0_blob_descriptor",
@@ -367,7 +447,13 @@ export function reassembleLibraryCoreContentV1(
   }
   const descriptor = ownClosedRecord(
     descriptorRecord.payload,
-    ["blobContentDigest", "byteLength", "chunkBytes", "chunkCount", "mediaType"],
+    [
+      "blobContentDigest",
+      "byteLength",
+      "chunkBytes",
+      "chunkCount",
+      "mediaType",
+    ],
     "content descriptor",
   );
   if (
@@ -394,7 +480,13 @@ export function reassembleLibraryCoreContentV1(
   chunks.forEach((record, chunkIndex) => {
     const payload = ownClosedRecord(
       record.payload,
-      ["blobContentDigest", "byteLength", "bytesBase64", "chunkContentDigest", "chunkIndex"],
+      [
+        "blobContentDigest",
+        "byteLength",
+        "bytesBase64",
+        "chunkContentDigest",
+        "chunkIndex",
+      ],
       "content chunk",
     );
     if (

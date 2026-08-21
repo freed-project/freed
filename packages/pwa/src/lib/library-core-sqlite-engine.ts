@@ -13,10 +13,25 @@ import {
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
+  assertLibraryCoreNormalizedCheckpointPageBytesV2,
+  encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreBeginNormalizedCheckpointStageV2,
+  parseLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreNormalizedCheckpointStagePageV2,
+  LibraryCoreSha256,
+  type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreNormalizedCheckpointStagePageV2,
+  type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "@freed/shared/library-core";
+
+const stagedRecordDigestPrefix = Uint8Array.from(
+  "freed.library-core.v2/digest-bytes/staged-checkpoint-record\u0000",
+  (character) => character.charCodeAt(0),
+);
 
 function safeInteger(value: SqlValue | undefined, label: string): number {
   const number = typeof value === "bigint" ? Number(value) : value;
@@ -33,7 +48,10 @@ function text(value: SqlValue | undefined, label: string): string {
   return value;
 }
 
-function nullableText(value: SqlValue | undefined, label: string): string | null {
+function nullableText(
+  value: SqlValue | undefined,
+  label: string,
+): string | null {
   return value === null ? null : text(value, label);
 }
 
@@ -50,16 +68,26 @@ function nullableInteger(
   return integer;
 }
 
-function nullableBoolean(value: SqlValue | undefined, label: string): boolean | null {
+function nullableBoolean(
+  value: SqlValue | undefined,
+  label: string,
+): boolean | null {
   if (value === null) return null;
   const integer = safeInteger(value, label);
-  if (integer !== 0 && integer !== 1) throw new Error(`${label} is not boolean`);
+  if (integer !== 0 && integer !== 1)
+    throw new Error(`${label} is not boolean`);
   return integer === 1;
 }
 
-function stringArray(value: SqlValue | undefined, label: string): readonly string[] {
+function stringArray(
+  value: SqlValue | undefined,
+  label: string,
+): readonly string[] {
   const parsed = JSON.parse(text(value, label)) as unknown;
-  if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) {
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((entry) => typeof entry !== "string")
+  ) {
     throw new Error(`${label} is not a text array`);
   }
   return Object.freeze(parsed);
@@ -100,7 +128,9 @@ export class PwaLibraryCoreSqliteEngine {
           LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
         ],
       });
-      this.#database.exec(`PRAGMA user_version = ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION};`);
+      this.#database.exec(
+        `PRAGMA user_version = ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION};`,
+      );
     } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION) {
       throw new Error("PWA Library SQLite schema version is unsupported");
     }
@@ -133,7 +163,165 @@ export class PwaLibraryCoreSqliteEngine {
     });
   }
 
-  queryFeedPage(input: LibraryCoreFeedPageRequestV1): LibraryCoreFeedPageResponseV1 {
+  beginNormalizedCheckpointStage(
+    input: LibraryCoreBeginNormalizedCheckpointStageV2,
+  ): LibraryCoreNormalizedCheckpointStageStatusV2 {
+    const stage = parseLibraryCoreBeginNormalizedCheckpointStageV2(input);
+    this.#database.exec({
+      sql: `INSERT OR IGNORE INTO library_checkpoint_stages
+              (stage_id, library_id, authority_epoch, source_revision,
+               expected_record_count, expected_checkpoint_digest, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);`,
+      bind: [
+        stage.stageId,
+        stage.libraryId,
+        stage.authorityEpoch,
+        stage.sourceRevision,
+        stage.expectedRecordCount,
+        stage.expectedCheckpointDigest,
+        stage.createdAt,
+      ],
+    });
+    const matches = this.#database.exec({
+      sql: `SELECT library_id = ?2 AND authority_epoch = ?3 AND source_revision = ?4
+                   AND expected_record_count = ?5 AND expected_checkpoint_digest = ?6
+                   AND created_at = ?7
+            FROM library_checkpoint_stages WHERE stage_id = ?1;`,
+      bind: [
+        stage.stageId,
+        stage.libraryId,
+        stage.authorityEpoch,
+        stage.sourceRevision,
+        stage.expectedRecordCount,
+        stage.expectedCheckpointDigest,
+        stage.createdAt,
+      ],
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    if (
+      matches.length !== 1 ||
+      safeInteger(matches[0], "checkpoint stage replay") !== 1
+    ) {
+      throw new Error(
+        "normalized checkpoint stage replay changed its identity",
+      );
+    }
+    return this.#checkpointStageStatus(stage.stageId);
+  }
+
+  appendNormalizedCheckpointStagePage(
+    input: LibraryCoreNormalizedCheckpointStagePageV2,
+  ): LibraryCoreNormalizedCheckpointStageStatusV2 {
+    const page = parseLibraryCoreNormalizedCheckpointStagePageV2(input);
+    const records = page.records.map((record) => {
+      const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+      const canonical = encodeLibraryCoreNormalizedCheckpointRecordV2(parsed);
+      return {
+        canonical,
+        digest: new LibraryCoreSha256()
+          .update(stagedRecordDigestPrefix)
+          .update(canonical)
+          .digestLowerHex(),
+        primaryKey: encodeLibraryCoreCanonicalValue(parsed.primaryKey, {
+          maximumBytes: 4_096,
+        }),
+        registryKey: parsed.registryKey,
+      };
+    });
+    const pageBytes = records.reduce(
+      (total, record) => total + record.canonical.byteLength,
+      0,
+    );
+    assertLibraryCoreNormalizedCheckpointPageBytesV2(pageBytes);
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const expectedRows = this.#database.exec({
+        sql: "SELECT expected_record_count FROM library_checkpoint_stages WHERE stage_id = ?1;",
+        bind: [page.stageId],
+        rowMode: 0,
+        returnValue: "resultRows",
+      });
+      if (expectedRows.length !== 1) {
+        throw new Error("normalized checkpoint stage does not exist");
+      }
+      const expectedRecordCount = safeInteger(
+        expectedRows[0],
+        "checkpoint expected record count",
+      );
+      for (const record of records) {
+        this.#database.exec({
+          sql: `INSERT OR IGNORE INTO library_checkpoint_stage_records
+                  (stage_id, registry_key, primary_key_canonical, record_canonical, record_digest)
+                VALUES (?1, ?2, ?3, ?4, ?5);`,
+          bind: [
+            page.stageId,
+            record.registryKey,
+            record.primaryKey,
+            record.canonical,
+            record.digest,
+          ],
+        });
+        const replay = this.#database.exec({
+          sql: `SELECT record_digest = ?4 AND record_canonical = ?5
+                FROM library_checkpoint_stage_records
+                WHERE stage_id = ?1 AND registry_key = ?2 AND primary_key_canonical = ?3;`,
+          bind: [
+            page.stageId,
+            record.registryKey,
+            record.primaryKey,
+            record.digest,
+            record.canonical,
+          ],
+          rowMode: 0,
+          returnValue: "resultRows",
+        });
+        if (
+          replay.length !== 1 ||
+          safeInteger(replay[0], "checkpoint record replay") !== 1
+        ) {
+          throw new Error(
+            "normalized checkpoint record replay changed its bytes",
+          );
+        }
+      }
+      const totals = this.#database.exec({
+        sql: `SELECT count(*), coalesce(sum(length(record_canonical)), 0)
+              FROM library_checkpoint_stage_records WHERE stage_id = ?1;`,
+        bind: [page.stageId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const stagedRecordCount = safeInteger(
+        totals[0]?.[0],
+        "staged record count",
+      );
+      const stagedCanonicalBytes = safeInteger(
+        totals[0]?.[1],
+        "staged canonical bytes",
+      );
+      if (stagedRecordCount > expectedRecordCount) {
+        throw new Error(
+          "normalized checkpoint stage exceeds its expected record count",
+        );
+      }
+      this.#database.exec({
+        sql: `UPDATE library_checkpoint_stages
+              SET staged_record_count = ?2, staged_canonical_bytes = ?3
+              WHERE stage_id = ?1;`,
+        bind: [page.stageId, stagedRecordCount, stagedCanonicalBytes],
+      });
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+    return this.#checkpointStageStatus(page.stageId);
+  }
+
+  queryFeedPage(
+    input: LibraryCoreFeedPageRequestV1,
+  ): LibraryCoreFeedPageResponseV1 {
     const request = parseLibraryCoreFeedPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
     const sourceRow = this.#database.exec({
@@ -145,7 +333,10 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("PWA Library SQLite has no active Library");
     }
     const generationId = text(sourceRow[0]![0], "Library identity");
-    const sourceRevision = safeInteger(sourceRow[0]![1], "Library source revision");
+    const sourceRevision = safeInteger(
+      sourceRow[0]![1],
+      "Library source revision",
+    );
     let afterPublishedAt: number | null = null;
     let afterGlobalId = "";
     if (request.value.cursor !== null) {
@@ -177,15 +368,27 @@ export class PwaLibraryCoreSqliteEngine {
       .map((row) => {
         const candidate = {
           archived: nullableBoolean(row.archived, "feed archived"),
-          authorAvatarUrl: nullableText(row.authorAvatarUrl, "feed author avatar"),
-          authorDisplayName: nullableText(row.authorDisplayName, "feed author display name"),
+          authorAvatarUrl: nullableText(
+            row.authorAvatarUrl,
+            "feed author avatar",
+          ),
+          authorDisplayName: nullableText(
+            row.authorDisplayName,
+            "feed author display name",
+          ),
           authorHandle: nullableText(row.authorHandle, "feed author handle"),
           authorId: nullableText(row.authorId, "feed author identity"),
           capturedAt: nullableInteger(row.capturedAt, "feed captured time"),
-          contentSignalTags: stringArray(row.contentSignalTagsJson, "feed signal tags"),
+          contentSignalTags: stringArray(
+            row.contentSignalTagsJson,
+            "feed signal tags",
+          ),
           contentText: nullableText(row.contentText, "feed content text"),
           contentType: nullableText(row.contentType, "feed content type"),
-          engagementComments: nullableInteger(row.engagementComments, "feed comments"),
+          engagementComments: nullableInteger(
+            row.engagementComments,
+            "feed comments",
+          ),
           engagementLikes: nullableInteger(row.engagementLikes, "feed likes"),
           eventConfidenceBasisPoints: nullableInteger(
             row.eventConfidenceBasisPoints,
@@ -200,14 +403,20 @@ export class PwaLibraryCoreSqliteEngine {
             "feed like sync time",
             true,
           ),
-          linkPreviewTitle: nullableText(row.linkPreviewTitle, "feed link title"),
+          linkPreviewTitle: nullableText(
+            row.linkPreviewTitle,
+            "feed link title",
+          ),
           locationName: nullableText(row.locationName, "feed location"),
           mediaTypes: stringArray(row.mediaTypesJson, "feed media types"),
           mediaUrls: stringArray(row.mediaUrlsJson, "feed media URLs"),
           platform: nullableText(row.platform, "feed platform"),
           publishedAt: nullableInteger(row.publishedAt, "feed published time"),
           readAt: nullableInteger(row.readAt, "feed read time"),
-          readingTimeMinutes: nullableInteger(row.readingTimeMinutes, "feed reading time"),
+          readingTimeMinutes: nullableInteger(
+            row.readingTimeMinutes,
+            "feed reading time",
+          ),
           saved: nullableBoolean(row.saved, "feed saved"),
           sourceUrl: nullableText(row.sourceUrl, "feed source URL"),
           tags: stringArray(row.tagsJson, "feed tags"),
@@ -247,11 +456,45 @@ export class PwaLibraryCoreSqliteEngine {
     };
     const bytes = new TextEncoder().encode(JSON.stringify(response)).byteLength;
     if (bytes > LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES) {
-      throw new Error("PWA Library SQLite feed response exceeded its byte bound");
+      throw new Error(
+        "PWA Library SQLite feed response exceeded its byte bound",
+      );
     }
     const parsed = parseLibraryCoreFeedPageResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
+  }
+
+  #checkpointStageStatus(
+    stageId: string,
+  ): LibraryCoreNormalizedCheckpointStageStatusV2 {
+    const rows = this.#database.exec({
+      sql: `SELECT expected_record_count, staged_record_count, staged_canonical_bytes
+            FROM library_checkpoint_stages WHERE stage_id = ?1;`,
+      bind: [stageId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1)
+      throw new Error("normalized checkpoint stage does not exist");
+    const expectedRecordCount = safeInteger(
+      rows[0]?.[0],
+      "checkpoint expected record count",
+    );
+    const stagedRecordCount = safeInteger(
+      rows[0]?.[1],
+      "checkpoint staged record count",
+    );
+    return Object.freeze({
+      complete: expectedRecordCount === stagedRecordCount,
+      expectedRecordCount,
+      stagedCanonicalBytes: safeInteger(
+        rows[0]?.[2],
+        "checkpoint staged canonical bytes",
+      ),
+      stagedRecordCount,
+      stageId,
+    });
   }
 
   close(): void {
@@ -279,7 +522,9 @@ export class PwaLibraryCoreSqliteEngine {
       text(row[3], "SQLite schema digest") !==
         LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256
     ) {
-      throw new Error("PWA Library SQLite storage identity does not match this build");
+      throw new Error(
+        "PWA Library SQLite storage identity does not match this build",
+      );
     }
   }
 }

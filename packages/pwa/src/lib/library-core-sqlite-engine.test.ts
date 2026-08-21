@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import sqlite3InitModule, { type Database, type Sqlite3Static } from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, {
+  type Database,
+  type Sqlite3Static,
+} from "@sqlite.org/sqlite-wasm";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+  createLibraryCoreNormalizedCheckpointRecordV2,
+  digestLibraryCoreNormalizedCheckpointRecordsV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -38,15 +43,26 @@ describe("PWA Library Core SQLite engine", () => {
   });
 
   it("fails closed when durable schema identity is changed", () => {
-    const first = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    const first = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
     first.initialize();
-    database.exec("UPDATE library_storage_meta SET schema_sha256 = lower(hex(randomblob(32)));");
-    const second = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    database.exec(
+      "UPDATE library_storage_meta SET schema_sha256 = lower(hex(randomblob(32)));",
+    );
+    const second = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
     expect(() => second.initialize()).toThrow(/does not match this build/);
   });
 
   it("pages normalized feed rows through the bounded named query", () => {
-    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
     engine.initialize();
     database.exec(`
       INSERT INTO library_meta
@@ -78,8 +94,73 @@ describe("PWA Library Core SQLite engine", () => {
     expect(first.rows[0]?.tags).toEqual(["favorite"]);
     expect(first.rows[0]?.mediaUrls).toEqual(["https://example.com/image"]);
     expect(first.nextCursor).not.toBeNull();
-    const second = engine.queryFeedPage({ ...request, cursor: first.nextCursor });
+    const second = engine.queryFeedPage({
+      ...request,
+      cursor: first.nextCursor,
+    });
     expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
     expect(second.nextCursor).toBeNull();
+  });
+
+  it("stages bounded normalized records idempotently and rejects changed replay", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const header = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: "epoch-1",
+        checkpointId: "library-1:epoch-1:7",
+        createdAtMs: 1_000,
+        libraryId: "library-1",
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    const stage = {
+      authorityEpoch: "epoch-1",
+      createdAt: 1_000,
+      expectedCheckpointDigest: digestLibraryCoreNormalizedCheckpointRecordsV2([
+        header,
+      ]),
+      expectedRecordCount: 1,
+      libraryId: "library-1",
+      sourceRevision: 7,
+      stageId: "stage-1",
+    };
+    expect(engine.beginNormalizedCheckpointStage(stage)).toMatchObject({
+      complete: false,
+      stagedRecordCount: 0,
+    });
+    const complete = engine.appendNormalizedCheckpointStagePage({
+      records: [header],
+      stageId: stage.stageId,
+    });
+    expect(complete.complete).toBe(true);
+    expect(complete.stagedRecordCount).toBe(1);
+    expect(complete.stagedCanonicalBytes).toBeGreaterThan(0);
+    expect(
+      engine.appendNormalizedCheckpointStagePage({
+        records: [header],
+        stageId: stage.stageId,
+      }),
+    ).toEqual(complete);
+    const changed = createLibraryCoreNormalizedCheckpointRecordV2({
+      ...header,
+      payload: { ...header.payload, createdAtMs: 1_001 },
+    });
+    expect(() =>
+      engine.appendNormalizedCheckpointStagePage({
+        records: [changed],
+        stageId: stage.stageId,
+      }),
+    ).toThrow(/replay changed its bytes/);
+    expect(engine.beginNormalizedCheckpointStage(stage)).toEqual(complete);
+    expect(() =>
+      engine.beginNormalizedCheckpointStage({ ...stage, sourceRevision: 8 }),
+    ).toThrow(/replay changed its identity/);
   });
 });
