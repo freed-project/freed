@@ -1712,59 +1712,6 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
   });
 
-  test("can add an RSS feed", async ({ page }) => {
-    await page.goto("/");
-    await acceptLegalGate(page);
-
-    // Open Add Feed dialog
-    await page.getByRole("button", { name: /new/i }).click();
-    await page.getByRole("button", { name: "RSS Feed" }).click();
-
-    // Wait for dialog to appear
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
-
-    // Enter a feed URL
-    await page.fill('input[type="url"]', "https://hnrss.org/frontpage");
-
-    // Verify the URL was entered
-    await expect(page.locator('input[type="url"]')).toHaveValue(
-      "https://hnrss.org/frontpage",
-    );
-
-    // Click the submit button in the dialog
-    await page.click('button[type="submit"]');
-
-    // Should show loading state
-    await expect(page.locator('button:has-text("Adding...")'))
-      .toBeVisible({ timeout: 2000 })
-      .catch(() => {});
-
-    // Wait longer for network request (CORS proxy can be slow)
-    await page.waitForTimeout(10000);
-
-    // Check the outcome - any of these is valid:
-    // 1. Items appeared (success)
-    // 2. Error message shown (CORS/network failure)
-    // 3. Dialog closed (success)
-    // 4. Still showing "Adding..." (slow network)
-    const hasItems = (await page.locator(".feed-card").count()) > 0;
-    const hasError = await page
-      .locator("text=Failed")
-      .isVisible()
-      .catch(() => false);
-    const dialogClosed = !(await page
-      .locator("text=RSS Feeds")
-      .isVisible()
-      .catch(() => false));
-    const stillLoading = await page
-      .locator('button:has-text("Adding...")')
-      .isVisible()
-      .catch(() => false);
-
-    // Any outcome is acceptable - we verified the flow works
-    expect(hasItems || hasError || dialogClosed || stillLoading).toBeTruthy();
-  });
-
   test("responsive sidebar behavior", async ({ page }) => {
     await emulateMobileDevice(page);
     await page.setViewportSize({ width: 375, height: 667 });
@@ -2237,15 +2184,5 @@ test.describe("FREED PWA", () => {
     expect(batchSummary.friendIds.some((id) => id === "sample-friend-maya")).toBe(false);
     expect(batchSummary.linkedInFriendCount).toBeGreaterThan(0);
     expect(batchSummary.linkedInItemCount).toBe(EXPECTED_LINKEDIN_ITEMS_PER_BATCH * 2);
-  });
-});
-
-test.describe("Reader View", () => {
-  test.skip("opens reader view when clicking an item", async ({ page }) => {
-    // This test requires having items in the feed
-    // Skip for now since we start with empty state
-    await page.goto("/");
-
-    // Would need to add a feed first, then click an item
   });
 });

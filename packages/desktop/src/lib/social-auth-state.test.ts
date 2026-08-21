@@ -182,7 +182,7 @@ describe("stored social auth state", () => {
 
   it("reports unavailable storage without treating it as an authenticated session", () => {
     const getItem = vi
-      .spyOn(Storage.prototype, "getItem")
+      .spyOn(globalThis.localStorage, "getItem")
       .mockImplementation(() => {
         throw new Error("storage unavailable");
       });
@@ -226,7 +226,7 @@ describe("stored social auth state", () => {
       isAuthenticated: true,
       lastCapturedAt: 200,
     }));
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    vi.spyOn(globalThis.localStorage, "setItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
 

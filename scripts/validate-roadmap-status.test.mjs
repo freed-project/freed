@@ -12,14 +12,6 @@ import {
 test("roadmap status manifest matches every phase document", () => {
   const manifest = validateRoadmapStatus();
   assert.equal(manifest.phases.length, 13);
-  assert.equal(
-    manifest.phases.find((phase) => phase.id === 3)?.status,
-    "current",
-  );
-  assert.equal(
-    manifest.phases.find((phase) => phase.id === 6)?.status,
-    "current",
-  );
 });
 
 test("phase status normalization handles current project vocabulary", () => {

@@ -214,7 +214,7 @@ describe("factory reset runtime recovery", () => {
   });
 
   it("keeps cloud startup blocked when the cleanup barrier cannot be read", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    vi.spyOn(globalThis.localStorage, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
 
