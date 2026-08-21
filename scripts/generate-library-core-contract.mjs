@@ -165,6 +165,7 @@ function assertContract(contract) {
         "boolean_assignment",
         "person_upsert",
         "preferences_leaf_assignment",
+        "nullable_text_assignment",
         "read_at",
         "remove",
         "rss_feed_upsert",

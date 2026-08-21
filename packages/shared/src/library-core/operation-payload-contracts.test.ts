@@ -8,6 +8,7 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
 
@@ -206,6 +207,40 @@ describe("Library Core operation payload contracts", () => {
       expect(
         RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
       ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("requires a bounded timestamped Account person assignment", () => {
+    expect(
+      ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        person_id: "person:one",
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        person_id: "person:one",
+      },
+    });
+    expect(
+      ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_001,
+        person_id: null,
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: { assigned_at_ms: 1_783_000_000_001, person_id: null },
+    });
+    for (const invalid of [
+      { assigned_at_ms: -1, person_id: null },
+      { assigned_at_ms: 1, person_id: "" },
+      { assigned_at_ms: 1, person_id: "x".repeat(4_097) },
+      { assigned_at_ms: 1, person_id: null, extra: true },
+    ]) {
+      expect(ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid).ok).toBe(
+        false,
+      );
     }
   });
 

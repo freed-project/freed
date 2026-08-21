@@ -81,6 +81,11 @@ export interface AccountUpsertPayloadV1 {
   readonly account: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
+export interface AccountPersonAssignmentPayloadV1 {
+  readonly assigned_at_ms: number;
+  readonly person_id: string | null;
+}
+
 export interface AccountRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
@@ -139,6 +144,10 @@ const PERSON_UPSERT_KEYS = ["person"] as const;
 const PERSON_REMOVE_KEYS = ["removed_at_ms"] as const;
 const ACCOUNT_UPSERT_KEYS = ["account"] as const;
 const ACCOUNT_REMOVE_KEYS = ["removed_at_ms"] as const;
+const ACCOUNT_PERSON_ASSIGNMENT_KEYS = [
+  "assigned_at_ms",
+  "person_id",
+] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -933,6 +942,56 @@ function validateAccountRemovePayload(
   return { ok: true, value: Object.freeze({ removed_at_ms: removedAtMs }) };
 }
 
+function validateAccountPersonAssignmentPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<AccountPersonAssignmentPayloadV1> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null) ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== ACCOUNT_PERSON_ASSIGNMENT_KEYS.length ||
+    ACCOUNT_PERSON_ASSIGNMENT_KEYS.some((key) => !keys.includes(key))
+  ) {
+    return invalid("payload must contain only assigned_at_ms and person_id");
+  }
+  const assignedAt = Object.getOwnPropertyDescriptor(value, "assigned_at_ms");
+  const personId = Object.getOwnPropertyDescriptor(value, "person_id");
+  if (
+    assignedAt === undefined ||
+    !assignedAt.enumerable ||
+    !("value" in assignedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(assignedAt.value)
+  ) {
+    return invalid("assigned_at_ms must be a nonnegative safe integer");
+  }
+  if (
+    personId === undefined ||
+    !personId.enumerable ||
+    !("value" in personId) ||
+    (personId.value !== null &&
+      (typeof personId.value !== "string" ||
+        personId.value.length === 0 ||
+        new TextEncoder().encode(personId.value).byteLength > 4_096))
+  ) {
+    return invalid("person_id must be null or a bounded nonempty string");
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      assigned_at_ms: assignedAt.value,
+      person_id: personId.value,
+    }),
+  };
+}
+
 function validateFeedItemUserStateAssignmentPayload(
   value: unknown,
 ): LibraryCorePayloadValidationResult<FeedItemUserStateAssignmentPayloadV1> {
@@ -1111,6 +1170,17 @@ export const ACCOUNT_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "account_upsert",
   AccountUpsertPayloadV1
+>;
+
+export const ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "account_person_assignment_payload_v1",
+  schemaVersion: 1,
+  operationType: "account_person_assignment",
+  canonicalKeys: ACCOUNT_PERSON_ASSIGNMENT_KEYS,
+  validate: validateAccountPersonAssignmentPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "account_person_assignment",
+  AccountPersonAssignmentPayloadV1
 >;
 
 export const ACCOUNT_REMOVE_PAYLOAD_SCHEMA = Object.freeze({

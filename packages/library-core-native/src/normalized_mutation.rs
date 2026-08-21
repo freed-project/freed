@@ -460,6 +460,73 @@ fn materialize_text_assignment(
     Ok(())
 }
 
+fn materialize_nullable_text_assignment(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload: Value = serde_json::from_str(member.account_json.as_deref().ok_or(
+        NormalizedSqliteError::InvalidRequest(
+            "normalized nullable text assignment payload is missing",
+        ),
+    )?)
+    .map_err(|_| {
+        NormalizedSqliteError::InvalidRequest(
+            "normalized nullable text assignment payload is invalid",
+        )
+    })?;
+    let person_id = match payload.get("person_id") {
+        Some(Value::Null) => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        _ => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized nullable text assignment payload is invalid",
+            ));
+        }
+    };
+    let assigned_at = payload
+        .get("assigned_at_ms")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized nullable text assignment payload is invalid",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        assigned_at > clock.0
+            || (assigned_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![person_id, committed_at, member.entity_id],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized nullable text assignment target changed",
+            ));
+        }
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn materialize_remove(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -521,6 +588,13 @@ fn materialize_member(
         "text_assignment" => {
             materialize_text_assignment(transaction, verified, member_index, committed_at, program)
         }
+        "nullable_text_assignment" => materialize_nullable_text_assignment(
+            transaction,
+            verified,
+            member_index,
+            committed_at,
+            program,
+        ),
         "remove" => materialize_remove(transaction, verified, member_index, program),
         "account_upsert" => {
             let member = &verified.members[member_index];
@@ -1727,6 +1801,90 @@ mod tests {
                 )
                 .expect("Account role count"),
             0
+        );
+    }
+
+    #[test]
+    fn signed_account_person_assignment_converges_and_preserves_foreign_keys() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES
+                   ('person:verified', 'Verified Person', 'friend', 3, 1, 1),
+                   ('person:other', 'Other Person', 'friend', 2, 1, 1);",
+            )
+            .expect("insert Account owners");
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:person:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("account:person", 1_000)],
+            "account_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert Account");
+        let assignment_payload = serde_json::json!({
+            "assigned_at_ms": 1_200,
+            "person_id": "person:other"
+        });
+        let assignment = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:account:person:assign",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &[("account:person", 1_200)],
+            "account_person_assignment",
+            Some(&assignment_payload),
+        );
+        let assignment_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &assignment, 2_100)
+                .expect("assign Account owner");
+        let stale_detach_payload = serde_json::json!({
+            "assigned_at_ms": 1_100,
+            "person_id": null
+        });
+        let stale_detach = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:account:person:stale-detach",
+            3,
+            Some(&assignment_receipt.committed_operation_id),
+            &assignment_receipt.committed_chain_digest,
+            &[("account:person", 1_100)],
+            "account_person_assignment",
+            Some(&stale_detach_payload),
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &stale_detach, 2_200)
+            .expect("journal stale Account owner assignment");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT account.person_id, account.updated_at, clock.updated_at
+                     FROM library_accounts AS account
+                     JOIN library_field_clocks AS clock
+                       ON clock.entity_type = 'account'
+                      AND clock.entity_id = account.id
+                      AND clock.field_path = 'person_id'
+                     WHERE account.id = 'account:person';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .expect("assigned Account owner"),
+            ("person:other".to_owned(), 2_100, 1_200)
         );
     }
 

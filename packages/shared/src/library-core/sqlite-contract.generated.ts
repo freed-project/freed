@@ -637,6 +637,7 @@ export const LIBRARY_CORE_OPERATION_IDS = [
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([
+  "account_person_assignment",
   "account_remove",
   "account_upsert",
   "feed_item_archive_assignment",
@@ -673,6 +674,7 @@ export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS = Object.freeze([
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
 
 export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS = Object.freeze([
+  "account_person_assignment",
   "account_remove",
   "account_upsert",
   "feed_item_archive_assignment",
@@ -695,6 +697,20 @@ export const LIBRARY_CORE_SCRAPER_OPERATION_IDS = Object.freeze([
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
 
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
+  "account_person_assignment": {
+    "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'account' AND entity_id = ?1 AND field_path = 'person_id';",
+    "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('account', ?1, 'person_id', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+    "currentValueSql": "SELECT person_id FROM library_accounts WHERE id = ?1;",
+    "dependentDeleteSql": [],
+    "dependentInsertSql": [],
+    "entityType": "Account",
+    "invalidationTopic": "account",
+    "materializeSql": "UPDATE library_accounts SET person_id = ?1, updated_at = ?2 WHERE id = ?3;",
+    "maximumMembers": 256,
+    "payloadKind": "nullable_text_assignment",
+    "requiresExistingTarget": true,
+    "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1);"
+  },
   "account_upsert": {
     "clockReadSql": "",
     "clockWriteSql": "",

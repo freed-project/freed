@@ -58,6 +58,7 @@ const RSS_FEED_TITLE_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "title"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
 const ACCOUNT_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["account"];
+const ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "person_id"];
 const RSS_FEED_KEYS: [&str; 10] = [
     "enabled",
     "folder",
@@ -797,7 +798,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         "UserPreferences"
     } else if operation_type == "person_upsert" || operation_type == "person_remove_and_accounts" {
         "Person"
-    } else if operation_type == "account_upsert" || operation_type == "account_remove" {
+    } else if matches!(
+        operation_type.as_str(),
+        "account_person_assignment" | "account_upsert" | "account_remove"
+    ) {
         "Account"
     } else {
         "FeedItem"
@@ -1050,6 +1054,34 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             let canonical =
                 encode_canonical_value(&Value::Object(account.clone()), MAX_ACCOUNT_BYTES)
                     .map_err(|_| invalid(index, "account"))?;
+            (
+                None,
+                None,
+                None,
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        "account_person_assignment" => {
+            let payload_object = exact_object(
+                payload,
+                &ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_KEYS,
+                index,
+                "payload",
+            )?;
+            safe_integer(payload_object, "assigned_at_ms", index)?;
+            match payload_object.get("person_id") {
+                Some(Value::Null) => {}
+                Some(Value::String(value))
+                    if !value.is_empty() && value.len() <= MAX_ENTITY_ID_BYTES => {}
+                _ => return Err(invalid(index, "person_id")),
+            }
+            let canonical = encode_canonical_value(payload, MAX_ACCOUNT_BYTES)
+                .map_err(|_| invalid(index, "account_person_assignment"))?;
             (
                 None,
                 None,
@@ -1521,6 +1553,10 @@ pub(crate) mod tests {
                             "updatedAt": timestamp_ms
                         }
                     }),
+                    "account_person_assignment" => json!({
+                        "assigned_at_ms": timestamp_ms,
+                        "person_id": "person:verified"
+                    }),
                     "account_remove" => json!({ "removed_at_ms": timestamp_ms }),
                     _ => panic!("unsupported fixture operation type"),
                 });
@@ -1532,7 +1568,10 @@ pub(crate) mod tests {
                 || operation_type == "person_remove_and_accounts"
             {
                 "Person"
-            } else if operation_type == "account_upsert" || operation_type == "account_remove" {
+            } else if matches!(
+                operation_type,
+                "account_person_assignment" | "account_upsert" | "account_remove"
+            ) {
                 "Account"
             } else {
                 "FeedItem"

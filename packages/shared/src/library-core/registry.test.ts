@@ -85,6 +85,7 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
@@ -99,6 +100,7 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_REMOVE_AND_ACCOUNTS_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
+  ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
 } from "./operation-payload-contracts.js";
@@ -349,8 +351,12 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // of which set personId and stamp updatedAt. No codec: accounts are keyed by
   // accountId, not the feed item globalId space.
   account_person_assignment: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema:
+      ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `backfillContentSignals`, which re-runs semantic enrichment.
   feed_items_content_signals_backfill_frozen: {

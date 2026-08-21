@@ -20,7 +20,7 @@
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
-      defines the 15-mutation Primary writer capability and the
+      defines the 16-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
       constants, and no parallel actor-operation registry remains.
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
@@ -131,6 +131,10 @@
         source timestamp, resolves concurrent renames with a deterministic
         field clock, and commits the typed feed update, receipt, outbox,
         invalidation, and revision in one native transaction.
+  - [x] Account person assignment now links or detaches one Account through a
+        closed nullable person ID, resolves concurrent edits with a
+        deterministic field clock, and relies on SQLite foreign keys to refuse
+        links to missing People without partial writes.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration
