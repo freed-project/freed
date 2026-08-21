@@ -416,6 +416,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.31 | Resolve explicit archive eligibility and toggle state from normalized SQLite item detail before creating signed follower intents | High | ✓ Complete |
 | 6.32 | Expose the OPFS SQLite typed query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning browser FeedItem rows | High | ✓ Complete |
 | 6.33 | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed OPFS SQLite readers, with no browser corpus or scan fallback | High | ✓ Complete |
+| 6.34 | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search OPFS SQLite readers, with no browser corpus, JavaScript Saved ordering, or reader-failure authority switch | High | ✓ Complete |
 
 ---
 

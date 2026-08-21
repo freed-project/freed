@@ -503,6 +503,7 @@ export async function captureDomFeed(
 | 5.59 | Route selected unlinked Account timelines through the shared native `account_timeline_v1` adapter, keyed by stable Account ID, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
 | 5.60 | Expose one generic typed normalized query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning the Desktop item corpus | High | ✓ Complete |
 | 5.61 | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed SQLite readers, with no renderer corpus lease or scan fallback | High | ✓ Complete |
+| 5.62 | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search SQLite readers, with no corpus lease, renderer sort, or reader-failure authority switch | High | ✓ Complete |
 
 ---
 

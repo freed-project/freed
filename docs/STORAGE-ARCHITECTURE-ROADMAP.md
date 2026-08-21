@@ -142,6 +142,11 @@ only their closed typed SQLite readers. A missing or rejected query fails closed
 to an empty or unavailable view state. It never leases, scans, or reconstructs
 the renderer corpus.
 
+The primary Feed surface follows the same rule. Ordinary, Friends, and Saved
+views retain only bounded SQLite page windows. Search retains only bounded
+SQLite search results. Missing or failed readers never switch back to the app
+store item corpus or repeat Saved ordering in JavaScript.
+
 Exit proof:
 
 - every view queries SQLite directly through its platform adapter

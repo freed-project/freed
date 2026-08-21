@@ -15,7 +15,6 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { useBoundedFeedItems } from "./useBoundedFeedItems.js";
 import {
-  orderDesktopSavedFallbackItems,
   resolveBoundedReaderRankingClock,
   savedFeedRankingClockMs,
   type BoundedReaderRankingClock,
@@ -30,13 +29,11 @@ import {
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
-import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   buildDiscoveredAccountsFromItems,
   socialAccountForAuthor,
-  sortSavedFeedItems,
   type Account,
   type FeedItem,
 } from "@freed/shared";
@@ -390,10 +387,8 @@ export function FeedView() {
     openBoundedFriendsFeedReader,
     openBoundedSavedFeedReader,
     openUrl,
-    scanLibraryItems,
   } = platform;
   const canAddFeeds = !!addRssFeed;
-  const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
@@ -427,7 +422,6 @@ export function FeedView() {
   const [deviceDisplay] = useDeviceDisplayPreferences();
   const friendsMode = deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
-  const rankingWeights = useAppStore((s) => s.preferences.weights);
 
   const handleOpenCommentUrl = useCallback(
     (url: string) => {
@@ -549,12 +543,6 @@ export function FeedView() {
   });
   const boundedFeedReadyIsCurrent =
     boundedFeedStatusIsCurrent && boundedFeed.status === "ready";
-  useLegacyLibraryItems(
-    isInitialized &&
-      !(searchQuery.trim() !== "" && scanLibraryItems) &&
-      (!boundedFeedEligible ||
-        (boundedFeedStatusIsCurrent && boundedFeed.status === "failed")),
-  );
   const handleItemSave = useCallback(
     (item: FeedItem) => {
       patchBoundedItems((candidate) => {
@@ -613,7 +601,7 @@ export function FeedView() {
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
   const { filteredItems, isSearching } = useSearchResults(
-    boundedFeedReadyIsCurrent ? EMPTY_FEED_ITEMS : items,
+    EMPTY_FEED_ITEMS,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -625,31 +613,12 @@ export function FeedView() {
   );
   const visibleItems = useMemo(() => {
     if (boundedFeedReadyIsCurrent) return boundedFeed.items;
-    if (savedBoundedFeedEligible && boundedFeed.status === "failed") {
-      return orderDesktopSavedFallbackItems({
-        items: filteredItems,
-        sortMode: savedContentSortMode,
-        weights: rankingWeights,
-        persons,
-        accounts,
-        rankingClockMs: boundedReaderRankingClockMs,
-      });
-    }
-    return activeFilter.savedOnly
-      ? sortSavedFeedItems(filteredItems, savedContentSortMode)
-      : filteredItems;
+    return isSearching ? filteredItems : EMPTY_FEED_ITEMS;
   }, [
-    activeFilter.savedOnly,
     boundedFeed.items,
     boundedFeedReadyIsCurrent,
-    boundedFeed.status,
     filteredItems,
-    accounts,
-    boundedReaderRankingClockMs,
-    persons,
-    rankingWeights,
-    savedBoundedFeedEligible,
-    savedContentSortMode,
+    isSearching,
   ]);
 
   const dualColumnMode = deviceDisplay.dualColumnMode;

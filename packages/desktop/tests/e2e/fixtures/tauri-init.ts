@@ -268,6 +268,112 @@ export function tauriInitScript(): string {
       persistSqliteState();
       return affected;
     }
+    function sqliteFeedCard(item) {
+      var user = sqliteItemState(item);
+      var content = item.content || {};
+      var engagement = item.engagement || {};
+      var event = item.eventCandidate || {};
+      return {
+        archived: !!user.archived,
+        authorAvatarUrl: item.author && item.author.avatarUrl || null,
+        authorDisplayName: item.author && item.author.displayName || null,
+        authorHandle: item.author && item.author.handle || null,
+        authorId: item.author && item.author.id || null,
+        capturedAt: item.capturedAt == null ? null : item.capturedAt,
+        contentSignalTags: item.contentSignals && item.contentSignals.tags || [],
+        contentText: content.text || null,
+        contentType: item.contentType || null,
+        engagementComments: engagement.comments == null ? null : engagement.comments,
+        engagementLikes: engagement.likes == null ? null : engagement.likes,
+        eventConfidenceBasisPoints: event.confidence == null ? null : Math.round(event.confidence * 10000),
+        eventStartsAt: event.startsAt == null ? null : event.startsAt,
+        globalId: item.globalId,
+        liked: user.liked == null ? null : !!user.liked,
+        likedAt: user.likedAt == null ? null : user.likedAt,
+        likedSyncedAt: user.likedSyncedAt == null ? null : user.likedSyncedAt,
+        linkPreviewTitle: content.linkPreview && content.linkPreview.title || null,
+        locationName: item.location && item.location.name || null,
+        mediaTypes: content.mediaTypes || [],
+        mediaUrls: content.mediaUrls || [],
+        platform: item.platform || null,
+        publishedAt: item.publishedAt == null ? null : item.publishedAt,
+        readAt: user.readAt == null ? null : user.readAt,
+        readingTimeMinutes: item.preservedContent && item.preservedContent.readingTime || null,
+        saved: !!user.saved,
+        sourceUrl: item.sourceUrl || content.linkPreview && content.linkPreview.url || null,
+        tags: user.tags || [],
+      };
+    }
+    function sqliteQueryItems(request) {
+      var filter = request.filter || {};
+      return Object.values(sqliteState().items).filter(function(item) {
+        if (!item || item.__deleted) return false;
+        var user = sqliteItemState(item);
+        if (!!user.archived !== !!filter.archivedOnly) return false;
+        if (!filter.showHidden && !!user.hidden) return false;
+        if (filter.savedOnly && !user.saved) return false;
+        if (filter.platform && item.platform !== filter.platform) return false;
+        if (filter.authorId && (!item.author || item.author.id !== filter.authorId)) return false;
+        if (filter.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== filter.feedUrl)) return false;
+        var tags = user.tags || [];
+        if ((filter.tags || []).length > 0 && !filter.tags.some(function(tag) { return tags.includes(tag); })) return false;
+        var signals = item.contentSignals && item.contentSignals.tags || [];
+        if ((filter.signals || []).length > 0 && !filter.signals.some(function(signal) { return signals.includes(signal); })) return false;
+        if (filter.socialContentFilter === 'stories' && item.contentType !== 'story') return false;
+        if (filter.socialContentFilter === 'posts' && item.contentType === 'story') return false;
+        return true;
+      }).sort(function(left, right) {
+        return (right.publishedAt || 0) - (left.publishedAt || 0) || left.globalId.localeCompare(right.globalId);
+      });
+    }
+    function sqliteNormalizedQuery(args) {
+      var request = args && args.request || {};
+      if (request.queryId !== 'feed_browse_page_v3' && request.queryId !== 'saved_feed_page_v2') {
+        return null;
+      }
+      var candidates = sqliteQueryItems(request);
+      var rows = candidates.slice(0, request.limit || 128).map(sqliteFeedCard);
+      var source = {
+        generationId: 'd'.repeat(64),
+        projectionRevision: Math.max(0, sqliteState().revision || 0),
+        transitionSequence: Math.max(0, sqliteState().sourceGeneration || 0),
+      };
+      if (request.queryId === 'saved_feed_page_v2') {
+        return {
+          filter: request.filter,
+          nextCursor: null,
+          nextOrder: null,
+          previousCursor: null,
+          previousOrder: null,
+          queryId: request.queryId,
+          rows: rows.map(function(row, index) {
+            return Object.assign({}, row, {
+              savedAt: sqliteItemState(candidates[index]).savedAt || null,
+            });
+          }),
+          schemaVersion: request.schemaVersion,
+          sortMode: request.sortMode,
+          source: source,
+          totalCount: candidates.length,
+        };
+      }
+      return {
+        filter: request.filter,
+        friendsPredicateSchemaVersion: request.friendsPredicateSchemaVersion,
+        identityMode: request.identityMode,
+        nextCursor: null,
+        nextOrder: null,
+        previousCursor: null,
+        previousOrder: null,
+        queryId: request.queryId,
+        rankingClockMs: request.rankingClockMs,
+        recommendationOrderSchemaVersion: request.recommendationOrderSchemaVersion,
+        rows: rows,
+        schemaVersion: request.schemaVersion,
+        source: source,
+        totalCount: candidates.length,
+      };
+    }
     window.__TAURI_MOCK_HANDLERS__ = {
       sqlite_library_status: () => {
         var state = sqliteState();
@@ -333,6 +439,7 @@ export function tauriInitScript(): string {
       },
       read_sqlite_library_counts: sqliteCountsResult,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
+      query_normalized_library: sqliteNormalizedQuery,
       replace_sqlite_library_shell: (args) => {
         sqliteState().shell = JSON.parse(args.request.shellJson);
         sqliteState().revision += 1;
