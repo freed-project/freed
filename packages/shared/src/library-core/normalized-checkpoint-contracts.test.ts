@@ -81,6 +81,70 @@ describe("normalized SQLite checkpoint contract", () => {
     expect(reassembleLibraryCoreContentV1(records)).toEqual(bytes);
   }, 15_000);
 
+  it("keeps maximum metadata rows below the logical wire-record ceiling", () => {
+    const records = [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "30_person",
+        primaryKey: "person:maximum-metadata",
+        payload: {
+          avatarUrl: null,
+          bio: "p".repeat(65_000),
+          careLevel: 5,
+          createdAt: 1,
+          name: "Maximum Metadata",
+          notes: null,
+          reachOutIntervalDays: null,
+          relationshipStatus: "friend",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          updatedAt: 2,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "40_account",
+        primaryKey: "account:maximum-metadata",
+        payload: {
+          address: "a".repeat(64_000),
+          avatarUrl: null,
+          createdAt: 1,
+          discoveredFrom: "manual_entry",
+          displayName: null,
+          email: null,
+          externalId: "maximum-metadata",
+          firstSeenAt: 1,
+          followRosterActive: null,
+          followRosterSyncedAt: null,
+          handle: null,
+          importedAt: null,
+          kind: "contact",
+          lastSeenAt: 2,
+          personId: null,
+          phone: null,
+          profileUrl: null,
+          provider: "manual_contact",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          updatedAt: 2,
+        },
+      }),
+    ];
+    for (const record of records) {
+      expect(
+        encodeLibraryCoreCanonicalValue(
+          record as unknown as {
+            readonly [
+              key: string
+            ]: import("./canonical-codec.js").LibraryCoreCanonicalValue;
+          },
+        ).byteLength,
+      ).toBeLessThanOrEqual(
+        LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+      );
+    }
+  });
+
   it("encodes fractional SQLite values as exact canonical binary64 wrappers", () => {
     const record = createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "16_feed_item_signal_score",

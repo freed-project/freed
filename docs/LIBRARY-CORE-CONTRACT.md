@@ -169,10 +169,12 @@ grows only as verified mutation implementations land. It currently admits 18
 verified mutations through 18 generated normalized SQL programs. This now
 includes `feed_item_capture_upsert`, which atomically materializes FeedItem
 source fields, media, and topics into normalized tables while preserving
-existing user state and refusing tombstone resurrection. One canonical capture
-item and its complete signed operation envelope must each fit the 131,072-byte
-logical-record ceiling. Larger legal content uses descriptors and
-content-addressed chunks. The capture actor remains limited to this one
+existing user state and refusing tombstone resurrection. Feed capture metadata
+is capped at 98,304 canonical bytes. Person and Account root metadata are each
+capped at 65,536 canonical bytes. These limits reserve deterministic space for
+the closed operation and checkpoint wrappers below the 131,072-byte logical
+record ceiling. The limits count UTF-8 bytes, not JavaScript code units. Larger
+legal content uses descriptors and content-addressed chunks. The capture actor remains limited to this one
 feed-capture mutation. Declaring a future mutation does not grant it to any
 profile. Rust and TypeScript consume generated profile constants, so no second
 capability-operation registry can drift from the mutation catalog.
@@ -680,6 +682,12 @@ Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which
 leaves deterministic room for base64 and record metadata below the canonical
 record ceiling.
+
+Profile fields, contact fields, feed metadata, annotations, and preference
+leaves are bounded metadata. Reader bodies, preserved article bodies, evidence,
+media, and other potentially long-form values use the content plane. A metadata
+mutation cannot consume the wrapper reserve or silently turn into an oversized
+checkpoint row.
 
 The checkpoint manifest binds Library and epoch identity, protocol versions,
 frontier, materialized-state digest, record counts by registry, contiguous page

@@ -266,9 +266,9 @@ describe("Library Core operation payload contracts", () => {
       { assigned_at_ms: 1, person_id: "x".repeat(4_097) },
       { assigned_at_ms: 1, person_id: null, extra: true },
     ]) {
-      expect(ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid).ok).toBe(
-        false,
-      );
+      expect(
+        ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid).ok,
+      ).toBe(false);
     }
   });
 
@@ -320,7 +320,9 @@ describe("Library Core operation payload contracts", () => {
     ).toMatchObject({ ok: false, code: "invalid" });
     expect(
       PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
-        updates: { storyWall: { publishTarget: { repoName: "x".repeat(8_193) } } },
+        updates: {
+          storyWall: { publishTarget: { repoName: "x".repeat(8_193) } },
+        },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
   });
@@ -341,6 +343,11 @@ describe("Library Core operation payload contracts", () => {
     expect(
       PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
         person: { ...person, graphX: 12 },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PERSON_UPSERT_PAYLOAD_SCHEMA.validate({
+        person: { ...person, bio: "😀".repeat(16_385) },
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
     expect(
@@ -411,6 +418,7 @@ describe("Library Core operation payload contracts", () => {
           generatorVersion: 1,
         },
       },
+      { ...account, address: "😀".repeat(16_385) },
     ]) {
       expect(
         ACCOUNT_UPSERT_PAYLOAD_SCHEMA.validate({ account: invalid }),

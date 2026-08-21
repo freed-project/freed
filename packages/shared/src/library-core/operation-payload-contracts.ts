@@ -12,14 +12,18 @@ import {
 } from "../sync-write-policy.js";
 import type { Account, FeedItem, Person, UserPreferences } from "../types.js";
 
-const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 131_072;
+// Operation envelopes and normalized checkpoint records share the 131,072-byte
+// logical-record ceiling. Keep metadata payloads below that ceiling so the
+// closed envelope and checkpoint wrappers always have room. Long-form content
+// belongs in content-addressed blob chunks, never in a larger metadata record.
+const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 98_304;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
 const PREFERENCES_PATCH_MAXIMUM_NODES = 512;
 const PREFERENCE_PATH_MAXIMUM_UTF8_BYTES = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_UTF8_BYTES = 8_192;
-const PERSON_UPSERT_MAXIMUM_BYTES = 262_144;
-const ACCOUNT_UPSERT_MAXIMUM_BYTES = 262_144;
+const PERSON_UPSERT_MAXIMUM_BYTES = 65_536;
+const ACCOUNT_UPSERT_MAXIMUM_BYTES = 65_536;
 const ACCOUNT_PROVIDERS = Object.freeze([
   "x",
   "rss",
@@ -156,10 +160,7 @@ const PERSON_REACH_OUT_APPEND_KEYS = [
 const PERSON_REMOVE_KEYS = ["removed_at_ms"] as const;
 const ACCOUNT_UPSERT_KEYS = ["account"] as const;
 const ACCOUNT_REMOVE_KEYS = ["removed_at_ms"] as const;
-const ACCOUNT_PERSON_ASSIGNMENT_KEYS = [
-  "assigned_at_ms",
-  "person_id",
-] as const;
+const ACCOUNT_PERSON_ASSIGNMENT_KEYS = ["assigned_at_ms", "person_id"] as const;
 const USER_STATE_ASSIGNMENT_KEYS = ["assigned", "assigned_at_ms"] as const;
 
 const RSS_FEED_KEYS = Object.freeze([
@@ -282,7 +283,9 @@ function validateFeedItemCaptureUpsertPayload(
       !isCanonicalObject(content) ||
       !isCanonicalObject(userState)
     ) {
-      return invalid("item must match the closed normalized FeedItem capture shape");
+      return invalid(
+        "item must match the closed normalized FeedItem capture shape",
+      );
     }
     if (
       typeof canonicalItem.platform !== "string" ||
@@ -314,15 +317,17 @@ function validateFeedItemCaptureUpsertPayload(
       Object.hasOwn(canonicalItem, "contentSignals") ||
       Object.hasOwn(canonicalItem, "eventCandidate")
     ) {
-      return invalid("item must match the closed normalized FeedItem capture shape");
+      return invalid(
+        "item must match the closed normalized FeedItem capture shape",
+      );
     }
     if (
       (typeof content.text === "string" &&
         new TextEncoder().encode(content.text).byteLength > 65_536) ||
       (isCanonicalObject(canonicalItem.preservedContent) &&
         typeof canonicalItem.preservedContent.text === "string" &&
-        new TextEncoder().encode(canonicalItem.preservedContent.text).byteLength >
-          65_536)
+        new TextEncoder().encode(canonicalItem.preservedContent.text)
+          .byteLength > 65_536)
     ) {
       return invalid("large FeedItem bodies require a content descriptor");
     }
@@ -745,7 +750,8 @@ function validatePersonUpsertPayload(
       if (
         field !== undefined &&
         (typeof field !== "string" ||
-          field.length > PERSON_UPSERT_MAXIMUM_BYTES)
+          new TextEncoder().encode(field).byteLength >
+            PERSON_UPSERT_MAXIMUM_BYTES)
       ) {
         return invalid(`person.${key} must be a bounded string`);
       }
@@ -899,7 +905,11 @@ function validateAccountUpsertPayload(
     const decoded = decodeLibraryCoreCanonicalValue(encoded, {
       maximumBytes: ACCOUNT_UPSERT_MAXIMUM_BYTES,
     });
-    if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      Array.isArray(decoded)
+    ) {
       return invalid("account must be a plain canonical object");
     }
     const account = decoded as Readonly<
@@ -907,7 +917,9 @@ function validateAccountUpsertPayload(
     >;
     const boundedString = (field: LibraryCoreCanonicalValue | undefined) =>
       field === undefined ||
-      (typeof field === "string" && field.length <= ACCOUNT_UPSERT_MAXIMUM_BYTES);
+      (typeof field === "string" &&
+        new TextEncoder().encode(field).byteLength <=
+          ACCOUNT_UPSERT_MAXIMUM_BYTES);
     if (
       typeof account.id !== "string" ||
       account.id.length === 0 ||
@@ -920,9 +932,13 @@ function validateAccountUpsertPayload(
       typeof account.externalId !== "string" ||
       account.externalId.length === 0 ||
       account.externalId.length > 16_384 ||
-      !["captured_item", "story_author", "contact_import", "manual_entry", "follow_roster"].includes(
-        account.discoveredFrom as string,
-      ) ||
+      ![
+        "captured_item",
+        "story_author",
+        "contact_import",
+        "manual_entry",
+        "follow_roster",
+      ].includes(account.discoveredFrom as string) ||
       !Number.isSafeInteger(account.firstSeenAt) ||
       (account.firstSeenAt as number) < 0 ||
       !Number.isSafeInteger(account.lastSeenAt) ||
