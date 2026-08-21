@@ -14,6 +14,9 @@ import type { Account, Person, UserPreferences } from "../types.js";
 const FEED_ITEM_CAPTURE_MAXIMUM_BYTES = 1_048_576;
 const RSS_FEED_UPSERT_MAXIMUM_BYTES = 65_536;
 const PREFERENCES_PATCH_MAXIMUM_BYTES = 262_144;
+const PREFERENCES_PATCH_MAXIMUM_NODES = 512;
+const PREFERENCE_PATH_MAXIMUM_UTF8_BYTES = 4_096;
+const PREFERENCE_TEXT_MAXIMUM_UTF8_BYTES = 8_192;
 const PERSON_UPSERT_MAXIMUM_BYTES = 262_144;
 const ACCOUNT_UPSERT_MAXIMUM_BYTES = 262_144;
 const ACCOUNT_PROVIDERS = Object.freeze([
@@ -467,6 +470,37 @@ function validatePreferencesLeafAssignmentPayload(
     }
     if (Object.keys(updates).length === 0) {
       return invalid("updates must not be empty");
+    }
+    const textEncoder = new TextEncoder();
+    let nodeCount = 0;
+    const visit = (node: LibraryCoreCanonicalValue, path: string): boolean => {
+      nodeCount += 1;
+      if (
+        nodeCount > PREFERENCES_PATCH_MAXIMUM_NODES ||
+        textEncoder.encode(path).byteLength >
+          PREFERENCE_PATH_MAXIMUM_UTF8_BYTES ||
+        (typeof node === "string" &&
+          textEncoder.encode(node).byteLength >
+            PREFERENCE_TEXT_MAXIMUM_UTF8_BYTES)
+      ) {
+        return false;
+      }
+      if (Array.isArray(node)) {
+        return node.every((child, index) => visit(child, `${path}[${index}]`));
+      }
+      if (typeof node === "object" && node !== null) {
+        return Object.entries(node).every(([key, child]) =>
+          visit(child, `${path}.${JSON.stringify(key)}`),
+        );
+      }
+      return true;
+    };
+    if (
+      !Object.entries(updates).every(([key, child]) =>
+        visit(child, `$.${JSON.stringify(key)}`),
+      )
+    ) {
+      return invalid("updates exceed normalized preference node bounds");
     }
     const synchronized = stripDeviceLocalPreferenceUpdates(
       updates as Partial<UserPreferences>,

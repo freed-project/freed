@@ -40,7 +40,7 @@ export const LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA = Object.freeze({
 });
 
 export const LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION = Object.freeze({
-  projectionId: "library_core_preference_leaf_v1",
+  projectionId: "library_core_preference_node_v1",
   sourceTable: "preferences",
   fullContentAllowed: false,
   orderedColumns: Object.freeze(["path"]),
@@ -76,7 +76,7 @@ export interface LibraryCorePreferencesSnapshotRequestV1 {
   readonly schemaVersion: typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION;
 }
 
-export interface LibraryCorePreferenceLeafV1 {
+export interface LibraryCorePreferenceNodeV1 {
   readonly booleanValue: boolean | null;
   readonly integerValue: number | null;
   readonly path: string;
@@ -88,7 +88,7 @@ export interface LibraryCorePreferenceLeafV1 {
 
 export interface LibraryCorePreferencesSnapshotResponseV1 {
   readonly queryId: typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID;
-  readonly rows: readonly LibraryCorePreferenceLeafV1[];
+  readonly rows: readonly LibraryCorePreferenceNodeV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
 }
@@ -171,7 +171,7 @@ export function parseLibraryCorePreferencesSnapshotRequestV1(
   });
 }
 
-function parseLeaf(value: unknown): LibraryCorePreferenceLeafV1 | null {
+function parseNode(value: unknown): LibraryCorePreferenceNodeV1 | null {
   const row = closedRecord(value, ROW_KEYS);
   if (
     !row ||
@@ -209,6 +209,16 @@ function parseLeaf(value: unknown): LibraryCorePreferenceLeafV1 | null {
   if (populated.some((present, index) => present !== expected[index])) {
     return null;
   }
+  const prefix = (row.path as string).slice(0, 2);
+  if (
+    !["a:", "o:", "v:"].includes(prefix) ||
+    !(row.path as string).slice(2).startsWith("$.") ||
+    (prefix === "a:" &&
+      (row.valueType !== "integer" || (row.integerValue as number) < 0)) ||
+    (prefix === "o:" && row.valueType !== "null")
+  ) {
+    return null;
+  }
   return Object.freeze({
     booleanValue: row.booleanValue as boolean | null,
     integerValue: row.integerValue as number | null,
@@ -235,9 +245,9 @@ export function parseLibraryCorePreferencesSnapshotResponseV1(
   ) {
     return failure("preferences snapshot response is invalid");
   }
-  const rows: LibraryCorePreferenceLeafV1[] = [];
+  const rows: LibraryCorePreferenceNodeV1[] = [];
   for (const candidate of record.rows) {
-    const row = parseLeaf(candidate);
+    const row = parseNode(candidate);
     if (
       !row ||
       (rows.at(-1) && compareUtf8(rows.at(-1)!.path, row.path) >= 0)

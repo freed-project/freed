@@ -57,7 +57,7 @@
         browser and native dispatch. It returns one source-fenced typed
         aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
         FeedItem rows, and never sends item rows to React.
-  - [x] `preferences_snapshot_v1` now returns normalized preference leaves
+  - [x] `preferences_snapshot_v1` now returns normalized preference nodes
         through the native core in exact SQLite binary path order. The closed
         response preserves boolean, integer, real, text, and null values,
         rejects mismatched value columns, and enforces 512-row and 2 MiB
@@ -122,6 +122,11 @@
         statement lists in one verified transaction. The executor contains no
         child-table-specific Person policy, and a removed Person cannot be
         resurrected within the storage epoch.
+  - [x] Preference assignment now deep-merges object patches and atomically
+        replaces scalar or array subtrees through generated SQL. Typed object
+        and array markers preserve explicit empty containers. Shared signing
+        and native admission enforce 512-node, 4,096-byte path, and 8,192-byte
+        text ceilings without storing a settings document.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

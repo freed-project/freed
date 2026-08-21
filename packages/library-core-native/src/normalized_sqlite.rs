@@ -1120,7 +1120,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_preferences (path, value_type, updated_at)
-                 VALUES ('existing', 'null', 1);",
+                 VALUES ('v:$.existing', 'null', 1);",
                 [],
             )
             .expect("existing preference");
@@ -1316,7 +1316,7 @@ mod tests {
                  INSERT INTO library_account_follow_roles (account_id, role)
                  VALUES ('account-1', 'following');
                  INSERT INTO library_preferences (path, value_type, updated_at)
-                 VALUES ('display.optional', 'null', 1000);
+                 VALUES ('v:$.display.optional', 'null', 1000);
                  INSERT INTO library_relationships
                    (subject_type, subject_id, relation_type, object_type, object_id,
                     created_at, updated_at)

@@ -483,11 +483,11 @@ describe("PWA Library Core SQLite engine", () => {
       INSERT INTO library_preferences
         (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at)
       VALUES
-        ('😀', 'boolean', 1, NULL, NULL, NULL, 1),
-        ('alpha', 'integer', NULL, 3, NULL, NULL, 2),
-        ('real-value', 'real', NULL, NULL, 0.5, NULL, 3),
-        ('text-value', 'text', NULL, NULL, NULL, 'neon', 4),
-        ('', 'null', NULL, NULL, NULL, NULL, 5);
+        ('v:$.zeta', 'boolean', 1, NULL, NULL, NULL, 1),
+        ('v:$.alpha', 'integer', NULL, 3, NULL, NULL, 2),
+        ('v:$.realValue', 'real', NULL, NULL, 0.5, NULL, 3),
+        ('v:$.textValue', 'text', NULL, NULL, NULL, 'neon', 4),
+        ('v:$.nullValue', 'null', NULL, NULL, NULL, NULL, 5);
     `);
     expect(
       engine.query({
@@ -497,11 +497,11 @@ describe("PWA Library Core SQLite engine", () => {
     ).toMatchObject({
       queryId: "preferences_snapshot_v1",
       rows: [
-        { integerValue: 3, path: "alpha", valueType: "integer" },
-        { path: "real-value", realValue: 0.5, valueType: "real" },
-        { path: "text-value", textValue: "neon", valueType: "text" },
-        { path: "\ue000", valueType: "null" },
-        { booleanValue: true, path: "😀", valueType: "boolean" },
+        { integerValue: 3, path: "v:$.alpha", valueType: "integer" },
+        { path: "v:$.nullValue", valueType: "null" },
+        { path: "v:$.realValue", realValue: 0.5, valueType: "real" },
+        { path: "v:$.textValue", textValue: "neon", valueType: "text" },
+        { booleanValue: true, path: "v:$.zeta", valueType: "boolean" },
       ],
       source: { projectionRevision: 7 },
     });

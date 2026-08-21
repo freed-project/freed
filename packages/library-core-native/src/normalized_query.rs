@@ -1623,7 +1623,7 @@ mod tests {
     }
 
     #[test]
-    fn native_preferences_dispatch_returns_closed_leaves_in_binary_order() {
+    fn native_preferences_dispatch_returns_closed_nodes_in_binary_order() {
         let mut connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
         connection
@@ -1639,12 +1639,12 @@ mod tests {
                    (path, value_type, boolean_value, integer_value, real_value,
                     text_value, updated_at)
                    VALUES
-                     ('😀', 'boolean', 1, NULL, NULL, NULL, 1),
-                     ('alpha', 'integer', NULL, 3, NULL, NULL, 2),
-                     ('null-value', 'null', NULL, NULL, NULL, NULL, 3),
-                     ('real-value', 'real', NULL, NULL, 0.5, NULL, 4),
-                     ('text-value', 'text', NULL, NULL, NULL, 'neon', 5),
-                     ('', 'boolean', 0, NULL, NULL, NULL, 6);",
+                     ('v:$.zeta', 'boolean', 1, NULL, NULL, NULL, 1),
+                     ('v:$.alpha', 'integer', NULL, 3, NULL, NULL, 2),
+                     ('v:$.nullValue', 'null', NULL, NULL, NULL, NULL, 3),
+                     ('v:$.realValue', 'real', NULL, NULL, 0.5, NULL, 4),
+                     ('v:$.textValue', 'text', NULL, NULL, NULL, 'neon', 5),
+                     ('v:$.zero', 'boolean', 0, NULL, NULL, NULL, 6);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -1665,12 +1665,12 @@ mod tests {
                 .map(|row| row.path.as_str())
                 .collect::<Vec<_>>(),
             [
-                "alpha",
-                "null-value",
-                "real-value",
-                "text-value",
-                "\u{e000}",
-                "😀"
+                "v:$.alpha",
+                "v:$.nullValue",
+                "v:$.realValue",
+                "v:$.textValue",
+                "v:$.zero",
+                "v:$.zeta"
             ]
         );
         assert_eq!(response.rows[0].integer_value, Some(3));

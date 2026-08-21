@@ -76,8 +76,8 @@ export const FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
  *
  * That function accepts an arbitrary `Partial<UserPreferences>`, strips it
  * through `sanitizeUserPreferenceWrite`, and deep-merges whatever survives. It
- * therefore may write any synchronized preference leaf and no others, so the
- * written set is exactly the synchronized preference leaves rather than a
+ * therefore may write any synchronized preference node and no others, so the
+ * written set is exactly the synchronized preference nodes rather than a
  * shorter list of the ones some caller happens to use today.
  *
  * The closed manifest is checked against both the persisted legacy census and

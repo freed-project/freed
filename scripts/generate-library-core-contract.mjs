@@ -161,6 +161,7 @@ function assertContract(contract) {
         "account_upsert",
         "boolean_assignment",
         "person_upsert",
+        "preferences_leaf_assignment",
         "read_at",
         "remove",
         "rss_feed_upsert",
@@ -183,6 +184,7 @@ function assertContract(contract) {
       (![
         "account_upsert",
         "person_upsert",
+        "preferences_leaf_assignment",
         "rss_feed_upsert",
       ].includes(program.payloadKind) &&
         [

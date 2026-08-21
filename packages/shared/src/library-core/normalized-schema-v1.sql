@@ -385,12 +385,16 @@ CREATE TABLE IF NOT EXISTS library_account_follow_roles (
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_preferences (
-  path TEXT PRIMARY KEY,
+  path TEXT PRIMARY KEY CHECK (
+    length(CAST(path AS BLOB)) BETWEEN 4 AND 4096
+    AND substr(path, 1, 2) IN ('a:', 'o:', 'v:')
+    AND substr(path, 3, 2) = '$.'
+  ),
   value_type TEXT NOT NULL CHECK (value_type IN ('boolean', 'integer', 'real', 'text', 'null')),
   boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0, 1)),
   integer_value INTEGER,
   real_value REAL,
-  text_value TEXT,
+  text_value TEXT CHECK (text_value IS NULL OR length(CAST(text_value AS BLOB)) <= 8192),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   CHECK (
     (value_type = 'boolean' AND boolean_value IS NOT NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NULL) OR
@@ -398,7 +402,9 @@ CREATE TABLE IF NOT EXISTS library_preferences (
     (value_type = 'real' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NOT NULL AND text_value IS NULL) OR
     (value_type = 'text' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NOT NULL) OR
     (value_type = 'null' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NULL)
-  )
+  ),
+  CHECK (substr(path, 1, 2) <> 'a:' OR (value_type = 'integer' AND integer_value >= 0)),
+  CHECK (substr(path, 1, 2) <> 'o:' OR value_type = 'null')
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS library_relationships (

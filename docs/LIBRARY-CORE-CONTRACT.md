@@ -105,7 +105,7 @@ The final logical model contains normalized tables for:
 - feed items and registered feed-item child values
 - RSS feeds and registered feed metadata
 - people, accounts, reach-out events, and relationships
-- synchronized preferences by registered leaf
+- synchronized preferences by registered typed node
 - field clocks, entity generations, tombstones, and aliases
 - follower intent transactions, sparse optimistic effects, publications, and
   canonical result receipts
@@ -267,11 +267,16 @@ No query may scan or sort the full corpus in JavaScript. No query returns an
 unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
 typed summaries. A view refreshes only invalidated pages and aggregates.
 
-Synchronized preferences are individual typed SQLite leaves. The
-`preferences_snapshot_v1` query returns at most 512 leaves and 2 MiB in SQLite
-binary path order. Each leaf contains exactly one boolean, integer, real, text,
-or null value. Neither native nor browser code reconstructs a monolithic
-settings object at the storage or transport boundary.
+Synchronized preferences are normalized typed SQLite nodes. The
+`preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite
+binary path order. Scalar rows use a `v:` path prefix. Object markers use `o:`
+with a null value. Array markers use `a:` with their element count as an
+integer. The remainder is SQLite's canonical JSON full-key path. Markers
+preserve explicit empty objects and arrays without storing a settings object.
+Object patches deep-merge. Scalar and array patches replace the named node and
+all descendants in one transaction. Each stored row still contains exactly
+one boolean, integer, real, text, or null value. Neither native nor browser code
+reconstructs a monolithic settings object at the storage or transport boundary.
 
 `item_detail_v1` is a metadata point query. It reuses the compact feed-card
 projection and returns only typed locators that say whether each reader body is
@@ -334,7 +339,7 @@ The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version
 | `32_person_reach_out` | person ID and ordinal | one bounded reach-out entry |
 | `40_account` | account ID | normalized account row |
 | `41_account_follow_role` | account ID and role | one provider roster role |
-| `50_preference` | field key | one synchronized preference leaf |
+| `50_preference` | typed node path | one synchronized preference scalar or container marker |
 | `60_relationship` | typed relationship tuple | one normalized relationship |
 | `70_field_clock` | entity and field tuple | one accepted field clock |
 | `80_tombstone` | entity tuple | one entity tombstone |

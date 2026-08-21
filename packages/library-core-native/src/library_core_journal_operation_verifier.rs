@@ -111,6 +111,9 @@ const ACCOUNT_KEYS: [&str; 22] = [
 const MAX_CAPTURE_ITEM_BYTES: usize = 1_048_576;
 const MAX_RSS_FEED_BYTES: usize = 65_536;
 const MAX_PREFERENCES_PATCH_BYTES: usize = 262_144;
+const MAX_PREFERENCE_NODES: usize = 512;
+const MAX_PREFERENCE_PATH_BYTES: usize = 4_096;
+const MAX_PREFERENCE_TEXT_BYTES: usize = 8_192;
 const MAX_PERSON_BYTES: usize = 262_144;
 const MAX_ACCOUNT_BYTES: usize = 262_144;
 
@@ -474,6 +477,48 @@ fn validate_account(
     Ok(())
 }
 
+fn validate_preference_node_bounds(
+    value: &Value,
+    path: &str,
+    node_count: &mut usize,
+    index: usize,
+) -> JournalResult<()> {
+    *node_count += 1;
+    if *node_count > MAX_PREFERENCE_NODES || path.len() > MAX_PREFERENCE_PATH_BYTES {
+        return Err(invalid(index, "preferences_node_bounds"));
+    }
+    match value {
+        Value::String(text) if text.len() > MAX_PREFERENCE_TEXT_BYTES => {
+            Err(invalid(index, "preferences_node_bounds"))
+        }
+        Value::Array(values) => {
+            for (child_index, child) in values.iter().enumerate() {
+                validate_preference_node_bounds(
+                    child,
+                    &format!("{path}[{child_index}]"),
+                    node_count,
+                    index,
+                )?;
+            }
+            Ok(())
+        }
+        Value::Object(object) => {
+            for (key, child) in object {
+                let key = serde_json::to_string(key)
+                    .map_err(|_| invalid(index, "preferences_node_bounds"))?;
+                validate_preference_node_bounds(
+                    child,
+                    &format!("{path}.{key}"),
+                    node_count,
+                    index,
+                )?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> JournalResult<()> {
     const TOP_LEVEL: [&str; 8] = [
         "weights",
@@ -539,6 +584,12 @@ fn validate_preferences_patch(updates: &Map<String, Value>, index: usize) -> Jou
         .is_some_and(|target| target.contains_key("lastError") || target.contains_key("status"))
     {
         return Err(invalid(index, "preferences_device_local"));
+    }
+    let mut node_count = 0;
+    for (key, value) in updates {
+        let key =
+            serde_json::to_string(key).map_err(|_| invalid(index, "preferences_node_bounds"))?;
+        validate_preference_node_bounds(value, &format!("$.{key}"), &mut node_count, index)?;
     }
     Ok(())
 }
@@ -1311,111 +1362,138 @@ pub(crate) mod tests {
         entities: &[(&str, i64)],
         operation_type: &str,
     ) -> Vec<Vec<u8>> {
+        signed_envelopes_from_tip_with_payload(
+            key_pair,
+            enrollment,
+            transaction_id,
+            first_sequence,
+            previous_operation_id,
+            previous_chain_digest,
+            entities,
+            operation_type,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn signed_envelopes_from_tip_with_payload(
+        key_pair: &Ed25519KeyPair,
+        enrollment: &VerifiedActorEnrollment,
+        transaction_id: &str,
+        first_sequence: i64,
+        previous_operation_id: Option<&str>,
+        previous_chain_digest: &str,
+        entities: &[(&str, i64)],
+        operation_type: &str,
+        payload_override: Option<&Value>,
+    ) -> Vec<Vec<u8>> {
         let mut member_bodies = Vec::new();
         let mut member_digests = Vec::new();
         for (index, (entity_id, timestamp_ms)) in entities.iter().enumerate() {
-            let payload = match operation_type {
-                "feed_item_capture_upsert" => json!({
-                    "item": {
-                        "globalId": entity_id,
-                        "location": {
-                            "coordinates": {
-                                "lat": {
-                                    "bits": "4042e32fec56d5d0",
-                                    "codec": "ieee754_binary64_hex_v1"
+            let payload = payload_override
+                .cloned()
+                .unwrap_or_else(|| match operation_type {
+                    "feed_item_capture_upsert" => json!({
+                        "item": {
+                            "globalId": entity_id,
+                            "location": {
+                                "coordinates": {
+                                    "lat": {
+                                        "bits": "4042e32fec56d5d0",
+                                        "codec": "ieee754_binary64_hex_v1"
+                                    },
+                                    "lng": {
+                                        "bits": "c05e9ad77318fc50",
+                                        "codec": "ieee754_binary64_hex_v1"
+                                    }
                                 },
-                                "lng": {
-                                    "bits": "c05e9ad77318fc50",
-                                    "codec": "ieee754_binary64_hex_v1"
-                                }
+                                "name": "San Francisco",
+                                "source": "explicit"
                             },
-                            "name": "San Francisco",
-                            "source": "explicit"
-                        },
-                        "platform": "saved",
-                        "userState": { "saved": true }
+                            "platform": "saved",
+                            "userState": { "saved": true }
+                        }
+                    }),
+                    "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
+                    "feed_item_saved_assignment"
+                    | "feed_item_archive_assignment"
+                    | "feed_item_like_assignment" => {
+                        json!({ "assigned": true, "assigned_at_ms": timestamp_ms })
                     }
-                }),
-                "feed_item_read_assignment" => json!({ "read_at_ms": timestamp_ms }),
-                "feed_item_saved_assignment"
-                | "feed_item_archive_assignment"
-                | "feed_item_like_assignment" => {
-                    json!({ "assigned": true, "assigned_at_ms": timestamp_ms })
-                }
-                "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
-                "rss_feed_upsert" => json!({
-                    "feed": {
-                        "url": entity_id,
-                        "title": "Verified feed",
-                        "enabled": true,
-                        "trackUnread": true
+                    "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
+                    "rss_feed_upsert" => json!({
+                        "feed": {
+                            "url": entity_id,
+                            "title": "Verified feed",
+                            "enabled": true,
+                            "trackUnread": true
+                        }
+                    }),
+                    "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
+                        json!({ "removed_at_ms": timestamp_ms })
                     }
-                }),
-                "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
-                    json!({ "removed_at_ms": timestamp_ms })
-                }
-                "preferences_leaf_assignment" => json!({
-                    "updates": {
-                        "display": { "archivePruneDays": 14 },
-                        "ai": { "autoSummarize": true }
+                    "preferences_leaf_assignment" => json!({
+                        "updates": {
+                            "display": { "archivePruneDays": 14 },
+                            "ai": { "autoSummarize": true }
+                        }
+                    }),
+                    "person_upsert" => json!({
+                        "person": {
+                            "id": entity_id,
+                            "name": "Verified Person",
+                            "relationshipStatus": "friend",
+                            "careLevel": 3,
+                            "reachOutIntervalDays": 30,
+                            "notes": "Keep in touch",
+                            "tags": ["local", "friend"],
+                            "reachOutLog": [
+                                {
+                                    "loggedAt": timestamp_ms,
+                                    "channel": "text",
+                                    "notes": "Hello"
+                                }
+                            ],
+                            "sampleDataFingerprint": {
+                                "marker": "freed.sample-data.v1",
+                                "batchId": "batch:verified",
+                                "generatedAt": timestamp_ms,
+                                "generatorVersion": 1
+                            },
+                            "createdAt": timestamp_ms,
+                            "updatedAt": timestamp_ms
+                        }
+                    }),
+                    "person_remove_and_accounts" => {
+                        json!({ "removed_at_ms": timestamp_ms })
                     }
-                }),
-                "person_upsert" => json!({
-                    "person": {
-                        "id": entity_id,
-                        "name": "Verified Person",
-                        "relationshipStatus": "friend",
-                        "careLevel": 3,
-                        "reachOutIntervalDays": 30,
-                        "notes": "Keep in touch",
-                        "tags": ["local", "friend"],
-                        "reachOutLog": [
-                            {
-                                "loggedAt": timestamp_ms,
-                                "channel": "text",
-                                "notes": "Hello"
-                            }
-                        ],
-                        "sampleDataFingerprint": {
-                            "marker": "freed.sample-data.v1",
-                            "batchId": "batch:verified",
-                            "generatedAt": timestamp_ms,
-                            "generatorVersion": 1
-                        },
-                        "createdAt": timestamp_ms,
-                        "updatedAt": timestamp_ms
-                    }
-                }),
-                "person_remove_and_accounts" => {
-                    json!({ "removed_at_ms": timestamp_ms })
-                }
-                "account_upsert" => json!({
-                    "account": {
-                        "id": entity_id,
-                        "personId": "person:verified",
-                        "kind": "social",
-                        "provider": "instagram",
-                        "externalId": "verified",
-                        "handle": "verified_account",
-                        "displayName": "Verified Account",
-                        "discoveredFrom": "manual_entry",
-                        "firstSeenAt": timestamp_ms,
-                        "lastSeenAt": timestamp_ms,
-                        "followRosterActive": true,
-                        "followRosterRoles": ["follower", "following"],
-                        "sampleDataFingerprint": {
-                            "marker": "freed.sample-data.v1",
-                            "batchId": "batch:verified",
-                            "generatedAt": timestamp_ms,
-                            "generatorVersion": 1
-                        },
-                        "createdAt": timestamp_ms,
-                        "updatedAt": timestamp_ms
-                    }
-                }),
-                "account_remove" => json!({ "removed_at_ms": timestamp_ms }),
-                _ => panic!("unsupported fixture operation type"),
-            };
+                    "account_upsert" => json!({
+                        "account": {
+                            "id": entity_id,
+                            "personId": "person:verified",
+                            "kind": "social",
+                            "provider": "instagram",
+                            "externalId": "verified",
+                            "handle": "verified_account",
+                            "displayName": "Verified Account",
+                            "discoveredFrom": "manual_entry",
+                            "firstSeenAt": timestamp_ms,
+                            "lastSeenAt": timestamp_ms,
+                            "followRosterActive": true,
+                            "followRosterRoles": ["follower", "following"],
+                            "sampleDataFingerprint": {
+                                "marker": "freed.sample-data.v1",
+                                "batchId": "batch:verified",
+                                "generatedAt": timestamp_ms,
+                                "generatorVersion": 1
+                            },
+                            "createdAt": timestamp_ms,
+                            "updatedAt": timestamp_ms
+                        }
+                    }),
+                    "account_remove" => json!({ "removed_at_ms": timestamp_ms }),
+                    _ => panic!("unsupported fixture operation type"),
+                });
             let entity_type = if operation_type.starts_with("rss_feed_") {
                 "RssFeed"
             } else if operation_type == "preferences_leaf_assignment" {

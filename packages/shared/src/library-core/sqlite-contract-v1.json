@@ -687,6 +687,22 @@
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
     },
+    "preferences_leaf_assignment": {
+      "clockReadSql": "",
+      "clockWriteSql": "",
+      "currentValueSql": "",
+      "dependentDeleteSql": [
+        "WITH patch AS (SELECT fullkey AS logical_path, type FROM json_tree(?1) WHERE fullkey <> '$') DELETE FROM library_preferences WHERE EXISTS (SELECT 1 FROM patch WHERE substr(library_preferences.path, 3) = patch.logical_path OR (patch.type <> 'object' AND substr(substr(library_preferences.path, 3), 1, length(patch.logical_path)) = patch.logical_path AND substr(substr(library_preferences.path, 3), length(patch.logical_path) + 1, 1) IN ('.', '[')));"
+      ],
+      "dependentInsertSql": [],
+      "entityType": "UserPreferences",
+      "invalidationTopic": "preferences",
+      "materializeSql": "INSERT INTO library_preferences (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at) SELECT CASE type WHEN 'object' THEN 'o:' WHEN 'array' THEN 'a:' ELSE 'v:' END || fullkey, CASE WHEN type IN ('true', 'false') THEN 'boolean' WHEN type IN ('integer', 'array') THEN 'integer' WHEN type = 'real' THEN 'real' WHEN type = 'text' THEN 'text' ELSE 'null' END, CASE WHEN type IN ('true', 'false') THEN atom ELSE NULL END, CASE WHEN type = 'integer' THEN atom WHEN type = 'array' THEN json_array_length(value) ELSE NULL END, CASE WHEN type = 'real' THEN atom ELSE NULL END, CASE WHEN type = 'text' THEN atom ELSE NULL END, ?2 FROM json_tree(?1) WHERE fullkey <> '$' ON CONFLICT(path) DO UPDATE SET value_type = excluded.value_type, boolean_value = excluded.boolean_value, integer_value = excluded.integer_value, real_value = excluded.real_value, text_value = excluded.text_value, updated_at = excluded.updated_at;",
+      "maximumMembers": 256,
+      "payloadKind": "preferences_leaf_assignment",
+      "requiresExistingTarget": false,
+      "targetExistsSql": "SELECT 1;"
+    },
     "rss_feed_remove_keep_items": {
       "clockReadSql": "SELECT deleted_at, operation_id FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1;",
       "clockWriteSql": "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, operation_id, deleted_at) VALUES ('rss_feed', ?1, ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, deleted_at = excluded.deleted_at;",

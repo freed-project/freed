@@ -14,7 +14,7 @@ function row(valueType: string, value: unknown) {
   return {
     booleanValue: valueType === "boolean" ? value : null,
     integerValue: valueType === "integer" ? value : null,
-    path: `display.${valueType}`,
+    path: `v:$.display.${valueType}`,
     realValue: valueType === "real" ? value : null,
     textValue: valueType === "text" ? value : null,
     updatedAt: 10,
@@ -34,6 +34,8 @@ describe("preferences snapshot contracts", () => {
       parseLibraryCorePreferencesSnapshotResponseV1({
         queryId: "preferences_snapshot_v1",
         rows: [
+          { ...row("integer", 0), path: "a:$.storyWall.hiddenItemIds" },
+          { ...row("null", null), path: "o:$.weights.topics" },
           row("boolean", true),
           row("integer", 3),
           row("null", null),
@@ -65,9 +67,17 @@ describe("preferences snapshot contracts", () => {
     expect(
       parseLibraryCorePreferencesSnapshotResponseV1({
         queryId: "preferences_snapshot_v1",
+        rows: [{ ...row("text", "not a count"), path: "a:$.bad" }],
+        schemaVersion: 1,
+        source,
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCorePreferencesSnapshotResponseV1({
+        queryId: "preferences_snapshot_v1",
         rows: [
-          { ...row("text", "first"), path: "😀" },
-          { ...row("text", "second"), path: "\ue000" },
+          { ...row("text", "first"), path: 'v:$."😀"' },
+          { ...row("text", "second"), path: 'v:$."\ue000"' },
         ],
         schemaVersion: 1,
         source,

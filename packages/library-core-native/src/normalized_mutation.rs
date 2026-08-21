@@ -470,10 +470,8 @@ fn materialize_member(
                     .ok_or(NormalizedSqliteError::InvalidRequest(
                         "normalized Account payload is missing",
                     ))?;
-            let changed = transaction.execute(
-                program.materialize_sql,
-                params![member.entity_id, account],
-            )?;
+            let changed =
+                transaction.execute(program.materialize_sql, params![member.entity_id, account])?;
             if changed != 0 {
                 for sql in program.dependent_delete_sql {
                     transaction.execute(sql, [&member.entity_id])?;
@@ -493,10 +491,8 @@ fn materialize_member(
                     .ok_or(NormalizedSqliteError::InvalidRequest(
                         "normalized Person payload is missing",
                     ))?;
-            let changed = transaction.execute(
-                program.materialize_sql,
-                params![member.entity_id, person],
-            )?;
+            let changed =
+                transaction.execute(program.materialize_sql, params![member.entity_id, person])?;
             if changed != 0 {
                 for sql in program.dependent_delete_sql {
                     transaction.execute(sql, [&member.entity_id])?;
@@ -505,6 +501,36 @@ fn materialize_member(
                     transaction.execute(sql, params![member.entity_id, person])?;
                 }
             }
+            Ok(())
+        }
+        "preferences_leaf_assignment" => {
+            let member = &verified.members[member_index];
+            let patch = member.preferences_patch_json.as_deref().ok_or(
+                NormalizedSqliteError::InvalidRequest("normalized preference patch is missing"),
+            )?;
+            let (node_count, maximum_path_bytes, maximum_text_bytes): (i64, i64, i64) = transaction
+                .query_row(
+                    "SELECT count(*),
+                            coalesce(max(length(CAST(fullkey AS BLOB)) + 2), 0),
+                            coalesce(max(CASE WHEN type = 'text'
+                                              THEN length(CAST(atom AS BLOB))
+                                              ELSE 0 END), 0)
+                     FROM json_tree(?1) WHERE fullkey <> '$';",
+                    [patch],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?;
+            if !(1..=512).contains(&node_count)
+                || maximum_path_bytes > 4_096
+                || maximum_text_bytes > 8_192
+            {
+                return Err(NormalizedSqliteError::InvalidRequest(
+                    "normalized preference patch exceeds node bounds",
+                ));
+            }
+            for sql in program.dependent_delete_sql {
+                transaction.execute(sql, [patch])?;
+            }
+            transaction.execute(program.materialize_sql, params![patch, committed_at])?;
             Ok(())
         }
         "rss_feed_upsert" => {
@@ -794,6 +820,7 @@ mod tests {
     use crate::library_core_journal::actor_capability::legacy_editor_operation_types;
     use crate::library_core_journal::operation_verifier::tests::{
         enrollment, signed_envelopes, signed_envelopes_from_tip,
+        signed_envelopes_from_tip_with_payload,
     };
     use crate::normalized_sqlite::install_normalized_schema_v1;
     use ring::rand::SystemRandom;
@@ -1699,6 +1726,112 @@ mod tests {
                 )
                 .expect("Person child count"),
             0
+        );
+    }
+
+    #[test]
+    fn signed_preference_patch_preserves_empty_containers_and_deep_merge_semantics() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let initial_payload = serde_json::json!({
+            "updates": {
+                "ai": { "autoSummarize": true },
+                "display": { "archivePruneDays": 14 },
+                "storyWall": { "includedPlatforms": ["x", "rss"] },
+                "ulysses": {
+                    "allowedPaths": { "x": [] },
+                    "blockedPlatforms": ["x", "facebook"]
+                },
+                "weights": { "topics": {} }
+            }
+        });
+        let initial = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:preferences:initial",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("preferences", 1_000)],
+            "preferences_leaf_assignment",
+            Some(&initial_payload),
+        );
+        let initial_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &initial, 2_000)
+                .expect("initial preference patch");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT integer_value FROM library_preferences
+                     WHERE path = 'a:$.storyWall.includedPlatforms';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("array marker"),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value_type FROM library_preferences
+                     WHERE path = 'o:$.weights.topics';",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("empty object marker"),
+            "null"
+        );
+
+        let replacement_payload = serde_json::json!({
+            "updates": {
+                "display": { "archivePruneDays": 30 },
+                "storyWall": { "includedPlatforms": [] }
+            }
+        });
+        let replacement = signed_envelopes_from_tip_with_payload(
+            &key_pair,
+            &enrollment,
+            "tx:preferences:replacement",
+            2,
+            Some(&initial_receipt.committed_operation_id),
+            &initial_receipt.committed_chain_digest,
+            &[("preferences", 1_100)],
+            "preferences_leaf_assignment",
+            Some(&replacement_payload),
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &replacement, 2_100)
+            .expect("replacement preference patch");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT integer_value FROM library_preferences
+                     WHERE path = 'a:$.storyWall.includedPlatforms';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("empty array marker"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_preferences
+                     WHERE substr(path, 3) LIKE '$.storyWall.includedPlatforms[%';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("array descendants"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT boolean_value FROM library_preferences
+                     WHERE path = 'v:$.ai.autoSummarize';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("preserved sibling"),
+            1
         );
     }
 }

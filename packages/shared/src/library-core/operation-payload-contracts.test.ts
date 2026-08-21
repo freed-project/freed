@@ -208,6 +208,34 @@ describe("Library Core operation payload contracts", () => {
     }
   });
 
+  it("bounds normalized preference nodes, paths, and text before signing", () => {
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          storyWall: { includedPlatforms: [] },
+          ulysses: { allowedPaths: { x: [] } },
+          weights: { topics: {} },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: {
+          weights: {
+            topics: Object.fromEntries(
+              Array.from({ length: 513 }, (_, index) => [`topic-${index}`, 1]),
+            ),
+          },
+        },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+    expect(
+      PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        updates: { storyWall: { publishTarget: { repoName: "x".repeat(8_193) } } },
+      }),
+    ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
   it("accepts a whole synchronized Person and rejects device-local graph fields", () => {
     const person = {
       id: "person:one",

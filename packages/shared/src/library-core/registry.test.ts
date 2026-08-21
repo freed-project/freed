@@ -213,7 +213,7 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
       FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   },
   // Traced from `updatePreferences`, which deep-merges an arbitrary partial
-  // and so may write any synchronized preference leaf. No entityIdCodec:
+  // and so may write any synchronized preference node. No entityIdCodec:
   // preferences are a singleton root with no per-entity key.
   preferences_leaf_assignment: {
     payloadSchema: PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -461,7 +461,7 @@ describe("Library Core operation registry", () => {
     const keys = PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
 
     // `updatePreferences` deep-merges an arbitrary partial, so the written set
-    // is every synchronized preference leaf. Both halves are asserted: nothing
+    // is every synchronized preference node. Both halves are asserted: nothing
     // synchronized is missing, and nothing device-local sneaks in.
     const synchronized = LIBRARY_CORE_FIELD_REGISTRY.filter(
       (entry) =>
