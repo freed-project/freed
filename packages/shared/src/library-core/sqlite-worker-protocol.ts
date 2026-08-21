@@ -4,6 +4,10 @@ import {
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
 } from "./sqlite-contract.generated.js";
+import type {
+  LibraryCoreFeedPageRequestV1,
+  LibraryCoreFeedPageResponseV1,
+} from "./feed-page-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -21,6 +25,12 @@ export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
       kind: "close";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "query_feed_page";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      query: LibraryCoreFeedPageRequestV1;
       requestId: string;
     }>;
 
@@ -40,6 +50,11 @@ export type LibraryCoreSqliteWorkerResponse =
       ok: true;
       requestId: string;
       status: LibraryCoreSqliteWorkerStatus;
+    }>
+  | Readonly<{
+      ok: true;
+      requestId: string;
+      result: LibraryCoreFeedPageResponseV1;
     }>
   | Readonly<{
       code:
@@ -68,12 +83,16 @@ export function parseLibraryCoreSqliteWorkerRequest(
     throw new TypeError("SQLite worker request must be a closed record");
   }
   const keys = Object.keys(value).sort();
+  const query = value.kind === "query_feed_page";
+  const expectedKeys = query
+    ? ["kind", "protocolVersion", "query", "requestId"]
+    : ["kind", "protocolVersion", "requestId"];
   if (
-    keys.length !== 3 ||
-    keys[0] !== "kind" ||
-    keys[1] !== "protocolVersion" ||
-    keys[2] !== "requestId" ||
-    !["close", "open", "status"].includes(String(value.kind)) ||
+    keys.length !== expectedKeys.length ||
+    keys.some((key, index) => key !== expectedKeys[index]) ||
+    !["close", "open", "query_feed_page", "status"].includes(
+      String(value.kind),
+    ) ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
@@ -85,12 +104,24 @@ export function parseLibraryCoreSqliteWorkerRequest(
 }
 
 export function createLibraryCoreSqliteWorkerRequest(
-  kind: LibraryCoreSqliteWorkerRequest["kind"],
+  kind: "close" | "open" | "status",
   requestId: string,
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteFeedPageWorkerRequest(
+  requestId: string,
+  query: LibraryCoreFeedPageRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "query_feed_page",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    query,
     requestId,
   });
 }

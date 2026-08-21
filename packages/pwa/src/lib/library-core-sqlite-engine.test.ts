@@ -44,4 +44,42 @@ describe("PWA Library Core SQLite engine", () => {
     const second = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
     expect(() => second.initialize()).toThrow(/does not match this build/);
   });
+
+  it("pages normalized feed rows through the bounded named query", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, content_text,
+         hidden, saved, archived, updated_at)
+      VALUES
+        ('item-2', 'saved', 'article', 200, 200, 'author-1', 'ada', 'Ada', 'newer', 0, 1, 0, 200),
+        ('item-1', 'rss', 'article', 100, 100, 'author-2', 'grace', 'Grace', 'older', 0, 0, 0, 100),
+        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', 'nope', 1, 0, 0, 300);
+      INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('item-2', 'favorite');
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('item-2', 0, 'https://example.com/image', 'image');
+    `);
+    const request = {
+      cancellationId: "cancel-1",
+      cursor: null,
+      limit: 1,
+      queryId: "feed_page_v1" as const,
+      readerSessionId: "reader-1",
+      schemaVersion: 1 as const,
+    };
+    const first = engine.queryFeedPage(request);
+    expect(first.totalCount).toBe(2);
+    expect(first.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(first.rows[0]?.tags).toEqual(["favorite"]);
+    expect(first.rows[0]?.mediaUrls).toEqual(["https://example.com/image"]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.queryFeedPage({ ...request, cursor: first.nextCursor });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
+    expect(second.nextCursor).toBeNull();
+  });
 });

@@ -33,6 +33,10 @@
       proof.
 - [ ] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.
+  - [x] `feed_page_v1` executes the generated normalized SQL in SQLite
+        WebAssembly with a source-fenced keyset cursor, at most 129 scanned
+        rows for a 128-row response, exact response-byte enforcement, and a
+        closed worker request that cannot carry arbitrary SQL.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

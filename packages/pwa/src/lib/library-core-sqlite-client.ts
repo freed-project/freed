@@ -1,16 +1,21 @@
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
+  createLibraryCoreSqliteFeedPageWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerStatus,
+  type LibraryCoreFeedPageRequestV1,
+  type LibraryCoreFeedPageResponseV1,
 } from "@freed/shared/library-core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface PendingRequest {
   readonly reject: (error: Error) => void;
-  readonly resolve: (status: LibraryCoreSqliteWorkerStatus) => void;
+  readonly resolve: (
+    value: LibraryCoreSqliteWorkerStatus | LibraryCoreFeedPageResponseV1,
+  ) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -40,6 +45,14 @@ export class PwaLibraryCoreSqliteClient {
     return this.#request("status");
   }
 
+  queryFeedPage(
+    query: LibraryCoreFeedPageRequestV1,
+  ): Promise<LibraryCoreFeedPageResponseV1> {
+    return this.#send<LibraryCoreFeedPageResponseV1>((requestId) =>
+      createLibraryCoreSqliteFeedPageWorkerRequest(requestId, query),
+    );
+  }
+
   async close(): Promise<LibraryCoreSqliteWorkerStatus> {
     const status = await this.#request("close");
     this.#closed = true;
@@ -50,6 +63,17 @@ export class PwaLibraryCoreSqliteClient {
   #request(
     kind: LibraryCoreSqliteWorkerRequest["kind"],
   ): Promise<LibraryCoreSqliteWorkerStatus> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteWorkerRequest(
+        kind as "close" | "open" | "status",
+        requestId,
+      ),
+    );
+  }
+
+  #send<T extends LibraryCoreSqliteWorkerStatus | LibraryCoreFeedPageResponseV1>(
+    createRequest: (requestId: string) => LibraryCoreSqliteWorkerRequest,
+  ): Promise<T> {
     if (this.#closed) {
       return Promise.reject(new Error("PWA Library SQLite client is closed"));
     }
@@ -62,13 +86,17 @@ export class PwaLibraryCoreSqliteClient {
       );
     }
     const requestId = crypto.randomUUID();
-    const request = createLibraryCoreSqliteWorkerRequest(kind, requestId);
-    return new Promise((resolve, reject) => {
+    const request = createRequest(requestId);
+    return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pending.delete(requestId);
         reject(new Error("PWA Library SQLite request timed out"));
       }, REQUEST_TIMEOUT_MS);
-      this.#pending.set(requestId, { reject, resolve, timeout });
+      this.#pending.set(requestId, {
+        reject,
+        resolve: resolve as PendingRequest["resolve"],
+        timeout,
+      });
       this.#worker.postMessage(request);
     });
   }
@@ -83,6 +111,10 @@ export class PwaLibraryCoreSqliteClient {
     clearTimeout(pending.timeout);
     if (response.ok === true && response.status) {
       pending.resolve(response.status);
+      return;
+    }
+    if (response.ok === true && response.result) {
+      pending.resolve(response.result);
       return;
     }
     pending.reject(

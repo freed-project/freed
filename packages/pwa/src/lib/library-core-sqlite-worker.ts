@@ -97,6 +97,14 @@ scope.onmessage = (event) => {
       requestId = request.requestId;
       const active = request.kind === "open" ? await open() : engine;
       if (!active) throw new Error("PWA Library SQLite is not open");
+      if (request.kind === "query_feed_page") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.queryFeedPage(request.query),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();
