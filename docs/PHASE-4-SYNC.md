@@ -314,6 +314,7 @@ loads an alternate Library engine or compatibility path.
 | 4.165 | Generated Account, Person with linked Accounts, RSS feed retaining items, and RSS feed with items removal programs, with verified signed admission, declared relationship deletes, convergent typed tombstones, exact retry receipts, replication outbox rows, invalidations, and revisions in one native SQLite transaction | ✓ | High |
 | 4.166 | Generated normalized RSS feed upsert with closed signed payload verification, exact sample-data fingerprint validation, typed scalar column writes, committed-time revision, and tombstone-protected no-resurrection semantics | ✓ | High |
 | 4.167 | Generated normalized Account upsert with closed signed payload verification, typed root columns, contract-owned follow-role replacement, SQLite-enforced person and provider identity, and tombstone-protected no-resurrection semantics | ✓ | High |
+| 4.168 | Generated normalized Person upsert with closed signed payload verification, typed root columns, contract-owned tag and bounded reach-out replacement, reusable dependent statement lists, and tombstone-protected no-resurrection semantics | ✓ | High |
 
 ---
 

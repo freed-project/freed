@@ -117,6 +117,11 @@
         one verified transaction. Person references and provider identity
         constraints remain enforced by SQLite, and a removed Account cannot be
         resurrected within the storage epoch.
+  - [x] Person upsert now writes its typed root columns and replaces both its
+        normalized tag set and bounded reach-out sequence through generated
+        statement lists in one verified transaction. The executor contains no
+        child-table-specific Person policy, and a removed Person cannot be
+        resurrected within the storage epoch.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

@@ -433,6 +433,13 @@ Account tombstone blocks later resurrection. The contract owns both the root
 statement and dependent role statements, so no runtime adapter can invent a
 second materialization policy.
 
+Person upsert follows the same rule for a wider aggregate. One verified payload
+writes the typed Person root and replaces both the normalized tag set and the
+bounded reach-out sequence. The generated contract carries ordered lists of
+dependent delete and insert statements, so aggregates can own multiple child
+tables without adding table-specific branches to the native executor. A Person
+tombstone blocks later root and child resurrection.
+
 Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a
 transport adapter for these immutable objects. Provider endpoints, headers,

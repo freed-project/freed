@@ -1366,7 +1366,22 @@ pub(crate) mod tests {
                         "name": "Verified Person",
                         "relationshipStatus": "friend",
                         "careLevel": 3,
-                        "tags": ["local"],
+                        "reachOutIntervalDays": 30,
+                        "notes": "Keep in touch",
+                        "tags": ["local", "friend"],
+                        "reachOutLog": [
+                            {
+                                "loggedAt": timestamp_ms,
+                                "channel": "text",
+                                "notes": "Hello"
+                            }
+                        ],
+                        "sampleDataFingerprint": {
+                            "marker": "freed.sample-data.v1",
+                            "batchId": "batch:verified",
+                            "generatedAt": timestamp_ms,
+                            "generatorVersion": 1
+                        },
                         "createdAt": timestamp_ms,
                         "updatedAt": timestamp_ms
                     }

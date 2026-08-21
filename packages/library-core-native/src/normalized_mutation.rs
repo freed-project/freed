@@ -424,8 +424,8 @@ fn materialize_remove(
             || (removed_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
     });
     if wins {
-        if !program.dependent_delete_sql.is_empty() {
-            transaction.execute(program.dependent_delete_sql, [&member.entity_id])?;
+        for sql in program.dependent_delete_sql {
+            transaction.execute(sql, [&member.entity_id])?;
         }
         transaction.execute(program.materialize_sql, [&member.entity_id])?;
         transaction.execute(
@@ -475,11 +475,35 @@ fn materialize_member(
                 params![member.entity_id, account],
             )?;
             if changed != 0 {
-                transaction.execute(program.dependent_delete_sql, [&member.entity_id])?;
-                transaction.execute(
-                    program.dependent_insert_sql,
-                    params![member.entity_id, account],
-                )?;
+                for sql in program.dependent_delete_sql {
+                    transaction.execute(sql, [&member.entity_id])?;
+                }
+                for sql in program.dependent_insert_sql {
+                    transaction.execute(sql, params![member.entity_id, account])?;
+                }
+            }
+            Ok(())
+        }
+        "person_upsert" => {
+            let member = &verified.members[member_index];
+            let person =
+                member
+                    .person_json
+                    .as_deref()
+                    .ok_or(NormalizedSqliteError::InvalidRequest(
+                        "normalized Person payload is missing",
+                    ))?;
+            let changed = transaction.execute(
+                program.materialize_sql,
+                params![member.entity_id, person],
+            )?;
+            if changed != 0 {
+                for sql in program.dependent_delete_sql {
+                    transaction.execute(sql, [&member.entity_id])?;
+                }
+                for sql in program.dependent_insert_sql {
+                    transaction.execute(sql, params![member.entity_id, person])?;
+                }
             }
             Ok(())
         }
@@ -1546,6 +1570,134 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("Account role count"),
+            0
+        );
+    }
+
+    #[test]
+    fn signed_person_upsert_materializes_root_and_child_sets_without_resurrection() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("person:new", 1_000)],
+            "person_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert Person");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT name, relationship_status, care_level,
+                            reach_out_interval_days, notes, sample_batch_id, updated_at
+                     FROM library_persons WHERE id = 'person:new';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, String>(5)?,
+                            row.get::<_, i64>(6)?,
+                        ))
+                    },
+                )
+                .expect("normalized Person"),
+            (
+                "Verified Person".to_owned(),
+                "friend".to_owned(),
+                3,
+                30,
+                "Keep in touch".to_owned(),
+                "batch:verified".to_owned(),
+                1_000,
+            )
+        );
+        assert_eq!(
+            connection
+                .prepare(
+                    "SELECT tag FROM library_person_tags
+                     WHERE person_id = 'person:new' ORDER BY tag;",
+                )
+                .expect("prepare Person tag query")
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("query Person tags")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("collect Person tags"),
+            vec!["friend".to_owned(), "local".to_owned()]
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT ordinal, logged_at, channel, notes
+                     FROM library_person_reach_outs WHERE person_id = 'person:new';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    },
+                )
+                .expect("normalized reach-out"),
+            (0, 1_000, "text".to_owned(), "Hello".to_owned())
+        );
+
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:remove",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &[("person:new", 1_100)],
+            "person_remove_and_accounts",
+        );
+        let remove_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+                .expect("remove Person");
+        let blocked_upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:person:upsert-after-remove",
+            3,
+            Some(&remove_receipt.committed_operation_id),
+            &remove_receipt.committed_chain_digest,
+            &[("person:new", 1_200)],
+            "person_upsert",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &blocked_upsert, 2_200)
+            .expect("journal blocked Person resurrection");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_persons WHERE id = 'person:new';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Person count"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT (SELECT count(*) FROM library_person_tags
+                               WHERE person_id = 'person:new') +
+                            (SELECT count(*) FROM library_person_reach_outs
+                               WHERE person_id = 'person:new');",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Person child count"),
             0
         );
     }
