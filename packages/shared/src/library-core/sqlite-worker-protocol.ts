@@ -40,6 +40,11 @@ import {
   type LibraryCoreItemScanResponseV1,
 } from "./item-scan-contracts.js";
 import {
+  parseLibraryCorePersonDetailRequestV1,
+  type LibraryCorePersonDetailRequestV1,
+  type LibraryCorePersonDetailResponseV1,
+} from "./person-detail-contracts.js";
+import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
@@ -58,6 +63,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
+  | LibraryCorePersonDetailRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -74,9 +80,11 @@ export type LibraryCoreSqliteQueryResponseFor<
           ? LibraryCoreItemReaderBodyResponseV1
           : T extends LibraryCoreItemScanRequestV1
             ? LibraryCoreItemScanResponseV1
-            : T extends LibraryCorePreferencesSnapshotRequestV1
-              ? LibraryCorePreferencesSnapshotResponseV1
-              : never;
+            : T extends LibraryCorePersonDetailRequestV1
+              ? LibraryCorePersonDetailResponseV1
+              : T extends LibraryCorePreferencesSnapshotRequestV1
+                ? LibraryCorePreferencesSnapshotResponseV1
+                : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -137,6 +145,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemDetailResponseV1
   | LibraryCoreItemReaderBodyResponseV1
   | LibraryCoreItemScanResponseV1
+  | LibraryCorePersonDetailResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2;
@@ -226,9 +235,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
               ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
               : value.query.queryId === "background_item_page_v1"
                 ? parseLibraryCoreItemScanRequestV1(value.query)
-                : value.query.queryId === "preferences_snapshot_v1"
-                  ? parseLibraryCorePreferencesSnapshotRequestV1(value.query)
-                  : parseLibraryCoreFeedPageRequestV1(value.query)
+                : value.query.queryId === "person_detail_v1"
+                  ? parseLibraryCorePersonDetailRequestV1(value.query)
+                  : value.query.queryId === "preferences_snapshot_v1"
+                    ? parseLibraryCorePreferencesSnapshotRequestV1(value.query)
+                    : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   }

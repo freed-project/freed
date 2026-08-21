@@ -286,6 +286,14 @@ are fetched through `item_reader_body_v1`. Item detail and background scans do
 not return full bodies, arbitrary remainder objects, or an enlarged metadata
 response.
 
+`person_detail_v1` is the normalized point query for one visible Person
+header. It returns one closed Person row, no Accounts and no FeedItems. Tags
+are capped at 64 in SQLite binary order. Reach-out history is capped at the
+latest 20 events in descending time order with accepted operation IDs as the
+stable tie-break identity. The source-fenced response is capped at 512 KiB.
+Accounts and timeline cards use their own bounded page queries, so opening one
+Person never hydrates the Friends graph or a hidden Library shell.
+
 `item_reader_body_v1` is the only interactive reader-body byte path. The
 request names the item, selects content or preserved text, and supplies an
 explicit byte offset and a range no larger than 256 KiB. The response is no

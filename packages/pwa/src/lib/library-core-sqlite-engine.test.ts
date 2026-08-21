@@ -284,6 +284,19 @@ describe("PWA Library Core SQLite engine", () => {
       INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('item-2', 'favorite');
       INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
       VALUES ('item-2', 0, 'https://example.com/image', 'image');
+      INSERT INTO library_persons
+        (id, name, avatar_url, bio, relationship_status, care_level,
+         reach_out_interval_days, notes, created_at, updated_at)
+      VALUES
+        ('person-1', 'Ada', 'https://example.com/ada', 'Mathematician',
+         'friend', 5, 14, 'Write soon', 50, 200);
+      INSERT INTO library_person_tags (person_id, tag)
+      VALUES ('person-1', 'close'), ('person-1', 'science');
+      INSERT INTO library_person_reach_outs
+        (person_id, reach_out_id, logged_at, channel, notes)
+      VALUES
+        ('person-1', 'reach-2', 200, 'text', 'Latest'),
+        ('person-1', 'reach-1', 100, NULL, NULL);
     `);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
@@ -402,6 +415,32 @@ describe("PWA Library Core SQLite engine", () => {
         queryId: "item_detail_v1",
         schemaVersion: 1,
       }).item,
+    ).toBeNull();
+    expect(
+      engine.query({
+        personId: "person-1",
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      person: {
+        id: "person-1",
+        name: "Ada",
+        reachOuts: [
+          { loggedAt: 200, notes: "Latest", reachOutId: "reach-2" },
+          { loggedAt: 100, notes: null, reachOutId: "reach-1" },
+        ],
+        tags: ["close", "science"],
+      },
+      queryId: "person_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        personId: "missing",
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }).person,
     ).toBeNull();
     const inlineBody = engine.query({
       bodyKind: "content",

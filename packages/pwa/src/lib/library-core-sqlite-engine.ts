@@ -33,6 +33,8 @@ import {
   encodeLibraryCoreItemScanCursorV1,
   parseLibraryCoreItemScanRequestV1,
   parseLibraryCoreItemScanResponseV1,
+  parseLibraryCorePersonDetailRequestV1,
+  parseLibraryCorePersonDetailResponseV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -63,6 +65,8 @@ import {
   type LibraryCoreItemReaderBodyResponseV1,
   type LibraryCoreItemScanRequestV1,
   type LibraryCoreItemScanResponseV1,
+  type LibraryCorePersonDetailRequestV1,
+  type LibraryCorePersonDetailResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -716,6 +720,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemScan(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_detail_v1":
+        return this.#queryPersonDetail(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -895,6 +903,80 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCorePreferencesSnapshotResponseV1(response);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryPersonDetail(
+    input: LibraryCorePersonDetailRequestV1,
+  ): LibraryCorePersonDetailResponseV1 {
+    const request = parseLibraryCorePersonDetailRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_detail_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.personId],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite person detail exceeded its row bound",
+      );
+    }
+    const row = rows[0];
+    const person =
+      row === undefined
+        ? null
+        : {
+            avatarUrl: nullableText(row.avatarUrl, "Person avatar URL"),
+            bio: nullableText(row.bio, "Person bio"),
+            careLevel: safeInteger(row.careLevel, "Person care level"),
+            createdAt: safeInteger(row.createdAt, "Person creation time"),
+            id: text(row.id, "Person identity"),
+            name: text(row.name, "Person name"),
+            notes: nullableText(row.notes, "Person notes"),
+            reachOutIntervalDays: nullableInteger(
+              row.reachOutIntervalDays,
+              "Person reach-out interval",
+            ),
+            reachOuts: JSON.parse(
+              text(row.reachOutsJson, "Person reach-out rows"),
+            ) as unknown,
+            relationshipStatus: text(
+              row.relationshipStatus,
+              "Person relationship status",
+            ),
+            sampleBatchId: nullableText(
+              row.sampleBatchId,
+              "Person sample batch",
+            ),
+            sampleGeneratedAt: nullableInteger(
+              row.sampleGeneratedAt,
+              "Person sample generation time",
+            ),
+            sampleGeneratorVersion: nullableInteger(
+              row.sampleGeneratorVersion,
+              "Person sample generator version",
+            ),
+            tags: stringArray(row.tagsJson, "Person tags"),
+            updatedAt: safeInteger(row.updatedAt, "Person update time"),
+          };
+    const response = {
+      person,
+      queryId: "person_detail_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCorePersonDetailResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

@@ -55,6 +55,13 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-person", {
+        personId: "person-1",
+        queryId: "person_detail_v1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-item-scan", {
         cancellationId: "cancel-scan-1",
         cursor: null,

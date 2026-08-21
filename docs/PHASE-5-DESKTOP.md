@@ -67,6 +67,11 @@
         returns a full body or catch-all object, and the response uses the
         ordinary 2 MiB ceiling. Background item scans are metadata-only and no
         longer alias the historical full-content detail projection.
+  - [x] `person_detail_v1` now performs one primary-key SQLite lookup through
+        the extracted native core. It returns one closed Person header, at most
+        64 binary-ordered tags, and the latest 20 stable reach-out events under
+        a 512 KiB ceiling. Accounts and timeline cards remain separate bounded
+        queries. Freed Desktop view wiring remains open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

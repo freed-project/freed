@@ -17,6 +17,7 @@ const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
+const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTENT_CHUNK_BYTES: usize = 65_536;
@@ -74,6 +75,13 @@ pub struct NormalizedItemDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonDetailRequestV1 {
+    pub person_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRequestV1 {
     pub body_kind: String,
     pub global_id: String,
@@ -90,6 +98,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    PersonDetail(NormalizedPersonDetailRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
@@ -243,6 +252,44 @@ pub struct NormalizedItemDetailResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonReachOutV1 {
+    pub channel: Option<String>,
+    pub logged_at: i64,
+    pub notes: Option<String>,
+    pub reach_out_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonDetailV1 {
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub care_level: i64,
+    pub created_at: i64,
+    pub id: String,
+    pub name: String,
+    pub notes: Option<String>,
+    pub reach_out_interval_days: Option<i64>,
+    pub reach_outs: Vec<NormalizedPersonReachOutV1>,
+    pub relationship_status: String,
+    pub sample_batch_id: Option<String>,
+    pub sample_generated_at: Option<i64>,
+    pub sample_generator_version: Option<i64>,
+    pub tags: Vec<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonDetailResponseV1 {
+    pub person: Option<NormalizedPersonDetailV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRangeV1 {
     pub blob_digest: Option<String>,
     pub bytes_base64: String,
@@ -269,6 +316,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
+    PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
@@ -947,6 +995,128 @@ fn body_locator(
     })
 }
 
+fn query_person_detail(
+    connection: &mut Connection,
+    request: NormalizedPersonDetailRequestV1,
+) -> Result<NormalizedPersonDetailResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.person_id.is_empty()
+        || request.person_id.len() > 2_048
+    {
+        return Err(invalid("normalized person detail identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "person_detail_v1")
+        .ok_or(invalid("normalized person detail program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(params![request.person_id], |row| {
+        let reach_outs_json: String = row.get("reachOutsJson")?;
+        let reach_outs: Vec<NormalizedPersonReachOutV1> = serde_json::from_str(&reach_outs_json)
+            .map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?;
+        Ok(NormalizedPersonDetailV1 {
+            avatar_url: row.get("avatarUrl")?,
+            bio: row.get("bio")?,
+            care_level: row.get("careLevel")?,
+            created_at: row.get("createdAt")?,
+            id: row.get("id")?,
+            name: row.get("name")?,
+            notes: row.get("notes")?,
+            reach_out_interval_days: row.get("reachOutIntervalDays")?,
+            reach_outs,
+            relationship_status: row.get("relationshipStatus")?,
+            sample_batch_id: row.get("sampleBatchId")?,
+            sample_generated_at: row.get("sampleGeneratedAt")?,
+            sample_generator_version: row.get("sampleGeneratorVersion")?,
+            tags: string_array(row, "tagsJson", 64, 1_024)?,
+            updated_at: row.get("updatedAt")?,
+        })
+    })?;
+    let mut persons = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if persons.len() > program.1 {
+        return Err(invalid("normalized person detail exceeded its row bound"));
+    }
+    if let Some(person) = persons.first() {
+        let bounded_optional = |value: &Option<String>, maximum| {
+            value.as_ref().is_none_or(|text| text.len() <= maximum)
+        };
+        if person.id != request.person_id
+            || person.id.is_empty()
+            || person.id.len() > 2_048
+            || person.name.len() > 4_096
+            || person.relationship_status.len() > 255
+            || !bounded_optional(&person.avatar_url, 8_192)
+            || !bounded_optional(&person.bio, 65_536)
+            || !bounded_optional(&person.notes, 65_536)
+            || !bounded_optional(&person.sample_batch_id, 255)
+            || !(1..=5).contains(&person.care_level)
+            || !valid_safe_integer(person.created_at)
+            || !valid_safe_integer(person.updated_at)
+            || person
+                .reach_out_interval_days
+                .is_some_and(|value| !valid_safe_integer(value))
+            || person
+                .sample_generated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || person
+                .sample_generator_version
+                .is_some_and(|value| !valid_safe_integer(value))
+            || person.tags.windows(2).any(|tags| tags[0] >= tags[1])
+            || person.reach_outs.len() > 20
+            || person.reach_outs.iter().any(|reach_out| {
+                reach_out.reach_out_id.is_empty()
+                    || reach_out.reach_out_id.len() > 255
+                    || !valid_safe_integer(reach_out.logged_at)
+                    || reach_out
+                        .channel
+                        .as_ref()
+                        .is_some_and(|value| value.len() > 64)
+                    || reach_out
+                        .notes
+                        .as_ref()
+                        .is_some_and(|value| value.len() > 65_536)
+            })
+            || person.reach_outs.windows(2).any(|rows| {
+                rows[0].logged_at < rows[1].logged_at
+                    || (rows[0].logged_at == rows[1].logged_at
+                        && rows[0].reach_out_id >= rows[1].reach_out_id)
+            })
+        {
+            return Err(invalid("normalized person detail row is invalid"));
+        }
+    }
+    let response = NormalizedPersonDetailResponseV1 {
+        person: persons.pop(),
+        query_id: "person_detail_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized person detail response is invalid"))?
+        .len()
+        > PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized person detail response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_item_detail(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -1185,6 +1355,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
             query_item_scan(connection, request)?,
         )),
+        NormalizedQueryRequestV1::PersonDetail(request) => {
+            Ok(NormalizedQueryResponseV1::PersonDetail(Box::new(
+                query_person_detail(connection, request)?,
+            )))
+        }
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -1748,6 +1923,63 @@ mod tests {
         assert!(!serde_json::to_string(&item)
             .expect("json")
             .contains("preservedText"));
+    }
+
+    #[test]
+    fn native_person_detail_returns_one_bounded_normalized_record() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 12, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+                 INSERT INTO library_persons
+                   (id, name, avatar_url, bio, relationship_status, care_level,
+                    reach_out_interval_days, notes, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'https://example.com/ada',
+                           'Mathematician', 'friend', 5, 14, 'Write soon', 50, 200);
+                 INSERT INTO library_person_tags (person_id, tag)
+                   VALUES ('person-1', 'science'), ('person-1', 'close');
+                 INSERT INTO library_person_reach_outs
+                   (person_id, reach_out_id, logged_at, channel, notes)
+                   VALUES ('person-1', 'reach-1', 100, NULL, NULL),
+                          ('person-1', 'reach-2', 200, 'text', 'Latest');",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let NormalizedQueryResponseV1::PersonDetail(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonDetail(NormalizedPersonDetailRequestV1 {
+                person_id: "person-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("person detail") else {
+            panic!("person detail response");
+        };
+        let person = response.person.expect("person");
+        assert_eq!(person.id, "person-1");
+        assert_eq!(person.tags, ["close", "science"]);
+        assert_eq!(person.reach_outs.len(), 2);
+        assert_eq!(person.reach_outs[0].reach_out_id, "reach-2");
+        assert_eq!(person.reach_outs[1].reach_out_id, "reach-1");
+
+        let NormalizedQueryResponseV1::PersonDetail(missing) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonDetail(NormalizedPersonDetailRequestV1 {
+                person_id: "missing".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("missing person detail") else {
+            panic!("person detail response");
+        };
+        assert!(missing.person.is_none());
     }
 
     #[test]

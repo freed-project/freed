@@ -320,6 +320,7 @@ loads an alternate Library engine or compatibility path.
 | 4.171 | Generated Account person assignment with a closed bounded nullable person ID, verified signed admission, deterministic timestamp and operation-ID field clock, SQLite-enforced person references, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
 | 4.172 | Generated Person reach-out append with a closed bounded event payload, accepted-operation row identity, deterministic latest-twenty retention, stable checkpoint identity, and strict separation from Person upsert | ✓ | High |
 | 4.173 | Generated Person detach removal with closed signed admission, SQLite foreign-key detachment that preserves linked Accounts, convergent Person tombstone, and atomic receipt, outbox, invalidation, and revision effects | ✓ | High |
+| 4.174 | Shared `person_detail_v1` SQLite point query across native and browser dispatch, returning one closed Person header with at most 64 binary-ordered tags and the latest 20 stable reach-out events under a 512 KiB response ceiling | ✓ | High |
 
 ---
 

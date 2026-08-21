@@ -952,6 +952,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.person_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.preferences_snapshot_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||

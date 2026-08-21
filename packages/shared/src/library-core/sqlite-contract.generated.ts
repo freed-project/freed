@@ -1021,6 +1021,11 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "countSql": "SELECT total_count FROM library_facet_summary WHERE singleton_id = 1;",
     "sql": "SELECT summary.total_count AS totalCount, summary.archived_count AS archivedCount, summary.sample_item_count AS sampleItemCount, summary.saved_count AS savedCount, summary.saved_archived_count AS savedArchivedCount, (SELECT count(*) FROM library_saved_platform_counts) AS savedPlatformCount, (SELECT json_group_array(tag) FROM (SELECT tag FROM library_tag_counts ORDER BY tag COLLATE BINARY LIMIT 4097)) AS tagsJson FROM library_facet_summary AS summary WHERE summary.singleton_id = 1;"
   },
+  "person_detail_v1": {
+    "maximumScanRows": 1,
+    "countSql": "SELECT count(*) FROM library_persons WHERE id = ?1 COLLATE BINARY;",
+    "sql": "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.bio, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.notes, person.sample_batch_id AS sampleBatchId, person.sample_generated_at AS sampleGeneratedAt, person.sample_generator_version AS sampleGeneratorVersion, person.created_at AS createdAt, person.updated_at AS updatedAt, (SELECT json_group_array(tag) FROM (SELECT tag FROM library_person_tags WHERE person_id = person.id ORDER BY tag COLLATE BINARY LIMIT 64)) AS tagsJson, (SELECT json_group_array(json_object('reachOutId', reach_out_id, 'loggedAt', logged_at, 'channel', channel, 'notes', notes)) FROM (SELECT reach_out_id, logged_at, channel, notes FROM library_person_reach_outs WHERE person_id = person.id ORDER BY logged_at DESC, reach_out_id COLLATE BINARY ASC LIMIT 20)) AS reachOutsJson FROM library_persons AS person WHERE person.id = ?1 COLLATE BINARY LIMIT 1;"
+  },
   "preferences_snapshot_v1": {
     "maximumScanRows": 513,
     "countSql": "SELECT count(*) FROM library_preferences;",
