@@ -860,6 +860,24 @@ normalized records across bounded export pages. It never uses the source shell
 or a whole-corpus serialization as evidence, and it cannot activate or select
 the target database.
 
+The normalized storage transition certificate advances the old authority by
+exactly one epoch. It must use the already accepted authority key and binds the
+entire migration receipt, selected Primary writer, acceptance time, contract,
+schema and protocol versions, schema SHA-256, and normalized checkpoint format.
+The transition body digest names the new epoch. A separate digest identifies
+the complete signed certificate. Both the epoch signature and authority-key
+possession signature are verified before installation.
+
+Candidate authority installation rechecks the old state revision, source
+identity, active authority tuple, key lineage, causal-frontier digest, and live
+plus excluded item counts. It rehashes the target product through bounded
+checkpoint pages, then installs the signed epoch, carried causal frontier,
+active Primary writer, writer admission, normalized metadata, and
+materialization generation in one target transaction. Any changed source,
+candidate byte, certificate byte, signature, count, or foreign key leaves the
+target inert. Installation does not select the target file or retire the old
+writer. Those actions belong to the later host compare-and-swap barrier.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

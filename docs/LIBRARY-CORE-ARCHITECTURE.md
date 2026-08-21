@@ -914,6 +914,17 @@ are discarded only when their canonical Person and Account sources exist.
 Neither the old shell nor a hash of it is migration, rollback, or activation
 evidence. Building this candidate does not select either database.
 
+The next-epoch certificate is signed only by the already accepted authority
+key. It binds the full candidate receipt, final contract and schema identities,
+checkpoint format, selected Primary writer, and acceptance time. The body
+digest names the epoch while the complete certificate has its own digest. The
+installer rechecks the old source tuple, key lineage, frontier, and counts, then
+rehashes the normalized target through bounded pages. It installs the signed
+epoch, carried causal baseline, writer admission, metadata, and generation in
+one target transaction. This makes the candidate internally complete. It does
+not switch the host's selected database or retire the old writer. The host does
+that only inside the final writer barrier and compare-and-swap.
+
 ### 16.2 Cutover
 
 Cutover:

@@ -1,4 +1,8 @@
-use crate::library_core_canonical::encode_canonical_value;
+use crate::library_core_authority_genesis::AuthorityKeyStore;
+use crate::library_core_canonical::{
+    encode_canonical_value, encode_operation_digest_input, encode_signature_input,
+};
+use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::lower_hex;
 use crate::normalized_checkpoint::blob_digest;
 use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
@@ -7,10 +11,13 @@ use crate::normalized_sqlite::{
     NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
 };
 use crate::sqlite_contract_generated::{
-    CONTENT_CHUNK_BYTES, PREFERENCE_WRITE_POLICIES_JSON, SQLITE_MUTATION_PROGRAMS,
+    CONTENT_CHUNK_BYTES, NORMALIZED_CHECKPOINT_FORMAT, NORMALIZED_SCHEMA_SHA256,
+    PREFERENCE_WRITE_POLICIES_JSON, SQLITE_CONTRACT_VERSION, SQLITE_MUTATION_PROGRAMS,
+    SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
@@ -28,6 +35,10 @@ const LEGACY_REACH_OUT_DIGEST_PREFIX: &[u8] =
 const LEGACY_FRONTIER_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-records/legacy-source-frontier\0";
 const MAXIMUM_SOURCE_FRONTIER_TIPS: usize = 1_000;
+const MAXIMUM_TRANSITION_CERTIFICATE_BYTES: usize = 65_536;
+const SIGNATURE_ALGORITHM: &str = "ed25519";
+const NORMALIZED_STORAGE_TRANSITION_FORMAT: &str =
+    "freed_normalized_storage_transition_certificate_v1";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct LegacyShellCountsV1 {
@@ -37,29 +48,69 @@ struct LegacyShellCountsV1 {
     reach_outs: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct NormalizedMigrationCandidateReceiptV1 {
-    pub(crate) format: &'static str,
-    pub(crate) library_id: String,
-    pub(crate) source_epoch: u64,
-    pub(crate) source_epoch_id: String,
-    pub(crate) source_transition_certificate_digest: String,
-    pub(crate) source_document_digest: String,
-    pub(crate) source_frontier_count: u64,
-    pub(crate) source_frontier_digest: String,
-    pub(crate) source_generation: u64,
-    pub(crate) source_revision: u64,
-    pub(crate) source_sqlite_revision: u64,
-    pub(crate) live_feed_items: u64,
-    pub(crate) excluded_deleted_feed_items: u64,
-    pub(crate) rss_feeds: u64,
-    pub(crate) persons: u64,
-    pub(crate) accounts: u64,
-    pub(crate) reach_outs: u64,
-    pub(crate) normalized_record_count: u64,
-    pub(crate) normalized_canonical_bytes: u64,
-    pub(crate) normalized_product_digest: String,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NormalizedMigrationCandidateReceiptV1 {
+    format: String,
+    library_id: String,
+    source_epoch: u64,
+    source_epoch_id: String,
+    source_transition_certificate_digest: String,
+    source_authority_key_id: String,
+    source_authority_public_key: String,
+    source_document_digest: String,
+    source_frontier_count: u64,
+    source_frontier_digest: String,
+    source_generation: u64,
+    source_revision: u64,
+    source_sqlite_revision: u64,
+    live_feed_items: u64,
+    excluded_deleted_feed_items: u64,
+    rss_feeds: u64,
+    persons: u64,
+    accounts: u64,
+    reach_outs: u64,
+    normalized_record_count: u64,
+    normalized_canonical_bytes: u64,
+    normalized_product_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NormalizedStorageTransitionBodyV1 {
+    format: String,
+    library_id: String,
+    epoch_number: u64,
+    writer_id: String,
+    authority_key_id: String,
+    authority_public_key: String,
+    signature_algorithm: String,
+    sqlite_contract_version: u32,
+    sqlite_schema_version: u32,
+    sqlite_protocol_version: u32,
+    normalized_schema_sha256: String,
+    checkpoint_format: String,
+    accepted_manifest_generation: u64,
+    accepted_at: u64,
+    migration_candidate: NormalizedMigrationCandidateReceiptV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NormalizedStorageTransitionCertificateV1 {
+    certificate_body: NormalizedStorageTransitionBodyV1,
+    epoch_id: String,
+    epoch_signature: String,
+    authority_key_possession_signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SignedNormalizedStorageTransitionV1 {
+    epoch_id: String,
+    transition_certificate_digest: String,
+    canonical_transition_certificate: String,
+    authority_key_id: String,
+    authority_public_key: String,
 }
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
@@ -80,6 +131,227 @@ fn valid_operation_id(value: &str) -> bool {
         && value.bytes().enumerate().all(|(index, byte)| {
             byte.is_ascii_alphanumeric() || (index > 0 && matches!(byte, b'.' | b'_' | b':' | b'-'))
         })
+}
+
+fn transition_digest(domain: &str, value: &Value) -> Result<String, NormalizedSqliteError> {
+    let input = encode_operation_digest_input(domain, value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized storage transition is invalid"))?;
+    Ok(lower_hex(&Sha256::digest(input)))
+}
+
+fn transition_authority_key_id(
+    authority_public_key: &str,
+) -> Result<String, NormalizedSqliteError> {
+    transition_digest(
+        "authority-key",
+        &serde_json::json!({
+            "authority_public_key": authority_public_key,
+            "signature_algorithm": SIGNATURE_ALGORITHM
+        }),
+    )
+}
+
+fn transition_signature_input(
+    domain: &str,
+    value: Value,
+) -> Result<Vec<u8>, NormalizedSqliteError> {
+    encode_signature_input(domain, &value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized storage transition signature input is invalid"))
+}
+
+fn sign_normalized_storage_transition_v1(
+    candidate: &NormalizedMigrationCandidateReceiptV1,
+    authority_store: &dyn AuthorityKeyStore,
+    writer_id: &str,
+    accepted_at: u64,
+) -> Result<SignedNormalizedStorageTransitionV1, NormalizedSqliteError> {
+    if candidate.format != "freed_normalized_migration_candidate_v1"
+        || writer_id.is_empty()
+        || writer_id.len() > 255
+        || accepted_at > 9_007_199_254_740_991
+    {
+        return Err(invalid("normalized storage transition request is invalid"));
+    }
+    let key_bytes = authority_store
+        .load(&candidate.library_id)
+        .map_err(|_| invalid("normalized authority signing key cannot be loaded"))?
+        .ok_or_else(|| invalid("normalized authority signing key is missing"))?;
+    let key_pair = Ed25519KeyPair::from_pkcs8(&key_bytes)
+        .map_err(|_| invalid("normalized authority signing key is corrupt"))?;
+    let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+    let authority_key_id = transition_authority_key_id(&authority_public_key)?;
+    if authority_public_key != candidate.source_authority_public_key
+        || authority_key_id != candidate.source_authority_key_id
+    {
+        return Err(invalid("normalized authority key lineage is unavailable"));
+    }
+    let epoch_number = candidate
+        .source_epoch
+        .checked_add(1)
+        .filter(|value| *value <= 9_007_199_254_740_991)
+        .ok_or_else(|| invalid("normalized storage epoch is invalid"))?;
+    let certificate_body = NormalizedStorageTransitionBodyV1 {
+        format: NORMALIZED_STORAGE_TRANSITION_FORMAT.to_owned(),
+        library_id: candidate.library_id.clone(),
+        epoch_number,
+        writer_id: writer_id.to_owned(),
+        authority_key_id: authority_key_id.clone(),
+        authority_public_key: authority_public_key.clone(),
+        signature_algorithm: SIGNATURE_ALGORITHM.to_owned(),
+        sqlite_contract_version: SQLITE_CONTRACT_VERSION,
+        sqlite_schema_version: SQLITE_SCHEMA_VERSION,
+        sqlite_protocol_version: SQLITE_PROTOCOL_VERSION,
+        normalized_schema_sha256: NORMALIZED_SCHEMA_SHA256.to_owned(),
+        checkpoint_format: NORMALIZED_CHECKPOINT_FORMAT.to_owned(),
+        accepted_manifest_generation: 0,
+        accepted_at,
+        migration_candidate: candidate.clone(),
+    };
+    let body_value = serde_json::to_value(&certificate_body)
+        .map_err(|_| invalid("normalized storage transition body is invalid"))?;
+    let epoch_id = transition_digest("epoch-transition-certificate", &body_value)?;
+    let epoch_signature_input = transition_signature_input(
+        "epoch-transition-certificate",
+        serde_json::json!({ "certificate_digest": epoch_id }),
+    )?;
+    let possession_signature_input = transition_signature_input(
+        "authority-key-possession",
+        serde_json::json!({
+            "certificate_digest": epoch_id,
+            "target_authority_key_id": authority_key_id
+        }),
+    )?;
+    let certificate = NormalizedStorageTransitionCertificateV1 {
+        certificate_body,
+        epoch_id: epoch_id.clone(),
+        epoch_signature: lower_hex(key_pair.sign(&epoch_signature_input).as_ref()),
+        authority_key_possession_signature: lower_hex(
+            key_pair.sign(&possession_signature_input).as_ref(),
+        ),
+    };
+    if !verify_library_core_ed25519(
+        &authority_public_key,
+        &certificate.epoch_signature,
+        &epoch_signature_input,
+    )
+    .map_err(|_| invalid("normalized storage transition signature is malformed"))?
+        || !verify_library_core_ed25519(
+            &authority_public_key,
+            &certificate.authority_key_possession_signature,
+            &possession_signature_input,
+        )
+        .map_err(|_| invalid("normalized authority possession signature is malformed"))?
+    {
+        return Err(invalid(
+            "normalized storage transition signature is invalid",
+        ));
+    }
+    let certificate_value = serde_json::to_value(&certificate)
+        .map_err(|_| invalid("normalized storage transition certificate is invalid"))?;
+    let canonical =
+        encode_canonical_value(&certificate_value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+            .map_err(|_| invalid("normalized storage transition certificate is not canonical"))?;
+    let canonical_transition_certificate = String::from_utf8(canonical)
+        .map_err(|_| invalid("normalized storage transition certificate is not UTF-8"))?;
+    let transition_certificate_digest =
+        transition_digest("epoch-transition-certificate", &certificate_value)?;
+    Ok(SignedNormalizedStorageTransitionV1 {
+        epoch_id,
+        transition_certificate_digest,
+        canonical_transition_certificate,
+        authority_key_id,
+        authority_public_key,
+    })
+}
+
+fn verify_normalized_storage_transition_v1(
+    candidate: &NormalizedMigrationCandidateReceiptV1,
+    signed: &SignedNormalizedStorageTransitionV1,
+) -> Result<NormalizedStorageTransitionCertificateV1, NormalizedSqliteError> {
+    if signed.canonical_transition_certificate.is_empty()
+        || signed.canonical_transition_certificate.len() > MAXIMUM_TRANSITION_CERTIFICATE_BYTES
+        || !valid_sha256(&signed.epoch_id)
+        || !valid_sha256(&signed.transition_certificate_digest)
+        || !valid_sha256(&signed.authority_key_id)
+        || !valid_sha256(&signed.authority_public_key)
+    {
+        return Err(invalid("normalized storage transition is invalid"));
+    }
+    let value: Value = serde_json::from_str(&signed.canonical_transition_certificate)
+        .map_err(|_| invalid("normalized storage transition certificate is invalid JSON"))?;
+    let canonical = encode_canonical_value(&value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized storage transition certificate is not canonical"))?;
+    if canonical.as_slice() != signed.canonical_transition_certificate.as_bytes() {
+        return Err(invalid(
+            "normalized storage transition certificate is not canonical",
+        ));
+    }
+    let certificate: NormalizedStorageTransitionCertificateV1 =
+        serde_json::from_value(value.clone())
+            .map_err(|_| invalid("normalized storage transition certificate is invalid"))?;
+    let body = &certificate.certificate_body;
+    let expected_epoch_number = candidate
+        .source_epoch
+        .checked_add(1)
+        .ok_or_else(|| invalid("normalized storage epoch is invalid"))?;
+    if body.format != NORMALIZED_STORAGE_TRANSITION_FORMAT
+        || body.library_id != candidate.library_id
+        || body.epoch_number != expected_epoch_number
+        || body.writer_id.is_empty()
+        || body.authority_key_id != candidate.source_authority_key_id
+        || body.authority_public_key != candidate.source_authority_public_key
+        || body.signature_algorithm != SIGNATURE_ALGORITHM
+        || body.sqlite_contract_version != SQLITE_CONTRACT_VERSION
+        || body.sqlite_schema_version != SQLITE_SCHEMA_VERSION
+        || body.sqlite_protocol_version != SQLITE_PROTOCOL_VERSION
+        || body.normalized_schema_sha256 != NORMALIZED_SCHEMA_SHA256
+        || body.checkpoint_format != NORMALIZED_CHECKPOINT_FORMAT
+        || body.accepted_manifest_generation != 0
+        || body.accepted_at > 9_007_199_254_740_991
+        || body.migration_candidate != *candidate
+        || certificate.epoch_id != signed.epoch_id
+        || body.authority_key_id != signed.authority_key_id
+        || body.authority_public_key != signed.authority_public_key
+    {
+        return Err(invalid("normalized storage transition body is invalid"));
+    }
+    let body_value = serde_json::to_value(body)
+        .map_err(|_| invalid("normalized storage transition body is invalid"))?;
+    if transition_digest("epoch-transition-certificate", &body_value)? != certificate.epoch_id
+        || transition_digest("epoch-transition-certificate", &value)?
+            != signed.transition_certificate_digest
+    {
+        return Err(invalid("normalized storage transition digest is invalid"));
+    }
+    let epoch_input = transition_signature_input(
+        "epoch-transition-certificate",
+        serde_json::json!({ "certificate_digest": certificate.epoch_id }),
+    )?;
+    let possession_input = transition_signature_input(
+        "authority-key-possession",
+        serde_json::json!({
+            "certificate_digest": certificate.epoch_id,
+            "target_authority_key_id": body.authority_key_id
+        }),
+    )?;
+    if !verify_library_core_ed25519(
+        &body.authority_public_key,
+        &certificate.epoch_signature,
+        &epoch_input,
+    )
+    .map_err(|_| invalid("normalized storage transition signature is malformed"))?
+        || !verify_library_core_ed25519(
+            &body.authority_public_key,
+            &certificate.authority_key_possession_signature,
+            &possession_input,
+        )
+        .map_err(|_| invalid("normalized authority possession signature is malformed"))?
+    {
+        return Err(invalid(
+            "normalized storage transition signature is invalid",
+        ));
+    }
+    Ok(certificate)
 }
 
 fn object_mut<'a>(
@@ -653,7 +925,7 @@ fn legacy_source_frontier_digest(
 /// the historical database. The returned receipt binds typed source authority
 /// and normalized output only. It does not activate the candidate, select a
 /// writer, sign a transition, hash the source shell, or modify the source.
-pub(crate) fn migrate_legacy_snapshot_v1(
+fn migrate_legacy_snapshot_v1(
     source: &mut Connection,
     target: &mut Connection,
 ) -> Result<NormalizedMigrationCandidateReceiptV1, NormalizedSqliteError> {
@@ -700,21 +972,41 @@ pub(crate) fn migrate_legacy_snapshot_v1(
     if active != 1 || activated_at.is_none() || expected_item_count != imported_item_count {
         return Err(invalid("legacy Library source is not fully active"));
     }
-    let (library_id, source_epoch, source_epoch_id, source_transition_certificate_digest): (
-        String,
-        i64,
-        String,
-        String,
-    ) = source.query_row(
-        "SELECT libraryId, epoch, epochId, transitionCertificateDigest
-         FROM library_core_active_authority;",
+    let (
+        library_id,
+        source_epoch,
+        source_epoch_id,
+        source_transition_certificate_digest,
+        source_authority_key_id,
+        source_authority_public_key,
+    ): (String, i64, String, String, String, String) = source.query_row(
+        "SELECT active.libraryId, active.epoch, active.epochId,
+                active.transitionCertificateDigest, epoch.authorityKeyId,
+                epoch.authorityPublicKey
+         FROM library_core_active_authority AS active
+         JOIN library_core_authority_epochs AS epoch
+           ON epoch.libraryId = active.libraryId
+          AND epoch.epoch = active.epoch
+          AND epoch.epochId = active.epochId
+          AND epoch.transitionCertificateDigest = active.transitionCertificateDigest;",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
     )?;
     if !valid_sha256(&library_id)
         || source_epoch < 1
         || !valid_sha256(&source_epoch_id)
         || !valid_sha256(&source_transition_certificate_digest)
+        || !valid_sha256(&source_authority_key_id)
+        || !valid_sha256(&source_authority_public_key)
         || !valid_sha256(&source_document_digest)
     {
         return Err(invalid("legacy Library authority identity is invalid"));
@@ -813,11 +1105,13 @@ pub(crate) fn migrate_legacy_snapshot_v1(
         normalized_product_digest(&target_transaction)?;
 
     let receipt = NormalizedMigrationCandidateReceiptV1 {
-        format: "freed_normalized_migration_candidate_v1",
+        format: "freed_normalized_migration_candidate_v1".to_owned(),
         library_id,
         source_epoch: unsigned_count(source_epoch, "legacy source epoch is invalid")?,
         source_epoch_id,
         source_transition_certificate_digest,
+        source_authority_key_id,
+        source_authority_public_key,
         source_document_digest,
         source_frontier_count,
         source_frontier_digest,
@@ -846,6 +1140,234 @@ pub(crate) fn migrate_legacy_snapshot_v1(
     target_transaction.commit()?;
     source.commit()?;
     Ok(receipt)
+}
+
+/// Installs signed normalized authority into the inert candidate after
+/// re-reading the exact old authority fence. This makes the target internally
+/// complete, but does not select its file or retire the old writer. The host
+/// performs that separate compare-and-swap while holding its writer barrier.
+fn install_normalized_candidate_authority_v1(
+    source: &mut Connection,
+    target: &mut Connection,
+    candidate: &NormalizedMigrationCandidateReceiptV1,
+    signed: &SignedNormalizedStorageTransitionV1,
+) -> Result<(), NormalizedSqliteError> {
+    let certificate = verify_normalized_storage_transition_v1(candidate, signed)?;
+    let source = source.transaction()?;
+    let state: (i64, i64, i64, i64, String, i64, i64, Option<i64>) = source.query_row(
+        "SELECT active, revision, sourceGeneration, sourceRevision, sourceDigest,
+                expectedItemCount, importedItemCount, activatedAtMs
+         FROM library_core_desktop_state WHERE singletonId = 1;",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+            ))
+        },
+    )?;
+    if state.0 != 1
+        || state.7.is_none()
+        || state.5 != state.6
+        || unsigned_count(state.1, "legacy source SQLite revision is invalid")?
+            != candidate.source_sqlite_revision
+        || unsigned_count(state.2, "legacy source generation is invalid")?
+            != candidate.source_generation
+        || unsigned_count(state.3, "legacy source revision is invalid")?
+            != candidate.source_revision
+        || state.4 != candidate.source_document_digest
+    {
+        return Err(invalid("legacy Library source fence changed"));
+    }
+    let authority: (String, i64, String, String, String, String) = source.query_row(
+        "SELECT active.libraryId, active.epoch, active.epochId,
+                active.transitionCertificateDigest, epoch.authorityKeyId,
+                epoch.authorityPublicKey
+         FROM library_core_active_authority AS active
+         JOIN library_core_authority_epochs AS epoch
+           ON epoch.libraryId = active.libraryId
+          AND epoch.epoch = active.epoch
+          AND epoch.epochId = active.epochId
+          AND epoch.transitionCertificateDigest = active.transitionCertificateDigest;",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+    if authority.0 != candidate.library_id
+        || unsigned_count(authority.1, "legacy source epoch is invalid")? != candidate.source_epoch
+        || authority.2 != candidate.source_epoch_id
+        || authority.3 != candidate.source_transition_certificate_digest
+        || authority.4 != candidate.source_authority_key_id
+        || authority.5 != candidate.source_authority_public_key
+    {
+        return Err(invalid("legacy Library authority fence changed"));
+    }
+    let (source_frontier_digest, source_frontier_count) =
+        legacy_source_frontier_digest(&source, &candidate.library_id, &candidate.source_epoch_id)?;
+    if source_frontier_digest != candidate.source_frontier_digest
+        || source_frontier_count != candidate.source_frontier_count
+    {
+        return Err(invalid("legacy Library frontier fence changed"));
+    }
+    let source_counts: (i64, i64) = source.query_row(
+        "SELECT count(*) FILTER (WHERE deletedAt IS NULL),
+                count(*) FILTER (WHERE deletedAt IS NOT NULL)
+         FROM library_core_feed_items;",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if unsigned_count(source_counts.0, "legacy FeedItem count is invalid")?
+        != candidate.live_feed_items
+        || unsigned_count(source_counts.1, "legacy deleted FeedItem count is invalid")?
+            != candidate.excluded_deleted_feed_items
+    {
+        return Err(invalid("legacy Library item fence changed"));
+    }
+
+    let target = target.transaction()?;
+    let (product_digest, product_records, product_bytes) = normalized_product_digest(&target)?;
+    if product_digest != candidate.normalized_product_digest
+        || product_records != candidate.normalized_record_count
+        || product_bytes != candidate.normalized_canonical_bytes
+    {
+        return Err(invalid("normalized migration candidate changed"));
+    }
+    let authority_rows: i64 = target.query_row(
+        "SELECT (SELECT count(*) FROM library_meta)
+              + (SELECT count(*) FROM library_materialization_generation)
+              + (SELECT count(*) FROM library_authority_epochs)
+              + (SELECT count(*) FROM library_authority_frontier)
+              + (SELECT count(*) FROM library_active_authority)
+              + (SELECT count(*) FROM library_writer_admission);",
+        [],
+        |row| row.get(0),
+    )?;
+    if authority_rows != 0 {
+        return Err(invalid(
+            "normalized migration authority is already installed",
+        ));
+    }
+    let body = &certificate.certificate_body;
+    target.execute(
+        "INSERT INTO library_authority_epochs
+         (epoch_id, library_id, epoch_number, authority_key_id,
+          authority_public_key, transition_certificate_digest,
+          canonical_transition_certificate, accepted_manifest_generation,
+          checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10);",
+        params![
+            signed.epoch_id,
+            candidate.library_id,
+            i64::try_from(body.epoch_number)
+                .map_err(|_| invalid("normalized storage epoch is invalid"))?,
+            signed.authority_key_id,
+            signed.authority_public_key,
+            signed.transition_certificate_digest,
+            signed.canonical_transition_certificate,
+            candidate.source_frontier_digest,
+            candidate.normalized_product_digest,
+            i64::try_from(body.accepted_at)
+                .map_err(|_| invalid("normalized transition time is invalid"))?,
+        ],
+    )?;
+    let mut frontier = source.prepare(
+        "SELECT tipIndex, actorId, sequence, operationId, chainDigest
+         FROM library_core_authority_frontier
+         WHERE libraryId = ?1 AND epochId = ?2 ORDER BY tipIndex;",
+    )?;
+    let mut rows = frontier.query(params![candidate.library_id, candidate.source_epoch_id])?;
+    let mut inserted_frontier = 0_u64;
+    while let Some(row) = rows.next()? {
+        target.execute(
+            "INSERT INTO library_authority_frontier
+             (epoch_id, ordinal, actor_id, accepted_counter,
+              accepted_operation_id, accepted_chain_digest)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            params![
+                signed.epoch_id,
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ],
+        )?;
+        inserted_frontier += 1;
+    }
+    drop(rows);
+    drop(frontier);
+    if inserted_frontier != candidate.source_frontier_count {
+        return Err(invalid("normalized authority frontier is incomplete"));
+    }
+    target.execute(
+        "INSERT INTO library_active_authority
+         (active_key, library_id, epoch_id, writer_id,
+          accepted_manifest_generation, activated_at)
+         VALUES ('active', ?1, ?2, ?3, 0, ?4);",
+        params![
+            candidate.library_id,
+            signed.epoch_id,
+            body.writer_id,
+            i64::try_from(body.accepted_at)
+                .map_err(|_| invalid("normalized transition time is invalid"))?,
+        ],
+    )?;
+    target.execute(
+        "INSERT INTO library_writer_admission
+         (singleton_id, local_writer_id, active_writer_id,
+          observed_manifest_generation, observed_at)
+         VALUES (1, ?1, ?1, 0, ?2);",
+        params![
+            body.writer_id,
+            i64::try_from(body.accepted_at)
+                .map_err(|_| invalid("normalized transition time is invalid"))?,
+        ],
+    )?;
+    target.execute(
+        "INSERT INTO library_meta
+         (singleton_id, library_id, schema_version, authority_epoch,
+          source_revision, updated_at)
+         VALUES (1, ?1, ?2, ?3, 0, ?4);",
+        params![
+            candidate.library_id,
+            i64::from(SQLITE_SCHEMA_VERSION),
+            signed.epoch_id,
+            i64::try_from(body.accepted_at)
+                .map_err(|_| invalid("normalized transition time is invalid"))?,
+        ],
+    )?;
+    target.execute(
+        "INSERT INTO library_materialization_generation
+         (singleton_id, generation_id) VALUES (1, ?1);",
+        [&candidate.normalized_product_digest],
+    )?;
+    let foreign_key_violation: Option<String> = target
+        .query_row(
+            "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if foreign_key_violation.is_some() {
+        return Err(invalid("normalized authority foreign key closure failed"));
+    }
+    target.commit()?;
+    source.commit()?;
+    Ok(())
 }
 
 /// Decomposes one historical FeedItem JSON row into final normalized product
@@ -1084,10 +1606,27 @@ mod tests {
     use crate::normalized_import::normalized_checkpoint_digest_v2;
     use crate::normalized_sqlite::NormalizedCheckpointExportRequestV2;
     use crate::{export_normalized_checkpoint_page_v2, install_normalized_schema_v1};
+    use ring::rand::SystemRandom;
     use rusqlite::Connection;
     use serde_json::json;
 
-    fn legacy_source_fixture() -> Connection {
+    struct TestAuthorityKeyStore(Vec<u8>);
+
+    impl AuthorityKeyStore for TestAuthorityKeyStore {
+        fn load(&self, _library_id: &str) -> Result<Option<Vec<u8>>, String> {
+            Ok(Some(self.0.clone()))
+        }
+
+        fn store(&self, _library_id: &str, _bytes: &[u8]) -> Result<(), String> {
+            Err("test store is read only".to_owned())
+        }
+    }
+
+    fn legacy_source_fixture() -> (Connection, Vec<u8>) {
+        let authority_key_bytes = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let authority_key_pair = Ed25519KeyPair::from_pkcs8(authority_key_bytes.as_ref()).unwrap();
+        let authority_public_key = lower_hex(authority_key_pair.public_key().as_ref());
+        let authority_key_id = transition_authority_key_id(&authority_public_key).unwrap();
         let connection = Connection::open_in_memory().unwrap();
         connection
             .execute_batch(
@@ -1110,6 +1649,15 @@ mod tests {
                    epoch INTEGER NOT NULL,
                    epochId TEXT NOT NULL,
                    transitionCertificateDigest TEXT NOT NULL
+                 ) STRICT;
+                 CREATE TABLE library_core_authority_epochs (
+                   libraryId TEXT NOT NULL,
+                   epoch INTEGER NOT NULL,
+                   epochId TEXT NOT NULL,
+                   transitionCertificateDigest TEXT NOT NULL,
+                   authorityKeyId TEXT NOT NULL,
+                   authorityPublicKey TEXT NOT NULL,
+                   PRIMARY KEY (libraryId, epochId)
                  ) STRICT;
                  CREATE TABLE library_core_authority_frontier (
                    libraryId TEXT NOT NULL,
@@ -1180,6 +1728,21 @@ mod tests {
             .unwrap();
         connection
             .execute(
+                "INSERT INTO library_core_authority_epochs
+                 (libraryId, epoch, epochId, transitionCertificateDigest,
+                  authorityKeyId, authorityPublicKey)
+                 VALUES (?1, 3, ?2, ?3, ?4, ?5);",
+                params![
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    authority_key_id,
+                    authority_public_key
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
                 "INSERT INTO library_core_active_authority
                  (libraryId, epoch, epochId, transitionCertificateDigest)
                  VALUES (?1, 3, ?2, ?3);",
@@ -1225,12 +1788,12 @@ mod tests {
                 ],
             )
             .unwrap();
-        connection
+        (connection, authority_key_bytes.as_ref().to_vec())
     }
 
     #[test]
     fn migrates_one_fenced_snapshot_and_binds_only_normalized_product_records() {
-        let mut source = legacy_source_fixture();
+        let (mut source, authority_key_bytes) = legacy_source_fixture();
         let mut target = Connection::open_in_memory().unwrap();
         let receipt = migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
 
@@ -1242,6 +1805,8 @@ mod tests {
         assert_eq!(receipt.source_sqlite_revision, 9);
         assert_eq!(receipt.source_frontier_count, 1);
         assert_eq!(receipt.source_frontier_digest.len(), 64);
+        assert_eq!(receipt.source_authority_key_id.len(), 64);
+        assert_eq!(receipt.source_authority_public_key.len(), 64);
         assert_eq!(receipt.live_feed_items, 1);
         assert_eq!(receipt.excluded_deleted_feed_items, 1);
         assert_eq!(
@@ -1274,6 +1839,31 @@ mod tests {
             normalized_checkpoint_digest_v2(&records).unwrap(),
             receipt.normalized_product_digest
         );
+        let transition = sign_normalized_storage_transition_v1(
+            &receipt,
+            &TestAuthorityKeyStore(authority_key_bytes.clone()),
+            "primary:desktop",
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(
+            sign_normalized_storage_transition_v1(
+                &receipt,
+                &TestAuthorityKeyStore(authority_key_bytes),
+                "primary:desktop",
+                1_000,
+            )
+            .unwrap(),
+            transition
+        );
+        assert_eq!(transition.epoch_id.len(), 64);
+        assert_eq!(transition.transition_certificate_digest.len(), 64);
+        let certificate: NormalizedStorageTransitionCertificateV1 =
+            serde_json::from_str(&transition.canonical_transition_certificate).unwrap();
+        assert_eq!(certificate.epoch_id, transition.epoch_id);
+        assert_eq!(certificate.certificate_body.epoch_number, 4);
+        assert_eq!(certificate.certificate_body.writer_id, "primary:desktop");
+        assert_eq!(certificate.certificate_body.migration_candidate, receipt);
         assert_eq!(
             target
                 .query_row("SELECT count(*) FROM library_meta;", [], |row| row
@@ -1281,7 +1871,104 @@ mod tests {
                 .unwrap(),
             0
         );
+        install_normalized_candidate_authority_v1(&mut source, &mut target, &receipt, &transition)
+            .unwrap();
+        let installed: (String, String, String, i64) = target
+            .query_row(
+                "SELECT active.library_id, active.epoch_id, active.writer_id,
+                        meta.source_revision
+                 FROM library_active_authority AS active
+                 JOIN library_meta AS meta ON meta.singleton_id = 1;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            installed,
+            (
+                receipt.library_id.clone(),
+                transition.epoch_id.clone(),
+                "primary:desktop".to_owned(),
+                0
+            )
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_authority_frontier;",
+                    [],
+                    |row| { row.get::<_, i64>(0) }
+                )
+                .unwrap(),
+            1
+        );
         assert!(migrate_legacy_snapshot_v1(&mut source, &mut target).is_err());
+    }
+
+    #[test]
+    fn changed_source_or_certificate_cannot_install_candidate_authority() {
+        let (mut changed_source, key_bytes) = legacy_source_fixture();
+        let mut changed_target = Connection::open_in_memory().unwrap();
+        let candidate =
+            migrate_legacy_snapshot_v1(&mut changed_source, &mut changed_target).unwrap();
+        let signed = sign_normalized_storage_transition_v1(
+            &candidate,
+            &TestAuthorityKeyStore(key_bytes),
+            "primary:desktop",
+            1_000,
+        )
+        .unwrap();
+        changed_source
+            .execute(
+                "UPDATE library_core_desktop_state SET revision = revision + 1
+                 WHERE singletonId = 1;",
+                [],
+            )
+            .unwrap();
+        assert!(install_normalized_candidate_authority_v1(
+            &mut changed_source,
+            &mut changed_target,
+            &candidate,
+            &signed,
+        )
+        .is_err());
+        assert_eq!(
+            changed_target
+                .query_row("SELECT count(*) FROM library_meta;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+
+        let (mut source, key_bytes) = legacy_source_fixture();
+        let mut target = Connection::open_in_memory().unwrap();
+        let candidate = migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
+        let mut signed = sign_normalized_storage_transition_v1(
+            &candidate,
+            &TestAuthorityKeyStore(key_bytes),
+            "primary:desktop",
+            1_000,
+        )
+        .unwrap();
+        signed.canonical_transition_certificate = signed.canonical_transition_certificate.replacen(
+            "primary:desktop",
+            "primary:tampered",
+            1,
+        );
+        assert!(install_normalized_candidate_authority_v1(
+            &mut source,
+            &mut target,
+            &candidate,
+            &signed,
+        )
+        .is_err());
+        assert_eq!(
+            target
+                .query_row("SELECT count(*) FROM library_meta;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
