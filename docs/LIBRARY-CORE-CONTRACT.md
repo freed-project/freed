@@ -596,6 +596,11 @@ only after the worker acknowledges the current page. The worker rejects mixed
 source or layout fences, reordered query families, discontinuous cursors,
 non-increasing identities, and a source above 100,000 semantic rows. A failed
 or superseded build preserves the last admitted scene.
+The shipping Friends view supplies this page executor directly from each host.
+Freed Desktop invokes the native query command and the PWA invokes its OPFS
+SQLite worker. The Friends product worker acknowledges one page before the
+host requests the next page, compiles the resident scene off the React thread,
+and returns only renderer buffers plus bounded presentation metadata.
 
 `item_reader_body_v1` is the only interactive reader-body byte path. The
 request names the item, selects content or preserved text, and supplies an

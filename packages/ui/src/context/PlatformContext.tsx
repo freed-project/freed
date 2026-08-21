@@ -43,6 +43,7 @@ import type {
 } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
+import type { FriendsGalaxySqliteGraphQuery } from "../lib/friends-galaxy-product-worker-client.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -669,6 +670,9 @@ export interface PlatformConfig {
   readLibraryFriendsGraph?: (
     request: LibraryFriendsGraphRequest,
   ) => Promise<LibraryFriendsGraph>;
+
+  /** Page the normalized Friends identity graph directly from local SQLite. */
+  queryLibraryFriendsGraphPage?: FriendsGalaxySqliteGraphQuery;
 
   /** One bounded source-keyed Friends timeline page from the local row store. */
   readLibraryPersonTimeline?: (

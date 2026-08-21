@@ -499,6 +499,7 @@ export async function captureDomFeed(
 | 5.55 | Extract item detail, Library facets, Saved analytics, Map, and Story Wall orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor | High | ✓ Complete |
 | 5.56 | Bind Friends mode into the normalized feed query, resolve friend membership through Account and Person joins in SQLite, and remove Desktop shell and historical-item dependencies from Friends paging | High | ✓ Complete |
 | 5.57 | Route selected Person timelines through the shared `person_timeline_v1` adapter, keyed by stable Person ID, with bounded compact rows and opaque source-fenced cursors | High | ✓ Complete |
+| 5.58 | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_graph_page_v1` executors so React never compiles the identity corpus | High | ✓ Complete |
 
 ---
 

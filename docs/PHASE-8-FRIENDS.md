@@ -627,6 +627,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.180 | Store final Person and Account graph pins in installation-local SQLite tables excluded from checkpoints and replication, return paired finite coordinates through the compact native and PWA graph pages, and execute generated idempotent one-row set and clear programs without canonical revision or outbox effects. Runtime product-store replacement of localStorage remains part of the graph reader cutover | High       | In progress |
 | 8.181 | Stream source-fenced Person, Account, and RSS SQLite pages through an acknowledged begin, one-page append, and commit worker protocol. The worker retains compact semantic state, releases every bounded source page, rejects mixed fences, reordered families, discontinuous cursors, non-increasing identities, and more than 100,000 semantic rows, and returns no identity corpus or FeedItems to React | High       | Done        |
 | 8.182 | Add the shared native and PWA `person_timeline_v1` query over a transactionally maintained `(person_id, published_at, global_id)` SQLite relation, with exact counts, a 100-row and 2 MiB bound, and cursors that cannot be reused for another Person or source generation | High | Done |
+| 8.183 | Connect the shipping Friends Galaxy worker to direct native and OPFS SQLite Person, Account, and RSS graph page executors, with one acknowledged page resident at a time and no React identity-corpus compiler | High | Done |
 
 ---
 

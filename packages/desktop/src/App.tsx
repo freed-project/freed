@@ -81,6 +81,7 @@ import {
   readDesktopFeedSignalCounts,
 } from "./lib/library-core-feed-browse-reader-runtime";
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
+import { queryNormalizedLibrary } from "./lib/library-core-normalized-query-client";
 import {
   openLibraryCoreItemScanSession,
   readLibraryCoreFacetSummary,
@@ -1572,6 +1573,10 @@ function App() {
       readLibraryFriendsGraph:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsGraph
+          : undefined,
+      queryLibraryFriendsGraphPage:
+        tauriRuntimeAvailable && isInitialized
+          ? queryNormalizedLibrary
           : undefined,
       readLibraryPersonTimeline:
         tauriRuntimeAvailable && isInitialized

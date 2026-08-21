@@ -91,6 +91,7 @@ import {
   scanPwaLibraryCoreItems,
   searchPwaLibraryCoreItems,
 } from "./lib/library-core-runtime";
+import { queryPwaNormalizedLibrary } from "./lib/library-core-sqlite-runtime";
 import {
   refreshSampleLibraryData,
   summarizeSampleData,
@@ -471,6 +472,7 @@ function App() {
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
+      queryLibraryFriendsGraphPage: queryPwaNormalizedLibrary,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
       readLibrarySurfaceItems: readPwaLibraryCoreSurfaceItems,
