@@ -213,14 +213,12 @@ function coordinateLocationItem(
 }
 
 function FriendsHarness({
-  fallbackItems,
   locationSources,
   sourceVersion,
   timelineIdentity,
   timelineSources = friendsGraphRequest.sources,
   onState,
 }: {
-  fallbackItems: readonly FeedItem[];
   locationSources?: readonly LibraryFriendsSource[];
   sourceVersion: number;
   timelineIdentity?: LibraryPersonTimelineRequest | null;
@@ -242,7 +240,6 @@ function FriendsHarness({
       locationSources: locationSources ?? timelineSources,
       timelineIdentity: resolvedTimelineIdentity,
       timelineSources,
-      fallbackItems,
       sourceVersion,
     }),
   );
@@ -697,7 +694,6 @@ describe("Library row query hooks", () => {
     ) => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={fallbackItems}
           sourceVersion={1}
           timelineIdentity={timelineIdentity}
           onState={(state) => {
@@ -835,7 +831,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -863,89 +858,6 @@ describe("Library row query hooks", () => {
       sourceToken: graph.sourceToken,
     });
     expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-  });
-
-  it("shares compatibility after a location failure and releases it after one retry", async () => {
-    const olderLocation = locationItem("rss:fallback-location", 10);
-    const fallbackItems = [
-      ...Array.from({ length: 60 }, (_, index) => ({
-        ...item(`rss:fallback-${index.toLocaleString()}`),
-        publishedAt: 100 - index,
-      })),
-      olderLocation,
-    ];
-    const graph = friendsGraph(fallbackItems.length, {
-      locationCandidateCount: 1,
-      locationCandidates: [
-        {
-          globalId: olderLocation.globalId,
-          publishedAt: olderLocation.publishedAt,
-          effectiveAt: olderLocation.publishedAt,
-        },
-      ],
-    });
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    let resolveRetry: ((value: FeedItem | null) => void) | null = null;
-    const readLibraryFriendsLocationItem = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("location read failed"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<FeedItem | null>((resolve) => {
-            resolveRetry = resolve;
-          }),
-      );
-    let current: LibraryFriendsRowsState | null = null;
-    renderHarness(
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibraryFriendsGraph: vi.fn(async () => graph),
-          readLibraryFriendsLocationItem,
-          readLibraryPersonTimeline: vi.fn(async () => ({
-            items: fallbackItems.slice(0, 50),
-            totalCount: fallbackItems.length,
-            nextCursor: "older-page",
-          })),
-        })}
-      >
-        <FriendsHarness
-          fallbackItems={fallbackItems}
-          sourceVersion={1}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>,
-    );
-
-    await flush();
-    await flush();
-    await flush();
-
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      olderLocation,
-    ]);
-    expect(readLibraryFriendsLocationItem).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      resolveRetry?.(olderLocation);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      olderLocation,
-    ]);
-    expect(release).toHaveBeenCalledOnce();
   });
 
   it("ignores a stale location batch after the graph source changes", async () => {
@@ -1006,7 +918,6 @@ describe("Library row query hooks", () => {
     const renderFriends = (sourceVersion: number) => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={sourceVersion}
           onState={(state) => {
             current = state;
@@ -1040,8 +951,7 @@ describe("Library row query hooks", () => {
     ]);
   });
 
-  it("uses compatibility when selected sources advertise more than eight location candidates", async () => {
-    const fallbackLocation = locationItem("rss:fallback-only", 5);
+  it("fails closed when selected sources exceed the bounded location candidates", async () => {
     const candidates = Array.from({ length: 8 }, (_, index) => ({
       globalId: `rss:location-${index.toLocaleString()}`,
       publishedAt: 100 - index,
@@ -1068,7 +978,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[fallbackLocation]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1080,17 +989,14 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      fallbackLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
-  it("preserves legacy map order when equal-time location candidates are ambiguous", async () => {
+  it("fails closed when equal-time location candidates are ambiguous", async () => {
     const firstLocation = coordinateLocationItem("rss:z-location", 50, 1, 2);
     const secondLocation = coordinateLocationItem("rss:a-location", 50, 3, 4);
     const graph = friendsGraph(2, {
@@ -1118,7 +1024,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[firstLocation, secondLocation]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1130,14 +1035,10 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      firstLocation,
-      secondLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
@@ -1184,7 +1085,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[fallbackLocation]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1196,13 +1096,10 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(true);
-    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual([
-      fallbackLocation,
-    ]);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
+      [],
+    );
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("accepts all-time location history with no current-visible candidates", async () => {
@@ -1228,7 +1125,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1243,14 +1139,11 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
     expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
-  it("does not read or lease location candidates for standalone account detail", async () => {
+  it("does not read location candidates for standalone account detail", async () => {
     const candidates = Array.from({ length: 8 }, (_, index) => ({
       globalId: `rss:account-location-${index.toLocaleString()}`,
       publishedAt: 100 - index,
@@ -1277,7 +1170,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           locationSources={[]}
           sourceVersion={1}
           onState={(state) => {
@@ -1293,77 +1185,8 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.locationUsingFallback,
-    ).toBe(false);
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
     expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-  });
-
-  it("matches native Friends paging in the bounded compatibility fallback", async () => {
-    const fallbackItems = Array.from({ length: 130 }, (_, index) => ({
-      ...item(`fallback-${index.toLocaleString().padStart(3, "0")}`),
-      publishedAt: 130 - index,
-    }));
-    const graph = friendsGraph(fallbackItems.length);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
-    let current: LibraryFriendsRowsState | null = null;
-    renderHarness(
-      <PlatformProvider
-        value={platformConfig({
-          acquireLegacyLibraryItems,
-          readLibraryFriendsGraph: vi.fn(async () => graph),
-        })}
-      >
-        <FriendsHarness
-          fallbackItems={fallbackItems}
-          sourceVersion={1}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>,
-    );
-
-    await flush();
-    await flush();
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(0, 50),
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineTotalCount,
-    ).toBe(130);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(false);
-
-    act(() => current?.loadMoreTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(50, 100),
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(true);
-
-    act(() => current?.loadMoreTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(100, 130),
-    );
-    expect((current as LibraryFriendsRowsState | null)?.timelineHasMore).toBe(
-      false,
-    );
-
-    act(() => current?.showNewestTimeline());
-    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual(
-      fallbackItems.slice(0, 50),
-    );
-    expect((current as LibraryFriendsRowsState | null)?.timelineHasMore).toBe(
-      true,
-    );
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
-    ).toBe(false);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
   });
 
   it("does not read a timeline or lease the corpus on the overview", async () => {
@@ -1385,7 +1208,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[]}
           sourceVersion={1}
           timelineSources={[]}
           onState={(state) => {
@@ -1404,168 +1226,57 @@ describe("Library row query hooks", () => {
     expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
-  it("does not carry a failed graph lease into a newer source version", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const never = () => new Promise<LibraryFriendsGraph>(() => undefined);
-    const readLibraryFriendsGraph = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale graph"))
-      .mockImplementation(never);
-    const config = platformConfig({
-      acquireLegacyLibraryItems,
-      readLibraryFriendsGraph,
+  it("fails closed when Friends SQLite reads reject", async () => {
+    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+    const readLibraryFriendsGraph = vi.fn(async () => {
+      throw new Error("graph read failed");
     });
-    let current: LibraryFriendsRowsState | null = null;
-    const renderFriends = (sourceVersion: number) => (
-      <PlatformProvider value={config}>
-        <FriendsHarness
-          fallbackItems={[item("fallback")]}
-          sourceVersion={sourceVersion}
-          timelineSources={[]}
-          onState={(state) => {
-            current = state;
-          }}
-        />
-      </PlatformProvider>
-    );
-    renderHarness(renderFriends(1));
-    await flush();
-    await flush();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(true);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-
-    act(() => root?.render(renderFriends(2)));
-    await flush();
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(
-      true,
-    );
-    expect(release).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-  });
-
-  it("shares one fallback lease across failed Friends reads and releases it after retry", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const graph = friendsGraph(1);
-    let resolveGraphRetry: ((graph: LibraryFriendsGraph) => void) | null = null;
-    let resolveTimelineRetry:
-      ((page: LibraryPersonTimelinePage) => void) | null = null;
-    const readLibraryFriendsGraph = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale graph"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<LibraryFriendsGraph>((resolve) => {
-            resolveGraphRetry = resolve;
-          }),
-      );
-    const readLibraryPersonTimeline = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("stale timeline"))
-      .mockImplementationOnce(
-        () =>
-          new Promise<LibraryPersonTimelinePage>((resolve) => {
-            resolveTimelineRetry = resolve;
-          }),
-      );
-    const successfulTimelinePage = {
-      items: [item("native")],
-      totalCount: 1,
-      nextCursor: null,
-    };
+    const readLibraryPersonTimeline = vi.fn(async () => {
+      throw new Error("timeline read failed");
+    });
     const config = platformConfig({
       acquireLegacyLibraryItems,
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
     let current: LibraryFriendsRowsState | null = null;
-    const renderFriends = (sourceVersion: number) => (
+    const renderFriends = () => (
       <PlatformProvider value={config}>
         <FriendsHarness
-          fallbackItems={[item("fallback")]}
-          sourceVersion={sourceVersion}
+          sourceVersion={1}
           onState={(state) => {
             current = state;
           }}
         />
       </PlatformProvider>
     );
-    renderHarness(renderFriends(1));
+    renderHarness(renderFriends());
     await flush();
     await flush();
 
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(true);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(true);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineItems.map(
-        (candidate) => candidate.globalId,
-      ),
-    ).toEqual(["fallback"]);
-
-    await act(async () => {
-      resolveGraphRetry?.(graph);
-      resolveTimelineRetry?.(successfulTimelinePage);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineItems.map(
-        (candidate) => candidate.globalId,
-      ),
-    ).toEqual(["native"]);
-    expect(readLibraryFriendsGraph).toHaveBeenCalledTimes(2);
-    expect(readLibraryPersonTimeline).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
+    expect((current as LibraryFriendsRowsState | null)?.graphLoading).toBe(false);
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
+    expect((current as LibraryFriendsRowsState | null)?.timelineLoading).toBe(false);
+    expect(readLibraryFriendsGraph).toHaveBeenCalledOnce();
+    expect(readLibraryPersonTimeline).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
-  it("rearms both Friends retries after a successful recovery", async () => {
-    const firstRelease = vi.fn();
-    const secondRelease = vi.fn();
-    const acquireLegacyLibraryItems = vi
-      .fn()
-      .mockResolvedValueOnce(firstRelease)
-      .mockResolvedValueOnce(secondRelease);
-    const graph = friendsGraph(1);
-    const timelinePage: LibraryPersonTimelinePage = {
-      items: [item("native")],
-      totalCount: 1,
-      nextCursor: null,
-    };
-    const firstGraphReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("first graph failure"))
-      .mockResolvedValueOnce(graph);
-    const firstTimelineReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("first timeline failure"))
-      .mockResolvedValueOnce(timelinePage);
-    const secondGraphReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("second graph failure"))
-      .mockResolvedValueOnce(graph);
-    const secondTimelineReader = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("second timeline failure"))
-      .mockResolvedValueOnce(timelinePage);
+  it("retries failed Friends reads when the native reader changes", async () => {
+    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
+    const firstGraphReader = vi.fn(async () => {
+      throw new Error("first graph failure");
+    });
+    const firstTimelineReader = vi.fn(async () => {
+      throw new Error("first timeline failure");
+    });
+    const secondGraphReader = vi.fn(async () => {
+      throw new Error("second graph failure");
+    });
+    const secondTimelineReader = vi.fn(async () => {
+      throw new Error("second timeline failure");
+    });
     let current: LibraryFriendsRowsState | null = null;
     const renderFriends = (
       readLibraryFriendsGraph: typeof firstGraphReader,
@@ -1579,7 +1290,6 @@ describe("Library row query hooks", () => {
         })}
       >
         <FriendsHarness
-          fallbackItems={[item("fallback")]}
           sourceVersion={1}
           onState={(state) => {
             current = state;
@@ -1593,15 +1303,8 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(firstGraphReader).toHaveBeenCalledTimes(2);
-    expect(firstTimelineReader).toHaveBeenCalledTimes(2);
-    expect(firstRelease).toHaveBeenCalledOnce();
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
+    expect(firstGraphReader).toHaveBeenCalledOnce();
+    expect(firstTimelineReader).toHaveBeenCalledOnce();
 
     act(() => {
       root?.render(renderFriends(secondGraphReader, secondTimelineReader));
@@ -1610,15 +1313,10 @@ describe("Library row query hooks", () => {
     await flush();
     await flush();
 
-    expect(secondGraphReader).toHaveBeenCalledTimes(2);
-    expect(secondTimelineReader).toHaveBeenCalledTimes(2);
-    expect(secondRelease).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(2);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.graphUsingFallback,
-    ).toBe(false);
-    expect(
-      (current as LibraryFriendsRowsState | null)?.timelineUsingFallback,
-    ).toBe(false);
+    expect(secondGraphReader).toHaveBeenCalledOnce();
+    expect(secondTimelineReader).toHaveBeenCalledOnce();
+    expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
+    expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 });

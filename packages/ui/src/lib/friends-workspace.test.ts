@@ -9,7 +9,6 @@ import {
   friendFromPersonWithIndexes,
 } from "./friends-workspace";
 import {
-  buildVisibleFriendsFallbackItems,
   createLibraryFriendsGraphRequest,
 } from "./friends-library-read-model";
 
@@ -253,31 +252,8 @@ describe("Friends workspace indexes", () => {
     );
   });
 
-  it("pins the 45-day graph window and excludes only hidden fallback rows", () => {
+  it("pins the 45-day graph window", () => {
     const now = 1_785_000_000_000;
-    const archived = {
-      ...feedItem("archived", "ada", now - 1),
-      userState: {
-        hidden: false,
-        saved: false,
-        archived: true,
-        tags: [],
-      },
-    } satisfies FeedItem;
-    const hidden = {
-      ...feedItem("hidden", "ada", now - 2),
-      userState: {
-        hidden: true,
-        saved: false,
-        archived: false,
-        tags: [],
-      },
-    } satisfies FeedItem;
-
-    expect(
-      Object.keys(buildVisibleFriendsFallbackItems([hidden, archived])),
-    ).toEqual(["archived"]);
-
     const accounts: Record<string, Account> = {
       second: {
         id: "second",

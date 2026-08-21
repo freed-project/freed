@@ -18,12 +18,6 @@ import {
   PlatformProvider,
   type PlatformConfig,
 } from "../../context/PlatformContext.js";
-import {
-  buildFriendSourceActivityEvidence,
-  buildVisibleFriendsFallbackItems,
-  friendSourceAccountProvenance,
-} from "../../lib/friends-library-read-model.js";
-import { friendActivitySourceKey } from "../../lib/friends-workspace.js";
 import { FriendEditor } from "./FriendEditor.js";
 
 function capturedItem({
@@ -567,21 +561,6 @@ describe("FriendEditor compatibility candidates", () => {
         authorId: "unregistered-author",
       }),
     ]);
-    const compatibilityItems = buildVisibleFriendsFallbackItems([
-      newerPost,
-      olderStory,
-    ]);
-    const evidence = buildFriendSourceActivityEvidence({
-      accounts: {},
-      nativeActivityBySourceKey: {},
-      compatibilityItems,
-    }).get(friendActivitySourceKey("instagram", "unregistered-author"));
-    expect(friendSourceAccountProvenance(evidence ?? null, 999)).toEqual({
-      firstSeenAt: 100,
-      lastSeenAt: 300,
-      discoveredFrom: "story_author",
-    });
-
     await act(async () => root?.unmount());
     root = null;
     expect(release).toHaveBeenCalledOnce();

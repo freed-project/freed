@@ -20,7 +20,6 @@ import type {
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
 import {
-  buildFriendCandidateSuggestions,
   buildFriendCandidateSuggestionsFromActivity,
   compareUtf8Binary,
   isInReconnectZone,
@@ -45,7 +44,6 @@ import { SearchField } from "../SearchField.js";
 import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
-  buildFriendOverviewEntries,
   buildFriendOverviewEntriesFromActivity,
   buildFriendsById,
   buildFriendsWorkspaceIndexes,
@@ -66,11 +64,9 @@ import {
   accountTitle,
   providerLabel,
 } from "../../lib/account-labels.js";
-import { buildIdentityGraphActivitySummaries } from "../../lib/identity-graph-activity-summary.js";
 import {
   buildFriendSourceActivityEvidence,
   buildFriendsActivityReadModel,
-  buildVisibleFriendsFallbackItems,
   createLibraryFriendsGraphRequest,
   friendSourceAccountProvenance,
   type FriendSourceActivityEvidence,
@@ -612,7 +608,6 @@ export function FriendsView({
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const feeds = useAppStore((s) => s.feeds);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
@@ -764,31 +759,24 @@ export function FriendsView({
     locationSources,
     timelineIdentity,
     timelineSources,
-    fallbackItems: items,
     sourceVersion: searchCorpusVersion,
   });
   const nativeActivity = useMemo(
     () =>
-      !friendsRows.graphUsingFallback && friendsRows.graph
+      friendsRows.graph
         ? buildFriendsActivityReadModel(friendsRows.graph)
         : null,
-    [friendsRows.graph, friendsRows.graphUsingFallback],
-  );
-  const fallbackFeedItems = useMemo(() => {
-    if (!friendsRows.graphUsingFallback || !friendsRows.legacyItemsReady) {
-      return {};
-    }
-    return buildVisibleFriendsFallbackItems(items);
-  }, [friendsRows.graphUsingFallback, friendsRows.legacyItemsReady, items]);
-  const fallbackWorkspaceIndexes = useMemo(
-    () => buildFriendsWorkspaceIndexes(accounts, fallbackFeedItems),
-    [accounts, fallbackFeedItems],
+    [friendsRows.graph],
   );
   const graphActivitySummaries = useMemo(
     () =>
-      nativeActivity?.graphActivitySummaries ??
-      buildIdentityGraphActivitySummaries(fallbackFeedItems),
-    [fallbackFeedItems, nativeActivity],
+      nativeActivity?.graphActivitySummaries ?? {
+        social: {},
+        rss: {},
+        buildMs: 0,
+        itemCount: 0,
+      },
+    [nativeActivity],
   );
 
   const reconnectCount = useMemo(
@@ -822,23 +810,12 @@ export function FriendsView({
         activityBySourceKey: nativeActivity.candidateActivityBySourceKey,
       });
     }
-    if (friendsRows.graphUsingFallback && friendsRows.legacyItemsReady) {
-      return buildFriendCandidateSuggestions({
-        ...common,
-        feedItems: fallbackFeedItems,
-        now: friendsGraphRequest.recentWindow.endMs,
-      });
-    }
     return [];
   }, [
     accounts,
     allPersons,
     contactSync.syncState.pendingSuggestions,
-    fallbackFeedItems,
     friendSuggestionPreferences,
-    friendsRows.graphUsingFallback,
-    friendsRows.legacyItemsReady,
-    friendsGraphRequest.recentWindow.endMs,
     nativeActivity,
   ]);
   const friendCandidateByPerson = useMemo(() => {
@@ -888,13 +865,12 @@ export function FriendsView({
         friendsGraphRequest.recentWindow.endMs,
       );
     }
-    return buildFriendOverviewEntries(friendsById, fallbackFeedItems, {
-      indexes: fallbackWorkspaceIndexes,
-      now: friendsGraphRequest.recentWindow.endMs,
-    });
+    return buildFriendOverviewEntriesFromActivity(
+      friendsById,
+      {},
+      friendsGraphRequest.recentWindow.endMs,
+    );
   }, [
-    fallbackFeedItems,
-    fallbackWorkspaceIndexes,
     friendsById,
     friendsGraphRequest.recentWindow.endMs,
     nativeActivity,
@@ -913,11 +889,9 @@ export function FriendsView({
     () =>
       buildFriendSourceActivityEvidence({
         accounts,
-        nativeActivityBySourceKey:
-          nativeActivity?.socialActivityBySourceKey ?? null,
-        compatibilityItems: nativeActivity ? {} : fallbackFeedItems,
+        activityBySourceKey: nativeActivity?.socialActivityBySourceKey ?? {},
       }),
-    [accounts, fallbackFeedItems, nativeActivity],
+    [accounts, nativeActivity],
   );
   const selectedAccountSuggestions = useMemo<AccountLinkSuggestion[]>(
     () =>
