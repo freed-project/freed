@@ -1,0 +1,176 @@
+{
+  "tag": "v26.8.2001-dev",
+  "version": "26.8.2001-dev",
+  "channel": "dev",
+  "dayKey": "26.8.20",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-21T00:09:22.558Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.8.1406-dev",
+    "previousPublishedDayTag": "v26.8.1406-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "a1dfe65d7afde00c533bbc2700ea653df53bbb2d",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.8.1406-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "1dcf03d4baa9b4d58c402895863a57a6b5ae4295",
+        "toInclusiveProductCommitSha": "a1dfe65d7afde00c533bbc2700ea653df53bbb2d"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:4a9e0286b40716aa67ec93c79cd6ed11f6b3da2e845e884c4e55f7e1e9139a94",
+        "currentDigest": "sha256:6bf7d9b047d6cbbbe70687134136b148f125e934ba92f584f47180238d586955"
+      },
+      "transitions": [
+        {
+          "activationId": "desktop-local-only-primary-authority-v1",
+          "gate": "F",
+          "kind": "library_core_writer_activation",
+          "rollbackTrigger": "Restore the previous Freed Desktop build before accepting any local-only mutation if provider-free startup cannot establish and read back the signed authority transition, enrolled actor, and local writer admission. After the first admitted mutation, retain the SQLite library and use roll-forward recovery because the previous build cannot safely write the new authority state.",
+          "receiptExpectations": [
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:222108cf48abb527f4f314e2db9efc1acc2365f0939748c4f59df20e23224e1f",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.2001-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.2001-dev"
+    ],
+    "prNumbers": [
+      1542,
+      1543,
+      1547,
+      1548,
+      1551,
+      1553,
+      1555,
+      1560,
+      1561,
+      1563,
+      1566,
+      1567,
+      1569,
+      1570,
+      1571,
+      1572,
+      1573,
+      1574,
+      1579,
+      1580,
+      1581,
+      1582,
+      1590,
+      1591,
+      1592,
+      1593,
+      1594,
+      1595,
+      1596,
+      1597,
+      1598,
+      1599,
+      1601,
+      1602,
+      1604,
+      1605,
+      1606,
+      1610
+    ],
+    "commitSubjects": [
+      "chore: prune vacuous blocking tests (#1610)",
+      "fix: defer checkpoint refresh effect (#1605)",
+      "fix: recognize release identity backflow (#1606)",
+      "docs: define SQLite Library Core architecture (#1603)",
+      "chore: prepare v26.8.2000-dev (#1604)",
+      "fix: support local-only Library authority (#1601)",
+      "fix: bound checkpoint pages by bytes (#1602)",
+      "fix: recognize refreshed promotion backflow (#1599)",
+      "refactor: retire competing Library journal runtime (#1598)",
+      "fix: bound Library Core search parity (#1597)",
+      "fix: preserve PWA intents across checkpoints (#1596)",
+      "refactor: retire operation field registry runtime (#1595)",
+      "feat: add descriptor-bound Library sidecar (#1594)",
+      "feat: enforce PWA actor capabilities (#1593)",
+      "refactor: share native checkpoint store primitives (#1592)",
+      "feat: add fail-closed Library service supervisor (#1591)",
+      "chore: reverse integrate v26.8.1901 release identity (#1590)",
+      "fix: repair Drive mutable revision fencing (#1582)",
+      "feat: enforce actor capability certificates (#1581)",
+      "refactor: extract native Library Core (#1580)",
+      "docs: replace headless Library architecture (#1576)",
+      "chore: reverse integrate v26.8.1900 release identity (#1579)",
+      "refactor: extract Library primary coordinator (#1574)",
+      "fix: enforce one Library Core process per data root (#1573)",
+      "refactor: close retired Automerge runtime boundary (#1572)",
+      "feat: add content-addressed media transport (#1571)",
+      "fix: establish native SQLite library authority (#1570)",
+      "fix: route CI away from stalled Ubuntu mirrors (#1566)",
+      "feat: complete PWA IndexedDB Library parity (#1569)",
+      "fix: keep SQLite backups off cloud storage (#1567)",
+      "fix: sanitize runner sources before apt update (#1563)",
+      "feat: build editable SQLite Library followers (#1561)",
+      "chore: reverse integrate v26.8.1800 release identity (#1560)",
+      "chore: reverse integrate v26.8.1501 release identity (#1555)",
+      "fix: stabilize Drive Library Core bootstrap (#1553)",
+      "fix: show honest Drive sync activity (#1551)",
+      "fix: allow browser reads without Drive ETags (#1548)",
+      "chore: merge main back into dev after v26.8.1500 (#1547)",
+      "fix: prevent Drive sync lifecycle stalls (#1543)",
+      "chore: reverse integrate v26.8.1407 into dev (#1542)"
+    ]
+  },
+  "release": {
+    "deck": "Descriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor",
+    "features": [
+      "Descriptor-bound Library sidecar",
+      "Enforce PWA actor capabilities",
+      "Fail-closed Library service supervisor"
+    ],
+    "fixes": [
+      "Reader, feed, and header polish",
+      "Recognize release identity backflow",
+      "Keep SQLite backups off cloud storage",
+      "Sanitize runner sources before apt update",
+      "Show honest Drive sync activity",
+      "Read immutable Drive objects without browser ETags",
+      "Prevent Drive sync lifecycle stalls"
+    ],
+    "followUps": [
+      "Prune vacuous blocking tests",
+      "Prepare v26.8.2000-dev",
+      "Retire competing Library journal runtime",
+      "Retire operation field registry runtime",
+      "Share native checkpoint store primitives",
+      "Reverse integrate v26.8.1901 release identity",
+      "Enforce actor capability certificates",
+      "Extract native Library Core",
+      "Extract Library Primary coordinator",
+      "Close retired Automerge runtime boundary",
+      "Content-addressed Library media transport",
+      "PWA IndexedDB Library parity",
+      "Build editable SQLite Library followers",
+      "Merge main back into dev after v26.8.1500"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.2001-dev\n\nDescriptor-bound Library sidecar, enforce PWA actor capabilities, and fail-closed Library service supervisor\n\n### Features\n\n- Descriptor-bound Library sidecar\n- Enforce PWA actor capabilities\n- Fail-closed Library service supervisor\n\n### Fixes\n\n- Reader, feed, and header polish\n- Recognize release identity backflow\n- Keep SQLite backups off cloud storage\n- Sanitize runner sources before apt update\n- Show honest Drive sync activity\n- Read immutable Drive objects without browser ETags\n- Prevent Drive sync lifecycle stalls\n\n### Follow-ups\n\n- Prune vacuous blocking tests\n- Prepare v26.8.2000-dev\n- Retire competing Library journal runtime\n- Retire operation field registry runtime\n- Share native checkpoint store primitives\n- Reverse integrate v26.8.1901 release identity\n- Enforce actor capability certificates\n- Extract native Library Core\n- Extract Library Primary coordinator\n- Close retired Automerge runtime boundary\n- Content-addressed Library media transport\n- PWA IndexedDB Library parity\n- Build editable SQLite Library followers\n- Merge main back into dev after v26.8.1500\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
