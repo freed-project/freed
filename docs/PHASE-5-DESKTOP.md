@@ -20,7 +20,7 @@
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
-      defines the frozen 14-mutation legacy editor capability and the
+      defines the 15-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
       constants, and no parallel actor-operation registry remains.
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
@@ -127,6 +127,10 @@
         and array markers preserve explicit empty containers. Shared signing
         and native admission enforce 512-node, 4,096-byte path, and 8,192-byte
         text ceilings without storing a settings document.
+  - [x] RSS feed title assignment now accepts one closed bounded title and
+        source timestamp, resolves concurrent renames with a deterministic
+        field clock, and commits the typed feed update, receipt, outbox,
+        invalidation, and revision in one native transaction.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

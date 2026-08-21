@@ -300,7 +300,7 @@ loads an alternate Library engine or compatibility path.
 | 4.151 | Drive v2 strong JSON ETag sampling and exact v2 media PUT with If-Match for mutable control, intent, and result heads, with all immutable, list, create, media read, and resumable traffic retained on v3 and the native v2 request shape closed | ✓ | High |
 | 4.152 | PWA IndexedDB schema v9 v2 capability import, exact certificate persistence, shared production verification, fixed v1 legacy preservation, local intent and imported operation enforcement, mixed-version restart, explicit rollback boundary, and zero-write adversarial denial with issuance dormant | ✓ | High |
 | 4.153 | Exact byte-aware immutable checkpoint page packing with both 128-record and 2,097,152-byte decoded ceilings, without changing Google Drive endpoints, headers, retries, or cadence | ✓ | High |
-| 4.154 | One executable SQLite contract source for capability-operation profiles and mutation identities, with generated Rust and TypeScript bindings, frozen legacy editor and capture-only scraper grants, and deletion of the duplicate actor-operation JSON registry | ✓ | High |
+| 4.154 | One executable SQLite contract source for capability-operation profiles and mutation identities, with generated Rust and TypeScript bindings, explicit Primary writer and capture-only actor grants, and deletion of the duplicate actor-operation JSON registry | ✓ | High |
 | 4.155 | Generated normalized SQLite programs for saved, archived, and liked assignments, with signed-time and operation-ID convergence, one coupled saved-archive register that cannot materialize both states, independent liked state, and no provider traffic | ✓ | High |
 | 4.156 | Generated normalized FeedItem removal with a typed convergent tombstone, SQLite child cascades, stale-removal journaling without tombstone regression, and atomic receipt, replication, invalidation, and revision effects | ✓ | High |
 | 4.157 | One closed typed browser SQLite query dispatch keyed by registered query ID, replacing query-specific worker message kinds while rejecting arbitrary SQL, table names, projection fragments, and bind lists | ✓ | High |
@@ -316,6 +316,7 @@ loads an alternate Library engine or compatibility path.
 | 4.167 | Generated normalized Account upsert with closed signed payload verification, typed root columns, contract-owned follow-role replacement, SQLite-enforced person and provider identity, and tombstone-protected no-resurrection semantics | ✓ | High |
 | 4.168 | Generated normalized Person upsert with closed signed payload verification, typed root columns, contract-owned tag and bounded reach-out replacement, reusable dependent statement lists, and tombstone-protected no-resurrection semantics | ✓ | High |
 | 4.169 | Generated normalized preference assignment with shared pre-signing bounds, exact native node bounds, deep object merge, atomic scalar and array subtree replacement, and typed markers that preserve explicit empty arrays and objects without storing a settings document | ✓ | High |
+| 4.170 | Generated RSS feed title assignment with a closed bounded payload, verified signed admission, deterministic timestamp and operation-ID field clock, exact receipt, invalidation, outbox, and atomic typed-column update | ✓ | High |
 
 ---
 

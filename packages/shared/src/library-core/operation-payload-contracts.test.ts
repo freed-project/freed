@@ -5,6 +5,7 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
@@ -181,6 +182,31 @@ describe("Library Core operation payload contracts", () => {
         include_items: true,
       }),
     ).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("requires a bounded timestamped RSS title assignment", () => {
+    expect(
+      RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate({
+        assigned_at_ms: 1_783_000_000_000,
+        title: "Renamed feed",
+      }),
+    ).toStrictEqual({
+      ok: true,
+      value: {
+        assigned_at_ms: 1_783_000_000_000,
+        title: "Renamed feed",
+      },
+    });
+    for (const invalid of [
+      { title: "Missing time" },
+      { assigned_at_ms: -1, title: "Bad time" },
+      { assigned_at_ms: 1, title: "x".repeat(4_097) },
+      { assigned_at_ms: 1, title: "Extra", extra: true },
+    ]) {
+      expect(
+        RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
   });
 
   it("accepts synchronized preference patches and rejects device-local leaves", () => {

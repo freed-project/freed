@@ -54,6 +54,7 @@ const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
 const RSS_FEED_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["feed"];
+const RSS_FEED_TITLE_PAYLOAD_KEYS: [&str; 2] = ["assigned_at_ms", "title"];
 const PREFERENCES_PAYLOAD_KEYS: [&str; 1] = ["updates"];
 const PERSON_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["person"];
 const ACCOUNT_UPSERT_PAYLOAD_KEYS: [&str; 1] = ["account"];
@@ -962,6 +963,31 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
             )
         }
+        "rss_feed_title_assignment" => {
+            let payload_object =
+                exact_object(payload, &RSS_FEED_TITLE_PAYLOAD_KEYS, index, "payload")?;
+            let title = payload_object
+                .get("title")
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid(index, "title"))?;
+            if title.len() > MAX_ENTITY_ID_BYTES {
+                return Err(invalid(index, "title"));
+            }
+            safe_integer(payload_object, "assigned_at_ms", index)?;
+            let canonical = encode_canonical_value(payload, MAX_RSS_FEED_BYTES)
+                .map_err(|_| invalid(index, "rss_feed_title_assignment"))?;
+            (
+                None,
+                Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
         "preferences_leaf_assignment" => {
             if entity_id != "preferences" {
                 return Err(invalid(index, "preferences_identity"));
@@ -1432,6 +1458,10 @@ pub(crate) mod tests {
                     "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
                         json!({ "removed_at_ms": timestamp_ms })
                     }
+                    "rss_feed_title_assignment" => json!({
+                        "assigned_at_ms": timestamp_ms,
+                        "title": "Renamed feed"
+                    }),
                     "preferences_leaf_assignment" => json!({
                         "updates": {
                             "display": { "archivePruneDays": 14 },

@@ -56,6 +56,11 @@ export interface RssFeedUpsertPayloadV1 {
   readonly feed: Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
+export interface RssFeedTitleAssignmentPayloadV1 {
+  readonly assigned_at_ms: number;
+  readonly title: string;
+}
+
 export interface RssFeedRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
@@ -127,6 +132,7 @@ const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
 const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
+const RSS_FEED_TITLE_ASSIGNMENT_KEYS = ["assigned_at_ms", "title"] as const;
 const RSS_FEED_REMOVE_KEYS = ["removed_at_ms"] as const;
 const PREFERENCES_LEAF_ASSIGNMENT_KEYS = ["updates"] as const;
 const PERSON_UPSERT_KEYS = ["person"] as const;
@@ -394,6 +400,54 @@ function validateRssFeedUpsertPayload(
       error instanceof Error ? error.message : "feed is not canonical",
     );
   }
+}
+
+function validateRssFeedTitleAssignmentPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<RssFeedTitleAssignmentPayloadV1> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null) ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    return invalid("payload must be a plain object");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (
+    keys.length !== RSS_FEED_TITLE_ASSIGNMENT_KEYS.length ||
+    RSS_FEED_TITLE_ASSIGNMENT_KEYS.some((key) => !keys.includes(key))
+  ) {
+    return invalid("payload must contain only assigned_at_ms and title");
+  }
+  const assignedAt = Object.getOwnPropertyDescriptor(value, "assigned_at_ms");
+  const title = Object.getOwnPropertyDescriptor(value, "title");
+  if (
+    assignedAt === undefined ||
+    !assignedAt.enumerable ||
+    !("value" in assignedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(assignedAt.value)
+  ) {
+    return invalid("assigned_at_ms must be a nonnegative safe integer");
+  }
+  if (
+    title === undefined ||
+    !title.enumerable ||
+    !("value" in title) ||
+    typeof title.value !== "string" ||
+    new TextEncoder().encode(title.value).byteLength > 4_096
+  ) {
+    return invalid("title must be a bounded string");
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      assigned_at_ms: assignedAt.value,
+      title: title.value,
+    }),
+  };
 }
 
 function validateRssFeedRemovePayload(
@@ -972,6 +1026,17 @@ export const RSS_FEED_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
 }) satisfies LibraryCoreOperationPayloadSchema<
   "rss_feed_upsert",
   RssFeedUpsertPayloadV1
+>;
+
+export const RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
+  schemaId: "rss_feed_title_assignment_payload_v1",
+  schemaVersion: 1,
+  operationType: "rss_feed_title_assignment",
+  canonicalKeys: RSS_FEED_TITLE_ASSIGNMENT_KEYS,
+  validate: validateRssFeedTitleAssignmentPayload,
+}) satisfies LibraryCoreOperationPayloadSchema<
+  "rss_feed_title_assignment",
+  RssFeedTitleAssignmentPayloadV1
 >;
 
 function rssFeedRemovePayloadSchema(

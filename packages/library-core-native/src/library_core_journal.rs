@@ -816,6 +816,23 @@ pub(crate) fn validate_transaction(
                     });
                 }
             }
+            "rss_feed_title_assignment" => {
+                if member.entity_type != "RssFeed"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_none()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_some()
+                    || member.account_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "rss_feed_title_assignment",
+                    });
+                }
+            }
             "preferences_leaf_assignment" => {
                 if member.entity_type != "UserPreferences"
                     || member.entity_id != "preferences"

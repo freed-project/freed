@@ -21,6 +21,23 @@
       "rss_feed_remove_with_items",
       "rss_feed_upsert"
     ],
+    "primaryWriter": [
+      "account_remove",
+      "account_upsert",
+      "feed_item_archive_assignment",
+      "feed_item_capture_upsert",
+      "feed_item_like_assignment",
+      "feed_item_read_assignment",
+      "feed_item_remove",
+      "feed_item_saved_assignment",
+      "person_remove_and_accounts",
+      "person_upsert",
+      "preferences_leaf_assignment",
+      "rss_feed_remove_keep_items",
+      "rss_feed_remove_with_items",
+      "rss_feed_title_assignment",
+      "rss_feed_upsert"
+    ],
     "scraper": ["feed_item_capture_upsert"]
   },
   "limits": {
@@ -732,6 +749,20 @@
       "payloadKind": "remove",
       "requiresExistingTarget": true,
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
+    },
+    "rss_feed_title_assignment": {
+      "clockReadSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'rss_feed' AND entity_id = ?1 AND field_path = 'title';",
+      "clockWriteSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('rss_feed', ?1, 'title', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "currentValueSql": "SELECT title FROM library_rss_feeds WHERE url = ?1;",
+      "dependentDeleteSql": [],
+      "dependentInsertSql": [],
+      "entityType": "RssFeed",
+      "invalidationTopic": "rss_feed",
+      "materializeSql": "UPDATE library_rss_feeds SET title = ?1, updated_at = ?2 WHERE url = ?3;",
+      "maximumMembers": 256,
+      "payloadKind": "text_assignment",
+      "requiresExistingTarget": true,
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1);"
     },
     "rss_feed_upsert": {
       "clockReadSql": "",

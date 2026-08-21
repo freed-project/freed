@@ -9,6 +9,7 @@ use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::{SqliteMutationProgram, SQLITE_MUTATION_PROGRAMS};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
@@ -402,6 +403,63 @@ fn materialize_boolean_assignment(
     Ok(())
 }
 
+fn materialize_text_assignment(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let payload: Value = serde_json::from_str(member.rss_feed_json.as_deref().ok_or(
+        NormalizedSqliteError::InvalidRequest("normalized text assignment payload is missing"),
+    )?)
+    .map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized text assignment payload is invalid")
+    })?;
+    let title = payload.get("title").and_then(Value::as_str).ok_or(
+        NormalizedSqliteError::InvalidRequest("normalized text assignment payload is invalid"),
+    )?;
+    let assigned_at = payload
+        .get("assigned_at_ms")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=MAX_SAFE_INTEGER).contains(value))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized text assignment payload is invalid",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        assigned_at > clock.0
+            || (assigned_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![title, committed_at, member.entity_id],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized text assignment target changed",
+            ));
+        }
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn materialize_remove(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -460,6 +518,9 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "text_assignment" => {
+            materialize_text_assignment(transaction, verified, member_index, committed_at, program)
+        }
         "remove" => materialize_remove(transaction, verified, member_index, program),
         "account_upsert" => {
             let member = &verified.members[member_index];
@@ -817,7 +878,7 @@ pub fn accept_normalized_operation_transaction_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_journal::actor_capability::legacy_editor_operation_types;
+    use crate::library_core_journal::actor_capability::primary_writer_operation_types;
     use crate::library_core_journal::operation_verifier::tests::{
         enrollment, signed_envelopes, signed_envelopes_from_tip,
         signed_envelopes_from_tip_with_payload,
@@ -919,15 +980,18 @@ mod tests {
             .execute(
                 "INSERT INTO library_actor_capabilities
                  (capability_id, actor_id, certificate_version, actor_class,
-                  scope_mode, certificate_digest, canonical_certificate, issued_at)
-                 VALUES (?1, ?2, 1, 'legacy_editor', 'legacy_editor', ?1, '{}', 1000);",
+                  scope_mode, issuance_identity, retirement_identity,
+                  certificate_digest, canonical_certificate, issued_at)
+                 VALUES (?1, ?2, 2, 'editor', 'library_wide', ?3, ?4, ?1, '{}', 1000);",
                 params![
                     enrollment.enrollment_certificate_digest,
-                    enrollment.actor_id
+                    enrollment.actor_id,
+                    "b".repeat(64),
+                    "c".repeat(64),
                 ],
             )
             .expect("capability");
-        for operation in legacy_editor_operation_types() {
+        for operation in primary_writer_operation_types() {
             connection
                 .execute(
                     "INSERT INTO library_actor_capability_mutations
@@ -1480,6 +1544,71 @@ mod tests {
                 )
                 .expect("RSS feed count"),
             0
+        );
+    }
+
+    #[test]
+    fn signed_rss_feed_title_assignment_uses_a_deterministic_field_clock() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:title:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("feed:title", 1_000)],
+            "rss_feed_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert RSS feed");
+        let rename = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:title:rename",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &[("feed:title", 1_200)],
+            "rss_feed_title_assignment",
+        );
+        let rename_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &rename, 2_100)
+                .expect("rename RSS feed");
+        let stale = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:title:stale",
+            3,
+            Some(&rename_receipt.committed_operation_id),
+            &rename_receipt.committed_chain_digest,
+            &[("feed:title", 1_100)],
+            "rss_feed_title_assignment",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &stale, 2_200)
+            .expect("journal stale RSS title");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT feed.title, feed.updated_at, clock.updated_at
+                     FROM library_rss_feeds AS feed
+                     JOIN library_field_clocks AS clock
+                       ON clock.entity_type = 'rss_feed'
+                      AND clock.entity_id = feed.url
+                      AND clock.field_path = 'title'
+                     WHERE feed.url = 'feed:title';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .expect("renamed RSS feed"),
+            ("Renamed feed".to_owned(), 2_100, 1_200)
         );
     }
 

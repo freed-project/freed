@@ -7,7 +7,8 @@
 //! scope binding. Nothing infers provider or source authority from payloads.
 
 use crate::sqlite_contract_generated::{
-    CAPABILITY_OPERATION_IDS, LEGACY_EDITOR_OPERATION_IDS, SCRAPER_OPERATION_IDS,
+    CAPABILITY_OPERATION_IDS, LEGACY_EDITOR_OPERATION_IDS, PRIMARY_WRITER_OPERATION_IDS,
+    SCRAPER_OPERATION_IDS,
 };
 
 pub(super) const fn canonical_operation_types() -> &'static [&'static str] {
@@ -16,6 +17,10 @@ pub(super) const fn canonical_operation_types() -> &'static [&'static str] {
 
 pub(crate) const fn legacy_editor_operation_types() -> &'static [&'static str] {
     LEGACY_EDITOR_OPERATION_IDS
+}
+
+pub(crate) const fn primary_writer_operation_types() -> &'static [&'static str] {
+    PRIMARY_WRITER_OPERATION_IDS
 }
 
 pub(super) const fn scraper_operation_types() -> &'static [&'static str] {
@@ -245,7 +250,7 @@ mod tests {
 
     #[test]
     fn shared_registry_is_sorted_and_legacy_policy_cannot_grow_implicitly() {
-        assert_eq!(canonical_operation_types().len(), 14);
+        assert_eq!(canonical_operation_types().len(), 15);
         assert_eq!(
             legacy_editor_operation_types(),
             [
@@ -265,6 +270,9 @@ mod tests {
                 "rss_feed_upsert",
             ]
         );
+        assert_eq!(primary_writer_operation_types().len(), 15);
+        assert!(primary_writer_operation_types().contains(&"rss_feed_title_assignment"));
+        assert!(!legacy_editor_operation_types().contains(&"rss_feed_title_assignment"));
         assert_eq!(scraper_operation_types(), ["feed_item_capture_upsert"]);
         assert!(!is_registered_operation("future_operation"));
         assert!(!legacy_editor_operation_types().contains(&"future_operation"));

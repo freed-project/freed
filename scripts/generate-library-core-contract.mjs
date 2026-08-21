@@ -111,7 +111,10 @@ function assertContract(contract) {
   assertSortedUnique(contract.mutations, "mutations");
   assertSortedUnique(contract.queries, "queries");
   const capabilityProfileKeys = Object.keys(contract.capabilityProfiles).sort();
-  if (capabilityProfileKeys.join(",") !== "legacyEditor,scraper") {
+  if (
+    capabilityProfileKeys.join(",") !==
+    "legacyEditor,primaryWriter,scraper"
+  ) {
     throw new TypeError("SQLite contract capability profiles are invalid");
   }
   for (const [profile, mutations] of Object.entries(
@@ -165,6 +168,7 @@ function assertContract(contract) {
         "read_at",
         "remove",
         "rss_feed_upsert",
+        "text_assignment",
       ].includes(
         program.payloadKind,
       ) ||
@@ -470,6 +474,10 @@ export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS = Object.freeze([
 ${stringTuple(contract.capabilityProfiles.legacyEditor)}
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
 
+export const LIBRARY_CORE_PRIMARY_WRITER_OPERATION_IDS = Object.freeze([
+${stringTuple(contract.capabilityProfiles.primaryWriter)}
+] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
+
 export const LIBRARY_CORE_SCRAPER_OPERATION_IDS = Object.freeze([
 ${stringTuple(contract.capabilityProfiles.scraper)}
 ] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
@@ -615,6 +623,10 @@ ${rustStringSlice(capabilityOperationIds)}
 
 pub const LEGACY_EDITOR_OPERATION_IDS: &[&str] = &[
 ${rustStringSlice(contract.capabilityProfiles.legacyEditor)}
+];
+
+pub const PRIMARY_WRITER_OPERATION_IDS: &[&str] = &[
+${rustStringSlice(contract.capabilityProfiles.primaryWriter)}
 ];
 
 pub const SCRAPER_OPERATION_IDS: &[&str] = &[${contract.capabilityProfiles.scraper.map((value) => JSON.stringify(value)).join(", ")}];
