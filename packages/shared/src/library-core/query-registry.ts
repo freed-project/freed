@@ -78,6 +78,9 @@ import {
   LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION,
   LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA,
   LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_PROJECTION,
+  LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA,
 } from "./friends-identity-page-contracts.js";
 import {
   LIBRARY_CORE_ITEM_DETAIL_MAXIMUM_RESPONSE_BYTES,
@@ -254,6 +257,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
@@ -276,6 +280,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
@@ -298,6 +303,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
@@ -414,6 +420,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
@@ -434,6 +441,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
@@ -454,6 +462,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
@@ -1149,6 +1158,33 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     totalCountIntent: "none",
     rendererCache: false,
     invalidationKeyIntent: ["repair-work-queue"],
+  }),
+  rss_feed_graph_page_v1: plannedQuery({
+    defaultLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes:
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("keyset"),
+    totalCountIntent: "none",
+    rendererCache: false,
+    invalidationKeyIntent: ["friends-graph:rss-feeds"],
+    currentKinds: [
+      "query_normalized_v1::rss_feed_graph_page_v1",
+      "PwaLibraryCoreSqliteEngine.query::rss_feed_graph_page_v1",
+    ],
+    requestSchema: LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "url", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "url",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   saved_analytics_v1: plannedQuery({
     defaultLimit: 1,

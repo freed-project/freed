@@ -43,6 +43,8 @@ import {
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
   parseLibraryCorePersonGraphPageResponseV1,
+  parseLibraryCoreRssFeedGraphPageRequestV1,
+  parseLibraryCoreRssFeedGraphPageResponseV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -81,6 +83,8 @@ import {
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
   type LibraryCorePersonGraphPageResponseV1,
+  type LibraryCoreRssFeedGraphPageRequestV1,
+  type LibraryCoreRssFeedGraphPageResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -172,6 +176,15 @@ function nullableBoolean(
   if (integer !== 0 && integer !== 1)
     throw new Error(`${label} is not boolean`);
   return integer === 1;
+}
+
+function requiredBoolean(
+  value: SqlValue | undefined,
+  label: string,
+): boolean {
+  const parsed = nullableBoolean(value, label);
+  if (parsed === null) throw new Error(`${label} is null`);
+  return parsed;
 }
 
 function stringArray(
@@ -750,6 +763,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "rss_feed_graph_page_v1":
+        return this.#queryRssFeedGraphPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -1253,6 +1270,76 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreAccountGraphPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryRssFeedGraphPage(
+    input: LibraryCoreRssFeedGraphPageRequestV1,
+  ): LibraryCoreRssFeedGraphPageResponseV1 {
+    const request = parseLibraryCoreRssFeedGraphPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const cursor =
+      request.value.cursor === null
+        ? null
+        : decodeLibraryCoreIdentityPageCursorV1(request.value.cursor);
+    if (
+      cursor !== null &&
+      (!cursor.ok ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision)
+    ) {
+      throw new Error("PWA Library SQLite RSS feed graph cursor is stale");
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.rss_feed_graph_page_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        cursor?.ok ? cursor.value.entityId : null,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite RSS feed graph page exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      enabled: requiredBoolean(row.enabled, "RSS feed graph enabled"),
+      imageUrl: nullableText(row.imageUrl, "RSS feed graph image URL"),
+      title: text(row.title, "RSS feed graph title"),
+      updatedAt: safeInteger(row.updatedAt, "RSS feed graph update time"),
+      url: text(row.url, "RSS feed graph URL"),
+    }));
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreIdentityPageCursorV1({
+              entityId: last.url,
+              generationId,
+              projectionRevision: sourceRevision,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "rss_feed_graph_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreRssFeedGraphPageResponseV1(
       response,
       request.value,
     );

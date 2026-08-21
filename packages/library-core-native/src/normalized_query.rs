@@ -112,6 +112,16 @@ pub struct NormalizedAccountGraphPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedGraphPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRequestV1 {
     pub body_kind: String,
     pub global_id: String,
@@ -133,6 +143,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
+    RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -392,6 +403,16 @@ pub struct NormalizedAccountGraphRowV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedGraphRowV1 {
+    pub enabled: bool,
+    pub image_url: Option<String>,
+    pub title: String,
+    pub updated_at: i64,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
@@ -406,6 +427,16 @@ pub struct NormalizedAccountGraphPageResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedAccountGraphRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedGraphPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedRssFeedGraphRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -443,6 +474,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
+    RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1622,6 +1654,117 @@ fn query_account_graph_page(
     Ok(response)
 }
 
+fn query_rss_feed_graph_page(
+    connection: &mut Connection,
+    request: NormalizedRssFeedGraphPageRequestV1,
+) -> Result<NormalizedRssFeedGraphPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized RSS feed graph page request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "rss_feed_graph_page_v1")
+        .ok_or(invalid("normalized RSS feed graph page program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.sort_at != 0
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized RSS feed graph page cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(
+        params![
+            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+            i64::try_from(request.limit + 1).expect("bounded RSS feed graph page limit"),
+        ],
+        |row| {
+            let enabled = match row.get::<_, i64>("enabled")? {
+                0 => false,
+                1 => true,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+            Ok(NormalizedRssFeedGraphRowV1 {
+                enabled,
+                image_url: row.get("imageUrl")?,
+                title: row.get("title")?,
+                updated_at: row.get("updatedAt")?,
+                url: row.get("url")?,
+            })
+        },
+    )?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.1 {
+        return Err(invalid(
+            "normalized RSS feed graph page exceeded its row bound",
+        ));
+    }
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    for row in &rows {
+        if row.url.is_empty()
+            || row.url.len() > 8_192
+            || row.title.is_empty()
+            || row.title.len() > 4_096
+            || row
+                .image_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || !valid_safe_integer(row.updated_at)
+        {
+            return Err(invalid("normalized RSS feed graph page row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].url >= pair[1].url) {
+        return Err(invalid("normalized RSS feed graph page order is invalid"));
+    }
+    let next_cursor = if has_more {
+        let last = rows.last().ok_or(invalid(
+            "normalized RSS feed graph page cursor row is missing",
+        ))?;
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            sort_at: 0,
+            global_id: last.url.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedRssFeedGraphPageResponseV1 {
+        next_cursor,
+        query_id: "rss_feed_graph_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized RSS feed graph page response is invalid"))?
+        .len()
+        > FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized RSS feed graph page response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_item_detail(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -1883,6 +2026,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::RssFeedGraphPage(request) => {
+            Ok(NormalizedQueryResponseV1::RssFeedGraphPage(
+                query_rss_feed_graph_page(connection, request)?,
             ))
         }
     }
@@ -2600,11 +2748,19 @@ mod tests {
                    (id, person_id, kind, provider, external_id, first_seen_at,
                     last_seen_at, discovered_from, created_at, updated_at)
                    VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50, 200, 'capture', 50, 200),
-                          ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 60, 210);",
+                          ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 60, 210);
+                 INSERT INTO library_rss_feeds
+                   (url, title, image_url, enabled, track_unread, updated_at)
+                   VALUES ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
+                          ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);",
                 "a".repeat(64)
             ))
             .expect("fixture");
-        for query_id in ["person_graph_page_v1", "account_graph_page_v1"] {
+        for query_id in [
+            "person_graph_page_v1",
+            "account_graph_page_v1",
+            "rss_feed_graph_page_v1",
+        ] {
             let program = SQLITE_QUERY_PROGRAMS
                 .iter()
                 .find(|program| program.0 == query_id)
@@ -2621,10 +2777,10 @@ mod tests {
             assert!(plan
                 .iter()
                 .all(|detail| !detail.contains("USE TEMP B-TREE")));
-            let root = if query_id == "person_graph_page_v1" {
-                "SEARCH person USING INDEX"
-            } else {
-                "SEARCH account USING INDEX"
+            let root = match query_id {
+                "person_graph_page_v1" => "SEARCH person USING INDEX",
+                "account_graph_page_v1" => "SEARCH account USING INDEX",
+                _ => "SEARCH feed USING INDEX",
             };
             assert!(plan.iter().any(|detail| detail.contains(root)));
         }
@@ -2684,6 +2840,34 @@ mod tests {
             panic!("Account graph page response");
         };
         assert_eq!(second.rows[0].id, "account-2");
+        let rss_request = NormalizedRssFeedGraphPageRequestV1 {
+            cancellation_id: "cancel-rss-graph".to_owned(),
+            cursor: None,
+            limit: 1,
+            reader_session_id: "reader-rss-graph".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::RssFeedGraphPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::RssFeedGraphPage(rss_request.clone()),
+        )
+        .expect("RSS feed graph page") else {
+            panic!("RSS feed graph page response");
+        };
+        assert_eq!(first.rows[0].url, "https://alpha.example/feed");
+        assert!(first.rows[0].enabled);
+        let rss_cursor = first.next_cursor.clone();
+        let NormalizedQueryResponseV1::RssFeedGraphPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1 {
+                cursor: first.next_cursor,
+                ..rss_request
+            }),
+        )
+        .expect("second RSS feed graph page") else {
+            panic!("RSS feed graph page response");
+        };
+        assert_eq!(second.rows[0].url, "https://beta.example/feed");
         connection
             .execute_batch(
                 "UPDATE library_meta SET source_revision = 13 WHERE singleton_id = 1;
@@ -2701,6 +2885,18 @@ mod tests {
             }),
         )
         .expect_err("stale Person graph cursor");
+        assert!(error.to_string().contains("cursor is stale"));
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1 {
+                cancellation_id: "cancel-rss-graph-stale".to_owned(),
+                cursor: rss_cursor,
+                limit: 1,
+                reader_session_id: "reader-rss-graph-stale".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect_err("stale RSS feed graph cursor");
         assert!(error.to_string().contains("cursor is stale"));
     }
 

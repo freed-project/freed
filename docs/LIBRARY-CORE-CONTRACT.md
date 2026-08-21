@@ -301,13 +301,16 @@ roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.
 The source-fenced response is capped at 512 KiB. Missing Accounts return a
 typed null result rather than causing a whole-library fallback.
 
-`person_graph_page_v1` and `account_graph_page_v1` provide compact identity
-source pages for Friends graph compilation. Each returns at most 128 rows and
+`person_graph_page_v1`, `account_graph_page_v1`, and
+`rss_feed_graph_page_v1` provide compact identity source pages for Friends
+graph compilation. Each returns at most 128 rows and
 2 MiB in binary primary-key order after reading at most 129 rows. The Person
 projection includes the latest reach-out time but excludes tags, notes, bio,
 and reach-out history. The Account projection excludes contact fields,
 follow-role history, and profile metadata that graph compilation does not use.
-Both use one shared opaque identity cursor bound to the final row, database
+The RSS feed projection carries only its URL, title, image, enabled state, and
+revision, with no polling or unread policy.
+All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the
 complete identity corpus.

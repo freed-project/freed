@@ -4,6 +4,7 @@ import {
   encodeLibraryCoreIdentityPageCursorV1,
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageResponseV1,
+  parseLibraryCoreRssFeedGraphPageResponseV1,
 } from "./friends-identity-page-contracts";
 
 const source = {
@@ -95,5 +96,35 @@ describe("Friends identity page contracts", () => {
         { ...baseRequest, queryId: "account_graph_page_v1" },
       ).ok,
     ).toBe(false);
+  });
+
+  it("accepts compact binary-ordered RSS feed rows", () => {
+    expect(
+      parseLibraryCoreRssFeedGraphPageResponseV1(
+        {
+          nextCursor: null,
+          queryId: "rss_feed_graph_page_v1",
+          rows: [
+            {
+              enabled: true,
+              imageUrl: null,
+              title: "Alpha",
+              updatedAt: 3,
+              url: "https://alpha.example/feed",
+            },
+            {
+              enabled: false,
+              imageUrl: "https://beta.example/icon.png",
+              title: "Beta",
+              updatedAt: 4,
+              url: "https://beta.example/feed",
+            },
+          ],
+          schemaVersion: 1,
+          source,
+        },
+        { ...baseRequest, queryId: "rss_feed_graph_page_v1" },
+      ).ok,
+    ).toBe(true);
   });
 });

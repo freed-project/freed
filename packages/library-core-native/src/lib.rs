@@ -90,7 +90,8 @@ pub use normalized_query::{
     NormalizedPersonDetailRequestV1, NormalizedPersonDetailResponseV1, NormalizedPersonDetailV1,
     NormalizedPersonGraphPageRequestV1, NormalizedPersonGraphPageResponseV1,
     NormalizedPersonGraphRowV1, NormalizedPersonReachOutV1, NormalizedQueryRequestV1,
-    NormalizedQueryResponseV1,
+    NormalizedQueryResponseV1, NormalizedRssFeedGraphPageRequestV1,
+    NormalizedRssFeedGraphPageResponseV1, NormalizedRssFeedGraphRowV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

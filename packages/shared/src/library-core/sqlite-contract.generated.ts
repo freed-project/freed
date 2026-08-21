@@ -984,6 +984,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "provider_action_claim_v1",
   "provider_media_page_v1",
   "repair_work_claim_v1",
+  "rss_feed_graph_page_v1",
   "saved_analytics_v1",
   "saved_feed_page_v1",
   "search_page_v1",
@@ -1047,6 +1048,11 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "maximumScanRows": 513,
     "countSql": "SELECT count(*) FROM library_preferences;",
     "sql": "SELECT path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences ORDER BY path COLLATE BINARY LIMIT 513;"
+  },
+  "rss_feed_graph_page_v1": {
+    "maximumScanRows": 129,
+    "countSql": "SELECT count(*) FROM library_rss_feeds;",
+    "sql": "SELECT feed.url, feed.title, feed.image_url AS imageUrl, CASE feed.enabled WHEN 1 THEN 1 ELSE 0 END AS enabled, feed.updated_at AS updatedAt FROM library_rss_feeds AS feed WHERE feed.url > COALESCE(?1, '') COLLATE BINARY ORDER BY feed.url COLLATE BINARY ASC LIMIT ?2;"
   }
 } as const;
 export type LibraryCoreSqliteQueryProgramId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_PROGRAMS;

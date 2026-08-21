@@ -6,10 +6,13 @@ import {
 import {
   parseLibraryCoreAccountGraphPageRequestV1,
   parseLibraryCorePersonGraphPageRequestV1,
+  parseLibraryCoreRssFeedGraphPageRequestV1,
   type LibraryCoreAccountGraphPageRequestV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
   type LibraryCorePersonGraphPageResponseV1,
+  type LibraryCoreRssFeedGraphPageRequestV1,
+  type LibraryCoreRssFeedGraphPageResponseV1,
 } from "./friends-identity-page-contracts.js";
 import {
   parseLibraryCoreChangeFeedRequestV1,
@@ -80,6 +83,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemScanRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
+  | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -104,9 +108,11 @@ export type LibraryCoreSqliteQueryResponseFor<
                   ? LibraryCorePersonDetailResponseV1
                   : T extends LibraryCorePersonGraphPageRequestV1
                     ? LibraryCorePersonGraphPageResponseV1
-                    : T extends LibraryCorePreferencesSnapshotRequestV1
-                      ? LibraryCorePreferencesSnapshotResponseV1
-                      : never;
+                    : T extends LibraryCoreRssFeedGraphPageRequestV1
+                      ? LibraryCoreRssFeedGraphPageResponseV1
+                      : T extends LibraryCorePreferencesSnapshotRequestV1
+                        ? LibraryCorePreferencesSnapshotResponseV1
+                        : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -171,6 +177,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemScanResponseV1
   | LibraryCorePersonDetailResponseV1
   | LibraryCorePersonGraphPageResponseV1
+  | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2;
@@ -268,6 +275,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
                       ? parseLibraryCorePersonDetailRequestV1(value.query)
                       : value.query.queryId === "person_graph_page_v1"
                         ? parseLibraryCorePersonGraphPageRequestV1(value.query)
+                        : value.query.queryId === "rss_feed_graph_page_v1"
+                          ? parseLibraryCoreRssFeedGraphPageRequestV1(value.query)
                         : value.query.queryId === "preferences_snapshot_v1"
                           ? parseLibraryCorePreferencesSnapshotRequestV1(
                               value.query,

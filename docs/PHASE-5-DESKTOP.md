@@ -76,11 +76,13 @@
         the shared native and PWA dispatch, returns at most eight ordered
         follow-roster roles, and never hydrates a Person or FeedItem corpus.
         Freed Desktop view wiring remains open.
-  - [x] `person_graph_page_v1` and `account_graph_page_v1` now stream compact
+  - [x] `person_graph_page_v1`, `account_graph_page_v1`, and
+        `rss_feed_graph_page_v1` now stream compact
         identity roots through source-fenced binary primary-key pages shared
         by native Rust and PWA SQLite. Each request returns at most 128 rows
-        and 2 MiB without notes, contact fields, histories, or a complete
-        identity corpus. Freed Desktop graph-worker wiring remains open.
+        and 2 MiB without notes, contact fields, histories, polling policy, or
+        a complete identity corpus. Freed Desktop graph-worker wiring remains
+        open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

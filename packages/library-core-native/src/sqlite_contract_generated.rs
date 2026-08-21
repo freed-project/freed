@@ -600,6 +600,7 @@ pub const QUERY_IDS: &[&str] = &[
     "provider_action_claim_v1",
     "provider_media_page_v1",
     "repair_work_claim_v1",
+    "rss_feed_graph_page_v1",
     "saved_analytics_v1",
     "saved_feed_page_v1",
     "search_page_v1",
@@ -619,6 +620,7 @@ pub const SQLITE_QUERY_PROGRAMS: &[(&str, usize, &str, &str)] = &[
     ("person_detail_v1", 1, "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.bio, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.notes, person.sample_batch_id AS sampleBatchId, person.sample_generated_at AS sampleGeneratedAt, person.sample_generator_version AS sampleGeneratorVersion, person.created_at AS createdAt, person.updated_at AS updatedAt, (SELECT json_group_array(tag) FROM (SELECT tag FROM library_person_tags WHERE person_id = person.id ORDER BY tag COLLATE BINARY LIMIT 64)) AS tagsJson, (SELECT json_group_array(json_object('reachOutId', reach_out_id, 'loggedAt', logged_at, 'channel', channel, 'notes', notes)) FROM (SELECT reach_out_id, logged_at, channel, notes FROM library_person_reach_outs WHERE person_id = person.id ORDER BY logged_at DESC, reach_out_id COLLATE BINARY ASC LIMIT 20)) AS reachOutsJson FROM library_persons AS person WHERE person.id = ?1 COLLATE BINARY LIMIT 1;", "SELECT count(*) FROM library_persons WHERE id = ?1 COLLATE BINARY;"),
     ("person_graph_page_v1", 129, "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.updated_at AS updatedAt, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastReachOutAt FROM library_persons AS person WHERE person.id > COALESCE(?1, '') COLLATE BINARY ORDER BY person.id COLLATE BINARY ASC LIMIT ?2;", "SELECT count(*) FROM library_persons;"),
     ("preferences_snapshot_v1", 513, "SELECT path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences ORDER BY path COLLATE BINARY LIMIT 513;", "SELECT count(*) FROM library_preferences;"),
+    ("rss_feed_graph_page_v1", 129, "SELECT feed.url, feed.title, feed.image_url AS imageUrl, CASE feed.enabled WHEN 1 THEN 1 ELSE 0 END AS enabled, feed.updated_at AS updatedAt FROM library_rss_feeds AS feed WHERE feed.url > COALESCE(?1, '') COLLATE BINARY ORDER BY feed.url COLLATE BINARY ASC LIMIT ?2;", "SELECT count(*) FROM library_rss_feeds;"),
 ];
 
 pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[

@@ -46,6 +46,16 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-rss-feed-graph", {
+        cancellationId: "cancel-rss-feed-graph",
+        cursor: null,
+        limit: 64,
+        queryId: "rss_feed_graph_page_v1",
+        readerSessionId: "reader-rss-feed-graph",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
     const request = createLibraryCoreSqliteQueryWorkerRequest("request-2", {
       cancellationId: "cancel-1" as never,
       cursor: null,

@@ -309,6 +309,11 @@ describe("PWA Library Core SQLite engine", () => {
          60, 210, 'capture', NULL, NULL, 60, 210);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
+      INSERT INTO library_rss_feeds
+        (url, title, image_url, enabled, track_unread, updated_at)
+      VALUES
+        ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
+        ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);
     `);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
@@ -518,6 +523,26 @@ describe("PWA Library Core SQLite engine", () => {
         })
         .rows.map((row) => row.id),
     ).toEqual(["account-2"]);
+    const rssFeedGraphRequest = {
+      cancellationId: operationId("cancel-rss-feed-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "rss_feed_graph_page_v1" as const,
+      readerSessionId: operationId("reader-rss-feed-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstRssFeedGraphPage = engine.query(rssFeedGraphRequest);
+    expect(firstRssFeedGraphPage.rows).toMatchObject([
+      { enabled: true, title: "Alpha", url: "https://alpha.example/feed" },
+    ]);
+    expect(
+      engine
+        .query({
+          ...rssFeedGraphRequest,
+          cursor: firstRssFeedGraphPage.nextCursor,
+        })
+        .rows.map((row) => row.url),
+    ).toEqual(["https://beta.example/feed"]);
     const inlineBody = engine.query({
       bodyKind: "content",
       globalId: "item-2",
@@ -650,6 +675,12 @@ describe("PWA Library Core SQLite engine", () => {
       engine.query({
         ...accountGraphRequest,
         cursor: firstAccountGraphPage.nextCursor,
+      }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...rssFeedGraphRequest,
+        cursor: firstRssFeedGraphPage.nextCursor,
       }),
     ).toThrow(/cursor is stale/);
   });
