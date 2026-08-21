@@ -897,6 +897,12 @@ opening paths fail closed for the rest of the process and after restart. A
 missing selector preserves the pre-cutover state. A malformed selector or one
 that does not match normalized SQLite activates neither side.
 
+Selector publication writes canonical bytes to a private pending file, flushes
+the file, atomically renames it to the one final selector name, and flushes the
+bound directory. The final name is never overwritten with different bytes.
+An exact response-loss retry succeeds only when the stored bytes match. The
+selector is read back and reverified before cutover reports success.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

@@ -214,6 +214,14 @@ impl LibraryCoreDesktopBinding {
                     "Desktop authority selection has an invalid field set".to_string(),
                 )
             })?;
+        self.verify_authority_selection(&selection)?;
+        Ok(Some(selection))
+    }
+
+    fn verify_authority_selection(
+        &self,
+        selection: &DesktopAuthoritySelectionV1,
+    ) -> Result<(), LibraryCoreStoreError> {
         let valid_digest = |value: &str| {
             value.len() == 64
                 && value
@@ -251,10 +259,10 @@ impl LibraryCoreDesktopBinding {
                AND meta.library_id = active.library_id
                AND meta.authority_epoch = active.epoch_id;",
             rusqlite::params![
-                selection.library_id,
-                selection.epoch_id,
-                selection.transition_certificate_digest,
-                selection.normalized_product_digest,
+                &selection.library_id,
+                &selection.epoch_id,
+                &selection.transition_certificate_digest,
+                &selection.normalized_product_digest,
                 i64::try_from(selection.selected_at).map_err(|_| {
                     LibraryCoreStoreError::from(
                         "Desktop authority selection time is invalid".to_string(),
@@ -268,7 +276,44 @@ impl LibraryCoreDesktopBinding {
                 "Desktop authority selection does not match normalized SQLite".to_string(),
             ));
         }
-        Ok(Some(selection))
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn write_authority_selection(
+        &self,
+        selection: &DesktopAuthoritySelectionV1,
+    ) -> Result<(), LibraryCoreStoreError> {
+        if let Some(existing) = self.authority_selection()? {
+            if existing == *selection {
+                return Ok(());
+            }
+            return Err(LibraryCoreStoreError::from(
+                "Desktop authority selection already names another epoch".to_string(),
+            ));
+        }
+        self.verify_authority_selection(selection)?;
+        let value = serde_json::to_value(selection).map_err(|_| {
+            LibraryCoreStoreError::from("Desktop authority selection is invalid".to_string())
+        })?;
+        let canonical =
+            encode_canonical_value(&value, AUTHORITY_SELECTION_MAXIMUM_BYTES).map_err(|_| {
+                LibraryCoreStoreError::from(
+                    "Desktop authority selection cannot be canonicalized".to_string(),
+                )
+            })?;
+        self.app_root.write_new_private_file_atomically(
+            AUTHORITY_SELECTION_FILE,
+            ".library-authority-selection-v1.pending",
+            &canonical,
+            AUTHORITY_SELECTION_MAXIMUM_BYTES,
+        )?;
+        if self.authority_selection()?.as_ref() != Some(selection) {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop authority selection did not read back exactly".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -277,7 +322,6 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
-    use serde_json::json;
 
     const TEST_IDENTITY: ProcessLeaseIdentity<'static> =
         ProcessLeaseIdentity::new("desktop-binding-test", "1");
@@ -378,22 +422,20 @@ mod tests {
             )
             .expect("insert generation");
         drop(normalized);
-        let selection = encode_canonical_value(
-            &json!({
-                "epochId": "a".repeat(64),
-                "format": "freed_desktop_sqlite_authority_selection_v1",
-                "libraryId": "b".repeat(64),
-                "normalizedProductDigest": "1".repeat(64),
-                "selectedAt": 400,
-                "transitionCertificateDigest": "e".repeat(64)
-            }),
-            AUTHORITY_SELECTION_MAXIMUM_BYTES,
-        )
-        .expect("canonical selector");
-        let selector_path = app_root.join(AUTHORITY_SELECTION_FILE);
-        fs::write(&selector_path, selection).expect("write selector");
-        fs::set_permissions(&selector_path, fs::Permissions::from_mode(0o600))
-            .expect("set selector permissions");
+        let selection = DesktopAuthoritySelectionV1 {
+            format: "freed_desktop_sqlite_authority_selection_v1".to_owned(),
+            library_id: "b".repeat(64),
+            epoch_id: "a".repeat(64),
+            transition_certificate_digest: "e".repeat(64),
+            normalized_product_digest: "1".repeat(64),
+            selected_at: 400,
+        };
+        binding
+            .write_authority_selection(&selection)
+            .expect("write selector");
+        binding
+            .write_authority_selection(&selection)
+            .expect("replay exact selector");
 
         assert!(binding.connect().is_err());
         assert!(binding.open_journal().is_err());

@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
@@ -188,6 +188,83 @@ impl LibraryCoreBoundRoot {
             ));
         }
         Ok(Some(bytes))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn write_new_private_file_atomically(
+        &self,
+        name: &str,
+        pending_name: &str,
+        bytes: &[u8],
+        maximum_bytes: usize,
+    ) -> Result<(), LibraryCoreStoreError> {
+        if name.is_empty()
+            || pending_name.is_empty()
+            || name == pending_name
+            || matches!(name, "." | "..")
+            || matches!(pending_name, "." | "..")
+            || name.as_bytes().contains(&b'/')
+            || pending_name.as_bytes().contains(&b'/')
+            || bytes.is_empty()
+            || bytes.len() > maximum_bytes
+        {
+            return Err(LibraryCoreStoreError::from(
+                "invalid bound atomic file request".to_string(),
+            ));
+        }
+        if let Some(existing) = self.read_bounded_private_file(name, maximum_bytes)? {
+            if existing == bytes {
+                return Ok(());
+            }
+            return Err(LibraryCoreStoreError::from(
+                "bound atomic file already exists with different bytes".to_string(),
+            ));
+        }
+        let name = CString::new(name)
+            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+        let pending_name = CString::new(pending_name).map_err(|_| {
+            LibraryCoreStoreError::from("invalid bound pending file name".to_string())
+        })?;
+        unsafe {
+            libc::unlinkat(self.descriptor(), pending_name.as_ptr(), 0);
+        }
+        let descriptor = unsafe {
+            libc::openat(
+                self.descriptor(),
+                pending_name.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                0o600,
+            )
+        };
+        if descriptor < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor) };
+        let mut file = File::from(descriptor);
+        let write_result = (|| -> Result<(), LibraryCoreStoreError> {
+            file.write_all(bytes)?;
+            file.sync_all()?;
+            if unsafe {
+                libc::renameat(
+                    self.descriptor(),
+                    pending_name.as_ptr(),
+                    self.descriptor(),
+                    name.as_ptr(),
+                )
+            } < 0
+            {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            let directory = file_from_duplicated_descriptor(self.descriptor())?;
+            directory.sync_all()?;
+            Ok(())
+        })();
+        if write_result.is_err() {
+            unsafe {
+                libc::unlinkat(self.descriptor(), pending_name.as_ptr(), 0);
+            }
+        }
+        write_result
     }
 }
 

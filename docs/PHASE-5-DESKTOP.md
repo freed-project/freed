@@ -492,6 +492,7 @@ export async function captureDomFeed(
 | 5.48 | Sign the next normalized storage epoch with the accepted authority key, bind the complete candidate and final contract identities, recheck every old source fence, and install authority, causal baseline, writer admission, metadata, and generation atomically inside the candidate without selecting it | High | ✓ Complete |
 | 5.49 | Enroll a fresh normalized Primary actor with actor and authority signatures, bind the carried source frontier, and install exactly the generated Primary-writer mutation capability in one transaction | High | ✓ Complete |
 | 5.50 | Verify one private descriptor-bound Desktop authority selector against signed normalized SQLite and fence every historical database, journal, store, backup, restore, clear, and mutation opening path once selected | High | ✓ Complete |
+| 5.51 | Publish the Desktop selector through a private flushed pending file, atomic fixed-name rename, directory flush, exact readback verification, and idempotent response-loss replay without overwriting another epoch | High | ✓ Complete |
 
 ---
 

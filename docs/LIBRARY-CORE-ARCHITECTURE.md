@@ -939,6 +939,10 @@ verifies it against normalized SQLite on every authority opening. A valid
 selector permanently fences every old database, journal, store, backup,
 restore, clear, and mutation route. A missing selector means cutover has not
 occurred. A malformed, foreign, or stale selector fails both sides closed.
+Publication flushes one private pending file, atomically renames it to the
+fixed selector name, flushes the bound directory, and reads the exact record
+back through the same verifier. A different existing selector is never
+overwritten. Exact response-loss replay is idempotent.
 
 ### 16.2 Cutover
 
