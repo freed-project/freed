@@ -11,17 +11,17 @@ behavior lives in [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md).
 
 ## Current checkpoint
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 | Workstream | State | Current evidence | Next closing proof |
 | --- | --- | --- | --- |
 | Architecture and documentation | Complete | SQLite-everywhere architecture, detailed contract, phase changes, and deletion target are documented in PR #1603 | Keep these documents synchronized with every implementation checkpoint |
-| Executable contract source | In progress | `sqlite-contract-v1.json` generates the shared checkpoint registry, 39 mutation IDs, 28 bounded query IDs, protocol limits, and matching Rust and TypeScript constants with a drift check | Extend the IDL across field schemas, SQL bindings, payload codecs, invalidations, and deletion obligations |
+| Executable contract source | In progress | `sqlite-contract-v1.json` now generates closed root and child row field sets, the checkpoint registry, 39 mutation IDs, 28 bounded query IDs, protocol limits, exact shared schema bytes, and matching Rust and TypeScript constants with a drift check | Extend the IDL across mutation SQL, query SQL, result payload codecs, invalidations, and deletion obligations |
 | Native core extraction | Foundation exists | `packages/library-core-native` contains SQLite authority, journal, actor, lease, and checkpoint foundations | Freed Desktop and headless entry points call the same final native core, with no Library semantics in Tauri |
-| Final normalized schema | Foundation exists | Existing native schemas and transition migrations cover much of the durable model | Final tables, indexes, locality rules, content descriptors, and schema manifest pass catalog verification |
+| Final normalized schema | Implemented, not active | `normalized-schema-v1.sql` defines strict normalized root, child, coordination, blob, and chunk tables with bounded indexes and no shell or whole-record JSON authority. Rust and TypeScript consume the exact same schema bytes and SHA-256 identity | Wire all native mutations and named queries to this catalog, then activate it through the one-epoch migration |
 | Mutation registry | Partial foundation | Existing native and shared operation contracts cover several product writes | Every durable product write is registered, typed, atomic, capability-scoped, and consumed by a real entry point |
 | Query registry | Partial foundation | Several Freed Desktop surfaces already have bounded SQLite readers | Every Freed Desktop and PWA surface uses generated named SQL with stable keyset cursors and fixed budgets |
-| Normalized synchronization | Contract implementation started | The v2 normalized registry has stable registry-plus-primary-key identity, rejects shell records, and losslessly chunks and reassembles a 4 MiB legal value into records below 131,072 canonical bytes in Rust and TypeScript | Native typed export and SQLite staging import consume the generated records, followed by operation, intent, result, and manifest integration |
+| Normalized synchronization | Native export implemented | The v2 registry has stable registry-plus-primary-key identity, closed payload fields for normalized root and child rows, exact native response bounding, and lossless 4 MiB chunk export and reassembly. Native export reads final SQLite tables directly and emits no shell record | Add transactional staging import and the equivalent browser worker exporter, followed by operation, intent, result, and manifest integration |
 | PWA SQLite | Not started | Browser checkpoint, query, and intent behavior provides semantic source material | Official SQLite WebAssembly over OPFS passes iPhone durability, recovery, query, mutation, and synchronization tests |
 | Selective content plane | Design complete | Descriptor, chunk, range, hydration, and cache policies are specified | Desktop and PWA prove metadata-only, stream, partial-cache, full-cache, pinned-offline, and excluded modes |
 | Direct migration and cutover | Not started | Source census and migration contracts exist | One external-memory migration writes the final schema and activates one SQLite-only storage epoch |

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +9,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourcePath = resolve(
   root,
   "packages/shared/src/library-core/sqlite-contract-v1.json",
+);
+const schemaPath = resolve(
+  root,
+  "packages/shared/src/library-core/normalized-schema-v1.sql",
 );
 const typescriptPath = resolve(
   root,
@@ -32,6 +37,21 @@ function assertSortedUnique(values, label) {
     const value = values[index];
     if (typeof value !== "string" || !/^[a-z0-9_]+$/.test(value)) {
       throw new TypeError(`${label} contains an invalid identifier`);
+    }
+    if (index > 0 && values[index - 1] >= value) {
+      throw new TypeError(`${label} must be sorted and unique`);
+    }
+  }
+}
+
+function assertSortedUniqueFields(values, label) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new TypeError(`${label} must be a nonempty array`);
+  }
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (typeof value !== "string" || !/^[a-z][A-Za-z0-9]*$/.test(value)) {
+      throw new TypeError(`${label} contains an invalid field name`);
     }
     if (index > 0 && values[index - 1] >= value) {
       throw new TypeError(`${label} must be sorted and unique`);
@@ -86,6 +106,8 @@ function assertContract(contract) {
     "digest",
     "entity",
     "field",
+    "ordinal",
+    "pair",
     "receipt",
     "relationship",
     "singleton",
@@ -96,7 +118,7 @@ function assertContract(contract) {
   for (const entry of contract.checkpointRecords) {
     if (
       Object.keys(entry).sort().join(",") !==
-        "payload,primaryKey,registryKey" ||
+        "fields,payload,primaryKey,registryKey" ||
       !/^[0-9a-z]{2}_[a-z0-9_]+$/.test(entry.registryKey) ||
       entry.registryKey <= previous ||
       !allowedKeyCodecs.has(entry.primaryKey) ||
@@ -112,14 +134,16 @@ function assertContract(contract) {
     }
     previous = entry.registryKey;
     payloads.add(entry.payload);
+    assertSortedUniqueFields(entry.fields, `${entry.registryKey} fields`);
   }
 }
 
-function typescriptSource(contract) {
+function typescriptSource(contract, schemaSql, schemaDigest) {
   const entries = JSON.stringify(contract.checkpointRecords, null, 2)
     .replaceAll('"registryKey"', "registryKey")
     .replaceAll('"primaryKey"', "primaryKey")
     .replaceAll('"payload"', "payload")
+    .replaceAll('"fields"', "fields")
     .replaceAll(/: "([^"]+)"/g, ': "$1"');
   const stringTuple = (values) =>
     values.map((value) => `  ${JSON.stringify(value)},`).join("\n");
@@ -134,6 +158,8 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.lim
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.limits.nativeExportResponseBytes} as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = ${contract.limits.contentChunkBytes} as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 
 export const LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY = ${entries} as const;
 export type LibraryCoreCheckpointRegistryEntry = (typeof LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY)[number];
@@ -160,7 +186,7 @@ function rustVariant(value) {
     .join("");
 }
 
-function rustSource(contract) {
+function rustSource(contract, schemaDigest) {
   const recordVariants = contract.checkpointRecords
     .map(
       (entry) =>
@@ -169,6 +195,18 @@ function rustSource(contract) {
     .join("\n");
   const variants = contract.checkpointRecords
     .map((entry) => `    ${rustVariant(entry.payload)},`)
+    .join("\n");
+  const registryMatches = contract.checkpointRecords
+    .map(
+      (entry) =>
+        `            ${JSON.stringify(entry.registryKey)} => Some(Self::${rustVariant(entry.payload)}),`,
+    )
+    .join("\n");
+  const fieldVariants = contract.checkpointRecords
+    .map(
+      (entry) =>
+        `            ${rustVariant(entry.payload)} => &[\n${entry.fields.map((field) => `                ${JSON.stringify(field)},`).join("\n")}\n            ],`,
+    )
     .join("\n");
   const operations = contract.mutations
     .map((value) => `    ${JSON.stringify(value)},`)
@@ -187,17 +225,37 @@ pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.check
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.limits.nativeExportResponseBytes};
 pub const CONTENT_CHUNK_BYTES: usize = ${contract.limits.contentChunkBytes};
+pub const NORMALIZED_SCHEMA_SHA256: &str =
+    ${JSON.stringify(schemaDigest)};
+pub const NORMALIZED_SCHEMA_SQL: &str =
+    include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 
+#[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckpointRecordKind {
 ${variants}
 }
 
+#[rustfmt::skip]
 impl CheckpointRecordKind {
+    pub fn from_registry_key(value: &str) -> Option<Self> {
+        match value {
+${registryMatches}
+            _ => None,
+        }
+    }
+
     pub const fn registry_key(self) -> &'static str {
         use CheckpointRecordKind::*;
         match self {
 ${recordVariants}
+        }
+    }
+
+    pub const fn payload_fields(self) -> &'static [&'static str] {
+        use CheckpointRecordKind::*;
+        match self {
+${fieldVariants}
         }
     }
 }
@@ -223,6 +281,8 @@ async function update(path, contents) {
 }
 
 const contract = JSON.parse(await readFile(sourcePath, "utf8"));
+const schemaSql = await readFile(schemaPath, "utf8");
+const schemaDigest = createHash("sha256").update(schemaSql).digest("hex");
 assertContract(contract);
-await update(typescriptPath, typescriptSource(contract));
-await update(rustPath, rustSource(contract));
+await update(typescriptPath, typescriptSource(contract, schemaSql, schemaDigest));
+await update(rustPath, rustSource(contract, schemaDigest));

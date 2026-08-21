@@ -21,12 +21,12 @@ describe("normalized SQLite checkpoint contract", () => {
       ),
     ).toBe(false);
     const record = createLibraryCoreNormalizedCheckpointRecordV2({
-      registryKey: "10_feed_item",
-      primaryKey: "item:one",
-      payload: { globalId: "item:one", saved: true },
+      registryKey: "13_feed_item_tag",
+      primaryKey: ["item:one", "favorite"],
+      payload: { tag: "favorite" },
     });
     expect(libraryCoreNormalizedCheckpointRecordIdentityV2(record)).toBe(
-      '10_feed_item:"item:one"',
+      '13_feed_item_tag:["item:one","favorite"]',
     );
   });
 

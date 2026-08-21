@@ -108,12 +108,15 @@ function base64Decode(value: string): Uint8Array {
 
 function canonicalPayload(
   value: unknown,
+  expectedFields: readonly string[],
 ): Readonly<Record<string, LibraryCoreCanonicalValue>> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("normalized checkpoint payload must be an object");
-  }
+  const closed = ownClosedRecord(
+    value,
+    expectedFields,
+    "normalized checkpoint payload",
+  );
   return decodeLibraryCoreCanonicalValue(
-    encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue, {
+    encodeLibraryCoreCanonicalValue(closed as LibraryCoreCanonicalValue, {
       maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
     }),
   ) as Readonly<Record<string, LibraryCoreCanonicalValue>>;
@@ -164,6 +167,13 @@ function boundedPrimaryKey(
         snapshot.length === 2 &&
         isLibraryCoreLowercaseHex64(snapshot[0]) &&
         isLibraryCoreNonnegativeSafeInteger(snapshot[1])) ||
+      (codec === "ordinal" &&
+        snapshot.length === 2 &&
+        typeof snapshot[0] === "string" &&
+        isLibraryCoreNonnegativeSafeInteger(snapshot[1])) ||
+      (codec === "pair" &&
+        snapshot.length === 2 &&
+        snapshot.every((part) => typeof part === "string")) ||
       (codec === "entity" &&
         snapshot.length === 2 &&
         snapshot.every((part) => typeof part === "string")) ||
@@ -194,7 +204,7 @@ export function createLibraryCoreNormalizedCheckpointRecordV2(input: {
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     registryKey: input.registryKey,
     primaryKey: boundedPrimaryKey(input.primaryKey, entry.primaryKey),
-    payload: canonicalPayload(input.payload),
+    payload: canonicalPayload(input.payload, entry.fields),
   });
   encodeLibraryCoreCanonicalValue(record, {
     maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,

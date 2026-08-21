@@ -11,9 +11,10 @@ Freed uses SQLite everywhere.
 
 The machine-readable contract begins at
 `packages/shared/src/library-core/sqlite-contract-v1.json`. Generation writes
-matching TypeScript and Rust bindings. Checked-in SQL is executable source and
-is bound to the generated schema, query, and mutation catalogs. Generated
-files are never edited by hand.
+matching TypeScript and Rust bindings. The final physical catalog is
+`packages/shared/src/library-core/normalized-schema-v1.sql`. Both bindings
+consume those exact SQL bytes and the generator binds them to one SHA-256.
+Generated files are never edited by hand.
 
 The contract has independent monotonically increasing versions for:
 
@@ -240,9 +241,19 @@ The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version
 | --- | --- | --- |
 | `00_checkpoint_header` | singleton | Library, epoch, schema, registry, frontier, and state commitment |
 | `10_feed_item` | item ID | normalized feed-item row |
+| `11_feed_item_media` | item ID and ordinal | one media rendition reference |
+| `12_feed_item_topic` | item ID and topic | one topic |
+| `13_feed_item_tag` | item ID and tag | one user tag |
+| `14_feed_item_highlight` | item ID and ordinal | one bounded highlight |
+| `15_feed_item_signal` | item ID | signal classifier metadata |
+| `16_feed_item_signal_score` | item ID and signal | one signal score and tag decision |
+| `17_feed_item_event` | item ID | one event candidate |
 | `20_rss_feed` | feed ID | normalized RSS row |
 | `30_person` | person ID | normalized person row |
+| `31_person_tag` | person ID and tag | one person tag |
+| `32_person_reach_out` | person ID and ordinal | one bounded reach-out entry |
 | `40_account` | account ID | normalized account row |
+| `41_account_follow_role` | account ID and role | one provider roster role |
 | `50_preference` | field key | one synchronized preference leaf |
 | `60_relationship` | typed relationship tuple | one normalized relationship |
 | `70_field_clock` | entity and field tuple | one accepted field clock |

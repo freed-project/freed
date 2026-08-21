@@ -9,72 +9,348 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = 2097152 as con
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = 128 as const;
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = 1048576 as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = 65536 as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = "30b9ba59d06324133187f2503f35c96ed698cc2220fbc77b6d01703d7009abbb" as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = "PRAGMA foreign_keys = ON;\n\nCREATE TABLE IF NOT EXISTS library_meta (\n  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),\n  library_id TEXT NOT NULL CHECK (length(library_id) BETWEEN 1 AND 255),\n  schema_version INTEGER NOT NULL CHECK (schema_version = 1),\n  authority_epoch TEXT NOT NULL CHECK (length(authority_epoch) BETWEEN 1 AND 255),\n  source_revision INTEGER NOT NULL CHECK (source_revision >= 0),\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_blobs (\n  content_digest TEXT PRIMARY KEY CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),\n  byte_length INTEGER NOT NULL CHECK (byte_length >= 0),\n  chunk_bytes INTEGER NOT NULL CHECK (chunk_bytes = 65536),\n  chunk_count INTEGER NOT NULL CHECK (chunk_count >= 0),\n  media_type TEXT NOT NULL CHECK (length(CAST(media_type AS BLOB)) BETWEEN 1 AND 255)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_blob_chunks (\n  content_digest TEXT NOT NULL REFERENCES library_blobs(content_digest) ON DELETE CASCADE,\n  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),\n  chunk_digest TEXT NOT NULL CHECK (length(chunk_digest) = 64 AND chunk_digest NOT GLOB '*[^0-9a-f]*'),\n  bytes BLOB NOT NULL CHECK (length(bytes) BETWEEN 0 AND 65536),\n  PRIMARY KEY (content_digest, chunk_index)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_items (\n  global_id TEXT PRIMARY KEY CHECK (length(CAST(global_id AS BLOB)) BETWEEN 1 AND 2048),\n  platform TEXT NOT NULL,\n  content_type TEXT NOT NULL,\n  captured_at INTEGER NOT NULL CHECK (captured_at >= 0),\n  published_at INTEGER NOT NULL CHECK (published_at >= 0),\n  author_id TEXT NOT NULL,\n  author_handle TEXT NOT NULL,\n  author_display_name TEXT NOT NULL,\n  author_avatar_url TEXT,\n  content_text TEXT CHECK (content_text IS NULL OR length(CAST(content_text AS BLOB)) <= 65536),\n  content_text_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  link_url TEXT,\n  link_title TEXT,\n  link_description TEXT,\n  engagement_likes INTEGER,\n  engagement_reposts INTEGER,\n  engagement_comments INTEGER,\n  engagement_views INTEGER,\n  location_name TEXT,\n  location_lat REAL,\n  location_lng REAL,\n  location_url TEXT,\n  location_source TEXT,\n  time_range_starts_at INTEGER,\n  time_range_ends_at INTEGER,\n  time_range_kind TEXT,\n  rss_feed_url TEXT,\n  rss_feed_title TEXT,\n  rss_site_url TEXT,\n  fb_group_id TEXT,\n  fb_group_name TEXT,\n  fb_group_url TEXT,\n  preserved_text TEXT CHECK (preserved_text IS NULL OR length(CAST(preserved_text AS BLOB)) <= 65536),\n  preserved_text_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  preserved_author TEXT,\n  preserved_published_at INTEGER,\n  preserved_word_count INTEGER,\n  preserved_reading_time INTEGER,\n  preserved_at INTEGER,\n  hidden INTEGER NOT NULL CHECK (hidden IN (0, 1)),\n  read_at INTEGER,\n  saved INTEGER NOT NULL CHECK (saved IN (0, 1)),\n  saved_at INTEGER,\n  archived INTEGER NOT NULL CHECK (archived IN (0, 1)),\n  archived_at INTEGER,\n  liked INTEGER CHECK (liked IS NULL OR liked IN (0, 1)),\n  liked_at INTEGER,\n  liked_synced_at INTEGER,\n  seen_synced_at INTEGER,\n  priority REAL,\n  priority_computed_at INTEGER,\n  source_url TEXT,\n  sample_batch_id TEXT,\n  sample_generated_at INTEGER,\n  sample_generator_version INTEGER,\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),\n  CHECK (content_text IS NULL OR content_text_blob_digest IS NULL),\n  CHECK (preserved_text IS NULL OR preserved_text_blob_digest IS NULL)\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS library_feed_items_browse\n  ON library_feed_items(archived, hidden, published_at DESC, global_id);\nCREATE INDEX IF NOT EXISTS library_feed_items_saved\n  ON library_feed_items(saved, archived, saved_at DESC, global_id);\nCREATE INDEX IF NOT EXISTS library_feed_items_author\n  ON library_feed_items(author_id, published_at DESC, global_id);\nCREATE INDEX IF NOT EXISTS library_feed_items_platform\n  ON library_feed_items(platform, published_at DESC, global_id);\n\nCREATE TABLE IF NOT EXISTS library_feed_item_media (\n  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),\n  source_url TEXT NOT NULL,\n  media_type TEXT NOT NULL,\n  blob_content_digest TEXT REFERENCES library_blobs(content_digest),\n  PRIMARY KEY (global_id, ordinal)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_topics (\n  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  topic TEXT NOT NULL,\n  PRIMARY KEY (global_id, topic)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_tags (\n  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  tag TEXT NOT NULL,\n  PRIMARY KEY (global_id, tag)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_highlights (\n  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),\n  text_value TEXT CHECK (text_value IS NULL OR length(CAST(text_value AS BLOB)) <= 65536),\n  text_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  note TEXT,\n  created_at INTEGER NOT NULL CHECK (created_at >= 0),\n  PRIMARY KEY (global_id, ordinal),\n  CHECK ((text_value IS NULL) <> (text_blob_digest IS NULL))\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_signals (\n  global_id TEXT PRIMARY KEY REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  version INTEGER NOT NULL CHECK (version >= 0),\n  method TEXT NOT NULL,\n  inferred_at INTEGER NOT NULL CHECK (inferred_at >= 0)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_signal_scores (\n  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  signal TEXT NOT NULL,\n  score REAL,\n  tagged INTEGER NOT NULL CHECK (tagged IN (0, 1)),\n  PRIMARY KEY (global_id, signal)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_feed_item_events (\n  global_id TEXT PRIMARY KEY REFERENCES library_feed_items(global_id) ON DELETE CASCADE,\n  version INTEGER NOT NULL CHECK (version >= 0),\n  method TEXT NOT NULL,\n  detected_at INTEGER NOT NULL CHECK (detected_at >= 0),\n  confidence REAL NOT NULL,\n  title TEXT,\n  starts_at INTEGER,\n  ends_at INTEGER,\n  timezone TEXT,\n  location_name TEXT,\n  location_url TEXT,\n  evidence TEXT CHECK (evidence IS NULL OR length(CAST(evidence AS BLOB)) <= 65536),\n  evidence_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  CHECK (evidence IS NULL OR evidence_blob_digest IS NULL)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_rss_feeds (\n  url TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  site_url TEXT,\n  last_fetched INTEGER,\n  image_url TEXT,\n  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),\n  poll_interval INTEGER,\n  track_unread INTEGER NOT NULL CHECK (track_unread IN (0, 1)),\n  folder TEXT,\n  sample_batch_id TEXT,\n  sample_generated_at INTEGER,\n  sample_generator_version INTEGER,\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_persons (\n  id TEXT PRIMARY KEY,\n  name TEXT NOT NULL,\n  avatar_url TEXT,\n  bio TEXT,\n  relationship_status TEXT NOT NULL,\n  care_level INTEGER NOT NULL CHECK (care_level BETWEEN 1 AND 5),\n  reach_out_interval_days INTEGER,\n  notes TEXT,\n  sample_batch_id TEXT,\n  sample_generated_at INTEGER,\n  sample_generator_version INTEGER,\n  created_at INTEGER NOT NULL CHECK (created_at >= 0),\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_person_tags (\n  person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,\n  tag TEXT NOT NULL,\n  PRIMARY KEY (person_id, tag)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_person_reach_outs (\n  person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,\n  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 19),\n  logged_at INTEGER NOT NULL CHECK (logged_at >= 0),\n  channel TEXT,\n  notes TEXT,\n  PRIMARY KEY (person_id, ordinal)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_accounts (\n  id TEXT PRIMARY KEY,\n  person_id TEXT REFERENCES library_persons(id) ON DELETE SET NULL,\n  kind TEXT NOT NULL,\n  provider TEXT NOT NULL,\n  external_id TEXT NOT NULL,\n  handle TEXT,\n  display_name TEXT,\n  avatar_url TEXT,\n  profile_url TEXT,\n  email TEXT,\n  phone TEXT,\n  address TEXT,\n  imported_at INTEGER,\n  first_seen_at INTEGER NOT NULL CHECK (first_seen_at >= 0),\n  last_seen_at INTEGER NOT NULL CHECK (last_seen_at >= 0),\n  discovered_from TEXT NOT NULL,\n  follow_roster_active INTEGER CHECK (follow_roster_active IS NULL OR follow_roster_active IN (0, 1)),\n  follow_roster_synced_at INTEGER,\n  sample_batch_id TEXT,\n  sample_generated_at INTEGER,\n  sample_generator_version INTEGER,\n  created_at INTEGER NOT NULL CHECK (created_at >= 0),\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)\n) STRICT;\n\nCREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id, id);\nCREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external\n  ON library_accounts(provider, external_id);\n\nCREATE TABLE IF NOT EXISTS library_account_follow_roles (\n  account_id TEXT NOT NULL REFERENCES library_accounts(id) ON DELETE CASCADE,\n  role TEXT NOT NULL,\n  PRIMARY KEY (account_id, role)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_preferences (\n  path TEXT PRIMARY KEY,\n  value_type TEXT NOT NULL CHECK (value_type IN ('boolean', 'integer', 'real', 'text', 'null')),\n  boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0, 1)),\n  integer_value INTEGER,\n  real_value REAL,\n  text_value TEXT,\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),\n  CHECK (\n    (value_type = 'boolean' AND boolean_value IS NOT NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NULL) OR\n    (value_type = 'integer' AND boolean_value IS NULL AND integer_value IS NOT NULL AND real_value IS NULL AND text_value IS NULL) OR\n    (value_type = 'real' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NOT NULL AND text_value IS NULL) OR\n    (value_type = 'text' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NOT NULL) OR\n    (value_type = 'null' AND boolean_value IS NULL AND integer_value IS NULL AND real_value IS NULL AND text_value IS NULL)\n  )\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_relationships (\n  subject_type TEXT NOT NULL,\n  subject_id TEXT NOT NULL,\n  relation_type TEXT NOT NULL,\n  object_type TEXT NOT NULL,\n  object_id TEXT NOT NULL,\n  metadata_text TEXT CHECK (metadata_text IS NULL OR length(CAST(metadata_text AS BLOB)) <= 65536),\n  metadata_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  created_at INTEGER NOT NULL CHECK (created_at >= 0),\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),\n  PRIMARY KEY (subject_type, subject_id, relation_type, object_type, object_id),\n  CHECK (metadata_text IS NULL OR metadata_blob_digest IS NULL)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_field_clocks (\n  entity_type TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  field_path TEXT NOT NULL,\n  actor_id TEXT NOT NULL,\n  counter INTEGER NOT NULL CHECK (counter >= 0),\n  operation_id TEXT NOT NULL,\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),\n  PRIMARY KEY (entity_type, entity_id, field_path)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_tombstones (\n  entity_type TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  actor_id TEXT NOT NULL,\n  counter INTEGER NOT NULL CHECK (counter >= 0),\n  operation_id TEXT NOT NULL,\n  deleted_at INTEGER NOT NULL CHECK (deleted_at >= 0),\n  PRIMARY KEY (entity_type, entity_id)\n) STRICT, WITHOUT ROWID;\n\nCREATE TABLE IF NOT EXISTS library_actors (\n  actor_id TEXT PRIMARY KEY,\n  actor_kind TEXT NOT NULL,\n  public_key TEXT NOT NULL,\n  accepted_counter INTEGER NOT NULL CHECK (accepted_counter >= 0),\n  retired_at INTEGER,\n  created_at INTEGER NOT NULL CHECK (created_at >= 0),\n  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)\n) STRICT;\n\nCREATE TABLE IF NOT EXISTS library_receipts (\n  actor_id TEXT NOT NULL,\n  operation_id TEXT NOT NULL,\n  status TEXT NOT NULL,\n  digest TEXT NOT NULL CHECK (length(digest) = 64 AND digest NOT GLOB '*[^0-9a-f]*'),\n  result_text TEXT CHECK (result_text IS NULL OR length(CAST(result_text AS BLOB)) <= 65536),\n  result_blob_digest TEXT REFERENCES library_blobs(content_digest),\n  accepted_at INTEGER NOT NULL CHECK (accepted_at >= 0),\n  PRIMARY KEY (actor_id, operation_id),\n  CHECK (result_text IS NULL OR result_blob_digest IS NULL)\n) STRICT, WITHOUT ROWID;\n\nCREATE VIEW IF NOT EXISTS library_checkpoint_export AS\nSELECT\n  '00_checkpoint_header' AS registry_key,\n  json_quote('checkpoint') AS primary_key_json,\n  json_object(\n    'authorityEpoch', authority_epoch,\n    'checkpointId', library_id || ':' || authority_epoch || ':' || source_revision,\n    'createdAtMs', updated_at,\n    'libraryId', library_id,\n    'schemaVersion', schema_version,\n    'sourceRevision', source_revision\n  ) AS payload_json,\n  NULL AS chunk_bytes\nFROM library_meta\nUNION ALL\nSELECT\n  '10_feed_item',\n  json_quote(global_id),\n  json_object(\n    'archived', json(CASE archived WHEN 1 THEN 'true' ELSE 'false' END),\n    'archivedAt', archived_at,\n    'authorAvatarUrl', author_avatar_url,\n    'authorDisplayName', author_display_name,\n    'authorHandle', author_handle,\n    'authorId', author_id,\n    'capturedAt', captured_at,\n    'contentText', content_text,\n    'contentTextBlobDigest', content_text_blob_digest,\n    'contentType', content_type,\n    'engagementComments', engagement_comments,\n    'engagementLikes', engagement_likes,\n    'engagementReposts', engagement_reposts,\n    'engagementViews', engagement_views,\n    'fbGroupId', fb_group_id,\n    'fbGroupName', fb_group_name,\n    'fbGroupUrl', fb_group_url,\n    'hidden', json(CASE hidden WHEN 1 THEN 'true' ELSE 'false' END),\n    'liked', CASE WHEN liked IS NULL THEN NULL ELSE json(CASE liked WHEN 1 THEN 'true' ELSE 'false' END) END,\n    'likedAt', liked_at,\n    'likedSyncedAt', liked_synced_at,\n    'linkDescription', link_description,\n    'linkTitle', link_title,\n    'linkUrl', link_url,\n    'locationLat', location_lat,\n    'locationLng', location_lng,\n    'locationName', location_name,\n    'locationSource', location_source,\n    'locationUrl', location_url,\n    'platform', platform,\n    'preservedAt', preserved_at,\n    'preservedAuthor', preserved_author,\n    'preservedPublishedAt', preserved_published_at,\n    'preservedReadingTime', preserved_reading_time,\n    'preservedText', preserved_text,\n    'preservedTextBlobDigest', preserved_text_blob_digest,\n    'preservedWordCount', preserved_word_count,\n    'priority', priority,\n    'priorityComputedAt', priority_computed_at,\n    'publishedAt', published_at,\n    'readAt', read_at,\n    'rssFeedTitle', rss_feed_title,\n    'rssFeedUrl', rss_feed_url,\n    'rssSiteUrl', rss_site_url,\n    'sampleBatchId', sample_batch_id,\n    'sampleGeneratedAt', sample_generated_at,\n    'sampleGeneratorVersion', sample_generator_version,\n    'saved', json(CASE saved WHEN 1 THEN 'true' ELSE 'false' END),\n    'savedAt', saved_at,\n    'seenSyncedAt', seen_synced_at,\n    'sourceUrl', source_url,\n    'timeRangeEndsAt', time_range_ends_at,\n    'timeRangeKind', time_range_kind,\n    'timeRangeStartsAt', time_range_starts_at,\n    'updatedAt', updated_at\n  ),\n  NULL\nFROM library_feed_items\nUNION ALL\nSELECT '11_feed_item_media', json_array(global_id, ordinal),\n  json_object('blobContentDigest', blob_content_digest, 'mediaType', media_type, 'sourceUrl', source_url), NULL\nFROM library_feed_item_media\nUNION ALL\nSELECT '12_feed_item_topic', json_array(global_id, topic), json_object('topic', topic), NULL\nFROM library_feed_item_topics\nUNION ALL\nSELECT '13_feed_item_tag', json_array(global_id, tag), json_object('tag', tag), NULL\nFROM library_feed_item_tags\nUNION ALL\nSELECT '14_feed_item_highlight', json_array(global_id, ordinal),\n  json_object('createdAt', created_at, 'note', note, 'text', text_value, 'textBlobDigest', text_blob_digest), NULL\nFROM library_feed_item_highlights\nUNION ALL\nSELECT '15_feed_item_signal', json_quote(global_id),\n  json_object('inferredAt', inferred_at, 'method', method, 'version', version), NULL\nFROM library_feed_item_signals\nUNION ALL\nSELECT '16_feed_item_signal_score', json_array(global_id, signal),\n  json_object('score', score, 'signal', signal, 'tagged', json(CASE tagged WHEN 1 THEN 'true' ELSE 'false' END)), NULL\nFROM library_feed_item_signal_scores\nUNION ALL\nSELECT '17_feed_item_event', json_quote(global_id),\n  json_object(\n    'confidence', confidence,\n    'detectedAt', detected_at,\n    'endsAt', ends_at,\n    'evidence', evidence,\n    'evidenceBlobDigest', evidence_blob_digest,\n    'locationName', location_name,\n    'locationUrl', location_url,\n    'method', method,\n    'startsAt', starts_at,\n    'timezone', timezone,\n    'title', title,\n    'version', version\n  ), NULL\nFROM library_feed_item_events\nUNION ALL\nSELECT '20_rss_feed', json_quote(url),\n  json_object(\n    'enabled', json(CASE enabled WHEN 1 THEN 'true' ELSE 'false' END),\n    'folder', folder,\n    'imageUrl', image_url,\n    'lastFetched', last_fetched,\n    'pollInterval', poll_interval,\n    'sampleBatchId', sample_batch_id,\n    'sampleGeneratedAt', sample_generated_at,\n    'sampleGeneratorVersion', sample_generator_version,\n    'siteUrl', site_url,\n    'title', title,\n    'trackUnread', json(CASE track_unread WHEN 1 THEN 'true' ELSE 'false' END),\n    'updatedAt', updated_at\n  ), NULL\nFROM library_rss_feeds\nUNION ALL\nSELECT '30_person', json_quote(id),\n  json_object(\n    'avatarUrl', avatar_url,\n    'bio', bio,\n    'careLevel', care_level,\n    'createdAt', created_at,\n    'name', name,\n    'notes', notes,\n    'reachOutIntervalDays', reach_out_interval_days,\n    'relationshipStatus', relationship_status,\n    'sampleBatchId', sample_batch_id,\n    'sampleGeneratedAt', sample_generated_at,\n    'sampleGeneratorVersion', sample_generator_version,\n    'updatedAt', updated_at\n  ), NULL\nFROM library_persons\nUNION ALL\nSELECT '31_person_tag', json_array(person_id, tag), json_object('tag', tag), NULL\nFROM library_person_tags\nUNION ALL\nSELECT '32_person_reach_out', json_array(person_id, ordinal),\n  json_object('channel', channel, 'loggedAt', logged_at, 'notes', notes), NULL\nFROM library_person_reach_outs\nUNION ALL\nSELECT '40_account', json_quote(id),\n  json_object(\n    'address', address,\n    'avatarUrl', avatar_url,\n    'createdAt', created_at,\n    'discoveredFrom', discovered_from,\n    'displayName', display_name,\n    'email', email,\n    'externalId', external_id,\n    'firstSeenAt', first_seen_at,\n    'followRosterActive', CASE WHEN follow_roster_active IS NULL THEN NULL ELSE json(CASE follow_roster_active WHEN 1 THEN 'true' ELSE 'false' END) END,\n    'followRosterSyncedAt', follow_roster_synced_at,\n    'handle', handle,\n    'importedAt', imported_at,\n    'kind', kind,\n    'lastSeenAt', last_seen_at,\n    'personId', person_id,\n    'phone', phone,\n    'profileUrl', profile_url,\n    'provider', provider,\n    'sampleBatchId', sample_batch_id,\n    'sampleGeneratedAt', sample_generated_at,\n    'sampleGeneratorVersion', sample_generator_version,\n    'updatedAt', updated_at\n  ), NULL\nFROM library_accounts\nUNION ALL\nSELECT '41_account_follow_role', json_array(account_id, role), json_object('role', role), NULL\nFROM library_account_follow_roles\nUNION ALL\nSELECT '50_preference', json_quote(path),\n  json_object(\n    'booleanValue', CASE WHEN boolean_value IS NULL THEN NULL ELSE json(CASE boolean_value WHEN 1 THEN 'true' ELSE 'false' END) END,\n    'integerValue', integer_value,\n    'realValue', real_value,\n    'textValue', text_value,\n    'updatedAt', updated_at,\n    'valueType', value_type\n  ), NULL\nFROM library_preferences\nUNION ALL\nSELECT '60_relationship', json_array(subject_type, subject_id, relation_type, object_type, object_id),\n  json_object('createdAt', created_at, 'metadataBlobDigest', metadata_blob_digest, 'metadataText', metadata_text, 'updatedAt', updated_at), NULL\nFROM library_relationships\nUNION ALL\nSELECT '70_field_clock', json_array(entity_type, entity_id, field_path),\n  json_object('actorId', actor_id, 'counter', counter, 'operationId', operation_id, 'updatedAt', updated_at), NULL\nFROM library_field_clocks\nUNION ALL\nSELECT '80_tombstone', json_array(entity_type, entity_id),\n  json_object('actorId', actor_id, 'counter', counter, 'deletedAt', deleted_at, 'operationId', operation_id), NULL\nFROM library_tombstones\nUNION ALL\nSELECT '90_actor_state', json_quote(actor_id),\n  json_object('acceptedCounter', accepted_counter, 'actorKind', actor_kind, 'createdAt', created_at, 'publicKey', public_key, 'retiredAt', retired_at, 'updatedAt', updated_at), NULL\nFROM library_actors\nUNION ALL\nSELECT 'a0_receipt', json_array(actor_id, operation_id),\n  json_object('acceptedAt', accepted_at, 'digest', digest, 'resultBlobDigest', result_blob_digest, 'resultText', result_text, 'status', status), NULL\nFROM library_receipts\nUNION ALL\nSELECT 'b0_blob_descriptor', json_quote(content_digest),\n  json_object('blobContentDigest', content_digest, 'byteLength', byte_length, 'chunkBytes', chunk_bytes, 'chunkCount', chunk_count, 'mediaType', media_type), NULL\nFROM library_blobs\nUNION ALL\nSELECT 'b1_content_chunk', json_array(content_digest, chunk_index),\n  json_object('blobContentDigest', content_digest, 'byteLength', length(bytes), 'bytesBase64', NULL, 'chunkContentDigest', chunk_digest, 'chunkIndex', chunk_index), bytes\nFROM library_blob_chunks;\n" as const;
 
 export const LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY = [
   {
     registryKey: "00_checkpoint_header",
     primaryKey: "singleton",
-    payload: "checkpoint_header"
+    payload: "checkpoint_header",
+    fields: [
+      "authorityEpoch",
+      "checkpointId",
+      "createdAtMs",
+      "libraryId",
+      "schemaVersion",
+      "sourceRevision"
+    ]
   },
   {
     registryKey: "10_feed_item",
     primaryKey: "text",
-    payload: "feed_item"
+    payload: "feed_item",
+    fields: [
+      "archived",
+      "archivedAt",
+      "authorAvatarUrl",
+      "authorDisplayName",
+      "authorHandle",
+      "authorId",
+      "capturedAt",
+      "contentText",
+      "contentTextBlobDigest",
+      "contentType",
+      "engagementComments",
+      "engagementLikes",
+      "engagementReposts",
+      "engagementViews",
+      "fbGroupId",
+      "fbGroupName",
+      "fbGroupUrl",
+      "hidden",
+      "liked",
+      "likedAt",
+      "likedSyncedAt",
+      "linkDescription",
+      "linkTitle",
+      "linkUrl",
+      "locationLat",
+      "locationLng",
+      "locationName",
+      "locationSource",
+      "locationUrl",
+      "platform",
+      "preservedAt",
+      "preservedAuthor",
+      "preservedPublishedAt",
+      "preservedReadingTime",
+      "preservedText",
+      "preservedTextBlobDigest",
+      "preservedWordCount",
+      "priority",
+      "priorityComputedAt",
+      "publishedAt",
+      "readAt",
+      "rssFeedTitle",
+      "rssFeedUrl",
+      "rssSiteUrl",
+      "sampleBatchId",
+      "sampleGeneratedAt",
+      "sampleGeneratorVersion",
+      "saved",
+      "savedAt",
+      "seenSyncedAt",
+      "sourceUrl",
+      "timeRangeEndsAt",
+      "timeRangeKind",
+      "timeRangeStartsAt",
+      "updatedAt"
+    ]
+  },
+  {
+    registryKey: "11_feed_item_media",
+    primaryKey: "ordinal",
+    payload: "feed_item_media",
+    fields: [
+      "blobContentDigest",
+      "mediaType",
+      "sourceUrl"
+    ]
+  },
+  {
+    registryKey: "12_feed_item_topic",
+    primaryKey: "pair",
+    payload: "feed_item_topic",
+    fields: [
+      "topic"
+    ]
+  },
+  {
+    registryKey: "13_feed_item_tag",
+    primaryKey: "pair",
+    payload: "feed_item_tag",
+    fields: [
+      "tag"
+    ]
+  },
+  {
+    registryKey: "14_feed_item_highlight",
+    primaryKey: "ordinal",
+    payload: "feed_item_highlight",
+    fields: [
+      "createdAt",
+      "note",
+      "text",
+      "textBlobDigest"
+    ]
+  },
+  {
+    registryKey: "15_feed_item_signal",
+    primaryKey: "text",
+    payload: "feed_item_signal",
+    fields: [
+      "inferredAt",
+      "method",
+      "version"
+    ]
+  },
+  {
+    registryKey: "16_feed_item_signal_score",
+    primaryKey: "pair",
+    payload: "feed_item_signal_score",
+    fields: [
+      "score",
+      "signal",
+      "tagged"
+    ]
+  },
+  {
+    registryKey: "17_feed_item_event",
+    primaryKey: "text",
+    payload: "feed_item_event",
+    fields: [
+      "confidence",
+      "detectedAt",
+      "endsAt",
+      "evidence",
+      "evidenceBlobDigest",
+      "locationName",
+      "locationUrl",
+      "method",
+      "startsAt",
+      "timezone",
+      "title",
+      "version"
+    ]
   },
   {
     registryKey: "20_rss_feed",
     primaryKey: "text",
-    payload: "rss_feed"
+    payload: "rss_feed",
+    fields: [
+      "enabled",
+      "folder",
+      "imageUrl",
+      "lastFetched",
+      "pollInterval",
+      "sampleBatchId",
+      "sampleGeneratedAt",
+      "sampleGeneratorVersion",
+      "siteUrl",
+      "title",
+      "trackUnread",
+      "updatedAt"
+    ]
   },
   {
     registryKey: "30_person",
     primaryKey: "text",
-    payload: "person"
+    payload: "person",
+    fields: [
+      "avatarUrl",
+      "bio",
+      "careLevel",
+      "createdAt",
+      "name",
+      "notes",
+      "reachOutIntervalDays",
+      "relationshipStatus",
+      "sampleBatchId",
+      "sampleGeneratedAt",
+      "sampleGeneratorVersion",
+      "updatedAt"
+    ]
+  },
+  {
+    registryKey: "31_person_tag",
+    primaryKey: "pair",
+    payload: "person_tag",
+    fields: [
+      "tag"
+    ]
+  },
+  {
+    registryKey: "32_person_reach_out",
+    primaryKey: "ordinal",
+    payload: "person_reach_out",
+    fields: [
+      "channel",
+      "loggedAt",
+      "notes"
+    ]
   },
   {
     registryKey: "40_account",
     primaryKey: "text",
-    payload: "account"
+    payload: "account",
+    fields: [
+      "address",
+      "avatarUrl",
+      "createdAt",
+      "discoveredFrom",
+      "displayName",
+      "email",
+      "externalId",
+      "firstSeenAt",
+      "followRosterActive",
+      "followRosterSyncedAt",
+      "handle",
+      "importedAt",
+      "kind",
+      "lastSeenAt",
+      "personId",
+      "phone",
+      "profileUrl",
+      "provider",
+      "sampleBatchId",
+      "sampleGeneratedAt",
+      "sampleGeneratorVersion",
+      "updatedAt"
+    ]
+  },
+  {
+    registryKey: "41_account_follow_role",
+    primaryKey: "pair",
+    payload: "account_follow_role",
+    fields: [
+      "role"
+    ]
   },
   {
     registryKey: "50_preference",
     primaryKey: "text",
-    payload: "preference"
+    payload: "preference",
+    fields: [
+      "booleanValue",
+      "integerValue",
+      "realValue",
+      "textValue",
+      "updatedAt",
+      "valueType"
+    ]
   },
   {
     registryKey: "60_relationship",
     primaryKey: "relationship",
-    payload: "relationship"
+    payload: "relationship",
+    fields: [
+      "createdAt",
+      "metadataBlobDigest",
+      "metadataText",
+      "updatedAt"
+    ]
   },
   {
     registryKey: "70_field_clock",
     primaryKey: "field",
-    payload: "field_clock"
+    payload: "field_clock",
+    fields: [
+      "actorId",
+      "counter",
+      "operationId",
+      "updatedAt"
+    ]
   },
   {
     registryKey: "80_tombstone",
     primaryKey: "entity",
-    payload: "tombstone"
+    payload: "tombstone",
+    fields: [
+      "actorId",
+      "counter",
+      "deletedAt",
+      "operationId"
+    ]
   },
   {
     registryKey: "90_actor_state",
     primaryKey: "text",
-    payload: "actor_state"
+    payload: "actor_state",
+    fields: [
+      "acceptedCounter",
+      "actorKind",
+      "createdAt",
+      "publicKey",
+      "retiredAt",
+      "updatedAt"
+    ]
   },
   {
     registryKey: "a0_receipt",
     primaryKey: "receipt",
-    payload: "receipt"
+    payload: "receipt",
+    fields: [
+      "acceptedAt",
+      "digest",
+      "resultBlobDigest",
+      "resultText",
+      "status"
+    ]
   },
   {
     registryKey: "b0_blob_descriptor",
     primaryKey: "digest",
-    payload: "blob_descriptor"
+    payload: "blob_descriptor",
+    fields: [
+      "blobContentDigest",
+      "byteLength",
+      "chunkBytes",
+      "chunkCount",
+      "mediaType"
+    ]
   },
   {
     registryKey: "b1_content_chunk",
     primaryKey: "chunk",
-    payload: "content_chunk"
+    payload: "content_chunk",
+    fields: [
+      "blobContentDigest",
+      "byteLength",
+      "bytesBase64",
+      "chunkContentDigest",
+      "chunkIndex"
+    ]
   }
 ] as const;
 export type LibraryCoreCheckpointRegistryEntry = (typeof LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY)[number];

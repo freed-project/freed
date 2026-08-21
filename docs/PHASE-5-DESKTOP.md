@@ -20,8 +20,11 @@
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation.
+- [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
+      define closed root and child checkpoint payload fields, and expose a
+      bounded native SQLite checkpoint exporter with stable keyset cursors.
 - [ ] Extend the executable contract across field schemas, payload codecs,
-      invalidations, deletion obligations, and one checked-in SQL catalog.
+      mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
       Wall, settings, exports, and diagnostics through bounded named queries.
 - [ ] Route the exhaustive mutation registry through atomic native

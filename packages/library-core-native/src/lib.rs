@@ -25,6 +25,7 @@ mod library_core_process_lease;
 mod library_core_sidecar;
 mod library_core_store;
 mod normalized_checkpoint;
+mod normalized_sqlite;
 mod product_projection;
 pub mod sqlite_contract_generated;
 
@@ -67,5 +68,10 @@ pub use library_core_store::{
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
     NormalizedCheckpointRecordV2,
+};
+pub use normalized_sqlite::{
+    export_normalized_checkpoint_page_v2, install_normalized_schema_v1,
+    NormalizedCheckpointCursorV2, NormalizedCheckpointExportPageV2,
+    NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
 };
 pub use product_projection::upsert_item;

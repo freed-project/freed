@@ -16,6 +16,8 @@
 - [x] Consume the same generated normalized checkpoint registry, typed primary
       key identity, protocol ceilings, and content chunk transforms as the
       native core. The browser transform has no `00_library_shell` record.
+- [x] Generate the exact final normalized SQLite schema bytes and schema digest
+      for both browser TypeScript and native Rust from the shared contract.
 - [ ] Prove the iOS 17 durability floor through
       physical iPhone storage, suspension, recovery, quota, and playback tests.
 - [ ] Run official SQLite WebAssembly in one SharedWorker with a dedicated

@@ -20,10 +20,11 @@
 >
 > The repository contains native SQLite authority, journal, bounded-reader,
 > follower-intent, checkpoint-staging, Drive-control, receipt, backup, and
-> browser semantic foundations. The final generated registry, normalized v2
-> exporter and importer, complete mutation and query cutover, PWA SQLite
-> runtime, selective content plane, one-epoch migration, retired-runtime
-> deletion, and physical-device acceptance remain open.
+> browser semantic foundations. The final normalized schema and closed row
+> registry now produce exact bounded native checkpoint pages directly from
+> SQLite. Staging import, complete mutation and query cutover, PWA SQLite,
+> selective content, one-epoch migration, retired-runtime deletion, and
+> physical-device acceptance remain open.
 
 ## Current SQLite sync work
 
@@ -31,13 +32,19 @@
       protocol ceilings from one executable source. Rust and TypeScript reject
       shell registry entries and losslessly chunk and reassemble a 4 MiB legal
       value without producing a record above 131,072 canonical bytes.
+- [x] Define closed payload fields for each normalized root and child row,
+      install the shared final SQL schema from the generated contract, and
+      export exact native pages directly from normalized SQLite tables. One
+      native response is capped at 1,048,576 serialized bytes and every record
+      is rechecked against the 131,072-byte canonical ceiling.
 - [ ] Freeze one generated protocol registry for normalized checkpoint records,
       operation segments, signed intents, results, content descriptors, range
       indexes, manifests, and control tuples.
 - [ ] Remove the Library shell checkpoint record and every whole FeedItem JSON
       checkpoint row.
-- [ ] Export and import typed normalized records through bounded native and
-      browser SQLite transactions.
+- [ ] Import typed normalized records through bounded native and browser
+      SQLite staging transactions, then expose the same exporter in the PWA
+      worker.
 - [ ] Enforce the initial 131,072-byte canonical logical-record ceiling,
       128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
       native source-response ceiling, subject to the pre-freeze benchmark.

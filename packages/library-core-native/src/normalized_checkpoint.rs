@@ -1,8 +1,8 @@
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_hash::lower_hex;
 use crate::sqlite_contract_generated::{
-    CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES, NORMALIZED_CHECKPOINT_FORMAT,
-    SQLITE_PROTOCOL_VERSION,
+    CheckpointRecordKind, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
+    NORMALIZED_CHECKPOINT_FORMAT, SQLITE_PROTOCOL_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -40,14 +40,22 @@ fn blob_digest(bytes: &[u8]) -> String {
     lower_hex(&digest.finalize())
 }
 
-fn checked_record(
+pub(crate) fn checked_record(
     registry_key: &str,
     primary_key: Value,
     payload: Value,
 ) -> Result<NormalizedCheckpointRecordV2, ContentRecordError> {
-    if registry_key.contains("shell") {
+    let kind = CheckpointRecordKind::from_registry_key(registry_key).ok_or_else(|| {
+        ContentRecordError("normalized checkpoint registry key is unsupported".into())
+    })?;
+    let payload_object = payload.as_object().ok_or_else(|| {
+        ContentRecordError("normalized checkpoint payload must be an object".into())
+    })?;
+    let mut actual_fields: Vec<&str> = payload_object.keys().map(String::as_str).collect();
+    actual_fields.sort_unstable();
+    if actual_fields != kind.payload_fields() {
         return Err(ContentRecordError(
-            "normalized checkpoint records cannot contain a Library shell".into(),
+            "normalized checkpoint payload has unknown or missing fields".into(),
         ));
     }
     let record = NormalizedCheckpointRecordV2 {

@@ -11,19 +11,144 @@
     "contentChunkBytes": 65536
   },
   "checkpointRecords": [
-    { "registryKey": "00_checkpoint_header", "primaryKey": "singleton", "payload": "checkpoint_header" },
-    { "registryKey": "10_feed_item", "primaryKey": "text", "payload": "feed_item" },
-    { "registryKey": "20_rss_feed", "primaryKey": "text", "payload": "rss_feed" },
-    { "registryKey": "30_person", "primaryKey": "text", "payload": "person" },
-    { "registryKey": "40_account", "primaryKey": "text", "payload": "account" },
-    { "registryKey": "50_preference", "primaryKey": "text", "payload": "preference" },
-    { "registryKey": "60_relationship", "primaryKey": "relationship", "payload": "relationship" },
-    { "registryKey": "70_field_clock", "primaryKey": "field", "payload": "field_clock" },
-    { "registryKey": "80_tombstone", "primaryKey": "entity", "payload": "tombstone" },
-    { "registryKey": "90_actor_state", "primaryKey": "text", "payload": "actor_state" },
-    { "registryKey": "a0_receipt", "primaryKey": "receipt", "payload": "receipt" },
-    { "registryKey": "b0_blob_descriptor", "primaryKey": "digest", "payload": "blob_descriptor" },
-    { "registryKey": "b1_content_chunk", "primaryKey": "chunk", "payload": "content_chunk" }
+    {
+      "registryKey": "00_checkpoint_header",
+      "primaryKey": "singleton",
+      "payload": "checkpoint_header",
+      "fields": ["authorityEpoch", "checkpointId", "createdAtMs", "libraryId", "schemaVersion", "sourceRevision"]
+    },
+    {
+      "registryKey": "10_feed_item",
+      "primaryKey": "text",
+      "payload": "feed_item",
+      "fields": ["archived", "archivedAt", "authorAvatarUrl", "authorDisplayName", "authorHandle", "authorId", "capturedAt", "contentText", "contentTextBlobDigest", "contentType", "engagementComments", "engagementLikes", "engagementReposts", "engagementViews", "fbGroupId", "fbGroupName", "fbGroupUrl", "hidden", "liked", "likedAt", "likedSyncedAt", "linkDescription", "linkTitle", "linkUrl", "locationLat", "locationLng", "locationName", "locationSource", "locationUrl", "platform", "preservedAt", "preservedAuthor", "preservedPublishedAt", "preservedReadingTime", "preservedText", "preservedTextBlobDigest", "preservedWordCount", "priority", "priorityComputedAt", "publishedAt", "readAt", "rssFeedTitle", "rssFeedUrl", "rssSiteUrl", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "saved", "savedAt", "seenSyncedAt", "sourceUrl", "timeRangeEndsAt", "timeRangeKind", "timeRangeStartsAt", "updatedAt"]
+    },
+    {
+      "registryKey": "11_feed_item_media",
+      "primaryKey": "ordinal",
+      "payload": "feed_item_media",
+      "fields": ["blobContentDigest", "mediaType", "sourceUrl"]
+    },
+    {
+      "registryKey": "12_feed_item_topic",
+      "primaryKey": "pair",
+      "payload": "feed_item_topic",
+      "fields": ["topic"]
+    },
+    {
+      "registryKey": "13_feed_item_tag",
+      "primaryKey": "pair",
+      "payload": "feed_item_tag",
+      "fields": ["tag"]
+    },
+    {
+      "registryKey": "14_feed_item_highlight",
+      "primaryKey": "ordinal",
+      "payload": "feed_item_highlight",
+      "fields": ["createdAt", "note", "text", "textBlobDigest"]
+    },
+    {
+      "registryKey": "15_feed_item_signal",
+      "primaryKey": "text",
+      "payload": "feed_item_signal",
+      "fields": ["inferredAt", "method", "version"]
+    },
+    {
+      "registryKey": "16_feed_item_signal_score",
+      "primaryKey": "pair",
+      "payload": "feed_item_signal_score",
+      "fields": ["score", "signal", "tagged"]
+    },
+    {
+      "registryKey": "17_feed_item_event",
+      "primaryKey": "text",
+      "payload": "feed_item_event",
+      "fields": ["confidence", "detectedAt", "endsAt", "evidence", "evidenceBlobDigest", "locationName", "locationUrl", "method", "startsAt", "timezone", "title", "version"]
+    },
+    {
+      "registryKey": "20_rss_feed",
+      "primaryKey": "text",
+      "payload": "rss_feed",
+      "fields": ["enabled", "folder", "imageUrl", "lastFetched", "pollInterval", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "siteUrl", "title", "trackUnread", "updatedAt"]
+    },
+    {
+      "registryKey": "30_person",
+      "primaryKey": "text",
+      "payload": "person",
+      "fields": ["avatarUrl", "bio", "careLevel", "createdAt", "name", "notes", "reachOutIntervalDays", "relationshipStatus", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "updatedAt"]
+    },
+    {
+      "registryKey": "31_person_tag",
+      "primaryKey": "pair",
+      "payload": "person_tag",
+      "fields": ["tag"]
+    },
+    {
+      "registryKey": "32_person_reach_out",
+      "primaryKey": "ordinal",
+      "payload": "person_reach_out",
+      "fields": ["channel", "loggedAt", "notes"]
+    },
+    {
+      "registryKey": "40_account",
+      "primaryKey": "text",
+      "payload": "account",
+      "fields": ["address", "avatarUrl", "createdAt", "discoveredFrom", "displayName", "email", "externalId", "firstSeenAt", "followRosterActive", "followRosterSyncedAt", "handle", "importedAt", "kind", "lastSeenAt", "personId", "phone", "profileUrl", "provider", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "updatedAt"]
+    },
+    {
+      "registryKey": "41_account_follow_role",
+      "primaryKey": "pair",
+      "payload": "account_follow_role",
+      "fields": ["role"]
+    },
+    {
+      "registryKey": "50_preference",
+      "primaryKey": "text",
+      "payload": "preference",
+      "fields": ["booleanValue", "integerValue", "realValue", "textValue", "updatedAt", "valueType"]
+    },
+    {
+      "registryKey": "60_relationship",
+      "primaryKey": "relationship",
+      "payload": "relationship",
+      "fields": ["createdAt", "metadataBlobDigest", "metadataText", "updatedAt"]
+    },
+    {
+      "registryKey": "70_field_clock",
+      "primaryKey": "field",
+      "payload": "field_clock",
+      "fields": ["actorId", "counter", "operationId", "updatedAt"]
+    },
+    {
+      "registryKey": "80_tombstone",
+      "primaryKey": "entity",
+      "payload": "tombstone",
+      "fields": ["actorId", "counter", "deletedAt", "operationId"]
+    },
+    {
+      "registryKey": "90_actor_state",
+      "primaryKey": "text",
+      "payload": "actor_state",
+      "fields": ["acceptedCounter", "actorKind", "createdAt", "publicKey", "retiredAt", "updatedAt"]
+    },
+    {
+      "registryKey": "a0_receipt",
+      "primaryKey": "receipt",
+      "payload": "receipt",
+      "fields": ["acceptedAt", "digest", "resultBlobDigest", "resultText", "status"]
+    },
+    {
+      "registryKey": "b0_blob_descriptor",
+      "primaryKey": "digest",
+      "payload": "blob_descriptor",
+      "fields": ["blobContentDigest", "byteLength", "chunkBytes", "chunkCount", "mediaType"]
+    },
+    {
+      "registryKey": "b1_content_chunk",
+      "primaryKey": "chunk",
+      "payload": "content_chunk",
+      "fields": ["blobContentDigest", "byteLength", "bytesBase64", "chunkContentDigest", "chunkIndex"]
+    }
   ],
   "mutations": [
     "account_person_assignment",
