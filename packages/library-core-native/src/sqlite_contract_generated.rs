@@ -476,6 +476,42 @@ pub const OPERATION_IDS: &[&str] = &[
     "sample_library_remove",
 ];
 
+pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
+    "account_remove",
+    "account_upsert",
+    "feed_item_archive_assignment",
+    "feed_item_capture_upsert",
+    "feed_item_like_assignment",
+    "feed_item_read_assignment",
+    "feed_item_remove",
+    "feed_item_saved_assignment",
+    "person_remove_and_accounts",
+    "person_upsert",
+    "preferences_leaf_assignment",
+    "rss_feed_remove_keep_items",
+    "rss_feed_remove_with_items",
+    "rss_feed_upsert",
+];
+
+pub const LEGACY_EDITOR_OPERATION_IDS: &[&str] = &[
+    "account_remove",
+    "account_upsert",
+    "feed_item_archive_assignment",
+    "feed_item_capture_upsert",
+    "feed_item_like_assignment",
+    "feed_item_read_assignment",
+    "feed_item_remove",
+    "feed_item_saved_assignment",
+    "person_remove_and_accounts",
+    "person_upsert",
+    "preferences_leaf_assignment",
+    "rss_feed_remove_keep_items",
+    "rss_feed_remove_with_items",
+    "rss_feed_upsert",
+];
+
+pub const SCRAPER_OPERATION_IDS: &[&str] = &["feed_item_capture_upsert"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteMutationProgram {
     pub mutation_id: &'static str,

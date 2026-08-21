@@ -19,7 +19,10 @@
       call the same Rust core.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 28 bounded query IDs for Rust and TypeScript from one executable
-      contract source, with generated-drift validation.
+      contract source, with generated-drift validation. The same source now
+      defines the frozen 14-mutation legacy editor capability and the
+      capture-only scraper capability. Rust and TypeScript consume generated
+      constants, and no parallel actor-operation registry remains.
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
       define closed root and child checkpoint payload fields, and expose a
       bounded native SQLite checkpoint exporter with stable keyset cursors.

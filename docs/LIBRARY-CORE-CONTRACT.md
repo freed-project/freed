@@ -149,6 +149,13 @@ mutations and grows only through an explicit contract version change. The
 registry covers account, person, feed-item, RSS, preference, provider-result,
 sample-library, repair, bulk, restore, and tombstone behavior.
 
+Actor capability profiles live in this same executable contract. Generation
+fails if a profile names an undeclared mutation. The legacy editor profile is
+frozen at its existing 14 mutations and the scraper profile remains limited to
+`feed_item_capture_upsert`. Declaring a future mutation does not grant it to
+either profile. Rust and TypeScript consume generated profile constants, so no
+second capability-operation registry can drift from the mutation catalog.
+
 Each mutation definition binds:
 
 - stable mutation ID and payload version

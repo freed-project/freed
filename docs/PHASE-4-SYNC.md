@@ -300,6 +300,7 @@ loads an alternate Library engine or compatibility path.
 | 4.151 | Drive v2 strong JSON ETag sampling and exact v2 media PUT with If-Match for mutable control, intent, and result heads, with all immutable, list, create, media read, and resumable traffic retained on v3 and the native v2 request shape closed | ✓ | High |
 | 4.152 | PWA IndexedDB schema v9 v2 capability import, exact certificate persistence, shared production verification, fixed v1 legacy preservation, local intent and imported operation enforcement, mixed-version restart, explicit rollback boundary, and zero-write adversarial denial with issuance dormant | ✓ | High |
 | 4.153 | Exact byte-aware immutable checkpoint page packing with both 128-record and 2,097,152-byte decoded ceilings, without changing Google Drive endpoints, headers, retries, or cadence | ✓ | High |
+| 4.154 | One executable SQLite contract source for capability-operation profiles and mutation identities, with generated Rust and TypeScript bindings, frozen legacy editor and capture-only scraper grants, and deletion of the duplicate actor-operation JSON registry | ✓ | High |
 
 ---
 

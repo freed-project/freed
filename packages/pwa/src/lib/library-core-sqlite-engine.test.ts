@@ -11,8 +11,10 @@ import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
+  isLibraryCoreOperationInstanceId,
   splitLibraryCoreContentV1,
   type LibraryCoreNormalizedCheckpointRecordV2,
+  type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -28,6 +30,13 @@ describe("PWA Library Core SQLite engine", () => {
   afterEach(() => {
     if (database.isOpen()) database.close();
   });
+
+  function operationId(value: string): LibraryCoreOperationInstanceId {
+    if (!isLibraryCoreOperationInstanceId(value)) {
+      throw new TypeError("invalid test operation instance ID");
+    }
+    return value;
+  }
 
   function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
     return createLibraryCoreNormalizedCheckpointRecordV2({
@@ -272,11 +281,11 @@ describe("PWA Library Core SQLite engine", () => {
       VALUES ('item-2', 0, 'https://example.com/image', 'image');
     `);
     const request = {
-      cancellationId: "cancel-1",
+      cancellationId: operationId("cancel-1"),
       cursor: null,
       limit: 1,
       queryId: "feed_page_v1" as const,
-      readerSessionId: "reader-1",
+      readerSessionId: operationId("reader-1"),
       schemaVersion: 1 as const,
     };
     const first = engine.queryFeedPage(request);

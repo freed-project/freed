@@ -636,6 +636,45 @@ export const LIBRARY_CORE_OPERATION_IDS = [
 ] as const;
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
+export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([
+  "account_remove",
+  "account_upsert",
+  "feed_item_archive_assignment",
+  "feed_item_capture_upsert",
+  "feed_item_like_assignment",
+  "feed_item_read_assignment",
+  "feed_item_remove",
+  "feed_item_saved_assignment",
+  "person_remove_and_accounts",
+  "person_upsert",
+  "preferences_leaf_assignment",
+  "rss_feed_remove_keep_items",
+  "rss_feed_remove_with_items",
+  "rss_feed_upsert",
+] as const);
+export type LibraryCoreCapabilityOperationId = (typeof LIBRARY_CORE_CAPABILITY_OPERATION_IDS)[number];
+
+export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS = Object.freeze([
+  "account_remove",
+  "account_upsert",
+  "feed_item_archive_assignment",
+  "feed_item_capture_upsert",
+  "feed_item_like_assignment",
+  "feed_item_read_assignment",
+  "feed_item_remove",
+  "feed_item_saved_assignment",
+  "person_remove_and_accounts",
+  "person_upsert",
+  "preferences_leaf_assignment",
+  "rss_feed_remove_keep_items",
+  "rss_feed_remove_with_items",
+  "rss_feed_upsert",
+] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
+
+export const LIBRARY_CORE_SCRAPER_OPERATION_IDS = Object.freeze([
+  "feed_item_capture_upsert",
+] as const satisfies readonly LibraryCoreCapabilityOperationId[]);
+
 export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
   "feed_item_read_assignment": {
     "currentClockSql": "SELECT operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'read_at';",

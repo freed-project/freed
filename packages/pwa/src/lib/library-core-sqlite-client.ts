@@ -154,11 +154,11 @@ export class PwaLibraryCoreSqliteClient {
     if (!pending) return;
     this.#pending.delete(response.requestId);
     clearTimeout(pending.timeout);
-    if (response.ok === true && response.status) {
+    if (response.ok === true && "status" in response && response.status) {
       pending.resolve(response.status);
       return;
     }
-    if (response.ok === true && response.result) {
+    if (response.ok === true && "result" in response && response.result) {
       pending.resolve(response.result);
       return;
     }

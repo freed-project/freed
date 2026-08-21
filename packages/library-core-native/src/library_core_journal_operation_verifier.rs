@@ -2185,7 +2185,7 @@ pub(crate) mod tests {
 
         for operation_type in super::super::actor_capability::canonical_operation_types()
             .iter()
-            .filter(|operation| operation.as_str() != "feed_item_capture_upsert")
+            .filter(|operation| **operation != "feed_item_capture_upsert")
         {
             let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
             let enrollment = install_signed_v2_actor(

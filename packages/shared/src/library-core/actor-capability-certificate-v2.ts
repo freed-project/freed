@@ -18,7 +18,12 @@ import {
   snapshotLibraryCoreCausalFrontier,
   type LibraryCoreCausalTipV1,
 } from "./operation-envelope-contracts.js";
-import CAPABILITY_OPERATIONS from "./actor-capability-operation-types-v2.json" with { type: "json" };
+import {
+  LIBRARY_CORE_CAPABILITY_OPERATION_IDS,
+  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS,
+  LIBRARY_CORE_SCRAPER_OPERATION_IDS,
+  type LibraryCoreCapabilityOperationId,
+} from "./sqlite-contract.generated.js";
 import {
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreEd25519SignatureHex,
@@ -32,75 +37,17 @@ import {
 export const LIBRARY_CORE_ACTOR_CAPABILITY_FORMAT_V2 =
   "freed_library_core_actor_capability_v2" as const;
 
-export const LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2 = Object.freeze([
-  "account_remove",
-  "account_upsert",
-  "feed_item_archive_assignment",
-  "feed_item_capture_upsert",
-  "feed_item_like_assignment",
-  "feed_item_read_assignment",
-  "feed_item_remove",
-  "feed_item_saved_assignment",
-  "person_remove_and_accounts",
-  "person_upsert",
-  "preferences_leaf_assignment",
-  "rss_feed_remove_keep_items",
-  "rss_feed_remove_with_items",
-  "rss_feed_upsert",
-] as const);
+export const LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2 =
+  LIBRARY_CORE_CAPABILITY_OPERATION_IDS;
 
 export type LibraryCoreActorCapabilityOperationTypeV2 =
-  (typeof LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2)[number];
+  LibraryCoreCapabilityOperationId;
 
 export const LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
-  Object.freeze([
-    "account_remove",
-    "account_upsert",
-    "feed_item_archive_assignment",
-    "feed_item_capture_upsert",
-    "feed_item_like_assignment",
-    "feed_item_read_assignment",
-    "feed_item_remove",
-    "feed_item_saved_assignment",
-    "person_remove_and_accounts",
-    "person_upsert",
-    "preferences_leaf_assignment",
-    "rss_feed_remove_keep_items",
-    "rss_feed_remove_with_items",
-    "rss_feed_upsert",
-  ] satisfies readonly LibraryCoreActorCapabilityOperationTypeV2[]);
+  LIBRARY_CORE_LEGACY_EDITOR_OPERATION_IDS;
 
 export const LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2: readonly LibraryCoreActorCapabilityOperationTypeV2[] =
-  Object.freeze([
-    "feed_item_capture_upsert",
-  ] satisfies readonly LibraryCoreActorCapabilityOperationTypeV2[]);
-
-function assertSharedOperationRegistry(): void {
-  const entries = [
-    [
-      "canonical_operation_types",
-      LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
-    ],
-    [
-      "legacy_editor_operation_types",
-      LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
-    ],
-    ["scraper_operation_types", LIBRARY_CORE_SCRAPER_OPERATION_TYPES_V2],
-  ] as const;
-  for (const [field, expected] of entries) {
-    const actual = CAPABILITY_OPERATIONS[field];
-    if (
-      actual.length !== expected.length ||
-      actual.some((operation, index) => operation !== expected[index])
-    ) {
-      throw new Error(
-        `Library Core actor capability ${field} disagrees with its shared JSON registry`,
-      );
-    }
-  }
-}
-
-assertSharedOperationRegistry();
+  LIBRARY_CORE_SCRAPER_OPERATION_IDS;
 
 export type LibraryCoreActorClassV2 = "editor" | "scraper" | "agent";
 

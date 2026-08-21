@@ -1,69 +1,30 @@
 //! Closed actor capability policy shared by enrollment and operation checks.
 //!
-//! The operation lists come from one JSON file embedded by both Rust and
-//! TypeScript. A v1 actor receives only the frozen legacy-editor list. A v2
+//! The operation lists are generated from the executable SQLite contract for
+//! both Rust and TypeScript. A v1 actor receives only the frozen legacy-editor list. A v2
 //! actor must name every allowed operation and an explicit scope. Bounded
 //! scopes remain unusable until an operation envelope carries a canonical
 //! scope binding. Nothing infers provider or source authority from payloads.
 
-use serde::Deserialize;
-use std::sync::OnceLock;
+use crate::sqlite_contract_generated::{
+    CAPABILITY_OPERATION_IDS, LEGACY_EDITOR_OPERATION_IDS, SCRAPER_OPERATION_IDS,
+};
 
-const CAPABILITY_OPERATIONS_JSON: &str =
-    include_str!("../../shared/src/library-core/actor-capability-operation-types-v2.json");
-
-#[derive(Debug, Deserialize)]
-struct CapabilityOperationRegistry {
-    format: String,
-    canonical_operation_types: Vec<String>,
-    legacy_editor_operation_types: Vec<String>,
-    scraper_operation_types: Vec<String>,
+pub(super) const fn canonical_operation_types() -> &'static [&'static str] {
+    CAPABILITY_OPERATION_IDS
 }
 
-fn registry() -> &'static CapabilityOperationRegistry {
-    static REGISTRY: OnceLock<CapabilityOperationRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let parsed: CapabilityOperationRegistry = serde_json::from_str(CAPABILITY_OPERATIONS_JSON)
-            .expect("actor capability operation registry must be valid JSON");
-        assert_eq!(
-            parsed.format,
-            "freed_library_core_actor_capability_operations_v2"
-        );
-        for operations in [
-            &parsed.canonical_operation_types,
-            &parsed.legacy_editor_operation_types,
-            &parsed.scraper_operation_types,
-        ] {
-            assert!(!operations.is_empty());
-            assert!(operations.windows(2).all(|pair| pair[0] < pair[1]));
-        }
-        assert!(parsed
-            .legacy_editor_operation_types
-            .iter()
-            .all(|operation| parsed.canonical_operation_types.contains(operation)));
-        assert!(parsed
-            .scraper_operation_types
-            .iter()
-            .all(|operation| parsed.canonical_operation_types.contains(operation)));
-        parsed
-    })
+pub(crate) const fn legacy_editor_operation_types() -> &'static [&'static str] {
+    LEGACY_EDITOR_OPERATION_IDS
 }
 
-pub(super) fn canonical_operation_types() -> &'static [String] {
-    &registry().canonical_operation_types
-}
-
-pub(crate) fn legacy_editor_operation_types() -> &'static [String] {
-    &registry().legacy_editor_operation_types
-}
-
-pub(super) fn scraper_operation_types() -> &'static [String] {
-    &registry().scraper_operation_types
+pub(super) const fn scraper_operation_types() -> &'static [&'static str] {
+    SCRAPER_OPERATION_IDS
 }
 
 pub(super) fn is_registered_operation(operation: &str) -> bool {
     canonical_operation_types()
-        .binary_search_by(|candidate| candidate.as_str().cmp(operation))
+        .binary_search(&operation)
         .is_ok()
 }
 
@@ -93,7 +54,10 @@ impl ActorCapabilityState {
         Self {
             certificate_version: 1,
             actor_class: "legacy_editor".to_owned(),
-            allowed_operation_types: legacy_editor_operation_types().to_vec(),
+            allowed_operation_types: legacy_editor_operation_types()
+                .iter()
+                .map(|operation| (*operation).to_owned())
+                .collect(),
             scope: ActorCapabilityScope::LegacyEditor,
             issuance_identity: None,
             retirement_identity: None,
@@ -143,9 +107,11 @@ pub(super) fn validate_allowed_operation_types(
         return Err("allowed_operation_types");
     }
     if actor_class == "scraper"
-        && operations
-            .iter()
-            .any(|operation| scraper_operation_types().binary_search(operation).is_err())
+        && operations.iter().any(|operation| {
+            scraper_operation_types()
+                .binary_search(&operation.as_str())
+                .is_err()
+        })
     {
         return Err("allowed_operation_types");
     }
@@ -202,7 +168,10 @@ pub(crate) fn parse_stored_capability(
         retirement_identity.as_deref(),
     ) {
         (1, "legacy_editor", "legacy_editor", None, None, None, None)
-            if allowed_operation_types == legacy_editor_operation_types() =>
+            if allowed_operation_types
+                .iter()
+                .map(String::as_str)
+                .eq(legacy_editor_operation_types().iter().copied()) =>
         {
             ActorCapabilityScope::LegacyEditor
         }
@@ -298,23 +267,8 @@ mod tests {
         );
         assert_eq!(scraper_operation_types(), ["feed_item_capture_upsert"]);
         assert!(!is_registered_operation("future_operation"));
-        assert!(!legacy_editor_operation_types().contains(&"future_operation".to_owned()));
-        assert!(!scraper_operation_types().contains(&"future_operation".to_owned()));
-
-        let mut future_registry: CapabilityOperationRegistry =
-            serde_json::from_str(CAPABILITY_OPERATIONS_JSON).expect("parse synthetic registry");
-        future_registry
-            .canonical_operation_types
-            .push("future_operation".to_owned());
-        assert!(future_registry
-            .canonical_operation_types
-            .contains(&"future_operation".to_owned()));
-        assert!(!future_registry
-            .legacy_editor_operation_types
-            .contains(&"future_operation".to_owned()));
-        assert!(!future_registry
-            .scraper_operation_types
-            .contains(&"future_operation".to_owned()));
+        assert!(!legacy_editor_operation_types().contains(&"future_operation"));
+        assert!(!scraper_operation_types().contains(&"future_operation"));
     }
 
     #[test]
