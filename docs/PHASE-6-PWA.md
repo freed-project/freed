@@ -39,8 +39,9 @@
         identity, idempotent replay, and changed-replay rejection. IndexedDB
         and Library shells do not participate in staging.
   - [x] Verify the cross-runtime checkpoint digest, apply generated row import
-        SQL in one transaction, validate every foreign key and content chunk,
-        and activate only an empty SQLite target. Failure preserves the staged
+        SQL in one transaction, validate every foreign key, content chunk,
+        accepted authority, actor chain tip, and normalized capability, and
+        activate only an empty SQLite target. Failure preserves the staged
         records and leaves the active Library empty.
 - [ ] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.

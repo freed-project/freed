@@ -8,6 +8,7 @@ import {
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+  LIBRARY_CORE_OPERATION_IDS,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
@@ -422,6 +423,9 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: `SELECT sum(row_count) FROM (
                   SELECT count(*) AS row_count FROM library_meta
+                  UNION ALL SELECT count(*) FROM library_authority_epochs
+                  UNION ALL SELECT count(*) FROM library_authority_frontier
+                  UNION ALL SELECT count(*) FROM library_active_authority
                   UNION ALL SELECT count(*) FROM library_feed_items
                   UNION ALL SELECT count(*) FROM library_rss_feeds
                   UNION ALL SELECT count(*) FROM library_persons
@@ -431,6 +435,8 @@ export class PwaLibraryCoreSqliteEngine {
                   UNION ALL SELECT count(*) FROM library_field_clocks
                   UNION ALL SELECT count(*) FROM library_tombstones
                   UNION ALL SELECT count(*) FROM library_actors
+                  UNION ALL SELECT count(*) FROM library_actor_capabilities
+                  UNION ALL SELECT count(*) FROM library_actor_capability_mutations
                   UNION ALL SELECT count(*) FROM library_receipts
                   UNION ALL SELECT count(*) FROM library_blobs
                   UNION ALL SELECT count(*) FROM library_transactions
@@ -535,6 +541,7 @@ export class PwaLibraryCoreSqliteEngine {
           "normalized checkpoint has an unresolved foreign reference",
         );
       }
+      this.#verifyCheckpointAuthority(libraryId, authorityEpoch);
       this.#database.exec({
         sql: "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         bind: [stageId],
@@ -799,6 +806,69 @@ export class PwaLibraryCoreSqliteEngine {
       }
     } finally {
       descriptors.finalize();
+    }
+  }
+
+  #verifyCheckpointAuthority(
+    libraryId: string,
+    authorityEpoch: string,
+  ): void {
+    const matches = safeInteger(
+      this.#database.exec({
+        sql: `SELECT count(*)
+              FROM library_active_authority AS active
+              JOIN library_authority_epochs AS epoch
+                ON epoch.epoch_id = active.epoch_id
+              WHERE active.active_key = 'active'
+                AND active.library_id = ?1
+                AND active.epoch_id = ?2
+                AND epoch.library_id = active.library_id
+                AND epoch.accepted_manifest_generation = active.accepted_manifest_generation;`,
+        bind: [libraryId, authorityEpoch],
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "checkpoint active authority",
+    );
+    if (matches !== 1) {
+      throw new Error(
+        "checkpoint active authority does not match its header",
+      );
+    }
+    const actorWithoutCapability = safeInteger(
+      this.#database.exec({
+        sql: `SELECT count(*)
+              FROM library_actors AS actor
+              WHERE actor.retired_at IS NULL
+                AND NOT EXISTS (
+                  SELECT 1 FROM library_actor_capabilities AS capability
+                  WHERE capability.actor_id = actor.actor_id
+                    AND capability.retired_at IS NULL
+                );`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "checkpoint actors without capabilities",
+    );
+    if (actorWithoutCapability !== 0) {
+      throw new Error(
+        "checkpoint active actor does not have an active capability",
+      );
+    }
+    const knownMutations = new Set<string>(LIBRARY_CORE_OPERATION_IDS);
+    const mutations = this.#database.exec({
+      sql: `SELECT DISTINCT mutation_id
+            FROM library_actor_capability_mutations
+            ORDER BY mutation_id;`,
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    for (const mutation of mutations) {
+      if (!knownMutations.has(text(mutation, "capability mutation"))) {
+        throw new Error(
+          "checkpoint actor capability names an unknown mutation",
+        );
+      }
     }
   }
 

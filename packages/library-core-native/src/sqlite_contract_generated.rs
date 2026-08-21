@@ -11,7 +11,7 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "bc57dd78019f95befc952c8927deaa40a89efaeba9cf6f68955d3139e38d01f4";
+    "014211df2122479e6a74f76b664dd05250043906ff7784a6aecfa4a1e2869499";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 
@@ -19,6 +19,9 @@ pub const NORMALIZED_SCHEMA_SQL: &str =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckpointRecordKind {
     CheckpointHeader,
+    AuthorityEpoch,
+    AuthorityFrontier,
+    ActiveAuthority,
     FeedItem,
     FeedItemMedia,
     FeedItemTopic,
@@ -38,6 +41,8 @@ pub enum CheckpointRecordKind {
     FieldClock,
     Tombstone,
     ActorState,
+    ActorCapability,
+    ActorCapabilityMutation,
     Receipt,
     BlobDescriptor,
     ContentChunk,
@@ -48,6 +53,9 @@ impl CheckpointRecordKind {
     pub fn from_registry_key(value: &str) -> Option<Self> {
         match value {
             "00_checkpoint_header" => Some(Self::CheckpointHeader),
+            "01_authority_epoch" => Some(Self::AuthorityEpoch),
+            "02_authority_frontier" => Some(Self::AuthorityFrontier),
+            "03_active_authority" => Some(Self::ActiveAuthority),
             "10_feed_item" => Some(Self::FeedItem),
             "11_feed_item_media" => Some(Self::FeedItemMedia),
             "12_feed_item_topic" => Some(Self::FeedItemTopic),
@@ -67,6 +75,8 @@ impl CheckpointRecordKind {
             "70_field_clock" => Some(Self::FieldClock),
             "80_tombstone" => Some(Self::Tombstone),
             "90_actor_state" => Some(Self::ActorState),
+            "91_actor_capability" => Some(Self::ActorCapability),
+            "92_actor_capability_mutation" => Some(Self::ActorCapabilityMutation),
             "a0_receipt" => Some(Self::Receipt),
             "b0_blob_descriptor" => Some(Self::BlobDescriptor),
             "b1_content_chunk" => Some(Self::ContentChunk),
@@ -78,6 +88,9 @@ impl CheckpointRecordKind {
         use CheckpointRecordKind::*;
         match self {
             CheckpointHeader => "00_checkpoint_header",
+            AuthorityEpoch => "01_authority_epoch",
+            AuthorityFrontier => "02_authority_frontier",
+            ActiveAuthority => "03_active_authority",
             FeedItem => "10_feed_item",
             FeedItemMedia => "11_feed_item_media",
             FeedItemTopic => "12_feed_item_topic",
@@ -97,6 +110,8 @@ impl CheckpointRecordKind {
             FieldClock => "70_field_clock",
             Tombstone => "80_tombstone",
             ActorState => "90_actor_state",
+            ActorCapability => "91_actor_capability",
+            ActorCapabilityMutation => "92_actor_capability_mutation",
             Receipt => "a0_receipt",
             BlobDescriptor => "b0_blob_descriptor",
             ContentChunk => "b1_content_chunk",
@@ -113,6 +128,32 @@ impl CheckpointRecordKind {
                 "libraryId",
                 "schemaVersion",
                 "sourceRevision",
+            ],
+            AuthorityEpoch => &[
+                "acceptedAt",
+                "acceptedManifestGeneration",
+                "authorityKeyId",
+                "authorityPublicKey",
+                "canonicalTransitionCertificate",
+                "checkpointFrontierDigest",
+                "epochNumber",
+                "libraryId",
+                "materializedStateDigest",
+                "transitionCertificateDigest",
+            ],
+            AuthorityFrontier => &[
+                "acceptedChainDigest",
+                "acceptedCounter",
+                "acceptedOperationId",
+                "actorId",
+            ],
+            ActiveAuthority => &[
+                "acceptedManifestGeneration",
+                "activatedAt",
+                "activeKey",
+                "epochId",
+                "libraryId",
+                "writerId",
             ],
             FeedItem => &[
                 "archived",
@@ -302,12 +343,37 @@ impl CheckpointRecordKind {
                 "operationId",
             ],
             ActorState => &[
+                "acceptedChainDigest",
                 "acceptedCounter",
+                "acceptedOperationId",
                 "actorKind",
+                "authorityEpochId",
+                "canonicalEnrollmentCertificate",
+                "chainGenesisDigest",
                 "createdAt",
+                "enrollmentCertificateDigest",
+                "enrollmentOperationId",
                 "publicKey",
                 "retiredAt",
                 "updatedAt",
+            ],
+            ActorCapability => &[
+                "actorClass",
+                "actorId",
+                "canonicalCertificate",
+                "certificateDigest",
+                "certificateVersion",
+                "issuanceIdentity",
+                "issuedAt",
+                "retiredAt",
+                "retirementCertificateDigest",
+                "retirementIdentity",
+                "scopeId",
+                "scopeKind",
+                "scopeMode",
+            ],
+            ActorCapabilityMutation => &[
+                "mutationId",
             ],
             Receipt => &[
                 "acceptedAt",
@@ -337,6 +403,9 @@ impl CheckpointRecordKind {
         use CheckpointRecordKind::*;
         match self {
             CheckpointHeader => &[],
+            AuthorityEpoch => &[],
+            AuthorityFrontier => &[],
+            ActiveAuthority => &[],
             FeedItem => &["locationLat", "locationLng", "priority"],
             FeedItemMedia => &[],
             FeedItemTopic => &[],
@@ -356,6 +425,8 @@ impl CheckpointRecordKind {
             FieldClock => &[],
             Tombstone => &[],
             ActorState => &[],
+            ActorCapability => &[],
+            ActorCapabilityMutation => &[],
             Receipt => &[],
             BlobDescriptor => &[],
             ContentChunk => &[],
@@ -442,6 +513,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[(&str, usize, &str, &str)] = &[
 
 pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[
     ("00_checkpoint_header", 0, false, "INSERT INTO library_meta (singleton_id, authority_epoch, updated_at, library_id, schema_version, source_revision) SELECT 1, json_extract(?2, '$.authorityEpoch'), json_extract(?2, '$.createdAtMs'), json_extract(?2, '$.libraryId'), json_extract(?2, '$.schemaVersion'), json_extract(?2, '$.sourceRevision');"),
+    ("01_authority_epoch", 1, false, "INSERT INTO library_authority_epochs (epoch_id, accepted_at, accepted_manifest_generation, authority_key_id, authority_public_key, canonical_transition_certificate, checkpoint_frontier_digest, epoch_number, library_id, materialized_state_digest, transition_certificate_digest) SELECT json_extract(?1, '$'), json_extract(?2, '$.acceptedAt'), json_extract(?2, '$.acceptedManifestGeneration'), json_extract(?2, '$.authorityKeyId'), json_extract(?2, '$.authorityPublicKey'), json_extract(?2, '$.canonicalTransitionCertificate'), json_extract(?2, '$.checkpointFrontierDigest'), json_extract(?2, '$.epochNumber'), json_extract(?2, '$.libraryId'), json_extract(?2, '$.materializedStateDigest'), json_extract(?2, '$.transitionCertificateDigest');"),
+    ("02_authority_frontier", 2, false, "INSERT INTO library_authority_frontier (epoch_id, ordinal, accepted_chain_digest, accepted_counter, accepted_operation_id, actor_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.acceptedChainDigest'), json_extract(?2, '$.acceptedCounter'), json_extract(?2, '$.acceptedOperationId'), json_extract(?2, '$.actorId');"),
+    ("03_active_authority", 1, false, "INSERT INTO library_active_authority (active_key, accepted_manifest_generation, activated_at, epoch_id, library_id, writer_id) SELECT json_extract(?1, '$'), json_extract(?2, '$.acceptedManifestGeneration'), json_extract(?2, '$.activatedAt'), json_extract(?2, '$.epochId'), json_extract(?2, '$.libraryId'), json_extract(?2, '$.writerId') WHERE json_extract(?2, '$.activeKey') = json_extract(?1, '$');"),
     ("10_feed_item", 1, false, "INSERT INTO library_feed_items (global_id, archived, archived_at, author_avatar_url, author_display_name, author_handle, author_id, captured_at, content_text, content_text_blob_digest, content_type, engagement_comments, engagement_likes, engagement_reposts, engagement_views, fb_group_id, fb_group_name, fb_group_url, hidden, liked, liked_at, liked_synced_at, link_description, link_title, link_url, location_lat, location_lng, location_name, location_source, location_url, platform, preserved_at, preserved_author, preserved_published_at, preserved_reading_time, preserved_text, preserved_text_blob_digest, preserved_word_count, priority, priority_computed_at, published_at, read_at, rss_feed_title, rss_feed_url, rss_site_url, sample_batch_id, sample_generated_at, sample_generator_version, saved, saved_at, seen_synced_at, source_url, time_range_ends_at, time_range_kind, time_range_starts_at, updated_at) SELECT json_extract(?1, '$'), json_extract(?2, '$.archived'), json_extract(?2, '$.archivedAt'), json_extract(?2, '$.authorAvatarUrl'), json_extract(?2, '$.authorDisplayName'), json_extract(?2, '$.authorHandle'), json_extract(?2, '$.authorId'), json_extract(?2, '$.capturedAt'), json_extract(?2, '$.contentText'), json_extract(?2, '$.contentTextBlobDigest'), json_extract(?2, '$.contentType'), json_extract(?2, '$.engagementComments'), json_extract(?2, '$.engagementLikes'), json_extract(?2, '$.engagementReposts'), json_extract(?2, '$.engagementViews'), json_extract(?2, '$.fbGroupId'), json_extract(?2, '$.fbGroupName'), json_extract(?2, '$.fbGroupUrl'), json_extract(?2, '$.hidden'), json_extract(?2, '$.liked'), json_extract(?2, '$.likedAt'), json_extract(?2, '$.likedSyncedAt'), json_extract(?2, '$.linkDescription'), json_extract(?2, '$.linkTitle'), json_extract(?2, '$.linkUrl'), json_extract(?2, '$.locationLat'), json_extract(?2, '$.locationLng'), json_extract(?2, '$.locationName'), json_extract(?2, '$.locationSource'), json_extract(?2, '$.locationUrl'), json_extract(?2, '$.platform'), json_extract(?2, '$.preservedAt'), json_extract(?2, '$.preservedAuthor'), json_extract(?2, '$.preservedPublishedAt'), json_extract(?2, '$.preservedReadingTime'), json_extract(?2, '$.preservedText'), json_extract(?2, '$.preservedTextBlobDigest'), json_extract(?2, '$.preservedWordCount'), json_extract(?2, '$.priority'), json_extract(?2, '$.priorityComputedAt'), json_extract(?2, '$.publishedAt'), json_extract(?2, '$.readAt'), json_extract(?2, '$.rssFeedTitle'), json_extract(?2, '$.rssFeedUrl'), json_extract(?2, '$.rssSiteUrl'), json_extract(?2, '$.sampleBatchId'), json_extract(?2, '$.sampleGeneratedAt'), json_extract(?2, '$.sampleGeneratorVersion'), json_extract(?2, '$.saved'), json_extract(?2, '$.savedAt'), json_extract(?2, '$.seenSyncedAt'), json_extract(?2, '$.sourceUrl'), json_extract(?2, '$.timeRangeEndsAt'), json_extract(?2, '$.timeRangeKind'), json_extract(?2, '$.timeRangeStartsAt'), json_extract(?2, '$.updatedAt');"),
     ("11_feed_item_media", 2, false, "INSERT INTO library_feed_item_media (global_id, ordinal, blob_content_digest, media_type, source_url) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.blobContentDigest'), json_extract(?2, '$.mediaType'), json_extract(?2, '$.sourceUrl');"),
     ("12_feed_item_topic", 2, false, "INSERT INTO library_feed_item_topics (global_id, topic) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]') WHERE json_extract(?2, '$.topic') = json_extract(?1, '$[1]');"),
@@ -460,7 +534,9 @@ pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[
     ("60_relationship", 5, false, "INSERT INTO library_relationships (subject_type, subject_id, relation_type, object_type, object_id, created_at, metadata_blob_digest, metadata_text, updated_at) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?1, '$[2]'), json_extract(?1, '$[3]'), json_extract(?1, '$[4]'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.metadataBlobDigest'), json_extract(?2, '$.metadataText'), json_extract(?2, '$.updatedAt');"),
     ("70_field_clock", 3, false, "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?1, '$[2]'), json_extract(?2, '$.actorId'), json_extract(?2, '$.counter'), json_extract(?2, '$.operationId'), json_extract(?2, '$.updatedAt');"),
     ("80_tombstone", 2, false, "INSERT INTO library_tombstones (entity_type, entity_id, actor_id, counter, deleted_at, operation_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.actorId'), json_extract(?2, '$.counter'), json_extract(?2, '$.deletedAt'), json_extract(?2, '$.operationId');"),
-    ("90_actor_state", 1, false, "INSERT INTO library_actors (actor_id, accepted_counter, actor_kind, created_at, public_key, retired_at, updated_at) SELECT json_extract(?1, '$'), json_extract(?2, '$.acceptedCounter'), json_extract(?2, '$.actorKind'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.publicKey'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.updatedAt');"),
+    ("90_actor_state", 1, false, "INSERT INTO library_actors (actor_id, accepted_chain_digest, accepted_counter, accepted_operation_id, actor_kind, authority_epoch_id, canonical_enrollment_certificate, chain_genesis_digest, created_at, enrollment_certificate_digest, enrollment_operation_id, public_key, retired_at, updated_at) SELECT json_extract(?1, '$'), json_extract(?2, '$.acceptedChainDigest'), json_extract(?2, '$.acceptedCounter'), json_extract(?2, '$.acceptedOperationId'), json_extract(?2, '$.actorKind'), json_extract(?2, '$.authorityEpochId'), json_extract(?2, '$.canonicalEnrollmentCertificate'), json_extract(?2, '$.chainGenesisDigest'), json_extract(?2, '$.createdAt'), json_extract(?2, '$.enrollmentCertificateDigest'), json_extract(?2, '$.enrollmentOperationId'), json_extract(?2, '$.publicKey'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.updatedAt');"),
+    ("91_actor_capability", 1, false, "INSERT INTO library_actor_capabilities (capability_id, actor_class, actor_id, canonical_certificate, certificate_digest, certificate_version, issuance_identity, issued_at, retired_at, retirement_certificate_digest, retirement_identity, scope_id, scope_kind, scope_mode) SELECT json_extract(?1, '$'), json_extract(?2, '$.actorClass'), json_extract(?2, '$.actorId'), json_extract(?2, '$.canonicalCertificate'), json_extract(?2, '$.certificateDigest'), json_extract(?2, '$.certificateVersion'), json_extract(?2, '$.issuanceIdentity'), json_extract(?2, '$.issuedAt'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.retirementCertificateDigest'), json_extract(?2, '$.retirementIdentity'), json_extract(?2, '$.scopeId'), json_extract(?2, '$.scopeKind'), json_extract(?2, '$.scopeMode');"),
+    ("92_actor_capability_mutation", 2, false, "INSERT INTO library_actor_capability_mutations (capability_id, mutation_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]') WHERE json_extract(?2, '$.mutationId') = json_extract(?1, '$[1]');"),
     ("a0_receipt", 2, false, "INSERT INTO library_receipts (actor_id, operation_id, accepted_at, digest, result_blob_digest, result_text, status) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.acceptedAt'), json_extract(?2, '$.digest'), json_extract(?2, '$.resultBlobDigest'), json_extract(?2, '$.resultText'), json_extract(?2, '$.status');"),
     ("b0_blob_descriptor", 1, false, "INSERT INTO library_blobs (content_digest, byte_length, chunk_bytes, chunk_count, media_type) SELECT json_extract(?1, '$'), json_extract(?2, '$.byteLength'), json_extract(?2, '$.chunkBytes'), json_extract(?2, '$.chunkCount'), json_extract(?2, '$.mediaType') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$');"),
     ("b1_content_chunk", 2, true, "INSERT INTO library_blob_chunks (content_digest, chunk_index, bytes, chunk_digest) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), ?3, json_extract(?2, '$.chunkContentDigest') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$[0]') AND json_extract(?2, '$.chunkIndex') = json_extract(?1, '$[1]');"),

@@ -33,6 +33,12 @@
       invalidation, signed-intent, result, and sparse optimistic-field tables
       to the shared schema. Canonical protocol members remain individually
       bounded to 131,072 bytes and large content stays in chunk rows.
+- [x] Store accepted authority epochs, the active authority pointer, signed
+      transition state, frontier tips, complete actor chain tips, enrollment
+      certificates, and normalized actor capabilities in the final schema and
+      checkpoint registry. Activation fails atomically when the header has no
+      matching accepted authority, an active actor has no capability, or a
+      capability names an unregistered mutation.
 - [ ] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story

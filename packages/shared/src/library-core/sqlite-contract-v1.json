@@ -24,6 +24,20 @@
       "constantColumns": { "singleton_id": 1 },
       "fieldColumns": { "checkpointId": null, "createdAtMs": "updated_at" }
     },
+    "01_authority_epoch": {
+      "table": "library_authority_epochs",
+      "primaryKeyColumns": ["epoch_id"]
+    },
+    "02_authority_frontier": {
+      "table": "library_authority_frontier",
+      "primaryKeyColumns": ["epoch_id", "ordinal"]
+    },
+    "03_active_authority": {
+      "table": "library_active_authority",
+      "primaryKeyColumns": ["active_key"],
+      "fieldColumns": { "activeKey": null },
+      "identityPayloadFields": { "activeKey": 0 }
+    },
     "10_feed_item": {
       "table": "library_feed_items",
       "primaryKeyColumns": ["global_id"]
@@ -112,6 +126,15 @@
       "table": "library_actors",
       "primaryKeyColumns": ["actor_id"]
     },
+    "91_actor_capability": {
+      "table": "library_actor_capabilities",
+      "primaryKeyColumns": ["capability_id"]
+    },
+    "92_actor_capability_mutation": {
+      "table": "library_actor_capability_mutations",
+      "primaryKeyColumns": ["capability_id", "mutation_id"],
+      "identityPayloadFields": { "mutationId": 1 }
+    },
     "a0_receipt": {
       "table": "library_receipts",
       "primaryKeyColumns": ["actor_id", "operation_id"]
@@ -147,6 +170,47 @@
         "libraryId",
         "schemaVersion",
         "sourceRevision"
+      ]
+    },
+    {
+      "registryKey": "01_authority_epoch",
+      "primaryKey": "text",
+      "payload": "authority_epoch",
+      "fields": [
+        "acceptedAt",
+        "acceptedManifestGeneration",
+        "authorityKeyId",
+        "authorityPublicKey",
+        "canonicalTransitionCertificate",
+        "checkpointFrontierDigest",
+        "epochNumber",
+        "libraryId",
+        "materializedStateDigest",
+        "transitionCertificateDigest"
+      ]
+    },
+    {
+      "registryKey": "02_authority_frontier",
+      "primaryKey": "ordinal",
+      "payload": "authority_frontier",
+      "fields": [
+        "acceptedChainDigest",
+        "acceptedCounter",
+        "acceptedOperationId",
+        "actorId"
+      ]
+    },
+    {
+      "registryKey": "03_active_authority",
+      "primaryKey": "text",
+      "payload": "active_authority",
+      "fields": [
+        "acceptedManifestGeneration",
+        "activatedAt",
+        "activeKey",
+        "epochId",
+        "libraryId",
+        "writerId"
       ]
     },
     {
@@ -387,13 +451,46 @@
       "primaryKey": "text",
       "payload": "actor_state",
       "fields": [
+        "acceptedChainDigest",
         "acceptedCounter",
+        "acceptedOperationId",
         "actorKind",
+        "authorityEpochId",
+        "canonicalEnrollmentCertificate",
+        "chainGenesisDigest",
         "createdAt",
+        "enrollmentCertificateDigest",
+        "enrollmentOperationId",
         "publicKey",
         "retiredAt",
         "updatedAt"
       ]
+    },
+    {
+      "registryKey": "91_actor_capability",
+      "primaryKey": "text",
+      "payload": "actor_capability",
+      "fields": [
+        "actorClass",
+        "actorId",
+        "canonicalCertificate",
+        "certificateDigest",
+        "certificateVersion",
+        "issuanceIdentity",
+        "issuedAt",
+        "retiredAt",
+        "retirementCertificateDigest",
+        "retirementIdentity",
+        "scopeId",
+        "scopeKind",
+        "scopeMode"
+      ]
+    },
+    {
+      "registryKey": "92_actor_capability_mutation",
+      "primaryKey": "pair",
+      "payload": "actor_capability_mutation",
+      "fields": ["mutationId"]
     },
     {
       "registryKey": "a0_receipt",

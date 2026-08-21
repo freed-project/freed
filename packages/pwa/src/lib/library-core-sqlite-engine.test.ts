@@ -44,6 +44,92 @@ describe("PWA Library Core SQLite engine", () => {
     });
   }
 
+  function authorityRecords(): LibraryCoreNormalizedCheckpointRecordV2[] {
+    return [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "01_authority_epoch",
+        primaryKey: "epoch-1",
+        payload: {
+          acceptedAt: 400,
+          acceptedManifestGeneration: 7,
+          authorityKeyId: "a".repeat(64),
+          authorityPublicKey: "b".repeat(64),
+          canonicalTransitionCertificate: "{}",
+          checkpointFrontierDigest: "c".repeat(64),
+          epochNumber: 1,
+          libraryId: "library-1",
+          materializedStateDigest: "d".repeat(64),
+          transitionCertificateDigest: "e".repeat(64),
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "02_authority_frontier",
+        primaryKey: ["epoch-1", 0],
+        payload: {
+          acceptedChainDigest: "3".repeat(64),
+          acceptedCounter: 2,
+          acceptedOperationId: "operation-2",
+          actorId: "actor-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "03_active_authority",
+        primaryKey: "active",
+        payload: {
+          acceptedManifestGeneration: 7,
+          activatedAt: 400,
+          activeKey: "active",
+          epochId: "epoch-1",
+          libraryId: "library-1",
+          writerId: "writer-1",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "90_actor_state",
+        primaryKey: "actor-1",
+        payload: {
+          acceptedChainDigest: "3".repeat(64),
+          acceptedCounter: 2,
+          acceptedOperationId: "operation-2",
+          actorKind: "desktop",
+          authorityEpochId: "epoch-1",
+          canonicalEnrollmentCertificate: "{}",
+          chainGenesisDigest: "2".repeat(64),
+          createdAt: 500,
+          enrollmentCertificateDigest: "1".repeat(64),
+          enrollmentOperationId: "enroll-1",
+          publicKey: "f".repeat(64),
+          retiredAt: null,
+          updatedAt: 1_000,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "91_actor_capability",
+        primaryKey: "capability-1",
+        payload: {
+          actorClass: "desktop",
+          actorId: "actor-1",
+          canonicalCertificate: "{}",
+          certificateDigest: "4".repeat(64),
+          certificateVersion: 2,
+          issuanceIdentity: "issuance-1",
+          issuedAt: 500,
+          retiredAt: null,
+          retirementCertificateDigest: null,
+          retirementIdentity: "retirement-1",
+          scopeId: null,
+          scopeKind: null,
+          scopeMode: "unbounded",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "92_actor_capability_mutation",
+        primaryKey: ["capability-1", "feed_item_read_assignment"],
+        payload: { mutationId: "feed_item_read_assignment" },
+      }),
+    ];
+  }
+
   function stageRecords(
     engine: PwaLibraryCoreSqliteEngine,
     records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
@@ -108,6 +194,9 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([1]);
     for (const table of [
+      "library_authority_epochs",
+      "library_active_authority",
+      "library_actor_capabilities",
       "library_transactions",
       "library_operations",
       "library_replication_outbox",
@@ -211,13 +300,13 @@ describe("PWA Library Core SQLite engine", () => {
     );
     engine.initialize();
     const header = checkpointHeader();
+    const records = [header, ...authorityRecords()];
     const stage = {
       authorityEpoch: "epoch-1",
       createdAt: 1_000,
-      expectedCheckpointDigest: digestLibraryCoreNormalizedCheckpointRecordsV2([
-        header,
-      ]),
-      expectedRecordCount: 1,
+      expectedCheckpointDigest:
+        digestLibraryCoreNormalizedCheckpointRecordsV2(records),
+      expectedRecordCount: records.length,
       libraryId: "library-1",
       sourceRevision: 7,
       stageId: "stage-1",
@@ -227,15 +316,15 @@ describe("PWA Library Core SQLite engine", () => {
       stagedRecordCount: 0,
     });
     const complete = engine.appendNormalizedCheckpointStagePage({
-      records: [header],
+      records,
       stageId: stage.stageId,
     });
     expect(complete.complete).toBe(true);
-    expect(complete.stagedRecordCount).toBe(1);
+    expect(complete.stagedRecordCount).toBe(records.length);
     expect(complete.stagedCanonicalBytes).toBeGreaterThan(0);
     expect(
       engine.appendNormalizedCheckpointStagePage({
-        records: [header],
+      records,
         stageId: stage.stageId,
       }),
     ).toEqual(complete);
@@ -258,7 +347,7 @@ describe("PWA Library Core SQLite engine", () => {
     ).toMatchObject({
       checkpointDigest: stage.expectedCheckpointDigest,
       libraryId: stage.libraryId,
-      recordCount: 1,
+      recordCount: records.length,
       sourceRevision: stage.sourceRevision,
     });
     expect(
@@ -306,6 +395,26 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([0]);
   });
 
+  it("refuses browser activation without accepted authority", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const records = [checkpointHeader()];
+    stageRecords(engine, records, "missing-authority");
+    expect(() =>
+      engine.activateNormalizedCheckpointStage("missing-authority"),
+    ).toThrow(/active authority/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_meta;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
   it("activates a multi-page content blob losslessly without a large SQLite row", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
@@ -320,7 +429,7 @@ describe("PWA Library Core SQLite engine", () => {
       bytes: original,
       mediaType: "application/octet-stream",
     });
-    const records = [checkpointHeader(), ...content];
+    const records = [checkpointHeader(), ...authorityRecords(), ...content];
     stageRecords(engine, records, "large-content");
     const receipt = engine.activateNormalizedCheckpointStage("large-content");
     expect(receipt.recordCount).toBe(records.length);

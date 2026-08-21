@@ -550,6 +550,90 @@ mod tests {
         connection
     }
 
+    fn install_test_authority(connection: &Connection, accepted_counter: i64) {
+        let accepted_operation_id = (accepted_counter > 0).then_some("operation-2");
+        connection
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 VALUES ('epoch-1', 'library-1', 1, ?1, ?2, ?3, '{}', 7, ?4, ?5, 400);",
+                params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    "e".repeat(64),
+                ],
+            )
+            .expect("authority epoch");
+        connection
+            .execute(
+                "INSERT INTO library_active_authority
+                 (active_key, library_id, epoch_id, writer_id,
+                  accepted_manifest_generation, activated_at)
+                 VALUES ('active', 'library-1', 'epoch-1', 'writer-1', 7, 400);",
+                [],
+            )
+            .expect("active authority");
+        connection
+            .execute(
+                "INSERT INTO library_actors
+                 (actor_id, authority_epoch_id, actor_kind, public_key,
+                  enrollment_operation_id, enrollment_certificate_digest,
+                  canonical_enrollment_certificate, chain_genesis_digest,
+                  accepted_counter, accepted_operation_id, accepted_chain_digest,
+                  created_at, updated_at)
+                 VALUES ('actor-1', 'epoch-1', 'desktop', ?1, 'enroll-1', ?2,
+                         '{}', ?3, ?4, ?5, ?6, 500, 1000);",
+                params![
+                    "f".repeat(64),
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    accepted_counter,
+                    accepted_operation_id,
+                    if accepted_counter == 0 {
+                        "2".repeat(64)
+                    } else {
+                        "3".repeat(64)
+                    },
+                ],
+            )
+            .expect("actor");
+        connection
+            .execute(
+                "INSERT INTO library_actor_capabilities
+                 (capability_id, actor_id, certificate_version, actor_class,
+                  scope_mode, issuance_identity, retirement_identity,
+                  certificate_digest, canonical_certificate, issued_at)
+                 VALUES ('capability-1', 'actor-1', 2, 'desktop', 'unbounded',
+                         'issuance-1', 'retirement-1', ?1, '{}', 500);",
+                ["4".repeat(64)],
+            )
+            .expect("capability");
+        connection
+            .execute(
+                "INSERT INTO library_actor_capability_mutations
+                 (capability_id, mutation_id)
+                 VALUES ('capability-1', 'feed_item_read_assignment');",
+                [],
+            )
+            .expect("capability mutation");
+        if accepted_counter > 0 {
+            connection
+                .execute(
+                    "INSERT INTO library_authority_frontier
+                     (epoch_id, ordinal, actor_id, accepted_counter,
+                      accepted_operation_id, accepted_chain_digest)
+                     VALUES ('epoch-1', 0, 'actor-1', ?1, 'operation-2', ?2);",
+                    params![accepted_counter, "3".repeat(64)],
+                )
+                .expect("authority frontier");
+        }
+    }
+
     fn checkpoint_header() -> NormalizedCheckpointRecordV2 {
         checked_record(
             "00_checkpoint_header",
@@ -628,6 +712,9 @@ mod tests {
             )
         );
         for table in [
+            "library_authority_epochs",
+            "library_active_authority",
+            "library_actor_capabilities",
             "library_transactions",
             "library_operations",
             "library_replication_outbox",
@@ -669,15 +756,8 @@ mod tests {
     #[test]
     fn operation_substrate_accepts_only_bounded_normalized_protocol_rows() {
         let mut connection = fixture();
+        install_test_authority(&connection, 0);
         let transaction = connection.transaction().expect("transaction");
-        transaction
-            .execute(
-                "INSERT INTO library_actors
-                 (actor_id, actor_kind, public_key, accepted_counter, created_at, updated_at)
-                 VALUES ('actor-1', 'desktop', 'public-key', 0, 1, 1);",
-                [],
-            )
-            .expect("actor");
         for (transaction_id, counter, previous_operation_id, previous_revision) in [
             ("transaction-1", 1, None, 0),
             ("transaction-2", 2, Some("operation-1"), 1),
@@ -1088,8 +1168,26 @@ mod tests {
     }
 
     #[test]
+    fn activation_refuses_a_checkpoint_without_accepted_authority() {
+        let mut connection = fixture();
+        let records = vec![checkpoint_header()];
+        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
+        begin_stage(&connection, "stage-no-authority", &records, digest);
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-no-authority", &records)
+            .expect("stage records");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-no-authority")
+            .expect_err("missing authority");
+        assert!(error.to_string().contains("active authority"));
+        let materialized: i64 = connection
+            .query_row("SELECT count(*) FROM library_meta;", [], |row| row.get(0))
+            .expect("materialized rows");
+        assert_eq!(materialized, 0);
+    }
+
+    #[test]
     fn activates_staged_records_and_reexports_the_exact_normalized_checkpoint() {
         let source = fixture();
+        install_test_authority(&source, 2);
         source
             .execute(
                 "INSERT INTO library_meta
@@ -1221,9 +1319,6 @@ mod tests {
                  INSERT INTO library_tombstones
                    (entity_type, entity_id, actor_id, counter, operation_id, deleted_at)
                  VALUES ('rss_feed', 'removed-feed', 'actor-1', 2, 'operation-2', 1000);
-                 INSERT INTO library_actors
-                   (actor_id, actor_kind, public_key, accepted_counter, created_at, updated_at)
-                 VALUES ('actor-1', 'desktop', 'public-key', 2, 500, 1000);
                  INSERT INTO library_receipts
                    (actor_id, operation_id, status, digest, accepted_at)
                  VALUES ('actor-1', 'operation-1', 'accepted',
@@ -1241,7 +1336,7 @@ mod tests {
             .iter()
             .map(|record| record.registry_key.as_str())
             .collect();
-        assert_eq!(registry_keys.len(), 23);
+        assert_eq!(registry_keys.len(), 28);
         let digest = normalized_checkpoint_digest_v2(&page.records).expect("digest");
 
         let mut target = fixture();

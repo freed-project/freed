@@ -186,6 +186,64 @@ fn verify_blob_rows(transaction: &Transaction<'_>) -> Result<(), NormalizedSqlit
     Ok(())
 }
 
+fn verify_authority_rows(
+    transaction: &Transaction<'_>,
+    library_id: &str,
+    authority_epoch: &str,
+) -> Result<(), NormalizedSqliteError> {
+    let matches: i64 = transaction.query_row(
+        "SELECT count(*)
+         FROM library_active_authority AS active
+         JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+         WHERE active.active_key = 'active'
+           AND active.library_id = ?1
+           AND active.epoch_id = ?2
+           AND epoch.library_id = active.library_id
+           AND epoch.accepted_manifest_generation = active.accepted_manifest_generation;",
+        params![library_id, authority_epoch],
+        |row| row.get(0),
+    )?;
+    if matches != 1 {
+        return Err(invalid(
+            "checkpoint active authority does not match its header",
+        ));
+    }
+    let actor_without_capability: i64 = transaction.query_row(
+        "SELECT count(*)
+         FROM library_actors AS actor
+         WHERE actor.retired_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM library_actor_capabilities AS capability
+             WHERE capability.actor_id = actor.actor_id
+               AND capability.retired_at IS NULL
+           );",
+        [],
+        |row| row.get(0),
+    )?;
+    if actor_without_capability != 0 {
+        return Err(invalid(
+            "checkpoint active actor does not have an active capability",
+        ));
+    }
+    let mut statement = transaction.prepare(
+        "SELECT DISTINCT mutation_id FROM library_actor_capability_mutations
+         ORDER BY mutation_id;",
+    )?;
+    let mutations = statement.query_map([], |row| row.get::<_, String>(0))?;
+    for mutation in mutations {
+        let mutation = mutation?;
+        if crate::sqlite_contract_generated::OPERATION_IDS
+            .binary_search(&mutation.as_str())
+            .is_err()
+        {
+            return Err(invalid(
+                "checkpoint actor capability names an unknown mutation",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn finalize_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
@@ -215,6 +273,9 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     let existing_rows: i64 = transaction.query_row(
         "SELECT
            (SELECT count(*) FROM library_meta) +
+           (SELECT count(*) FROM library_authority_epochs) +
+           (SELECT count(*) FROM library_authority_frontier) +
+           (SELECT count(*) FROM library_active_authority) +
            (SELECT count(*) FROM library_feed_items) +
            (SELECT count(*) FROM library_rss_feeds) +
            (SELECT count(*) FROM library_persons) +
@@ -224,6 +285,8 @@ pub fn finalize_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_field_clocks) +
            (SELECT count(*) FROM library_tombstones) +
            (SELECT count(*) FROM library_actors) +
+           (SELECT count(*) FROM library_actor_capabilities) +
+           (SELECT count(*) FROM library_actor_capability_mutations) +
            (SELECT count(*) FROM library_receipts) +
            (SELECT count(*) FROM library_blobs) +
            (SELECT count(*) FROM library_transactions) +
@@ -289,6 +352,7 @@ pub fn finalize_normalized_checkpoint_stage_v2(
             "normalized checkpoint has an unresolved foreign reference",
         ));
     }
+    verify_authority_rows(&transaction, &stage.0, &stage.1)?;
     transaction.execute(
         "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         [stage_id],

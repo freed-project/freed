@@ -18,6 +18,49 @@ CREATE TABLE IF NOT EXISTS library_meta (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_authority_epochs (
+  epoch_id TEXT PRIMARY KEY CHECK (length(CAST(epoch_id AS BLOB)) BETWEEN 1 AND 255),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  epoch_number INTEGER NOT NULL CHECK (epoch_number >= 1),
+  authority_key_id TEXT NOT NULL CHECK (length(authority_key_id) = 64 AND authority_key_id NOT GLOB '*[^0-9a-f]*'),
+  authority_public_key TEXT NOT NULL CHECK (length(authority_public_key) = 64 AND authority_public_key NOT GLOB '*[^0-9a-f]*'),
+  transition_certificate_digest TEXT NOT NULL CHECK (length(transition_certificate_digest) = 64 AND transition_certificate_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_transition_certificate TEXT NOT NULL CHECK (length(CAST(canonical_transition_certificate AS BLOB)) BETWEEN 1 AND 65536),
+  accepted_manifest_generation INTEGER NOT NULL CHECK (accepted_manifest_generation >= 0),
+  checkpoint_frontier_digest TEXT NOT NULL CHECK (length(checkpoint_frontier_digest) = 64 AND checkpoint_frontier_digest NOT GLOB '*[^0-9a-f]*'),
+  materialized_state_digest TEXT NOT NULL CHECK (length(materialized_state_digest) = 64 AND materialized_state_digest NOT GLOB '*[^0-9a-f]*'),
+  accepted_at INTEGER NOT NULL CHECK (accepted_at >= 0),
+  UNIQUE (library_id, epoch_number)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_authority_frontier (
+  epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 999),
+  actor_id TEXT NOT NULL CHECK (length(CAST(actor_id AS BLOB)) BETWEEN 1 AND 255),
+  accepted_counter INTEGER NOT NULL CHECK (accepted_counter >= 1),
+  accepted_operation_id TEXT NOT NULL CHECK (length(CAST(accepted_operation_id AS BLOB)) BETWEEN 1 AND 255),
+  accepted_chain_digest TEXT NOT NULL CHECK (length(accepted_chain_digest) = 64 AND accepted_chain_digest NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY (epoch_id, ordinal),
+  UNIQUE (epoch_id, actor_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_active_authority (
+  active_key TEXT PRIMARY KEY CHECK (active_key = 'active'),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id),
+  writer_id TEXT NOT NULL CHECK (length(CAST(writer_id AS BLOB)) BETWEEN 1 AND 255),
+  accepted_manifest_generation INTEGER NOT NULL CHECK (accepted_manifest_generation >= 0),
+  activated_at INTEGER NOT NULL CHECK (activated_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_writer_admission (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  local_writer_id TEXT NOT NULL CHECK (length(CAST(local_writer_id AS BLOB)) BETWEEN 1 AND 255),
+  active_writer_id TEXT NOT NULL CHECK (length(CAST(active_writer_id AS BLOB)) BETWEEN 1 AND 255),
+  observed_manifest_generation INTEGER NOT NULL CHECK (observed_manifest_generation >= 0),
+  observed_at INTEGER NOT NULL CHECK (observed_at >= 0)
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_blobs (
   content_digest TEXT PRIMARY KEY CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
@@ -305,13 +348,59 @@ CREATE TABLE IF NOT EXISTS library_tombstones (
 
 CREATE TABLE IF NOT EXISTS library_actors (
   actor_id TEXT PRIMARY KEY,
+  authority_epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id),
   actor_kind TEXT NOT NULL,
-  public_key TEXT NOT NULL,
+  public_key TEXT NOT NULL CHECK (length(public_key) = 64 AND public_key NOT GLOB '*[^0-9a-f]*'),
+  enrollment_operation_id TEXT NOT NULL CHECK (length(CAST(enrollment_operation_id AS BLOB)) BETWEEN 1 AND 255),
+  enrollment_certificate_digest TEXT NOT NULL CHECK (length(enrollment_certificate_digest) = 64 AND enrollment_certificate_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_enrollment_certificate TEXT NOT NULL CHECK (length(CAST(canonical_enrollment_certificate AS BLOB)) BETWEEN 1 AND 65536),
+  chain_genesis_digest TEXT NOT NULL CHECK (length(chain_genesis_digest) = 64 AND chain_genesis_digest NOT GLOB '*[^0-9a-f]*'),
   accepted_counter INTEGER NOT NULL CHECK (accepted_counter >= 0),
+  accepted_operation_id TEXT,
+  accepted_chain_digest TEXT NOT NULL CHECK (length(accepted_chain_digest) = 64 AND accepted_chain_digest NOT GLOB '*[^0-9a-f]*'),
   retired_at INTEGER,
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
-  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  CHECK (
+    (accepted_counter = 0 AND accepted_operation_id IS NULL AND accepted_chain_digest = chain_genesis_digest)
+    OR (accepted_counter > 0 AND accepted_operation_id IS NOT NULL)
+  )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_actor_capabilities (
+  capability_id TEXT PRIMARY KEY CHECK (length(CAST(capability_id AS BLOB)) BETWEEN 1 AND 255),
+  actor_id TEXT NOT NULL REFERENCES library_actors(actor_id) ON DELETE CASCADE,
+  certificate_version INTEGER NOT NULL CHECK (certificate_version >= 1),
+  actor_class TEXT NOT NULL CHECK (length(CAST(actor_class AS BLOB)) BETWEEN 1 AND 64),
+  scope_mode TEXT NOT NULL CHECK (scope_mode IN ('unbounded', 'bounded')),
+  scope_kind TEXT,
+  scope_id TEXT,
+  issuance_identity TEXT NOT NULL CHECK (length(CAST(issuance_identity AS BLOB)) BETWEEN 1 AND 255),
+  retirement_identity TEXT NOT NULL CHECK (length(CAST(retirement_identity AS BLOB)) BETWEEN 1 AND 255),
+  certificate_digest TEXT NOT NULL CHECK (length(certificate_digest) = 64 AND certificate_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_certificate TEXT NOT NULL CHECK (length(CAST(canonical_certificate AS BLOB)) BETWEEN 1 AND 65536),
+  issued_at INTEGER NOT NULL CHECK (issued_at >= 0),
+  retired_at INTEGER,
+  retirement_certificate_digest TEXT CHECK (retirement_certificate_digest IS NULL OR (length(retirement_certificate_digest) = 64 AND retirement_certificate_digest NOT GLOB '*[^0-9a-f]*')),
+  CHECK (
+    (scope_mode = 'unbounded' AND scope_kind IS NULL AND scope_id IS NULL)
+    OR (scope_mode = 'bounded' AND scope_kind IS NOT NULL AND scope_id IS NOT NULL)
+  ),
+  CHECK (
+    (retired_at IS NULL AND retirement_certificate_digest IS NULL)
+    OR (retired_at IS NOT NULL AND retirement_certificate_digest IS NOT NULL)
+  )
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS library_actor_capabilities_active
+  ON library_actor_capabilities(actor_id)
+  WHERE retired_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS library_actor_capability_mutations (
+  capability_id TEXT NOT NULL REFERENCES library_actor_capabilities(capability_id) ON DELETE CASCADE,
+  mutation_id TEXT NOT NULL,
+  PRIMARY KEY (capability_id, mutation_id)
+) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_receipts (
   actor_id TEXT NOT NULL,
@@ -531,6 +620,47 @@ SELECT
 FROM library_meta
 UNION ALL
 SELECT
+  '01_authority_epoch',
+  json_quote(epoch_id),
+  json_object(
+    'acceptedAt', accepted_at,
+    'acceptedManifestGeneration', accepted_manifest_generation,
+    'authorityKeyId', authority_key_id,
+    'authorityPublicKey', authority_public_key,
+    'canonicalTransitionCertificate', canonical_transition_certificate,
+    'checkpointFrontierDigest', checkpoint_frontier_digest,
+    'epochNumber', epoch_number,
+    'libraryId', library_id,
+    'materializedStateDigest', materialized_state_digest,
+    'transitionCertificateDigest', transition_certificate_digest
+  ), NULL
+FROM library_authority_epochs
+UNION ALL
+SELECT
+  '02_authority_frontier',
+  json_array(epoch_id, ordinal),
+  json_object(
+    'acceptedChainDigest', accepted_chain_digest,
+    'acceptedCounter', accepted_counter,
+    'acceptedOperationId', accepted_operation_id,
+    'actorId', actor_id
+  ), NULL
+FROM library_authority_frontier
+UNION ALL
+SELECT
+  '03_active_authority',
+  json_quote(active_key),
+  json_object(
+    'activeKey', active_key,
+    'acceptedManifestGeneration', accepted_manifest_generation,
+    'activatedAt', activated_at,
+    'epochId', epoch_id,
+    'libraryId', library_id,
+    'writerId', writer_id
+  ), NULL
+FROM library_active_authority
+UNION ALL
+SELECT
   '10_feed_item',
   json_quote(global_id),
   json_object(
@@ -727,8 +857,44 @@ SELECT '80_tombstone', json_array(entity_type, entity_id),
 FROM library_tombstones
 UNION ALL
 SELECT '90_actor_state', json_quote(actor_id),
-  json_object('acceptedCounter', accepted_counter, 'actorKind', actor_kind, 'createdAt', created_at, 'publicKey', public_key, 'retiredAt', retired_at, 'updatedAt', updated_at), NULL
+  json_object(
+    'acceptedChainDigest', accepted_chain_digest,
+    'acceptedCounter', accepted_counter,
+    'acceptedOperationId', accepted_operation_id,
+    'actorKind', actor_kind,
+    'authorityEpochId', authority_epoch_id,
+    'canonicalEnrollmentCertificate', canonical_enrollment_certificate,
+    'chainGenesisDigest', chain_genesis_digest,
+    'createdAt', created_at,
+    'enrollmentCertificateDigest', enrollment_certificate_digest,
+    'enrollmentOperationId', enrollment_operation_id,
+    'publicKey', public_key,
+    'retiredAt', retired_at,
+    'updatedAt', updated_at
+  ), NULL
 FROM library_actors
+UNION ALL
+SELECT '91_actor_capability', json_quote(capability_id),
+  json_object(
+    'actorClass', actor_class,
+    'actorId', actor_id,
+    'canonicalCertificate', canonical_certificate,
+    'certificateDigest', certificate_digest,
+    'certificateVersion', certificate_version,
+    'issuanceIdentity', issuance_identity,
+    'issuedAt', issued_at,
+    'retiredAt', retired_at,
+    'retirementCertificateDigest', retirement_certificate_digest,
+    'retirementIdentity', retirement_identity,
+    'scopeId', scope_id,
+    'scopeKind', scope_kind,
+    'scopeMode', scope_mode
+  ), NULL
+FROM library_actor_capabilities
+UNION ALL
+SELECT '92_actor_capability_mutation', json_array(capability_id, mutation_id),
+  json_object('mutationId', mutation_id), NULL
+FROM library_actor_capability_mutations
 UNION ALL
 SELECT 'a0_receipt', json_array(actor_id, operation_id),
   json_object('acceptedAt', accepted_at, 'digest', digest, 'resultBlobDigest', result_blob_digest, 'resultText', result_text, 'status', status), NULL
