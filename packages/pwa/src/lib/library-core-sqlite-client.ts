@@ -5,6 +5,7 @@ import {
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
@@ -14,6 +15,8 @@ import {
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
+  type LibraryCoreFollowerIntentCommitResultV1,
+  type LibraryCoreFollowerIntentCommitV1,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
@@ -73,6 +76,17 @@ export class PwaLibraryCoreSqliteClient {
       createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
         requestId,
         mutation,
+      ),
+    );
+  }
+
+  commitFollowerIntent(
+    commit: LibraryCoreFollowerIntentCommitV1,
+  ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteFollowerIntentCommitWorkerRequest(
+        requestId,
+        commit,
       ),
     );
   }

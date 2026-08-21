@@ -142,6 +142,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "commit_follower_intent") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await active.commitFollowerIntent(request.commit),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();

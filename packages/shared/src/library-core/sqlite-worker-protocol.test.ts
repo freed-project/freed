@@ -6,6 +6,7 @@ import {
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
 } from "./sqlite-worker-protocol.js";
@@ -245,6 +246,23 @@ describe("Library Core SQLite worker protocol", () => {
         mutation: { ...request.mutation, canonicalRevision: 8 },
       }),
     ).toThrow(/device graph layout mutation is invalid/);
+  });
+
+  it("snapshots bounded signed follower intent bytes", () => {
+    const bytes = Uint8Array.of(1, 2, 3);
+    const request = createLibraryCoreSqliteFollowerIntentCommitWorkerRequest(
+      "request-intent",
+      { envelopeBytes: [bytes] },
+    );
+    expect(request.kind).toBe("commit_follower_intent");
+    if (request.kind !== "commit_follower_intent") {
+      throw new Error("follower intent request lane is invalid");
+    }
+    bytes[0] = 9;
+    expect(request.commit.envelopeBytes[0]).toEqual(Uint8Array.of(1, 2, 3));
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {

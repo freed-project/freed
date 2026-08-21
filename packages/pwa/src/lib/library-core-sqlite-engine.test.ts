@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import sqlite3InitModule, {
   type Database,
   type Sqlite3Static,
@@ -11,6 +12,7 @@ import {
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
   decodeLibraryCoreCanonicalBase64,
+  decodeLibraryCoreCanonicalValue,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   isLibraryCoreOperationInstanceId,
@@ -18,6 +20,13 @@ import {
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreFeedBrowseFilterV1,
+  encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreDigestInput,
+  finalizeLibraryCoreTransactionV1,
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  assembleLibraryCoreTransactionV1,
+  type LibraryCoreCanonicalValue,
+  type LibraryCoreDigestDomain,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -38,6 +47,17 @@ describe("PWA Library Core SQLite engine", () => {
       throw new TypeError("invalid test operation instance ID");
     }
     return value;
+  }
+
+  function coreDigest(domain: string, value: unknown): string {
+    return createHash("sha256")
+      .update(
+        encodeLibraryCoreDigestInput(
+          domain as LibraryCoreDigestDomain,
+          value as LibraryCoreCanonicalValue,
+        ),
+      )
+      .digest("hex");
   }
 
   function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
@@ -242,6 +262,243 @@ describe("PWA Library Core SQLite engine", () => {
       sqlite3.version.libVersion,
     );
     expect(() => second.initialize()).toThrow(/does not match this build/);
+  });
+
+  it("atomically commits verified follower intents, optimistic fields, and exact retries", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const publicKeyHex = publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 2_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 7, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        "66".repeat(32),
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-1', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, publicKeyHex, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('capability-1', ?1, 2, 'editor', 'library_wide', NULL, NULL,
+                    ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [
+        actorId,
+        "cc".repeat(32),
+        "dd".repeat(32),
+        "ee".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capability_mutations
+              (capability_id, mutation_id)
+            VALUES ('capability-1', 'feed_item_read_assignment');`,
+    });
+    database.exec({
+      sql: `INSERT INTO library_feed_items
+              (global_id, platform, content_type, captured_at, published_at,
+               author_id, author_handle, author_display_name, hidden, saved,
+               archived, updated_at)
+            VALUES ('item-1', 'saved', 'article', 1, 1, 'author-1', 'ada',
+                    'Ada', 0, 0, 0, 1);`,
+    });
+    const member = FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 1_500,
+        entity_id: "item-1",
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 1_500,
+        library_id: libraryId,
+        operation_id: "intent-operation-1",
+        payload: { read_at_ms: 1_400 },
+        previous_actor_operation_id: null,
+        transaction_id: "intent-transaction-1",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const assembled = assembleLibraryCoreTransactionV1([member], chainGenesis, {
+      digest: coreDigest,
+    });
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, privateKey).toString("hex");
+      },
+    });
+    const envelopeBytes = finalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+
+    const first = await engine.commitFollowerIntent({ envelopeBytes });
+    expect(first).toEqual({
+      actorId,
+      firstCounter: 1,
+      lastCounter: 1,
+      memberCount: 1,
+      optimisticFieldCount: 1,
+      state: "pending",
+      transactionId: "intent-transaction-1",
+    });
+    expect(await engine.commitFollowerIntent({ envelopeBytes })).toEqual(first);
+    expect(
+      database.exec({
+        sql: `SELECT value_type, integer_value
+              FROM library_optimistic_fields
+              WHERE transaction_id = 'intent-transaction-1';`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["integer", 1_400]]);
+    expect(
+      database.exec({
+        sql: `SELECT next_counter, previous_operation_id
+              FROM library_intent_actors WHERE actor_id = ?1;`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[2, "intent-operation-1"]]);
+
+    const decoded = decodeLibraryCoreCanonicalValue(envelopeBytes[0]!);
+    if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
+      throw new Error("test follower envelope is not a record");
+    }
+    const changed = [
+      encodeLibraryCoreCanonicalValue({
+        ...decoded,
+        created_at_ms: 1_501,
+      }),
+    ];
+    await expect(
+      engine.commitFollowerIntent({ envelopeBytes: changed }),
+    ).rejects.toThrow(/reused with changed bytes/);
+
+    database.exec(`CREATE TEMP TRIGGER fail_follower_optimistic_insert
+      BEFORE INSERT ON library_optimistic_fields
+      BEGIN SELECT RAISE(ABORT, 'injected optimistic fault'); END;`);
+    const secondMember =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 1_600,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 1_600,
+          library_id: libraryId,
+          operation_id: "intent-operation-2",
+          payload: { read_at_ms: 1_600 },
+          previous_actor_operation_id: "intent-operation-1",
+          transaction_id: "intent-transaction-2",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const secondAssembled = assembleLibraryCoreTransactionV1(
+      [secondMember],
+      finalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const secondFinalized = await finalizeLibraryCoreTransactionV1(
+      secondAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, privateKey).toString("hex");
+        },
+      },
+    );
+    await expect(
+      engine.commitFollowerIntent({
+        envelopeBytes: secondFinalized.members.map((value) =>
+          encodeLibraryCoreCanonicalValue(
+            value.envelope as unknown as LibraryCoreCanonicalValue,
+          ),
+        ),
+      }),
+    ).rejects.toThrow(/injected optimistic fault/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_intent_transactions;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([1]);
+    expect(
+      database.exec({
+        sql: `SELECT next_counter FROM library_intent_actors
+              WHERE actor_id = ?1;`,
+        bind: [actorId],
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([2]);
   });
 
   it("refuses a foreign SQLite application identity before creating tables", () => {

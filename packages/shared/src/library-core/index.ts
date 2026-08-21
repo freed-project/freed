@@ -24,6 +24,7 @@ export * from "./fractional-number-codec.js";
 export * from "./immutable-transport-contracts.js";
 export * from "./media-blob-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
+export * from "./follower-intent-contracts.js";
 export * from "./result-segment-contracts.js";
 export * from "./operation-registry.js";
 export * from "./operation-segment-contracts.js";

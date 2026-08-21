@@ -34,8 +34,15 @@
   - [x] Include the generated FeedItem read, saved, archived, and liked
         programs, member bounds, entity identity, and invalidation topics in
         the shared browser contract. The saved-archive program uses one coupled
-        clock and like state uses an independent clock. Browser signing,
-        optimistic execution, and result reconciliation remain open.
+        clock and like state uses an independent clock.
+  - [x] Commit signed read, saved, archived, and liked follower transactions
+        through one closed worker request. Browser SQLite verifies the original
+        canonical envelopes and signatures, rechecks the active actor,
+        capability, target, and actor tip inside one immediate transaction,
+        persists the exact intent plus sparse optimistic fields, and advances
+        the local intent tip atomically. Exact byte retries return the durable
+        result, changed identity reuse fails, and late write faults roll back
+        the transaction. Canonical Primary result reconciliation remains open.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
   - [x] Include the generated normalized FeedItem capture program in the shared

@@ -13,6 +13,15 @@ import {
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
+  type LibraryCoreCanonicalValue,
+  type LibraryCoreFollowerIntentCommitResultV1,
+  type LibraryCoreFollowerIntentCommitV1,
+  type LibraryCoreAcceptedActorStateV1,
+  encodeLibraryCoreDigestInput,
+  parseLibraryCoreFollowerIntentCommitV1,
+  sha256LowerHex,
+  verifyLibraryCoreEd25519WithWebCrypto,
+  verifyLibraryCoreOperationTransactionV1,
   decodeLibraryCoreFeedPageCursorV1,
   decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
@@ -332,12 +341,23 @@ function savedFeedCardFromSqliteRow(
 
 export class PwaLibraryCoreSqliteEngine {
   readonly #database: Database;
+  readonly #now: () => number;
   readonly #sqliteVersion: string;
+  readonly #subtle: SubtleCrypto;
   #connectionGeneration = 0;
 
-  constructor(database: Database, sqliteVersion: string) {
+  constructor(
+    database: Database,
+    sqliteVersion: string,
+    dependencies: Readonly<{
+      now?: () => number;
+      subtle?: SubtleCrypto;
+    }> = {},
+  ) {
     this.#database = database;
+    this.#now = dependencies.now ?? Date.now;
     this.#sqliteVersion = sqliteVersion;
+    this.#subtle = dependencies.subtle ?? crypto.subtle;
   }
 
   initialize(): LibraryCoreSqliteWorkerStatus {
@@ -869,6 +889,446 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  async commitFollowerIntent(
+    input: LibraryCoreFollowerIntentCommitV1,
+  ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
+    const commit = parseLibraryCoreFollowerIntentCommitV1(input);
+    const firstCandidate = decodeLibraryCoreCanonicalValue(
+      commit.envelopeBytes[0]!,
+    );
+    if (
+      firstCandidate === null ||
+      typeof firstCandidate !== "object" ||
+      Array.isArray(firstCandidate)
+    ) {
+      throw new TypeError("follower intent envelope is not a canonical record");
+    }
+    const firstRecord = firstCandidate as Readonly<
+      Record<string, LibraryCoreCanonicalValue>
+    >;
+    if (
+      typeof firstRecord.transaction_id !== "string" ||
+      typeof firstRecord.actor_id !== "string"
+    ) {
+      throw new TypeError("follower intent envelope identity is invalid");
+    }
+    const exactRetry = this.#followerIntentRetry(
+      firstRecord.transaction_id,
+      commit.envelopeBytes,
+    );
+    if (exactRetry !== null) return exactRetry;
+
+    const actorRows = this.#database.exec({
+      sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                   a.actor_id, a.public_key,
+                   COALESCE(i.next_counter, a.accepted_counter + 1),
+                   COALESCE(i.previous_operation_id, a.accepted_operation_id),
+                   COALESCE(i.previous_chain_digest, a.accepted_chain_digest)
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            JOIN library_actors AS a ON a.actor_id = ?1
+              AND a.authority_epoch_id = e.epoch_id AND a.retired_at IS NULL
+            LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
+            WHERE m.singleton_id = 1;`,
+      bind: [firstRecord.actor_id],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (actorRows.length !== 1) {
+      throw new Error("follower intent actor is unavailable in the active epoch");
+    }
+    const actor = actorRows[0]!;
+    const actorState = Object.freeze({
+      actor_id: text(actor[3], "follower intent actor ID"),
+      actor_public_key: text(actor[4], "follower intent actor public key"),
+      epoch: safeInteger(actor[1], "follower intent epoch"),
+      epoch_id: text(actor[2], "follower intent epoch ID"),
+      library_id: text(actor[0], "follower intent Library ID"),
+      next_actor_sequence: safeInteger(actor[5], "follower intent next counter"),
+      previous_actor_operation_id: nullableText(
+        actor[6],
+        "follower intent previous operation",
+      ),
+      previous_actor_chain_digest: text(
+        actor[7],
+        "follower intent previous chain digest",
+      ),
+    }) as LibraryCoreAcceptedActorStateV1;
+    const verified = await verifyLibraryCoreOperationTransactionV1(
+      commit.envelopeBytes,
+      actorState,
+      {
+        digest: (domain, value) =>
+          sha256LowerHex(
+            encodeLibraryCoreDigestInput(
+              domain,
+              value as LibraryCoreCanonicalValue,
+            ),
+          ),
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+      },
+    );
+    const effects = verified.members.flatMap((member) => {
+      const envelope = member.envelope;
+      const payload = envelope.payload as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      const effect = (
+        fieldPath: string,
+        valueType: "boolean" | "integer" | "null",
+        value: boolean | number | null,
+      ) => ({
+        createdAt: envelope.created_at_ms,
+        entityId: envelope.entity_id,
+        entityType: envelope.entity_type,
+        fieldPath,
+        value,
+        valueType,
+      });
+      if (envelope.operation_type === "feed_item_read_assignment") {
+        return [effect("read_at", "integer", payload.read_at_ms as number)];
+      }
+      if (envelope.operation_type === "feed_item_saved_assignment") {
+        return payload.assigned === true
+          ? [
+              effect("saved", "boolean", true),
+              effect("saved_at", "integer", payload.assigned_at_ms as number),
+              effect("archived", "boolean", false),
+              effect("archived_at", "null", null),
+            ]
+          : [
+              effect("saved", "boolean", false),
+              effect("saved_at", "null", null),
+            ];
+      }
+      if (envelope.operation_type === "feed_item_archive_assignment") {
+        return payload.assigned === true
+          ? [
+              effect("archived", "boolean", true),
+              effect("archived_at", "integer", payload.assigned_at_ms as number),
+              effect("saved", "boolean", false),
+              effect("saved_at", "null", null),
+            ]
+          : [
+              effect("archived", "boolean", false),
+              effect("archived_at", "null", null),
+            ];
+      }
+      if (envelope.operation_type === "feed_item_like_assignment") {
+        return [
+          effect("liked", "boolean", payload.assigned as boolean),
+          effect(
+            "liked_at",
+            payload.assigned === true ? "integer" : "null",
+            payload.assigned === true ? (payload.assigned_at_ms as number) : null,
+          ),
+        ];
+      }
+      throw new TypeError(
+        `follower optimistic materialization does not support ${envelope.operation_type}`,
+      );
+    });
+    const canonicalTransaction = encodeLibraryCoreCanonicalValue(
+      verified.transaction_body as unknown as LibraryCoreCanonicalValue,
+      { maximumBytes: 131_072 },
+    );
+    const committedAt = this.#now();
+    if (!Number.isSafeInteger(committedAt) || committedAt < 0) {
+      throw new Error("follower intent clock is invalid");
+    }
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const retryInsideTransaction = this.#followerIntentRetry(
+        verified.transaction_body.transaction_id,
+        commit.envelopeBytes,
+      );
+      if (retryInsideTransaction !== null) {
+        this.#database.exec("COMMIT;");
+        return retryInsideTransaction;
+      }
+      const current = this.#database.exec({
+        sql: `SELECT a.accepted_counter, a.accepted_operation_id,
+                     a.accepted_chain_digest, i.next_counter,
+                     i.previous_operation_id, i.previous_chain_digest,
+                     m.library_id, e.epoch_number, e.epoch_id, a.public_key
+              FROM library_meta AS m
+              JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+              JOIN library_active_authority AS active
+                ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+              JOIN library_actors AS a ON a.actor_id = ?1
+                AND a.authority_epoch_id = e.epoch_id
+              LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
+              WHERE a.actor_id = ?1 AND a.retired_at IS NULL;`,
+        bind: [actorState.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (current.length !== 1) {
+        throw new Error("follower intent actor changed during verification");
+      }
+      const tip = current[0]!;
+      if (
+        text(tip[6], "current follower Library ID") !== actorState.library_id ||
+        safeInteger(tip[7], "current follower epoch") !== actorState.epoch ||
+        text(tip[8], "current follower epoch ID") !== actorState.epoch_id ||
+        text(tip[9], "current follower actor public key") !==
+          actorState.actor_public_key
+      ) {
+        throw new Error("follower intent authority changed during verification");
+      }
+      const nextCounter =
+        tip[3] === null
+          ? safeInteger(tip[0], "follower actor accepted counter") + 1
+          : safeInteger(tip[3], "follower actor local next counter");
+      const previousOperation =
+        tip[3] === null
+          ? nullableText(tip[1], "follower actor accepted operation")
+          : nullableText(tip[4], "follower actor local operation");
+      const previousDigest =
+        tip[3] === null
+          ? text(tip[2], "follower actor accepted digest")
+          : text(tip[5], "follower actor local digest");
+      if (
+        nextCounter !== actorState.next_actor_sequence ||
+        previousOperation !== actorState.previous_actor_operation_id ||
+        previousDigest !== actorState.previous_actor_chain_digest
+      ) {
+        throw new Error("follower intent actor tip changed during verification");
+      }
+      for (const member of verified.members) {
+        const envelope = member.envelope;
+        const allowed = safeInteger(
+          this.#database.exec({
+            sql: `SELECT count(*)
+                  FROM library_actor_capabilities AS c
+                  JOIN library_actor_capability_mutations AS m
+                    ON m.capability_id = c.capability_id
+                  WHERE c.actor_id = ?1 AND c.retired_at IS NULL
+                    AND m.mutation_id = ?2
+                    AND (c.scope_mode <> 'bounded'
+                      OR (c.scope_kind = ?3 AND c.scope_id = ?4));`,
+            bind: [
+              envelope.actor_id,
+              envelope.operation_type,
+              envelope.entity_type,
+              envelope.entity_id,
+            ],
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "follower intent capability count",
+        );
+        if (allowed < 1) {
+          throw new Error(
+            `follower actor capability denies ${envelope.operation_type}`,
+          );
+        }
+        const targetExists = safeInteger(
+          this.#database.exec({
+            sql: `SELECT count(*) FROM library_feed_items
+                  WHERE global_id = ?1
+                    AND NOT EXISTS (
+                      SELECT 1 FROM library_tombstones
+                      WHERE entity_type = 'FeedItem' AND entity_id = ?1
+                    );`,
+            bind: [envelope.entity_id],
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "follower optimistic target count",
+        );
+        if (targetExists !== 1) {
+          throw new Error("follower optimistic target is unavailable");
+        }
+      }
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_intent_actors
+                (actor_id, next_counter, previous_operation_id, previous_chain_digest)
+              VALUES (?1, ?2, ?3, ?4);`,
+        bind: [
+          actorState.actor_id,
+          actorState.next_actor_sequence,
+          actorState.previous_actor_operation_id,
+          actorState.previous_actor_chain_digest,
+        ],
+      });
+      const firstEnvelope = verified.members[0]!.envelope;
+      const lastEnvelope = verified.members.at(-1)!.envelope;
+      this.#database.exec({
+        sql: `INSERT INTO library_intent_transactions
+                (transaction_id, transaction_digest, actor_id, member_count,
+                 first_counter, last_counter, previous_operation_id,
+                 previous_chain_digest, ending_operation_id,
+                 ending_chain_digest, canonical_member_bytes,
+                 canonical_transaction, state, created_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                      'pending', ?13);`,
+        bind: [
+          verified.transaction_body.transaction_id,
+          verified.transaction_digest,
+          actorState.actor_id,
+          verified.members.length,
+          firstEnvelope.actor_sequence,
+          lastEnvelope.actor_sequence,
+          firstEnvelope.previous_actor_operation_id,
+          firstEnvelope.previous_actor_chain_digest,
+          lastEnvelope.operation_id,
+          lastEnvelope.actor_chain_digest,
+          verified.canonical_envelope_bytes,
+          canonicalTransaction,
+          committedAt,
+        ],
+      });
+      verified.members.forEach((member, memberIndex) => {
+        const envelope = member.envelope;
+        this.#database.exec({
+          sql: `INSERT INTO library_intent_members
+                  (transaction_id, member_index, operation_id, actor_counter,
+                   mutation_id, entity_type, entity_id, canonical_member,
+                   member_digest)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);`,
+          bind: [
+            verified.transaction_body.transaction_id,
+            memberIndex,
+            envelope.operation_id,
+            envelope.actor_sequence,
+            envelope.operation_type,
+            envelope.entity_type,
+            envelope.entity_id,
+            commit.envelopeBytes[memberIndex]!,
+            member.member_digest,
+          ],
+        });
+      });
+      for (const effect of effects) {
+        this.#database.exec({
+          sql: `INSERT INTO library_optimistic_fields
+                  (transaction_id, entity_type, entity_id, field_path,
+                   value_type, boolean_value, integer_value, real_value,
+                   text_value, created_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8);`,
+          bind: [
+            verified.transaction_body.transaction_id,
+            effect.entityType,
+            effect.entityId,
+            effect.fieldPath,
+            effect.valueType,
+            effect.valueType === "boolean" ? (effect.value === true ? 1 : 0) : null,
+            effect.valueType === "integer" ? effect.value : null,
+            effect.createdAt,
+          ],
+        });
+      }
+      this.#database.exec({
+        sql: `UPDATE library_intent_actors
+              SET next_counter = ?2, previous_operation_id = ?3,
+                  previous_chain_digest = ?4
+              WHERE actor_id = ?1 AND next_counter = ?5
+                AND previous_operation_id IS ?6
+                AND previous_chain_digest = ?7;`,
+        bind: [
+          actorState.actor_id,
+          lastEnvelope.actor_sequence + 1,
+          lastEnvelope.operation_id,
+          lastEnvelope.actor_chain_digest,
+          actorState.next_actor_sequence,
+          actorState.previous_actor_operation_id,
+          actorState.previous_actor_chain_digest,
+        ],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "follower intent actor tip update",
+        ) !== 1
+      ) {
+        throw new Error("follower intent actor tip compare-and-swap failed");
+      }
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        actorId: actorState.actor_id,
+        firstCounter: firstEnvelope.actor_sequence,
+        lastCounter: lastEnvelope.actor_sequence,
+        memberCount: verified.members.length,
+        optimisticFieldCount: effects.length,
+        state: "pending",
+        transactionId: verified.transaction_body.transaction_id,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  #followerIntentRetry(
+    transactionId: string,
+    envelopeBytes: readonly Uint8Array[],
+  ): LibraryCoreFollowerIntentCommitResultV1 | null {
+    const transactions = this.#database.exec({
+      sql: `SELECT actor_id, member_count, first_counter, last_counter, state
+            FROM library_intent_transactions WHERE transaction_id = ?1;`,
+      bind: [transactionId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (transactions.length === 0) return null;
+    const transaction = transactions[0]!;
+    const memberCount = safeInteger(transaction[1], "stored intent member count");
+    const members = this.#database.exec({
+      sql: `SELECT canonical_member FROM library_intent_members
+            WHERE transaction_id = ?1 ORDER BY member_index;`,
+      bind: [transactionId],
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    const exact =
+      memberCount === envelopeBytes.length &&
+      members.length === envelopeBytes.length &&
+      members.every((value, index) => {
+        const stored = value instanceof Uint8Array ? value : null;
+        const received = envelopeBytes[index]!;
+        return (
+          stored !== null &&
+          stored.byteLength === received.byteLength &&
+          stored.every((byte, byteIndex) => byte === received[byteIndex])
+        );
+      });
+    if (!exact) {
+      throw new Error("follower intent identity was reused with changed bytes");
+    }
+    const optimisticFieldCount = safeInteger(
+      this.#database.exec({
+        sql: `SELECT count(*) FROM library_optimistic_fields
+              WHERE transaction_id = ?1;`,
+        bind: [transactionId],
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "stored optimistic field count",
+    );
+    const state = text(transaction[4], "stored intent state");
+    if (state !== "pending" && state !== "published") {
+      throw new Error("resolved follower intent cannot be recommitted");
+    }
+    return Object.freeze({
+      actorId: text(transaction[0], "stored intent actor"),
+      firstCounter: safeInteger(transaction[2], "stored intent first counter"),
+      lastCounter: safeInteger(transaction[3], "stored intent last counter"),
+      memberCount,
+      optimisticFieldCount,
+      state,
+      transactionId,
+    });
   }
 
   query<T extends LibraryCoreSqliteQueryRequest>(
