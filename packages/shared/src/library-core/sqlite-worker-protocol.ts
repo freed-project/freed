@@ -61,6 +61,11 @@ import {
   type LibraryCorePersonDetailResponseV1,
 } from "./person-detail-contracts.js";
 import {
+  parseLibraryCorePersonTimelineRequestV1,
+  type LibraryCorePersonTimelineRequestV1,
+  type LibraryCorePersonTimelineResponseV1,
+} from "./person-timeline-contracts.js";
+import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
@@ -88,6 +93,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemScanRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
+  | LibraryCorePersonTimelineRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
@@ -113,11 +119,13 @@ export type LibraryCoreSqliteQueryResponseFor<
                   ? LibraryCorePersonDetailResponseV1
                   : T extends LibraryCorePersonGraphPageRequestV1
                     ? LibraryCorePersonGraphPageResponseV1
-                    : T extends LibraryCoreRssFeedGraphPageRequestV1
-                      ? LibraryCoreRssFeedGraphPageResponseV1
-                      : T extends LibraryCorePreferencesSnapshotRequestV1
-                        ? LibraryCorePreferencesSnapshotResponseV1
-                        : never;
+                    : T extends LibraryCorePersonTimelineRequestV1
+                      ? LibraryCorePersonTimelineResponseV1
+                      : T extends LibraryCoreRssFeedGraphPageRequestV1
+                        ? LibraryCoreRssFeedGraphPageResponseV1
+                        : T extends LibraryCorePreferencesSnapshotRequestV1
+                          ? LibraryCorePreferencesSnapshotResponseV1
+                          : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -188,6 +196,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemScanResponseV1
   | LibraryCorePersonDetailResponseV1
   | LibraryCorePersonGraphPageResponseV1
+  | LibraryCorePersonTimelineResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
@@ -290,13 +299,17 @@ export function parseLibraryCoreSqliteWorkerRequest(
                       ? parseLibraryCorePersonDetailRequestV1(value.query)
                       : value.query.queryId === "person_graph_page_v1"
                         ? parseLibraryCorePersonGraphPageRequestV1(value.query)
-                        : value.query.queryId === "rss_feed_graph_page_v1"
-                          ? parseLibraryCoreRssFeedGraphPageRequestV1(value.query)
-                        : value.query.queryId === "preferences_snapshot_v1"
-                          ? parseLibraryCorePreferencesSnapshotRequestV1(
-                              value.query,
-                            )
-                          : parseLibraryCoreFeedPageRequestV1(value.query)
+                        : value.query.queryId === "person_timeline_v1"
+                          ? parseLibraryCorePersonTimelineRequestV1(value.query)
+                          : value.query.queryId === "rss_feed_graph_page_v1"
+                            ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                                value.query,
+                              )
+                            : value.query.queryId === "preferences_snapshot_v1"
+                              ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                  value.query,
+                                )
+                              : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {

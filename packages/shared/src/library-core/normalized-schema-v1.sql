@@ -386,6 +386,78 @@ CREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id
 CREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external
   ON library_accounts(provider, external_id);
 
+CREATE TABLE IF NOT EXISTS library_person_feed_items (
+  person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,
+  published_at INTEGER NOT NULL CHECK (published_at >= 0),
+  global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,
+  PRIMARY KEY (person_id, published_at DESC, global_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS library_person_feed_items_identity
+  ON library_person_feed_items(person_id, global_id);
+
+CREATE TRIGGER IF NOT EXISTS library_person_feed_item_insert
+AFTER INSERT ON library_feed_items
+BEGIN
+  INSERT OR IGNORE INTO library_person_feed_items (person_id, published_at, global_id)
+    SELECT account.person_id, NEW.published_at, NEW.global_id
+    FROM library_accounts AS account
+    WHERE account.person_id IS NOT NULL
+      AND account.provider = NEW.platform
+      AND account.external_id = NEW.author_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_feed_item_update
+AFTER UPDATE OF platform, author_id, published_at ON library_feed_items
+BEGIN
+  DELETE FROM library_person_feed_items WHERE global_id = OLD.global_id;
+  INSERT OR IGNORE INTO library_person_feed_items (person_id, published_at, global_id)
+    SELECT account.person_id, NEW.published_at, NEW.global_id
+    FROM library_accounts AS account
+    WHERE account.person_id IS NOT NULL
+      AND account.provider = NEW.platform
+      AND account.external_id = NEW.author_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_feed_account_insert
+AFTER INSERT ON library_accounts
+WHEN NEW.person_id IS NOT NULL
+BEGIN
+  INSERT OR IGNORE INTO library_person_feed_items (person_id, published_at, global_id)
+    SELECT NEW.person_id, item.published_at, item.global_id
+    FROM library_feed_items AS item
+    WHERE item.platform = NEW.provider AND item.author_id = NEW.external_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_feed_account_update
+AFTER UPDATE OF person_id, provider, external_id ON library_accounts
+BEGIN
+  DELETE FROM library_person_feed_items
+    WHERE person_id = OLD.person_id
+      AND global_id IN (
+        SELECT item.global_id FROM library_feed_items AS item
+        WHERE item.platform = OLD.provider AND item.author_id = OLD.external_id
+      );
+  INSERT OR IGNORE INTO library_person_feed_items (person_id, published_at, global_id)
+    SELECT NEW.person_id, item.published_at, item.global_id
+    FROM library_feed_items AS item
+    WHERE NEW.person_id IS NOT NULL
+      AND item.platform = NEW.provider
+      AND item.author_id = NEW.external_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_feed_account_delete
+AFTER DELETE ON library_accounts
+WHEN OLD.person_id IS NOT NULL
+BEGIN
+  DELETE FROM library_person_feed_items
+    WHERE person_id = OLD.person_id
+      AND global_id IN (
+        SELECT item.global_id FROM library_feed_items AS item
+        WHERE item.platform = OLD.provider AND item.author_id = OLD.external_id
+      );
+END;
+
 CREATE TABLE IF NOT EXISTS library_device_person_graph_layout (
   person_id TEXT PRIMARY KEY REFERENCES library_persons(id) ON DELETE CASCADE,
   graph_x REAL NOT NULL,

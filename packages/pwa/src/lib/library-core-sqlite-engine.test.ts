@@ -31,7 +31,6 @@ describe("PWA Library Core SQLite engine", () => {
   afterEach(() => {
     if (database.isOpen()) database.close();
   });
-
   function operationId(value: string): LibraryCoreOperationInstanceId {
     if (!isLibraryCoreOperationInstanceId(value)) {
       throw new TypeError("invalid test operation instance ID");
@@ -312,7 +311,9 @@ describe("PWA Library Core SQLite engine", () => {
         ('account-1', 'person-1', 'social', 'x', 'ada-remote', 'ada', 'Ada',
          50, 200, 'capture', 1, 200, 50, 200),
         ('account-2', 'person-2', 'social', 'x', 'grace-remote', 'grace', 'Grace',
-         60, 210, 'capture', NULL, NULL, 60, 210);
+         60, 210, 'capture', NULL, NULL, 60, 210),
+        ('account-3', 'person-1', 'rss', 'rss', 'alpha', 'alpha', 'Alpha',
+         70, 220, 'capture', NULL, NULL, 70, 220);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
     `);
@@ -422,6 +423,49 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
     expect(second.nextCursor).toBeNull();
+    const timelineRequest = {
+      cancellationId: operationId("cancel-person-timeline-1"),
+      cursor: null,
+      limit: 1,
+      personId: "person-1",
+      queryId: "person_timeline_v1" as const,
+      readerSessionId: operationId("reader-person-timeline-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstTimeline = engine.query(timelineRequest);
+    expect(firstTimeline.totalCount).toBe(2);
+    expect(firstTimeline.rows.map((row) => row.globalId)).toEqual(["item-2"]);
+    expect(firstTimeline.nextCursor).not.toBeNull();
+    expect(
+      engine
+        .query({
+          ...timelineRequest,
+          cursor: firstTimeline.nextCursor,
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["item-1"]);
+    expect(() =>
+      engine.query({
+        ...timelineRequest,
+        cursor: firstTimeline.nextCursor,
+        personId: "person-2",
+      }),
+    ).toThrow("different person");
+    database.exec(
+      "UPDATE library_accounts SET person_id = 'person-2' WHERE id = 'account-1';",
+    );
+    expect(
+      engine
+        .query({
+          ...timelineRequest,
+          limit: 10,
+          personId: "person-2",
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["item-2"]);
+    database.exec(
+      "UPDATE library_accounts SET person_id = 'person-1' WHERE id = 'account-1';",
+    );
     const scanRequest = {
       cancellationId: operationId("cancel-scan-1"),
       cursor: null,

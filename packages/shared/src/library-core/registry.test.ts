@@ -299,8 +299,7 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     payloadSchema: PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
-    transactionMemberSchema:
-      PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
+    transactionMemberSchema: PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `addFeedItem` / `updateFeedItem`. Feed items are keyed by
   // globalId, the same key space the read assignment codec was justified
@@ -1065,6 +1064,8 @@ describe("Library Core query registry", () => {
       source: {
         boundary: "library_core",
         currentKinds: [
+          "query_normalized_v1::person_timeline_v1",
+          "PwaLibraryCoreSqliteEngine.query::person_timeline_v1",
           "ProjectionReadSession::person_timeline",
           "read_library_core_person_timeline",
         ],
@@ -1318,11 +1319,14 @@ describe("Library Core query registry", () => {
       nestedBounds: LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
       tieBreakKey: "globalId",
     });
-    // The timeline pages the same shadow rows as the ordinary feed page, so its
-    // order must be identical rather than a parallel copy that could drift.
-    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.stableSort).toEqual(
-      LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.stableSort,
-    );
+    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.stableSort).toEqual({
+      columns: [
+        { column: "publishedAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      nullOrdering: "all_sort_columns_not_null",
+      textCollation: "binary",
+    });
     expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.projection).toBe(
       LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.projection,
     );

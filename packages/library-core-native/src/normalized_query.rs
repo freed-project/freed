@@ -1,14 +1,19 @@
+use crate::lower_hex;
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::SQLITE_QUERY_PROGRAMS;
 use base64::engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use rusqlite::{params, Connection, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
+const PERSON_TIMELINE_MAXIMUM_LIMIT: usize = 100;
+const PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PERSON_TIMELINE_MAXIMUM_CURSOR_BYTES: usize = 5_700;
 const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
 const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
@@ -32,6 +37,17 @@ pub struct NormalizedFeedPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonTimelineRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub person_id: String,
     pub reader_session_id: String,
     pub schema_version: u32,
 }
@@ -142,6 +158,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemScan(NormalizedItemScanRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
+    PersonTimeline(NormalizedPersonTimelineRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
 }
@@ -190,6 +207,17 @@ pub struct NormalizedFeedCardV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFeedPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedFeedCardV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonTimelineResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedFeedCardV1>,
@@ -488,6 +516,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemScan(NormalizedItemScanResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
+    PersonTimeline(NormalizedPersonTimelineResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
 }
@@ -595,6 +624,56 @@ fn decode_cursor(value: &str) -> Result<FeedPageCursorV1, NormalizedSqliteError>
         projection_revision: read_safe_u64(&bytes[41..49])?,
         sort_at: read_safe_u64(&bytes[49..57])?,
         global_id,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PersonTimelineCursorV1 {
+    page: FeedPageCursorV1,
+    person_digest: String,
+}
+
+fn encode_person_timeline_cursor(
+    cursor: &PersonTimelineCursorV1,
+) -> Result<String, NormalizedSqliteError> {
+    if !valid_lower_hex_64(&cursor.person_digest) {
+        return Err(invalid(
+            "normalized person timeline identity digest is invalid",
+        ));
+    }
+    Ok(format!(
+        "1.{}.{}",
+        encode_cursor(&cursor.page)?,
+        cursor.person_digest
+    ))
+}
+
+fn decode_person_timeline_cursor(
+    value: &str,
+) -> Result<PersonTimelineCursorV1, NormalizedSqliteError> {
+    if value.is_empty() || value.len() > PERSON_TIMELINE_MAXIMUM_CURSOR_BYTES {
+        return Err(invalid(
+            "normalized person timeline cursor is outside its bound",
+        ));
+    }
+    let mut parts = value.split('.');
+    if parts.next() != Some("1") {
+        return Err(invalid(
+            "normalized person timeline cursor version is invalid",
+        ));
+    }
+    let page = parts
+        .next()
+        .ok_or(invalid("normalized person timeline cursor is invalid"))?;
+    let person_digest = parts
+        .next()
+        .ok_or(invalid("normalized person timeline cursor is invalid"))?;
+    if parts.next().is_some() || !valid_lower_hex_64(person_digest) {
+        return Err(invalid("normalized person timeline cursor is invalid"));
+    }
+    Ok(PersonTimelineCursorV1 {
+        page: decode_cursor(page)?,
+        person_digest: person_digest.to_owned(),
     })
 }
 
@@ -769,6 +848,113 @@ fn query_feed_page(
     {
         return Err(invalid(
             "normalized feed query response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_person_timeline(
+    connection: &mut Connection,
+    request: NormalizedPersonTimelineRequestV1,
+) -> Result<NormalizedPersonTimelineResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=PERSON_TIMELINE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || request.person_id.is_empty()
+        || request.person_id.len() > 4_096
+    {
+        return Err(invalid(
+            "normalized person timeline query identity is invalid",
+        ));
+    }
+    let person_digest = lower_hex(&Sha256::digest(request.person_id.as_bytes()));
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "person_timeline_v1")
+        .ok_or(invalid(
+            "normalized person timeline query program is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_person_timeline_cursor)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.person_digest != person_digest
+            || cursor.page.generation_id != generation_id
+            || cursor.page.transition_sequence != source_revision
+            || cursor.page.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized person timeline cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.2)?;
+    let mut query_rows = statement.query_map(
+        params![
+            request.person_id,
+            cursor.as_ref().map(|cursor| cursor.page.sort_at),
+            cursor
+                .as_ref()
+                .map(|cursor| cursor.page.global_id.as_str())
+                .unwrap_or(""),
+            i64::try_from(request.limit + 1).expect("bounded person timeline limit"),
+        ],
+        feed_card,
+    )?;
+    let mut cards = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        cards.push(row?);
+        if cards.len() > program.1 {
+            return Err(invalid("normalized person timeline exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = cards.len() > request.limit;
+    cards.truncate(request.limit);
+    let next_cursor = if has_more {
+        let last = cards
+            .last()
+            .ok_or(invalid("normalized person timeline cursor row is missing"))?;
+        Some(encode_person_timeline_cursor(&PersonTimelineCursorV1 {
+            page: FeedPageCursorV1 {
+                generation_id: generation_id.clone(),
+                transition_sequence: source_revision,
+                projection_revision: source_revision,
+                sort_at: last
+                    .published_at
+                    .ok_or(invalid("normalized person timeline sort time is missing"))?,
+                global_id: last.global_id.clone(),
+            },
+            person_digest,
+        })?)
+    } else {
+        None
+    };
+    let total_count: i64 =
+        transaction.query_row(program.3, params![request.person_id], |row| row.get(0))?;
+    let response = NormalizedPersonTimelineResponseV1 {
+        next_cursor,
+        query_id: "person_timeline_v1".to_owned(),
+        rows: cards,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        total_count,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized person timeline response is invalid"))?
+        .len()
+        > PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized person timeline response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -2110,6 +2296,9 @@ pub fn query_normalized_v1(
                 query_person_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::PersonTimeline(request) => Ok(
+            NormalizedQueryResponseV1::PersonTimeline(query_person_timeline(connection, request)?),
+        ),
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -2306,6 +2495,129 @@ mod tests {
         )
         .expect_err("stale cursor");
         assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_person_timeline_uses_the_derived_index_and_binds_its_cursor() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "person_timeline_v1")
+            .expect("person timeline program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .expect("person timeline plan");
+        let plan = plan_statement
+            .query_map(params!["person-1", Option::<i64>::None, "", 2], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan.iter().any(|detail| {
+            detail.contains("SEARCH timeline USING PRIMARY KEY")
+                || detail.contains("SEARCH timeline USING INDEX")
+        }));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN timeline")));
+        assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        drop(plan_statement);
+
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'friend', 5, 1, 1),
+                          ('person-2', 'Grace', 'friend', 4, 1, 1);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 1, 1, 'capture', 1, 1),
+                          ('account-2', 'person-1', 'social', 'rss', 'grace', 1, 1, 'capture', 1, 1);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, hidden, saved,
+                    archived, updated_at)
+                   VALUES ('item-2', 'x', 'article', 200, 200, 'ada', 'ada', 'Ada', 0, 0, 0, 200),
+                          ('item-1', 'rss', 'article', 100, 100, 'grace', 'grace', 'Grace', 0, 0, 0, 100),
+                          ('other', 'x', 'post', 300, 300, 'other', 'other', 'Other', 0, 0, 0, 300);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedPersonTimelineRequestV1 {
+            cancellation_id: "cancel-person-1".to_owned(),
+            cursor: None,
+            limit: 1,
+            person_id: "person-1".to_owned(),
+            reader_session_id: "reader-person-1".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::PersonTimeline(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonTimeline(request.clone()),
+        )
+        .expect("first person timeline page") else {
+            panic!("person timeline response");
+        };
+        assert_eq!(first.total_count, 2);
+        assert_eq!(first.rows[0].global_id, "item-2");
+        let cursor = first.next_cursor.expect("person timeline cursor");
+        let NormalizedQueryResponseV1::PersonTimeline(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonTimeline(NormalizedPersonTimelineRequestV1 {
+                cursor: Some(cursor.clone()),
+                ..request.clone()
+            }),
+        )
+        .expect("second person timeline page") else {
+            panic!("person timeline response");
+        };
+        assert_eq!(second.rows[0].global_id, "item-1");
+        assert!(second.next_cursor.is_none());
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonTimeline(NormalizedPersonTimelineRequestV1 {
+                cursor: Some(cursor),
+                person_id: "person-2".to_owned(),
+                ..request
+            }),
+        )
+        .expect_err("cursor for another person");
+        assert!(error.to_string().contains("cursor is stale"));
+
+        connection
+            .execute(
+                "UPDATE library_accounts SET person_id = 'person-2' WHERE id = 'account-1';",
+                [],
+            )
+            .expect("reassign account");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_person_feed_items WHERE person_id = 'person-1';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("person one derived rows"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_person_feed_items WHERE person_id = 'person-2';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("person two derived rows"),
+            1
+        );
     }
 
     #[test]

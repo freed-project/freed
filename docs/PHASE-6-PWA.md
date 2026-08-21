@@ -84,6 +84,10 @@
         reset notices from browser SQLite. Continuation pages retain one pinned
         upper revision while later writes arrive, revision gaps fail closed,
         and checkpoint activation writes one Library-wide reset notice.
+  - [x] `person_timeline_v1` names one Person and walks the same generated,
+        trigger-maintained timeline index as native Rust. Each page reads at
+        most 101 rows, returns at most 100 compact cards and 2 MiB, and binds
+        continuation to both the Person identity and SQLite source fence.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
@@ -316,6 +320,7 @@ export function filterByAuthor(
 | 6.16 | Public-safe bundles and private GitHub vulnerability reports                                              | Medium     |
 | 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                   | High       | ✓ Complete                                                                                       |
 | 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium     | ✓ Complete                                                                                       |
+| 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High | ✓ Complete |
 
 ---
 

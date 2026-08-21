@@ -305,6 +305,17 @@ stable tie-break identity. The source-fenced response is capped at 512 KiB.
 Accounts and timeline cards use their own bounded page queries, so opening one
 Person never hydrates the Friends graph or a hidden Library shell.
 
+`person_timeline_v1` pages compact feed cards for one Person directly from the
+derived `library_person_feed_items` relation. FeedItem and Account mutations
+maintain that relation inside the same SQLite transaction. Its primary key is
+`(person_id, published_at DESC, global_id)`, so native SQLite and browser
+SQLite read no more than 101 timeline rows for a 100-row response. The request
+names one Person ID, not a renderer-built list of account keys. The opaque
+cursor binds the Person identity digest, database generation, source revision,
+publication time, and final item ID. It cannot be resumed for another Person
+or another materialization. Hidden and archived items remain indexed but are
+excluded by the query, which keeps visibility changes cheap and deterministic.
+
 `account_detail_v1` is the matching normalized point query for one visible
 Account. It reads one Account primary key, returns at most eight follow-roster
 roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.

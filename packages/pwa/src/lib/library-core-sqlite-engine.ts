@@ -36,6 +36,11 @@ import {
   parseLibraryCoreItemScanResponseV1,
   parseLibraryCorePersonDetailRequestV1,
   parseLibraryCorePersonDetailResponseV1,
+  decodeLibraryCorePersonTimelineCursorV1,
+  encodeLibraryCorePersonTimelineCursorV1,
+  libraryCorePersonTimelinePersonDigestV1,
+  parseLibraryCorePersonTimelineRequestV1,
+  parseLibraryCorePersonTimelineResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
   decodeLibraryCoreIdentityPageCursorV1,
@@ -80,6 +85,8 @@ import {
   type LibraryCoreItemScanResponseV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
+  type LibraryCorePersonTimelineRequestV1,
+  type LibraryCorePersonTimelineResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
@@ -199,10 +206,7 @@ function nullableBoolean(
   return integer === 1;
 }
 
-function requiredBoolean(
-  value: SqlValue | undefined,
-  label: string,
-): boolean {
+function requiredBoolean(value: SqlValue | undefined, label: string): boolean {
   const parsed = nullableBoolean(value, label);
   if (parsed === null) throw new Error(`${label} is null`);
   return parsed;
@@ -746,7 +750,8 @@ export class PwaLibraryCoreSqliteEngine {
     const parsed = parseLibraryCoreDeviceGraphLayoutMutationV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const mutation = parsed.value;
-    const program = LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS[mutation.mutationId];
+    const program =
+      LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS[mutation.mutationId];
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
       const targetExists = safeInteger(
@@ -868,6 +873,10 @@ export class PwaLibraryCoreSqliteEngine {
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_graph_page_v1":
         return this.#queryPersonGraphPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_timeline_v1":
+        return this.#queryPersonTimeline(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "rss_feed_graph_page_v1":
@@ -1243,7 +1252,8 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCorePersonGraphPageResponseV1 {
     const request = parseLibraryCorePersonGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
+    const { generationId, layoutRevision, sourceRevision } =
+      this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1277,8 +1287,14 @@ export class PwaLibraryCoreSqliteEngine {
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
       avatarUrl: nullableText(row.avatarUrl, "Person graph avatar URL"),
       careLevel: safeInteger(row.careLevel, "Person graph care level"),
-      graphPinned: requiredBoolean(row.graphPinned, "Person graph pinned state"),
-      graphUpdatedAt: nullableInteger(row.graphUpdatedAt, "Person graph position update"),
+      graphPinned: requiredBoolean(
+        row.graphPinned,
+        "Person graph pinned state",
+      ),
+      graphUpdatedAt: nullableInteger(
+        row.graphUpdatedAt,
+        "Person graph position update",
+      ),
       graphX: nullableFiniteNumber(row.graphX, "Person graph x position"),
       graphY: nullableFiniteNumber(row.graphY, "Person graph y position"),
       id: text(row.id, "Person graph identity"),
@@ -1332,7 +1348,8 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreAccountGraphPageResponseV1 {
     const request = parseLibraryCoreAccountGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
+    const { generationId, layoutRevision, sourceRevision } =
+      this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1380,8 +1397,14 @@ export class PwaLibraryCoreSqliteEngine {
         row.followRosterActive,
         "Account graph follow-roster active",
       ),
-      graphPinned: requiredBoolean(row.graphPinned, "Account graph pinned state"),
-      graphUpdatedAt: nullableInteger(row.graphUpdatedAt, "Account graph position update"),
+      graphPinned: requiredBoolean(
+        row.graphPinned,
+        "Account graph pinned state",
+      ),
+      graphUpdatedAt: nullableInteger(
+        row.graphUpdatedAt,
+        "Account graph position update",
+      ),
       graphX: nullableFiniteNumber(row.graphX, "Account graph x position"),
       graphY: nullableFiniteNumber(row.graphY, "Account graph y position"),
       handle: nullableText(row.handle, "Account graph handle"),
@@ -1431,7 +1454,8 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreRssFeedGraphPageResponseV1 {
     const request = parseLibraryCoreRssFeedGraphPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const { generationId, layoutRevision, sourceRevision } = this.#queryGraphSource();
+    const { generationId, layoutRevision, sourceRevision } =
+      this.#queryGraphSource();
     const cursor =
       request.value.cursor === null
         ? null
@@ -1848,6 +1872,93 @@ export class PwaLibraryCoreSqliteEngine {
       );
     }
     const parsed = parseLibraryCoreFeedPageResponseV1(response, request.value);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryPersonTimeline(
+    input: LibraryCorePersonTimelineRequestV1,
+  ): LibraryCorePersonTimelineResponseV1 {
+    const request = parseLibraryCorePersonTimelineRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const personDigest = libraryCorePersonTimelinePersonDigestV1(
+      request.value.personId,
+    );
+    let afterPublishedAt: number | null = null;
+    let afterGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCorePersonTimelineCursorV1(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.personDigest !== personDigest ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.transitionSequence !== sourceRevision ||
+        cursor.value.projectionRevision !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite person timeline cursor is stale");
+      }
+      afterPublishedAt = cursor.value.sortAt;
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_timeline_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        request.value.personId,
+        afterPublishedAt,
+        afterGlobalId,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite person timeline exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows: LibraryCoreFeedCardV1[] = rawRows
+      .slice(0, request.value.limit)
+      .map(feedCardFromSqliteRow);
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last?.publishedAt !== null && last !== undefined
+          ? encodeLibraryCorePersonTimelineCursorV1({
+              generationId: generationId as never,
+              globalId: last.globalId,
+              projectionRevision: sourceRevision,
+              sortAt: last.publishedAt,
+              personDigest,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "person_timeline_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      totalCount: safeInteger(
+        this.#database.exec({
+          sql: program.countSql,
+          bind: [request.value.personId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "person timeline total count",
+      ),
+    };
+    const parsed = parseLibraryCorePersonTimelineResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

@@ -1063,6 +1063,8 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     rendererCache: true,
     invalidationKeyIntent: ["person-timeline:{person_id}"],
     currentKinds: [
+      "query_normalized_v1::person_timeline_v1",
+      "PwaLibraryCoreSqliteEngine.query::person_timeline_v1",
       "ProjectionReadSession::person_timeline",
       "read_library_core_person_timeline",
     ],
@@ -1071,12 +1073,11 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_PERSON_TIMELINE_PROJECTION,
     sourceIdentity: LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
-    // Identical to feed_page_v1: the timeline pages the same shadow rows with
-    // `ORDER BY sortAt DESC, globalId ASC`. `sortAt` rather than `publishedAt`
-    // for the same reason given there.
+    // The normalized derived index fixes the person and walks its canonical
+    // publication order without scanning account keys or feed-item payloads.
     stableSort: {
       columns: [
-        { column: "sortAt", direction: "desc" },
+        { column: "publishedAt", direction: "desc" },
         { column: "globalId", direction: "asc" },
       ],
       textCollation: "binary",
