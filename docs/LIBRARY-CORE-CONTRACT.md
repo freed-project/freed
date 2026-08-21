@@ -308,8 +308,13 @@ graph compilation. Each returns at most 128 rows and
 projection includes the latest reach-out time but excludes tags, notes, bio,
 and reach-out history. The Account projection excludes contact fields,
 follow-role history, and profile metadata that graph compilation does not use.
-The RSS feed projection carries only its URL, title, image, enabled state, and
-revision, with no polling or unread policy.
+It includes the visible activity count and latest activity time computed by
+SQLite through the provider and author index. The RSS feed projection carries
+only its URL, title, best available image, enabled state, revision, visible
+activity count, and latest activity time. Its activity and image fallback use
+the RSS feed item index, with no polling or unread policy. These fields replace
+the separate whole-graph activity aggregate. JavaScript never scans FeedItems
+to assemble graph activity.
 All three use one shared opaque identity cursor bound to the final row, database
 generation, and source revision. Graph workers stream these pages and release
 each source page after compiling its bounded output. React never receives the

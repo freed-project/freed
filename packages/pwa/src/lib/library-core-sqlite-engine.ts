@@ -1229,6 +1229,10 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const hasMore = rawRows.length > request.value.limit;
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      activityCount: safeInteger(
+        row.activityCount,
+        "Account graph activity count",
+      ),
       avatarUrl: nullableText(row.avatarUrl, "Account graph avatar URL"),
       discoveredFrom: text(
         row.discoveredFrom,
@@ -1245,6 +1249,10 @@ export class PwaLibraryCoreSqliteEngine {
       id: text(row.id, "Account graph identity"),
       kind: text(row.kind, "Account graph kind"),
       lastSeenAt: safeInteger(row.lastSeenAt, "Account graph last seen"),
+      latestActivityAt: nullableInteger(
+        row.latestActivityAt,
+        "Account graph latest activity",
+      ),
       personId: nullableText(row.personId, "Account graph Person identity"),
       provider: text(row.provider, "Account graph provider"),
       updatedAt: safeInteger(row.updatedAt, "Account graph update time"),
@@ -1313,8 +1321,16 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const hasMore = rawRows.length > request.value.limit;
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      activityCount: safeInteger(
+        row.activityCount,
+        "RSS feed graph activity count",
+      ),
       enabled: requiredBoolean(row.enabled, "RSS feed graph enabled"),
       imageUrl: nullableText(row.imageUrl, "RSS feed graph image URL"),
+      latestActivityAt: nullableInteger(
+        row.latestActivityAt,
+        "RSS feed graph latest activity",
+      ),
       title: text(row.title, "RSS feed graph title"),
       updatedAt: safeInteger(row.updatedAt, "RSS feed graph update time"),
       url: text(row.url, "RSS feed graph URL"),

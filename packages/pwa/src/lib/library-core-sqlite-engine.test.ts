@@ -273,14 +273,20 @@ describe("PWA Library Core SQLite engine", () => {
         (singleton_id, generation_id)
       VALUES (1, '${"a".repeat(64)}');
       UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_rss_feeds
+        (url, title, image_url, enabled, track_unread, updated_at)
+      VALUES
+        ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
+        ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);
       INSERT INTO library_feed_items
         (global_id, platform, content_type, captured_at, published_at,
-         author_id, author_handle, author_display_name, content_text,
+         author_id, author_handle, author_display_name, author_avatar_url,
+         rss_feed_url, content_text,
          hidden, saved, archived, updated_at)
       VALUES
-        ('item-2', 'saved', 'article', 200, 200, 'author-1', 'ada', 'Ada', 'newer', 0, 1, 0, 200),
-        ('item-1', 'rss', 'article', 100, 100, 'author-2', 'grace', 'Grace', 'older', 0, 0, 0, 100),
-        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', 'nope', 1, 0, 0, 300);
+        ('item-2', 'x', 'article', 200, 200, 'ada-remote', 'ada', 'Ada', NULL, NULL, 'newer', 0, 1, 0, 200),
+        ('item-1', 'rss', 'article', 100, 100, 'alpha', 'grace', 'Grace', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 'older', 0, 0, 0, 100),
+        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', NULL, NULL, 'nope', 1, 0, 0, 300);
       INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('item-2', 'favorite');
       INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
       VALUES ('item-2', 0, 'https://example.com/image', 'image');
@@ -309,11 +315,6 @@ describe("PWA Library Core SQLite engine", () => {
          60, 210, 'capture', NULL, NULL, 60, 210);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
-      INSERT INTO library_rss_feeds
-        (url, title, image_url, enabled, track_unread, updated_at)
-      VALUES
-        ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
-        ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);
     `);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
@@ -512,8 +513,8 @@ describe("PWA Library Core SQLite engine", () => {
       schemaVersion: 1 as const,
     };
     const firstAccountGraphPage = engine.query(accountGraphRequest);
-    expect(firstAccountGraphPage.rows.map((row) => row.id)).toEqual([
-      "account-1",
+    expect(firstAccountGraphPage.rows).toMatchObject([
+      { activityCount: 1, id: "account-1", latestActivityAt: 200 },
     ]);
     expect(
       engine
@@ -533,7 +534,14 @@ describe("PWA Library Core SQLite engine", () => {
     };
     const firstRssFeedGraphPage = engine.query(rssFeedGraphRequest);
     expect(firstRssFeedGraphPage.rows).toMatchObject([
-      { enabled: true, title: "Alpha", url: "https://alpha.example/feed" },
+      {
+        activityCount: 1,
+        enabled: true,
+        imageUrl: "https://alpha.example/avatar.png",
+        latestActivityAt: 100,
+        title: "Alpha",
+        url: "https://alpha.example/feed",
+      },
     ]);
     expect(
       engine

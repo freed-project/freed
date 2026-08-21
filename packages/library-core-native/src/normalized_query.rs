@@ -386,6 +386,7 @@ pub struct NormalizedPersonGraphRowV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphRowV1 {
+    pub activity_count: i64,
     pub avatar_url: Option<String>,
     pub discovered_from: String,
     pub display_name: Option<String>,
@@ -396,6 +397,7 @@ pub struct NormalizedAccountGraphRowV1 {
     pub id: String,
     pub kind: String,
     pub last_seen_at: i64,
+    pub latest_activity_at: Option<i64>,
     pub person_id: Option<String>,
     pub provider: String,
     pub updated_at: i64,
@@ -404,8 +406,10 @@ pub struct NormalizedAccountGraphRowV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedRssFeedGraphRowV1 {
+    pub activity_count: i64,
     pub enabled: bool,
     pub image_url: Option<String>,
+    pub latest_activity_at: Option<i64>,
     pub title: String,
     pub updated_at: i64,
     pub url: String,
@@ -1563,6 +1567,7 @@ fn query_account_graph_page(
                 })
                 .transpose()?;
             Ok(NormalizedAccountGraphRowV1 {
+                activity_count: row.get("activityCount")?,
                 avatar_url: row.get("avatarUrl")?,
                 discovered_from: row.get("discoveredFrom")?,
                 display_name: row.get("displayName")?,
@@ -1573,6 +1578,7 @@ fn query_account_graph_page(
                 id: row.get("id")?,
                 kind: row.get("kind")?,
                 last_seen_at: row.get("lastSeenAt")?,
+                latest_activity_at: row.get("latestActivityAt")?,
                 person_id: row.get("personId")?,
                 provider: row.get("provider")?,
                 updated_at: row.get("updatedAt")?,
@@ -1607,8 +1613,12 @@ fn query_account_graph_page(
             || !bounded(&row.display_name, 512)
             || !bounded(&row.avatar_url, 8_192)
             || !valid_safe_integer(row.first_seen_at)
+            || !valid_safe_integer(row.activity_count)
             || !valid_safe_integer(row.last_seen_at)
             || !valid_safe_integer(row.updated_at)
+            || row
+                .latest_activity_at
+                .is_some_and(|value| !valid_safe_integer(value))
         {
             return Err(invalid("normalized Account graph page row is invalid"));
         }
@@ -1693,8 +1703,10 @@ fn query_rss_feed_graph_page(
                 _ => return Err(rusqlite::Error::InvalidQuery),
             };
             Ok(NormalizedRssFeedGraphRowV1 {
+                activity_count: row.get("activityCount")?,
                 enabled,
                 image_url: row.get("imageUrl")?,
+                latest_activity_at: row.get("latestActivityAt")?,
                 title: row.get("title")?,
                 updated_at: row.get("updatedAt")?,
                 url: row.get("url")?,
@@ -1719,7 +1731,11 @@ fn query_rss_feed_graph_page(
                 .image_url
                 .as_ref()
                 .is_some_and(|value| value.len() > 8_192)
+            || !valid_safe_integer(row.activity_count)
             || !valid_safe_integer(row.updated_at)
+            || row
+                .latest_activity_at
+                .is_some_and(|value| !valid_safe_integer(value))
         {
             return Err(invalid("normalized RSS feed graph page row is invalid"));
         }
@@ -2752,7 +2768,13 @@ mod tests {
                  INSERT INTO library_rss_feeds
                    (url, title, image_url, enabled, track_unread, updated_at)
                    VALUES ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
-                          ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);",
+                          ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, author_avatar_url, rss_feed_url,
+                    hidden, saved, archived, updated_at)
+                   VALUES ('account-activity', 'x', 'post', 220, 220, 'ada', 'ada', 'Ada', NULL, NULL, 0, 0, 0, 220),
+                          ('rss-activity', 'rss', 'article', 230, 230, 'alpha', 'alpha', 'Alpha', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 0, 0, 0, 230);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -2783,6 +2805,16 @@ mod tests {
                 _ => "SEARCH feed USING INDEX",
             };
             assert!(plan.iter().any(|detail| detail.contains(root)));
+            if query_id == "account_graph_page_v1" {
+                assert!(plan
+                    .iter()
+                    .any(|detail| { detail.contains("library_feed_items_provider_author") }));
+            }
+            if query_id == "rss_feed_graph_page_v1" {
+                assert!(plan
+                    .iter()
+                    .any(|detail| detail.contains("library_feed_items_rss_feed")));
+            }
         }
 
         let request = NormalizedPersonGraphPageRequestV1 {
@@ -2829,6 +2861,8 @@ mod tests {
             panic!("Account graph page response");
         };
         assert_eq!(first.rows[0].id, "account-1");
+        assert_eq!(first.rows[0].activity_count, 1);
+        assert_eq!(first.rows[0].latest_activity_at, Some(220));
         let NormalizedQueryResponseV1::AccountGraphPage(second) = query_normalized_v1(
             &mut connection,
             NormalizedQueryRequestV1::AccountGraphPage(NormalizedAccountGraphPageRequestV1 {
@@ -2856,6 +2890,12 @@ mod tests {
         };
         assert_eq!(first.rows[0].url, "https://alpha.example/feed");
         assert!(first.rows[0].enabled);
+        assert_eq!(first.rows[0].activity_count, 1);
+        assert_eq!(first.rows[0].latest_activity_at, Some(230));
+        assert_eq!(
+            first.rows[0].image_url.as_deref(),
+            Some("https://alpha.example/avatar.png")
+        );
         let rss_cursor = first.next_cursor.clone();
         let NormalizedQueryResponseV1::RssFeedGraphPage(second) = query_normalized_v1(
             &mut connection,

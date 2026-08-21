@@ -149,8 +149,13 @@ CREATE INDEX IF NOT EXISTS library_feed_items_saved
   ON library_feed_items(saved, archived, saved_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_author
   ON library_feed_items(author_id, published_at DESC, global_id);
+CREATE INDEX IF NOT EXISTS library_feed_items_provider_author
+  ON library_feed_items(platform, author_id, hidden, published_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_platform
   ON library_feed_items(platform, published_at DESC, global_id);
+CREATE INDEX IF NOT EXISTS library_feed_items_rss_feed
+  ON library_feed_items(rss_feed_url, hidden, published_at DESC, global_id)
+  WHERE rss_feed_url IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS library_feed_item_media (
   global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,

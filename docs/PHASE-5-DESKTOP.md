@@ -81,8 +81,11 @@
         identity roots through source-fenced binary primary-key pages shared
         by native Rust and PWA SQLite. Each request returns at most 128 rows
         and 2 MiB without notes, contact fields, histories, polling policy, or
-        a complete identity corpus. Freed Desktop graph-worker wiring remains
-        open.
+        a complete identity corpus. Account and RSS rows include indexed
+        visible activity counts and latest activity times. RSS rows also use
+        the latest visible item image only when the feed has no image. This
+        removes the separate JavaScript graph activity aggregate from the
+        final reader path. Freed Desktop graph-worker wiring remains open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

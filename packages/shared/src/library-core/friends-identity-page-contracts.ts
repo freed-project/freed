@@ -48,6 +48,7 @@ const PERSON_KEYS = [
   "updatedAt",
 ] as const;
 const ACCOUNT_KEYS = [
+  "activityCount",
   "avatarUrl",
   "discoveredFrom",
   "displayName",
@@ -58,13 +59,16 @@ const ACCOUNT_KEYS = [
   "id",
   "kind",
   "lastSeenAt",
+  "latestActivityAt",
   "personId",
   "provider",
   "updatedAt",
 ] as const;
 const RSS_FEED_KEYS = [
+  "activityCount",
   "enabled",
   "imageUrl",
+  "latestActivityAt",
   "title",
   "updatedAt",
   "url",
@@ -189,6 +193,7 @@ export interface LibraryCorePersonGraphRowV1 {
 }
 
 export interface LibraryCoreAccountGraphRowV1 {
+  readonly activityCount: number;
   readonly avatarUrl: string | null;
   readonly discoveredFrom: string;
   readonly displayName: string | null;
@@ -199,14 +204,17 @@ export interface LibraryCoreAccountGraphRowV1 {
   readonly id: string;
   readonly kind: string;
   readonly lastSeenAt: number;
+  readonly latestActivityAt: number | null;
   readonly personId: string | null;
   readonly provider: string;
   readonly updatedAt: number;
 }
 
 export interface LibraryCoreRssFeedGraphRowV1 {
+  readonly activityCount: number;
   readonly enabled: boolean;
   readonly imageUrl: string | null;
+  readonly latestActivityAt: number | null;
   readonly title: string;
   readonly updatedAt: number;
   readonly url: string;
@@ -432,6 +440,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
   const handle = boundedText(row.handle, 512, true);
   const id = boundedText(row.id, 2_048);
   const kind = boundedText(row.kind, 64);
+  const latestActivityAt = nullableInteger(row.latestActivityAt);
   const personId = boundedText(row.personId, 2_048, true);
   const provider = boundedText(row.provider, 64);
   if (
@@ -442,8 +451,10 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     handle === undefined ||
     !id ||
     !kind ||
+    latestActivityAt === undefined ||
     personId === undefined ||
     !provider ||
+    !isLibraryCoreNonnegativeSafeInteger(row.activityCount) ||
     !isLibraryCoreNonnegativeSafeInteger(row.firstSeenAt) ||
     !isLibraryCoreNonnegativeSafeInteger(row.lastSeenAt) ||
     !isLibraryCoreNonnegativeSafeInteger(row.updatedAt) ||
@@ -453,6 +464,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     return null;
   }
   return Object.freeze({
+    activityCount: row.activityCount,
     avatarUrl,
     discoveredFrom,
     displayName,
@@ -463,6 +475,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     id,
     kind,
     lastSeenAt: row.lastSeenAt,
+    latestActivityAt,
     personId,
     provider,
     updatedAt: row.updatedAt,
@@ -473,20 +486,25 @@ function parseRssFeed(value: unknown): LibraryCoreRssFeedGraphRowV1 | null {
   const row = closedRecord(value, RSS_FEED_KEYS);
   if (!row) return null;
   const imageUrl = boundedText(row.imageUrl, 8_192, true);
+  const latestActivityAt = nullableInteger(row.latestActivityAt);
   const title = boundedText(row.title, 4_096);
   const url = boundedText(row.url, 8_192);
   if (
     imageUrl === undefined ||
+    latestActivityAt === undefined ||
     !title ||
     !url ||
     typeof row.enabled !== "boolean" ||
+    !isLibraryCoreNonnegativeSafeInteger(row.activityCount) ||
     !isLibraryCoreNonnegativeSafeInteger(row.updatedAt)
   ) {
     return null;
   }
   return Object.freeze({
+    activityCount: row.activityCount,
     enabled: row.enabled,
     imageUrl,
+    latestActivityAt,
     title,
     updatedAt: row.updatedAt,
     url,

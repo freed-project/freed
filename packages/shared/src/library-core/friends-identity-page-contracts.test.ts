@@ -70,6 +70,7 @@ describe("Friends identity page contracts", () => {
 
   it("rejects unordered Account rows and cursors from another source", () => {
     const account = (id: string) => ({
+      activityCount: 0,
       avatarUrl: null,
       discoveredFrom: "capture",
       displayName: null,
@@ -80,6 +81,7 @@ describe("Friends identity page contracts", () => {
       id,
       kind: "social",
       lastSeenAt: 2,
+      latestActivityAt: null,
       personId: null,
       provider: "x",
       updatedAt: 2,
@@ -106,15 +108,19 @@ describe("Friends identity page contracts", () => {
           queryId: "rss_feed_graph_page_v1",
           rows: [
             {
+              activityCount: 4,
               enabled: true,
               imageUrl: null,
+              latestActivityAt: 30,
               title: "Alpha",
               updatedAt: 3,
               url: "https://alpha.example/feed",
             },
             {
+              activityCount: 0,
               enabled: false,
               imageUrl: "https://beta.example/icon.png",
+              latestActivityAt: null,
               title: "Beta",
               updatedAt: 4,
               url: "https://beta.example/feed",
