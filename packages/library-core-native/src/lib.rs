@@ -83,12 +83,12 @@ pub use normalized_import::{
     NormalizedCheckpointActivationReceiptV2,
 };
 pub use normalized_query::{
-    query_normalized_v1, NormalizedAccountDetailRequestV1, NormalizedAccountDetailResponseV1,
-    NormalizedAccountDetailV1, NormalizedAccountGraphPageRequestV1,
-    NormalizedAccountGraphPageResponseV1, NormalizedAccountGraphRowV1,
-    NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1, NormalizedChangeFeedRowV1,
-    NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1, NormalizedFacetSummaryV1,
-    NormalizedFeedBrowseEdgeOrderV3, NormalizedFeedBrowseFilterV1,
+    query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,
+    NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,
+    NormalizedAccountGraphPageRequestV1, NormalizedAccountGraphPageResponseV1,
+    NormalizedAccountGraphRowV1, NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1,
+    NormalizedChangeFeedRowV1, NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1,
+    NormalizedFacetSummaryV1, NormalizedFeedBrowseEdgeOrderV3, NormalizedFeedBrowseFilterV1,
     NormalizedFeedBrowsePageRequestV3, NormalizedFeedBrowsePageResponseV3, NormalizedFeedCardV1,
     NormalizedFeedPageRequestV1, NormalizedFeedPageResponseV1, NormalizedFeedPageSourceV1,
     NormalizedItemScanRequestV1, NormalizedItemScanResponseV1, NormalizedMapMarkerV1,

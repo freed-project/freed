@@ -1,9 +1,9 @@
-//! Direct Freed Desktop Library storage.
+//! Freed Desktop native Library routing during the SQLite-only cutover.
 //!
-//! This is intentionally simpler than the replacement replication protocol.
-//! SQLite owns the local Desktop Library after one explicit import. Automerge
-//! is retained only as the cold source file that can be restored if the import
-//! is rejected. Normal startup, reads, and writes do not open it.
+//! Final product reads enter the normalized native core through closed typed
+//! commands. The legacy commands in this module remain only until the one-time
+//! migration and caller cut remove them. They are not part of the final
+//! Library contract.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use freed_library_core::{
@@ -12,7 +12,7 @@ use freed_library_core::{
     LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
     LibraryCoreStoreStatus,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -42,6 +42,7 @@ use super::library_core_journal::{
 const BACKUP_DIRECTORY: &str = "library-backups";
 const JOURNAL_DIRECTORY: &str = "library-core";
 const JOURNAL_FILE: &str = "library-core.sqlite";
+const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const MAX_IMPORT_BATCH: usize = 1_000;
 const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
@@ -965,6 +966,50 @@ fn open_store_at(root: &Path) -> Result<LibraryCoreStore, String> {
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
     open_database_at(&app_root(app)?)
+}
+
+fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .connect_normalized()
+            .map_err(|error| error.to_string());
+    }
+    let directory = app_root(app)?.join(NORMALIZED_LIBRARY_DIRECTORY);
+    create_private_directory(&directory).map_err(|error| error.to_string())?;
+    let connection = Connection::open_with_flags(
+        directory.join(JOURNAL_FILE),
+        OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW
+            | OpenFlags::SQLITE_OPEN_EXRESCODE,
+    )
+    .map_err(|error| error.to_string())?;
+    connection
+        .execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA trusted_schema = OFF;
+             PRAGMA busy_timeout = 5000;",
+        )
+        .map_err(|error| error.to_string())?;
+    freed_library_core::install_normalized_schema_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    connection
+        .pragma_update(None, "journal_mode", "WAL")
+        .map_err(|error| error.to_string())?;
+    Ok(connection)
+}
+
+#[tauri::command]
+pub(super) fn query_normalized_library(
+    app: tauri::AppHandle,
+    request: Value,
+) -> Result<Value, String> {
+    let mut connection = open_normalized_database(&app)?;
+    freed_library_core::query_normalized_json_v1(&mut connection, request)
+        .map_err(|error| error.to_string())
 }
 
 fn validate_hex_digest(value: &str) -> bool {

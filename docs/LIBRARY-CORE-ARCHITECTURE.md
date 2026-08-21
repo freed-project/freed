@@ -119,6 +119,14 @@ object. No browser worker retains the corpus merely to answer a page query.
 - `packages/capture-*` own isolated extraction and normalization. Captured
   values enter the Library through registered mutations.
 
+Freed Desktop stores the final normalized database below its private
+`library-sqlite` directory. The native binding holds the directory descriptor
+and process lease for the process lifetime. During the one-time migration,
+the historical `library-core` database remains a separate source. The two
+files never participate in a dual write. Activation selects the normalized
+database once, after which the historical source is removed on the documented
+receipt boundary.
+
 The explicit runtime deletion list is in section 21. Current delivery state is
 tracked in [STORAGE-ARCHITECTURE-ROADMAP.md](STORAGE-ARCHITECTURE-ROADMAP.md),
 not in this architecture.

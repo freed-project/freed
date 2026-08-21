@@ -14180,6 +14180,7 @@ pub fn run() {
             replace_provider_schedule_wake,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
+            library_core_desktop_runtime::query_normalized_library,
             library_core_desktop_runtime::sqlite_library_status,
             library_core_desktop_runtime::begin_sqlite_library_import,
             library_core_desktop_runtime::append_sqlite_library_import,

@@ -4,24 +4,53 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use crate::library_core_bound_root::LibraryCoreBoundRoot;
+use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::{
-    LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
-    ProcessLeaseIdentity,
+    install_normalized_schema_v1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
+    LibraryCoreStoreError, ProcessLeaseIdentity,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
+const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 
-/// Freed Desktop's one descriptor-bound Library Core authority handle.
+fn normalized_open_flags(create: bool) -> OpenFlags {
+    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+        | OpenFlags::SQLITE_OPEN_NO_MUTEX
+        | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+        | OpenFlags::SQLITE_OPEN_NOFOLLOW
+        | OpenFlags::SQLITE_OPEN_EXRESCODE;
+    if create {
+        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    }
+    flags
+}
+
+fn configure_normalized_connection(connection: &Connection) -> Result<(), LibraryCoreStoreError> {
+    connection.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA trusted_schema = OFF;
+         PRAGMA busy_timeout = 5000;",
+    )?;
+    install_normalized_schema_v1(connection)
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+    connection.pragma_update(None, "journal_mode", "WAL")?;
+    Ok(())
+}
+
+/// Freed Desktop's descriptor-bound Library Core process binding.
 ///
 /// The app-data pathname is consumed once. Every later SQLite, WAL, SHM,
 /// journal, lease, and backup operation resolves from held directory handles.
 pub struct LibraryCoreDesktopBinding {
     store: LibraryCoreStore,
+    normalized_database: BoundSqliteDatabase,
     _lease: LibraryCoreProcessLease,
+    _normalized_lease: LibraryCoreProcessLease,
     _library_root: LibraryCoreBoundRoot,
+    _normalized_root: LibraryCoreBoundRoot,
     _app_root: LibraryCoreBoundRoot,
 }
 
@@ -82,18 +111,41 @@ impl LibraryCoreDesktopBinding {
         let lease = LibraryCoreProcessLease::acquire_bound(&library_root, identity)
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
         after_lease();
+        let normalized_directory =
+            app_root.open_or_create_private_directory(NORMALIZED_LIBRARY_DIRECTORY)?;
+        let normalized_root =
+            LibraryCoreBoundRoot::from_inherited_descriptor(normalized_directory.as_raw_fd())?;
+        let normalized_lease = LibraryCoreProcessLease::acquire_bound(&normalized_root, identity)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        let normalized_database =
+            BoundSqliteDatabase::from_directory(normalized_directory.try_clone()?)?;
+        let normalized_connection = normalized_database.open(normalized_open_flags(true))?;
+        configure_normalized_connection(&normalized_connection)?;
+        drop(normalized_connection);
         let backup_directory = app_root.open_or_create_private_directory("library-backups")?;
         let store = LibraryCoreStore::open_bound_directories(library_directory, backup_directory)?;
         Ok(Self {
             store,
+            normalized_database,
             _lease: lease,
+            _normalized_lease: normalized_lease,
             _library_root: library_root,
+            _normalized_root: normalized_root,
             _app_root: app_root,
         })
     }
 
     pub fn connect(&self) -> Result<Connection, LibraryCoreStoreError> {
         self.store.connect()
+    }
+
+    /// Opens Freed Desktop's final normalized SQLite authority.
+    pub fn connect_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+        let connection = self
+            .normalized_database
+            .open(normalized_open_flags(false))?;
+        configure_normalized_connection(&connection)?;
+        Ok(connection)
     }
 
     pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
@@ -142,5 +194,14 @@ mod tests {
             b"replacement"
         );
         assert!(!visible_library.join("library-core.sqlite").exists());
+        assert!(app_root
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
+            .join("library-core.sqlite")
+            .is_file());
+        drop(
+            binding
+                .connect_normalized()
+                .expect("open normalized Desktop database"),
+        );
     }
 }

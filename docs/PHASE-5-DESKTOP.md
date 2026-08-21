@@ -17,6 +17,12 @@
 - [ ] Complete extraction of Library semantics into
       `packages/library-core-native` so Freed Desktop and the headless Primary
       call the same Rust core.
+- [x] Open the final normalized Desktop database in its own private
+      descriptor-bound `library-sqlite` directory under a separate process
+      lease. Startup installs and verifies the generated schema identity, and
+      one registered Tauri command accepts only the flat closed typed query
+      requests implemented by the native core. The historical database remains
+      outside this database and receives no mirrored normalized writes.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 33 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
@@ -255,10 +261,13 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
 - **Shared React codebase:** `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, while `dev-app.freed.wtf` follows the latest merge to `dev`
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
-- **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
+- **Ranking runs here:** Freed Desktop computes priority through registered
+  native mutations and synchronizes the resulting typed normalized records.
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
-- **Permanent social media vault:** Facebook and Instagram can copy the user's own uploaded media into local app data outside Automerge and outside normal cache pruning
+- **Permanent social media vault:** Facebook and Instagram can copy the user's
+  own uploaded media into the content-addressed local vault outside normal
+  cache pruning.
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
@@ -476,6 +485,7 @@ export async function captureDomFeed(
 | 5.41 | Multi-Desktop registration and duplicate provider request warning        | Low        |
 | 5.42 | Execute indexed bidirectional `saved_feed_page_v2` through the native core with all four Saved orders and exact browser parity | High | ✓ Complete |
 | 5.43 | Materialize signed FeedItem capture through the generated normalized SQLite mutation program with bounded members and bytes, atomic children, preserved user state, exact retry effects, and tombstone refusal | High | ✓ Complete |
+| 5.44 | Open the final normalized Desktop database through its own descriptor-bound directory and process lease, verify its generated schema identity at startup, and register one flat closed typed native query command | High | ✓ Complete |
 
 ---
 

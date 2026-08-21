@@ -3628,10 +3628,170 @@ pub fn query_normalized_v1(
     }
 }
 
+/// Executes one closed normalized query from the flat native transport shape.
+///
+/// `queryId` selects a registered request type. Every remaining field is
+/// deserialized by that request's `deny_unknown_fields` contract, so the
+/// native boundary cannot become an arbitrary SQL or loosely typed JSON path.
+pub fn query_normalized_json_v1(
+    connection: &mut Connection,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, NormalizedSqliteError> {
+    let serde_json::Value::Object(mut fields) = request else {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized query request must be an object",
+        ));
+    };
+    let query_id = fields
+        .remove("queryId")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized queryId is required",
+        ))?;
+    let fields = serde_json::Value::Object(fields);
+
+    macro_rules! decode_request {
+        ($request:ty, $variant:ident) => {
+            NormalizedQueryRequestV1::$variant(serde_json::from_value::<$request>(fields).map_err(
+                |_| NormalizedSqliteError::InvalidRequest("normalized query request is invalid"),
+            )?)
+        };
+    }
+
+    let request = match query_id.as_str() {
+        "account_detail_v1" => decode_request!(NormalizedAccountDetailRequestV1, AccountDetail),
+        "account_graph_page_v1" => {
+            decode_request!(NormalizedAccountGraphPageRequestV1, AccountGraphPage)
+        }
+        "change_feed_v1" => decode_request!(NormalizedChangeFeedRequestV1, ChangeFeed),
+        "library_facet_summary_v1" => {
+            decode_request!(NormalizedFacetSummaryRequestV1, FacetSummary)
+        }
+        "feed_browse_page_v3" => {
+            decode_request!(NormalizedFeedBrowsePageRequestV3, FeedBrowsePage)
+        }
+        "feed_page_v1" => decode_request!(NormalizedFeedPageRequestV1, FeedPage),
+        "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
+        "item_reader_body_v1" => {
+            decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
+        }
+        "item_scan_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "map_markers_v1" => decode_request!(NormalizedMapMarkersRequestV1, MapMarkers),
+        "person_detail_v1" => decode_request!(NormalizedPersonDetailRequestV1, PersonDetail),
+        "person_graph_page_v1" => {
+            decode_request!(NormalizedPersonGraphPageRequestV1, PersonGraphPage)
+        }
+        "person_timeline_v1" => {
+            decode_request!(NormalizedPersonTimelineRequestV1, PersonTimeline)
+        }
+        "preferences_snapshot_v1" => {
+            decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
+        }
+        "rss_feed_graph_page_v1" => {
+            decode_request!(NormalizedRssFeedGraphPageRequestV1, RssFeedGraphPage)
+        }
+        "saved_analytics_v2" => {
+            decode_request!(NormalizedSavedAnalyticsRequestV2, SavedAnalytics)
+        }
+        "saved_feed_page_v2" => {
+            decode_request!(NormalizedSavedFeedPageRequestV2, SavedFeedPage)
+        }
+        "story_wall_candidates_v1" => {
+            decode_request!(NormalizedStoryWallCandidatesRequestV1, StoryWallCandidates)
+        }
+        _ => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized queryId is unknown",
+            ));
+        }
+    };
+    let response = query_normalized_v1(connection, request)?;
+
+    macro_rules! encode_response {
+        ($response:expr) => {
+            serde_json::to_value($response).map_err(|error| {
+                NormalizedSqliteError::Transport(format!(
+                    "normalized query response encoding failed: {error}"
+                ))
+            })
+        };
+    }
+
+    match response {
+        NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FeedPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
+        NormalizedQueryResponseV1::MapMarkers(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RssFeedGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::SavedAnalytics(response) => encode_response!(response),
+        NormalizedQueryResponseV1::SavedFeedPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::StoryWallCandidates(response) => encode_response!(response),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
+
+    #[test]
+    fn flat_json_boundary_accepts_only_registered_typed_queries() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 0, 0);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;",
+                "a".repeat(64)
+            ))
+            .expect("query source fixture");
+
+        let response = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "queryId": "library_facet_summary_v1",
+                "schemaVersion": 1
+            }),
+        )
+        .expect("query facet summary");
+        assert_eq!(
+            response.get("queryId").and_then(serde_json::Value::as_str),
+            Some("library_facet_summary_v1")
+        );
+        assert!(response.get("FacetSummary").is_none());
+
+        let unknown = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({"queryId": "raw_sql_v1", "sql": "SELECT 1"}),
+        )
+        .expect_err("unknown query must fail");
+        assert_eq!(unknown.to_string(), "normalized queryId is unknown");
+
+        let extra = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "queryId": "library_facet_summary_v1",
+                "schemaVersion": 1,
+                "sql": "SELECT 1"
+            }),
+        )
+        .expect_err("unknown request field must fail");
+        assert_eq!(extra.to_string(), "normalized query request is invalid");
+    }
 
     #[test]
     fn native_cursor_codec_matches_the_typescript_contract_golden_vector() {

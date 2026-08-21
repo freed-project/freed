@@ -74,6 +74,13 @@ version change never silently enables a fallback engine.
 Freed Desktop and the headless Primary are hosts of this crate. Tauri does not
 own Library SQL, schemas, query semantics, or mutation semantics.
 
+On Freed Desktop, the normalized database is opened from a private
+descriptor-bound `library-sqlite` directory under its own process lease. The
+native query command accepts a flat registered `queryId` request, removes that
+discriminator, deserializes the remaining fields into the exact generated
+request type, and returns the exact response DTO. Unknown query IDs and extra
+fields fail closed. Raw SQL never crosses the native boundary.
+
 ### 3.2 Browser core
 
 The PWA runs official SQLite WebAssembly in a dedicated worker and persists the
