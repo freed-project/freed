@@ -127,6 +127,40 @@ pub(crate) struct OperationIdentity {
     pub(crate) actor_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OperationAdmissionVerdict {
+    Admissible,
+    ActorRetired,
+    CapabilityDenied { field: &'static str },
+}
+
+pub(crate) fn operation_admission_verdict(
+    actor: &ActorState,
+    verified: &VerifiedOperationTransaction,
+) -> OperationAdmissionVerdict {
+    if actor.retired {
+        return OperationAdmissionVerdict::ActorRetired;
+    }
+    for member in &verified.members {
+        let denied_field = if actor.capability.retired {
+            Some("actor_capability_retired")
+        } else if matches!(
+            actor.capability.scope,
+            super::actor_capability::ActorCapabilityScope::Bounded { .. }
+        ) {
+            Some("actor_capability_scope")
+        } else if !actor.capability.allows_operation(&member.operation_type) {
+            Some("actor_capability_operation")
+        } else {
+            None
+        };
+        if let Some(field) = denied_field {
+            return OperationAdmissionVerdict::CapabilityDenied { field };
+        }
+    }
+    OperationAdmissionVerdict::Admissible
+}
+
 #[derive(Debug)]
 struct ParsedEnvelope {
     value: Value,
@@ -1470,10 +1504,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     })
 }
 
-pub(crate) fn verify_operation_transaction<F>(
+fn verify_operation_transaction_with_verdict<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
-) -> JournalResult<VerifiedOperationTransaction>
+) -> JournalResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
 where
     F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
 {
@@ -1623,22 +1657,7 @@ where
         previous_chain_digest = actor_chain_digest;
     }
 
-    for (index, member) in parsed.iter().enumerate() {
-        if actor.capability.retired {
-            return Err(invalid(index, "actor_capability_retired"));
-        }
-        if matches!(
-            actor.capability.scope,
-            super::actor_capability::ActorCapabilityScope::Bounded { .. }
-        ) {
-            return Err(invalid(index, "actor_capability_scope"));
-        }
-        if !actor.capability.allows_operation(&member.operation_type) {
-            return Err(invalid(index, "actor_capability_operation"));
-        }
-    }
-
-    Ok(VerifiedOperationTransaction {
+    let verified = VerifiedOperationTransaction {
         transaction_id: first.transaction_id.clone(),
         transaction_digest,
         library_id: first.library_id.clone(),
@@ -1648,7 +1667,35 @@ where
         actor_capability: actor.capability.clone(),
         canonical_envelope_bytes: total_bytes,
         members: verified_members,
-    })
+    };
+    let verdict = operation_admission_verdict(&actor, &verified);
+    Ok((verified, verdict))
+}
+
+pub(crate) fn verify_operation_transaction_for_resolution<F>(
+    canonical_envelopes: &[Vec<u8>],
+    actor_lookup: F,
+) -> JournalResult<(VerifiedOperationTransaction, OperationAdmissionVerdict)>
+where
+    F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
+{
+    verify_operation_transaction_with_verdict(canonical_envelopes, actor_lookup)
+}
+
+pub(crate) fn verify_operation_transaction<F>(
+    canonical_envelopes: &[Vec<u8>],
+    actor_lookup: F,
+) -> JournalResult<VerifiedOperationTransaction>
+where
+    F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
+{
+    let (verified, verdict) =
+        verify_operation_transaction_with_verdict(canonical_envelopes, actor_lookup)?;
+    match verdict {
+        OperationAdmissionVerdict::Admissible => Ok(verified),
+        OperationAdmissionVerdict::ActorRetired => Err(invalid(0, "actor_retired")),
+        OperationAdmissionVerdict::CapabilityDenied { field } => Err(invalid(0, field)),
+    }
 }
 
 #[cfg(test)]

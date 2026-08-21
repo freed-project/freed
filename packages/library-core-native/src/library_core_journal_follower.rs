@@ -620,6 +620,7 @@ impl LibraryCoreJournal {
                         next_sequence: row.get(9)?,
                         previous_operation_id: row.get(10)?,
                         previous_chain_digest: row.get(11)?,
+                        retired: false,
                         capability: super::actor_capability::ActorCapabilityState::legacy_editor(
                             row.get(6)?,
                             row.get(12)?,

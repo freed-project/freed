@@ -69,6 +69,12 @@
       rejects gaps, chain splices, cross-actor cursors, and undersized pages.
       The SQLite plan uses the actor and result sequence index without an
       offset, scan, or temporary sort.
+- [x] Verify a complete signed transaction before evaluating mutable actor and
+      capability policy. Under the immediate admission transaction, a retired
+      actor receives `actor_retired`, while a retired, bounded, or
+      mutation-excluding capability receives `capability_denied`. Both are
+      authority-signed exact-retry results that leave accepted operations,
+      product rows, actor operation tips, invalidations, and revisions alone.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

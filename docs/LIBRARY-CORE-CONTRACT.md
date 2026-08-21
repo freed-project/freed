@@ -285,8 +285,20 @@ rows, derives current sparse replacement fields from normalized product rows,
 and signs a new actor-sequenced result. Exact non-accepted retry returns the
 stored bytes without allocating another sequence. Rejected and already-applied
 production never writes a product row, operation row, actor operation tip, or
-source revision. Classification and routing of every closed rejection reason
-remain required before follower write activation.
+source revision.
+
+Cryptographic verification and admission policy are separate native stages. A
+well-formed transaction has its complete canonical bytes, digest chain, and
+actor signatures verified even when the actor has since retired or its current
+capability no longer permits the registered mutation. Under the immediate
+admission transaction, the Primary reloads the actor and capability. A retired
+actor produces `actor_retired`. A retired, bounded, or mutation-excluding
+capability produces `capability_denied`. Both results bind the current source
+revision and active authority signature, and neither creates an accepted
+transaction, operation, receipt, invalidation, product write, actor operation
+tip, or source revision. Exact retry returns the first signed rejection.
+Epoch classification and routing remain required before follower write
+activation.
 
 Target admission runs after signature, transaction, writer, actor, capability,
 and program verification, under the same immediate SQLite transaction used for

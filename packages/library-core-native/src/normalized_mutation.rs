@@ -3,8 +3,11 @@ use crate::library_core_canonical::{
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_journal::actor_capability::parse_stored_capability;
+#[cfg(test)]
+use crate::library_core_journal::operation_verifier::verify_operation_transaction;
 use crate::library_core_journal::operation_verifier::{
-    verify_operation_transaction, OperationIdentity,
+    operation_admission_verdict, verify_operation_transaction_for_resolution,
+    OperationAdmissionVerdict, OperationIdentity,
 };
 use crate::library_core_journal::{
     validate_transaction, ActorState, JournalError, JournalResult, VerifiedOperationTransaction,
@@ -91,6 +94,10 @@ fn actor_state_at(
         Option<i64>,
         Option<String>,
         String,
+        Option<i64>,
+        String,
+        Option<String>,
+        Option<String>,
     );
     let row: ActorRow = connection
         .query_row(
@@ -104,17 +111,25 @@ fn actor_state_at(
                     capability.scope_kind, capability.scope_id,
                     capability.certificate_digest, capability.issued_at,
                     capability.retired_at, capability.retirement_certificate_digest,
-                    actor.chain_genesis_digest
+                    actor.chain_genesis_digest, actor.retired_at,
+                    capability.capability_id, capability.issuance_identity,
+                    capability.retirement_identity
              FROM library_actors AS actor
              JOIN library_authority_epochs AS epoch
                ON epoch.epoch_id = actor.authority_epoch_id
              JOIN library_actor_capabilities AS capability
-               ON capability.actor_id = actor.actor_id
-              AND capability.retired_at IS NULL
+               ON capability.capability_id = (
+                 SELECT candidate.capability_id
+                 FROM library_actor_capabilities AS candidate
+                 WHERE candidate.actor_id = actor.actor_id
+                 ORDER BY (candidate.retired_at IS NULL) DESC,
+                          candidate.issued_at DESC,
+                          candidate.capability_id
+                 LIMIT 1
+               )
              WHERE actor.actor_id = ?1
                AND actor.authority_epoch_id = ?2
-               AND epoch.library_id = ?3
-               AND actor.retired_at IS NULL;",
+               AND epoch.library_id = ?3;",
             params![identity.actor_id, identity.epoch_id, identity.library_id],
             |row| {
                 Ok((
@@ -139,6 +154,10 @@ fn actor_state_at(
                     row.get(18)?,
                     row.get(19)?,
                     row.get(20)?,
+                    row.get(21)?,
+                    row.get(22)?,
+                    row.get(23)?,
+                    row.get(24)?,
                 ))
             },
         )
@@ -148,14 +167,11 @@ fn actor_state_at(
         })?;
     let mut statement = connection.prepare(
         "SELECT mutation_id FROM library_actor_capability_mutations
-         WHERE capability_id = (
-           SELECT capability_id FROM library_actor_capabilities
-           WHERE actor_id = ?1 AND retired_at IS NULL
-         )
+         WHERE capability_id = ?1
          ORDER BY mutation_id;",
     )?;
     let allowed_operation_types = statement
-        .query_map([&identity.actor_id], |row| row.get::<_, String>(0))?
+        .query_map([&row.22], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let capability = parse_stored_capability(
         row.11,
@@ -168,18 +184,8 @@ fn actor_state_at(
         row.13,
         row.14,
         row.15,
-        connection.query_row(
-            "SELECT issuance_identity FROM library_actor_capabilities
-             WHERE actor_id = ?1 AND retired_at IS NULL;",
-            [&identity.actor_id],
-            |row| row.get(0),
-        )?,
-        connection.query_row(
-            "SELECT retirement_identity FROM library_actor_capabilities
-             WHERE actor_id = ?1 AND retired_at IS NULL;",
-            [&identity.actor_id],
-            |row| row.get(0),
-        )?,
+        row.23,
+        row.24,
         row.16,
         row.17,
         i64::from(row.18.is_some()),
@@ -207,6 +213,7 @@ fn actor_state_at(
         previous_operation_id: row.9,
         previous_chain_digest: row.10,
         capability,
+        retired: row.21.is_some(),
     })
 }
 
@@ -1510,6 +1517,37 @@ fn materialize_member(
     }
 }
 
+fn persist_rejected_resolution(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    authority_key_pair: &Ed25519KeyPair,
+    resolved_at: i64,
+    reason: &'static str,
+) -> Result<NormalizedFollowerResultReceiptV1, NormalizedSqliteError> {
+    let source_revision: i64 = transaction.query_row(
+        "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
+        [],
+        |row| row.get(0),
+    )?;
+    let (sequence, digest, canonical) = persist_follower_result_outcome(
+        transaction,
+        verified,
+        authority_key_pair,
+        source_revision,
+        resolved_at,
+        FollowerResultOutcome::Rejected { reason },
+    )?;
+    Ok(NormalizedFollowerResultReceiptV1 {
+        transaction_id: verified.transaction_id.clone(),
+        transaction_digest: verified.transaction_digest.clone(),
+        actor_id: verified.actor_id.clone(),
+        status: "rejected",
+        follower_result_digest: digest,
+        follower_result_sequence: sequence,
+        canonical_follower_result: canonical,
+    })
+}
+
 pub(crate) fn resolve_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
@@ -1521,9 +1559,10 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
             "normalized mutation commit time is invalid",
         ));
     }
-    let verified = verify_operation_transaction(canonical_envelopes, |identity| {
-        actor_state_at(connection, identity)
-    })?;
+    let (verified, _initial_verdict) =
+        verify_operation_transaction_for_resolution(canonical_envelopes, |identity| {
+            actor_state_at(connection, identity)
+        })?;
     validate_transaction(&verified)?;
     let program = SQLITE_MUTATION_PROGRAMS
         .iter()
@@ -1562,6 +1601,23 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
     }
+    let current_verdict = operation_admission_verdict(&actor, &verified);
+    let rejection_reason = match current_verdict {
+        OperationAdmissionVerdict::Admissible => None,
+        OperationAdmissionVerdict::ActorRetired => Some("actor_retired"),
+        OperationAdmissionVerdict::CapabilityDenied { .. } => Some("capability_denied"),
+    };
+    if let Some(reason) = rejection_reason {
+        let receipt = persist_rejected_resolution(
+            &transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            reason,
+        )?;
+        transaction.commit()?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
     let first = &verified.members[0];
     let last = verified
         .members
@@ -1571,30 +1627,13 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         || actor.previous_operation_id != first.previous_actor_operation_id
         || actor.previous_chain_digest != first.previous_actor_chain_digest
     {
-        let source_revision: i64 = transaction.query_row(
-            "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
-            [],
-            |row| row.get(0),
-        )?;
-        let (sequence, digest, canonical) = persist_follower_result_outcome(
+        let receipt = persist_rejected_resolution(
             &transaction,
             &verified,
             authority_key_pair,
-            source_revision,
             committed_at,
-            FollowerResultOutcome::Rejected {
-                reason: "precondition_failed",
-            },
+            "precondition_failed",
         )?;
-        let receipt = NormalizedFollowerResultReceiptV1 {
-            transaction_id: verified.transaction_id,
-            transaction_digest: verified.transaction_digest,
-            actor_id: verified.actor_id,
-            status: "rejected",
-            follower_result_digest: digest,
-            follower_result_sequence: sequence,
-            canonical_follower_result: canonical,
-        };
         transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
@@ -1616,33 +1655,18 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
                 params![program.invalidation_topic, member.entity_id],
                 |row| row.get(0),
             )?;
-            let source_revision: i64 = transaction.query_row(
-                "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
-                [],
-                |row| row.get(0),
-            )?;
             let reason = if tombstoned {
                 "target_tombstoned"
             } else {
                 "target_missing"
             };
-            let (sequence, digest, canonical) = persist_follower_result_outcome(
+            let receipt = persist_rejected_resolution(
                 &transaction,
                 &verified,
                 authority_key_pair,
-                source_revision,
                 committed_at,
-                FollowerResultOutcome::Rejected { reason },
+                reason,
             )?;
-            let receipt = NormalizedFollowerResultReceiptV1 {
-                transaction_id: verified.transaction_id,
-                transaction_digest: verified.transaction_digest,
-                actor_id: verified.actor_id,
-                status: "rejected",
-                follower_result_digest: digest,
-                follower_result_sequence: sequence,
-                canonical_follower_result: canonical,
-            };
             transaction.commit()?;
             return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
         }
@@ -2794,6 +2818,145 @@ mod tests {
                 )
                 .expect("accepted plus rejected results"),
             2
+        );
+    }
+
+    #[test]
+    fn resolver_signs_actor_and_capability_policy_rejections_without_accepting() {
+        let (mut retired_connection, retired_key_pair, retired_enrollment) = fixture();
+        let retired_envelopes = signed_envelopes(&retired_key_pair, &retired_enrollment);
+        retired_connection
+            .execute(
+                "UPDATE library_actors SET retired_at = 1500, updated_at = 1500
+                 WHERE actor_id = ?1;",
+                [&retired_enrollment.actor_id],
+            )
+            .expect("retire actor");
+        let retired_receipt = match resolve_normalized_operation_transaction_v1(
+            &mut retired_connection,
+            &retired_envelopes,
+            &retired_key_pair,
+            2_000,
+        )
+        .expect("actor retirement rejection")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("a retired actor cannot be accepted")
+            }
+        };
+        let retired_result: Value =
+            serde_json::from_slice(&retired_receipt.canonical_follower_result)
+                .expect("canonical retired result");
+        assert_eq!(retired_result["rejection_reason"], "actor_retired");
+        assert_eq!(retired_result["authoritative_source_revision"], 0);
+        let retired_retry = match resolve_normalized_operation_transaction_v1(
+            &mut retired_connection,
+            &retired_envelopes,
+            &retired_key_pair,
+            2_100,
+        )
+        .expect("retired exact retry")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("a retired actor retry cannot be accepted")
+            }
+        };
+        assert_eq!(retired_retry, retired_receipt);
+        assert_eq!(
+            retired_connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("no retired transaction"),
+            0
+        );
+        assert_eq!(
+            retired_connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("unchanged retired revision"),
+            0
+        );
+        assert_eq!(
+            retired_connection
+                .query_row(
+                    "SELECT count(*) FROM library_follower_result_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("one retired result"),
+            1
+        );
+
+        let (mut denied_connection, denied_key_pair, denied_enrollment) = fixture();
+        let denied_envelopes = signed_envelopes(&denied_key_pair, &denied_enrollment);
+        denied_connection
+            .execute(
+                "UPDATE library_actor_capabilities
+                 SET retired_at = 1500, retirement_certificate_digest = ?2
+                 WHERE capability_id = ?1;",
+                params![
+                    denied_enrollment.enrollment_certificate_digest,
+                    "f".repeat(64)
+                ],
+            )
+            .expect("retire capability");
+        let denied_receipt = match resolve_normalized_operation_transaction_v1(
+            &mut denied_connection,
+            &denied_envelopes,
+            &denied_key_pair,
+            2_000,
+        )
+        .expect("capability rejection")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("a denied capability cannot be accepted")
+            }
+        };
+        let denied_result: Value =
+            serde_json::from_slice(&denied_receipt.canonical_follower_result)
+                .expect("canonical capability result");
+        assert_eq!(denied_result["rejection_reason"], "capability_denied");
+        assert_eq!(denied_result["authoritative_source_revision"], 0);
+        assert_eq!(
+            denied_connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("no denied transaction"),
+            0
+        );
+        assert_eq!(
+            denied_connection
+                .query_row("SELECT accepted_counter FROM library_actors;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("unchanged denied actor tip"),
+            0
+        );
+        assert_eq!(
+            denied_connection
+                .query_row(
+                    "SELECT read_at FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .expect("unchanged denied item"),
+            None
+        );
+        assert_eq!(
+            denied_connection
+                .query_row(
+                    "SELECT count(*) FROM library_follower_result_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("one capability result"),
+            1
         );
     }
 

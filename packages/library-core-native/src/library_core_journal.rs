@@ -318,6 +318,7 @@ pub struct ActorState {
     pub next_sequence: i64,
     pub previous_operation_id: Option<String>,
     pub previous_chain_digest: String,
+    pub(crate) retired: bool,
     pub(crate) capability: ActorCapabilityState,
 }
 
@@ -1492,6 +1493,7 @@ impl LibraryCoreJournal {
             next_sequence: actor.next_sequence,
             previous_operation_id: actor.previous_operation_id,
             previous_chain_digest: actor.previous_chain_digest,
+            retired: false,
             capability,
         }))
     }
