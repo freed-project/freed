@@ -1387,37 +1387,18 @@ describe("Library Core query registry", () => {
     );
   });
 
-  it("keeps every current unbounded request, response, and direct-document read blocked", () => {
-    const currentKinds = new Set<string>();
+  it("excludes whole-document reads and IndexedDB from the SQLite query registry", () => {
+    expect(
+      LIBRARY_CORE_QUERY_IDS.some(
+        (queryId) => queryId.includes("legacy") || queryId.includes("document"),
+      ),
+    ).toBe(false);
     for (const definition of Object.values(LIBRARY_CORE_QUERY_REGISTRY)) {
-      if (definition.status !== "legacy_unbounded") continue;
-      expect(definition.activationBlocker).toBeTruthy();
-      expect(definition.consumers.length).toBeGreaterThan(0);
-      definition.source.currentKinds.forEach((kind) => currentKinds.add(kind));
-    }
-
-    for (const kind of [
-      "ALL_ITEM_IDS",
-      "BROADCAST_REQUEST",
-      "COMPARE_DOC",
-      "DOC_BINARY",
-      "DOC_HEADS",
-      "DOC_RELATIONSHIP",
-      "FEEDS_PATCH",
-      "GET_ALL_ITEM_IDS",
-      "GET_DOC_BINARY",
-      "GET_HEADS",
-      "GET_ITEM_LEGACY_HTML",
-      "GET_ITEM_PRESERVED_TEXT",
-      "GET_SAVED_YOUTUBE_URLS",
-      "ITEM_LEGACY_HTML",
-      "ITEM_PATCH",
-      "ITEM_PRESERVED_TEXT",
-      "PREFERENCES_PATCH",
-      "SAVED_YOUTUBE_URLS",
-      "STATE_UPDATE",
-    ]) {
-      expect(currentKinds.has(kind), kind).toBe(true);
+      expect(definition.status).toBe("planned_blocked");
+      expect(definition.intendedAdapters).toStrictEqual([
+        "desktop_sqlite",
+        "pwa_sqlite_opfs",
+      ]);
     }
   });
 });

@@ -27,6 +27,10 @@
 
 ## Current SQLite sync work
 
+- [x] Define `freed_normalized_checkpoint_v2` registry identity and shared
+      protocol ceilings from one executable source. Rust and TypeScript reject
+      shell registry entries and losslessly chunk and reassemble a 4 MiB legal
+      value without producing a record above 131,072 canonical bytes.
 - [ ] Freeze one generated protocol registry for normalized checkpoint records,
       operation segments, signed intents, results, content descriptors, range
       indexes, manifests, and control tuples.

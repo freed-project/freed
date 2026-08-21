@@ -24,7 +24,9 @@ mod library_core_process_lease;
 #[cfg(unix)]
 mod library_core_sidecar;
 mod library_core_store;
+mod normalized_checkpoint;
 mod product_projection;
+pub mod sqlite_contract_generated;
 
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request, enroll_desktop_actor,
@@ -61,5 +63,9 @@ pub use library_core_store::{
     LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
     LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore, LibraryCoreStoreError,
     LibraryCoreStoreResult, LibraryCoreStoreStatus,
+};
+pub use normalized_checkpoint::{
+    reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
+    NormalizedCheckpointRecordV2,
 };
 pub use product_projection::upsert_item;

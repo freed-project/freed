@@ -1,0 +1,355 @@
+import {
+  decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
+  type LibraryCoreCanonicalValue,
+} from "./canonical-codec.js";
+import {
+  createLibraryCoreMediaBlobDigestStateV1,
+  digestLibraryCoreMediaBlobBytesV1,
+} from "./media-blob-transport-contracts.js";
+import {
+  LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY,
+  LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+  LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT,
+  LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+  type LibraryCoreCheckpointRegistryKey,
+} from "./sqlite-contract.generated.js";
+import {
+  isLibraryCoreLowercaseHex64,
+  isLibraryCoreNonnegativeSafeInteger,
+  type LibraryCoreLowercaseHex64,
+} from "./protocol-scalars.js";
+
+export type LibraryCoreNormalizedCheckpointPrimaryKeyV2 =
+  | string
+  | readonly [string, number]
+  | readonly [string, string]
+  | readonly [string, string, string]
+  | readonly [string, string, string, string]
+  | readonly [string, string, string, string, string];
+
+export interface LibraryCoreNormalizedCheckpointRecordV2 {
+  readonly format: typeof LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT;
+  readonly protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+  readonly registryKey: LibraryCoreCheckpointRegistryKey;
+  readonly primaryKey: LibraryCoreNormalizedCheckpointPrimaryKeyV2;
+  readonly payload: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface LibraryCoreContentDescriptorPayloadV1 {
+  readonly blobContentDigest: LibraryCoreLowercaseHex64;
+  readonly byteLength: number;
+  readonly chunkBytes: typeof LIBRARY_CORE_CONTENT_CHUNK_BYTES;
+  readonly chunkCount: number;
+  readonly mediaType: string;
+}
+
+export interface LibraryCoreContentChunkPayloadV1 {
+  readonly blobContentDigest: LibraryCoreLowercaseHex64;
+  readonly byteLength: number;
+  readonly bytesBase64: string;
+  readonly chunkContentDigest: LibraryCoreLowercaseHex64;
+  readonly chunkIndex: number;
+}
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder("utf-8", { fatal: true });
+function ownClosedRecord(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string,
+): Record<string, unknown> {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw new TypeError(`${label} must be a plain closed record`);
+  }
+  const keys = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    throw new TypeError(`${label} has unknown or missing fields`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
+function base64Decode(value: string): Uint8Array {
+  if (
+    value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
+    throw new TypeError("content chunk bytesBase64 is not canonical base64");
+  }
+  const binary = atob(value);
+  const output = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    output[index] = binary.charCodeAt(index);
+  }
+  if (base64Encode(output) !== value) {
+    throw new TypeError("content chunk bytesBase64 is not canonical base64");
+  }
+  return output;
+}
+
+function canonicalPayload(
+  value: unknown,
+): Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("normalized checkpoint payload must be an object");
+  }
+  return decodeLibraryCoreCanonicalValue(
+    encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue, {
+      maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+    }),
+  ) as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+function registryEntry(registryKey: string) {
+  const entry = LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY.find(
+    (candidate) => candidate.registryKey === registryKey,
+  );
+  if (entry === undefined || registryKey.includes("shell")) {
+    throw new TypeError("normalized checkpoint registry key is unsupported");
+  }
+  return entry;
+}
+
+function boundedPrimaryKey(
+  value: unknown,
+  codec: (typeof LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY)[number]["primaryKey"],
+): LibraryCoreNormalizedCheckpointPrimaryKeyV2 {
+  const snapshot = decodeLibraryCoreCanonicalValue(
+    encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue, {
+      maximumBytes: 4_096,
+    }),
+  );
+  if (codec === "singleton" && snapshot === "checkpoint") return snapshot;
+  if (
+    codec === "text" &&
+    typeof snapshot === "string" &&
+    snapshot.length > 0
+  ) {
+    return snapshot;
+  }
+  if (codec === "digest" && isLibraryCoreLowercaseHex64(snapshot)) {
+    return snapshot;
+  }
+  if (
+    Array.isArray(snapshot) &&
+    snapshot.length >= 2 &&
+    snapshot.length <= 5 &&
+    snapshot.every(
+      (part) =>
+        (typeof part === "string" && part.length > 0) ||
+        isLibraryCoreNonnegativeSafeInteger(part),
+    )
+  ) {
+    const valid =
+      (codec === "chunk" &&
+        snapshot.length === 2 &&
+        isLibraryCoreLowercaseHex64(snapshot[0]) &&
+        isLibraryCoreNonnegativeSafeInteger(snapshot[1])) ||
+      (codec === "entity" &&
+        snapshot.length === 2 &&
+        snapshot.every((part) => typeof part === "string")) ||
+      (codec === "receipt" &&
+        snapshot.length === 2 &&
+        snapshot.every((part) => typeof part === "string")) ||
+      (codec === "field" &&
+        snapshot.length === 3 &&
+        snapshot.every((part) => typeof part === "string")) ||
+      (codec === "relationship" &&
+        snapshot.length === 5 &&
+        snapshot.every((part) => typeof part === "string"));
+    if (valid) {
+      return snapshot as unknown as LibraryCoreNormalizedCheckpointPrimaryKeyV2;
+    }
+  }
+  throw new TypeError("normalized checkpoint primary key is invalid");
+}
+
+export function createLibraryCoreNormalizedCheckpointRecordV2(input: {
+  readonly registryKey: LibraryCoreCheckpointRegistryKey;
+  readonly primaryKey: LibraryCoreNormalizedCheckpointPrimaryKeyV2;
+  readonly payload: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}): LibraryCoreNormalizedCheckpointRecordV2 {
+  const entry = registryEntry(input.registryKey);
+  const record = Object.freeze({
+    format: LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT,
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    registryKey: input.registryKey,
+    primaryKey: boundedPrimaryKey(input.primaryKey, entry.primaryKey),
+    payload: canonicalPayload(input.payload),
+  });
+  encodeLibraryCoreCanonicalValue(record, {
+    maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  });
+  return record;
+}
+
+export function parseLibraryCoreNormalizedCheckpointRecordV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointRecordV2 {
+  const record = ownClosedRecord(
+    value,
+    ["format", "payload", "primaryKey", "protocolVersion", "registryKey"],
+    "normalized checkpoint record",
+  );
+  if (
+    record.format !== LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT ||
+    record.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
+    typeof record.registryKey !== "string"
+  ) {
+    throw new TypeError("normalized checkpoint version identity is invalid");
+  }
+  return createLibraryCoreNormalizedCheckpointRecordV2({
+    registryKey: registryEntry(record.registryKey).registryKey,
+    primaryKey: record.primaryKey as LibraryCoreNormalizedCheckpointPrimaryKeyV2,
+    payload: record.payload as Readonly<Record<string, LibraryCoreCanonicalValue>>,
+  });
+}
+
+export function libraryCoreNormalizedCheckpointRecordIdentityV2(
+  record: LibraryCoreNormalizedCheckpointRecordV2,
+): string {
+  const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+  return `${parsed.registryKey}:${textDecoder.decode(
+    encodeLibraryCoreCanonicalValue(parsed.primaryKey),
+  )}`;
+}
+
+export function splitLibraryCoreContentV1(input: {
+  readonly bytes: Uint8Array;
+  readonly mediaType: string;
+}): readonly LibraryCoreNormalizedCheckpointRecordV2[] {
+  if (!(input.bytes instanceof Uint8Array)) {
+    throw new TypeError("content bytes must be a Uint8Array");
+  }
+  if (
+    input.mediaType.length === 0 ||
+    textEncoder.encode(input.mediaType).byteLength > 255
+  ) {
+    throw new TypeError("content mediaType must be bounded nonempty text");
+  }
+  const digest = digestLibraryCoreMediaBlobBytesV1(input.bytes);
+  const chunkCount = Math.ceil(input.bytes.byteLength / LIBRARY_CORE_CONTENT_CHUNK_BYTES);
+  const records: LibraryCoreNormalizedCheckpointRecordV2[] = [
+    createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "b0_blob_descriptor",
+      primaryKey: digest,
+      payload: {
+        blobContentDigest: digest,
+        byteLength: input.bytes.byteLength,
+        chunkBytes: LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+        chunkCount,
+        mediaType: input.mediaType,
+      },
+    }),
+  ];
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const chunk = input.bytes.slice(
+      chunkIndex * LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+      (chunkIndex + 1) * LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+    );
+    records.push(
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b1_content_chunk",
+        primaryKey: [digest, chunkIndex],
+        payload: {
+          blobContentDigest: digest,
+          byteLength: chunk.byteLength,
+          bytesBase64: base64Encode(chunk),
+          chunkContentDigest: digestLibraryCoreMediaBlobBytesV1(chunk),
+          chunkIndex,
+        },
+      }),
+    );
+  }
+  return Object.freeze(records);
+}
+
+export function reassembleLibraryCoreContentV1(
+  records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+): Uint8Array {
+  const parsed = records.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+  const descriptorRecord = parsed.find(
+    (record) => record.registryKey === "b0_blob_descriptor",
+  );
+  if (descriptorRecord === undefined) {
+    throw new TypeError("content descriptor record is missing");
+  }
+  const descriptor = ownClosedRecord(
+    descriptorRecord.payload,
+    ["blobContentDigest", "byteLength", "chunkBytes", "chunkCount", "mediaType"],
+    "content descriptor",
+  );
+  if (
+    !isLibraryCoreLowercaseHex64(descriptor.blobContentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(descriptor.byteLength) ||
+    descriptor.chunkBytes !== LIBRARY_CORE_CONTENT_CHUNK_BYTES ||
+    !isLibraryCoreNonnegativeSafeInteger(descriptor.chunkCount)
+  ) {
+    throw new TypeError("content descriptor is invalid");
+  }
+  const chunks = parsed
+    .filter((record) => record.registryKey === "b1_content_chunk")
+    .sort((left, right) => {
+      const leftIndex = left.primaryKey[1];
+      const rightIndex = right.primaryKey[1];
+      return Number(leftIndex) - Number(rightIndex);
+    });
+  if (chunks.length !== descriptor.chunkCount) {
+    throw new TypeError("content chunk set is incomplete");
+  }
+  const output = new Uint8Array(descriptor.byteLength);
+  const wholeDigest = createLibraryCoreMediaBlobDigestStateV1();
+  let offset = 0;
+  chunks.forEach((record, chunkIndex) => {
+    const payload = ownClosedRecord(
+      record.payload,
+      ["blobContentDigest", "byteLength", "bytesBase64", "chunkContentDigest", "chunkIndex"],
+      "content chunk",
+    );
+    if (
+      payload.blobContentDigest !== descriptor.blobContentDigest ||
+      payload.chunkIndex !== chunkIndex ||
+      !isLibraryCoreLowercaseHex64(payload.chunkContentDigest) ||
+      typeof payload.bytesBase64 !== "string"
+    ) {
+      throw new TypeError("content chunk identity is invalid");
+    }
+    const bytes = base64Decode(payload.bytesBase64);
+    if (
+      bytes.byteLength !== payload.byteLength ||
+      digestLibraryCoreMediaBlobBytesV1(bytes) !== payload.chunkContentDigest ||
+      offset + bytes.byteLength > output.byteLength
+    ) {
+      throw new TypeError("content chunk bytes are invalid");
+    }
+    output.set(bytes, offset);
+    wholeDigest.update(bytes);
+    offset += bytes.byteLength;
+  });
+  if (
+    offset !== output.byteLength ||
+    wholeDigest.digestLowerHex() !== descriptor.blobContentDigest
+  ) {
+    throw new TypeError("reassembled content digest is invalid");
+  }
+  return output;
+}

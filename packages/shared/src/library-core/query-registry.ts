@@ -79,65 +79,16 @@ import {
   LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
   LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
 } from "./facet-summary-contracts.js";
+import type { LibraryCoreQueryId } from "./sqlite-contract.generated.js";
 
-export const LIBRARY_CORE_QUERY_IDS = [
-  "account_detail_v1",
-  "background_item_page_v1",
-  "change_feed_v1",
-  "content_fetch_claim_v1",
-  "export_enumeration_v1",
-  "feed_browse_page_v1",
-  "feed_browse_page_v2",
-  "feed_browse_page_v3",
-  "feed_facets_v1",
-  "feed_page_v1",
-  "feed_subscription_page_v1",
-  "item_detail_v1",
-  "item_reader_body_v1",
-  "legacy_direct_document_diagnostics",
-  "legacy_direct_document_export",
-  "legacy_direct_document_hydration",
-  "legacy_worker_all_item_ids",
-  "legacy_worker_broadcast_binary",
-  "legacy_worker_compare_document",
-  "legacy_worker_document_binary",
-  "legacy_worker_document_heads",
-  "legacy_worker_feeds_patch",
-  "legacy_worker_item_html",
-  "legacy_worker_item_patch",
-  "legacy_worker_item_preserved_text",
-  "legacy_worker_preferences_patch",
-  "legacy_worker_saved_youtube_urls",
-  "legacy_worker_state_update",
-  "library_facet_summary_v1",
-  "library_surface_items_v1",
-  "map_markers_v1",
-  "person_detail_v1",
-  "person_timeline_v1",
-  "persons_graph_v1",
-  "preferences_snapshot_v1",
-  "provider_action_claim_v1",
-  "provider_media_page_v1",
-  "repair_work_claim_v1",
-  "saved_analytics_v1",
-  "saved_feed_page_v1",
-  "search_page_v1",
-  "semantic_classification_claim_v1",
-  "story_wall_candidates_v1",
-] as const;
-
-export type LibraryCoreQueryId = (typeof LIBRARY_CORE_QUERY_IDS)[number];
+export {
+  LIBRARY_CORE_QUERY_IDS,
+  type LibraryCoreQueryId,
+} from "./sqlite-contract.generated.js";
 
 export type LibraryCoreQueryAdapter =
   | "desktop_sqlite"
-  | "pwa_indexeddb"
   | "pwa_sqlite_opfs";
-
-export type LegacyQueryBoundary =
-  | "desktop_automerge_worker"
-  | "desktop_and_pwa_automerge_workers"
-  | "direct_automerge_document"
-  | "pwa_automerge_worker";
 
 export type LibraryCoreQueryBlocker =
   | "adapter_proof_missing"
@@ -209,11 +160,6 @@ interface QueryCancellationContract {
   readonly required: true;
   readonly identitySchema: null;
   readonly releasesSnapshot: true;
-}
-
-interface QuerySourceInventory {
-  readonly boundary: "library_core" | LegacyQueryBoundary;
-  readonly currentKinds: readonly string[];
 }
 
 export interface ResolvedQuerySortColumn {
@@ -322,30 +268,10 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly blockers: NonEmptyQueryBlockers;
 }
 
-export interface LegacyUnboundedQueryDefinition {
-  readonly status: "legacy_unbounded";
-  readonly querySchemaVersion: 0;
-  readonly source: QuerySourceInventory & {
-    readonly boundary: LegacyQueryBoundary;
-  };
-  readonly consumers: readonly string[];
-  readonly projection: "*";
-  readonly fullContentAllowed: boolean;
-  readonly activationBlocker:
-    | "decodes_full_document"
-    | "materializes_full_collection"
-    | "missing_hard_byte_bound"
-    | "missing_hard_row_bound"
-    | "missing_snapshot_bound";
-}
-
-export type LibraryCoreQueryDefinition =
-  | PlannedBlockedLibraryCoreQueryDefinition
-  | LegacyUnboundedQueryDefinition;
+export type LibraryCoreQueryDefinition = PlannedBlockedLibraryCoreQueryDefinition;
 
 const ALL_INTENDED_ADAPTERS = [
   "desktop_sqlite",
-  "pwa_indexeddb",
   "pwa_sqlite_opfs",
 ] as const satisfies readonly LibraryCoreQueryAdapter[];
 
@@ -549,32 +475,10 @@ function plannedQuery(
   };
 }
 
-function legacyUnboundedQuery(
-  boundary: LegacyQueryBoundary,
-  currentKinds: readonly string[],
-  consumers: readonly string[],
-  activationBlocker: LegacyUnboundedQueryDefinition["activationBlocker"],
-  fullContentAllowed: boolean,
-): LegacyUnboundedQueryDefinition {
-  return {
-    status: "legacy_unbounded",
-    querySchemaVersion: 0,
-    source: { boundary, currentKinds },
-    consumers,
-    projection: "*",
-    fullContentAllowed,
-    activationBlocker,
-  };
-}
-
 /**
- * Dormant query census only.
- *
- * Top-level limits come from the approved architecture, but each replacement
- * query remains blocked until its request, response, projection, source
- * identity, nested bounds, and sort contract are executable and adapter proofs
- * exist. The legacy entries name every known unbounded transport and consumer
- * that must disappear before read cutover.
+ * SQLite query registry shared by Freed Desktop and the OPFS-backed PWA.
+ * Every entry has a bounded result contract. Historical whole-document reads
+ * are deletion targets and cannot appear in this runtime registry.
  */
 export const LIBRARY_CORE_QUERY_REGISTRY = {
   account_detail_v1: plannedQuery({
@@ -840,117 +744,6 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     rendererCache: true,
     invalidationKeyIntent: ["item-body:{global_id}:{content_digest}"],
   }),
-  legacy_direct_document_diagnostics: legacyUnboundedQuery(
-    "direct_automerge_document",
-    ["A.toJS", "A.view", "Object.values", "summarizeDocContentSignals"],
-    ["debug diagnostics", "runtime-health summaries", "support evidence"],
-    "decodes_full_document",
-    true,
-  ),
-  legacy_direct_document_export: legacyUnboundedQuery(
-    "direct_automerge_document",
-    ["A.save", "document export enumeration"],
-    ["import-export", "manual export", "snapshot backup"],
-    "missing_snapshot_bound",
-    true,
-  ),
-  legacy_direct_document_hydration: legacyUnboundedQuery(
-    "direct_automerge_document",
-    ["A.view", "Object.values(feedItems)", "rankFeedItems"],
-    ["Desktop Zustand hydration", "PWA Zustand hydration"],
-    "materializes_full_collection",
-    true,
-  ),
-  legacy_worker_all_item_ids: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["GET_ALL_ITEM_IDS", "ALL_ITEM_IDS"],
-    ["Desktop import deduplication"],
-    "missing_hard_row_bound",
-    false,
-  ),
-  legacy_worker_broadcast_binary: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["BROADCAST_REQUEST"],
-    ["Desktop relay broadcast"],
-    "missing_hard_byte_bound",
-    true,
-  ),
-  legacy_worker_compare_document: legacyUnboundedQuery(
-    "desktop_and_pwa_automerge_workers",
-    ["COMPARE_DOC", "DOC_RELATIONSHIP"],
-    ["cloud reconciliation", "relay reconciliation"],
-    "missing_hard_byte_bound",
-    true,
-  ),
-  legacy_worker_document_binary: legacyUnboundedQuery(
-    "desktop_and_pwa_automerge_workers",
-    ["GET_DOC_BINARY", "DOC_BINARY"],
-    ["cloud upload", "relay broadcast", "snapshot backup", "factory reset"],
-    "missing_hard_byte_bound",
-    true,
-  ),
-  legacy_worker_document_heads: legacyUnboundedQuery(
-    "desktop_and_pwa_automerge_workers",
-    ["GET_HEADS", "DOC_HEADS"],
-    ["cloud upload loop accounting", "relay reconciliation"],
-    "missing_hard_row_bound",
-    false,
-  ),
-  legacy_worker_feeds_patch: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["FEEDS_PATCH"],
-    ["Desktop Zustand feed map"],
-    "missing_hard_row_bound",
-    false,
-  ),
-  legacy_worker_item_html: legacyUnboundedQuery(
-    "desktop_and_pwa_automerge_workers",
-    ["GET_ITEM_LEGACY_HTML", "ITEM_LEGACY_HTML"],
-    ["Desktop reader", "PWA reader"],
-    "missing_hard_byte_bound",
-    true,
-  ),
-  legacy_worker_item_patch: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["ITEM_PATCH"],
-    ["Desktop Zustand item projection", "provider outbox change subscription"],
-    "missing_hard_row_bound",
-    true,
-  ),
-  legacy_worker_item_preserved_text: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["GET_ITEM_PRESERVED_TEXT", "ITEM_PRESERVED_TEXT"],
-    ["Desktop reader", "content fetch accounting"],
-    "missing_hard_byte_bound",
-    true,
-  ),
-  legacy_worker_preferences_patch: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["PREFERENCES_PATCH"],
-    ["Desktop Zustand preferences", "semantic-classifier scheduling"],
-    "missing_hard_row_bound",
-    false,
-  ),
-  legacy_worker_saved_youtube_urls: legacyUnboundedQuery(
-    "desktop_automerge_worker",
-    ["GET_SAVED_YOUTUBE_URLS", "SAVED_YOUTUBE_URLS"],
-    ["YouTube capture deduplication"],
-    "missing_hard_row_bound",
-    false,
-  ),
-  legacy_worker_state_update: legacyUnboundedQuery(
-    "desktop_and_pwa_automerge_workers",
-    ["STATE_UPDATE", "DocState"],
-    [
-      "Desktop Zustand hydration",
-      "PWA Zustand hydration",
-      "content-fetch full-list scan",
-      "provider-outbox full-list scan",
-      "semantic-classifier corpus scheduling",
-    ],
-    "materializes_full_collection",
-    true,
-  ),
   library_facet_summary_v1: plannedQuery({
     // Whole-corpus aggregate, no paging. Traced from the native reader and the
     // shadow store: exact counts plus at most 4,096 tags of 1,024 bytes.

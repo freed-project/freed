@@ -1411,6 +1411,7 @@ dependencies = [
 name = "freed-library-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "fslock",
  "libc",
  "ring",
