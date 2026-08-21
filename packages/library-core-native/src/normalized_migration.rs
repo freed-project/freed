@@ -1,11 +1,16 @@
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_hash::lower_hex;
 use crate::normalized_checkpoint::blob_digest;
-use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
+use crate::normalized_sqlite::{
+    export_normalized_checkpoint_page_v2, install_normalized_schema_v1,
+    NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
+};
 use crate::sqlite_contract_generated::{
     CONTENT_CHUNK_BYTES, PREFERENCE_WRITE_POLICIES_JSON, SQLITE_MUTATION_PROGRAMS,
 };
-use rusqlite::{params, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
@@ -20,9 +25,61 @@ const MAXIMUM_PREFERENCE_PATH_BYTES: i64 = 4_096;
 const MAXIMUM_PREFERENCE_TEXT_BYTES: i64 = 8_192;
 const LEGACY_REACH_OUT_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-bytes/legacy-reach-out\0";
+const LEGACY_FRONTIER_DIGEST_PREFIX: &[u8] =
+    b"freed.library-core.v2/digest-records/legacy-source-frontier\0";
+const MAXIMUM_SOURCE_FRONTIER_TIPS: usize = 1_000;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LegacyShellCountsV1 {
+    rss_feeds: u64,
+    persons: u64,
+    accounts: u64,
+    reach_outs: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NormalizedMigrationCandidateReceiptV1 {
+    pub(crate) format: &'static str,
+    pub(crate) library_id: String,
+    pub(crate) source_epoch: u64,
+    pub(crate) source_epoch_id: String,
+    pub(crate) source_transition_certificate_digest: String,
+    pub(crate) source_document_digest: String,
+    pub(crate) source_frontier_count: u64,
+    pub(crate) source_frontier_digest: String,
+    pub(crate) source_generation: u64,
+    pub(crate) source_revision: u64,
+    pub(crate) source_sqlite_revision: u64,
+    pub(crate) live_feed_items: u64,
+    pub(crate) excluded_deleted_feed_items: u64,
+    pub(crate) rss_feeds: u64,
+    pub(crate) persons: u64,
+    pub(crate) accounts: u64,
+    pub(crate) reach_outs: u64,
+    pub(crate) normalized_record_count: u64,
+    pub(crate) normalized_canonical_bytes: u64,
+    pub(crate) normalized_product_digest: String,
+}
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn valid_operation_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_alphanumeric() || (index > 0 && matches!(byte, b'.' | b'_' | b':' | b'-'))
+        })
 }
 
 fn object_mut<'a>(
@@ -411,11 +468,11 @@ fn legacy_reach_out_id(
 /// Decomposes the historical shell into final normalized product tables. The
 /// caller owns the single cutover transaction and source fence. This function
 /// does not retain, hash, or copy the shell itself.
-pub(crate) fn migrate_legacy_shell_v1(
+fn migrate_legacy_shell_v1(
     transaction: &Transaction<'_>,
     shell_json: &str,
     updated_at: i64,
-) -> Result<(), NormalizedSqliteError> {
+) -> Result<LegacyShellCountsV1, NormalizedSqliteError> {
     if updated_at < 0 {
         return Err(invalid("legacy Library shell time is invalid"));
     }
@@ -425,12 +482,14 @@ pub(crate) fn migrate_legacy_shell_v1(
         .as_object()
         .ok_or_else(|| invalid("legacy Library shell is not an object"))?;
 
+    let mut counts = LegacyShellCountsV1::default();
     if let Some(feeds) = legacy_map(shell, "feeds")? {
         for (url, feed) in feeds {
             if feed.get("url").and_then(Value::as_str) != Some(url) {
                 return Err(invalid("legacy RSS feed identity does not match its key"));
             }
             materialize_json_entity(transaction, "rss_feed_upsert", url, feed, updated_at)?;
+            counts.rss_feeds += 1;
         }
     }
     if let Some(persons) = legacy_map(shell, "persons")? {
@@ -439,6 +498,7 @@ pub(crate) fn migrate_legacy_shell_v1(
                 return Err(invalid("legacy Person identity does not match its key"));
             }
             materialize_json_entity(transaction, "person_upsert", person_id, person, updated_at)?;
+            counts.persons += 1;
             for (ordinal, reach_out) in bounded_array(
                 person.get("reachOutLog"),
                 MAXIMUM_REACH_OUTS,
@@ -469,6 +529,7 @@ pub(crate) fn migrate_legacy_shell_v1(
                     mutation_program("person_reach_out_append")?.materialize_sql,
                     params![person_id, reach_out_id, logged_at, channel, notes],
                 )?;
+                counts.reach_outs += 1;
             }
         }
     }
@@ -484,12 +545,307 @@ pub(crate) fn migrate_legacy_shell_v1(
                 account,
                 updated_at,
             )?;
+            counts.accounts += 1;
         }
     }
     if let Some(preferences) = shell.get("preferences").filter(|value| !value.is_null()) {
         migrate_legacy_preferences_v1(transaction, preferences, updated_at)?;
     }
-    Ok(())
+    if legacy_map(shell, "friends")?.is_some_and(|friends| !friends.is_empty())
+        && counts.persons == 0
+        && counts.accounts == 0
+    {
+        return Err(invalid(
+            "legacy Friend rows have no normalized Person or Account source",
+        ));
+    }
+    Ok(counts)
+}
+
+fn unsigned_count(value: i64, label: &'static str) -> Result<u64, NormalizedSqliteError> {
+    u64::try_from(value).map_err(|_| invalid(label))
+}
+
+fn normalized_product_digest(
+    target: &Transaction<'_>,
+) -> Result<(String, u64, u64), NormalizedSqliteError> {
+    let mut request = NormalizedCheckpointExportRequestV2::default();
+    let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
+    loop {
+        let page = export_normalized_checkpoint_page_v2(target, &request)?;
+        if page.records.is_empty() && !page.done {
+            return Err(invalid("normalized migration export did not advance"));
+        }
+        for record in &page.records {
+            if record.registry_key.as_str() < "10_feed_item" {
+                return Err(invalid(
+                    "normalized migration candidate contains authority records",
+                ));
+            }
+            accumulator.push(record)?;
+        }
+        if page.done {
+            break;
+        }
+        request.after = page.next_cursor;
+    }
+    Ok(accumulator.finish())
+}
+
+fn legacy_source_frontier_digest(
+    source: &Transaction<'_>,
+    library_id: &str,
+    epoch_id: &str,
+) -> Result<(String, u64), NormalizedSqliteError> {
+    let mut digest = Sha256::new();
+    digest.update(LEGACY_FRONTIER_DIGEST_PREFIX);
+    let mut statement = source.prepare(
+        "SELECT tipIndex, actorId, sequence, operationId, chainDigest
+         FROM library_core_authority_frontier
+         WHERE libraryId = ?1 AND epochId = ?2
+         ORDER BY tipIndex;",
+    )?;
+    let mut rows = statement.query(params![library_id, epoch_id])?;
+    let mut count = 0_usize;
+    while let Some(row) = rows.next()? {
+        let tip_index: i64 = row.get(0)?;
+        let actor_id: String = row.get(1)?;
+        let sequence: i64 = row.get(2)?;
+        let operation_id: String = row.get(3)?;
+        let chain_digest: String = row.get(4)?;
+        if tip_index != i64::try_from(count).map_err(|_| invalid("legacy frontier is invalid"))?
+            || !valid_sha256(&actor_id)
+            || sequence < 1
+            || !valid_operation_id(&operation_id)
+            || !valid_sha256(&chain_digest)
+        {
+            return Err(invalid("legacy frontier is invalid"));
+        }
+        count += 1;
+        if count > MAXIMUM_SOURCE_FRONTIER_TIPS {
+            return Err(invalid("legacy frontier exceeds its bound"));
+        }
+        let canonical = encode_canonical_value(
+            &serde_json::json!({
+                "actorId": actor_id,
+                "chainDigest": chain_digest,
+                "operationId": operation_id,
+                "sequence": sequence,
+                "tipIndex": tip_index
+            }),
+            16_384,
+        )
+        .map_err(|_| invalid("legacy frontier is invalid"))?;
+        digest.update(
+            u64::try_from(canonical.len())
+                .map_err(|_| invalid("legacy frontier is invalid"))?
+                .to_be_bytes(),
+        );
+        digest.update(canonical);
+    }
+    Ok((
+        lower_hex(&digest.finalize()),
+        u64::try_from(count).map_err(|_| invalid("legacy frontier is invalid"))?,
+    ))
+}
+
+/// Builds one inert final-schema candidate from one immutable read snapshot of
+/// the historical database. The returned receipt binds typed source authority
+/// and normalized output only. It does not activate the candidate, select a
+/// writer, sign a transition, hash the source shell, or modify the source.
+pub(crate) fn migrate_legacy_snapshot_v1(
+    source: &mut Connection,
+    target: &mut Connection,
+) -> Result<NormalizedMigrationCandidateReceiptV1, NormalizedSqliteError> {
+    install_normalized_schema_v1(target)?;
+    let existing_records: i64 = target.query_row(
+        "SELECT count(*) FROM library_checkpoint_export;",
+        [],
+        |row| row.get(0),
+    )?;
+    if existing_records != 0 {
+        return Err(invalid("normalized migration target is not empty"));
+    }
+
+    let source = source.transaction()?;
+    let (
+        active,
+        source_sqlite_revision,
+        source_generation,
+        source_revision,
+        source_document_digest,
+        expected_item_count,
+        imported_item_count,
+        shell_json,
+        activated_at,
+    ): (i64, i64, i64, i64, String, i64, i64, String, Option<i64>) = source.query_row(
+        "SELECT active, revision, sourceGeneration, sourceRevision, sourceDigest,
+                expectedItemCount, importedItemCount, shellJson, activatedAtMs
+         FROM library_core_desktop_state WHERE singletonId = 1;",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get(8)?,
+            ))
+        },
+    )?;
+    if active != 1 || activated_at.is_none() || expected_item_count != imported_item_count {
+        return Err(invalid("legacy Library source is not fully active"));
+    }
+    let (library_id, source_epoch, source_epoch_id, source_transition_certificate_digest): (
+        String,
+        i64,
+        String,
+        String,
+    ) = source.query_row(
+        "SELECT libraryId, epoch, epochId, transitionCertificateDigest
+         FROM library_core_active_authority;",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if !valid_sha256(&library_id)
+        || source_epoch < 1
+        || !valid_sha256(&source_epoch_id)
+        || !valid_sha256(&source_transition_certificate_digest)
+        || !valid_sha256(&source_document_digest)
+    {
+        return Err(invalid("legacy Library authority identity is invalid"));
+    }
+    let (source_frontier_digest, source_frontier_count) =
+        legacy_source_frontier_digest(&source, &library_id, &source_epoch_id)?;
+    let (live_feed_items, deleted_feed_items): (i64, i64) = source.query_row(
+        "SELECT
+            count(*) FILTER (WHERE deletedAt IS NULL),
+            count(*) FILTER (WHERE deletedAt IS NOT NULL)
+         FROM library_core_feed_items;",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    let target_transaction = target.transaction()?;
+    let shell_counts = migrate_legacy_shell_v1(
+        &target_transaction,
+        &shell_json,
+        activated_at.unwrap_or(source_sqlite_revision),
+    )?;
+    let migrated_items = {
+        let mut statement = source.prepare(
+            "SELECT globalId, payloadJson, updatedAtMs
+             FROM library_core_feed_items
+             WHERE deletedAt IS NULL ORDER BY globalId COLLATE BINARY;",
+        )?;
+        let mut rows = statement.query([])?;
+        let mut migrated = 0_u64;
+        while let Some(row) = rows.next()? {
+            let global_id: String = row.get(0)?;
+            let payload_json: String = row.get(1)?;
+            let updated_at: i64 = row.get(2)?;
+            migrate_legacy_feed_item_v1(
+                &target_transaction,
+                &global_id,
+                &payload_json,
+                updated_at,
+            )?;
+            migrated = migrated
+                .checked_add(1)
+                .ok_or_else(|| invalid("legacy FeedItem count is invalid"))?;
+        }
+        migrated
+    };
+    if migrated_items != unsigned_count(live_feed_items, "legacy FeedItem count is invalid")? {
+        return Err(invalid("legacy FeedItem migration count is incomplete"));
+    }
+
+    let target_counts: (i64, i64, i64, i64, i64) = target_transaction.query_row(
+        "SELECT
+            (SELECT count(*) FROM library_feed_items),
+            (SELECT count(*) FROM library_rss_feeds),
+            (SELECT count(*) FROM library_persons),
+            (SELECT count(*) FROM library_accounts),
+            (SELECT count(*) FROM library_person_reach_outs);",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
+    )?;
+    let expected_counts = (
+        migrated_items,
+        shell_counts.rss_feeds,
+        shell_counts.persons,
+        shell_counts.accounts,
+        shell_counts.reach_outs,
+    );
+    let actual_counts = (
+        unsigned_count(target_counts.0, "normalized FeedItem count is invalid")?,
+        unsigned_count(target_counts.1, "normalized RSS feed count is invalid")?,
+        unsigned_count(target_counts.2, "normalized Person count is invalid")?,
+        unsigned_count(target_counts.3, "normalized Account count is invalid")?,
+        unsigned_count(target_counts.4, "normalized reach-out count is invalid")?,
+    );
+    if actual_counts != expected_counts {
+        return Err(invalid("normalized migration root count is incomplete"));
+    }
+    let foreign_key_violation: Option<String> = target_transaction
+        .query_row(
+            "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if foreign_key_violation.is_some() {
+        return Err(invalid("normalized migration foreign key closure failed"));
+    }
+    let (normalized_product_digest, normalized_record_count, normalized_canonical_bytes) =
+        normalized_product_digest(&target_transaction)?;
+
+    let receipt = NormalizedMigrationCandidateReceiptV1 {
+        format: "freed_normalized_migration_candidate_v1",
+        library_id,
+        source_epoch: unsigned_count(source_epoch, "legacy source epoch is invalid")?,
+        source_epoch_id,
+        source_transition_certificate_digest,
+        source_document_digest,
+        source_frontier_count,
+        source_frontier_digest,
+        source_generation: unsigned_count(
+            source_generation,
+            "legacy source generation is invalid",
+        )?,
+        source_revision: unsigned_count(source_revision, "legacy source revision is invalid")?,
+        source_sqlite_revision: unsigned_count(
+            source_sqlite_revision,
+            "legacy source SQLite revision is invalid",
+        )?,
+        live_feed_items: migrated_items,
+        excluded_deleted_feed_items: unsigned_count(
+            deleted_feed_items,
+            "legacy deleted FeedItem count is invalid",
+        )?,
+        rss_feeds: shell_counts.rss_feeds,
+        persons: shell_counts.persons,
+        accounts: shell_counts.accounts,
+        reach_outs: shell_counts.reach_outs,
+        normalized_record_count,
+        normalized_canonical_bytes,
+        normalized_product_digest,
+    };
+    target_transaction.commit()?;
+    source.commit()?;
+    Ok(receipt)
 }
 
 /// Decomposes one historical FeedItem JSON row into final normalized product
@@ -725,10 +1081,208 @@ pub(crate) fn migrate_legacy_feed_item_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::normalized_import::normalized_checkpoint_digest_v2;
     use crate::normalized_sqlite::NormalizedCheckpointExportRequestV2;
     use crate::{export_normalized_checkpoint_page_v2, install_normalized_schema_v1};
     use rusqlite::Connection;
     use serde_json::json;
+
+    fn legacy_source_fixture() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys = ON;
+                 CREATE TABLE library_core_desktop_state (
+                   singletonId INTEGER PRIMARY KEY,
+                   active INTEGER NOT NULL,
+                   revision INTEGER NOT NULL,
+                   sourceGeneration INTEGER NOT NULL,
+                   sourceRevision INTEGER NOT NULL,
+                   sourceDigest TEXT NOT NULL,
+                   expectedItemCount INTEGER NOT NULL,
+                   importedItemCount INTEGER NOT NULL,
+                   shellJson TEXT NOT NULL,
+                   startedAtMs INTEGER NOT NULL,
+                   activatedAtMs INTEGER
+                 ) STRICT;
+                 CREATE TABLE library_core_active_authority (
+                   libraryId TEXT PRIMARY KEY,
+                   epoch INTEGER NOT NULL,
+                   epochId TEXT NOT NULL,
+                   transitionCertificateDigest TEXT NOT NULL
+                 ) STRICT;
+                 CREATE TABLE library_core_authority_frontier (
+                   libraryId TEXT NOT NULL,
+                   epochId TEXT NOT NULL,
+                   tipIndex INTEGER NOT NULL,
+                   actorId TEXT NOT NULL,
+                   sequence INTEGER NOT NULL,
+                   operationId TEXT NOT NULL,
+                   chainDigest TEXT NOT NULL,
+                   PRIMARY KEY (libraryId, epochId, tipIndex)
+                 ) STRICT;
+                 CREATE TABLE library_core_feed_items (
+                   globalId TEXT PRIMARY KEY,
+                   deletedAt INTEGER,
+                   payloadJson TEXT NOT NULL,
+                   updatedAtMs INTEGER NOT NULL
+                 ) STRICT;",
+            )
+            .unwrap();
+        let shell = json!({
+            "feeds": {
+                "https://example.com/feed.xml": {
+                    "url": "https://example.com/feed.xml",
+                    "title": "Example",
+                    "enabled": true,
+                    "trackUnread": true
+                }
+            },
+            "persons": {
+                "person:ada": {
+                    "id": "person:ada",
+                    "name": "Ada",
+                    "relationshipStatus": "friend",
+                    "careLevel": 5,
+                    "reachOutLog": [{"loggedAt": 40, "channel": "email"}],
+                    "tags": ["friend"],
+                    "createdAt": 10,
+                    "updatedAt": 40
+                }
+            },
+            "accounts": {
+                "account:ada": {
+                    "id": "account:ada",
+                    "personId": "person:ada",
+                    "kind": "social",
+                    "provider": "x",
+                    "externalId": "ada",
+                    "firstSeenAt": 10,
+                    "lastSeenAt": 40,
+                    "discoveredFrom": "manual_entry",
+                    "createdAt": 10,
+                    "updatedAt": 40
+                }
+            },
+            "preferences": {
+                "display": {"showEngagementCounts": true, "themeId": "midnight"}
+            }
+        });
+        connection
+            .execute(
+                "INSERT INTO library_core_desktop_state
+                 (singletonId, active, revision, sourceGeneration, sourceRevision,
+                  sourceDigest, expectedItemCount, importedItemCount, shellJson,
+                  startedAtMs, activatedAtMs)
+                 VALUES (1, 1, 9, 2, 7, ?1, 2, 2, ?2, 10, 50);",
+                params!["a".repeat(64), shell.to_string()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_active_authority
+                 (libraryId, epoch, epochId, transitionCertificateDigest)
+                 VALUES (?1, 3, ?2, ?3);",
+                params!["b".repeat(64), "c".repeat(64), "d".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_core_authority_frontier
+                 (libraryId, epochId, tipIndex, actorId, sequence, operationId, chainDigest)
+                 VALUES (?1, ?2, 0, ?3, 7, 'op:migration-source:7', ?4);",
+                params![
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "1".repeat(64),
+                    "f".repeat(64)
+                ],
+            )
+            .unwrap();
+        let tags = (0..140)
+            .map(|index| format!("migration-tag-{index:03}"))
+            .collect::<Vec<_>>();
+        let item = json!({
+            "globalId": "rss:live",
+            "platform": "rss",
+            "contentType": "article",
+            "capturedAt": 10,
+            "publishedAt": 9,
+            "author": {"id": "author", "handle": "ada", "displayName": "Ada"},
+            "content": {"text": "Body", "mediaUrls": [], "mediaTypes": []},
+            "userState": {"hidden": false, "saved": false, "archived": false, "tags": tags},
+            "topics": []
+        });
+        connection
+            .execute(
+                "INSERT INTO library_core_feed_items
+                 (globalId, deletedAt, payloadJson, updatedAtMs)
+                 VALUES ('rss:live', NULL, ?1, 60),
+                        ('rss:deleted', 55, ?2, 55);",
+                params![
+                    item.to_string(),
+                    json!({"globalId": "rss:deleted"}).to_string()
+                ],
+            )
+            .unwrap();
+        connection
+    }
+
+    #[test]
+    fn migrates_one_fenced_snapshot_and_binds_only_normalized_product_records() {
+        let mut source = legacy_source_fixture();
+        let mut target = Connection::open_in_memory().unwrap();
+        let receipt = migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
+
+        assert_eq!(receipt.format, "freed_normalized_migration_candidate_v1");
+        assert_eq!(receipt.library_id, "b".repeat(64));
+        assert_eq!(receipt.source_epoch, 3);
+        assert_eq!(receipt.source_generation, 2);
+        assert_eq!(receipt.source_revision, 7);
+        assert_eq!(receipt.source_sqlite_revision, 9);
+        assert_eq!(receipt.source_frontier_count, 1);
+        assert_eq!(receipt.source_frontier_digest.len(), 64);
+        assert_eq!(receipt.live_feed_items, 1);
+        assert_eq!(receipt.excluded_deleted_feed_items, 1);
+        assert_eq!(
+            (receipt.rss_feeds, receipt.persons, receipt.accounts),
+            (1, 1, 1)
+        );
+        assert_eq!(receipt.reach_outs, 1);
+        assert_eq!(receipt.normalized_product_digest.len(), 64);
+        assert!(receipt.normalized_record_count > 5);
+
+        let mut request = NormalizedCheckpointExportRequestV2::default();
+        let mut records = Vec::new();
+        let mut page_count = 0;
+        loop {
+            let page = export_normalized_checkpoint_page_v2(&target, &request).unwrap();
+            page_count += 1;
+            assert!(page
+                .records
+                .iter()
+                .all(|record| record.registry_key.as_str() >= "10_feed_item"));
+            records.extend(page.records);
+            if page.done {
+                break;
+            }
+            request.after = page.next_cursor;
+        }
+        assert!(page_count > 1);
+        assert!(records.len() > 128);
+        assert_eq!(
+            normalized_checkpoint_digest_v2(&records).unwrap(),
+            receipt.normalized_product_digest
+        );
+        assert_eq!(
+            target
+                .query_row("SELECT count(*) FROM library_meta;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert!(migrate_legacy_snapshot_v1(&mut source, &mut target).is_err());
+    }
 
     #[test]
     fn decomposes_the_shell_and_excludes_local_and_compatibility_preferences() {

@@ -903,6 +903,17 @@ other compatibility-only values do not enter canonical SQLite. Invalid foreign
 keys, oversized metadata, malformed preference shapes, and unregistered nested
 policies abort the caller's one migration transaction.
 
+The inert migration candidate receipt binds the active old authority tuple,
+source document identity, source generation and revisions, and an ordered
+bounded digest of its causal frontier. Deleted historical FeedItem rows are
+counted and excluded explicitly at the new epoch boundary. Live rows and every
+normalized root family must close exactly, all foreign keys must pass, and the
+candidate product digest is computed by streaming canonical normalized records
+through the ordinary bounded checkpoint exporter. Historical Friend objects
+are discarded only when their canonical Person and Account sources exist.
+Neither the old shell nor a hash of it is migration, rollback, or activation
+evidence. Building this candidate does not select either database.
+
 ### 16.2 Cutover
 
 Cutover:

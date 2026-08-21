@@ -14,6 +14,85 @@ use sha2::{Digest, Sha256};
 const CHECKPOINT_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-records/normalized-checkpoint\0";
 
+pub(crate) struct NormalizedCheckpointDigestAccumulatorV2 {
+    digest: Sha256,
+    previous_identity: Option<(String, Vec<u8>)>,
+    record_count: u64,
+    canonical_bytes: u64,
+}
+
+impl NormalizedCheckpointDigestAccumulatorV2 {
+    pub(crate) fn new() -> Self {
+        let mut digest = Sha256::new();
+        digest.update(CHECKPOINT_DIGEST_PREFIX);
+        Self {
+            digest,
+            previous_identity: None,
+            record_count: 0,
+            canonical_bytes: 0,
+        }
+    }
+
+    pub(crate) fn push(
+        &mut self,
+        record: &NormalizedCheckpointRecordV2,
+    ) -> Result<(), NormalizedSqliteError> {
+        if checked_record(
+            &record.registry_key,
+            record.primary_key.clone(),
+            record.payload.clone(),
+        )? != *record
+        {
+            return Err(invalid("checkpoint record version identity is invalid"));
+        }
+        let primary_key =
+            crate::library_core_canonical::encode_canonical_value(&record.primary_key, 4_096)
+                .map_err(|_| invalid("checkpoint primary key is invalid"))?;
+        let identity = (record.registry_key.clone(), primary_key);
+        if self
+            .previous_identity
+            .as_ref()
+            .is_some_and(|previous| previous >= &identity)
+        {
+            return Err(invalid(
+                "checkpoint records are duplicated or outside canonical order",
+            ));
+        }
+        let canonical = crate::library_core_canonical::encode_canonical_value(
+            &serde_json::to_value(record).map_err(|_| invalid("checkpoint record is invalid"))?,
+            crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+        )
+        .map_err(|_| invalid("checkpoint record exceeds its bound"))?;
+        self.digest.update(
+            u64::try_from(canonical.len())
+                .map_err(|_| invalid("checkpoint record length is invalid"))?
+                .to_be_bytes(),
+        );
+        self.digest.update(&canonical);
+        self.previous_identity = Some(identity);
+        self.record_count = self
+            .record_count
+            .checked_add(1)
+            .ok_or_else(|| invalid("checkpoint record count is invalid"))?;
+        self.canonical_bytes = self
+            .canonical_bytes
+            .checked_add(
+                u64::try_from(canonical.len())
+                    .map_err(|_| invalid("checkpoint canonical byte count is invalid"))?,
+            )
+            .ok_or_else(|| invalid("checkpoint canonical byte count is invalid"))?;
+        Ok(())
+    }
+
+    pub(crate) fn finish(self) -> (String, u64, u64) {
+        (
+            lower_hex(&self.digest.finalize()),
+            self.record_count,
+            self.canonical_bytes,
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedCheckpointActivationReceiptV2 {
@@ -423,15 +502,17 @@ pub fn normalized_checkpoint_digest_v2(
     {
         return Err(invalid("checkpoint record identity is duplicated"));
     }
-    let mut digest = Sha256::new();
-    digest.update(CHECKPOINT_DIGEST_PREFIX);
+    let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
     for (_, _, canonical) in encoded {
-        digest.update(
+        accumulator.digest.update(
             u64::try_from(canonical.len())
                 .map_err(|_| invalid("checkpoint record length is invalid"))?
                 .to_be_bytes(),
         );
-        digest.update(canonical);
+        accumulator.digest.update(&canonical);
+        accumulator.record_count += 1;
+        accumulator.canonical_bytes += u64::try_from(canonical.len())
+            .map_err(|_| invalid("checkpoint canonical byte count is invalid"))?;
     }
-    Ok(lower_hex(&digest.finalize()))
+    Ok(accumulator.finish().0)
 }

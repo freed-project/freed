@@ -845,6 +845,20 @@ exact optional fields. Preference ownership lives in the executable SQLite
 contract source consumed by both TypeScript and Rust. Device-local fields and
 compatibility-only fields are excluded before `json_tree` creates canonical
 preference nodes. The decomposer never stores or hashes the source shell.
+Historical Friend objects are derived compatibility projections. They are
+excluded when their canonical Person and Account sources are present, and they
+block migration when those normalized sources are absent.
+
+The native candidate builder holds one SQLite read transaction over the old
+authority. Its inert receipt binds the old library ID, epoch, transition
+certificate, source document digest, generation, source revision, SQLite
+revision, and a bounded digest of the ordered causal frontier. It records live
+FeedItem and normalized root counts plus the exact number of deleted historical
+FeedItem rows excluded at the epoch boundary. The target is accepted only when
+all root counts and foreign keys close. Its product digest streams canonical
+normalized records across bounded export pages. It never uses the source shell
+or a whole-corpus serialization as evidence, and it cannot activate or select
+the target database.
 
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and

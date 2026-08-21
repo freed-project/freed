@@ -488,6 +488,7 @@ export async function captureDomFeed(
 | 5.44 | Open the final normalized Desktop database through its own descriptor-bound directory and process lease, verify its generated schema identity at startup, and register one flat closed typed native query command | High | ✓ Complete |
 | 5.45 | Decompose each historical FeedItem into generated normalized root, media, topic, tag, highlight, signal, event, descriptor, and chunk rows with exact large-content reassembly and no shell or whole-item row | High | ✓ Complete |
 | 5.46 | Decompose the historical RSS, Person, Account, reach-out, follow-role, and preference shell fields into final typed tables, using one generated preference ownership policy across Rust and TypeScript while excluding device-local and compatibility-only state | High | ✓ Complete |
+| 5.47 | Build an inert final-schema migration candidate from one old SQLite snapshot, bind its authority tuple and causal frontier, close live and excluded row counts plus foreign keys, and stream its normalized product digest across bounded export pages without shell evidence or activation | High | ✓ Complete |
 
 ---
 
