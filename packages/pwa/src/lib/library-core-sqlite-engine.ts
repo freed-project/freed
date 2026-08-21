@@ -1168,17 +1168,20 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec({
         sql: `INSERT INTO library_intent_transactions
                 (transaction_id, transaction_digest, actor_id, member_count,
-                 first_counter, last_counter, previous_operation_id,
+                 intent_epoch, intent_epoch_id, first_counter, last_counter,
+                 previous_operation_id,
                  previous_chain_digest, ending_operation_id,
                  ending_chain_digest, canonical_member_bytes,
                  canonical_transaction, state, created_at)
               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                      'pending', ?13);`,
+                      ?13, ?14, 'pending', ?15);`,
         bind: [
           verified.transaction_body.transaction_id,
           verified.transaction_digest,
           actorState.actor_id,
           verified.members.length,
+          firstEnvelope.epoch,
+          firstEnvelope.epoch_id,
           firstEnvelope.actor_sequence,
           lastEnvelope.actor_sequence,
           firstEnvelope.previous_actor_operation_id,
@@ -1377,7 +1380,8 @@ export class PwaLibraryCoreSqliteEngine {
       }
       const envelope = verified.envelope;
       const transactions = this.#database.exec({
-        sql: `SELECT transaction_digest, actor_id, member_count, state, created_at
+        sql: `SELECT transaction_digest, actor_id, member_count, state, created_at,
+                     intent_epoch, intent_epoch_id
               FROM library_intent_transactions WHERE transaction_id = ?1;`,
         bind: [envelope.transaction_id],
         rowMode: "array",
@@ -1395,6 +1399,10 @@ export class PwaLibraryCoreSqliteEngine {
         text(transaction[0], "follower result transaction digest") !==
           envelope.transaction_digest ||
         text(transaction[1], "follower result actor ID") !== envelope.actor_id ||
+        safeInteger(transaction[5], "follower result intent epoch") !==
+          envelope.intent_epoch ||
+        text(transaction[6], "follower result intent epoch ID") !==
+          envelope.intent_epoch_id ||
         !["pending", "published"].includes(
           text(transaction[3], "follower result intent state"),
         ) ||
@@ -1558,13 +1566,16 @@ export class PwaLibraryCoreSqliteEngine {
       });
       this.#database.exec({
         sql: `INSERT INTO library_intent_results
-                (transaction_id, actor_id, result_sequence,
+                (transaction_id, actor_id, authority_epoch_id, intent_epoch_id,
+                 result_sequence,
                  previous_result_digest, result_digest, status,
                  authoritative_source_revision, canonical_result, received_at)
-              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);`,
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);`,
         bind: [
           envelope.transaction_id,
           envelope.actor_id,
+          envelope.epoch_id,
+          envelope.intent_epoch_id,
           envelope.result_sequence,
           envelope.previous_result_digest,
           verified.resultDigest,

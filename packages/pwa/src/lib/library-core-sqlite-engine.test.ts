@@ -441,6 +441,8 @@ describe("PWA Library Core SQLite engine", () => {
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: null,
@@ -610,6 +612,8 @@ describe("PWA Library Core SQLite engine", () => {
       epoch: 1,
       epoch_id: epochId,
       format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
       library_id: libraryId,
       original_result_digest: null,
       previous_result_digest: resultDigest,
@@ -675,6 +679,162 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([[1_400, 8, 1, 1, "pending", 2]]);
+
+    database.exec("DROP TRIGGER fail_follower_result_cursor;");
+    await engine.applyFollowerResult({ canonicalResultBytes: secondResultBytes });
+    const thirdMember =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: "item-1",
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "intent-operation-3",
+          payload: { read_at_ms: 2_200 },
+          previous_actor_operation_id: "intent-operation-2",
+          transaction_id: "intent-transaction-3",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const thirdAssembled = assembleLibraryCoreTransactionV1(
+      [thirdMember],
+      secondFinalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const thirdFinalized = await finalizeLibraryCoreTransactionV1(
+      thirdAssembled,
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: thirdFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const currentEpochId = "66".repeat(32);
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 2, ?3, ?4, ?5, '{}', 2, ?6, ?7, 2200);`,
+      bind: [
+        currentEpochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKeyHex,
+        "67".repeat(32),
+        "68".repeat(32),
+        "69".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `UPDATE library_active_authority
+            SET epoch_id = ?1, accepted_manifest_generation = 2,
+                activated_at = 2200;`,
+      bind: [currentEpochId],
+    });
+    database.exec({
+      sql: `UPDATE library_meta SET authority_epoch = ?1, updated_at = 2200;`,
+      bind: [currentEpochId],
+    });
+    const unsignedStaleResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 9,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: [],
+      epoch: 2,
+      epoch_id: currentEpochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: secondResultDigest,
+      receipt_ids: [],
+      rejection_reason: "epoch_stale",
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_600,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_300,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 3,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "rejected",
+      transaction_digest: thirdFinalized.transaction_digest,
+      transaction_id: "intent-transaction-3",
+    });
+    const staleResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedStaleResult),
+    );
+    const staleResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedStaleResult,
+      result_body_digest: staleResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: staleResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    const staleReceipt = await engine.applyFollowerResult({
+      canonicalResultBytes: staleResultBytes,
+    });
+    expect(staleReceipt).toEqual({
+      actorId,
+      resultDigest: staleResultDigest,
+      resultSequence: 3,
+      sourceRevision: 9,
+      status: "rejected",
+      transactionId: "intent-transaction-3",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT item.read_at, intent.state,
+                     result.authority_epoch_id, result.intent_epoch_id,
+                     (SELECT count(*) FROM library_optimistic_fields
+                      WHERE transaction_id = intent.transaction_id),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1)
+              FROM library_feed_items AS item
+              JOIN library_intent_transactions AS intent
+                ON intent.transaction_id = 'intent-transaction-3'
+              JOIN library_intent_results AS result
+                ON result.transaction_id = intent.transaction_id
+              WHERE item.global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_600, "rejected", currentEpochId, epochId, 0, 4]]);
   });
 
   it("refuses a foreign SQLite application identity before creating tables", () => {

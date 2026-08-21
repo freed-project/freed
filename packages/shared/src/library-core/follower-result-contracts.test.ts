@@ -68,6 +68,8 @@ describe("follower result contract", () => {
       epoch: 1,
       epoch_id: "epoch-1",
       format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: "epoch-1",
       library_id: "library-1",
       original_result_digest: null,
       previous_result_digest: null,

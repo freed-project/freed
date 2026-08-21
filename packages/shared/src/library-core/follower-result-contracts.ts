@@ -61,6 +61,8 @@ export interface LibraryCoreFollowerResultBodyV1 {
   readonly epoch: number;
   readonly epoch_id: string;
   readonly format: "freed_follower_result_v1";
+  readonly intent_epoch: number;
+  readonly intent_epoch_id: string;
   readonly library_id: string;
   readonly original_result_digest: string | null;
   readonly previous_result_digest: string | null;
@@ -110,6 +112,8 @@ const BODY_FIELDS = [
   "epoch",
   "epoch_id",
   "format",
+  "intent_epoch",
+  "intent_epoch_id",
   "library_id",
   "original_result_digest",
   "previous_result_digest",
@@ -240,6 +244,7 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     input.schema_version !== 1 ||
     input.signature_algorithm !== "ed25519" ||
     !isLibraryCoreNonnegativeSafeInteger(input.epoch) ||
+    !isLibraryCoreNonnegativeSafeInteger(input.intent_epoch) ||
     !isLibraryCoreNonnegativeSafeInteger(input.authoritative_source_revision) ||
     !isLibraryCoreNonnegativeSafeInteger(input.resolved_at_ms) ||
     !isLibraryCoreNonnegativeSafeInteger(input.result_sequence) ||
@@ -272,6 +277,20 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
   if ((status === "already_applied") !== (original !== null)) {
     throw new TypeError("original result digest disagrees with status");
   }
+  const epochId = boundedString(input.epoch_id, "follower result epoch ID", 255);
+  const intentEpochId = boundedString(
+    input.intent_epoch_id,
+    "follower result intent epoch ID",
+    255,
+  );
+  const staleEpoch = reason === "epoch_stale";
+  if (
+    staleEpoch
+      ? input.intent_epoch >= input.epoch || intentEpochId === epochId
+      : input.intent_epoch !== input.epoch || intentEpochId !== epochId
+  ) {
+    throw new TypeError("follower result intent and authority epochs disagree");
+  }
   if (status === "rejected" && operationIds.length !== 0) {
     throw new TypeError("rejected follower result cannot name canonical operations");
   }
@@ -296,8 +315,10 @@ export function parseLibraryCoreFollowerResultEnvelopeV1(value: unknown): Librar
     authority_key_id: input.authority_key_id,
     canonical_operation_ids: operationIds,
     epoch: input.epoch,
-    epoch_id: boundedString(input.epoch_id, "follower result epoch ID", 255),
+    epoch_id: epochId,
     format: "freed_follower_result_v1",
+    intent_epoch: input.intent_epoch,
+    intent_epoch_id: intentEpochId,
     library_id: boundedString(input.library_id, "follower result Library ID", 255),
     original_result_digest: original,
     previous_result_digest: digestOrNull(input.previous_result_digest, "previous result digest"),

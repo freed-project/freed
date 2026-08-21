@@ -260,6 +260,15 @@ previous digest. Reusing a transaction or result identity with changed bytes,
 skipping a sequence, changing the authority, or omitting one optimistic field
 fails before settlement.
 
+The result authority epoch and intent epoch are separate mandatory fields. An
+accepted, already-applied, or ordinary rejected result uses the same epoch for
+both identities. An `epoch_stale` result names the older intent epoch and a
+strictly newer active authority epoch. The current authority signs that closed
+record. Native and PWA SQLite store both epoch IDs as typed foreign keys, and a
+follower verifies the result against its current authority while matching the
+intent epoch to the exact pending transaction. No overloaded epoch field or
+implicit checkpoint context is allowed.
+
 Accepted admission is produced inside the native authority transaction. The
 Primary allocates the next actor-scoped result sequence, reads the exact
 post-materialization replacement fields, derives the domain-separated body
@@ -297,8 +306,15 @@ capability produces `capability_denied`. Both results bind the current source
 revision and active authority signature, and neither creates an accepted
 transaction, operation, receipt, invalidation, product write, actor operation
 tip, or source revision. Exact retry returns the first signed rejection.
-Epoch classification and routing remain required before follower write
-activation.
+When a cryptographically valid intent names an older accepted epoch, the
+Primary produces `epoch_stale` with the current authority epoch and key, the
+original intent epoch, and the current source revision. Actor, capability, and
+stale-epoch rejections carry the exact current replacement values for every
+optimistic field. A missing or tombstoned target may omit replacements that no
+longer have a canonical row. PWA SQLite verifies the dual epoch identity,
+restores or confirms the authoritative fields, removes the optimistic overlay,
+stores both epoch IDs with the exact canonical result, advances the actor result
+cursor, and marks the intent rejected in one transaction.
 
 Target admission runs after signature, transaction, writer, actor, capability,
 and program verification, under the same immediate SQLite transaction used for

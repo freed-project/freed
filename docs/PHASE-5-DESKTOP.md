@@ -75,6 +75,11 @@
       mutation-excluding capability receives `capability_denied`. Both are
       authority-signed exact-retry results that leave accepted operations,
       product rows, actor operation tips, invalidations, and revisions alone.
+- [x] Represent result authority and intent epochs as separate closed fields.
+      A valid old-epoch intent receives `epoch_stale` from the strictly newer
+      active authority. Policy and epoch rejections include exact current
+      replacements for optimistic fields. Native and PWA SQLite store both
+      epoch IDs, and the PWA verifies and settles the rejection atomically.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

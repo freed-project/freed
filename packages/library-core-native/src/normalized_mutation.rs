@@ -217,12 +217,13 @@ fn actor_state_at(
     })
 }
 
-fn require_writer_admission(
+fn admitted_authority_epoch(
     transaction: &Transaction<'_>,
-    verified: &VerifiedOperationTransaction,
-) -> Result<(), NormalizedSqliteError> {
-    let admitted: i64 = transaction.query_row(
-        "SELECT count(*)
+    library_id: &str,
+) -> Result<(i64, String), NormalizedSqliteError> {
+    transaction
+        .query_row(
+            "SELECT epoch.epoch_number, epoch.epoch_id
          FROM library_writer_admission AS admission
          JOIN library_active_authority AS active ON active.active_key = 'active'
          JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
@@ -230,26 +231,24 @@ fn require_writer_admission(
            AND admission.local_writer_id = admission.active_writer_id
            AND admission.active_writer_id = active.writer_id
            AND admission.observed_manifest_generation = active.accepted_manifest_generation
-           AND active.library_id = ?1
-           AND active.epoch_id = ?2
-           AND epoch.epoch_number = ?3;",
-        params![verified.library_id, verified.epoch_id, verified.epoch],
-        |row| row.get(0),
-    )?;
-    if admitted != 1 {
-        return Err(JournalError::StaleAuthority {
-            library_id: verified.library_id.clone(),
-        }
-        .into());
-    }
-    Ok(())
+           AND active.library_id = ?1;",
+            [library_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            JournalError::StaleAuthority {
+                library_id: library_id.to_owned(),
+            }
+            .into()
+        })
 }
 
 const FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES: usize = 131_072;
 const FOLLOWER_RESULT_PAGE_MAXIMUM_RECORDS: usize = 128;
 const FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 1_048_576;
-const FOLLOWER_RESULT_PAGE_SQL: &str =
-    "SELECT transaction_id, transaction_digest, actor_id, result_sequence,
+const FOLLOWER_RESULT_PAGE_SQL: &str = "SELECT transaction_id, transaction_digest, actor_id,
+            authority_epoch_id, intent_epoch_id, result_sequence,
             previous_result_digest, result_digest, status, rejection_reason,
             original_result_digest, authoritative_source_revision,
             canonical_result, enqueued_at
@@ -289,6 +288,8 @@ pub(crate) struct NormalizedFollowerResultRecordV1 {
     pub transaction_id: String,
     pub transaction_digest: String,
     pub actor_id: String,
+    pub authority_epoch_id: String,
+    pub intent_epoch_id: String,
     pub result_sequence: i64,
     pub previous_result_digest: Option<String>,
     pub result_digest: String,
@@ -363,24 +364,28 @@ fn active_result_authority(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
     authority_key_pair: &Ed25519KeyPair,
-) -> Result<(String, i64), NormalizedSqliteError> {
-    let (authority_key_id, authority_public_key, epoch_number): (String, String, i64) = transaction
+) -> Result<(String, i64, String), NormalizedSqliteError> {
+    let (authority_key_id, authority_public_key, epoch_number, epoch_id): (
+        String,
+        String,
+        i64,
+        String,
+    ) = transaction
         .query_row(
-            "SELECT epoch.authority_key_id, epoch.authority_public_key, epoch.epoch_number
+            "SELECT epoch.authority_key_id, epoch.authority_public_key,
+                    epoch.epoch_number, epoch.epoch_id
              FROM library_active_authority AS active
              JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
              WHERE active.active_key = 'active'
-               AND active.library_id = ?1 AND active.epoch_id = ?2;",
-            params![verified.library_id, verified.epoch_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+               AND active.library_id = ?1;",
+            [&verified.library_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()?
         .ok_or(NormalizedSqliteError::InvalidRequest(
             "normalized follower result authority is not active",
         ))?;
-    if epoch_number != verified.epoch
-        || authority_public_key != lower_hex(authority_key_pair.public_key().as_ref())
-    {
+    if authority_public_key != lower_hex(authority_key_pair.public_key().as_ref()) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized follower result signing key is not active",
         ));
@@ -397,7 +402,7 @@ fn active_result_authority(
             "normalized follower result authority key identity is invalid",
         ));
     }
-    Ok((authority_key_id, epoch_number))
+    Ok((authority_key_id, epoch_number, epoch_id))
 }
 
 fn follower_result_replacement_fields(
@@ -408,7 +413,7 @@ fn follower_result_replacement_fields(
     for member in &verified.members {
         extend_replacement_identities(&mut identities, &member.operation_type, &member.entity_id);
     }
-    follower_result_replacement_fields_for_identities(transaction, identities)
+    follower_result_replacement_fields_for_identities(transaction, identities, true)
 }
 
 fn extend_replacement_identities(
@@ -432,25 +437,36 @@ fn extend_replacement_identities(
 fn follower_result_replacement_fields_for_identities(
     transaction: &Transaction<'_>,
     identities: BTreeSet<(String, &'static str)>,
+    require_existing: bool,
 ) -> Result<Vec<Value>, NormalizedSqliteError> {
     let mut replacements = Vec::with_capacity(identities.len());
     for (entity_id, field_path) in identities {
-        let row: FeedItemUserStateRow = transaction.query_row(
-            "SELECT saved, saved_at, archived, archived_at, liked, liked_at, read_at
+        let row: Option<FeedItemUserStateRow> = transaction
+            .query_row(
+                "SELECT saved, saved_at, archived, archived_at, liked, liked_at, read_at
                  FROM library_feed_items WHERE global_id = ?1;",
-            [&entity_id],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                ))
-            },
-        )?;
+                [&entity_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some(row) = row else {
+            if require_existing {
+                return Err(NormalizedSqliteError::InvalidRequest(
+                    "normalized follower result replacement target is absent",
+                ));
+            }
+            continue;
+        };
         let (value_type, boolean_value, integer_value) = match field_path {
             "saved" => ("boolean", Some(row.0 != 0), None),
             "saved_at" => (
@@ -602,6 +618,7 @@ fn original_accepted_result_projection(
         replacement_fields: follower_result_replacement_fields_for_identities(
             transaction,
             identities,
+            true,
         )?,
     })
 }
@@ -625,11 +642,25 @@ fn current_result_projection(
                 .collect(),
             replacement_fields: follower_result_replacement_fields(transaction, verified)?,
         }),
-        FollowerResultOutcome::Rejected { .. } => Ok(FollowerResultProjection {
-            operation_ids: Vec::new(),
-            receipt_ids: Vec::new(),
-            replacement_fields: Vec::new(),
-        }),
+        FollowerResultOutcome::Rejected { .. } => {
+            let mut identities = BTreeSet::new();
+            for member in &verified.members {
+                extend_replacement_identities(
+                    &mut identities,
+                    &member.operation_type,
+                    &member.entity_id,
+                );
+            }
+            Ok(FollowerResultProjection {
+                operation_ids: Vec::new(),
+                receipt_ids: Vec::new(),
+                replacement_fields: follower_result_replacement_fields_for_identities(
+                    transaction,
+                    identities,
+                    false,
+                )?,
+            })
+        }
         FollowerResultOutcome::AlreadyApplied {
             original_result_digest,
         } => {
@@ -663,8 +694,20 @@ fn persist_follower_result_outcome(
             "normalized follower result rejection reason is invalid",
         ));
     }
-    let (authority_key_id, epoch_number) =
+    let (authority_key_id, epoch_number, epoch_id) =
         active_result_authority(transaction, verified, authority_key_pair)?;
+    let stale_epoch = outcome.rejection_reason() == Some("epoch_stale");
+    if stale_epoch {
+        if epoch_number <= verified.epoch || epoch_id == verified.epoch_id {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized stale-epoch result has no newer active authority",
+            ));
+        }
+    } else if epoch_number != verified.epoch || epoch_id != verified.epoch_id {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result intent epoch is not active",
+        ));
+    }
     if let Some(stored) = stored_follower_result(transaction, verified, outcome.status())? {
         return Ok(stored);
     }
@@ -687,8 +730,10 @@ fn persist_follower_result_outcome(
         "authority_key_id": authority_key_id,
         "canonical_operation_ids": projection.operation_ids,
         "epoch": epoch_number,
-        "epoch_id": verified.epoch_id,
+        "epoch_id": epoch_id,
         "format": "freed_follower_result_v1",
+        "intent_epoch": verified.epoch,
+        "intent_epoch_id": verified.epoch_id,
         "library_id": verified.library_id,
         "original_result_digest": outcome.original_result_digest(),
         "previous_result_digest": previous_result_digest,
@@ -734,15 +779,18 @@ fn persist_follower_result_outcome(
     })?;
     transaction.execute(
         "INSERT INTO library_follower_result_outbox
-         (transaction_id, transaction_digest, actor_id, result_sequence,
+         (transaction_id, transaction_digest, actor_id,
+          authority_epoch_id, intent_epoch_id, result_sequence,
           previous_result_digest, result_digest, status, rejection_reason,
           original_result_digest, authoritative_source_revision,
           canonical_result, enqueued_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14);",
         params![
             verified.transaction_id,
             verified.transaction_digest,
             verified.actor_id,
+            epoch_id,
+            verified.epoch_id,
             result_sequence,
             previous_result_digest,
             result_digest,
@@ -861,7 +909,7 @@ pub(crate) fn export_normalized_follower_result_page_v1(
         if page.records.len() == request.maximum_records {
             break;
         }
-        let canonical_result: Vec<u8> = row.get(10)?;
+        let canonical_result: Vec<u8> = row.get(12)?;
         if canonical_result.is_empty()
             || canonical_result.len() > FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES
         {
@@ -873,19 +921,21 @@ pub(crate) fn export_normalized_follower_result_page_v1(
             transaction_id: row.get(0)?,
             transaction_digest: row.get(1)?,
             actor_id: row.get(2)?,
-            result_sequence: row.get(3)?,
-            previous_result_digest: row.get(4)?,
-            result_digest: row.get(5)?,
-            status: row.get(6)?,
-            rejection_reason: row.get(7)?,
-            original_result_digest: row.get(8)?,
-            authoritative_source_revision: row.get(9)?,
+            authority_epoch_id: row.get(3)?,
+            intent_epoch_id: row.get(4)?,
+            result_sequence: row.get(5)?,
+            previous_result_digest: row.get(6)?,
+            result_digest: row.get(7)?,
+            status: row.get(8)?,
+            rejection_reason: row.get(9)?,
+            original_result_digest: row.get(10)?,
+            authoritative_source_revision: row.get(11)?,
             canonical_result_json: String::from_utf8(canonical_result).map_err(|_| {
                 NormalizedSqliteError::Transport(
                     "normalized follower result record is not canonical UTF-8 JSON".into(),
                 )
             })?,
-            enqueued_at: row.get(11)?,
+            enqueued_at: row.get(13)?,
         };
         if record.actor_id != request.actor_id
             || record.result_sequence != expected_sequence
@@ -1582,7 +1632,8 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         ));
     }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    require_writer_admission(&transaction, &verified)?;
+    let (active_epoch, active_epoch_id) =
+        admitted_authority_epoch(&transaction, &verified.library_id)?;
     let actor = actor_state_at(
         &transaction,
         &OperationIdentity {
@@ -1600,6 +1651,23 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     if let Some(receipt) = stored_receipt(&transaction, &verified)? {
         transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
+    }
+    if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
+        if active_epoch <= verified.epoch || active_epoch_id == verified.epoch_id {
+            return Err(JournalError::StaleAuthority {
+                library_id: verified.library_id,
+            }
+            .into());
+        }
+        let receipt = persist_rejected_resolution(
+            &transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            "epoch_stale",
+        )?;
+        transaction.commit()?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
     let current_verdict = operation_admission_verdict(&actor, &verified);
     let rejection_reason = match current_verdict {
@@ -2265,15 +2333,17 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_follower_result_outbox
-                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                 (transaction_id, transaction_digest, actor_id,
+                  authority_epoch_id, intent_epoch_id, result_sequence,
                   previous_result_digest, result_digest, status, rejection_reason,
                   original_result_digest, authoritative_source_revision,
                   canonical_result, enqueued_at)
-                 VALUES ('already-applied-transaction', ?1, ?2, 2, ?3, ?4,
-                         'already_applied', NULL, ?3, 1, x'7b7d', 2100);",
+                 VALUES ('already-applied-transaction', ?1, ?2, ?3, ?3,
+                         2, ?4, ?5, 'already_applied', NULL, ?4, 1, x'7b7d', 2100);",
                 params![
                     "b".repeat(64),
                     enrollment.actor_id,
+                    enrollment.epoch_id,
                     accepted.follower_result_digest,
                     "d".repeat(64),
                 ],
@@ -2282,15 +2352,17 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_follower_result_outbox
-                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                 (transaction_id, transaction_digest, actor_id,
+                  authority_epoch_id, intent_epoch_id, result_sequence,
                   previous_result_digest, result_digest, status, rejection_reason,
                   original_result_digest, authoritative_source_revision,
                   canonical_result, enqueued_at)
-                 VALUES ('rejected-transaction', ?1, ?2, 3, ?3, ?4,
-                         'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
+                 VALUES ('rejected-transaction', ?1, ?2, ?3, ?3,
+                         3, ?4, ?5, 'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
                 params![
                     "c".repeat(64),
                     enrollment.actor_id,
+                    enrollment.epoch_id,
                     "d".repeat(64),
                     "e".repeat(64),
                 ],
@@ -2312,15 +2384,17 @@ mod tests {
         );
         let invalid = connection.execute(
             "INSERT INTO library_follower_result_outbox
-             (transaction_id, transaction_digest, actor_id, result_sequence,
+             (transaction_id, transaction_digest, actor_id,
+              authority_epoch_id, intent_epoch_id, result_sequence,
               previous_result_digest, result_digest, status, rejection_reason,
               original_result_digest, authoritative_source_revision,
               canonical_result, enqueued_at)
-             VALUES ('invalid-rejection', ?1, ?2, 4, ?3, ?4,
+             VALUES ('invalid-rejection', ?1, ?2, ?3, ?3, 4, ?4, ?5,
                      'rejected', NULL, NULL, 1, x'7b7d', 2300);",
             params![
                 "f".repeat(64),
                 enrollment.actor_id,
+                enrollment.epoch_id,
                 "e".repeat(64),
                 "1".repeat(64),
             ],
@@ -2343,15 +2417,17 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_follower_result_outbox
-                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                 (transaction_id, transaction_digest, actor_id,
+                  authority_epoch_id, intent_epoch_id, result_sequence,
                   previous_result_digest, result_digest, status, rejection_reason,
                   original_result_digest, authoritative_source_revision,
                   canonical_result, enqueued_at)
-                 VALUES ('already-applied-page', ?1, ?2, 2, ?3, ?4,
-                         'already_applied', NULL, ?3, 1, ?5, 2100);",
+                 VALUES ('already-applied-page', ?1, ?2, ?3, ?3,
+                         2, ?4, ?5, 'already_applied', NULL, ?4, 1, ?6, 2100);",
                 params![
                     "b".repeat(64),
                     enrollment.actor_id,
+                    enrollment.epoch_id,
                     accepted.follower_result_digest,
                     "d".repeat(64),
                     maximum_canonical_result.as_bytes(),
@@ -2361,15 +2437,17 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO library_follower_result_outbox
-                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                 (transaction_id, transaction_digest, actor_id,
+                  authority_epoch_id, intent_epoch_id, result_sequence,
                   previous_result_digest, result_digest, status, rejection_reason,
                   original_result_digest, authoritative_source_revision,
                   canonical_result, enqueued_at)
-                 VALUES ('rejected-page', ?1, ?2, 3, ?3, ?4,
-                         'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
+                 VALUES ('rejected-page', ?1, ?2, ?3, ?3,
+                         3, ?4, ?5, 'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
                 params![
                     "c".repeat(64),
                     enrollment.actor_id,
+                    enrollment.epoch_id,
                     "d".repeat(64),
                     "e".repeat(64),
                 ],
@@ -2850,6 +2928,7 @@ mod tests {
                 .expect("canonical retired result");
         assert_eq!(retired_result["rejection_reason"], "actor_retired");
         assert_eq!(retired_result["authoritative_source_revision"], 0);
+        assert_eq!(retired_result["replacement_fields"].as_array().unwrap().len(), 2);
         let retired_retry = match resolve_normalized_operation_transaction_v1(
             &mut retired_connection,
             &retired_envelopes,
@@ -2922,6 +3001,7 @@ mod tests {
                 .expect("canonical capability result");
         assert_eq!(denied_result["rejection_reason"], "capability_denied");
         assert_eq!(denied_result["authoritative_source_revision"], 0);
+        assert_eq!(denied_result["replacement_fields"].as_array().unwrap().len(), 2);
         assert_eq!(
             denied_connection
                 .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
@@ -2957,6 +3037,104 @@ mod tests {
                 )
                 .expect("one capability result"),
             1
+        );
+    }
+
+    #[test]
+    fn resolver_signs_a_stale_intent_epoch_with_the_current_authority() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let envelopes = signed_envelopes(&key_pair, &enrollment);
+        let current_epoch_id = "4".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 SELECT ?1, library_id, 2, authority_key_id,
+                        authority_public_key, ?2, '{}', 1, ?3, ?4, 1500
+                 FROM library_authority_epochs WHERE epoch_id = ?5;",
+                params![
+                    current_epoch_id,
+                    "d".repeat(64),
+                    "e".repeat(64),
+                    "f".repeat(64),
+                    enrollment.epoch_id,
+                ],
+            )
+            .expect("new authority epoch");
+        connection
+            .execute(
+                "UPDATE library_active_authority
+                 SET epoch_id = ?1, accepted_manifest_generation = 1,
+                     activated_at = 1500;",
+                [&current_epoch_id],
+            )
+            .expect("activate new epoch");
+        connection
+            .execute(
+                "UPDATE library_writer_admission
+                 SET observed_manifest_generation = 1, observed_at = 1500;",
+                [],
+            )
+            .expect("admit current writer");
+        connection
+            .execute(
+                "UPDATE library_meta
+                 SET authority_epoch = ?1, updated_at = 1500;",
+                [&current_epoch_id],
+            )
+            .expect("advance Library epoch");
+
+        let receipt = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .expect("stale epoch rejection")
+        {
+            NormalizedMutationResolutionV1::FollowerResult(receipt) => receipt,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("an old epoch intent cannot be accepted")
+            }
+        };
+        let result: Value = serde_json::from_slice(&receipt.canonical_follower_result)
+            .expect("canonical stale epoch result");
+        assert_eq!(result["rejection_reason"], "epoch_stale");
+        assert_eq!(result["epoch"], 2);
+        assert_eq!(result["epoch_id"], current_epoch_id);
+        assert_eq!(result["intent_epoch"], 1);
+        assert_eq!(result["intent_epoch_id"], enrollment.epoch_id);
+        assert_eq!(result["authoritative_source_revision"], 0);
+        assert_eq!(result["replacement_fields"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT authority_epoch_id, intent_epoch_id
+                     FROM library_follower_result_outbox;",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .expect("stored result epochs"),
+            (current_epoch_id, enrollment.epoch_id)
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("no stale epoch transaction"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("unchanged stale epoch revision"),
+            0
         );
     }
 

@@ -362,6 +362,7 @@ loads an alternate Library engine or compatibility path.
 | 4.186 | Atomic stale actor-tip resolution as an authority-signed precondition failure, after complete transaction and signature verification, with current source-revision binding and no accepted operation, actor-tip, product-row, invalidation, or revision write | ✓ | High |
 | 4.187 | Native typed follower-result export keyed by actor and result sequence, with exact digest-chain cursors, 128-row and 1,048,576-byte response bounds, lossless 131,072-byte canonical records, exact serialized-page measurement, and indexed keyset paging without scans or temporary sorts | ✓ | High |
 | 4.188 | Native separation of cryptographic transaction verification from current admission policy, with atomic authority-signed `actor_retired` and `capability_denied` results, exact retry, current source-revision binding, and no accepted transaction, operation, receipt, product, actor-tip, invalidation, or revision effect | ✓ | High |
+| 4.189 | Dual-epoch follower results with separate typed authority and intent epoch identities, current-authority `epoch_stale` signing, exact optimistic replacement projections for policy and epoch rejections, shared Rust and TypeScript canonical vectors, and atomic PWA SQLite rejection settlement across an authority transition | ✓ | High |
 
 ---
 
