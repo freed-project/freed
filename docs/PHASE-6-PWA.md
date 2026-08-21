@@ -131,7 +131,11 @@
   - [x] `preferences_snapshot_v1` reads normalized typed nodes directly from
         browser SQLite through the shared typed query request. It preserves all
         five value kinds, exact binary UTF-8 path order, and the shared 512-row
-        and 2 MiB response ceilings without materializing a settings shell.
+        and 2 MiB response ceilings without materializing a settings shell. A
+        shared prototype-safe transform reconstructs bounded objects, arrays,
+        quoted keys, and scalar leaves. PWA state hydration now takes
+        synchronized preferences from this SQLite query instead of
+        `00_library_shell`.
   - [x] `item_detail_v1` performs one primary-key lookup in browser SQLite and
         returns the same closed compact card and typed reader-body locators as
         native Rust. Full reader content remains outside the metadata response.
@@ -407,6 +411,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.26 | Route selected Person timelines through the shared `person_timeline_v1` adapter backed by the PWA OPFS SQLite worker, keyed by stable Person ID | High | ✓ Complete |
 | 6.27 | Supply the Friends Galaxy worker with direct OPFS SQLite Person, Account, and RSS graph page executors so React never compiles the identity corpus | High | ✓ Complete |
 | 6.28 | Route selected unlinked Account timelines through the shared `account_timeline_v1` adapter backed by the PWA OPFS SQLite worker, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
+| 6.29 | Hydrate synchronized PWA preferences through the shared bounded `preferences_snapshot_v1` transform instead of the selected IndexedDB shell | High | ✓ Complete |
 
 ---
 

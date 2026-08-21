@@ -1,4 +1,8 @@
-import type { FeedItem } from "../types.js";
+import {
+  mergeDefaultPreferences,
+  type FeedItem,
+  type UserPreferences,
+} from "../types.js";
 import {
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
@@ -57,6 +61,11 @@ import {
   LIBRARY_CORE_SEARCH_PAGE_SCHEMA_VERSION,
   type LibraryCoreSearchPageResponseV1,
 } from "./search-page-contracts.js";
+import {
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
+  libraryCorePreferenceNodesToValueV1,
+} from "./preferences-snapshot-contracts.js";
 
 export interface LibraryCoreNormalizedSavedAnalyticsInputV1 {
   readonly dailyWindows: readonly LibraryCoreSavedAnalyticsWindowV2[];
@@ -142,6 +151,21 @@ export async function readLibraryCoreNormalizedFacetSummaryV1(
     schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   });
   return response.summary;
+}
+
+/** Read and reconstruct the bounded synchronized preference tree from SQLite. */
+export async function readLibraryCoreNormalizedPreferencesV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+): Promise<UserPreferences> {
+  const response = await runtime.query({
+    queryId: LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
+  });
+  return mergeDefaultPreferences(
+    libraryCorePreferenceNodesToValueV1(
+      response.rows,
+    ) as Partial<UserPreferences>,
+  );
 }
 
 export async function readLibraryCoreNormalizedSavedAnalyticsV1(

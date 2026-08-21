@@ -214,7 +214,10 @@ function parseNode(value: unknown): LibraryCorePreferenceNodeV1 | null {
     !["a:", "o:", "v:"].includes(prefix) ||
     !(row.path as string).slice(2).startsWith("$.") ||
     (prefix === "a:" &&
-      (row.valueType !== "integer" || (row.integerValue as number) < 0)) ||
+      (row.valueType !== "integer" ||
+        (row.integerValue as number) < 0 ||
+        (row.integerValue as number) >
+          LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS)) ||
     (prefix === "o:" && row.valueType !== "null")
   ) {
     return null;
@@ -228,6 +231,168 @@ function parseNode(value: unknown): LibraryCorePreferenceNodeV1 | null {
     updatedAt: row.updatedAt as number,
     valueType: row.valueType as LibraryCorePreferenceValueType,
   });
+}
+
+type LibraryCorePreferencePathSegmentV1 = string | number;
+
+function parsePreferencePathV1(path: string): LibraryCorePreferencePathSegmentV1[] {
+  if (!path.startsWith("$.") && !path.startsWith("$[")) {
+    throw new TypeError("preference path does not begin at the root");
+  }
+  const segments: LibraryCorePreferencePathSegmentV1[] = [];
+  let offset = 1;
+  while (offset < path.length) {
+    if (path[offset] === ".") {
+      offset += 1;
+      if (path[offset] === '"') {
+        const start = offset;
+        offset += 1;
+        let escaped = false;
+        while (offset < path.length) {
+          const character = path[offset]!;
+          if (!escaped && character === '"') break;
+          escaped = !escaped && character === "\\";
+          if (character !== "\\") escaped = false;
+          offset += 1;
+        }
+        if (offset >= path.length) {
+          throw new TypeError("preference path has an unterminated key");
+        }
+        const key = JSON.parse(path.slice(start, offset + 1));
+        if (typeof key !== "string") {
+          throw new TypeError("preference path key is invalid");
+        }
+        segments.push(key);
+        offset += 1;
+      } else {
+        const start = offset;
+        while (
+          offset < path.length &&
+          path[offset] !== "." &&
+          path[offset] !== "["
+        ) {
+          offset += 1;
+        }
+        if (offset === start) {
+          throw new TypeError("preference path contains an empty key");
+        }
+        segments.push(path.slice(start, offset));
+      }
+      continue;
+    }
+    if (path[offset] === "[") {
+      const close = path.indexOf("]", offset + 1);
+      const value = close < 0 ? "" : path.slice(offset + 1, close);
+      if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+        throw new TypeError("preference path array index is invalid");
+      }
+      const index = Number(value);
+      if (
+        !Number.isSafeInteger(index) ||
+        index >= LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS
+      ) {
+        throw new TypeError("preference path array index exceeds its bound");
+      }
+      segments.push(index);
+      offset = close + 1;
+      continue;
+    }
+    throw new TypeError("preference path separator is invalid");
+  }
+  if (segments.length === 0) {
+    throw new TypeError("preference path cannot name the root");
+  }
+  return segments;
+}
+
+function preferenceNodeValueV1(node: LibraryCorePreferenceNodeV1): unknown {
+  if (node.path.startsWith("o:")) return Object.create(null);
+  if (node.path.startsWith("a:")) {
+    return new Array(node.integerValue ?? 0);
+  }
+  switch (node.valueType) {
+    case "boolean":
+      return node.booleanValue;
+    case "integer":
+      return node.integerValue;
+    case "real":
+      return node.realValue;
+    case "text":
+      return node.textValue;
+    case "null":
+      return null;
+  }
+}
+
+function definePreferenceChildV1(
+  parent: unknown,
+  segment: LibraryCorePreferencePathSegmentV1,
+  value: unknown,
+): void {
+  if (Array.isArray(parent)) {
+    if (
+      typeof segment !== "number" ||
+      segment < 0 ||
+      segment >= parent.length
+    ) {
+      throw new TypeError("preference array child is outside its container");
+    }
+    parent[segment] = value;
+    return;
+  }
+  if (
+    typeof parent !== "object" ||
+    parent === null ||
+    typeof segment !== "string"
+  ) {
+    throw new TypeError("preference object child has no matching container");
+  }
+  Object.defineProperty(parent, segment, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
+/** Reassemble one bounded preference tree from normalized SQLite nodes. */
+export function libraryCorePreferenceNodesToValueV1(
+  rows: readonly LibraryCorePreferenceNodeV1[],
+): Readonly<Record<string, unknown>> {
+  const decoded = rows.map((row) => ({
+    node: row,
+    logicalPath: row.path.slice(2),
+    segments: parsePreferencePathV1(row.path.slice(2)),
+  }));
+  const logicalPaths = new Set<string>();
+  for (const entry of decoded) {
+    if (logicalPaths.has(entry.logicalPath)) {
+      throw new TypeError("preference snapshot defines one path more than once");
+    }
+    logicalPaths.add(entry.logicalPath);
+  }
+  decoded.sort(
+    (left, right) =>
+      left.segments.length - right.segments.length ||
+      compareUtf8(left.node.path, right.node.path),
+  );
+  const root = Object.create(null) as Record<string, unknown>;
+  const values = new Map<string, unknown>([["$", root]]);
+  for (const entry of decoded) {
+    const parentPath = entry.logicalPath.replace(/(?:\.[^.[]+|\."(?:[^"\\]|\\.)*"|\[[0-9]+\])$/, "");
+    const parent = values.get(parentPath);
+    if (parent === undefined) {
+      throw new TypeError("preference snapshot is missing a parent container");
+    }
+    const value = preferenceNodeValueV1(entry.node);
+    definePreferenceChildV1(
+      parent,
+      entry.segments[entry.segments.length - 1]!,
+      value,
+    );
+    values.set(entry.logicalPath, value);
+  }
+  return Object.freeze(root);
 }
 
 export function parseLibraryCorePreferencesSnapshotResponseV1(

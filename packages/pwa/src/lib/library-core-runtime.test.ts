@@ -183,6 +183,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
+    mocks.queryNormalizedLibrary.mockResolvedValue({ rows: [] });
     mocks.resetNormalizedLibrary.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
@@ -378,6 +379,60 @@ describe("PWA Library Core bounded scanner", () => {
     const state = await initializePwaLibraryCoreState();
 
     expect(state.searchCorpusVersion).toBe(SELECTED_SOURCE.selectionSequence);
+  });
+
+  it("hydrates synchronized preferences from SQLite instead of the shell", async () => {
+    mocks.readSelectedMaterializedRow.mockResolvedValue({
+      accounts: {},
+      feeds: {},
+      persons: {},
+      preferences: {
+        ...createDefaultPreferences(),
+        display: {
+          ...createDefaultPreferences().display,
+          themeId: "scriptorium",
+        },
+      },
+    });
+    mocks.readSelectedMaterializedPage.mockResolvedValue({
+      entries: [],
+      nextCursor: null,
+      source: SELECTED_SOURCE,
+    });
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      rows: [
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "o:$.display",
+          realValue: null,
+          textValue: null,
+          updatedAt: 1,
+          valueType: "null",
+        },
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "v:$.display.themeId",
+          realValue: null,
+          textValue: "neon",
+          updatedAt: 1,
+          valueType: "text",
+        },
+      ],
+    });
+
+    await expect(initializePwaLibraryCoreState()).resolves.toEqual(
+      expect.objectContaining({
+        preferences: expect.objectContaining({
+          display: expect.objectContaining({ themeId: "neon" }),
+        }),
+      }),
+    );
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith({
+      queryId: "preferences_snapshot_v1",
+      schemaVersion: 1,
+    });
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {

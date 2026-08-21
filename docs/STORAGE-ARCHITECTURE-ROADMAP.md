@@ -203,6 +203,13 @@ SQL, source-bound cursor, digest vector, and deterministic Rust and TypeScript
 scoring rules. The historical PWA IndexedDB search database and Desktop JSON-row
 search command are removed.
 
+`preferences_snapshot_v1` now has one shared reconstruction transform for
+native and browser query executors. It rejects oversized arrays, conflicting
+logical paths, missing containers, malformed JSON paths, and prototype-bearing
+object creation. The PWA hydrates synchronized preferences from these bounded
+SQLite nodes. The remaining shell read supplies only identity catalogs and the
+temporary initial item window until their typed page cuts land.
+
 Exit proof:
 
 - iOS 17 physical-device tests cover persistence, suspension, worker loss,

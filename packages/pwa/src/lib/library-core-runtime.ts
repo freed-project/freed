@@ -21,6 +21,7 @@ import {
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
+  readLibraryCoreNormalizedPreferencesV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   searchLibraryCoreNormalizedItemsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
@@ -199,6 +200,9 @@ async function readSelectedState(): Promise<LibraryState | null> {
     "shell",
   );
   if (!shell) return null;
+  const preferences = await readLibraryCoreNormalizedPreferencesV1(
+    NORMALIZED_READER_RUNTIME,
+  );
 
   const items: FeedItem[] = [];
   const feedUnreadCounts: Record<string, number> = {};
@@ -263,6 +267,7 @@ async function readSelectedState(): Promise<LibraryState | null> {
       totalUnreadCount,
       unreadCountByPlatform,
     }),
+    preferences,
     searchCorpusVersion: selected.selectionSequence,
   };
 }

@@ -5,7 +5,10 @@ import {
   readLibraryCoreNormalizedFeedSignalCountsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
-import { searchLibraryCoreNormalizedItemsV1 } from "./normalized-surface-readers.js";
+import {
+  readLibraryCoreNormalizedPreferencesV1,
+  searchLibraryCoreNormalizedItemsV1,
+} from "./normalized-surface-readers.js";
 
 const feedCard = (globalId: string) => ({
   archived: false,
@@ -39,6 +42,47 @@ const feedCard = (globalId: string) => ({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it("reconstructs synchronized preferences through the normalized executor", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "o:$.display",
+          realValue: null,
+          textValue: null,
+          updatedAt: 1,
+          valueType: "null",
+        },
+        {
+          booleanValue: null,
+          integerValue: null,
+          path: "v:$.display.themeId",
+          realValue: null,
+          textValue: "neon",
+          updatedAt: 1,
+          valueType: "text",
+        },
+      ],
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreNormalizedPreferencesV1({
+        query,
+        randomId: () => "test",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        display: expect.objectContaining({ themeId: "neon" }),
+        weights: expect.any(Object),
+      }),
+    );
+    expect(query).toHaveBeenCalledWith({
+      queryId: "preferences_snapshot_v1",
+      schemaVersion: 1,
+    });
+  });
+
   it("streams source-fenced SQLite search pages without retaining a corpus", async () => {
     const query = vi
       .fn()
