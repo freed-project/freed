@@ -413,6 +413,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.28 | Route selected unlinked Account timelines through the shared `account_timeline_v1` adapter backed by the PWA OPFS SQLite worker, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
 | 6.29 | Hydrate synchronized PWA preferences through the shared bounded `preferences_snapshot_v1` transform instead of the selected IndexedDB shell | High | ✓ Complete |
 | 6.30 | Run Friends activity and source-fenced location resolution through `persons_graph_v1` and normalized item detail in OPFS SQLite, then delete the PWA IndexedDB read model and its scan-based tests | High | ✓ Complete |
+| 6.31 | Resolve explicit archive eligibility and toggle state from normalized SQLite item detail before creating signed follower intents | High | ✓ Complete |
 
 ---
 

@@ -207,7 +207,9 @@ search command are removed.
 native and browser query executors. It rejects oversized arrays, conflicting
 logical paths, missing containers, malformed JSON paths, and prototype-bearing
 object creation. The PWA hydrates synchronized preferences from these bounded
-SQLite nodes. The remaining shell read supplies only identity catalogs and the
+SQLite nodes. Explicit archive and toggle commands also resolve their current
+item state through normalized SQLite detail before creating signed follower
+intents. The remaining shell read supplies only identity catalogs and the
 temporary initial item window until their typed page cuts land.
 
 Exit proof:

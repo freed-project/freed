@@ -120,6 +120,51 @@ const SELECTED_SOURCE = Object.freeze({
   selectionSequence: 7,
 });
 
+function normalizedItemDetail(
+  globalId: string,
+  userState: Readonly<{
+    archived?: boolean;
+    liked?: boolean;
+    readAt?: number | null;
+    saved?: boolean;
+  }> = {},
+) {
+  return {
+    item: {
+      card: {
+        archived: userState.archived ?? false,
+        authorAvatarUrl: null,
+        authorDisplayName: "Reader",
+        authorHandle: "reader",
+        authorId: "reader-1",
+        capturedAt: 20,
+        contentSignalTags: [],
+        contentText: "Saved locally",
+        contentType: "post",
+        engagementComments: null,
+        engagementLikes: null,
+        eventConfidenceBasisPoints: null,
+        eventStartsAt: null,
+        globalId,
+        liked: userState.liked ?? false,
+        likedAt: null,
+        likedSyncedAt: null,
+        linkPreviewTitle: null,
+        locationName: null,
+        mediaTypes: [],
+        mediaUrls: [],
+        platform: "rss",
+        publishedAt: 10,
+        readAt: userState.readAt ?? null,
+        readingTimeMinutes: null,
+        saved: userState.saved ?? false,
+        sourceUrl: null,
+        tags: [],
+      },
+    },
+  };
+}
+
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -612,14 +657,13 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
   });
 
-  it("queues user-state changes through the signed IndexedDB intent path", async () => {
+  it("reads toggle state from SQLite before queuing a signed intent", async () => {
     mocks.enqueueUserStateAssignments.mockResolvedValue({
       operationId: "op:assignment",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      globalId: "item-9",
-      userState: { liked: false },
-    });
+    mocks.queryNormalizedLibrary.mockResolvedValue(
+      normalizedItemDetail("item-9", { liked: false }),
+    );
 
     await enqueuePwaLibraryCoreUserStateToggle("item-9", "liked");
 
@@ -632,6 +676,7 @@ describe("PWA Library Core bounded scanner", () => {
         field: "liked",
       },
     ]);
+    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("queues FeedItem removal through the signed IndexedDB intent path", async () => {
@@ -815,19 +860,12 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueUserStateAssignments.mockResolvedValue({
       operationId: "op:archive",
     });
-    mocks.readSelectedMaterializedRow
-      .mockResolvedValueOnce({
-        globalId: "eligible",
-        userState: { readAt: 1 },
-      })
-      .mockResolvedValueOnce({
-        globalId: "saved",
-        userState: { readAt: 1, saved: true },
-      })
-      .mockResolvedValueOnce({
-        globalId: "unread",
-        userState: {},
-      });
+    mocks.queryNormalizedLibrary
+      .mockResolvedValueOnce(normalizedItemDetail("eligible", { readAt: 1 }))
+      .mockResolvedValueOnce(
+        normalizedItemDetail("saved", { readAt: 1, saved: true }),
+      )
+      .mockResolvedValueOnce(normalizedItemDetail("unread"));
 
     await enqueuePwaLibraryCoreArchiveItems([
       "eligible",
@@ -845,6 +883,7 @@ describe("PWA Library Core bounded scanner", () => {
         field: "archived",
       },
     ]);
+    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("archives the complete selected scope in one bounded assignment batch", async () => {

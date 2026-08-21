@@ -344,11 +344,10 @@ export async function enqueuePwaLibraryCoreArchiveItems(
 ): Promise<void> {
   const assignments: string[] = [];
   for (const globalId of new Set(globalIds.filter(Boolean))) {
-    const row = await getPortableStore().readSelectedMaterializedRow(
-      "10_feed_items",
+    const item = await readLibraryCoreNormalizedItemDetailV1(
+      NORMALIZED_READER_RUNTIME,
       globalId,
     );
-    const item = row as unknown as FeedItem | null;
     if (
       !item ||
       item.userState.hidden ||
@@ -450,11 +449,10 @@ export async function enqueuePwaLibraryCoreUserStateToggle(
   globalId: string,
   field: FeedItemUserStateAssignmentFieldV1,
 ): Promise<void> {
-  const row = await getPortableStore().readSelectedMaterializedRow(
-    "10_feed_items",
+  const item = await readLibraryCoreNormalizedItemDetailV1(
+    NORMALIZED_READER_RUNTIME,
     globalId,
   );
-  const item = row as unknown as FeedItem | null;
   if (!item) throw new Error("PWA assignment targets an unavailable FeedItem");
   await enqueuePwaLibraryCoreUserStateAssignment(
     globalId,
