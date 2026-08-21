@@ -26,6 +26,7 @@ mod library_core_sidecar;
 mod library_core_store;
 mod normalized_checkpoint;
 mod normalized_import;
+mod normalized_mutation;
 mod normalized_sqlite;
 mod product_projection;
 pub mod sqlite_contract_generated;
@@ -73,6 +74,9 @@ pub use normalized_checkpoint::{
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
     NormalizedCheckpointActivationReceiptV2,
+};
+pub use normalized_mutation::{
+    accept_normalized_operation_transaction_v1, NormalizedMutationReceiptV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

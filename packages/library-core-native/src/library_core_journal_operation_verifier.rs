@@ -115,10 +115,10 @@ const MAX_PERSON_BYTES: usize = 262_144;
 const MAX_ACCOUNT_BYTES: usize = 262_144;
 
 #[derive(Debug, Clone)]
-pub(super) struct OperationIdentity {
-    pub(super) library_id: String,
-    pub(super) epoch_id: String,
-    pub(super) actor_id: String,
+pub(crate) struct OperationIdentity {
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
 }
 
 #[derive(Debug)]
@@ -1068,7 +1068,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     })
 }
 
-pub(super) fn verify_operation_transaction<F>(
+pub(crate) fn verify_operation_transaction<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
 ) -> JournalResult<VerifiedOperationTransaction>
@@ -1250,7 +1250,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::super::{LibraryCoreJournal, VerifiedActorEnrollment};
     use super::*;
     use crate::library_core_canonical::encode_canonical_value;
@@ -1266,7 +1266,7 @@ mod tests {
         encoded
     }
 
-    fn signed_envelopes(
+    pub(crate) fn signed_envelopes(
         key_pair: &Ed25519KeyPair,
         enrollment: &VerifiedActorEnrollment,
     ) -> Vec<Vec<u8>> {
@@ -1284,7 +1284,7 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn signed_envelopes_from_tip(
+    pub(crate) fn signed_envelopes_from_tip(
         key_pair: &Ed25519KeyPair,
         enrollment: &VerifiedActorEnrollment,
         transaction_id: &str,
@@ -1494,7 +1494,7 @@ mod tests {
             .collect()
     }
 
-    fn enrollment(key_pair: &Ed25519KeyPair) -> VerifiedActorEnrollment {
+    pub(crate) fn enrollment(key_pair: &Ed25519KeyPair) -> VerifiedActorEnrollment {
         VerifiedActorEnrollment {
             library_id: "1".repeat(64),
             epoch: 1,

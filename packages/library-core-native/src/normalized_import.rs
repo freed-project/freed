@@ -339,6 +339,14 @@ pub fn finalize_normalized_checkpoint_stage_v2(
             "checkpoint header does not match its stage identity",
         ));
     }
+    let revision_updated = transaction.execute(
+        "UPDATE library_change_state SET revision = ?1
+         WHERE singleton_id = 1 AND revision = 0;",
+        [stage.2],
+    )?;
+    if revision_updated != 1 {
+        return Err(invalid("checkpoint change revision could not be activated"));
+    }
     verify_blob_rows(&transaction)?;
     let foreign_key_failure: Option<String> = transaction
         .query_row(

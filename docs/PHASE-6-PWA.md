@@ -31,6 +31,10 @@
   - [x] Install the shared strict transaction, operation, replication,
         invalidation, signed-intent, result, and sparse optimistic-field table
         catalog in browser SQLite with the same schema digest as native Rust.
+  - [x] Consume the generated `feed_item_read_assignment` SQLite program,
+        member bound, entity identity, and invalidation topic from the same
+        executable contract as the native Primary. Browser intent and sparse
+        overlay routing remain open.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

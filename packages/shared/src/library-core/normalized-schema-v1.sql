@@ -372,18 +372,18 @@ CREATE TABLE IF NOT EXISTS library_actor_capabilities (
   actor_id TEXT NOT NULL REFERENCES library_actors(actor_id) ON DELETE CASCADE,
   certificate_version INTEGER NOT NULL CHECK (certificate_version >= 1),
   actor_class TEXT NOT NULL CHECK (length(CAST(actor_class AS BLOB)) BETWEEN 1 AND 64),
-  scope_mode TEXT NOT NULL CHECK (scope_mode IN ('unbounded', 'bounded')),
+  scope_mode TEXT NOT NULL CHECK (scope_mode IN ('legacy_editor', 'library_wide', 'bounded')),
   scope_kind TEXT,
   scope_id TEXT,
-  issuance_identity TEXT NOT NULL CHECK (length(CAST(issuance_identity AS BLOB)) BETWEEN 1 AND 255),
-  retirement_identity TEXT NOT NULL CHECK (length(CAST(retirement_identity AS BLOB)) BETWEEN 1 AND 255),
+  issuance_identity TEXT CHECK (issuance_identity IS NULL OR length(CAST(issuance_identity AS BLOB)) BETWEEN 1 AND 255),
+  retirement_identity TEXT CHECK (retirement_identity IS NULL OR length(CAST(retirement_identity AS BLOB)) BETWEEN 1 AND 255),
   certificate_digest TEXT NOT NULL CHECK (length(certificate_digest) = 64 AND certificate_digest NOT GLOB '*[^0-9a-f]*'),
   canonical_certificate TEXT NOT NULL CHECK (length(CAST(canonical_certificate AS BLOB)) BETWEEN 1 AND 65536),
   issued_at INTEGER NOT NULL CHECK (issued_at >= 0),
   retired_at INTEGER,
   retirement_certificate_digest TEXT CHECK (retirement_certificate_digest IS NULL OR (length(retirement_certificate_digest) = 64 AND retirement_certificate_digest NOT GLOB '*[^0-9a-f]*')),
   CHECK (
-    (scope_mode = 'unbounded' AND scope_kind IS NULL AND scope_id IS NULL)
+    (scope_mode IN ('legacy_editor', 'library_wide') AND scope_kind IS NULL AND scope_id IS NULL)
     OR (scope_mode = 'bounded' AND scope_kind IS NOT NULL AND scope_id IS NOT NULL)
   ),
   CHECK (

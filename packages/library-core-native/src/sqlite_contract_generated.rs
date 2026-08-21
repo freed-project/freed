@@ -11,7 +11,7 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "014211df2122479e6a74f76b664dd05250043906ff7784a6aecfa4a1e2869499";
+    "1c4b0e9a72c07ace2c9c55f60773ffc627e4578fffb9442dcebdc7703bec3546";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 
@@ -474,6 +474,23 @@ pub const OPERATION_IDS: &[&str] = &[
     "rss_feeds_remove_with_items",
     "sample_library_import",
     "sample_library_remove",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteMutationProgram {
+    pub mutation_id: &'static str,
+    pub maximum_members: usize,
+    pub entity_type: &'static str,
+    pub invalidation_topic: &'static str,
+    pub target_exists_sql: &'static str,
+    pub current_value_sql: &'static str,
+    pub current_clock_sql: &'static str,
+    pub materialize_sql: &'static str,
+    pub field_clock_sql: &'static str,
+}
+
+pub const SQLITE_MUTATION_PROGRAMS: &[SqliteMutationProgram] = &[
+    SqliteMutationProgram { mutation_id: "feed_item_read_assignment", maximum_members: 256, entity_type: "FeedItem", invalidation_topic: "feed_item", target_exists_sql: "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);", current_value_sql: "SELECT read_at FROM library_feed_items WHERE global_id = ?1;", current_clock_sql: "SELECT operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'read_at';", materialize_sql: "UPDATE library_feed_items SET read_at = ?1, updated_at = ?2 WHERE global_id = ?3;", field_clock_sql: "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'read_at', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;" },
 ];
 
 pub const QUERY_IDS: &[&str] = &[

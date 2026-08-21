@@ -53,7 +53,8 @@ export interface LibraryCoreOperationMaterializerContract {
 }
 
 /**
- * Traced from `commit_read_transaction` in the reusable native journal.
+ * Traced from `accept_normalized_operation_transaction_v1` in the reusable
+ * native core.
  *
  * The upsert keeps the earliest read time, which is
  * `minimum_present_nonnegative_safe_integer_v1` for the `readAt` leaf. At equal
@@ -68,10 +69,10 @@ export const FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER = Object.freeze({
   materializerId: "feed_item_read_state_v1",
   schemaVersion: 1,
   operationType: "feed_item_read_assignment",
-  targetTable: "library_core_feed_item_read_state",
-  conflictColumn: "entityId",
+  targetTable: "library_feed_items",
+  conflictColumn: "global_id",
   mergeAlgebraId: "minimum_present_nonnegative_safe_integer_v1",
   equalValueTieBreak: "lower_source_operation_id_v1",
   nativeModulePath:
-    "packages/library-core-native/src/library_core_journal.rs",
+    "packages/library-core-native/src/normalized_mutation.rs",
 }) satisfies LibraryCoreOperationMaterializerContract;

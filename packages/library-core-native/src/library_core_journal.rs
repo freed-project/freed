@@ -21,7 +21,7 @@ use std::time::Duration;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 
 #[path = "library_core_actor_capability.rs"]
-mod actor_capability;
+pub(crate) mod actor_capability;
 #[path = "library_core_journal_authority.rs"]
 mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
@@ -29,7 +29,7 @@ mod enrollment_verifier;
 #[path = "library_core_journal_follower.rs"]
 mod follower;
 #[path = "library_core_journal_operation_verifier.rs"]
-mod operation_verifier;
+pub(crate) mod operation_verifier;
 
 use actor_capability::ActorCapabilityState;
 
@@ -322,18 +322,18 @@ pub struct ActorState {
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedActorEnrollment {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    actor_id: String,
-    actor_public_key: String,
-    enrollment_operation_id: String,
-    enrollment_certificate_digest: String,
-    canonical_enrollment_certificate_json: String,
-    actor_chain_genesis: String,
-    enrolled_at_ms: i64,
-    capability: ActorCapabilityState,
+pub(crate) struct VerifiedActorEnrollment {
+    pub(crate) library_id: String,
+    pub(crate) epoch: i64,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_operation_id: String,
+    pub(crate) enrollment_certificate_digest: String,
+    pub(crate) canonical_enrollment_certificate_json: String,
+    pub(crate) actor_chain_genesis: String,
+    pub(crate) enrolled_at_ms: i64,
+    pub(crate) capability: ActorCapabilityState,
 }
 
 #[derive(Debug)]
@@ -407,42 +407,42 @@ pub(crate) struct VerifiedAuthorityProtocolTransition {
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedOperation {
-    operation_id: String,
-    actor_sequence: i64,
-    previous_actor_operation_id: Option<String>,
-    previous_actor_chain_digest: String,
-    actor_chain_digest: String,
-    member_digest: String,
-    signing_body_digest: String,
-    envelope_digest: String,
-    entity_id: String,
-    entity_type: String,
-    operation_type: String,
-    item_json: Option<String>,
-    rss_feed_json: Option<String>,
-    preferences_patch_json: Option<String>,
-    person_json: Option<String>,
-    account_json: Option<String>,
-    read_at_ms: Option<i64>,
-    assigned: Option<bool>,
-    assigned_at_ms: Option<i64>,
-    removed_at_ms: Option<i64>,
-    canonical_envelope_json: String,
-    causal_tips: Vec<VerifiedCausalTip>,
+pub(crate) struct VerifiedOperation {
+    pub(crate) operation_id: String,
+    pub(crate) actor_sequence: i64,
+    pub(crate) previous_actor_operation_id: Option<String>,
+    pub(crate) previous_actor_chain_digest: String,
+    pub(crate) actor_chain_digest: String,
+    pub(crate) member_digest: String,
+    pub(crate) signing_body_digest: String,
+    pub(crate) envelope_digest: String,
+    pub(crate) entity_id: String,
+    pub(crate) entity_type: String,
+    pub(crate) operation_type: String,
+    pub(crate) item_json: Option<String>,
+    pub(crate) rss_feed_json: Option<String>,
+    pub(crate) preferences_patch_json: Option<String>,
+    pub(crate) person_json: Option<String>,
+    pub(crate) account_json: Option<String>,
+    pub(crate) read_at_ms: Option<i64>,
+    pub(crate) assigned: Option<bool>,
+    pub(crate) assigned_at_ms: Option<i64>,
+    pub(crate) removed_at_ms: Option<i64>,
+    pub(crate) canonical_envelope_json: String,
+    pub(crate) causal_tips: Vec<VerifiedCausalTip>,
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedOperationTransaction {
-    transaction_id: String,
-    transaction_digest: String,
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    actor_id: String,
-    actor_capability: ActorCapabilityState,
-    canonical_envelope_bytes: usize,
-    members: Vec<VerifiedOperation>,
+pub(crate) struct VerifiedOperationTransaction {
+    pub(crate) transaction_id: String,
+    pub(crate) transaction_digest: String,
+    pub(crate) library_id: String,
+    pub(crate) epoch: i64,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) actor_capability: ActorCapabilityState,
+    pub(crate) canonical_envelope_bytes: usize,
+    pub(crate) members: Vec<VerifiedOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -611,7 +611,9 @@ fn validate_actor_enrollment(enrollment: &VerifiedActorEnrollment) -> JournalRes
     Ok(())
 }
 
-fn validate_transaction(transaction: &VerifiedOperationTransaction) -> JournalResult<()> {
+pub(crate) fn validate_transaction(
+    transaction: &VerifiedOperationTransaction,
+) -> JournalResult<()> {
     if !is_operation_id(&transaction.transaction_id) {
         return Err(JournalError::InvalidVerifiedInput {
             field: "transaction_id",

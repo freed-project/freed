@@ -784,9 +784,6 @@ describe("Library Core operation registry", () => {
       LIBRARY_CORE_OPERATION_REGISTRY.feed_item_like_assignment.blockers,
     ).toContain("provider_intent_separation_unresolved");
     expect(
-      LIBRARY_CORE_OPERATION_REGISTRY.feed_item_read_assignment.blockers,
-    ).toContain("provider_intent_separation_unresolved");
-    expect(
       LIBRARY_CORE_OPERATION_REGISTRY.feed_items_read_frozen.blockers,
     ).toContain("provider_intent_separation_unresolved");
     expect(LIBRARY_CORE_OPERATION_REGISTRY.provider_intent.blockers).toContain(

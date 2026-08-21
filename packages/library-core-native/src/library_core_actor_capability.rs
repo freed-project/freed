@@ -53,7 +53,7 @@ pub(super) fn canonical_operation_types() -> &'static [String] {
     &registry().canonical_operation_types
 }
 
-pub(super) fn legacy_editor_operation_types() -> &'static [String] {
+pub(crate) fn legacy_editor_operation_types() -> &'static [String] {
     &registry().legacy_editor_operation_types
 }
 
@@ -68,7 +68,7 @@ pub(super) fn is_registered_operation(operation: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum ActorCapabilityScope {
+pub(crate) enum ActorCapabilityScope {
     LegacyEditor,
     LibraryWide,
     Bounded { kind: String, scope_id: String },
@@ -160,7 +160,7 @@ fn is_lower_hex_64(value: &str) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn parse_stored_capability(
+pub(crate) fn parse_stored_capability(
     certificate_version: i64,
     actor_class: String,
     allowed_operation_types_json: String,

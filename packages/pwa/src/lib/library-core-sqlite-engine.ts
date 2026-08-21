@@ -530,6 +530,23 @@ export class PwaLibraryCoreSqliteEngine {
       ) {
         throw new Error("checkpoint header does not match its stage identity");
       }
+      this.#database.exec({
+        sql: `UPDATE library_change_state SET revision = ?1
+              WHERE singleton_id = 1 AND revision = 0;`,
+        bind: [sourceRevision],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "checkpoint change revision activation",
+        ) !== 1
+      ) {
+        throw new Error("checkpoint change revision could not be activated");
+      }
       this.#verifyCheckpointContent();
       const foreignKeys = this.#database.exec({
         sql: "PRAGMA foreign_key_check;",

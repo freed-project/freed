@@ -107,19 +107,19 @@ describe("PWA Library Core SQLite engine", () => {
         registryKey: "91_actor_capability",
         primaryKey: "capability-1",
         payload: {
-          actorClass: "desktop",
+          actorClass: "editor",
           actorId: "actor-1",
           canonicalCertificate: "{}",
           certificateDigest: "4".repeat(64),
           certificateVersion: 2,
-          issuanceIdentity: "issuance-1",
+          issuanceIdentity: "5".repeat(64),
           issuedAt: 500,
           retiredAt: null,
           retirementCertificateDigest: null,
-          retirementIdentity: "retirement-1",
+          retirementIdentity: "6".repeat(64),
           scopeId: null,
           scopeKind: null,
-          scopeMode: "unbounded",
+          scopeMode: "library_wide",
         },
       }),
       createLibraryCoreNormalizedCheckpointRecordV2({
@@ -357,6 +357,13 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual(["library-1"]);
+    expect(
+      database.exec({
+        sql: "SELECT revision FROM library_change_state;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([7]);
   });
 
   it("rolls back browser activation on digest mismatch and unresolved references", () => {

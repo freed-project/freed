@@ -354,7 +354,6 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["markAsRead"],
     legacyWorkerRequests: ["MARK_AS_READ"],
-    additionalBlockers: ["provider_intent_separation_unresolved"],
   }),
   feed_item_remove: localUserOperation({
     entityType: "FeedItem",

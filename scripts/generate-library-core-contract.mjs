@@ -68,6 +68,7 @@ function assertContract(contract) {
     "contractVersion",
     "fractionalFields",
     "limits",
+    "mutationPrograms",
     "mutations",
     "protocolVersion",
     "queries",
@@ -108,6 +109,41 @@ function assertContract(contract) {
   }
   assertSortedUnique(contract.mutations, "mutations");
   assertSortedUnique(contract.queries, "queries");
+  const mutationProgramFields = [
+    "currentClockSql",
+    "currentValueSql",
+    "entityType",
+    "fieldClockSql",
+    "invalidationTopic",
+    "materializeSql",
+    "maximumMembers",
+    "targetExistsSql",
+  ];
+  for (const [mutationId, program] of Object.entries(
+    contract.mutationPrograms,
+  )) {
+    if (
+      !contract.mutations.includes(mutationId) ||
+      Object.keys(program).sort().join(",") !==
+        mutationProgramFields.join(",") ||
+      typeof program.entityType !== "string" ||
+      !/^[A-Z][A-Za-z0-9]*$/.test(program.entityType) ||
+      typeof program.invalidationTopic !== "string" ||
+      !/^[a-z][a-z0-9_]*$/.test(program.invalidationTopic) ||
+      !Number.isSafeInteger(program.maximumMembers) ||
+      program.maximumMembers < 1 ||
+      program.maximumMembers > 256 ||
+      [
+        program.currentClockSql,
+        program.currentValueSql,
+        program.fieldClockSql,
+        program.materializeSql,
+        program.targetExistsSql,
+      ].some((sql) => typeof sql !== "string" || sql.length === 0)
+    ) {
+      throw new TypeError("SQLite mutation program registry is invalid");
+    }
+  }
   for (const [queryId, program] of Object.entries(contract.queryPrograms)) {
     if (
       !contract.queries.includes(queryId) ||
@@ -370,6 +406,9 @@ ${stringTuple(contract.mutations)}
 ] as const;
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
+export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.mutationPrograms, null, 2)} as const;
+export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
+
 export const LIBRARY_CORE_QUERY_IDS = [
 ${stringTuple(contract.queries)}
 ] as const;
@@ -425,6 +464,12 @@ function rustSource(contract, schemaDigest) {
     .map(
       ([queryId, program]) =>
         `    (${JSON.stringify(queryId)}, ${program.maximumScanRows}, ${JSON.stringify(program.sql)}, ${JSON.stringify(program.countSql)}),`,
+    )
+    .join("\n");
+  const mutationPrograms = Object.entries(contract.mutationPrograms)
+    .map(
+      ([mutationId, program]) =>
+        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, current_clock_sql: ${JSON.stringify(program.currentClockSql)}, materialize_sql: ${JSON.stringify(program.materializeSql)}, field_clock_sql: ${JSON.stringify(program.fieldClockSql)} },`,
     )
     .join("\n");
   const importPrograms = Object.entries(checkpointImportPrograms(contract))
@@ -489,6 +534,23 @@ ${fractionalFieldVariants}
 
 pub const OPERATION_IDS: &[&str] = &[
 ${operations}
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteMutationProgram {
+    pub mutation_id: &'static str,
+    pub maximum_members: usize,
+    pub entity_type: &'static str,
+    pub invalidation_topic: &'static str,
+    pub target_exists_sql: &'static str,
+    pub current_value_sql: &'static str,
+    pub current_clock_sql: &'static str,
+    pub materialize_sql: &'static str,
+    pub field_clock_sql: &'static str,
+}
+
+pub const SQLITE_MUTATION_PROGRAMS: &[SqliteMutationProgram] = &[
+${mutationPrograms}
 ];
 
 pub const QUERY_IDS: &[&str] = &[

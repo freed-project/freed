@@ -22,6 +22,7 @@ const STAGED_RECORD_DIGEST_PREFIX: &[u8] =
 pub enum NormalizedSqliteError {
     Content(ContentRecordError),
     InvalidRequest(&'static str),
+    Journal(crate::library_core_journal::JournalError),
     Sqlite(rusqlite::Error),
     Transport(String),
 }
@@ -31,6 +32,7 @@ impl std::fmt::Display for NormalizedSqliteError {
         match self {
             Self::Content(error) => write!(formatter, "{error}"),
             Self::InvalidRequest(message) => formatter.write_str(message),
+            Self::Journal(error) => write!(formatter, "normalized operation failure: {error}"),
             Self::Sqlite(error) => write!(formatter, "normalized SQLite failure: {error}"),
             Self::Transport(message) => formatter.write_str(message),
         }
@@ -42,6 +44,12 @@ impl std::error::Error for NormalizedSqliteError {}
 impl From<rusqlite::Error> for NormalizedSqliteError {
     fn from(value: rusqlite::Error) -> Self {
         Self::Sqlite(value)
+    }
+}
+
+impl From<crate::library_core_journal::JournalError> for NormalizedSqliteError {
+    fn from(value: crate::library_core_journal::JournalError) -> Self {
+        Self::Journal(value)
     }
 }
 
@@ -608,9 +616,9 @@ mod tests {
                  (capability_id, actor_id, certificate_version, actor_class,
                   scope_mode, issuance_identity, retirement_identity,
                   certificate_digest, canonical_certificate, issued_at)
-                 VALUES ('capability-1', 'actor-1', 2, 'desktop', 'unbounded',
-                         'issuance-1', 'retirement-1', ?1, '{}', 500);",
-                ["4".repeat(64)],
+                 VALUES ('capability-1', 'actor-1', 2, 'editor', 'library_wide',
+                         ?1, ?2, ?3, '{}', 500);",
+                params!["5".repeat(64), "6".repeat(64), "4".repeat(64)],
             )
             .expect("capability");
         connection
@@ -1359,6 +1367,16 @@ mod tests {
             .expect("activate");
         assert_eq!(receipt.checkpoint_digest, digest);
         assert_eq!(receipt.record_count, page.records.len());
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("activated revision"),
+            7
+        );
         let restored = export_normalized_checkpoint_page_v2(
             &target,
             &NormalizedCheckpointExportRequestV2::default(),

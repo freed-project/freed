@@ -45,6 +45,14 @@
       Wall, settings, exports, and diagnostics through bounded named queries.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
+  - [x] The dormant `feed_item_read_assignment` core path now uses its
+        generated SQLite program and the extracted native verifier to
+        atomically commit the signed
+        transaction, actor tip, normalized FeedItem value, field clock,
+        receipt, replication outbox, bounded invalidation, and revision. Exact
+        retry returns the stored receipt only while writer admission and the
+        signed capability remain valid. The old source-text locator test was
+        deleted because executable native tests now prove this contract.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration
