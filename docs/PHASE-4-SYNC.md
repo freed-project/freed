@@ -310,6 +310,7 @@ loads an alternate Library engine or compatibility path.
 | 4.161 | Shared `item_detail_v1` SQLite point query across native and browser dispatch, reusing the closed compact card projection and returning only typed inline-or-blob reader locators, with no full body, catch-all object, or 8 MiB metadata exception | ✓ | High |
 | 4.162 | Shared `item_reader_body_v1` byte-range query across native and browser SQLite, with exact inline and content-addressed chunk reassembly, a 256 KiB range ceiling, a 512 KiB response ceiling, no more than six SQLite rows, and explicit end-of-body semantics | ✓ | High |
 | 4.163 | Shared `background_item_page_v1` primary-key traversal across native and browser SQLite, with source-fenced binary global ID cursors, a 64-row response limit, a 65-row scan ceiling, hidden and archived metadata coverage, and no bodies or offset paging | ✓ | High |
+| 4.164 | Shared `change_feed_v1` invalidation paging across native and browser SQLite, with a pinned upper revision, 512-row and 2 MiB ceilings, primary-key query plans, gap refusal, checkpoint reset notices, and no entity rows or reader content | ✓ | High |
 
 ---
 

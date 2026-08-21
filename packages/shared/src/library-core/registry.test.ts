@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS,
+  LIBRARY_CORE_CHANGE_FEED_PROJECTION,
+  LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA,
+  LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA,
+  LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY,
+} from "./change-feed-contracts.js";
+import {
   LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
   LIBRARY_CORE_FEED_PAGE_PROJECTION,
   LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
@@ -911,6 +918,7 @@ describe("Library Core query registry", () => {
       expect(definition.blockers.length).toBeGreaterThan(0);
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
@@ -1172,6 +1180,33 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.projection,
     ).not.toBe(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.projection);
+  });
+
+  it("closes the compact revision-keyed invalidation feed", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_CHANGE_FEED_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS,
+      tieBreakKey: "ordinal",
+      maximumRows: 512,
+      fullContentAllowed: false,
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+      "sort_contract_unresolved",
+      "runtime_adapter_unimplemented",
+    ]) {
+      expect(LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1.blockers).not.toContain(
+        blocker,
+      );
+    }
   });
 
   it("closes item detail as metadata with separate reader body locators", () => {

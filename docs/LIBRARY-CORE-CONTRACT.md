@@ -299,6 +299,19 @@ from the FeedItem primary key. The query has no offset, no total count, and no
 reader-body bytes. A job that needs content follows an explicit locator through
 the ranged reader or selective content plane.
 
+`change_feed_v1` is the only view-refresh subscription payload. A request
+names its last fully applied revision and receives at most 512 compact rows in
+`revision, ordinal` primary-key order. Each row contains only a topic, an
+optional changed identity, and `resetRequired`. The first page pins one upper
+revision. Continuation cursors retain that upper bound even if later commits
+arrive, so a reader completes one finite revision range before opening the
+next. Every committed revision has at least one invalidation row. A missing
+revision, a changed Library generation, or disagreement between materialized
+and change-feed revisions fails closed unless an explicit reset row closes the
+discarded range. Checkpoint activation emits one Library-wide reset
+invalidation at its accepted source revision. No invalidation carries an
+entity projection or reader content.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version
@@ -375,6 +388,11 @@ verifies the complete checkpoint digest, content chunks, foreign references,
 header identity, and record count, crosses a durability barrier, reads the
 staged database back, and selects it by one atomic local pointer change.
 Partial staging is never queryable.
+
+The verified checkpoint digest becomes the local materialization generation
+ID. Every bounded query cursor binds to that generation ID, never to the human
+Library ID. The generation metadata is local and is not included in checkpoint
+records, which keeps the checkpoint digest acyclic.
 
 ## 10. Operation synchronization
 

@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS library_meta (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_materialization_generation (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  generation_id TEXT NOT NULL CHECK (length(generation_id) = 64 AND generation_id NOT GLOB '*[^0-9a-f]*')
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_authority_epochs (
   epoch_id TEXT PRIMARY KEY CHECK (length(CAST(epoch_id AS BLOB)) BETWEEN 1 AND 255),
   library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),

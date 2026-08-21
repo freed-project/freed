@@ -11,6 +11,8 @@ const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
 const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
 const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
+const CHANGE_FEED_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
 const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
@@ -33,6 +35,17 @@ pub struct NormalizedFeedPageRequestV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemScanRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedChangeFeedRequestV1 {
+    pub after_revision: i64,
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
@@ -71,6 +84,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
+    ChangeFeed(NormalizedChangeFeedRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
@@ -137,6 +151,26 @@ pub struct NormalizedItemScanResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedFeedCardV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedChangeFeedRowV1 {
+    pub entity_id: Option<String>,
+    pub ordinal: i64,
+    pub reset_required: bool,
+    pub revision: i64,
+    pub topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedChangeFeedResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedChangeFeedRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -229,6 +263,7 @@ pub struct NormalizedItemReaderBodyResponseV1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
+    ChangeFeed(NormalizedChangeFeedResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
@@ -403,15 +438,19 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
 }
 
 fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
-    let source: (String, i64) = connection.query_row(
-        "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
+    let source: (String, i64, i64) = connection.query_row(
+        "SELECT generation.generation_id, meta.source_revision, changes.revision
+         FROM library_materialization_generation AS generation
+         JOIN library_meta AS meta ON meta.singleton_id = generation.singleton_id
+         JOIN library_change_state AS changes ON changes.singleton_id = generation.singleton_id
+         WHERE generation.singleton_id = 1;",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
-    if !valid_lower_hex_64(&source.0) || !valid_safe_integer(source.1) {
+    if !valid_lower_hex_64(&source.0) || !valid_safe_integer(source.1) || source.1 != source.2 {
         return Err(invalid("normalized query source identity is invalid"));
     }
-    Ok(source)
+    Ok((source.0, source.1))
 }
 
 fn query_feed_page(
@@ -581,6 +620,150 @@ fn query_item_scan(
     {
         return Err(invalid(
             "normalized item scan response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn change_feed_row(row: &Row<'_>) -> rusqlite::Result<NormalizedChangeFeedRowV1> {
+    let revision: i64 = row.get("revision")?;
+    let ordinal: i64 = row.get("ordinal")?;
+    let topic: String = row.get("topic")?;
+    let entity_id: Option<String> = row.get("entityId")?;
+    let reset_required =
+        optional_boolean(row, "resetRequired")?.ok_or(rusqlite::Error::InvalidQuery)?;
+    if !valid_safe_integer(revision)
+        || revision < 1
+        || !(0..=255).contains(&ordinal)
+        || topic.is_empty()
+        || topic.len() > 128
+        || entity_id
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 2_048)
+    {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(NormalizedChangeFeedRowV1 {
+        entity_id,
+        ordinal,
+        reset_required,
+        revision,
+        topic,
+    })
+}
+
+fn query_change_feed(
+    connection: &mut Connection,
+    request: NormalizedChangeFeedRequestV1,
+) -> Result<NormalizedChangeFeedResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !valid_safe_integer(request.after_revision)
+        || !(1..=CHANGE_FEED_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized change-feed identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "change_feed_v1")
+        .ok_or(invalid("normalized change-feed program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, current_revision) = query_source(&transaction)?;
+    let change_revision: i64 = transaction.query_row(program.3, [], |row| row.get(0))?;
+    if current_revision != change_revision {
+        return Err(invalid("normalized change-feed revisions disagree"));
+    }
+    if request.after_revision > current_revision {
+        return Err(invalid("normalized change-feed revision is ahead"));
+    }
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    let (upper_revision, after_revision, after_ordinal) = if let Some(cursor) = &cursor {
+        let ordinal = cursor
+            .global_id
+            .parse::<i64>()
+            .ok()
+            .filter(|value| (0..=255).contains(value))
+            .ok_or(invalid("normalized change-feed cursor is invalid"))?;
+        if cursor.generation_id != generation_id
+            || cursor.projection_revision != request.after_revision
+            || cursor.transition_sequence > current_revision
+            || cursor.sort_at < request.after_revision
+            || cursor.sort_at > cursor.transition_sequence
+            || cursor.global_id != ordinal.to_string()
+        {
+            return Err(invalid("normalized change-feed cursor is stale"));
+        }
+        (cursor.transition_sequence, cursor.sort_at, ordinal)
+    } else {
+        (current_revision, request.after_revision, 255)
+    };
+    let mut statement = transaction.prepare(program.2)?;
+    let mut query_rows = statement.query_map(
+        params![
+            upper_revision,
+            after_revision,
+            after_ordinal,
+            i64::try_from(request.limit + 1).expect("bounded change-feed limit"),
+        ],
+        change_feed_row,
+    )?;
+    let mut rows = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        rows.push(row?);
+        if rows.len() > program.1 {
+            return Err(invalid("normalized change feed exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let mut previous_revision = after_revision;
+    for row in &rows {
+        if row.revision > previous_revision + 1 && !row.reset_required {
+            return Err(invalid("normalized change feed has a revision gap"));
+        }
+        previous_revision = row.revision;
+    }
+    let last = rows.last();
+    if !has_more
+        && request.after_revision < upper_revision
+        && last.map(|row| row.revision) != Some(upper_revision)
+    {
+        return Err(invalid("normalized change feed is incomplete"));
+    }
+    let next_cursor = if has_more {
+        let last = last.ok_or(invalid("normalized change-feed cursor row is missing"))?;
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: upper_revision,
+            projection_revision: request.after_revision,
+            sort_at: last.revision,
+            global_id: last.ordinal.to_string(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedChangeFeedResponseV1 {
+        next_cursor,
+        query_id: "change_feed_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: upper_revision,
+            transition_sequence: upper_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized change-feed response is invalid"))?
+        .len()
+        > CHANGE_FEED_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized change-feed response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -984,6 +1167,9 @@ pub fn query_normalized_v1(
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
     match request {
+        NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
+            query_change_feed(connection, request)?,
+        )),
         NormalizedQueryRequestV1::FacetSummary(request) => Ok(
             NormalizedQueryResponseV1::FacetSummary(query_facet_summary(connection, request)?),
         ),
@@ -1055,6 +1241,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
                  INSERT INTO library_feed_items
                    (global_id, platform, content_type, captured_at, published_at,
                     author_id, author_handle, author_display_name, hidden, saved,
@@ -1122,6 +1311,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
                  INSERT INTO library_feed_items
                    (global_id, platform, content_type, captured_at, published_at,
                     author_id, author_handle, author_display_name, hidden, saved,
@@ -1170,9 +1362,9 @@ mod tests {
         assert_eq!(second.rows[0].global_id, "item-1");
         assert!(second.next_cursor.is_none());
         connection
-            .execute(
-                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
-                [],
+            .execute_batch(
+                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+                 UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;",
             )
             .expect("advance revision");
         let error = query_normalized_v1(
@@ -1217,6 +1409,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
                  INSERT INTO library_feed_items
                    (global_id, platform, content_type, captured_at, published_at,
                     author_id, author_handle, author_display_name, hidden, saved,
@@ -1269,9 +1464,9 @@ mod tests {
         assert!(second.next_cursor.is_none());
 
         connection
-            .execute(
-                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
-                [],
+            .execute_batch(
+                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+                 UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;",
             )
             .expect("advance revision");
         let error = query_normalized_v1(
@@ -1286,6 +1481,148 @@ mod tests {
     }
 
     #[test]
+    fn native_change_feed_pins_an_upper_revision_and_rejects_gaps() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "change_feed_v1")
+            .expect("change-feed program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+            .expect("change-feed plan");
+        let plan = plan_statement
+            .query_map(params![7, 0, 255, 5], |row| row.get::<_, String>(3))
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH library_invalidations USING PRIMARY KEY")));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN")));
+        assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        drop(plan_statement);
+
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_invalidations
+                   (revision, ordinal, topic, entity_id, reset_required)
+                   VALUES
+                     (1, 0, 'library', NULL, 1),
+                     (2, 0, 'feed_item', 'item-1', 0),
+                     (3, 0, 'feed_item', 'item-2', 0),
+                     (4, 0, 'preferences', NULL, 0),
+                     (5, 0, 'feed_item', 'item-3', 0),
+                     (6, 0, 'feed_item', 'item-4', 0),
+                     (7, 0, 'feed_item', 'item-5', 0);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedChangeFeedRequestV1 {
+            after_revision: 0,
+            cancellation_id: "cancel-changes-1".to_owned(),
+            cursor: None,
+            limit: 4,
+            reader_session_id: "reader-changes-1".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::ChangeFeed(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ChangeFeed(request.clone()),
+        )
+        .expect("first change-feed page") else {
+            panic!("change-feed response");
+        };
+        assert_eq!(
+            first
+                .rows
+                .iter()
+                .map(|row| row.revision)
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4]
+        );
+        assert!(first.rows[0].reset_required);
+        let cursor = first.next_cursor.expect("change-feed cursor");
+
+        connection
+            .execute_batch(
+                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+                 UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;
+                 INSERT INTO library_invalidations
+                   (revision, ordinal, topic, entity_id, reset_required)
+                   VALUES (8, 0, 'feed_item', 'item-6', 0);",
+            )
+            .expect("advance source");
+        let NormalizedQueryResponseV1::ChangeFeed(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ChangeFeed(NormalizedChangeFeedRequestV1 {
+                cursor: Some(cursor),
+                ..request.clone()
+            }),
+        )
+        .expect("second change-feed page") else {
+            panic!("change-feed response");
+        };
+        assert_eq!(
+            second
+                .rows
+                .iter()
+                .map(|row| row.revision)
+                .collect::<Vec<_>>(),
+            [5, 6, 7]
+        );
+        assert_eq!(second.source.projection_revision, 7);
+        assert!(second.next_cursor.is_none());
+
+        connection
+            .execute("DELETE FROM library_invalidations WHERE revision = 6;", [])
+            .expect("create gap");
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ChangeFeed(NormalizedChangeFeedRequestV1 {
+                after_revision: 4,
+                cursor: None,
+                limit: 512,
+                ..request
+            }),
+        )
+        .expect_err("change-feed gap");
+        assert!(error.to_string().contains("revision gap"));
+
+        connection
+            .execute_batch(
+                "DELETE FROM library_invalidations;
+                 INSERT INTO library_invalidations
+                   (revision, ordinal, topic, entity_id, reset_required)
+                   VALUES (8, 0, 'library', NULL, 1);",
+            )
+            .expect("replace gap with reset");
+        let NormalizedQueryResponseV1::ChangeFeed(reset) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ChangeFeed(NormalizedChangeFeedRequestV1 {
+                after_revision: 0,
+                cursor: None,
+                limit: 1,
+                cancellation_id: "cancel-reset-1".to_owned(),
+                reader_session_id: "reader-reset-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("reset closes historical gap") else {
+            panic!("change-feed response");
+        };
+        assert!(reset.rows[0].reset_required);
+        assert_eq!(reset.rows[0].revision, 8);
+    }
+
+    #[test]
     fn native_preferences_dispatch_returns_closed_leaves_in_binary_order() {
         let mut connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
@@ -1295,6 +1632,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 9, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 9 WHERE singleton_id = 1;
                  INSERT INTO library_preferences
                    (path, value_type, boolean_value, integer_value, real_value,
                     text_value, updated_at)
@@ -1365,6 +1705,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 11, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 11 WHERE singleton_id = 1;
                  INSERT INTO library_blobs
                    (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
                    VALUES ('{}', 70000, 65536, 2, 'text/plain');
@@ -1443,6 +1786,9 @@ mod tests {
                    (singleton_id, library_id, schema_version, authority_epoch,
                     source_revision, updated_at)
                    VALUES (1, '{}', 1, 'epoch-1', 13, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 13 WHERE singleton_id = 1;
                  INSERT INTO library_feed_items
                    (global_id, platform, content_type, captured_at, published_at,
                     author_id, author_handle, author_display_name, content_text,

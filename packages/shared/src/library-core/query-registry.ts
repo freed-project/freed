@@ -74,6 +74,15 @@ import {
   LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
 } from "./item-scan-contracts.js";
 import {
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CHANGE_FEED_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS,
+  LIBRARY_CORE_CHANGE_FEED_PROJECTION,
+  LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA,
+  LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA,
+  LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY,
+} from "./change-feed-contracts.js";
+import {
   LIBRARY_CORE_SURFACE_ITEMS_NESTED_BOUNDS,
   LIBRARY_CORE_SURFACE_ITEMS_PROJECTION,
   LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
@@ -224,6 +233,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA
@@ -240,6 +251,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA
@@ -255,6 +268,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
     | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
+    | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
+    | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
     | null;
   readonly sourceIdentity:
@@ -264,6 +279,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
@@ -273,6 +290,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
@@ -356,6 +375,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_READER_BODY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA;
@@ -371,6 +391,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_READER_BODY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA;
@@ -384,6 +405,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
     | typeof LIBRARY_CORE_ITEM_READER_BODY_PROJECTION
     | typeof LIBRARY_CORE_ITEM_SCAN_PROJECTION
+    | typeof LIBRARY_CORE_CHANGE_FEED_PROJECTION
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
   readonly sourceIdentity?:
@@ -392,6 +414,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_READER_BODY_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY;
   readonly nestedBounds?:
@@ -400,6 +423,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_READER_BODY_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS;
   /**
@@ -551,9 +575,9 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_ITEM_SCAN_PROJECTION,
     sourceIdentity: LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
-    // Keyset on the unique globalId primary key, ascending. Two statements
-    // rather than a nullable-cursor expression precisely so the index can
-    // satisfy the order without a temp B-tree.
+    // Keyset on the unique globalId primary key, ascending. The generated
+    // lower-bound expression lets the primary key satisfy the order without a
+    // temporary B-tree.
     stableSort: {
       columns: [{ column: "globalId", direction: "asc" }],
       textCollation: "binary",
@@ -564,11 +588,27 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
   }),
   change_feed_v1: plannedQuery({
     defaultLimit: 128,
-    maximumLimit: 512,
-    maximumRows: 512,
+    maximumLimit: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_CHANGE_FEED_MAXIMUM_RESPONSE_BYTES,
     totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["change-feed"],
+    requestSchema: LIBRARY_CORE_CHANGE_FEED_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_CHANGE_FEED_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_CHANGE_FEED_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_CHANGE_FEED_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_CHANGE_FEED_NESTED_BOUNDS,
+    stableSort: {
+      columns: [
+        { column: "revision", direction: "asc" },
+        { column: "ordinal", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "ordinal",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   content_fetch_claim_v1: plannedQuery({
     defaultLimit: 25,

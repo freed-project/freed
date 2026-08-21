@@ -13,10 +13,14 @@ import {
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
   decodeLibraryCoreFeedPageCursorV1,
+  decodeLibraryCoreChangeFeedCursorV1,
+  encodeLibraryCoreChangeFeedCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
+  parseLibraryCoreChangeFeedRequestV1,
+  parseLibraryCoreChangeFeedResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
   parseLibraryCorePreferencesSnapshotRequestV1,
@@ -45,6 +49,8 @@ import {
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreFeedCardV1,
+  type LibraryCoreChangeFeedRequestV1,
+  type LibraryCoreChangeFeedResponseV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFacetSummaryRequestV1,
@@ -512,6 +518,7 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: `SELECT sum(row_count) FROM (
                   SELECT count(*) AS row_count FROM library_meta
+                  UNION ALL SELECT count(*) FROM library_materialization_generation
                   UNION ALL SELECT count(*) FROM library_authority_epochs
                   UNION ALL SELECT count(*) FROM library_authority_frontier
                   UNION ALL SELECT count(*) FROM library_active_authority
@@ -620,6 +627,11 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error("checkpoint header does not match its stage identity");
       }
       this.#database.exec({
+        sql: `INSERT INTO library_materialization_generation
+                (singleton_id, generation_id) VALUES (1, ?1);`,
+        bind: [checkpointDigest],
+      });
+      this.#database.exec({
         sql: `UPDATE library_change_state SET revision = ?1
               WHERE singleton_id = 1 AND revision = 0;`,
         bind: [sourceRevision],
@@ -635,6 +647,14 @@ export class PwaLibraryCoreSqliteEngine {
         ) !== 1
       ) {
         throw new Error("checkpoint change revision could not be activated");
+      }
+      if (sourceRevision > 0) {
+        this.#database.exec({
+          sql: `INSERT INTO library_invalidations
+                  (revision, ordinal, topic, entity_id, reset_required)
+                VALUES (?1, 0, 'library', NULL, 1);`,
+          bind: [sourceRevision],
+        });
       }
       this.#verifyCheckpointContent();
       const foreignKeys = this.#database.exec({
@@ -672,6 +692,10 @@ export class PwaLibraryCoreSqliteEngine {
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
     switch (input.queryId) {
+      case "change_feed_v1":
+        return this.#queryChangeFeed(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "library_facet_summary_v1":
         return this.#queryFacetSummary(
           input,
@@ -699,24 +723,139 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  #querySource(): {
+    readonly generationId: string;
+    readonly sourceRevision: number;
+  } {
+    const rows = this.#database.exec({
+      sql: `SELECT generation.generation_id, meta.source_revision, changes.revision
+            FROM library_materialization_generation AS generation
+            JOIN library_meta AS meta ON meta.singleton_id = generation.singleton_id
+            JOIN library_change_state AS changes ON changes.singleton_id = generation.singleton_id
+            WHERE generation.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("PWA Library SQLite has no active materialization");
+    }
+    const generationId = text(rows[0]![0], "Library generation identity");
+    const sourceRevision = safeInteger(rows[0]![1], "Library source revision");
+    if (
+      sourceRevision !== safeInteger(rows[0]![2], "Library change revision")
+    ) {
+      throw new Error("PWA Library SQLite change revisions disagree");
+    }
+    return Object.freeze({ generationId, sourceRevision });
+  }
+
+  #queryChangeFeed(
+    input: LibraryCoreChangeFeedRequestV1,
+  ): LibraryCoreChangeFeedResponseV1 {
+    const request = parseLibraryCoreChangeFeedRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision: currentRevision } =
+      this.#querySource();
+    if (request.value.afterRevision > currentRevision) {
+      throw new Error("PWA Library SQLite change-feed revision is ahead");
+    }
+    let upperRevision = currentRevision;
+    let afterRevision = request.value.afterRevision;
+    let afterOrdinal = 255;
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreChangeFeedCursorV1(request.value.cursor);
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.generationId !== generationId ||
+        cursor.value.upperRevision > currentRevision
+      ) {
+        throw new Error("PWA Library SQLite change-feed cursor is stale");
+      }
+      upperRevision = cursor.value.upperRevision;
+      afterRevision = cursor.value.revision;
+      afterOrdinal = cursor.value.ordinal;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.change_feed_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        upperRevision,
+        afterRevision,
+        afterOrdinal,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite change feed exceeded its row bound");
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const resetRequired = nullableBoolean(
+        row.resetRequired,
+        "change-feed reset marker",
+      );
+      if (resetRequired === null) {
+        throw new Error("change-feed reset marker is null");
+      }
+      return {
+        entityId: nullableText(row.entityId, "change-feed entity identity"),
+        ordinal: safeInteger(row.ordinal, "change-feed ordinal"),
+        resetRequired,
+        revision: safeInteger(row.revision, "change-feed revision"),
+        topic: text(row.topic, "change-feed topic"),
+      };
+    });
+    let previousRevision = afterRevision;
+    for (const row of rows) {
+      if (row.revision > previousRevision + 1 && !row.resetRequired) {
+        throw new Error("PWA Library SQLite change feed has a revision gap");
+      }
+      previousRevision = row.revision;
+    }
+    const last = rows.at(-1);
+    if (
+      !hasMore &&
+      request.value.afterRevision < upperRevision &&
+      last?.revision !== upperRevision
+    ) {
+      throw new Error("PWA Library SQLite change feed is incomplete");
+    }
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreChangeFeedCursorV1({
+              afterRevision: request.value.afterRevision,
+              generationId: generationId as never,
+              ordinal: last.ordinal,
+              revision: last.revision,
+              upperRevision,
+            })
+          : null,
+      queryId: "change_feed_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: upperRevision,
+        transitionSequence: upperRevision,
+      },
+    };
+    const parsed = parseLibraryCoreChangeFeedResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
   #queryPreferencesSnapshot(
     input: LibraryCorePreferencesSnapshotRequestV1,
   ): LibraryCorePreferencesSnapshotResponseV1 {
     const request = parseLibraryCorePreferencesSnapshotRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRows = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRows.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRows[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRows[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preferences_snapshot_v1;
     const rawRows = this.#database.exec({
       sql: program.sql,
@@ -765,19 +904,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreFacetSummaryResponseV1 {
     const request = parseLibraryCoreFacetSummaryRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRows = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRows.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRows[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRows[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.library_facet_summary_v1;
     const rows = this.#database.exec({
       sql: program.sql,
@@ -824,19 +951,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreItemDetailResponseV1 {
     const request = parseLibraryCoreItemDetailRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRows = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRows.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRows[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRows[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_detail_v1;
     const rows = this.#database.exec({
       sql: program.sql,
@@ -893,19 +1008,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreItemReaderBodyResponseV1 {
     const request = parseLibraryCoreItemReaderBodyRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRows = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRows.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRows[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRows[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_reader_body_v1;
     const rows = this.#database.exec({
       sql: program.sql,
@@ -1013,19 +1116,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreItemScanResponseV1 {
     const request = parseLibraryCoreItemScanRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRows = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRows.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRows[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRows[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     let afterGlobalId: string | null = null;
     if (request.value.cursor !== null) {
       const cursor = decodeLibraryCoreItemScanCursorV1(request.value.cursor);
@@ -1083,19 +1174,7 @@ export class PwaLibraryCoreSqliteEngine {
   ): LibraryCoreFeedPageResponseV1 {
     const request = parseLibraryCoreFeedPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    const sourceRow = this.#database.exec({
-      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (sourceRow.length !== 1) {
-      throw new Error("PWA Library SQLite has no active Library");
-    }
-    const generationId = text(sourceRow[0]![0], "Library identity");
-    const sourceRevision = safeInteger(
-      sourceRow[0]![1],
-      "Library source revision",
-    );
+    const { generationId, sourceRevision } = this.#querySource();
     let afterPublishedAt: number | null = null;
     let afterGlobalId = "";
     if (request.value.cursor !== null) {

@@ -77,6 +77,12 @@
         archived records needed by background jobs, and never carries reader
         bodies or uses offset paging. Freed Desktop background job wiring
         remains open.
+  - [x] `change_feed_v1` now pages compact invalidations through the native
+        core in revision and ordinal primary-key order. One cursor pins the
+        upper revision while later commits continue, responses contain no
+        entity rows, and missing revisions fail closed. Normalized checkpoint
+        activation emits one explicit Library reset notice. Freed Desktop view
+        subscription wiring remains open.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its

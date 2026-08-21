@@ -1370,12 +1370,41 @@ mod tests {
         assert_eq!(
             target
                 .query_row(
+                    "SELECT generation_id FROM library_materialization_generation
+                     WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("materialization generation"),
+            digest
+        );
+        assert_eq!(
+            target
+                .query_row(
                     "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
                     [],
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("activated revision"),
             7
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT revision, topic, entity_id, reset_required
+                     FROM library_invalidations;",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .expect("checkpoint reset invalidation"),
+            (7, "library".to_owned(), None, 1)
         );
         let restored = export_normalized_checkpoint_page_v2(
             &target,

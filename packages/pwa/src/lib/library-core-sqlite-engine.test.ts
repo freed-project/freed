@@ -269,6 +269,10 @@ describe("PWA Library Core SQLite engine", () => {
       INSERT INTO library_meta
         (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
       VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
       INSERT INTO library_feed_items
         (global_id, platform, content_type, captured_at, published_at,
          author_id, author_handle, author_display_name, content_text,
@@ -348,6 +352,35 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(secondScan.rows.map((row) => row.globalId)).toEqual(["item-2"]);
     expect(secondScan.nextCursor).toBeNull();
+    database.exec(`
+      INSERT INTO library_invalidations
+        (revision, ordinal, topic, entity_id, reset_required)
+      VALUES
+        (1, 0, 'library', NULL, 1),
+        (2, 0, 'feed_item', 'item-1', 0),
+        (3, 0, 'feed_item', 'item-2', 0),
+        (4, 0, 'preferences', NULL, 0),
+        (5, 0, 'feed_item', 'hidden', 0),
+        (6, 0, 'feed_item', 'item-1', 0),
+        (7, 0, 'feed_item', 'item-2', 0);
+    `);
+    const changeRequest = {
+      afterRevision: 0,
+      cancellationId: operationId("cancel-changes-1"),
+      cursor: null,
+      limit: 4,
+      queryId: "change_feed_v1" as const,
+      readerSessionId: operationId("reader-changes-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstChanges = engine.query(changeRequest);
+    expect(firstChanges.rows.map((row) => row.revision)).toEqual([1, 2, 3, 4]);
+    expect(firstChanges.rows[0]).toMatchObject({
+      entityId: null,
+      resetRequired: true,
+      topic: "library",
+    });
+    expect(firstChanges.nextCursor).not.toBeNull();
     expect(
       engine.query({
         globalId: "item-2",
@@ -472,9 +505,23 @@ describe("PWA Library Core SQLite engine", () => {
       ],
       source: { projectionRevision: 7 },
     });
-    database.exec(
-      "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;",
-    );
+    database.exec(`
+      UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+      UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;
+      INSERT INTO library_invalidations
+        (revision, ordinal, topic, entity_id, reset_required)
+      VALUES (8, 0, 'feed_item', 'item-1', 0);
+    `);
+    const secondChanges = engine.query({
+      ...changeRequest,
+      cursor: firstChanges.nextCursor,
+    });
+    expect(secondChanges.rows.map((row) => row.revision)).toEqual([5, 6, 7]);
+    expect(secondChanges.source.projectionRevision).toBe(7);
+    expect(secondChanges.nextCursor).toBeNull();
+    expect(
+      engine.query({ ...changeRequest, afterRevision: 7, cursor: null }).rows,
+    ).toMatchObject([{ revision: 8, entityId: "item-1" }]);
     expect(() =>
       engine.query({ ...scanRequest, cursor: firstScan.nextCursor }),
     ).toThrow(/cursor is stale/);
@@ -551,6 +598,29 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([7]);
+    expect(
+      database.exec({
+        sql: `SELECT revision, topic, entity_id, reset_required
+              FROM library_invalidations;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, "library", null, 1]]);
+    expect(
+      engine.query({
+        afterRevision: 0,
+        cancellationId: operationId("cancel-reset-1"),
+        cursor: null,
+        limit: 1,
+        queryId: "change_feed_v1",
+        readerSessionId: operationId("reader-reset-1"),
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      nextCursor: null,
+      rows: [{ resetRequired: true, revision: 7, topic: "library" }],
+      source: { projectionRevision: 7 },
+    });
   });
 
   it("rolls back browser activation on digest mismatch and unresolved references", () => {

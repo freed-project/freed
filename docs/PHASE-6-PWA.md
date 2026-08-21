@@ -80,6 +80,10 @@
         SQLite returns at most 64 rows from a 65-row primary-key read, includes
         hidden and archived records, and never returns reader bodies or accepts
         arbitrary SQL.
+  - [x] `change_feed_v1` returns only bounded topic, changed-identity, and
+        reset notices from browser SQLite. Continuation pages retain one pinned
+        upper revision while later writes arrive, revision gaps fail closed,
+        and checkpoint activation writes one Library-wide reset notice.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
 - [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,

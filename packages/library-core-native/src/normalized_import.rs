@@ -273,6 +273,7 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     let existing_rows: i64 = transaction.query_row(
         "SELECT
            (SELECT count(*) FROM library_meta) +
+           (SELECT count(*) FROM library_materialization_generation) +
            (SELECT count(*) FROM library_authority_epochs) +
            (SELECT count(*) FROM library_authority_frontier) +
            (SELECT count(*) FROM library_active_authority) +
@@ -339,6 +340,11 @@ pub fn finalize_normalized_checkpoint_stage_v2(
             "checkpoint header does not match its stage identity",
         ));
     }
+    transaction.execute(
+        "INSERT INTO library_materialization_generation
+         (singleton_id, generation_id) VALUES (1, ?1);",
+        [&checkpoint_digest],
+    )?;
     let revision_updated = transaction.execute(
         "UPDATE library_change_state SET revision = ?1
          WHERE singleton_id = 1 AND revision = 0;",
@@ -346,6 +352,14 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     )?;
     if revision_updated != 1 {
         return Err(invalid("checkpoint change revision could not be activated"));
+    }
+    if stage.2 > 0 {
+        transaction.execute(
+            "INSERT INTO library_invalidations
+             (revision, ordinal, topic, entity_id, reset_required)
+             VALUES (?1, 0, 'library', NULL, 1);",
+            [stage.2],
+        )?;
     }
     verify_blob_rows(&transaction)?;
     let foreign_key_failure: Option<String> = transaction
