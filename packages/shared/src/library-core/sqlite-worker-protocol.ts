@@ -46,6 +46,11 @@ import {
   type LibraryCoreSavedAnalyticsResponseV2,
 } from "./saved-analytics-v2-contracts.js";
 import {
+  parseLibraryCoreSavedFeedPageRequestV2,
+  type LibraryCoreSavedFeedPageRequestV2,
+  type LibraryCoreSavedFeedPageResponseV2,
+} from "./saved-feed-page-contracts.js";
+import {
   parseLibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotResponseV1,
@@ -107,6 +112,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCorePersonTimelineRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
+  | LibraryCoreSavedFeedPageRequestV2
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -139,9 +145,11 @@ export type LibraryCoreSqliteQueryResponseFor<
                           ? LibraryCoreRssFeedGraphPageResponseV1
                           : T extends LibraryCoreSavedAnalyticsRequestV2
                             ? LibraryCoreSavedAnalyticsResponseV2
-                            : T extends LibraryCorePreferencesSnapshotRequestV1
-                              ? LibraryCorePreferencesSnapshotResponseV1
-                              : never;
+                            : T extends LibraryCoreSavedFeedPageRequestV2
+                              ? LibraryCoreSavedFeedPageResponseV2
+                              : T extends LibraryCorePreferencesSnapshotRequestV1
+                                ? LibraryCorePreferencesSnapshotResponseV1
+                                : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -216,6 +224,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCorePersonTimelineResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCoreSavedAnalyticsResponseV2
+  | LibraryCoreSavedFeedPageResponseV2
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
@@ -333,14 +342,18 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                 ? parseLibraryCoreSavedAnalyticsRequestV2(
                                     value.query,
                                   )
-                                : value.query.queryId ===
-                                    "preferences_snapshot_v1"
-                                  ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                : value.query.queryId === "saved_feed_page_v2"
+                                  ? parseLibraryCoreSavedFeedPageRequestV2(
                                       value.query,
                                     )
-                                  : parseLibraryCoreFeedPageRequestV1(
-                                      value.query,
-                                    )
+                                  : value.query.queryId ===
+                                      "preferences_snapshot_v1"
+                                    ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                        value.query,
+                                      )
+                                    : parseLibraryCoreFeedPageRequestV1(
+                                        value.query,
+                                      )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {

@@ -392,6 +392,14 @@ Representative query families are:
 Ordinary pages admit at most the registered row and byte ceilings. Full reader
 content is ID-addressed and streamed when it exceeds the ordinary DTO budget.
 
+The Saved list uses `saved_feed_page_v2`. One closed sort enum selects the
+generated date-saved, date-published, recommended, or shortest-read SQLite
+variant. Each variant owns matching forward and reverse keyset SQL plus its
+expression index. Filters, counts, ordering, and pagination stay inside
+SQLite. Edge cursors bind the filter digest, sort, complete order key,
+generation, and source revision. Desktop native SQLite and browser SQLite use
+the same generated programs and byte-identical cursor codec.
+
 Stores subscribe only to a compact change feed containing revision, bounded
 changed IDs, invalidation keys, and `resetRequired`. The feed contains no
 hydrated entity rows.

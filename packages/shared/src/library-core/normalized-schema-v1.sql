@@ -154,6 +154,40 @@ CREATE INDEX IF NOT EXISTS library_feed_items_browse_rank_all
   );
 CREATE INDEX IF NOT EXISTS library_feed_items_saved
   ON library_feed_items(saved, archived, saved_at DESC, global_id);
+CREATE INDEX IF NOT EXISTS library_feed_items_saved_date_saved
+  ON library_feed_items(
+    saved,
+    archived,
+    hidden,
+    COALESCE(saved_at, captured_at) DESC,
+    global_id
+  );
+CREATE INDEX IF NOT EXISTS library_feed_items_saved_date_published
+  ON library_feed_items(
+    saved,
+    archived,
+    hidden,
+    CASE published_at WHEN 0 THEN captured_at ELSE published_at END DESC,
+    global_id
+  );
+CREATE INDEX IF NOT EXISTS library_feed_items_saved_recommended
+  ON library_feed_items(
+    saved,
+    archived,
+    hidden,
+    CAST(round(COALESCE(priority, 0)) AS INTEGER) DESC,
+    published_at DESC,
+    global_id
+  );
+CREATE INDEX IF NOT EXISTS library_feed_items_saved_shortest_read
+  ON library_feed_items(
+    saved,
+    archived,
+    hidden,
+    CASE WHEN preserved_reading_time >= 0 THEN 1 ELSE 0 END DESC,
+    CASE WHEN preserved_reading_time >= 0 THEN preserved_reading_time ELSE 0 END,
+    global_id
+  );
 CREATE INDEX IF NOT EXISTS library_feed_items_author
   ON library_feed_items(author_id, published_at DESC, global_id);
 CREATE INDEX IF NOT EXISTS library_feed_items_provider_author

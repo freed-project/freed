@@ -101,6 +101,8 @@ pub use normalized_query::{
     NormalizedRssFeedGraphPageResponseV1, NormalizedRssFeedGraphRowV1,
     NormalizedSavedAnalyticsCountV2, NormalizedSavedAnalyticsRequestV2,
     NormalizedSavedAnalyticsResponseV2, NormalizedSavedAnalyticsWindowV2,
+    NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2, NormalizedSavedFeedPageRequestV2,
+    NormalizedSavedFeedPageResponseV2,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,

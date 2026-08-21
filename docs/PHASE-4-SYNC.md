@@ -55,6 +55,13 @@
       Saved totals, latest time, seven day buckets, 24 hour buckets, and
       bounded binary-ordered source and content counts under 2 MiB. No
       FeedItem row crosses into application code for this aggregate.
+- [x] Generate equivalent native Rust and browser SQLite
+      `saved_feed_page_v2` programs for date saved, date published,
+      recommendation priority, and shortest read. Each closed variant owns
+      matching forward and reverse keysets plus an expression index. Cursors
+      bind the filter digest, sort, generation, revision, and complete order
+      key. One request reads at most 129 rows and returns at most 128 compact
+      Saved cards without an application-side corpus scan or sort.
 - [x] Stage and activate typed normalized records through bounded native SQLite
       transactions. Exact replay is idempotent, changed replay fails, finite
       fractions use exact binary64 wrappers, incomplete content and foreign
@@ -337,6 +344,7 @@ loads an alternate Library engine or compatibility path.
 | 4.177 | Installation-local Person and Account graph layout tables in the final SQLite schema, excluded from checkpoints, replication, and authority digests, with compact native and browser graph pages returning paired finite coordinates only for a pinned local row. A separate local layout revision fences every graph page and cursor without advancing canonical source revision | ✓ | High |
 | 4.178 | Four generated installation-local graph-position mutation programs with closed shared DTOs, native and PWA SQLite execution, one-row bounds, transactional entity checks, idempotent set and clear semantics, atomic local layout revision advancement, and no canonical revision, invalidation, receipt, checkpoint, actor, or outbox effect | ✓ | High |
 | 4.179 | Shared `person_timeline_v1` query across native and browser SQLite, using a trigger-maintained Person and FeedItem relation with indexed publication order, a 100-row and 2 MiB response bound, exact counts, and cursors bound to Person identity plus the canonical source fence | ✓ | High |
+| 4.180 | Shared `saved_feed_page_v2` query across native and browser SQLite, with four closed generated sort variants, dedicated expression indexes, forward and reverse keyset paging, complete feed filters, exact counts, a 129-row scan ceiling, and byte-identical cursors bound to filter, sort, generation, source revision, and full order key | ✓ | High |
 
 ---
 

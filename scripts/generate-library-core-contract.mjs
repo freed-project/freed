@@ -220,17 +220,35 @@ function assertContract(contract) {
   }
   for (const [queryId, program] of Object.entries(contract.queryPrograms)) {
     const queryProgramKeys = Object.keys(program).sort().join(",");
+    const variants = program.variants;
+    const hasVariants = variants !== undefined;
     if (
       !contract.queries.includes(queryId) ||
       ![
         "countSql,maximumScanRows,sql",
         "countSql,maximumScanRows,reverseSql,sql",
+        "countSql,maximumScanRows,variants",
       ].includes(queryProgramKeys) ||
-      typeof program.sql !== "string" ||
-      program.sql.length === 0 ||
-      (program.reverseSql !== undefined &&
+      (!hasVariants &&
+        (typeof program.sql !== "string" || program.sql.length === 0)) ||
+      (!hasVariants &&
+        program.reverseSql !== undefined &&
         (typeof program.reverseSql !== "string" ||
           program.reverseSql.length === 0)) ||
+      (hasVariants &&
+        (variants === null ||
+          typeof variants !== "object" ||
+          Array.isArray(variants) ||
+          Object.keys(variants).length < 2 ||
+          Object.entries(variants).some(
+            ([variantId, variant]) =>
+              !/^[a-z][a-z0-9_]*$/.test(variantId) ||
+              Object.keys(variant).sort().join(",") !== "reverseSql,sql" ||
+              typeof variant.sql !== "string" ||
+              variant.sql.length === 0 ||
+              typeof variant.reverseSql !== "string" ||
+              variant.reverseSql.length === 0,
+          ))) ||
       typeof program.countSql !== "string" ||
       program.countSql.length === 0 ||
       !Number.isSafeInteger(program.maximumScanRows) ||
@@ -569,10 +587,16 @@ function rustSource(contract, schemaDigest) {
     .map((value) => `    ${JSON.stringify(value)},`)
     .join("\n");
   const queryPrograms = Object.entries(contract.queryPrograms)
-    .map(
-      ([queryId, program]) =>
-        `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql)}, reverse_sql: ${program.reverseSql === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql)})`}, count_sql: ${JSON.stringify(program.countSql)} },`,
-    )
+    .map(([queryId, program]) => {
+      const variants = Object.entries(program.variants ?? {})
+        .map(
+          ([variantId, variant]) =>
+            `        SqliteQueryVariant { variant_id: ${JSON.stringify(variantId)}, sql: ${JSON.stringify(variant.sql)}, reverse_sql: ${JSON.stringify(variant.reverseSql)} },`,
+        )
+        .join("\n");
+      const defaultVariant = Object.values(program.variants ?? {})[0];
+      return `    SqliteQueryProgram { query_id: ${JSON.stringify(queryId)}, maximum_scan_rows: ${program.maximumScanRows}, sql: ${JSON.stringify(program.sql ?? defaultVariant.sql)}, reverse_sql: ${program.reverseSql === undefined && defaultVariant === undefined ? "None" : `Some(${JSON.stringify(program.reverseSql ?? defaultVariant.reverseSql)})`}, count_sql: ${JSON.stringify(program.countSql)}, variants: &[\n${variants}\n    ] },`;
+    })
     .join("\n");
   const mutationPrograms = Object.entries(contract.mutationPrograms)
     .map(
@@ -694,12 +718,20 @@ ${queries}
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SqliteQueryVariant {
+    pub variant_id: &'static str,
+    pub sql: &'static str,
+    pub reverse_sql: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqliteQueryProgram {
     pub query_id: &'static str,
     pub maximum_scan_rows: usize,
     pub sql: &'static str,
     pub reverse_sql: Option<&'static str>,
     pub count_sql: &'static str,
+    pub variants: &'static [SqliteQueryVariant],
 }
 
 pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[

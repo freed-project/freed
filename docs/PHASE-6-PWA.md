@@ -69,6 +69,12 @@
         seven day buckets, 24 hour buckets, and bounded source and content
         counts without scanning FeedItems in TypeScript or returning item rows
         to React.
+  - [x] `saved_feed_page_v2` executes the same four generated Saved query
+        variants and cursor codec as native Rust. Browser SQLite applies the
+        complete filter, exact count, forward or reverse keyset, and selected
+        sort before returning at most 128 compact cards. Every variant uses
+        its matching expression index without a temporary sort, and no
+        FeedItem corpus enters TypeScript.
   - [x] `preferences_snapshot_v1` reads normalized typed nodes directly from
         browser SQLite through the shared typed query request. It preserves all
         five value kinds, exact binary UTF-8 path order, and the shared 512-row
@@ -333,6 +339,7 @@ export function filterByAuthor(
 | 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary | Medium     | ✓ Complete                                                                                       |
 | 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter | High | ✓ Complete |
 | 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie | High | ✓ Complete |
+| 6.21 | Execute all four indexed bidirectional `saved_feed_page_v2` variants in browser SQLite with exact native cursor parity | High | ✓ Complete |
 
 ---
 

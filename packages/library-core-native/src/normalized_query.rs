@@ -12,6 +12,7 @@ const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
 const FEED_BROWSE_MAXIMUM_CURSOR_BYTES: usize = 5_560;
+const SAVED_FEED_MAXIMUM_CURSOR_BYTES: usize = 5_586;
 const PERSON_TIMELINE_MAXIMUM_LIMIT: usize = 100;
 const PERSON_TIMELINE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PERSON_TIMELINE_MAXIMUM_CURSOR_BYTES: usize = 5_700;
@@ -69,6 +70,19 @@ pub struct NormalizedFeedBrowsePageRequestV3 {
     pub reader_session_id: String,
     pub recommendation_order_schema_version: u32,
     pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedFeedPageRequestV2 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub direction: String,
+    pub filter: NormalizedFeedBrowseFilterV1,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+    pub sort_mode: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,6 +222,7 @@ pub enum NormalizedQueryRequestV1 {
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
+    SavedFeedPage(NormalizedSavedFeedPageRequestV2),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,6 +298,39 @@ pub struct NormalizedFeedBrowsePageResponseV3 {
     pub recommendation_order_schema_version: u32,
     pub rows: Vec<NormalizedFeedCardV1>,
     pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedFeedCardV2 {
+    #[serde(flatten)]
+    pub card: NormalizedFeedCardV1,
+    pub saved_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedFeedEdgeOrderV2 {
+    pub global_id: String,
+    pub sort_group: i64,
+    pub sort_primary: i64,
+    pub sort_secondary: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedFeedPageResponseV2 {
+    pub filter: NormalizedFeedBrowseFilterV1,
+    pub next_cursor: Option<String>,
+    pub next_order: Option<NormalizedSavedFeedEdgeOrderV2>,
+    pub previous_cursor: Option<String>,
+    pub previous_order: Option<NormalizedSavedFeedEdgeOrderV2>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedSavedFeedCardV2>,
+    pub schema_version: u32,
+    pub sort_mode: String,
     pub source: NormalizedFeedPageSourceV1,
     pub total_count: i64,
 }
@@ -614,6 +662,7 @@ pub enum NormalizedQueryResponseV1 {
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
+    SavedFeedPage(Box<NormalizedSavedFeedPageResponseV2>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -633,6 +682,18 @@ struct FeedBrowseCursorV2 {
     projection_revision: i64,
     priority: i64,
     published_at: i64,
+    global_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SavedFeedCursorV2 {
+    filter_digest: String,
+    generation_id: String,
+    source_revision: i64,
+    sort_mode: String,
+    sort_group: i64,
+    sort_primary: i64,
+    sort_secondary: i64,
     global_id: String,
 }
 
@@ -808,6 +869,110 @@ fn decode_feed_browse_cursor(value: &str) -> Result<FeedBrowseCursorV2, Normaliz
         projection_revision: read_safe_u64(&bytes[73..81])?,
         priority,
         published_at: read_safe_u64(&bytes[82..90])?,
+        global_id,
+    })
+}
+
+fn saved_sort_mode_code(value: &str) -> Option<u8> {
+    match value {
+        "date_saved" => Some(0),
+        "date_published" => Some(1),
+        "recommended" => Some(2),
+        "shortest_read" => Some(3),
+        _ => None,
+    }
+}
+
+fn saved_sort_mode_from_code(value: u8) -> Option<&'static str> {
+    [
+        "date_saved",
+        "date_published",
+        "recommended",
+        "shortest_read",
+    ]
+    .get(usize::from(value))
+    .copied()
+}
+
+fn append_lower_hex_32(bytes: &mut Vec<u8>, value: &str) -> Result<(), NormalizedSqliteError> {
+    for pair in value.as_bytes().chunks_exact(2) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| invalid("normalized saved cursor identity is invalid"))?;
+        bytes.push(
+            u8::from_str_radix(text, 16)
+                .map_err(|_| invalid("normalized saved cursor identity is invalid"))?,
+        );
+    }
+    Ok(())
+}
+
+fn encode_saved_feed_cursor(cursor: &SavedFeedCursorV2) -> Result<String, NormalizedSqliteError> {
+    let sort_mode = saved_sort_mode_code(&cursor.sort_mode)
+        .ok_or(invalid("normalized saved cursor sort is invalid"))?;
+    if !valid_lower_hex_64(&cursor.filter_digest)
+        || !valid_lower_hex_64(&cursor.generation_id)
+        || !valid_safe_integer(cursor.source_revision)
+        || !(0..=100).contains(&cursor.sort_group)
+        || !valid_safe_integer(cursor.sort_primary)
+        || !valid_safe_integer(cursor.sort_secondary)
+        || cursor.global_id.is_empty()
+        || cursor.global_id.len() > 4_096
+        || cursor.global_id.len() > usize::from(u16::MAX)
+    {
+        return Err(invalid("normalized saved cursor identity is invalid"));
+    }
+    let mut bytes = Vec::with_capacity(93 + cursor.global_id.len());
+    bytes.push(2);
+    bytes.push(sort_mode);
+    append_lower_hex_32(&mut bytes, &cursor.generation_id)?;
+    append_lower_hex_32(&mut bytes, &cursor.filter_digest)?;
+    bytes.extend_from_slice(&(cursor.source_revision as u64).to_be_bytes());
+    bytes.push(cursor.sort_group as u8);
+    bytes.extend_from_slice(&(cursor.sort_primary as u64).to_be_bytes());
+    bytes.extend_from_slice(&(cursor.sort_secondary as u64).to_be_bytes());
+    bytes.extend_from_slice(&(cursor.global_id.len() as u16).to_be_bytes());
+    bytes.extend_from_slice(cursor.global_id.as_bytes());
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn decode_saved_feed_cursor(value: &str) -> Result<SavedFeedCursorV2, NormalizedSqliteError> {
+    if value.is_empty() || value.len() > SAVED_FEED_MAXIMUM_CURSOR_BYTES {
+        return Err(invalid("normalized saved cursor is outside its bound"));
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| invalid("normalized saved cursor encoding is invalid"))?;
+    if bytes.len() < 93 || bytes[0] != 2 {
+        return Err(invalid("normalized saved cursor encoding is invalid"));
+    }
+    let sort_mode = saved_sort_mode_from_code(bytes[1])
+        .ok_or(invalid("normalized saved cursor sort is invalid"))?;
+    let global_id_length = usize::from(u16::from_be_bytes([bytes[91], bytes[92]]));
+    if bytes.len() != 93 + global_id_length {
+        return Err(invalid("normalized saved cursor length is invalid"));
+    }
+    let generation_id = lower_hex(&bytes[2..34]);
+    let filter_digest = lower_hex(&bytes[34..66]);
+    let sort_group = i64::from(bytes[74]);
+    let global_id = std::str::from_utf8(&bytes[93..])
+        .map_err(|_| invalid("normalized saved cursor entity is invalid"))?
+        .to_owned();
+    if !valid_lower_hex_64(&generation_id)
+        || !valid_lower_hex_64(&filter_digest)
+        || !(0..=100).contains(&sort_group)
+        || global_id.is_empty()
+        || global_id.len() > 4_096
+    {
+        return Err(invalid("normalized saved cursor identity is invalid"));
+    }
+    Ok(SavedFeedCursorV2 {
+        filter_digest,
+        generation_id,
+        source_revision: read_safe_u64(&bytes[66..74])?,
+        sort_mode: sort_mode.to_owned(),
+        sort_group,
+        sort_primary: read_safe_u64(&bytes[75..83])?,
+        sort_secondary: read_safe_u64(&bytes[83..91])?,
         global_id,
     })
 }
@@ -1293,6 +1458,203 @@ fn query_feed_browse_page(
         > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
     {
         return Err(invalid("normalized browse response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_saved_feed_page(
+    connection: &mut Connection,
+    request: NormalizedSavedFeedPageRequestV2,
+) -> Result<NormalizedSavedFeedPageResponseV2, NormalizedSqliteError> {
+    if request.schema_version != 2
+        || !(1..=FEED_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !matches!(request.direction.as_str(), "next" | "previous")
+        || (request.direction == "previous" && request.cursor.is_none())
+        || saved_sort_mode_code(&request.sort_mode).is_none()
+        || !valid_feed_browse_filter(&request.filter)
+        || !request.filter.saved_only
+        || request.filter.show_hidden
+    {
+        return Err(invalid("normalized saved query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "saved_feed_page_v2")
+        .ok_or(invalid("normalized saved query program is missing"))?;
+    let variant = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == request.sort_mode)
+        .ok_or(invalid("normalized saved query variant is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let filter_digest = feed_browse_filter_digest(&request.filter)?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_saved_feed_cursor)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.filter_digest != filter_digest || cursor.sort_mode != request.sort_mode
+    }) {
+        return Err(invalid(
+            "normalized saved cursor belongs to different query inputs",
+        ));
+    }
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.generation_id != generation_id || cursor.source_revision != source_revision
+    }) {
+        return Err(invalid("normalized saved cursor is stale"));
+    }
+    let tags_json = serde_json::to_string(&request.filter.tags)
+        .map_err(|_| invalid("normalized saved tags are invalid"))?;
+    let signals_json = serde_json::to_string(&request.filter.signals)
+        .map_err(|_| invalid("normalized saved signals are invalid"))?;
+    let query_sql = if request.direction == "previous" {
+        variant.reverse_sql
+    } else {
+        variant.sql
+    };
+    let mut statement = transaction.prepare(query_sql)?;
+    let mut query_rows = statement.query_map(
+        params![
+            i64::from(request.filter.archived_only),
+            request.filter.platform.as_deref(),
+            request.filter.author_id.as_deref(),
+            request.filter.feed_url.as_deref(),
+            request.filter.social_content_filter,
+            tags_json,
+            signals_json,
+            cursor.as_ref().map(|cursor| cursor.sort_group),
+            cursor.as_ref().map(|cursor| cursor.sort_primary),
+            cursor.as_ref().map(|cursor| cursor.sort_secondary),
+            cursor
+                .as_ref()
+                .map(|cursor| cursor.global_id.as_str())
+                .unwrap_or(""),
+            i64::try_from(request.limit + 1).expect("bounded saved limit"),
+        ],
+        |row| {
+            Ok((
+                NormalizedSavedFeedCardV2 {
+                    card: feed_card(row)?,
+                    saved_at: row.get("savedAt")?,
+                },
+                row.get::<_, i64>("sortGroup")?,
+                row.get::<_, i64>("sortPrimary")?,
+                row.get::<_, i64>("sortSecondary")?,
+            ))
+        },
+    )?;
+    let mut selected = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        if !(0..=100).contains(&row.1)
+            || !valid_safe_integer(row.2)
+            || !valid_safe_integer(row.3)
+            || row
+                .0
+                .saved_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row.0.card.saved != Some(true)
+        {
+            return Err(invalid("normalized saved query row is invalid"));
+        }
+        selected.push(row);
+        if selected.len() > program.maximum_scan_rows {
+            return Err(invalid("normalized saved query exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more_in_direction = selected.len() > request.limit;
+    selected.truncate(request.limit);
+    if request.direction == "previous" {
+        selected.reverse();
+    }
+    let make_edge = |row: &(NormalizedSavedFeedCardV2, i64, i64, i64)| {
+        let order = NormalizedSavedFeedEdgeOrderV2 {
+            global_id: row.0.card.global_id.clone(),
+            sort_group: row.1,
+            sort_primary: row.2,
+            sort_secondary: row.3,
+        };
+        let cursor = encode_saved_feed_cursor(&SavedFeedCursorV2 {
+            filter_digest: filter_digest.clone(),
+            generation_id: generation_id.clone(),
+            source_revision,
+            sort_mode: request.sort_mode.clone(),
+            sort_group: row.1,
+            sort_primary: row.2,
+            sort_secondary: row.3,
+            global_id: row.0.card.global_id.clone(),
+        })?;
+        Ok::<_, NormalizedSqliteError>((cursor, order))
+    };
+    let next_available = if request.direction == "next" {
+        has_more_in_direction
+    } else {
+        !selected.is_empty()
+    };
+    let previous_available = if request.direction == "previous" {
+        has_more_in_direction
+    } else {
+        request.cursor.is_some() && !selected.is_empty()
+    };
+    let next = if next_available {
+        selected.last().map(make_edge).transpose()?
+    } else {
+        None
+    };
+    let previous = if previous_available {
+        selected.first().map(make_edge).transpose()?
+    } else {
+        None
+    };
+    let total_count: i64 = transaction.query_row(
+        program.count_sql,
+        params![
+            i64::from(request.filter.archived_only),
+            request.filter.platform.as_deref(),
+            request.filter.author_id.as_deref(),
+            request.filter.feed_url.as_deref(),
+            request.filter.social_content_filter,
+            serde_json::to_string(&request.filter.tags)
+                .map_err(|_| invalid("normalized saved tags are invalid"))?,
+            serde_json::to_string(&request.filter.signals)
+                .map_err(|_| invalid("normalized saved signals are invalid"))?,
+        ],
+        |row| row.get(0),
+    )?;
+    if !valid_safe_integer(total_count) {
+        return Err(invalid("normalized saved total count is invalid"));
+    }
+    let response = NormalizedSavedFeedPageResponseV2 {
+        filter: request.filter,
+        next_cursor: next.as_ref().map(|edge| edge.0.clone()),
+        next_order: next.map(|edge| edge.1),
+        previous_cursor: previous.as_ref().map(|edge| edge.0.clone()),
+        previous_order: previous.map(|edge| edge.1),
+        query_id: "saved_feed_page_v2".to_owned(),
+        rows: selected.into_iter().map(|row| row.0).collect(),
+        schema_version: 2,
+        sort_mode: request.sort_mode,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        total_count,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized saved response is invalid"))?
+        .len()
+        > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("normalized saved response exceeds its byte bound"));
     }
     transaction.commit()?;
     Ok(response)
@@ -2899,6 +3261,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::SavedAnalytics(request) => Ok(
             NormalizedQueryResponseV1::SavedAnalytics(query_saved_analytics(connection, request)?),
         ),
+        NormalizedQueryRequestV1::SavedFeedPage(request) => {
+            Ok(NormalizedQueryResponseV1::SavedFeedPage(Box::new(
+                query_saved_feed_page(connection, request)?,
+            )))
+        }
     }
 }
 
@@ -2941,6 +3308,26 @@ mod tests {
         assert_eq!(
             decode_feed_browse_cursor(&browse_encoded).expect("decode browse cursor"),
             browse_cursor
+        );
+        let saved_cursor = SavedFeedCursorV2 {
+            filter_digest: "9de41d87f30284b5a8370cfd14545afaa44d3a5edbbeb6785489bc9bb0731a45"
+                .to_owned(),
+            generation_id: "a".repeat(64),
+            source_revision: 12,
+            sort_mode: "recommended".to_owned(),
+            sort_group: 90,
+            sort_primary: 400,
+            sort_secondary: 0,
+            global_id: "saved:item-1".to_owned(),
+        };
+        let saved_encoded = encode_saved_feed_cursor(&saved_cursor).expect("encode saved cursor");
+        assert_eq!(
+            saved_encoded,
+            "AgKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqp3kHYfzAoS1qDcM_RRUWvqkTTpe2762eFSJvJuwcxpFAAAAAAAAAAxaAAAAAAAAAZAAAAAAAAAAAAAMc2F2ZWQ6aXRlbS0x"
+        );
+        assert_eq!(
+            decode_saved_feed_cursor(&saved_encoded).expect("decode saved cursor"),
+            saved_cursor
         );
     }
 
@@ -3118,6 +3505,196 @@ mod tests {
         assert!(changed_filter_error
             .to_string()
             .contains("belongs to a different filter"));
+    }
+
+    #[test]
+    fn native_saved_feed_runs_all_orders_and_bidirectional_pages_in_sqlite() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "saved_feed_page_v2")
+            .expect("saved program");
+        let expected_indexes = [
+            ("date_saved", "library_feed_items_saved_date_saved"),
+            ("date_published", "library_feed_items_saved_date_published"),
+            ("recommended", "library_feed_items_saved_recommended"),
+            ("shortest_read", "library_feed_items_saved_shortest_read"),
+        ];
+        for (variant_id, index_name) in expected_indexes {
+            let variant = program
+                .variants
+                .iter()
+                .find(|variant| variant.variant_id == variant_id)
+                .expect("saved variant");
+            for sql in [variant.sql, variant.reverse_sql] {
+                let mut statement = connection
+                    .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                    .expect("saved query plan");
+                let plan = statement
+                    .query_map(
+                        params![
+                            0,
+                            Option::<String>::None,
+                            Option::<String>::None,
+                            Option::<String>::None,
+                            "all",
+                            "[]",
+                            "[]",
+                            Option::<i64>::None,
+                            Option::<i64>::None,
+                            Option::<i64>::None,
+                            "",
+                            6,
+                        ],
+                        |row| row.get::<_, String>(3),
+                    )
+                    .expect("saved plan rows")
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .expect("saved plan");
+                assert!(
+                    plan.iter().any(|detail| detail.contains(index_name)),
+                    "{variant_id} did not use {index_name}: {plan:?}"
+                );
+                assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+            }
+        }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 12, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, priority,
+                    preserved_reading_time, hidden, saved, saved_at, archived,
+                    updated_at)
+                   VALUES
+                     ('saved:a', 'saved', 'article', 50, 400, 'author', 'author', 'Author', 10, 5, 0, 1, 100, 0, 400),
+                     ('saved:b', 'saved', 'article', 60, 100, 'author', 'author', 'Author', 90, NULL, 0, 1, 300, 0, 300),
+                     ('saved:c', 'saved', 'article', 70, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+                     ('saved:d', 'saved', 'article', 80, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+                     ('saved:e', 'saved', 'article', 250, 0, 'author', 'author', 'Author', 20, 7, 0, 1, NULL, 0, 250),
+                     ('hidden', 'saved', 'article', 900, 900, 'author', 'author', 'Author', 100, 1, 1, 1, 900, 0, 900),
+                     ('unsaved', 'saved', 'article', 999, 999, 'author', 'author', 'Author', 100, 1, 0, 0, NULL, 0, 999);",
+                "a".repeat(64)
+            ))
+            .expect("saved fixture");
+        let filter = NormalizedFeedBrowseFilterV1 {
+            archived_only: false,
+            author_id: None,
+            feed_url: None,
+            platform: None,
+            saved_only: true,
+            schema_version: 1,
+            show_hidden: false,
+            signals: vec![],
+            social_content_filter: "all".to_owned(),
+            tags: vec![],
+        };
+        let expectations = [
+            (
+                "date_saved",
+                vec!["saved:b", "saved:e", "saved:c", "saved:d", "saved:a"],
+            ),
+            (
+                "date_published",
+                vec!["saved:a", "saved:c", "saved:d", "saved:e", "saved:b"],
+            ),
+            (
+                "recommended",
+                vec!["saved:c", "saved:d", "saved:b", "saved:e", "saved:a"],
+            ),
+            (
+                "shortest_read",
+                vec!["saved:c", "saved:d", "saved:a", "saved:e", "saved:b"],
+            ),
+        ];
+        for (sort_mode, expected) in expectations {
+            let NormalizedQueryResponseV1::SavedFeedPage(response) = query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::SavedFeedPage(NormalizedSavedFeedPageRequestV2 {
+                    cancellation_id: "cancel-saved-all".to_owned(),
+                    cursor: None,
+                    direction: "next".to_owned(),
+                    filter: filter.clone(),
+                    limit: 10,
+                    reader_session_id: "reader-saved-all".to_owned(),
+                    schema_version: 2,
+                    sort_mode: sort_mode.to_owned(),
+                }),
+            )
+            .expect("saved order") else {
+                panic!("saved response");
+            };
+            assert_eq!(response.total_count, 5);
+            assert_eq!(
+                response
+                    .rows
+                    .iter()
+                    .map(|row| row.card.global_id.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+        let request = NormalizedSavedFeedPageRequestV2 {
+            cancellation_id: "cancel-saved-pages".to_owned(),
+            cursor: None,
+            direction: "next".to_owned(),
+            filter,
+            limit: 2,
+            reader_session_id: "reader-saved-pages".to_owned(),
+            schema_version: 2,
+            sort_mode: "date_saved".to_owned(),
+        };
+        let NormalizedQueryResponseV1::SavedFeedPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::SavedFeedPage(request.clone()),
+        )
+        .expect("first saved page") else {
+            panic!("saved response");
+        };
+        let NormalizedQueryResponseV1::SavedFeedPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::SavedFeedPage(NormalizedSavedFeedPageRequestV2 {
+                cursor: first.next_cursor,
+                ..request.clone()
+            }),
+        )
+        .expect("second saved page") else {
+            panic!("saved response");
+        };
+        assert_eq!(
+            second
+                .rows
+                .iter()
+                .map(|row| row.card.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["saved:c", "saved:d"]
+        );
+        let NormalizedQueryResponseV1::SavedFeedPage(previous) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::SavedFeedPage(NormalizedSavedFeedPageRequestV2 {
+                cursor: second.previous_cursor,
+                direction: "previous".to_owned(),
+                ..request
+            }),
+        )
+        .expect("previous saved page") else {
+            panic!("saved response");
+        };
+        assert_eq!(
+            previous
+                .rows
+                .iter()
+                .map(|row| row.card.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["saved:b", "saved:e"]
+        );
     }
 
     #[test]

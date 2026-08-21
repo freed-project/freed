@@ -31,6 +31,11 @@ import {
   parseLibraryCoreFacetSummaryResponseV1,
   parseLibraryCoreSavedAnalyticsRequestV2,
   parseLibraryCoreSavedAnalyticsResponseV2,
+  decodeLibraryCoreSavedFeedPageCursorV2,
+  encodeLibraryCoreSavedFeedPageCursorV2,
+  parseLibraryCoreSavedFeedCardV1,
+  parseLibraryCoreSavedFeedPageRequestV2,
+  parseLibraryCoreSavedFeedPageResponseV2,
   parseLibraryCorePreferencesSnapshotRequestV1,
   parseLibraryCorePreferencesSnapshotResponseV1,
   parseLibraryCoreItemDetailRequestV1,
@@ -86,6 +91,9 @@ import {
   type LibraryCoreFacetSummaryResponseV1,
   type LibraryCoreSavedAnalyticsRequestV2,
   type LibraryCoreSavedAnalyticsResponseV2,
+  type LibraryCoreSavedFeedCardV1,
+  type LibraryCoreSavedFeedPageRequestV2,
+  type LibraryCoreSavedFeedPageResponseV2,
   type LibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotResponseV1,
   type LibraryCoreItemDetailRequestV1,
@@ -297,6 +305,17 @@ function feedCardFromSqliteRow(
     tags: stringArray(row.tagsJson, "feed tags"),
   };
   const parsed = parseLibraryCoreFeedCardV1(candidate);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.value;
+}
+
+function savedFeedCardFromSqliteRow(
+  row: Record<string, SqlValue>,
+): LibraryCoreSavedFeedCardV1 {
+  const parsed = parseLibraryCoreSavedFeedCardV1({
+    ...feedCardFromSqliteRow(row),
+    savedAt: nullableInteger(row.savedAt, "saved feed saved time"),
+  });
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.value;
 }
@@ -900,6 +919,10 @@ export class PwaLibraryCoreSqliteEngine {
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "saved_analytics_v2":
         return this.#querySavedAnalytics(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "saved_feed_page_v2":
+        return this.#querySavedFeedPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
@@ -2068,6 +2091,147 @@ export class PwaLibraryCoreSqliteEngine {
       ),
     };
     const parsed = parseLibraryCoreFeedBrowsePageResponseV3(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #querySavedFeedPage(
+    input: LibraryCoreSavedFeedPageRequestV2,
+  ): LibraryCoreSavedFeedPageResponseV2 {
+    const request = parseLibraryCoreSavedFeedPageRequestV2(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const filterDigest = libraryCoreFeedBrowseFilterDigestV1(
+      request.value.filter,
+    );
+    let cursorSortGroup: number | null = null;
+    let cursorSortPrimary: number | null = null;
+    let cursorSortSecondary: number | null = null;
+    let cursorGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreSavedFeedPageCursorV2(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.generationId !== generationId ||
+        cursor.value.sourceRevision !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite saved cursor is stale");
+      }
+      cursorSortGroup = cursor.value.sortGroup;
+      cursorSortPrimary = cursor.value.sortPrimary;
+      cursorSortSecondary = cursor.value.sortSecondary;
+      cursorGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.saved_feed_page_v2;
+    const variant = program.variants[request.value.sortMode];
+    const filterBindings: SqlValue[] = [
+      request.value.filter.archivedOnly ? 1 : 0,
+      request.value.filter.platform,
+      request.value.filter.authorId,
+      request.value.filter.feedUrl,
+      request.value.filter.socialContentFilter,
+      JSON.stringify(request.value.filter.tags),
+      JSON.stringify(request.value.filter.signals),
+    ];
+    const rawRows = this.#database.exec({
+      sql:
+        request.value.direction === "previous"
+          ? variant.reverseSql
+          : variant.sql,
+      bind: [
+        ...filterBindings,
+        cursorSortGroup,
+        cursorSortPrimary,
+        cursorSortSecondary,
+        cursorGlobalId,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite saved query exceeded its row bound");
+    }
+    const hasMoreInDirection = rawRows.length > request.value.limit;
+    const selectedRows = rawRows.slice(0, request.value.limit);
+    if (request.value.direction === "previous") selectedRows.reverse();
+    const rows = selectedRows.map((row) => ({
+      card: savedFeedCardFromSqliteRow(row),
+      sortGroup: safeInteger(row.sortGroup, "saved sort group"),
+      sortPrimary: safeInteger(row.sortPrimary, "saved primary sort"),
+      sortSecondary: safeInteger(row.sortSecondary, "saved secondary sort"),
+    }));
+    if (
+      rows.some(
+        (row) =>
+          row.sortGroup < 0 ||
+          row.sortGroup > 100 ||
+          row.sortPrimary < 0 ||
+          row.sortSecondary < 0,
+      )
+    ) {
+      throw new Error("PWA Library SQLite saved order is invalid");
+    }
+    const edge = (row: (typeof rows)[number] | undefined) =>
+      row
+        ? {
+            cursor: encodeLibraryCoreSavedFeedPageCursorV2({
+              filterDigest,
+              generationId: generationId as never,
+              globalId: row.card.globalId,
+              sortGroup: row.sortGroup,
+              sortMode: request.value.sortMode,
+              sortPrimary: row.sortPrimary,
+              sortSecondary: row.sortSecondary,
+              sourceRevision,
+            }),
+            order: {
+              globalId: row.card.globalId,
+              sortGroup: row.sortGroup,
+              sortPrimary: row.sortPrimary,
+              sortSecondary: row.sortSecondary,
+            },
+          }
+        : null;
+    const nextAvailable =
+      request.value.direction === "next" ? hasMoreInDirection : rows.length > 0;
+    const previousAvailable =
+      request.value.direction === "previous"
+        ? hasMoreInDirection
+        : request.value.cursor !== null && rows.length > 0;
+    const next = nextAvailable ? edge(rows.at(-1)) : null;
+    const previous = previousAvailable ? edge(rows[0]) : null;
+    const response = {
+      filter: request.value.filter,
+      nextCursor: next?.cursor ?? null,
+      nextOrder: next?.order ?? null,
+      previousCursor: previous?.cursor ?? null,
+      previousOrder: previous?.order ?? null,
+      queryId: "saved_feed_page_v2" as const,
+      rows: rows.map((row) => row.card),
+      schemaVersion: 2 as const,
+      sortMode: request.value.sortMode,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      totalCount: safeInteger(
+        this.#database.exec({
+          sql: program.countSql,
+          bind: filterBindings,
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "saved total count",
+      ),
+    };
+    const parsed = parseLibraryCoreSavedFeedPageResponseV2(
       response,
       request.value,
     );

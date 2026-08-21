@@ -178,6 +178,30 @@ describe("Library Core SQLite worker protocol", () => {
         query: { ...browse.query, sourceSequence: 7 },
       }),
     ).toThrow(/browse request fields do not match schema version 3/);
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-saved-feed", {
+        cancellationId: "cancel-saved-feed" as never,
+        cursor: null,
+        direction: "next",
+        filter: {
+          archivedOnly: false,
+          authorId: null,
+          feedUrl: null,
+          platform: null,
+          savedOnly: true,
+          schemaVersion: 1,
+          showHidden: false,
+          signals: [],
+          socialContentFilter: "all",
+          tags: [],
+        },
+        limit: 64,
+        queryId: "saved_feed_page_v2",
+        readerSessionId: "reader-saved-feed" as never,
+        schemaVersion: 2,
+        sortMode: "shortest_read",
+      }).kind,
+    ).toBe("query");
   });
 
   it("carries only closed device-local graph mutations", () => {

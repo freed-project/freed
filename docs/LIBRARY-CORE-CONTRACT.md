@@ -302,6 +302,17 @@ request accepts no SQL or arbitrary grouping, the result is one row under
 The historical Saved analytics reader and its document-head source vocabulary
 are not part of this final query.
 
+`saved_feed_page_v2` is the normalized Saved list query. Its closed sort enum
+selects one of four generated SQL variants for date saved, date published,
+recommendation priority, or shortest read. Each variant has matching forward
+and reverse keyset programs and a dedicated expression index. The request
+requires saved and visible rows, applies every remaining feed filter inside
+SQLite, and reads at most 129 rows for a 128-row response. Each edge cursor
+binds the normalized filter digest, sort mode, complete order key, database
+generation, and source revision. Native Rust and browser SQLite share the same
+program registry and exact cursor bytes. No caller can supply SQL or ask
+application code to sort a Saved corpus.
+
 Synchronized preferences are normalized typed SQLite nodes. The
 `preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite
 binary path order. Scalar rows use a `v:` path prefix. Object markers use `o:`

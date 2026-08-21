@@ -62,6 +62,13 @@
         time, fixed day and hour buckets, and bounded binary-ordered source and
         content counts in one source-fenced response under 2 MiB. Final
         Freed Desktop view wiring and historical reader deletion remain open.
+  - [x] `saved_feed_page_v2` now executes all four Saved orders through closed
+        generated native SQLite variants. Date saved, date published,
+        recommendation priority, and shortest read each use a matching
+        expression index in both directions without a temporary sort. Filters
+        and exact counts stay in SQLite, each request reads at most 129 rows,
+        and edge cursors bind the filter, sort, generation, revision, and full
+        order key. Final Freed Desktop view wiring and V1 deletion remain open.
   - [x] `preferences_snapshot_v1` now returns normalized preference nodes
         through the native core in exact SQLite binary path order. The closed
         response preserves boolean, integer, real, text, and null values,
@@ -418,6 +425,7 @@ export async function captureDomFeed(
 | 5.39 | Visible cloud transfer diagnostics, manual sync, and activity timeline   | Medium     |
 | 5.40 | Global toolbar background activity monitor                               | Medium     |
 | 5.41 | Multi-Desktop registration and duplicate provider request warning        | Low        |
+| 5.42 | Execute indexed bidirectional `saved_feed_page_v2` through the native core with all four Saved orders and exact browser parity | High | ✓ Complete |
 
 ---
 

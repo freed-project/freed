@@ -989,6 +989,137 @@ describe("PWA Library Core SQLite engine", () => {
     ).toThrow("browse cursor is stale");
   });
 
+  it("runs every Saved order and both page directions through matching indexes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 12, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, priority,
+         preserved_reading_time, hidden, saved, saved_at, archived, updated_at)
+      VALUES
+        ('saved:a', 'saved', 'article', 50, 400, 'author', 'author', 'Author', 10, 5, 0, 1, 100, 0, 400),
+        ('saved:b', 'saved', 'article', 60, 100, 'author', 'author', 'Author', 90, NULL, 0, 1, 300, 0, 300),
+        ('saved:c', 'saved', 'article', 70, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+        ('saved:d', 'saved', 'article', 80, 300, 'author', 'author', 'Author', 90, 2, 0, 1, 200, 0, 300),
+        ('saved:e', 'saved', 'article', 250, 0, 'author', 'author', 'Author', 20, 7, 0, 1, NULL, 0, 250),
+        ('hidden', 'saved', 'article', 900, 900, 'author', 'author', 'Author', 100, 1, 1, 1, 900, 0, 900),
+        ('unsaved', 'saved', 'article', 999, 999, 'author', 'author', 'Author', 100, 1, 0, 0, NULL, 0, 999);
+    `);
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.saved_feed_page_v2;
+    const expectedIndexes = {
+      date_published: "library_feed_items_saved_date_published",
+      date_saved: "library_feed_items_saved_date_saved",
+      recommended: "library_feed_items_saved_recommended",
+      shortest_read: "library_feed_items_saved_shortest_read",
+    } as const;
+    const planBindings = [
+      0,
+      null,
+      null,
+      null,
+      "all",
+      "[]",
+      "[]",
+      null,
+      null,
+      null,
+      "",
+      6,
+    ];
+    for (const [sortMode, indexName] of Object.entries(expectedIndexes)) {
+      const variant =
+        program.variants[sortMode as keyof typeof program.variants];
+      for (const sql of [variant.sql, variant.reverseSql]) {
+        const details = database
+          .exec({
+            sql: `EXPLAIN QUERY PLAN ${sql}`,
+            bind: planBindings,
+            rowMode: "array",
+            returnValue: "resultRows",
+          })
+          .map((row) => String((row as unknown[])[3]));
+        expect(details.some((detail) => detail.includes(indexName))).toBe(true);
+        expect(details.every((detail) => !detail.includes("TEMP B-TREE"))).toBe(
+          true,
+        );
+      }
+    }
+    const filter: LibraryCoreFeedBrowseFilterV1 = {
+      archivedOnly: false,
+      authorId: null,
+      feedUrl: null,
+      platform: null,
+      savedOnly: true,
+      schemaVersion: 1,
+      showHidden: false,
+      signals: [],
+      socialContentFilter: "all",
+      tags: [],
+    };
+    const request = {
+      cancellationId: operationId("cancel-saved-v2"),
+      cursor: null,
+      direction: "next" as const,
+      filter,
+      limit: 10,
+      queryId: "saved_feed_page_v2" as const,
+      readerSessionId: operationId("reader-saved-v2"),
+      schemaVersion: 2 as const,
+      sortMode: "date_saved" as const,
+    };
+    const expectations = {
+      date_published: ["saved:a", "saved:c", "saved:d", "saved:e", "saved:b"],
+      date_saved: ["saved:b", "saved:e", "saved:c", "saved:d", "saved:a"],
+      recommended: ["saved:c", "saved:d", "saved:b", "saved:e", "saved:a"],
+      shortest_read: ["saved:c", "saved:d", "saved:a", "saved:e", "saved:b"],
+    } as const;
+    for (const [sortMode, expected] of Object.entries(expectations)) {
+      const response = engine.query({
+        ...request,
+        sortMode: sortMode as keyof typeof expectations,
+      });
+      expect(response.totalCount).toBe(5);
+      expect(response.rows.map((row) => row.globalId)).toEqual(expected);
+    }
+    const first = engine.query({ ...request, limit: 2 });
+    const second = engine.query({
+      ...request,
+      cursor: first.nextCursor,
+      limit: 2,
+    });
+    expect(second.rows.map((row) => row.globalId)).toEqual([
+      "saved:c",
+      "saved:d",
+    ]);
+    const previous = engine.query({
+      ...request,
+      cursor: second.previousCursor,
+      direction: "previous",
+      limit: 2,
+    });
+    expect(previous.rows.map((row) => row.globalId)).toEqual([
+      "saved:b",
+      "saved:e",
+    ]);
+    database.exec(
+      "UPDATE library_meta SET source_revision = 13 WHERE singleton_id = 1; UPDATE library_change_state SET revision = 13 WHERE singleton_id = 1;",
+    );
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor, limit: 2 }),
+    ).toThrow("saved cursor is stale");
+  });
+
   it("stages bounded normalized records idempotently and rejects changed replay", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,

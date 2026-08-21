@@ -1,5 +1,9 @@
 import type { FeedItem, SavedContentSortMode } from "../types.js";
 import {
+  libraryCoreFeedBrowseFilterDigestV1,
+  type LibraryCoreFeedBrowseDirectionV3,
+} from "./feed-browse-page-contracts.js";
+import {
   parseLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowseFilterV1,
 } from "./feed-browse-filter-contract.js";
@@ -34,7 +38,11 @@ export const LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT =
 export const LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES =
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES;
 export const LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_CURSOR_BYTES = 5_564;
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_MAXIMUM_CURSOR_BYTES = 5_586;
 export const LIBRARY_CORE_SAVED_FEED_SORT_ORDER_SCHEMA_VERSION = 1 as const;
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID =
+  "saved_feed_page_v2" as const;
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION = 2 as const;
 
 /**
  * The first native Saved ordering contract is an intentional Gate D order,
@@ -98,7 +106,7 @@ export const LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA = Object.freeze({
   ]),
   cursorCodec: "library_core_saved_feed_page_cursor_v1",
   maximumLimit: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
-  maximumCursorBytes: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_CURSOR_BYTES,
+  maximumCursorBytes: LIBRARY_CORE_SAVED_FEED_PAGE_V2_MAXIMUM_CURSOR_BYTES,
 });
 
 export const LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA = Object.freeze({
@@ -120,11 +128,67 @@ export const LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA = Object.freeze({
   maximumResponseBytes: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
 });
 
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_REQUEST_SCHEMA = Object.freeze({
+  schemaId: "library_core_saved_feed_page_request_v2",
+  schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "cancellationId",
+    "cursor",
+    "direction",
+    "filter",
+    "limit",
+    "queryId",
+    "readerSessionId",
+    "schemaVersion",
+    "sortMode",
+  ]),
+  cursorCodec: "library_core_saved_feed_page_cursor_v2",
+  maximumLimit: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumCursorBytes: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_CURSOR_BYTES,
+});
+
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_RESPONSE_SCHEMA = Object.freeze({
+  schemaId: "library_core_saved_feed_page_response_v2",
+  schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "filter",
+    "nextCursor",
+    "nextOrder",
+    "previousCursor",
+    "previousOrder",
+    "queryId",
+    "rows",
+    "schemaVersion",
+    "sortMode",
+    "source",
+    "totalCount",
+  ]),
+  maximumRows: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumResponseBytes: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+});
+
 export const LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION = Object.freeze({
   projectionId: "library_core_saved_feed_card_v1",
   // The Saved reader uses its own generation root, but deliberately reuses
   // the bounded browse store's physical row schema.
   sourceTable: "feed_browse_rows",
+  fullContentAllowed: false,
+  orderedColumns: Object.freeze([
+    "sortGroup",
+    "sortPrimary",
+    "sortSecondary",
+    "globalId",
+  ]),
+  savedAtFallback: "capturedAt",
+  shortestReadMissingOrder: "after_finite",
+  tieBreak: "globalId_binary_asc",
+});
+
+export const LIBRARY_CORE_SAVED_FEED_PAGE_V2_PROJECTION = Object.freeze({
+  projectionId: "library_core_saved_feed_card_v2",
+  sourceTable: "library_feed_items",
   fullContentAllowed: false,
   orderedColumns: Object.freeze([
     "sortGroup",
@@ -188,6 +252,50 @@ export interface LibraryCoreSavedFeedSortKeyV1 {
   readonly globalId: LibraryCoreEntityId;
 }
 
+export interface LibraryCoreSavedFeedPageCursorV2 {
+  readonly filterDigest: LibraryCoreLowercaseHex64;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly sourceRevision: number;
+  readonly sortMode: SavedContentSortMode;
+  readonly sortGroup: number;
+  readonly sortPrimary: number;
+  readonly sortSecondary: number;
+  readonly globalId: LibraryCoreEntityId;
+}
+
+export interface LibraryCoreSavedFeedPageRequestV2 {
+  readonly cancellationId: LibraryCoreOperationInstanceId;
+  readonly cursor: string | null;
+  readonly direction: LibraryCoreFeedBrowseDirectionV3;
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID;
+  readonly readerSessionId: LibraryCoreOperationInstanceId;
+  readonly schemaVersion: typeof LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION;
+  readonly sortMode: SavedContentSortMode;
+}
+
+export interface LibraryCoreSavedFeedPageEdgeOrderV2 {
+  readonly globalId: LibraryCoreEntityId;
+  readonly sortGroup: number;
+  readonly sortPrimary: number;
+  readonly sortSecondary: number;
+}
+
+export interface LibraryCoreSavedFeedPageResponseV2 {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly nextCursor: string | null;
+  readonly nextOrder: Readonly<LibraryCoreSavedFeedPageEdgeOrderV2> | null;
+  readonly previousCursor: string | null;
+  readonly previousOrder: Readonly<LibraryCoreSavedFeedPageEdgeOrderV2> | null;
+  readonly queryId: typeof LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID;
+  readonly rows: readonly LibraryCoreSavedFeedCardV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION;
+  readonly sortMode: SavedContentSortMode;
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly totalCount: number;
+}
+
 const SORT_MODE_CODE: Readonly<Record<SavedContentSortMode, number>> =
   Object.freeze({
     date_saved: 0,
@@ -208,6 +316,18 @@ const FATAL_TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 const REQUEST_KEYS = LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA.canonicalKeys;
 const RESPONSE_KEYS =
   LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA.canonicalKeys;
+const V2_REQUEST_KEYS =
+  LIBRARY_CORE_SAVED_FEED_PAGE_V2_REQUEST_SCHEMA.canonicalKeys;
+const V2_RESPONSE_KEYS =
+  LIBRARY_CORE_SAVED_FEED_PAGE_V2_RESPONSE_SCHEMA.canonicalKeys;
+const V2_EDGE_ORDER_KEYS = [
+  "globalId",
+  "sortGroup",
+  "sortPrimary",
+  "sortSecondary",
+] as const;
+const V2_CURSOR_VERSION = 2;
+const V2_CURSOR_FIXED_BYTES = 93;
 
 function success<T>(value: T): LibraryCoreFeedPageParseResult<T> {
   return Object.freeze({ ok: true, value });
@@ -372,10 +492,13 @@ function encodeBase64Url(bytes: Uint8Array): string {
   return output;
 }
 
-function decodeBase64Url(value: string): Uint8Array | null {
+function decodeBase64Url(
+  value: string,
+  maximumBytes = LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_CURSOR_BYTES,
+): Uint8Array | null {
   if (
     value.length === 0 ||
-    value.length > LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_CURSOR_BYTES ||
+    value.length > maximumBytes ||
     value.length % 4 === 1
   ) {
     return null;
@@ -667,6 +790,310 @@ export function parseLibraryCoreSavedFeedPageResponseV1(
     rows: Object.freeze(rows),
     schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_SCHEMA_VERSION,
     sortMode: input.sortMode,
+    source: source.value,
+    totalCount: input.totalCount,
+  });
+  if (
+    TEXT_ENCODER.encode(JSON.stringify(response)).byteLength >
+    LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return failure("response exceeds its byte ceiling");
+  }
+  return success(response);
+}
+
+export function encodeLibraryCoreSavedFeedPageCursorV2(
+  cursor: LibraryCoreSavedFeedPageCursorV2,
+): string {
+  if (
+    !isLibraryCoreLowercaseHex64(cursor.filterDigest) ||
+    !isLibraryCoreLowercaseHex64(cursor.generationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.sourceRevision) ||
+    !isSavedContentSortMode(cursor.sortMode) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.sortGroup) ||
+    cursor.sortGroup > 100 ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.sortPrimary) ||
+    !isLibraryCoreNonnegativeSafeInteger(cursor.sortSecondary) ||
+    !isLibraryCoreEntityId(cursor.globalId)
+  ) {
+    throw new TypeError("invalid Library Core saved-feed v2 cursor");
+  }
+  const globalId = TEXT_ENCODER.encode(cursor.globalId);
+  const bytes = new Uint8Array(V2_CURSOR_FIXED_BYTES + globalId.length);
+  const view = new DataView(bytes.buffer);
+  bytes[0] = V2_CURSOR_VERSION;
+  bytes[1] = SORT_MODE_CODE[cursor.sortMode];
+  bytes.set(lowerHexToBytes(cursor.generationId), 2);
+  bytes.set(lowerHexToBytes(cursor.filterDigest), 34);
+  view.setBigUint64(66, BigInt(cursor.sourceRevision), false);
+  bytes[74] = cursor.sortGroup;
+  view.setBigUint64(75, BigInt(cursor.sortPrimary), false);
+  view.setBigUint64(83, BigInt(cursor.sortSecondary), false);
+  view.setUint16(91, globalId.length, false);
+  bytes.set(globalId, V2_CURSOR_FIXED_BYTES);
+  return encodeBase64Url(bytes);
+}
+
+export function decodeLibraryCoreSavedFeedPageCursorV2(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreSavedFeedPageCursorV2> {
+  if (typeof value !== "string") return failure("cursor must be a string");
+  const bytes = decodeBase64Url(
+    value,
+    LIBRARY_CORE_SAVED_FEED_PAGE_V2_MAXIMUM_CURSOR_BYTES,
+  );
+  if (
+    !bytes ||
+    bytes.length < V2_CURSOR_FIXED_BYTES ||
+    bytes[0] !== V2_CURSOR_VERSION ||
+    bytes[1]! >= SORT_MODE_FROM_CODE.length
+  ) {
+    return failure("cursor has invalid encoding, sort, or version");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const globalIdLength = view.getUint16(91, false);
+  if (bytes.length !== V2_CURSOR_FIXED_BYTES + globalIdLength) {
+    return failure("cursor length does not match its entity identity");
+  }
+  const sourceRevision = view.getBigUint64(66, false);
+  const sortPrimary = view.getBigUint64(75, false);
+  const sortSecondary = view.getBigUint64(83, false);
+  if (
+    [sourceRevision, sortPrimary, sortSecondary].some(
+      (entry) => entry > BigInt(Number.MAX_SAFE_INTEGER),
+    ) ||
+    bytes[74]! > 100
+  ) {
+    return failure("cursor contains an unsafe ordering value");
+  }
+  let globalId: string;
+  try {
+    globalId = FATAL_TEXT_DECODER.decode(bytes.subarray(V2_CURSOR_FIXED_BYTES));
+  } catch {
+    return failure("cursor entity identity is not valid UTF-8");
+  }
+  const generationId = bytesToLowerHex(bytes.subarray(2, 34));
+  const filterDigest = bytesToLowerHex(bytes.subarray(34, 66));
+  if (
+    !isLibraryCoreLowercaseHex64(generationId) ||
+    !isLibraryCoreLowercaseHex64(filterDigest) ||
+    !isLibraryCoreEntityId(globalId)
+  ) {
+    return failure("cursor identity is invalid");
+  }
+  return success(
+    Object.freeze({
+      filterDigest,
+      generationId,
+      sourceRevision: Number(sourceRevision),
+      sortMode: SORT_MODE_FROM_CODE[bytes[1]!]!,
+      sortGroup: bytes[74]!,
+      sortPrimary: Number(sortPrimary),
+      sortSecondary: Number(sortSecondary),
+      globalId,
+    }),
+  );
+}
+
+function validSavedFeedV2Filter(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowseFilterV1> {
+  const filter = parseLibraryCoreFeedBrowseFilterV1(value);
+  if (!filter.ok || !filter.value.savedOnly || filter.value.showHidden) {
+    return failure(
+      filter.ok
+        ? "saved feed filter must require saved visible items"
+        : filter.error,
+    );
+  }
+  return filter;
+}
+
+export function parseLibraryCoreSavedFeedPageRequestV2(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreSavedFeedPageRequestV2> {
+  const record = snapshotClosedRecord(value, V2_REQUEST_KEYS, "request");
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION ||
+    !isLibraryCoreOperationInstanceId(input.readerSessionId) ||
+    !isLibraryCoreOperationInstanceId(input.cancellationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT ||
+    !isSavedContentSortMode(input.sortMode) ||
+    !["next", "previous"].includes(input.direction as string) ||
+    (input.direction === "previous" && input.cursor === null) ||
+    (input.cursor !== null && typeof input.cursor !== "string")
+  ) {
+    return failure("request identity or bounds are invalid");
+  }
+  const filter = validSavedFeedV2Filter(input.filter);
+  if (!filter.ok) return filter;
+  if (typeof input.cursor === "string") {
+    const cursor = decodeLibraryCoreSavedFeedPageCursorV2(input.cursor);
+    if (
+      !cursor.ok ||
+      cursor.value.sortMode !== input.sortMode ||
+      cursor.value.filterDigest !==
+        libraryCoreFeedBrowseFilterDigestV1(filter.value)
+    ) {
+      return failure(
+        cursor.ok
+          ? "request cursor belongs to different query inputs"
+          : cursor.error,
+      );
+    }
+  }
+  return success(
+    Object.freeze({
+      cancellationId: input.cancellationId,
+      cursor: input.cursor as string | null,
+      direction: input.direction as LibraryCoreFeedBrowseDirectionV3,
+      filter: filter.value,
+      limit: input.limit,
+      queryId: LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
+      readerSessionId: input.readerSessionId,
+      schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
+      sortMode: input.sortMode,
+    }),
+  );
+}
+
+function parseSavedFeedV2Edge(
+  cursorValue: unknown,
+  orderValue: unknown,
+  boundRow: LibraryCoreSavedFeedCardV1 | undefined,
+  filterDigest: LibraryCoreLowercaseHex64,
+  sortMode: SavedContentSortMode,
+  source: LibraryCoreFeedPageSourceV1,
+  label: string,
+): LibraryCoreFeedPageParseResult<Readonly<LibraryCoreSavedFeedPageEdgeOrderV2> | null> {
+  if (cursorValue === null && orderValue === null) return success(null);
+  if (
+    (cursorValue === null) !== (orderValue === null) ||
+    typeof cursorValue !== "string"
+  ) {
+    return failure(`saved ${label} cursor and order must agree`);
+  }
+  const cursor = decodeLibraryCoreSavedFeedPageCursorV2(cursorValue);
+  const order = snapshotClosedRecord(
+    orderValue,
+    V2_EDGE_ORDER_KEYS,
+    `saved ${label} order`,
+  );
+  if (
+    !cursor.ok ||
+    !order.ok ||
+    !boundRow ||
+    !isLibraryCoreEntityId(order.value.globalId) ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.sortGroup) ||
+    order.value.sortGroup > 100 ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.sortPrimary) ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.sortSecondary) ||
+    cursor.value.filterDigest !== filterDigest ||
+    cursor.value.generationId !== source.generationId ||
+    cursor.value.sourceRevision !== source.transitionSequence ||
+    source.projectionRevision !== source.transitionSequence ||
+    cursor.value.sortMode !== sortMode ||
+    cursor.value.globalId !== boundRow.globalId ||
+    cursor.value.globalId !== order.value.globalId ||
+    cursor.value.sortGroup !== order.value.sortGroup ||
+    cursor.value.sortPrimary !== order.value.sortPrimary ||
+    cursor.value.sortSecondary !== order.value.sortSecondary
+  ) {
+    return failure(`saved ${label} cursor does not bind its source and row`);
+  }
+  return success(
+    Object.freeze({
+      globalId: order.value.globalId,
+      sortGroup: order.value.sortGroup,
+      sortPrimary: order.value.sortPrimary,
+      sortSecondary: order.value.sortSecondary,
+    }),
+  );
+}
+
+export function parseLibraryCoreSavedFeedPageResponseV2(
+  value: unknown,
+  requestValue: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreSavedFeedPageResponseV2> {
+  const request = parseLibraryCoreSavedFeedPageRequestV2(requestValue);
+  if (!request.ok) return failure(request.error);
+  const record = snapshotClosedRecord(value, V2_RESPONSE_KEYS, "response");
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION ||
+    input.sortMode !== request.value.sortMode ||
+    !isLibraryCoreNonnegativeSafeInteger(input.totalCount) ||
+    !Array.isArray(input.rows) ||
+    input.rows.length > LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT
+  ) {
+    return failure("response identity or bounds are invalid");
+  }
+  const filter = validSavedFeedV2Filter(input.filter);
+  if (
+    !filter.ok ||
+    JSON.stringify(filter.value) !== JSON.stringify(request.value.filter)
+  ) {
+    return failure(filter.ok ? "response filter is stale" : filter.error);
+  }
+  const source = parseLibraryCoreFeedPageSourceV1(input.source);
+  if (
+    !source.ok ||
+    source.value.projectionRevision !== source.value.transitionSequence
+  ) {
+    return failure(
+      source.ok ? "response source revision is inconsistent" : source.error,
+    );
+  }
+  const rows: LibraryCoreSavedFeedCardV1[] = [];
+  for (const row of input.rows) {
+    const parsed = parseLibraryCoreSavedFeedCardV1(row);
+    if (!parsed.ok) return failure(parsed.error);
+    rows.push(parsed.value);
+  }
+  if (input.totalCount < rows.length) {
+    return failure("response total is smaller than its visible page");
+  }
+  const filterDigest = libraryCoreFeedBrowseFilterDigestV1(filter.value);
+  const next = parseSavedFeedV2Edge(
+    input.nextCursor,
+    input.nextOrder,
+    rows.at(-1),
+    filterDigest,
+    request.value.sortMode,
+    source.value,
+    "next",
+  );
+  if (!next.ok) return failure(next.error);
+  const previous = parseSavedFeedV2Edge(
+    input.previousCursor,
+    input.previousOrder,
+    rows[0],
+    filterDigest,
+    request.value.sortMode,
+    source.value,
+    "previous",
+  );
+  if (!previous.ok) return failure(previous.error);
+  if (rows.length === 0 && (next.value !== null || previous.value !== null)) {
+    return failure("response cannot bind an edge without rows");
+  }
+  const response: LibraryCoreSavedFeedPageResponseV2 = Object.freeze({
+    filter: filter.value,
+    nextCursor: input.nextCursor as string | null,
+    nextOrder: next.value,
+    previousCursor: input.previousCursor as string | null,
+    previousOrder: previous.value,
+    queryId: LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
+    rows: Object.freeze(rows),
+    schemaVersion: LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
+    sortMode: request.value.sortMode,
     source: source.value,
     totalCount: input.totalCount,
   });
