@@ -22,11 +22,14 @@ import {
   type LibraryCoreFeedBrowseFilterV1,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
+  encodeLibraryCoreSignatureInput,
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
+  libraryCoreFollowerResultBodyV1,
+  parseLibraryCoreFollowerResultEnvelopeV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -235,6 +238,7 @@ describe("PWA Library Core SQLite engine", () => {
       "library_intent_transactions",
       "library_intent_members",
       "library_intent_results",
+      "library_intent_result_cursors",
       "library_optimistic_fields",
     ]) {
       expect(
@@ -270,7 +274,12 @@ describe("PWA Library Core SQLite engine", () => {
     const actorId = "33".repeat(32);
     const chainGenesis = "44".repeat(32);
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
     const publicKeyHex = publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKeyHex = authorityKeys.publicKey
       .export({ format: "der", type: "spki" })
       .subarray(-32)
       .toString("hex");
@@ -292,6 +301,9 @@ describe("PWA Library Core SQLite engine", () => {
               (singleton_id, generation_id) VALUES (1, ?1);`,
       bind: ["99".repeat(32)],
     });
+    database.exec(
+      "UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;",
+    );
     database.exec({
       sql: `INSERT INTO library_authority_epochs
               (epoch_id, library_id, epoch_number, authority_key_id,
@@ -303,7 +315,7 @@ describe("PWA Library Core SQLite engine", () => {
         epochId,
         libraryId,
         "55".repeat(32),
-        "66".repeat(32),
+        authorityPublicKeyHex,
         "77".repeat(32),
         "88".repeat(32),
         "aa".repeat(32),
@@ -421,6 +433,89 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([[2, "intent-operation-1"]]);
 
+    const unsignedResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 8,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["canonical-operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: ["receipt-1"],
+      rejection_reason: null,
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_400,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_000,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: finalized.transaction_digest,
+      transaction_id: "intent-transaction-1",
+    });
+    const resultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedResult),
+    );
+    const canonicalResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedResult,
+      result_body_digest: resultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: resultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    const resultReceipt = await engine.applyFollowerResult({
+      canonicalResultBytes,
+    });
+    expect(resultReceipt).toEqual({
+      actorId,
+      resultDigest,
+      resultSequence: 1,
+      sourceRevision: 8,
+      status: "accepted",
+      transactionId: "intent-transaction-1",
+    });
+    expect(
+      await engine.applyFollowerResult({ canonicalResultBytes }),
+    ).toEqual(resultReceipt);
+    expect(
+      database.exec({
+        sql: `SELECT read_at, (SELECT count(*) FROM library_optimistic_fields),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1)
+              FROM library_feed_items WHERE global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_400, 0, 2]]);
+
+    const changedResult = new Uint8Array(canonicalResultBytes);
+    changedResult[changedResult.byteLength - 2] =
+      changedResult[changedResult.byteLength - 2] === 48 ? 49 : 48;
+    await expect(
+      engine.applyFollowerResult({ canonicalResultBytes: changedResult }),
+    ).rejects.toThrow(/changed bytes|canonical/);
+
     const decoded = decodeLibraryCoreCanonicalValue(envelopeBytes[0]!);
     if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
       throw new Error("test follower envelope is not a record");
@@ -499,6 +594,87 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([2]);
+
+    database.exec("DROP TRIGGER fail_follower_optimistic_insert;");
+    const secondEnvelopeBytes = secondFinalized.members.map((value) =>
+      encodeLibraryCoreCanonicalValue(
+        value.envelope as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+    await engine.commitFollowerIntent({ envelopeBytes: secondEnvelopeBytes });
+    const unsignedSecondResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 9,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["canonical-operation-2"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: resultDigest,
+      receipt_ids: ["receipt-2"],
+      rejection_reason: null,
+      replacement_fields: [
+        {
+          boolean_value: null,
+          entity_id: "item-1",
+          entity_type: "FeedItem",
+          field_path: "read_at",
+          integer_value: 1_600,
+          real_value: null,
+          text_value: null,
+          value_type: "integer",
+        },
+      ],
+      resolved_at_ms: 2_100,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 2,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: secondFinalized.transaction_digest,
+      transaction_id: "intent-transaction-2",
+    });
+    const secondResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedSecondResult),
+    );
+    const secondResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedSecondResult,
+      result_body_digest: secondResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: secondResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    database.exec(`CREATE TEMP TRIGGER fail_follower_result_cursor
+      BEFORE UPDATE OF next_result_sequence ON library_intent_result_cursors
+      BEGIN SELECT RAISE(ABORT, 'injected result cursor fault'); END;`);
+    await expect(
+      engine.applyFollowerResult({ canonicalResultBytes: secondResultBytes }),
+    ).rejects.toThrow(/injected result cursor fault/);
+    expect(
+      database.exec({
+        sql: `SELECT read_at,
+                     (SELECT source_revision FROM library_meta WHERE singleton_id = 1),
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields
+                      WHERE transaction_id = 'intent-transaction-2'),
+                     (SELECT state FROM library_intent_transactions
+                      WHERE transaction_id = 'intent-transaction-2'),
+                     (SELECT next_result_sequence FROM library_intent_result_cursors
+                      WHERE actor_id = ?1)
+              FROM library_feed_items WHERE global_id = 'item-1';`,
+        bind: [actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1_400, 8, 1, 1, "pending", 2]]);
   });
 
   it("refuses a foreign SQLite application identity before creating tables", () => {

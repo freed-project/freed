@@ -100,6 +100,11 @@ import {
   type LibraryCoreFollowerIntentCommitV1,
 } from "./follower-intent-contracts.js";
 import {
+  parseLibraryCoreFollowerResultApplyV1,
+  type LibraryCoreFollowerResultApplyReceiptV1,
+  type LibraryCoreFollowerResultApplyV1,
+} from "./follower-result-contracts.js";
+import {
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
   type LibraryCoreMapMarkersRequestV1,
@@ -205,6 +210,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      apply: LibraryCoreFollowerResultApplyV1;
+      kind: "apply_follower_result";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "begin_normalized_checkpoint_stage";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -256,7 +267,8 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1
-  | LibraryCoreFollowerIntentCommitResultV1;
+  | LibraryCoreFollowerIntentCommitResultV1
+  | LibraryCoreFollowerResultApplyReceiptV1;
 
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
@@ -301,8 +313,10 @@ export function parseLibraryCoreSqliteWorkerRequest(
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout"
         ? ["kind", "mutation", "protocolVersion", "requestId"]
-        : value.kind === "commit_follower_intent"
+      : value.kind === "commit_follower_intent"
           ? ["commit", "kind", "protocolVersion", "requestId"]
+        : value.kind === "apply_follower_result"
+          ? ["apply", "kind", "protocolVersion", "requestId"]
         : value.kind === "begin_normalized_checkpoint_stage"
           ? ["kind", "protocolVersion", "requestId", "stage"]
           : value.kind === "append_normalized_checkpoint_stage_page"
@@ -315,6 +329,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
     keys.some((key, index) => key !== expectedKeys[index]) ||
     ![
       "activate_normalized_checkpoint_stage",
+      "apply_follower_result",
       "append_normalized_checkpoint_stage_page",
       "begin_normalized_checkpoint_stage",
       "close",
@@ -407,8 +422,27 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "apply_follower_result") {
+    return Object.freeze({
+      apply: parseLibraryCoreFollowerResultApplyV1(value.apply),
+      kind: "apply_follower_result",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
+}
+
+export function createLibraryCoreSqliteFollowerResultApplyWorkerRequest(
+  requestId: string,
+  apply: LibraryCoreFollowerResultApplyV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    apply,
+    kind: "apply_follower_result",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
 }
 
 export function createLibraryCoreSqliteFollowerIntentCommitWorkerRequest(

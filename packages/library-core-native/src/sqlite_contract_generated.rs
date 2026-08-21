@@ -11,7 +11,7 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "660fbe288e7b1e758dfca273a0fd561f1f58886a17e6b2f546036fa16f6e45c9";
+    "e355ad3c05e8350454c91f78a56c948ff448c8c0cd0692a14325a228ba45851c";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 

@@ -246,6 +246,18 @@ advances its result cursor in one transaction. Response loss and duplicate
 delivery are idempotent. An unknown provider-side outcome cannot authorize a
 second provider side effect.
 
+The result wire record is `freed_follower_result_v1`. It binds the active
+authority key, Library and epoch, follower actor, actor-scoped result sequence,
+previous result digest, intent transaction ID and digest, canonical operation
+and receipt identities, closed rejection reason, authoritative source
+revision, exact sparse replacement projection, resolution time, body digest,
+and Ed25519 signature. The canonical record is capped at 131,072 bytes. The
+follower verifies the original bytes before SQLite admission. Result rows keep
+those exact bytes, and an actor cursor keeps only the next result sequence and
+previous digest. Reusing a transaction or result identity with changed bytes,
+skipping a sequence, changing the authority, or omitting one optimistic field
+fails before settlement.
+
 ## 8. Query contract
 
 The generated query registry contains bounded SQLite queries only. Whole

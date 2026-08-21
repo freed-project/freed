@@ -805,10 +805,30 @@ CREATE TABLE IF NOT EXISTS library_intent_members (
 
 CREATE TABLE IF NOT EXISTS library_intent_results (
   transaction_id TEXT PRIMARY KEY REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
+  actor_id TEXT NOT NULL REFERENCES library_intent_actors(actor_id),
+  result_sequence INTEGER NOT NULL CHECK (result_sequence >= 1),
+  previous_result_digest TEXT CHECK (previous_result_digest IS NULL OR (length(previous_result_digest) = 64 AND previous_result_digest NOT GLOB '*[^0-9a-f]*')),
   result_digest TEXT NOT NULL CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
   status TEXT NOT NULL CHECK (status IN ('accepted', 'rejected', 'already_applied')),
+  authoritative_source_revision INTEGER NOT NULL CHECK (authoritative_source_revision >= 0),
   canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
-  received_at INTEGER NOT NULL CHECK (received_at >= 0)
+  received_at INTEGER NOT NULL CHECK (received_at >= 0),
+  UNIQUE (actor_id, result_sequence),
+  UNIQUE (result_digest),
+  CHECK (
+    (result_sequence = 1 AND previous_result_digest IS NULL)
+    OR (result_sequence > 1 AND previous_result_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_intent_result_cursors (
+  actor_id TEXT PRIMARY KEY REFERENCES library_intent_actors(actor_id) ON DELETE CASCADE,
+  next_result_sequence INTEGER NOT NULL CHECK (next_result_sequence >= 1),
+  previous_result_digest TEXT CHECK (previous_result_digest IS NULL OR (length(previous_result_digest) = 64 AND previous_result_digest NOT GLOB '*[^0-9a-f]*')),
+  CHECK (
+    (next_result_sequence = 1 AND previous_result_digest IS NULL)
+    OR (next_result_sequence > 1 AND previous_result_digest IS NOT NULL)
+  )
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_optimistic_fields (

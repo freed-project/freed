@@ -42,7 +42,16 @@
         persists the exact intent plus sparse optimistic fields, and advances
         the local intent tip atomically. Exact byte retries return the durable
         result, changed identity reuse fails, and late write faults roll back
-        the transaction. Canonical Primary result reconciliation remains open.
+        the transaction.
+  - [x] Apply one closed authority-signed Primary result through the same
+        worker boundary. Browser SQLite verifies exact canonical bytes and the
+        active authority key, requires a contiguous actor-scoped result chain,
+        binds the result to one pending intent and its complete optimistic
+        field identity set, stores the immutable result, removes the overlay,
+        advances the authoritative projection revision and result cursor, and
+        settles the intent in one immediate transaction. Exact retries return
+        the durable receipt. Changed bytes, gaps, incomplete projections, stale
+        authority, and a late cursor fault cannot partially settle the result.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
   - [x] Include the generated normalized FeedItem capture program in the shared

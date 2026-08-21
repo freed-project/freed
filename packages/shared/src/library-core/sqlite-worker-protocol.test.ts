@@ -7,6 +7,7 @@ import {
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
+  createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
 } from "./sqlite-worker-protocol.js";
@@ -260,6 +261,23 @@ describe("Library Core SQLite worker protocol", () => {
     }
     bytes[0] = 9;
     expect(request.commit.envelopeBytes[0]).toEqual(Uint8Array.of(1, 2, 3));
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+  });
+
+  it("snapshots one bounded canonical follower result", () => {
+    const bytes = Uint8Array.of(4, 5, 6);
+    const request = createLibraryCoreSqliteFollowerResultApplyWorkerRequest(
+      "request-result",
+      { canonicalResultBytes: bytes },
+    );
+    expect(request.kind).toBe("apply_follower_result");
+    if (request.kind !== "apply_follower_result") {
+      throw new Error("follower result request lane is invalid");
+    }
+    bytes[0] = 9;
+    expect(request.apply.canonicalResultBytes).toEqual(Uint8Array.of(4, 5, 6));
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

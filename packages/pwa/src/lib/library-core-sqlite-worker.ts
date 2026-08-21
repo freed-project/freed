@@ -150,6 +150,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "apply_follower_result") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await active.applyFollowerResult(request.apply),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();

@@ -16,12 +16,17 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
+  type LibraryCoreFollowerResultApplyReceiptV1,
+  type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreAcceptedActorStateV1,
   encodeLibraryCoreDigestInput,
   parseLibraryCoreFollowerIntentCommitV1,
+  parseLibraryCoreFollowerResultApplyV1,
+  parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
   verifyLibraryCoreEd25519WithWebCrypto,
   verifyLibraryCoreOperationTransactionV1,
+  verifyLibraryCoreFollowerResultV1,
   decodeLibraryCoreFeedPageCursorV1,
   decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
@@ -1268,6 +1273,401 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  async applyFollowerResult(
+    input: LibraryCoreFollowerResultApplyV1,
+  ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
+    const apply = parseLibraryCoreFollowerResultApplyV1(input);
+    const candidate = parseLibraryCoreFollowerResultEnvelopeV1(
+      decodeLibraryCoreCanonicalValue(apply.canonicalResultBytes, {
+        maximumBytes: 131_072,
+      }),
+    );
+    const exactRetry = this.#followerResultRetry(
+      candidate.transaction_id,
+      apply.canonicalResultBytes,
+    );
+    if (exactRetry !== null) return exactRetry;
+
+    const authorityRows = this.#database.exec({
+      sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                   e.authority_key_id, e.authority_public_key
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (authorityRows.length !== 1) {
+      throw new Error("follower result active authority is unavailable");
+    }
+    const authorityRow = authorityRows[0]!;
+    const authority = Object.freeze({
+      authorityKeyId: text(authorityRow[3], "follower result authority key ID"),
+      authorityPublicKey: text(
+        authorityRow[4],
+        "follower result authority public key",
+      ),
+      epoch: safeInteger(authorityRow[1], "follower result epoch"),
+      epochId: text(authorityRow[2], "follower result epoch ID"),
+      libraryId: text(authorityRow[0], "follower result Library ID"),
+    });
+    const verified = await verifyLibraryCoreFollowerResultV1(
+      apply.canonicalResultBytes,
+      authority,
+      {
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+      },
+    );
+    const receivedAt = this.#now();
+    if (!Number.isSafeInteger(receivedAt) || receivedAt < 0) {
+      throw new Error("follower result clock is invalid");
+    }
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const retryInsideTransaction = this.#followerResultRetry(
+        verified.envelope.transaction_id,
+        verified.canonicalBytes,
+      );
+      if (retryInsideTransaction !== null) {
+        this.#database.exec("COMMIT;");
+        return retryInsideTransaction;
+      }
+      const currentAuthority = this.#database.exec({
+        sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                     e.authority_key_id, e.authority_public_key,
+                     m.source_revision, changes.revision
+              FROM library_meta AS m
+              JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+              JOIN library_active_authority AS active
+                ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+              JOIN library_change_state AS changes ON changes.singleton_id = m.singleton_id
+              WHERE m.singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (currentAuthority.length !== 1) {
+        throw new Error("follower result authority changed during verification");
+      }
+      const current = currentAuthority[0]!;
+      if (
+        text(current[0], "current result Library ID") !== authority.libraryId ||
+        safeInteger(current[1], "current result epoch") !== authority.epoch ||
+        text(current[2], "current result epoch ID") !== authority.epochId ||
+        text(current[3], "current result key ID") !== authority.authorityKeyId ||
+        text(current[4], "current result public key") !==
+          authority.authorityPublicKey
+      ) {
+        throw new Error("follower result authority changed during verification");
+      }
+      const sourceRevision = safeInteger(
+        current[5],
+        "current result source revision",
+      );
+      if (
+        sourceRevision !==
+        safeInteger(current[6], "current result change revision")
+      ) {
+        throw new Error("follower result source revisions disagree");
+      }
+      const envelope = verified.envelope;
+      const transactions = this.#database.exec({
+        sql: `SELECT transaction_digest, actor_id, member_count, state, created_at
+              FROM library_intent_transactions WHERE transaction_id = ?1;`,
+        bind: [envelope.transaction_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (transactions.length !== 1) {
+        throw new Error("follower result intent transaction is unavailable");
+      }
+      const transaction = transactions[0]!;
+      const memberCount = safeInteger(
+        transaction[2],
+        "follower result intent member count",
+      );
+      if (
+        text(transaction[0], "follower result transaction digest") !==
+          envelope.transaction_digest ||
+        text(transaction[1], "follower result actor ID") !== envelope.actor_id ||
+        !["pending", "published"].includes(
+          text(transaction[3], "follower result intent state"),
+        ) ||
+        envelope.resolved_at_ms <
+          safeInteger(transaction[4], "follower result intent creation time")
+      ) {
+        throw new Error("follower result does not match its pending intent");
+      }
+      if (
+        envelope.status === "accepted" &&
+        (envelope.canonical_operation_ids.length !== memberCount ||
+          envelope.receipt_ids.length !== memberCount)
+      ) {
+        throw new Error("accepted follower result is incomplete");
+      }
+
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_intent_result_cursors
+                (actor_id, next_result_sequence, previous_result_digest)
+              VALUES (?1, 1, NULL);`,
+        bind: [envelope.actor_id],
+      });
+      const cursorRows = this.#database.exec({
+        sql: `SELECT next_result_sequence, previous_result_digest
+              FROM library_intent_result_cursors WHERE actor_id = ?1;`,
+        bind: [envelope.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        cursorRows.length !== 1 ||
+        safeInteger(cursorRows[0]![0], "follower result next sequence") !==
+          envelope.result_sequence ||
+        nullableText(
+          cursorRows[0]![1],
+          "follower result previous cursor digest",
+        ) !== envelope.previous_result_digest
+      ) {
+        throw new Error("follower result cursor is not contiguous");
+      }
+
+      const optimisticRows = this.#database.exec({
+        sql: `SELECT entity_type, entity_id, field_path
+              FROM library_optimistic_fields
+              WHERE transaction_id = ?1
+              ORDER BY entity_type COLLATE BINARY,
+                       entity_id COLLATE BINARY, field_path COLLATE BINARY;`,
+        bind: [envelope.transaction_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const replacements = [...envelope.replacement_fields].sort((left, right) => {
+        const leftKey = `${left.entity_type}\u0000${left.entity_id}\u0000${left.field_path}`;
+        const rightKey = `${right.entity_type}\u0000${right.entity_id}\u0000${right.field_path}`;
+        return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+      });
+      if (
+        optimisticRows.length !== replacements.length ||
+        optimisticRows.some((row, index) => {
+          const replacement = replacements[index]!;
+          return (
+            text(row[0], "optimistic entity type") !== replacement.entity_type ||
+            text(row[1], "optimistic entity ID") !== replacement.entity_id ||
+            text(row[2], "optimistic field path") !== replacement.field_path
+          );
+        })
+      ) {
+        throw new Error("follower result replacement projection is incomplete");
+      }
+
+      const canonicalColumns = Object.freeze({
+        archived: "archived",
+        archived_at: "archived_at",
+        liked: "liked",
+        liked_at: "liked_at",
+        read_at: "read_at",
+        saved: "saved",
+        saved_at: "saved_at",
+      } as const);
+
+      if (envelope.authoritative_source_revision === sourceRevision) {
+        for (const field of replacements) {
+          const expected =
+            field.value_type === "boolean"
+              ? field.boolean_value === true
+                ? 1
+                : 0
+              : field.value_type === "integer"
+                ? field.integer_value
+                : null;
+          const values = this.#database.exec({
+            sql: `SELECT ${canonicalColumns[field.field_path]}
+                  FROM library_feed_items WHERE global_id = ?1;`,
+            bind: [field.entity_id],
+            rowMode: 0,
+            returnValue: "resultRows",
+          });
+          if (values.length !== 1 || values[0] !== expected) {
+            throw new Error(
+              "follower result replacement disagrees with its source revision",
+            );
+          }
+        }
+      }
+
+      if (envelope.authoritative_source_revision > sourceRevision) {
+        for (const field of replacements) {
+          const value =
+            field.value_type === "boolean"
+              ? field.boolean_value === true
+                ? 1
+                : 0
+              : field.value_type === "integer"
+                ? field.integer_value
+                : null;
+          this.#database.exec({
+            sql: `UPDATE library_feed_items
+                  SET ${canonicalColumns[field.field_path]} = ?2
+                  WHERE global_id = ?1;`,
+            bind: [field.entity_id, value],
+          });
+          if (
+            safeInteger(
+              this.#database.exec({
+                sql: "SELECT changes();",
+                rowMode: 0,
+                returnValue: "resultRows",
+              })[0],
+              "follower result canonical field update",
+            ) !== 1
+          ) {
+            throw new Error("follower result canonical target is unavailable");
+          }
+        }
+        this.#database.exec({
+          sql: `UPDATE library_meta
+                SET source_revision = ?1, updated_at = ?2
+                WHERE singleton_id = 1 AND source_revision = ?3;`,
+          bind: [
+            envelope.authoritative_source_revision,
+            envelope.resolved_at_ms,
+            sourceRevision,
+          ],
+        });
+        this.#database.exec({
+          sql: `UPDATE library_change_state SET revision = ?1
+                WHERE singleton_id = 1 AND revision = ?2;`,
+          bind: [envelope.authoritative_source_revision, sourceRevision],
+        });
+        this.#database.exec({
+          sql: `INSERT INTO library_invalidations
+                  (revision, ordinal, topic, entity_id, reset_required)
+                VALUES (?1, 0, 'feed', NULL, 1);`,
+          bind: [envelope.authoritative_source_revision],
+        });
+      }
+
+      this.#database.exec({
+        sql: `DELETE FROM library_optimistic_fields WHERE transaction_id = ?1;`,
+        bind: [envelope.transaction_id],
+      });
+      this.#database.exec({
+        sql: `INSERT INTO library_intent_results
+                (transaction_id, actor_id, result_sequence,
+                 previous_result_digest, result_digest, status,
+                 authoritative_source_revision, canonical_result, received_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);`,
+        bind: [
+          envelope.transaction_id,
+          envelope.actor_id,
+          envelope.result_sequence,
+          envelope.previous_result_digest,
+          verified.resultDigest,
+          envelope.status,
+          envelope.authoritative_source_revision,
+          verified.canonicalBytes,
+          receivedAt,
+        ],
+      });
+      this.#database.exec({
+        sql: `UPDATE library_intent_transactions
+              SET state = ?2, resolved_at = ?3
+              WHERE transaction_id = ?1 AND state IN ('pending', 'published');`,
+        bind: [
+          envelope.transaction_id,
+          envelope.status === "rejected" ? "rejected" : "accepted",
+          envelope.resolved_at_ms,
+        ],
+      });
+      this.#database.exec({
+        sql: `UPDATE library_intent_result_cursors
+              SET next_result_sequence = ?2, previous_result_digest = ?3
+              WHERE actor_id = ?1 AND next_result_sequence = ?4
+                AND previous_result_digest IS ?5;`,
+        bind: [
+          envelope.actor_id,
+          envelope.result_sequence + 1,
+          verified.resultDigest,
+          envelope.result_sequence,
+          envelope.previous_result_digest,
+        ],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "follower result cursor update",
+        ) !== 1
+      ) {
+        throw new Error("follower result cursor compare-and-swap failed");
+      }
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        actorId: envelope.actor_id,
+        resultDigest: verified.resultDigest,
+        resultSequence: envelope.result_sequence,
+        sourceRevision: Math.max(
+          sourceRevision,
+          envelope.authoritative_source_revision,
+        ),
+        status: envelope.status,
+        transactionId: envelope.transaction_id,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  #followerResultRetry(
+    transactionId: string,
+    canonicalBytes: Uint8Array,
+  ): LibraryCoreFollowerResultApplyReceiptV1 | null {
+    const rows = this.#database.exec({
+      sql: `SELECT actor_id, result_sequence, result_digest, status,
+                   authoritative_source_revision, canonical_result
+            FROM library_intent_results WHERE transaction_id = ?1;`,
+      bind: [transactionId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length === 0) return null;
+    const row = rows[0]!;
+    const stored = row[5];
+    if (
+      !(stored instanceof Uint8Array) ||
+      stored.byteLength !== canonicalBytes.byteLength ||
+      !stored.every((byte, index) => byte === canonicalBytes[index])
+    ) {
+      throw new Error("follower result identity was reused with changed bytes");
+    }
+    const sourceRevision = safeInteger(
+      this.#database.exec({
+        sql: "SELECT source_revision FROM library_meta WHERE singleton_id = 1;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "follower result retry source revision",
+    );
+    return Object.freeze({
+      actorId: text(row[0], "stored follower result actor"),
+      resultDigest: text(row[2], "stored follower result digest"),
+      resultSequence: safeInteger(row[1], "stored follower result sequence"),
+      sourceRevision,
+      status: text(row[3], "stored follower result status") as
+        | "accepted"
+        | "already_applied"
+        | "rejected",
+      transactionId,
+    });
   }
 
   #followerIntentRetry(

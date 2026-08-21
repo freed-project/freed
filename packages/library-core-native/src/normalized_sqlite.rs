@@ -730,6 +730,7 @@ mod tests {
             "library_intent_transactions",
             "library_intent_members",
             "library_intent_results",
+            "library_intent_result_cursors",
             "library_optimistic_fields",
         ] {
             let exists: i64 = connection

@@ -49,6 +49,7 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "operation-segment-body",
   "intent-segment-body",
   "result-segment-body",
+  "follower-result-body",
   "causal-frontier",
   "legacy-source-admission-key",
   "legacy-source-admission-claim",
@@ -97,6 +98,7 @@ export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "actor-capability-authority",
   "epoch-transition-certificate",
   "authority-key-possession",
+  "follower-result-envelope",
   "legacy-source-admission-claim-key",
 ] as const;
 
