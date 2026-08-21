@@ -101,6 +101,7 @@ import {
   openPwaLibraryCoreFriendsFeedReader,
   readPwaLibraryCoreIntentOverlayRecoveryState,
   readPwaLibraryCoreItemDetail,
+  readPwaLibraryCorePersonTimeline,
   readPwaLibraryCoreSelectedCheckpointReceipt,
   scanPwaLibraryCoreItems,
   syncPwaLibraryCoreFromGoogleDrive,
@@ -498,6 +499,34 @@ describe("PWA Library Core bounded scanner", () => {
         queryId: "feed_browse_page_v3",
       }),
     );
+  });
+
+  it("reads one Person timeline page through normalized SQLite", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: "cursor-2",
+      rows: [],
+      totalCount: 3,
+    });
+
+    await expect(
+      readPwaLibraryCorePersonTimeline({
+        cursor: null,
+        limit: 2,
+        personId: "person-1",
+      }),
+    ).resolves.toEqual({
+      items: [],
+      nextCursor: "cursor-2",
+      totalCount: 3,
+    });
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 2,
+        personId: "person-1",
+        queryId: "person_timeline_v1",
+      }),
+    );
+    expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
   });
 
   it("queues user-state changes through the signed IndexedDB intent path", async () => {

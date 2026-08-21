@@ -215,12 +215,14 @@ function FriendsHarness({
   fallbackItems,
   locationSources,
   sourceVersion,
+  timelinePersonId,
   timelineSources = friendsGraphRequest.sources,
   onState,
 }: {
   fallbackItems: readonly FeedItem[];
   locationSources?: readonly LibraryFriendsSource[];
   sourceVersion: number;
+  timelinePersonId?: string | null;
   timelineSources?: readonly LibraryFriendsSource[];
   onState: (state: LibraryFriendsRowsState) => void;
 }) {
@@ -228,6 +230,12 @@ function FriendsHarness({
     useLibraryFriendsRows({
       graphRequest: friendsGraphRequest,
       locationSources: locationSources ?? timelineSources,
+      timelinePersonId:
+        timelinePersonId === undefined
+          ? timelineSources.length > 0
+            ? "person-1"
+            : null
+          : timelinePersonId,
       timelineSources,
       fallbackItems,
       sourceVersion,
@@ -694,7 +702,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(false);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(1, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: null,
     });
@@ -719,7 +727,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(true);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(2, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: "page-2",
     });
@@ -741,7 +749,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(true);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(3, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: "page-3",
     });
@@ -762,7 +770,7 @@ describe("Library row query hooks", () => {
       (current as LibraryFriendsRowsState | null)?.timelineAwayFromNewest,
     ).toBe(false);
     expect(readLibraryPersonTimeline).toHaveBeenNthCalledWith(4, {
-      sources: friendsGraphRequest.sources,
+      personId: "person-1",
       limit: 50,
       cursor: null,
     });

@@ -322,12 +322,14 @@ function replaceTimelinePage(
 export function useLibraryFriendsRows({
   graphRequest,
   locationSources,
+  timelinePersonId,
   timelineSources,
   fallbackItems,
   sourceVersion,
 }: {
   graphRequest: LibraryFriendsGraphRequest;
   locationSources: readonly LibraryFriendsSource[];
+  timelinePersonId: string | null;
   timelineSources: readonly LibraryFriendsSource[];
   fallbackItems: readonly FeedItem[];
   sourceVersion: number;
@@ -337,7 +339,7 @@ export function useLibraryFriendsRows({
     readLibraryFriendsLocationItem,
     readLibraryPersonTimeline,
   } = usePlatform();
-  const timelineActive = timelineSources.length > 0;
+  const timelineActive = timelinePersonId !== null;
   const locationActive = locationSources.length > 0;
   const [versionedGraph, setVersionedGraph] =
     useState<VersionedFriendsGraph | null>(null);
@@ -447,7 +449,7 @@ export function useLibraryFriendsRows({
       };
     }
     void readLibraryPersonTimeline({
-      sources: timelineSources,
+      personId: timelinePersonId,
       limit: TIMELINE_PAGE_SIZE,
       cursor: null,
     })
@@ -491,6 +493,7 @@ export function useLibraryFriendsRows({
     sourceVersion,
     timelineActive,
     timelineRetrySequence,
+    timelinePersonId,
     timelineSources,
   ]);
 
@@ -754,6 +757,7 @@ export function useLibraryFriendsRows({
     (cursor: string | null) => {
       if (
         !readLibraryPersonTimeline ||
+        timelinePersonId === null ||
         !currentTimeline ||
         currentTimeline.loadingMore ||
         timelineAttemptMatches(
@@ -771,7 +775,7 @@ export function useLibraryFriendsRows({
       };
       setVersionedTimeline({ ...currentTimeline, loadingMore: true });
       void readLibraryPersonTimeline({
-        sources: timelineSources,
+        personId: timelinePersonId,
         limit: TIMELINE_PAGE_SIZE,
         cursor,
       })
@@ -824,6 +828,7 @@ export function useLibraryFriendsRows({
       currentTimeline,
       readLibraryPersonTimeline,
       sourceVersion,
+      timelinePersonId,
       timelineSources,
     ],
   );

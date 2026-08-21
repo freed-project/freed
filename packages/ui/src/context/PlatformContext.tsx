@@ -247,7 +247,7 @@ export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLo
 }
 
 export interface LibraryPersonTimelineRequest {
-  readonly sources: readonly LibraryFriendsSource[];
+  readonly personId: string;
   readonly limit?: number;
   readonly cursor?: string | null;
 }

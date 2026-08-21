@@ -18,6 +18,7 @@ vi.mock("./sqlite-library", () => ({
 const {
   readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
 } = await import("./library-core-item-detail-runtime");
@@ -171,6 +172,34 @@ describe("Freed Desktop normalized surface readers", () => {
     ]);
     expect(mocks.queryNormalizedLibrary.mock.calls.map(([request]) => request.queryId))
       .toEqual(["map_markers_v1", "story_wall_candidates_v1"]);
+    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
+  });
+
+  it("reads one Person timeline through the closed normalized query", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: "cursor-2",
+      rows: [feedCard],
+      totalCount: 2,
+    });
+
+    await expect(
+      readLibraryCorePersonTimeline({
+        cursor: null,
+        limit: 1,
+        personId: "person-1",
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ globalId: "x:item-1" })],
+      nextCursor: "cursor-2",
+      totalCount: 2,
+    });
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 1,
+        personId: "person-1",
+        queryId: "person_timeline_v1",
+      }),
+    );
     expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 });

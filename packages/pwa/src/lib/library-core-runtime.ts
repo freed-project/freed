@@ -20,6 +20,7 @@ import {
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
   isLibraryCoreSearchAccountAliasV1,
@@ -959,10 +960,14 @@ export const readPwaLibraryCoreFriendsGraph: NonNullable<
   PlatformConfig["readLibraryFriendsGraph"]
 > = (request) => getIndexedDbReaders().readFriendsGraph(request);
 
-/** Read one complete source-keyed Friends timeline page. */
+/** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<
   PlatformConfig["readLibraryPersonTimeline"]
-> = (request) => getIndexedDbReaders().readPersonTimeline(request);
+> = (request) =>
+  readLibraryCoreNormalizedPersonTimelineV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 
 /** Resolve one exact location item against its Friends source token. */
 export const readPwaLibraryCoreFriendsLocationItem: NonNullable<

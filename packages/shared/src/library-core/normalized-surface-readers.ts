@@ -12,6 +12,12 @@ import {
 import type { LibraryCoreNormalizedReaderRuntime } from "./normalized-feed-readers.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
 import {
+  LIBRARY_CORE_PERSON_TIMELINE_DEFAULT_LIMIT,
+  LIBRARY_CORE_PERSON_TIMELINE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_PERSON_TIMELINE_QUERY_ID,
+  LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
+} from "./person-timeline-contracts.js";
+import {
   LIBRARY_CORE_SAVED_ANALYTICS_V2_DAILY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_V2_HOURLY_WINDOW_COUNT,
   LIBRARY_CORE_SAVED_ANALYTICS_V2_QUERY_ID,
@@ -36,6 +42,18 @@ export interface LibraryCoreNormalizedSavedAnalyticsInputV1 {
 }
 
 export type LibraryCoreNormalizedSurfaceV1 = "map" | "story_wall";
+
+export interface LibraryCoreNormalizedPersonTimelineInputV1 {
+  readonly cursor?: string | null;
+  readonly limit?: number;
+  readonly personId: string;
+}
+
+export interface LibraryCoreNormalizedPersonTimelinePageV1 {
+  readonly items: readonly FeedItem[];
+  readonly nextCursor: string | null;
+  readonly totalCount: number;
+}
 
 function operationId(
   runtime: LibraryCoreNormalizedReaderRuntime,
@@ -134,4 +152,32 @@ export async function readLibraryCoreNormalizedSurfaceItemsV1(
     schemaVersion: LIBRARY_CORE_STORY_WALL_CANDIDATES_SCHEMA_VERSION,
   });
   return response.rows.map(libraryCoreStoryWallCandidateToItemV1);
+}
+
+export async function readLibraryCoreNormalizedPersonTimelineV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  input: LibraryCoreNormalizedPersonTimelineInputV1,
+): Promise<LibraryCoreNormalizedPersonTimelinePageV1> {
+  const limit = input.limit ?? LIBRARY_CORE_PERSON_TIMELINE_DEFAULT_LIMIT;
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > LIBRARY_CORE_PERSON_TIMELINE_MAXIMUM_LIMIT
+  ) {
+    throw new Error("Library Core person timeline request is invalid");
+  }
+  const response = await runtime.query({
+    cancellationId: operationId(runtime, "person-timeline"),
+    cursor: input.cursor ?? null,
+    limit,
+    personId: input.personId,
+    queryId: LIBRARY_CORE_PERSON_TIMELINE_QUERY_ID,
+    readerSessionId: operationId(runtime, "person-timeline-reader"),
+    schemaVersion: LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
+  });
+  return Object.freeze({
+    items: response.rows.map(libraryCoreFeedCardToItemV1),
+    nextCursor: response.nextCursor,
+    totalCount: response.totalCount,
+  });
 }

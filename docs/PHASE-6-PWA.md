@@ -400,6 +400,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.23 | Route ordinary feed, Saved feed, and signal counts through one shared normalized query adapter backed by the PWA OPFS SQLite worker, with bounded compact rows and opaque cursors | High       | ✓ Complete                                                                                       |
 | 6.24 | Route item detail, Library facets, Saved analytics, Map, and Story Wall through one shared normalized secondary-surface adapter backed by PWA OPFS SQLite | High | ✓ Complete |
 | 6.25 | Route Friends feed paging through the shared normalized bidirectional feed query, with friend membership resolved from Account and Person relations inside PWA SQLite | High | ✓ Complete |
+| 6.26 | Route selected Person timelines through the shared `person_timeline_v1` adapter backed by the PWA OPFS SQLite worker, keyed by stable Person ID | High | ✓ Complete |
 
 ---
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
   normalizeLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowsePageRequestV3,
@@ -20,6 +21,9 @@ const request = {
   cursor: null,
   direction: "next",
   filter: normalizeLibraryCoreFeedBrowseFilterV1({ platform: "rss" }),
+  friendsPredicateSchemaVersion:
+    LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+  identityMode: "all_content",
   limit: 64,
   queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
   rankingClockMs: 123_456,
@@ -31,6 +35,9 @@ const request = {
 
 const response = {
   filter: request.filter,
+  friendsPredicateSchemaVersion:
+    LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+  identityMode: "all_content",
   nextCursor: null,
   nextOrder: null,
   previousCursor: null,

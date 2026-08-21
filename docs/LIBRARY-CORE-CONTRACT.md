@@ -550,6 +550,11 @@ cursor binds the Person identity digest, database generation, source revision,
 publication time, and final item ID. It cannot be resumed for another Person
 or another materialization. Hidden and archived items remain indexed but are
 excluded by the query, which keeps visibility changes cheap and deterministic.
+Freed Desktop and the PWA invoke this query through one shared adapter. The
+selected view passes only the stable Person ID, limit, and opaque cursor. The
+Desktop host supplies the native executor and the PWA supplies the OPFS SQLite
+worker executor. Neither host enumerates account keys or consults its
+historical item store.
 
 `account_detail_v1` is the matching normalized point query for one visible
 Account. It reads one Account primary key, returns at most eight follow-roster

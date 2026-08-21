@@ -8,6 +8,7 @@ import {
 import {
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedItemDetailV1,
+  readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
 } from "@freed/shared/library-core";
@@ -16,8 +17,6 @@ import { querySqliteItems, readSqliteItems } from "./sqlite-library";
 
 const ITEM_SCAN_PAGE_LIMIT = 64;
 const MAXIMUM_FRIEND_GRAPH_KEYS = 5_000;
-const MAXIMUM_PERSON_TIMELINE_LIMIT = 100;
-const DEFAULT_PERSON_TIMELINE_LIMIT = 50;
 const MAXIMUM_FRIEND_SAMPLE_ITEMS = 5;
 const MAXIMUM_FRIEND_LOCATION_CANDIDATES = 8;
 let activeItemScan: Promise<void> | null = null;
@@ -122,7 +121,7 @@ export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLo
 }
 
 export interface LibraryPersonTimelineRequest {
-  readonly sources: readonly LibraryFriendsSource[];
+  readonly personId: string;
   readonly limit?: number;
   readonly cursor?: string | null;
 }
@@ -447,38 +446,10 @@ export async function readLibraryCoreFriendsLocationItem(
 export async function readLibraryCorePersonTimeline(
   request: LibraryPersonTimelineRequest,
 ): Promise<LibraryPersonTimelinePage> {
-  const limit = request.limit ?? DEFAULT_PERSON_TIMELINE_LIMIT;
-  if (
-    !Number.isSafeInteger(limit) ||
-    limit < 1 ||
-    limit > MAXIMUM_PERSON_TIMELINE_LIMIT ||
-    request.sources.length === 0
-  ) {
-    throw new Error("Library Core person timeline request is invalid");
-  }
-  const rawOffset = request.cursor?.startsWith("sqlite:")
-    ? Number.parseInt(request.cursor.slice(7), 10)
-    : 0;
-  const offset =
-    Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
-  const onlySource =
-    request.sources.length === 1 ? request.sources[0] : undefined;
-  const page = await querySqliteItems({
-    platform: onlySource?.platform,
-    authorId: onlySource?.authorId,
-    authorKeys: onlySource ? undefined : request.sources,
-    showHidden: false,
-    offset,
-    limit,
-  });
-  const items = page.items;
-  const totalCount = page.totalCount;
-  const next = offset + items.length;
-  return {
-    items,
-    totalCount,
-    nextCursor: next < totalCount ? `sqlite:${next}` : null,
-  };
+  return readLibraryCoreNormalizedPersonTimelineV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 }
 
 export async function readLibraryCoreSavedAnalytics(

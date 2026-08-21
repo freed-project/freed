@@ -48,12 +48,9 @@ const MAXIMUM_SAFE_SORT_KEY = Number.MAX_SAFE_INTEGER;
 const MAXIMUM_FRIEND_GRAPH_KEYS = 5_000;
 const MAXIMUM_FRIEND_SAMPLE_ITEMS = 5;
 const MAXIMUM_FRIEND_LOCATION_CANDIDATES = 8;
-const DEFAULT_PERSON_TIMELINE_LIMIT = 50;
-const MAXIMUM_PERSON_TIMELINE_LIMIT = 100;
 const MAXIMUM_FACET_TAGS = 4_096;
 const MAXIMUM_FACET_TAG_BYTES = 1_024;
 const SOURCE_DOMAIN = "freed-pwa-library-core-indexeddb-read-model-v1";
-const TIMELINE_CURSOR_PREFIX = "pwa-indexeddb-v1:";
 const TEXT_ENCODER = new TextEncoder();
 
 type LibraryFacetSummary = Awaited<
@@ -74,12 +71,6 @@ type LibraryFriendsGraphLocationCandidate =
 type LibraryFriendsLocationItemRequest = Parameters<
   NonNullable<PlatformConfig["readLibraryFriendsLocationItem"]>
 >[0];
-type LibraryPersonTimelineRequest = Parameters<
-  NonNullable<PlatformConfig["readLibraryPersonTimeline"]>
->[0];
-type LibraryPersonTimelinePage = Awaited<
-  ReturnType<NonNullable<PlatformConfig["readLibraryPersonTimeline"]>>
->;
 type LibrarySavedAnalyticsRequest = Parameters<
   NonNullable<PlatformConfig["readLibrarySavedAnalytics"]>
 >[0];
@@ -112,13 +103,6 @@ export interface PwaLibraryCoreIndexedDbReadersOptions {
 type ProjectionOrder =
   | Readonly<{ kind: "timeline" }>
   | Readonly<{ kind: "saved"; sortMode: SavedContentSortMode }>;
-
-interface TimelineCursor {
-  readonly sourceToken: string;
-  readonly publishedAt: number;
-  readonly capturedAt: number;
-  readonly globalId: string;
-}
 
 interface SocialAccumulator {
   itemCount: number;
@@ -159,21 +143,6 @@ function compareTimelineItems(left: FeedItem, right: FeedItem): number {
     (left.globalId < right.globalId
       ? -1
       : left.globalId > right.globalId
-        ? 1
-        : 0)
-  );
-}
-
-function compareItemToTimelineCursor(
-  item: FeedItem,
-  cursor: TimelineCursor,
-): number {
-  return (
-    cursor.publishedAt - item.publishedAt ||
-    cursor.capturedAt - item.capturedAt ||
-    (item.globalId < cursor.globalId
-      ? -1
-      : item.globalId > cursor.globalId
         ? 1
         : 0)
   );
@@ -222,50 +191,6 @@ function compareGraphLocationCandidates(
         ? 1
         : 0)
   );
-}
-
-function encodeTimelineCursor(cursor: TimelineCursor): string {
-  return `${TIMELINE_CURSOR_PREFIX}${JSON.stringify([
-    cursor.sourceToken,
-    cursor.publishedAt,
-    cursor.capturedAt,
-    cursor.globalId,
-  ])}`;
-}
-
-function decodeTimelineCursor(
-  value: string | null | undefined,
-  sourceToken: string,
-): TimelineCursor | null {
-  if (value === null || value === undefined) return null;
-  if (!value.startsWith(TIMELINE_CURSOR_PREFIX)) {
-    throw new Error("PWA Library person timeline cursor is invalid");
-  }
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(value.slice(TIMELINE_CURSOR_PREFIX.length));
-  } catch {
-    throw new Error("PWA Library person timeline cursor is invalid");
-  }
-  if (
-    !Array.isArray(decoded) ||
-    decoded.length !== 4 ||
-    decoded[0] !== sourceToken ||
-    !Number.isSafeInteger(decoded[1]) ||
-    (decoded[1] as number) < 0 ||
-    !Number.isSafeInteger(decoded[2]) ||
-    (decoded[2] as number) < 0 ||
-    typeof decoded[3] !== "string" ||
-    decoded[3].length === 0
-  ) {
-    throw new Error("PWA Library person timeline cursor is stale or invalid");
-  }
-  return Object.freeze({
-    sourceToken,
-    publishedAt: decoded[1] as number,
-    capturedAt: decoded[2] as number,
-    globalId: decoded[3],
-  });
 }
 
 function validAnalyticsWindows(
@@ -744,61 +669,6 @@ class PwaLibraryCoreIndexedDbReaders {
       totalItemCount,
       social: Object.freeze(social),
       rss: Object.freeze(rss),
-    });
-  }
-
-  async readPersonTimeline(
-    request: LibraryPersonTimelineRequest,
-  ): Promise<LibraryPersonTimelinePage> {
-    const sourceRevision = this.#options.getSourceRevision();
-    const limit = request.limit ?? DEFAULT_PERSON_TIMELINE_LIMIT;
-    if (
-      !Number.isSafeInteger(limit) ||
-      limit < 1 ||
-      limit > MAXIMUM_PERSON_TIMELINE_LIMIT ||
-      request.sources.length === 0 ||
-      request.sources.length > MAXIMUM_FRIEND_GRAPH_KEYS
-    ) {
-      throw new Error("PWA Library person timeline request is invalid");
-    }
-    const sourceToken = this.#sourceToken(sourceRevision);
-    const cursor = decodeTimelineCursor(request.cursor, sourceToken);
-    const sourceKeys = new Set(
-      request.sources.map((source) =>
-        JSON.stringify([source.platform, source.authorId]),
-      ),
-    );
-    const retained: FeedItem[] = [];
-    let totalCount = 0;
-    let afterCursorCount = 0;
-    await this.#scanAtRevision(sourceRevision, (items) => {
-      for (const item of items) {
-        if (
-          item.userState.hidden ||
-          !sourceKeys.has(JSON.stringify([item.platform, item.author.id]))
-        ) {
-          continue;
-        }
-        totalCount += 1;
-        if (cursor && compareItemToTimelineCursor(item, cursor) <= 0) continue;
-        afterCursorCount += 1;
-        insertBounded(retained, item, limit, compareTimelineItems);
-      }
-      return "continue";
-    });
-    const finalItem = retained.at(-1);
-    return Object.freeze({
-      items: Object.freeze(retained),
-      totalCount,
-      nextCursor:
-        finalItem && afterCursorCount > retained.length
-          ? encodeTimelineCursor({
-              sourceToken,
-              publishedAt: finalItem.publishedAt,
-              capturedAt: finalItem.capturedAt,
-              globalId: finalItem.globalId,
-            })
-          : null,
     });
   }
 

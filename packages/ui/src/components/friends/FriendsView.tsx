@@ -751,9 +751,12 @@ export function FriendsView({
     () => (selectedFriend ? timelineSources : []),
     [selectedFriend, timelineSources],
   );
+  const timelinePersonId =
+    selectedFriend?.id ?? selectedAccount?.personId ?? null;
   const friendsRows = useLibraryFriendsRows({
     graphRequest: friendsGraphRequest,
     locationSources,
+    timelinePersonId,
     timelineSources,
     fallbackItems: items,
     sourceVersion: searchCorpusVersion,
