@@ -19,6 +19,8 @@ import {
   type LibraryCoreFollowerIntentCommitV1,
   type LibraryCoreFollowerIntentPageRequestV1,
   type LibraryCoreFollowerIntentPageResponseV1,
+  type LibraryCoreFollowerIntentPublicationReceiptV1,
+  type LibraryCoreFollowerIntentPublicationV1,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreAcceptedActorStateV1,
@@ -26,6 +28,7 @@ import {
   parseLibraryCoreFollowerIntentCommitV1,
   parseLibraryCoreFollowerIntentPageRequestV1,
   parseLibraryCoreFollowerIntentPageResponseV1,
+  parseLibraryCoreFollowerIntentPublicationV1,
   parseLibraryCoreFollowerResultApplyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
@@ -1428,6 +1431,83 @@ export class PwaLibraryCoreSqliteEngine {
       records,
       schemaVersion: 1,
     });
+  }
+
+  publishFollowerIntent(
+    input: LibraryCoreFollowerIntentPublicationV1,
+  ): LibraryCoreFollowerIntentPublicationReceiptV1 {
+    const publication = parseLibraryCoreFollowerIntentPublicationV1(input);
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const rows = this.#database.exec({
+        sql: `SELECT actor_id, transaction_digest, state, published_at, created_at
+              FROM library_intent_transactions WHERE transaction_id = ?1;`,
+        bind: [publication.transactionId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (rows.length !== 1) {
+        throw new Error("follower intent publication transaction is missing");
+      }
+      const row = rows[0]!;
+      if (
+        text(row[0], "follower intent publication actor") !==
+          publication.actorId ||
+        text(row[1], "follower intent publication digest") !==
+          publication.transactionDigest
+      ) {
+        throw new Error("follower intent publication identity was reused");
+      }
+      const state = text(row[2], "follower intent publication state");
+      const storedPublishedAt = nullableInteger(
+        row[3],
+        "follower intent publication time",
+      );
+      const createdAt = safeInteger(
+        row[4],
+        "follower intent publication creation time",
+      );
+      if (publication.publishedAt < createdAt) {
+        throw new Error("follower intent publication predates its transaction");
+      }
+      if (state === "published") {
+        if (storedPublishedAt !== publication.publishedAt) {
+          throw new Error("follower intent publication identity was reused");
+        }
+      } else if (state === "pending" && storedPublishedAt === null) {
+        this.#database.exec({
+          sql: `UPDATE library_intent_transactions
+                SET state = 'published', published_at = ?2
+                WHERE transaction_id = ?1 AND state = 'pending'
+                  AND published_at IS NULL;`,
+          bind: [publication.transactionId, publication.publishedAt],
+        });
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "follower intent publication change",
+          ) !== 1
+        ) {
+          throw new Error("follower intent publication changed concurrently");
+        }
+      } else {
+        throw new Error("resolved follower intent cannot be published");
+      }
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        actorId: publication.actorId,
+        publishedAt: publication.publishedAt,
+        state: "published",
+        transactionId: publication.transactionId,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   async applyFollowerResult(

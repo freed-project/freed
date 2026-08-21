@@ -60,6 +60,20 @@ export interface LibraryCoreFollowerIntentCommitResultV1 {
   readonly transactionId: string;
 }
 
+export interface LibraryCoreFollowerIntentPublicationV1 {
+  readonly actorId: string;
+  readonly publishedAt: number;
+  readonly transactionDigest: string;
+  readonly transactionId: string;
+}
+
+export interface LibraryCoreFollowerIntentPublicationReceiptV1 {
+  readonly actorId: string;
+  readonly publishedAt: number;
+  readonly state: "published";
+  readonly transactionId: string;
+}
+
 const TEXT_ENCODER = new TextEncoder();
 
 function closedRecord(
@@ -255,6 +269,33 @@ export function parseLibraryCoreFollowerIntentPageResponseV1(
     nextCursor,
     records: Object.freeze(records),
     schemaVersion: 1,
+  });
+}
+
+export function parseLibraryCoreFollowerIntentPublicationV1(
+  value: unknown,
+): LibraryCoreFollowerIntentPublicationV1 {
+  const record = closedRecord(value, [
+    "actorId",
+    "publishedAt",
+    "transactionDigest",
+    "transactionId",
+  ]);
+  if (
+    !record ||
+    !boundedIdentity(record.actorId) ||
+    !Number.isSafeInteger(record.publishedAt) ||
+    (record.publishedAt as number) < 0 ||
+    !digest(record.transactionDigest) ||
+    !boundedIdentity(record.transactionId)
+  ) {
+    throw new TypeError("follower intent publication is invalid");
+  }
+  return Object.freeze({
+    actorId: record.actorId,
+    publishedAt: record.publishedAt as number,
+    transactionDigest: record.transactionDigest,
+    transactionId: record.transactionId,
   });
 }
 

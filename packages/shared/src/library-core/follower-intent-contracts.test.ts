@@ -3,6 +3,7 @@ import {
   parseLibraryCoreFollowerIntentCommitV1,
   parseLibraryCoreFollowerIntentPageRequestV1,
   parseLibraryCoreFollowerIntentPageResponseV1,
+  parseLibraryCoreFollowerIntentPublicationV1,
 } from "./follower-intent-contracts.js";
 
 describe("follower intent commit contract", () => {
@@ -139,5 +140,32 @@ describe("follower intent page contract", () => {
         schemaVersion: 1,
       }),
     ).toThrow(/record is invalid/);
+  });
+});
+
+describe("follower intent publication contract", () => {
+  it("closes one exact durable publication identity", () => {
+    expect(
+      parseLibraryCoreFollowerIntentPublicationV1({
+        actorId: "actor-1",
+        publishedAt: 1_000,
+        transactionDigest: "a".repeat(64),
+        transactionId: "transaction-1",
+      }),
+    ).toEqual({
+      actorId: "actor-1",
+      publishedAt: 1_000,
+      transactionDigest: "a".repeat(64),
+      transactionId: "transaction-1",
+    });
+    expect(() =>
+      parseLibraryCoreFollowerIntentPublicationV1({
+        actorId: "actor-1",
+        publishedAt: 1_000,
+        transactionDigest: "a".repeat(64),
+        transactionId: "transaction-1",
+        writerReceipt: {},
+      }),
+    ).toThrow(/invalid/);
   });
 });

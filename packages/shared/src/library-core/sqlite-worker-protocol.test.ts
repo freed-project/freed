@@ -8,6 +8,7 @@ import {
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
+  createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteWorkerRequest,
@@ -280,6 +281,23 @@ describe("Library Core SQLite worker protocol", () => {
     expect(request.kind).toBe("page_follower_intents");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+  });
+
+  it("carries only closed exact follower intent publications", () => {
+    const request =
+      createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest(
+        "request-intent-publication",
+        {
+          actorId: "actor-1",
+          publishedAt: 1_000,
+          transactionDigest: "a".repeat(64),
+          transactionId: "transaction-1",
+        },
+      );
+    expect(request.kind).toBe("publish_follower_intent");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...request, etag: "alias" }),
     ).toThrow(/identity is invalid/);
   });
 

@@ -99,8 +99,11 @@ import {
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
   parseLibraryCoreFollowerIntentPageRequestV1,
+  parseLibraryCoreFollowerIntentPublicationV1,
   type LibraryCoreFollowerIntentPageRequestV1,
   type LibraryCoreFollowerIntentPageResponseV1,
+  type LibraryCoreFollowerIntentPublicationReceiptV1,
+  type LibraryCoreFollowerIntentPublicationV1,
 } from "./follower-intent-contracts.js";
 import {
   parseLibraryCoreFollowerResultApplyV1,
@@ -219,6 +222,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "publish_follower_intent";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreFollowerIntentPublicationV1;
+      requestId: string;
+    }>
+  | Readonly<{
       apply: LibraryCoreFollowerResultApplyV1;
       kind: "apply_follower_result";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
@@ -278,6 +287,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreDeviceGraphLayoutMutationResultV1
   | LibraryCoreFollowerIntentCommitResultV1
   | LibraryCoreFollowerIntentPageResponseV1
+  | LibraryCoreFollowerIntentPublicationReceiptV1
   | LibraryCoreFollowerResultApplyReceiptV1;
 
 export type LibraryCoreSqliteWorkerResponse =
@@ -327,15 +337,17 @@ export function parseLibraryCoreSqliteWorkerRequest(
           ? ["commit", "kind", "protocolVersion", "requestId"]
           : value.kind === "page_follower_intents"
             ? ["kind", "page", "protocolVersion", "requestId"]
-            : value.kind === "apply_follower_result"
-              ? ["apply", "kind", "protocolVersion", "requestId"]
-              : value.kind === "begin_normalized_checkpoint_stage"
-                ? ["kind", "protocolVersion", "requestId", "stage"]
-                : value.kind === "append_normalized_checkpoint_stage_page"
-                  ? ["kind", "page", "protocolVersion", "requestId"]
-                  : value.kind === "activate_normalized_checkpoint_stage"
-                    ? ["kind", "protocolVersion", "requestId", "stageId"]
-                    : ["kind", "protocolVersion", "requestId"];
+            : value.kind === "publish_follower_intent"
+              ? ["kind", "protocolVersion", "publication", "requestId"]
+              : value.kind === "apply_follower_result"
+                ? ["apply", "kind", "protocolVersion", "requestId"]
+                : value.kind === "begin_normalized_checkpoint_stage"
+                  ? ["kind", "protocolVersion", "requestId", "stage"]
+                  : value.kind === "append_normalized_checkpoint_stage_page"
+                    ? ["kind", "page", "protocolVersion", "requestId"]
+                    : value.kind === "activate_normalized_checkpoint_stage"
+                      ? ["kind", "protocolVersion", "requestId", "stageId"]
+                      : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -349,6 +361,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "mutate_device_graph_layout",
       "open",
       "page_follower_intents",
+      "publish_follower_intent",
       "query",
       "status",
     ].includes(String(value.kind)) ||
@@ -442,6 +455,15 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "publish_follower_intent") {
+    return Object.freeze({
+      kind: "publish_follower_intent",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      publication: parseLibraryCoreFollowerIntentPublicationV1(
+        value.publication,
+      ),
+      requestId: value.requestId,
+    });
   } else if (value.kind === "apply_follower_result") {
     return Object.freeze({
       apply: parseLibraryCoreFollowerResultApplyV1(value.apply),
@@ -485,6 +507,18 @@ export function createLibraryCoreSqliteFollowerIntentPageWorkerRequest(
     kind: "page_follower_intents",
     page,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreFollowerIntentPublicationV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "publish_follower_intent",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
     requestId,
   });
 }

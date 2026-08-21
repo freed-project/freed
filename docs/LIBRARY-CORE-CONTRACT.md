@@ -357,6 +357,16 @@ transaction and no partial Library state. Acceptance or signed rejection
 deletes staging after the authoritative transaction commits. Replayed records
 then resolve against the immutable result outbox instead of recreating staging.
 
+After immutable intent publication and control compare-and-swap succeed, the
+follower records that fact through one closed SQLite mutation. The request
+binds actor ID, transaction ID, transaction digest, and publication time. It
+can move only the exact local transaction from `pending` to `published`, and
+the publication time cannot predate transaction creation. An exact retry
+returns the same receipt. Changed identity reuse, a missing row, or an already
+resolved transaction fails without altering the intent, optimistic overlay,
+actor tip, or canonical projection. The mutation does not perform cloud I/O or
+interpret provider receipts.
+
 Native result export is one actor-bound keyset page over
 `(actor_id, result_sequence)`. The request carries the actor and, after the
 first page, the exact prior sequence and digest. A page returns at most 128

@@ -158,6 +158,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "publish_follower_intent") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.publishFollowerIntent(request.publication),
+        });
+        return;
+      }
       if (request.kind === "apply_follower_result") {
         scope.postMessage({
           ok: true,

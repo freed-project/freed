@@ -64,6 +64,12 @@
         TypeScript. The Primary stages exact members outside authoritative
         state, rederives every typed identity from the signed canonical bytes,
         and invokes the atomic resolver only for a complete transaction.
+  - [x] Record one exact successful intent publication through a closed browser
+        SQLite worker mutation. The local row moves from pending to published
+        only after its caller supplies the durable publication identity and
+        timestamp. Exact response-loss retries return the same receipt. A
+        changed identity, time before transaction creation, missing row, or
+        resolved transaction fails without altering SQLite.
   - [x] Include the generated FeedItem removal and tombstone program in the
         shared browser contract. Browser execution and restore remain open.
   - [x] Include the generated normalized FeedItem capture program in the shared

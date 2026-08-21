@@ -459,6 +459,33 @@ describe("PWA Library Core SQLite engine", () => {
       ],
       schemaVersion: 1,
     });
+    const publication = {
+      actorId,
+      publishedAt: 2_000,
+      transactionDigest: finalized.transaction_digest,
+      transactionId: "intent-transaction-1",
+    };
+    const publicationReceipt = engine.publishFollowerIntent(publication);
+    expect(publicationReceipt).toEqual({
+      actorId,
+      publishedAt: 2_000,
+      state: "published",
+      transactionId: "intent-transaction-1",
+    });
+    expect(engine.publishFollowerIntent(publication)).toEqual(
+      publicationReceipt,
+    );
+    expect(() =>
+      engine.publishFollowerIntent({ ...publication, publishedAt: 2_001 }),
+    ).toThrow(/identity was reused/);
+    expect(
+      engine.pageFollowerIntents({
+        actorId,
+        cursor: null,
+        limit: 128,
+        schemaVersion: 1,
+      }).records[0]?.state,
+    ).toBe("published");
     expect(() =>
       engine.pageFollowerIntents({
         actorId,
