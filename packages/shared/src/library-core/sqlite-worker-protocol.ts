@@ -150,6 +150,12 @@ import {
   type LibraryCoreSearchPageRequestV1,
   type LibraryCoreSearchPageResponseV1,
 } from "./search-page-contracts.js";
+import {
+  parseLibraryCorePersonsGraphRequestV1,
+  parseLibraryCorePersonsGraphResponseV1,
+  type LibraryCorePersonsGraphRequestV1,
+  type LibraryCorePersonsGraphResponseV1,
+} from "./persons-graph-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -168,6 +174,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePersonTimelineRequestV1
+  | LibraryCorePersonsGraphRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCoreSavedFeedPageRequestV2
@@ -205,6 +212,8 @@ export type LibraryCoreSqliteQueryResponseFor<
                           ? LibraryCorePersonGraphPageResponseV1
                           : T extends LibraryCorePersonTimelineRequestV1
                             ? LibraryCorePersonTimelineResponseV1
+                            : T extends LibraryCorePersonsGraphRequestV1
+                              ? LibraryCorePersonsGraphResponseV1
                             : T extends LibraryCoreRssFeedGraphPageRequestV1
                               ? LibraryCoreRssFeedGraphPageResponseV1
                               : T extends LibraryCoreSavedAnalyticsRequestV2
@@ -261,6 +270,11 @@ export function parseLibraryCoreSqliteQueryResponse<
                                     value,
                                     request,
                                   )
+                                : request.queryId === "persons_graph_v1"
+                                  ? parseLibraryCorePersonsGraphResponseV1(
+                                      value,
+                                      request,
+                                    )
                                 : request.queryId === "preferences_snapshot_v1"
                                   ? parseLibraryCorePreferencesSnapshotResponseV1(
                                       value,
@@ -391,6 +405,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCorePersonDetailResponseV1
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCorePersonTimelineResponseV1
+  | LibraryCorePersonsGraphResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCoreSavedAnalyticsResponseV2
   | LibraryCoreSavedFeedPageResponseV2
@@ -521,8 +536,12 @@ export function parseLibraryCoreSqliteWorkerRequest(
                               ? parseLibraryCorePersonGraphPageRequestV1(
                                   value.query,
                                 )
-                              : value.query.queryId === "person_timeline_v1"
-                                ? parseLibraryCorePersonTimelineRequestV1(
+                            : value.query.queryId === "person_timeline_v1"
+                              ? parseLibraryCorePersonTimelineRequestV1(
+                                  value.query,
+                                )
+                              : value.query.queryId === "persons_graph_v1"
+                                ? parseLibraryCorePersonsGraphRequestV1(
                                     value.query,
                                   )
                                 : value.query.queryId ===

@@ -22,6 +22,8 @@ import {
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
   readLibraryCoreNormalizedPreferencesV1,
+  readLibraryCoreNormalizedPersonsGraphV1,
+  readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   searchLibraryCoreNormalizedItemsV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
@@ -60,7 +62,6 @@ import {
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
   type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
-import { createPwaLibraryCoreIndexedDbReaders } from "./library-core-indexeddb-readers";
 import {
   queryPwaNormalizedLibrary,
   resetPwaNormalizedLibrary,
@@ -81,9 +82,6 @@ let lastState: LibraryState | null = null;
 
 let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
-> | null = null;
-let indexedDbReaders: ReturnType<
-  typeof createPwaLibraryCoreIndexedDbReaders
 > | null = null;
 let libraryReadModelRevision = 0;
 const READY_INTENT_OVERLAY_RECOVERY = Object.freeze({
@@ -111,21 +109,6 @@ function getPortableStore(): ReturnType<
     subtle: globalThis.crypto.subtle,
   });
   return portableStore;
-}
-function getIndexedDbReaders(): ReturnType<
-  typeof createPwaLibraryCoreIndexedDbReaders
-> {
-  indexedDbReaders ??= createPwaLibraryCoreIndexedDbReaders({
-    databaseName: READ_MODEL_DATABASE_NAME,
-    indexedDb: globalThis.indexedDB,
-    keyRange: globalThis.IDBKeyRange,
-    subtle: globalThis.crypto.subtle,
-    scanItems: scanPwaLibraryCoreItems,
-    readItem: readPwaLibraryCoreItemDetail,
-    getState: () => lastState ?? emptyState(),
-    getSourceRevision: () => libraryReadModelRevision,
-  });
-  return indexedDbReaders;
 }
 
 export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<PwaLibraryCoreSelectedCheckpointReceiptV1 | null> {
@@ -874,10 +857,14 @@ export const readPwaLibraryCoreSavedAnalytics: NonNullable<
 > = (request) =>
   readLibraryCoreNormalizedSavedAnalyticsV1(NORMALIZED_READER_RUNTIME, request);
 
-/** Read compact Friends graph activity from bounded IndexedDB scans. */
+/** Read compact Friends graph activity through bounded SQLite aggregates. */
 export const readPwaLibraryCoreFriendsGraph: NonNullable<
   PlatformConfig["readLibraryFriendsGraph"]
-> = (request) => getIndexedDbReaders().readFriendsGraph(request);
+> = (request) =>
+  readLibraryCoreNormalizedPersonsGraphV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 
 /** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<
@@ -896,7 +883,11 @@ export const readPwaLibraryCorePersonTimeline: NonNullable<
 /** Resolve one exact location item against its Friends source token. */
 export const readPwaLibraryCoreFriendsLocationItem: NonNullable<
   PlatformConfig["readLibraryFriendsLocationItem"]
-> = (request) => getIndexedDbReaders().readFriendsLocationItem(request);
+> = (request) =>
+  readLibraryCoreNormalizedFriendsLocationItemV1(
+    NORMALIZED_READER_RUNTIME,
+    request,
+  );
 
 /** Read bounded Map or Story Wall candidates through normalized SQLite. */
 export const readPwaLibraryCoreSurfaceItems: NonNullable<
@@ -1107,8 +1098,6 @@ registerPwaFactoryResetQuiesceHandler(
   "library-core-storage",
   async () => {
     await resetPwaNormalizedLibrary();
-    await indexedDbReaders?.quiesce();
-    indexedDbReaders = null;
     await portableStore?.quiesce();
     portableStore = null;
     lastState = null;

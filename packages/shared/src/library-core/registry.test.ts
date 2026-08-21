@@ -1053,20 +1053,21 @@ describe("Library Core query registry", () => {
     );
   });
 
-  it("registers the active bounded Desktop Friends readers", () => {
+  it("registers the cross-platform bounded SQLite Friends aggregate", () => {
     expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1).toMatchObject({
       status: "planned_blocked",
       source: {
         boundary: "library_core",
         currentKinds: [
-          "ProjectionReadSession::friends_graph_activity",
-          "read_library_core_persons_graph",
+          "query_normalized_v1::persons_graph_v1",
+          "PwaLibraryCoreSqliteEngine.query::persons_graph_v1",
+          "readLibraryCoreNormalizedPersonsGraphV1",
         ],
       },
-      defaultLimit: 1_000,
-      maximumLimit: 5_000,
-      maximumRows: 5_000,
-      maximumResponseBytes: 8 * 1_048_576,
+      defaultLimit: 128,
+      maximumLimit: 128,
+      maximumRows: 128,
+      maximumResponseBytes: 2 * 1_048_576,
       totalCountIntent: "snapshot_exact",
     });
     expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1).toMatchObject({

@@ -32,6 +32,30 @@ const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES: usize = 128;
+const PERSONS_GRAPH_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PERSONS_GRAPH_SIGNALS: [&str; 20] = [
+    "event",
+    "deadline",
+    "opportunity",
+    "how_to",
+    "reference",
+    "transaction",
+    "product_update",
+    "alert",
+    "deal",
+    "place",
+    "media",
+    "essay",
+    "moment",
+    "life_update",
+    "announcement",
+    "recommendation",
+    "request",
+    "discussion",
+    "promotion",
+    "news",
+];
 const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTENT_CHUNK_BYTES: usize = 65_536;
@@ -206,6 +230,29 @@ pub struct NormalizedPreferencesSnapshotRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphWindowV1 {
+    pub end_ms: i64,
+    pub start_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphSourceV1 {
+    pub author_id: String,
+    pub platform: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphRequestV1 {
+    pub recent_window: NormalizedPersonsGraphWindowV1,
+    pub rss_feed_urls: Vec<String>,
+    pub schema_version: u32,
+    pub sources: Vec<NormalizedPersonsGraphSourceV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemDetailRequestV1 {
     pub global_id: String,
     pub schema_version: u32,
@@ -281,6 +328,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
     PersonTimeline(NormalizedPersonTimelineRequestV1),
+    PersonsGraph(NormalizedPersonsGraphRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
@@ -585,6 +633,72 @@ pub struct NormalizedPreferencesSnapshotResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphSampleV1 {
+    pub global_id: String,
+    pub published_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphLocationV1 {
+    pub effective_at: i64,
+    pub global_id: String,
+    pub published_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphSignalV1 {
+    pub count: i64,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphSocialV1 {
+    pub author_id: String,
+    pub avatar_global_id: Option<String>,
+    pub avatar_published_at: Option<i64>,
+    pub avatar_url: Option<String>,
+    pub has_location: bool,
+    pub item_count: i64,
+    pub latest_activity_at: i64,
+    pub location_candidate_count: i64,
+    pub location_candidates: Vec<NormalizedPersonsGraphLocationV1>,
+    pub platform: String,
+    pub recent_count: i64,
+    pub sample_items: Vec<NormalizedPersonsGraphSampleV1>,
+    pub signal_counts: Vec<NormalizedPersonsGraphSignalV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphRssV1 {
+    pub avatar_global_id: Option<String>,
+    pub avatar_published_at: Option<i64>,
+    pub avatar_url: Option<String>,
+    pub feed_url: String,
+    pub has_location: bool,
+    pub item_count: i64,
+    pub latest_activity_at: i64,
+    pub location_candidate_count: i64,
+    pub location_candidates: Vec<NormalizedPersonsGraphLocationV1>,
+    pub sample_items: Vec<NormalizedPersonsGraphSampleV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonsGraphResponseV1 {
+    pub query_id: String,
+    pub rss: Vec<NormalizedPersonsGraphRssV1>,
+    pub schema_version: u32,
+    pub social: Vec<NormalizedPersonsGraphSocialV1>,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_item_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemBodyLocatorV1 {
     pub blob_digest: Option<String>,
     pub storage: String,
@@ -805,6 +919,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
     PersonTimeline(NormalizedPersonTimelineResponseV1),
+    PersonsGraph(NormalizedPersonsGraphResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
@@ -3137,6 +3252,236 @@ fn query_preferences_snapshot(
     Ok(response)
 }
 
+fn query_persons_graph(
+    connection: &mut Connection,
+    request: NormalizedPersonsGraphRequestV1,
+) -> Result<NormalizedPersonsGraphResponseV1, NormalizedSqliteError> {
+    let combined = request.sources.len() + request.rss_feed_urls.len();
+    let valid_text = |value: &str| !value.is_empty() && value.len() <= 4_096;
+    if request.schema_version != 1
+        || combined > PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES
+        || !valid_safe_integer(request.recent_window.start_ms)
+        || !valid_safe_integer(request.recent_window.end_ms)
+        || request.recent_window.end_ms < request.recent_window.start_ms
+        || request
+            .sources
+            .iter()
+            .any(|source| !valid_text(&source.platform) || !valid_text(&source.author_id))
+        || request.rss_feed_urls.iter().any(|url| !valid_text(url))
+    {
+        return Err(invalid(
+            "normalized persons graph query identity is invalid",
+        ));
+    }
+    for (index, source) in request.sources.iter().enumerate() {
+        if request.sources[..index].contains(source) {
+            return Err(invalid("normalized persons graph source is duplicated"));
+        }
+    }
+    for (index, url) in request.rss_feed_urls.iter().enumerate() {
+        if request.rss_feed_urls[..index].contains(url) {
+            return Err(invalid("normalized persons graph RSS source is duplicated"));
+        }
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "persons_graph_v1")
+        .ok_or(invalid("normalized persons graph query program is missing"))?;
+    let sources_json = serde_json::to_string(&request.sources)
+        .map_err(|_| invalid("normalized persons graph sources are invalid"))?;
+    let rss_json = serde_json::to_string(&request.rss_feed_urls)
+        .map_err(|_| invalid("normalized persons graph RSS sources are invalid"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let total_item_count: i64 = transaction.query_row(program.count_sql, [], |row| row.get(0))?;
+    if !valid_safe_integer(total_item_count) {
+        return Err(invalid("normalized persons graph total is invalid"));
+    }
+    struct RawGraphRow {
+        kind: String,
+        platform: Option<String>,
+        author_id: Option<String>,
+        feed_url: Option<String>,
+        item_count: i64,
+        latest_activity_at: i64,
+        recent_count: i64,
+        avatar_global_id: Option<String>,
+        avatar_published_at: Option<i64>,
+        avatar_url: Option<String>,
+        samples: Vec<NormalizedPersonsGraphSampleV1>,
+        locations: Vec<NormalizedPersonsGraphLocationV1>,
+        signals: Vec<NormalizedPersonsGraphSignalV1>,
+    }
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(
+        params![
+            sources_json,
+            rss_json,
+            request.recent_window.start_ms,
+            request.recent_window.end_ms
+        ],
+        |row| {
+            let samples_json: String = row.get("sampleItemsJson")?;
+            let locations_json: String = row.get("locationCandidatesJson")?;
+            let signals_json: String = row.get("signalCountsJson")?;
+            Ok(RawGraphRow {
+                kind: row.get("kind")?,
+                platform: row.get("platform")?,
+                author_id: row.get("authorId")?,
+                feed_url: row.get("feedUrl")?,
+                item_count: row.get("itemCount")?,
+                latest_activity_at: row.get("latestActivityAt")?,
+                recent_count: row.get("recentCount")?,
+                avatar_global_id: row.get("avatarGlobalId")?,
+                avatar_published_at: row.get("avatarPublishedAt")?,
+                avatar_url: row.get("avatarUrl")?,
+                samples: decode_sqlite_json(&samples_json)?,
+                locations: decode_sqlite_json(&locations_json)?,
+                signals: decode_sqlite_json(&signals_json)?,
+            })
+        },
+    )?;
+    let rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() != combined || rows.len() > program.maximum_scan_rows {
+        return Err(invalid("normalized persons graph row count is invalid"));
+    }
+    let mut social = Vec::with_capacity(request.sources.len());
+    let mut rss = Vec::with_capacity(request.rss_feed_urls.len());
+    for (index, row) in rows.into_iter().enumerate() {
+        if !valid_safe_integer(row.item_count)
+            || !valid_safe_integer(row.latest_activity_at)
+            || !valid_safe_integer(row.recent_count)
+            || row
+                .avatar_global_id
+                .as_ref()
+                .is_some_and(|value| !valid_text(value))
+            || row
+                .avatar_published_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .avatar_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 4_096)
+            || (row.avatar_global_id.is_none() != row.avatar_published_at.is_none())
+            || (row.avatar_global_id.is_none() != row.avatar_url.is_none())
+            || row.samples.len() > 5
+            || row.locations.len() > 8
+            || row.samples.iter().any(|sample| {
+                !valid_text(&sample.global_id) || !valid_safe_integer(sample.published_at)
+            })
+            || row.locations.iter().any(|location| {
+                !valid_text(&location.global_id)
+                    || !valid_safe_integer(location.published_at)
+                    || !valid_safe_integer(location.effective_at)
+            })
+        {
+            return Err(invalid("normalized persons graph row is invalid"));
+        }
+        if index < request.sources.len() {
+            let expected = &request.sources[index];
+            if row.kind != "social"
+                || row.platform.as_deref() != Some(expected.platform.as_str())
+                || row.author_id.as_deref() != Some(expected.author_id.as_str())
+                || row.feed_url.is_some()
+            {
+                return Err(invalid("normalized persons graph social order is invalid"));
+            }
+            let mut signal_counts = Vec::with_capacity(PERSONS_GRAPH_SIGNALS.len());
+            for label in PERSONS_GRAPH_SIGNALS {
+                let matches = row
+                    .signals
+                    .iter()
+                    .filter(|signal| signal.label == label)
+                    .collect::<Vec<_>>();
+                if matches.len() > 1
+                    || matches
+                        .first()
+                        .is_some_and(|signal| !valid_safe_integer(signal.count))
+                    || row
+                        .signals
+                        .iter()
+                        .any(|signal| !PERSONS_GRAPH_SIGNALS.contains(&signal.label.as_str()))
+                {
+                    return Err(invalid("normalized persons graph signals are invalid"));
+                }
+                signal_counts.push(NormalizedPersonsGraphSignalV1 {
+                    count: matches.first().map_or(0, |signal| signal.count),
+                    label: label.to_owned(),
+                });
+            }
+            social.push(NormalizedPersonsGraphSocialV1 {
+                author_id: expected.author_id.clone(),
+                avatar_global_id: row.avatar_global_id,
+                avatar_published_at: row.avatar_published_at,
+                avatar_url: row.avatar_url,
+                has_location: !row.locations.is_empty(),
+                item_count: row.item_count,
+                latest_activity_at: row.latest_activity_at,
+                location_candidate_count: i64::try_from(row.locations.len())
+                    .expect("bounded persons graph locations"),
+                location_candidates: row.locations,
+                platform: expected.platform.clone(),
+                recent_count: row.recent_count,
+                sample_items: row.samples,
+                signal_counts,
+            });
+        } else {
+            let expected = &request.rss_feed_urls[index - request.sources.len()];
+            if row.kind != "rss"
+                || row.feed_url.as_deref() != Some(expected.as_str())
+                || row.platform.is_some()
+                || row.author_id.is_some()
+                || !row.signals.is_empty()
+            {
+                return Err(invalid("normalized persons graph RSS order is invalid"));
+            }
+            rss.push(NormalizedPersonsGraphRssV1 {
+                avatar_global_id: row.avatar_global_id,
+                avatar_published_at: row.avatar_published_at,
+                avatar_url: row.avatar_url,
+                feed_url: expected.clone(),
+                has_location: !row.locations.is_empty(),
+                item_count: row.item_count,
+                latest_activity_at: row.latest_activity_at,
+                location_candidate_count: i64::try_from(row.locations.len())
+                    .expect("bounded persons graph locations"),
+                location_candidates: row.locations,
+                sample_items: row.samples,
+            });
+        }
+    }
+    let response = NormalizedPersonsGraphResponseV1 {
+        query_id: "persons_graph_v1".to_owned(),
+        rss,
+        schema_version: 1,
+        social,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        total_item_count,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized persons graph response is invalid"))?
+        .len()
+        > PERSONS_GRAPH_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized persons graph response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn decode_sqlite_json<T: serde::de::DeserializeOwned>(text: &str) -> rusqlite::Result<T> {
+    serde_json::from_str(text).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })
+}
+
 fn body_locator(
     row: &Row<'_>,
     storage_column: &str,
@@ -4105,6 +4450,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::PersonTimeline(request) => Ok(
             NormalizedQueryResponseV1::PersonTimeline(query_person_timeline(connection, request)?),
         ),
+        NormalizedQueryRequestV1::PersonsGraph(request) => Ok(
+            NormalizedQueryResponseV1::PersonsGraph(query_persons_graph(connection, request)?),
+        ),
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -4193,6 +4541,9 @@ pub fn query_normalized_json_v1(
         "person_timeline_v1" => {
             decode_request!(NormalizedPersonTimelineRequestV1, PersonTimeline)
         }
+        "persons_graph_v1" => {
+            decode_request!(NormalizedPersonsGraphRequestV1, PersonsGraph)
+        }
         "preferences_snapshot_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
         }
@@ -4244,6 +4595,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedAnalytics(response) => encode_response!(response),
@@ -4353,6 +4705,26 @@ mod tests {
         .expect("query search page");
         assert_eq!(search["rows"].as_array().map(Vec::len), Some(1));
         assert_eq!(search["rows"][0]["card"]["globalId"], "item-1");
+
+        let graph = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "queryId": "persons_graph_v1",
+                "recentWindow": {"startMs": 0, "endMs": 2},
+                "rssFeedUrls": [],
+                "schemaVersion": 1,
+                "sources": [{"authorId": "ada-remote", "platform": "x"}]
+            }),
+        )
+        .expect("query persons graph");
+        assert_eq!(graph["totalItemCount"], 1);
+        assert_eq!(graph["social"][0]["itemCount"], 1);
+        assert_eq!(graph["social"][0]["recentCount"], 1);
+        assert_eq!(graph["social"][0]["sampleItems"][0]["globalId"], "item-1");
+        assert_eq!(
+            graph["social"][0]["signalCounts"].as_array().map(Vec::len),
+            Some(20)
+        );
 
         let unknown = query_normalized_json_v1(
             &mut connection,

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import sqlite3InitModule, {
   type Database,
@@ -2127,6 +2128,38 @@ describe("PWA Library Core SQLite engine", () => {
         })
         .rows.map((row) => row.url),
     ).toEqual(["https://beta.example/feed"]);
+    expect(
+      engine.query({
+        queryId: "persons_graph_v1",
+        recentWindow: { startMs: 150, endMs: 250 },
+        rssFeedUrls: ["https://alpha.example/feed"],
+        schemaVersion: 1,
+        sources: [{ authorId: "ada-remote", platform: "x" }],
+      }),
+    ).toMatchObject({
+      rss: [
+        {
+          avatarGlobalId: "item-1",
+          feedUrl: "https://alpha.example/feed",
+          itemCount: 1,
+          sampleItems: [{ globalId: "item-1", publishedAt: 100 }],
+        },
+      ],
+      social: [
+        {
+          authorId: "ada-remote",
+          itemCount: 1,
+          platform: "x",
+          recentCount: 1,
+          sampleItems: [{ globalId: "item-2", publishedAt: 200 }],
+          signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
+            count: 0,
+            label,
+          })),
+        },
+      ],
+      totalItemCount: 3,
+    });
     const inlineBody = engine.query({
       bodyKind: "content",
       globalId: "item-2",

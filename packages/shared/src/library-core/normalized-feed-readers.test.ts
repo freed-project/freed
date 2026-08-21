@@ -7,8 +7,11 @@ import {
 } from "./normalized-feed-readers.js";
 import {
   readLibraryCoreNormalizedPreferencesV1,
+  readLibraryCoreNormalizedPersonsGraphV1,
+  readLibraryCoreNormalizedFriendsLocationItemV1,
   searchLibraryCoreNormalizedItemsV1,
 } from "./normalized-surface-readers.js";
+import { CONTENT_SIGNAL_KEYS } from "../content-signals.js";
 
 const feedCard = (globalId: string) => ({
   archived: false,
@@ -42,6 +45,81 @@ const feedCard = (globalId: string) => ({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it("batches Friends aggregates through the bounded SQLite contract", async () => {
+    const sources = Array.from({ length: 129 }, (_, index) => ({
+      authorId: `author-${index}`,
+      platform: "x",
+    }));
+    const query = vi.fn(async (request: { sources: typeof sources }) => ({
+      queryId: "persons_graph_v1",
+      rss: [],
+      schemaVersion: 1,
+      social: request.sources.map((source) => ({
+        ...source,
+        avatarGlobalId: null,
+        avatarPublishedAt: null,
+        avatarUrl: null,
+        hasLocation: false,
+        itemCount: 1,
+        latestActivityAt: 100,
+        locationCandidateCount: 0,
+        locationCandidates: [],
+        recentCount: 1,
+        sampleItems: [],
+        signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({ count: 0, label })),
+      })),
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 7,
+        transitionSequence: 7,
+      },
+      totalItemCount: 129,
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    const graph = await readLibraryCoreNormalizedPersonsGraphV1(
+      { query, randomId: () => "test" },
+      {
+        recentWindow: { startMs: 0, endMs: 200 },
+        rssFeedUrls: [],
+        sources,
+      },
+    );
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(graph.social).toHaveLength(129);
+    expect(graph.social.at(-1)?.authorId).toBe("author-128");
+    expect(graph.sourceToken).toBe(`sqlite-v1:${"a".repeat(64)}:7:7`);
+  });
+
+  it("binds a Friends location item to the exact SQLite graph source", async () => {
+    const query = vi.fn(async () => ({
+      item: {
+        card: { ...feedCard("located"), locationName: "Babbage Square" },
+        contentBody: { blobDigest: null, storage: "inline" },
+        preservedBody: { blobDigest: null, storage: "none" },
+      },
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 7,
+        transitionSequence: 7,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreNormalizedFriendsLocationItemV1(
+        { query, randomId: () => "test" },
+        {
+          effectiveAt: 100,
+          globalId: "located",
+          owner: { authorId: "reader-1", kind: "social", platform: "rss" },
+          publishedAt: 100,
+          referenceTimeMs: 200,
+          sourceToken: `sqlite-v1:${"a".repeat(64)}:7:7`,
+        },
+      ),
+    ).resolves.toMatchObject({ globalId: "located" });
+  });
+
   it("reconstructs synchronized preferences through the normalized executor", async () => {
     const query = vi.fn(async () => ({
       rows: [

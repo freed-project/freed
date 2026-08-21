@@ -399,7 +399,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.14 | First-run legal gate with local-only acceptance storage                                                                                                                           | Low        |
 | 6.15 | URL navigation state with browser back/forward support                                                                                                                            | Low        |
 | 6.16 | Public-safe bundles and private GitHub vulnerability reports                                                                                                                      | Medium     |
-| 6.17 | Complete bounded IndexedDB Library parity for feed, Saved, Friends, Map, and Story Wall                                                                                           | High       | ✓ Complete                                                                                       |
+| 6.17 | Preserve feed, Saved, Friends, Map, and Story Wall behavior through the SQLite cutover                                                                                           | High       | ✓ Complete                                                                                       |
 | 6.18 | Retire the Automerge service-worker cache route and enforce the Desktop and PWA release artifact boundary                                                                         | Medium     | ✓ Complete                                                                                       |
 | 6.19 | Execute the shared indexed `person_timeline_v1` query in browser SQLite with exact native parity and no renderer-built account-key filter                                         | High       | ✓ Complete                                                                                       |
 | 6.20 | Execute indexed bidirectional `feed_browse_page_v3` in browser SQLite with exact native parity and no renderer source-enumeration tie                                             | High       | ✓ Complete                                                                                       |
@@ -412,6 +412,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.27 | Supply the Friends Galaxy worker with direct OPFS SQLite Person, Account, and RSS graph page executors so React never compiles the identity corpus | High | ✓ Complete |
 | 6.28 | Route selected unlinked Account timelines through the shared `account_timeline_v1` adapter backed by the PWA OPFS SQLite worker, while linked Accounts continue through the combined Person timeline | High | ✓ Complete |
 | 6.29 | Hydrate synchronized PWA preferences through the shared bounded `preferences_snapshot_v1` transform instead of the selected IndexedDB shell | High | ✓ Complete |
+| 6.30 | Run Friends activity and source-fenced location resolution through `persons_graph_v1` and normalized item detail in OPFS SQLite, then delete the PWA IndexedDB read model and its scan-based tests | High | ✓ Complete |
 
 ---
 
@@ -433,7 +434,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Merges to `dev` redeploy `dev-app.freed.wtf`
 - [x] PWA can switch locally between the production and dev release channels, redirecting between `app.freed.wtf` and `dev-app.freed.wtf`
 - [x] Dev snapshots keep the last release version visible and add build provenance in Settings
-- [x] Feed displays bounded pages from the authenticated IndexedDB Library Core generation
+- [x] Feed displays bounded pages from the authenticated OPFS SQLite Library Core generation
 - [x] Per-source unread tracking works for opted-in feeds
 - [x] Virtual scrolling handles 1000+ items smoothly
 - [x] Reading enhancements work correctly (focus mode, font, reader view)
@@ -442,7 +443,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status. Only the last successful refresh syncs. Retry timing and failures remain local to the polling device. Deprecated synchronized HTTP validators are ignored because the current Desktop transport does not persist them.
 - [x] First launch is blocked behind a local-only legal clickwrap gate
-- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, and all local Library Core IndexedDB databases. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
+- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, the OPFS SQLite pool, and retired IndexedDB databases. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
@@ -452,12 +453,12 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated immutable Library Core generation, publish signed epoch-scoped intents, refresh and retry once when Drive unexpectedly rejects an expired access token, disconnect by clearing the captured provider credentials before resetting app connection state, and never synchronize a SQLite database, WAL, or SHM file
 - [x] PWA control, intent head, and result head adapters sample the shared bounded strong Drive v2 JSON ETag around each v3 media read and use exact v2 media PUT with If-Match for mutable updates. All immutable, list, create, media read, multipart, and resumable traffic remains on Drive v3. The request count and 60-second cadence are unchanged, and a stale ETag fails as `412` before exact current readback.
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
-- [x] FeedItem capture and whole-record updates use bounded signed Library Core intents, update IndexedDB and search without waking Automerge, preserve repeated-identity order, and exclude device-local ranking fields
+- [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude device-local ranking fields
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.
-- [x] Runtime state, counts, full-library scans, and item detail resolve from the current IndexedDB materialization after local intents instead of rereading the immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
-- [x] Archived, provider, feed, tag, signal, author, hidden, post, and story filters, all four Saved orders, facets, Saved analytics, Friends graph and timelines, Map, and Story Wall read the complete selected IndexedDB generation. Browser acceptance covers 2,607 records in Chromium and WebKit.
+- [x] Runtime state, counts, bounded maintenance queries, and item detail resolve from the current OPFS SQLite materialization after local intents instead of rereading an immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
+- [x] Archived, provider, feed, tag, signal, author, hidden, post, and story filters, all four Saved orders, facets, Saved analytics, Friends activity and timelines, Map, and Story Wall query the complete selected SQLite generation through bounded contracts.
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section

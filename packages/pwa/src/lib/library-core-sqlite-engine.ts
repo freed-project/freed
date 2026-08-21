@@ -1,4 +1,5 @@
 import type { Database, SqlValue } from "@sqlite.org/sqlite-wasm";
+import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SQL,
@@ -104,6 +105,8 @@ import {
   parseLibraryCorePersonGraphPageResponseV1,
   parseLibraryCoreRssFeedGraphPageRequestV1,
   parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCorePersonsGraphRequestV1,
+  parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
   encodeLibraryCoreCanonicalBase64,
@@ -166,6 +169,8 @@ import {
   type LibraryCorePersonGraphPageResponseV1,
   type LibraryCoreRssFeedGraphPageRequestV1,
   type LibraryCoreRssFeedGraphPageResponseV1,
+  type LibraryCorePersonsGraphRequestV1,
+  type LibraryCorePersonsGraphResponseV1,
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
   type LibraryCoreSqliteQueryRequest,
@@ -2484,6 +2489,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonTimeline(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "persons_graph_v1":
+        return this.#queryPersonsGraph(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "rss_feed_graph_page_v1":
         return this.#queryRssFeedGraphPage(
           input,
@@ -3145,6 +3154,153 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreRssFeedGraphPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryPersonsGraph(
+    input: LibraryCorePersonsGraphRequestV1,
+  ): LibraryCorePersonsGraphResponseV1 {
+    const request = parseLibraryCorePersonsGraphRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.persons_graph_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        JSON.stringify(request.value.sources),
+        JSON.stringify(request.value.rssFeedUrls),
+        request.value.recentWindow.startMs,
+        request.value.recentWindow.endMs,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    const expectedRows =
+      request.value.sources.length + request.value.rssFeedUrls.length;
+    if (rawRows.length !== expectedRows || rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite persons graph row count is invalid");
+    }
+    const parseArray = (value: SqlValue | undefined, label: string): unknown[] => {
+      const parsed = JSON.parse(text(value, label)) as unknown;
+      if (!Array.isArray(parsed)) throw new Error(`${label} is not an array`);
+      return parsed;
+    };
+    const social = request.value.sources.map((source, index) => {
+      const row = rawRows[index]!;
+      if (
+        row.kind !== "social" ||
+        row.platform !== source.platform ||
+        row.authorId !== source.authorId ||
+        row.feedUrl !== null
+      ) {
+        throw new Error("PWA Library SQLite persons graph social order is invalid");
+      }
+      const samples = parseArray(row.sampleItemsJson, "persons graph samples");
+      const locations = parseArray(
+        row.locationCandidatesJson,
+        "persons graph locations",
+      );
+      const sparseSignals = parseArray(
+        row.signalCountsJson,
+        "persons graph signals",
+      );
+      const signalCounts = CONTENT_SIGNAL_KEYS.map((label) => {
+        const matches = sparseSignals.filter(
+          (value) =>
+            value !== null &&
+            typeof value === "object" &&
+            Object.getPrototypeOf(value) === Object.prototype &&
+            (value as Record<string, unknown>).label === label,
+        );
+        if (matches.length > 1) {
+          throw new Error("PWA Library SQLite persons graph signal is duplicated");
+        }
+        const count = matches.length
+          ? (matches[0] as Record<string, unknown>).count
+          : 0;
+        if (typeof count !== "number") {
+          throw new Error("PWA Library SQLite persons graph signal count is invalid");
+        }
+        return { count, label };
+      });
+      return {
+        authorId: source.authorId,
+        avatarGlobalId: nullableText(row.avatarGlobalId, "persons graph avatar item"),
+        avatarPublishedAt: nullableInteger(
+          row.avatarPublishedAt,
+          "persons graph avatar time",
+        ),
+        avatarUrl: nullableText(row.avatarUrl, "persons graph avatar URL"),
+        hasLocation: locations.length > 0,
+        itemCount: safeInteger(row.itemCount, "persons graph item count"),
+        latestActivityAt: safeInteger(
+          row.latestActivityAt,
+          "persons graph latest activity",
+        ),
+        locationCandidateCount: locations.length,
+        locationCandidates: locations,
+        platform: source.platform,
+        recentCount: safeInteger(row.recentCount, "persons graph recent count"),
+        sampleItems: samples,
+        signalCounts,
+      };
+    });
+    const rss = request.value.rssFeedUrls.map((feedUrl, rssIndex) => {
+      const row = rawRows[request.value.sources.length + rssIndex]!;
+      if (
+        row.kind !== "rss" ||
+        row.feedUrl !== feedUrl ||
+        row.platform !== null ||
+        row.authorId !== null
+      ) {
+        throw new Error("PWA Library SQLite persons graph RSS order is invalid");
+      }
+      const samples = parseArray(row.sampleItemsJson, "persons graph RSS samples");
+      const locations = parseArray(
+        row.locationCandidatesJson,
+        "persons graph RSS locations",
+      );
+      return {
+        avatarGlobalId: nullableText(row.avatarGlobalId, "persons graph RSS avatar item"),
+        avatarPublishedAt: nullableInteger(
+          row.avatarPublishedAt,
+          "persons graph RSS avatar time",
+        ),
+        avatarUrl: nullableText(row.avatarUrl, "persons graph RSS avatar URL"),
+        feedUrl,
+        hasLocation: locations.length > 0,
+        itemCount: safeInteger(row.itemCount, "persons graph RSS item count"),
+        latestActivityAt: safeInteger(
+          row.latestActivityAt,
+          "persons graph RSS latest activity",
+        ),
+        locationCandidateCount: locations.length,
+        locationCandidates: locations,
+        sampleItems: samples,
+      };
+    });
+    const totalRows = this.#database.exec({
+      sql: program.countSql,
+      rowMode: 0,
+      returnValue: "resultRows",
+    });
+    const response = {
+      queryId: "persons_graph_v1" as const,
+      rss,
+      schemaVersion: 1 as const,
+      social,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      totalItemCount: safeInteger(totalRows[0], "persons graph total item count"),
+    };
+    const parsed = parseLibraryCorePersonsGraphResponseV1(
       response,
       request.value,
     );

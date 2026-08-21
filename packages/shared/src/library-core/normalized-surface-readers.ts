@@ -4,6 +4,10 @@ import {
   type UserPreferences,
 } from "../types.js";
 import {
+  extractLocationFromItem,
+  isLocationItemVisibleInTimeMode,
+} from "../location.js";
+import {
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   type LibraryCoreFacetSummaryV1,
@@ -66,6 +70,14 @@ import {
   LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
   libraryCorePreferenceNodesToValueV1,
 } from "./preferences-snapshot-contracts.js";
+import {
+  LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES,
+  LIBRARY_CORE_PERSONS_GRAPH_QUERY_ID,
+  LIBRARY_CORE_PERSONS_GRAPH_SCHEMA_VERSION,
+  type LibraryCorePersonsGraphRssV1,
+  type LibraryCorePersonsGraphSocialV1,
+  type LibraryCorePersonsGraphWindowV1,
+} from "./persons-graph-contracts.js";
 
 export interface LibraryCoreNormalizedSavedAnalyticsInputV1 {
   readonly dailyWindows: readonly LibraryCoreSavedAnalyticsWindowV2[];
@@ -104,11 +116,133 @@ export interface LibraryCoreNormalizedSearchMatchV1 {
   readonly score: number;
 }
 
+export interface LibraryCoreNormalizedPersonsGraphInputV1 {
+  readonly recentWindow: LibraryCorePersonsGraphWindowV1;
+  readonly rssFeedUrls: readonly string[];
+  readonly sources: readonly {
+    readonly authorId: string;
+    readonly platform: string;
+  }[];
+}
+
+export interface LibraryCoreNormalizedPersonsGraphV1 {
+  readonly rss: readonly LibraryCorePersonsGraphRssV1[];
+  readonly social: readonly LibraryCorePersonsGraphSocialV1[];
+  readonly sourceToken: string;
+  readonly totalItemCount: number;
+}
+
+export interface LibraryCoreNormalizedFriendsLocationItemInputV1 {
+  readonly effectiveAt: number;
+  readonly globalId: string;
+  readonly owner:
+    | Readonly<{ authorId: string; kind: "social"; platform: string }>
+    | Readonly<{ feedUrl: string; kind: "rss" }>;
+  readonly publishedAt: number;
+  readonly referenceTimeMs: number;
+  readonly sourceToken: string;
+}
+
 function operationId(
   runtime: LibraryCoreNormalizedReaderRuntime,
   prefix: string,
 ): string {
   return createLibraryCoreOperationInstanceId(prefix, runtime.randomId());
+}
+
+function normalizedSourceToken(source: {
+  readonly generationId: string;
+  readonly projectionRevision: number;
+  readonly transitionSequence: number;
+}): string {
+  return `sqlite-v1:${source.generationId}:${source.transitionSequence}:${source.projectionRevision}`;
+}
+
+/** Runs bounded SQLite aggregate batches while preserving the caller's source order. */
+export async function readLibraryCoreNormalizedPersonsGraphV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  input: LibraryCoreNormalizedPersonsGraphInputV1,
+): Promise<LibraryCoreNormalizedPersonsGraphV1> {
+  const social: LibraryCorePersonsGraphSocialV1[] = [];
+  const rss: LibraryCorePersonsGraphRssV1[] = [];
+  let sourceToken: string | null = null;
+  let totalItemCount: number | null = null;
+  let sourceOffset = 0;
+  let rssOffset = 0;
+  do {
+    const batchSources = input.sources.slice(
+      sourceOffset,
+      sourceOffset + LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES,
+    );
+    const remaining =
+      LIBRARY_CORE_PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES -
+      batchSources.length;
+    const batchRss = input.rssFeedUrls.slice(rssOffset, rssOffset + remaining);
+    const response = await runtime.query({
+      queryId: LIBRARY_CORE_PERSONS_GRAPH_QUERY_ID,
+      recentWindow: input.recentWindow,
+      rssFeedUrls: batchRss,
+      schemaVersion: LIBRARY_CORE_PERSONS_GRAPH_SCHEMA_VERSION,
+      sources: batchSources,
+    });
+    const nextSourceToken = normalizedSourceToken(response.source);
+    if (
+      (sourceToken !== null && sourceToken !== nextSourceToken) ||
+      (totalItemCount !== null && totalItemCount !== response.totalItemCount)
+    ) {
+      throw new Error("SQLite Library changed while reading the Friends graph");
+    }
+    sourceToken = nextSourceToken;
+    totalItemCount = response.totalItemCount;
+    social.push(...response.social);
+    rss.push(...response.rss);
+    sourceOffset += batchSources.length;
+    rssOffset += batchRss.length;
+  } while (
+    sourceOffset < input.sources.length ||
+    rssOffset < input.rssFeedUrls.length
+  );
+  return Object.freeze({
+    rss: Object.freeze(rss),
+    social: Object.freeze(social),
+    sourceToken: sourceToken ?? "sqlite-v1:empty",
+    totalItemCount: totalItemCount ?? 0,
+  });
+}
+
+/** Resolves one location candidate against the exact SQLite graph source. */
+export async function readLibraryCoreNormalizedFriendsLocationItemV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  input: LibraryCoreNormalizedFriendsLocationItemInputV1,
+): Promise<FeedItem | null> {
+  const response = await runtime.query({
+    globalId: input.globalId,
+    queryId: LIBRARY_CORE_ITEM_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
+  });
+  if (normalizedSourceToken(response.source) !== input.sourceToken) {
+    throw new Error("SQLite Friends location source is stale");
+  }
+  if (!response.item) return null;
+  const item = libraryCoreFeedCardToItemV1(response.item.card);
+  const ownerMatches =
+    input.owner.kind === "social"
+      ? item.platform === input.owner.platform &&
+        item.author.id === input.owner.authorId
+      : item.platform === "rss" &&
+        item.rssSource?.feedUrl === input.owner.feedUrl;
+  const effectiveAt = item.timeRange?.startsAt ?? item.publishedAt;
+  if (
+    !ownerMatches ||
+    item.publishedAt !== input.publishedAt ||
+    effectiveAt !== input.effectiveAt ||
+    item.userState.hidden ||
+    !isLocationItemVisibleInTimeMode(item, "current", input.referenceTimeMs) ||
+    extractLocationFromItem(item) === null
+  ) {
+    throw new Error("SQLite Friends location item is inconsistent");
+  }
+  return item;
 }
 
 function validWindows(
