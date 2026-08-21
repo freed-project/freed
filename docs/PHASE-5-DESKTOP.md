@@ -23,6 +23,8 @@
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
       define closed root and child checkpoint payload fields, and expose a
       bounded native SQLite checkpoint exporter with stable keyset cursors.
+      Native staging now activates every normalized record kind atomically
+      after exact digest, binary64, content, and foreign-key verification.
 - [ ] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story

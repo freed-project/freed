@@ -10,6 +10,7 @@ import {
 import {
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY,
+  LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS,
   LIBRARY_CORE_CONTENT_CHUNK_BYTES,
   LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
@@ -55,6 +56,64 @@ export interface LibraryCoreContentChunkPayloadV1 {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
+const binary64Buffer = new ArrayBuffer(8);
+const binary64View = new DataView(binary64Buffer);
+
+function encodeBinary64(value: number): Readonly<Record<string, string>> {
+  if (!Number.isFinite(value)) {
+    throw new TypeError("checkpoint fractional value must be finite");
+  }
+  binary64View.setFloat64(0, value, false);
+  return Object.freeze({
+    bits: `${binary64View.getUint32(0, false).toString(16).padStart(8, "0")}${binary64View.getUint32(4, false).toString(16).padStart(8, "0")}`,
+    codec: "ieee754_binary64_hex_v1",
+  });
+}
+
+function decodeBinary64(value: unknown): number {
+  const wrapper = ownClosedRecord(
+    value,
+    ["bits", "codec"],
+    "checkpoint fractional wrapper",
+  );
+  if (
+    wrapper.codec !== "ieee754_binary64_hex_v1" ||
+    typeof wrapper.bits !== "string" ||
+    !/^[0-9a-f]{16}$/.test(wrapper.bits)
+  ) {
+    throw new TypeError("checkpoint fractional wrapper identity is invalid");
+  }
+  binary64View.setUint32(0, Number.parseInt(wrapper.bits.slice(0, 8), 16), false);
+  binary64View.setUint32(4, Number.parseInt(wrapper.bits.slice(8), 16), false);
+  const decoded = binary64View.getFloat64(0, false);
+  if (!Number.isFinite(decoded)) {
+    throw new TypeError("checkpoint fractional wrapper must be finite");
+  }
+  return decoded;
+}
+
+function encodeFractionalPayload(
+  registryKey: LibraryCoreCheckpointRegistryKey,
+  payload: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const fields = (
+    LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS as Partial<
+      Record<LibraryCoreCheckpointRegistryKey, readonly string[]>
+    >
+  )[registryKey] ?? [];
+  if (fields.length === 0) return payload;
+  const output = { ...payload };
+  for (const field of fields) {
+    const value = output[field];
+    if (value === null || value === undefined || Number.isSafeInteger(value)) continue;
+    if (typeof value === "number") {
+      output[field] = encodeBinary64(value);
+    } else {
+      decodeBinary64(value);
+    }
+  }
+  return output;
+}
 function ownClosedRecord(
   value: unknown,
   expectedKeys: readonly string[],
@@ -204,7 +263,10 @@ export function createLibraryCoreNormalizedCheckpointRecordV2(input: {
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     registryKey: input.registryKey,
     primaryKey: boundedPrimaryKey(input.primaryKey, entry.primaryKey),
-    payload: canonicalPayload(input.payload, entry.fields),
+    payload: canonicalPayload(
+      encodeFractionalPayload(input.registryKey, input.payload),
+      entry.fields,
+    ),
   });
   encodeLibraryCoreCanonicalValue(record, {
     maximumBytes: LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,

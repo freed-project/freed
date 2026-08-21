@@ -1,16 +1,21 @@
 use crate::library_core_canonical::encode_canonical_value;
+use crate::library_core_hash::lower_hex;
 use crate::normalized_checkpoint::{
-    checked_record, ContentRecordError, NormalizedCheckpointRecordV2,
+    checked_record, encode_fractional_payload, ContentRecordError, NormalizedCheckpointRecordV2,
 };
 use crate::sqlite_contract_generated::{
-    CHECKPOINT_PAGE_MAXIMUM_RECORDS, NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SQL,
-    SQLITE_SCHEMA_VERSION,
+    CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SQL, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+const STAGED_RECORD_DIGEST_PREFIX: &[u8] =
+    b"freed.library-core.v2/digest-bytes/staged-checkpoint-record\0";
 
 #[derive(Debug)]
 pub enum NormalizedSqliteError {
@@ -79,10 +84,255 @@ pub struct NormalizedCheckpointExportPageV2 {
     pub canonical_record_bytes: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BeginNormalizedCheckpointStageV2 {
+    pub stage_id: String,
+    pub library_id: String,
+    pub authority_epoch: String,
+    pub source_revision: u64,
+    pub expected_record_count: usize,
+    pub expected_checkpoint_digest: String,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedCheckpointStageStatusV2 {
+    pub stage_id: String,
+    pub expected_record_count: usize,
+    pub staged_record_count: usize,
+    pub staged_canonical_bytes: usize,
+    pub complete: bool,
+}
+
 pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), NormalizedSqliteError> {
     connection.execute_batch(NORMALIZED_SCHEMA_SQL)?;
     connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
     Ok(())
+}
+
+fn valid_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn stage_status(
+    connection: &Connection,
+    stage_id: &str,
+) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    connection
+        .query_row(
+            "SELECT stage_id, expected_record_count, staged_record_count, staged_canonical_bytes
+             FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [stage_id],
+            |row| {
+                let expected = usize::try_from(row.get::<_, i64>(1)?).map_err(|_| {
+                    rusqlite::Error::IntegralValueOutOfRange(1, row.get::<_, i64>(1).unwrap_or(-1))
+                })?;
+                let staged = usize::try_from(row.get::<_, i64>(2)?).map_err(|_| {
+                    rusqlite::Error::IntegralValueOutOfRange(2, row.get::<_, i64>(2).unwrap_or(-1))
+                })?;
+                Ok(NormalizedCheckpointStageStatusV2 {
+                    stage_id: row.get(0)?,
+                    expected_record_count: expected,
+                    staged_record_count: staged,
+                    staged_canonical_bytes: usize::try_from(row.get::<_, i64>(3)?)
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, -1))?,
+                    complete: staged == expected,
+                })
+            },
+        )
+        .map_err(Into::into)
+}
+
+pub fn begin_normalized_checkpoint_stage_v2(
+    connection: &Connection,
+    request: &BeginNormalizedCheckpointStageV2,
+) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    if request.stage_id.is_empty()
+        || request.stage_id.len() > 255
+        || request.library_id.is_empty()
+        || request.library_id.len() > 255
+        || request.authority_epoch.is_empty()
+        || request.authority_epoch.len() > 255
+        || request.expected_record_count == 0
+        || !valid_digest(&request.expected_checkpoint_digest)
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint stage identity is invalid",
+        ));
+    }
+    let source_revision = i64::try_from(request.source_revision).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized checkpoint sourceRevision is invalid")
+    })?;
+    let expected_record_count = i64::try_from(request.expected_record_count).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint expectedRecordCount is invalid",
+        )
+    })?;
+    let created_at = i64::try_from(request.created_at).map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized checkpoint createdAt is invalid")
+    })?;
+    let inserted = connection.execute(
+        "INSERT OR IGNORE INTO library_checkpoint_stages
+         (stage_id, library_id, authority_epoch, source_revision,
+          expected_record_count, expected_checkpoint_digest, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+        params![
+            request.stage_id,
+            request.library_id,
+            request.authority_epoch,
+            source_revision,
+            expected_record_count,
+            request.expected_checkpoint_digest,
+            created_at,
+        ],
+    )?;
+    if inserted == 0 {
+        let matches: bool = connection.query_row(
+            "SELECT library_id = ?2 AND authority_epoch = ?3 AND source_revision = ?4
+                    AND expected_record_count = ?5 AND expected_checkpoint_digest = ?6
+                    AND created_at = ?7
+             FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            params![
+                request.stage_id,
+                request.library_id,
+                request.authority_epoch,
+                source_revision,
+                expected_record_count,
+                request.expected_checkpoint_digest,
+                created_at,
+            ],
+            |row| row.get(0),
+        )?;
+        if !matches {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint stage replay changed its identity",
+            ));
+        }
+    }
+    stage_status(connection, &request.stage_id)
+}
+
+pub fn append_normalized_checkpoint_stage_page_v2(
+    connection: &mut Connection,
+    stage_id: &str,
+    records: &[NormalizedCheckpointRecordV2],
+) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    if stage_id.is_empty()
+        || stage_id.len() > 255
+        || records.is_empty()
+        || records.len() > CHECKPOINT_PAGE_MAXIMUM_RECORDS
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint stage page is outside its record bound",
+        ));
+    }
+    let mut encoded = Vec::with_capacity(records.len());
+    let mut page_bytes = 0usize;
+    for record in records {
+        let validated = checked_record(
+            &record.registry_key,
+            record.primary_key.clone(),
+            record.payload.clone(),
+        )?;
+        if &validated != record {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint record version identity is invalid",
+            ));
+        }
+        let primary_key = encode_canonical_value(&record.primary_key, 4_096).map_err(|_| {
+            NormalizedSqliteError::InvalidRequest("checkpoint primary key is invalid")
+        })?;
+        let bytes = encode_canonical_value(
+            &serde_json::to_value(record).map_err(|error| {
+                NormalizedSqliteError::Transport(format!(
+                    "checkpoint record encoding failed: {error}"
+                ))
+            })?,
+            crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+        )
+        .map_err(|_| {
+            NormalizedSqliteError::InvalidRequest("checkpoint record exceeds its bound")
+        })?;
+        page_bytes =
+            page_bytes
+                .checked_add(bytes.len())
+                .ok_or(NormalizedSqliteError::InvalidRequest(
+                    "checkpoint page byte count overflowed",
+                ))?;
+        if page_bytes > CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized checkpoint stage page exceeds its decoded byte bound",
+            ));
+        }
+        let mut digest = Sha256::new();
+        digest.update(STAGED_RECORD_DIGEST_PREFIX);
+        digest.update(&bytes);
+        encoded.push((
+            record.registry_key.as_str(),
+            primary_key,
+            bytes,
+            lower_hex(&digest.finalize()),
+        ));
+    }
+
+    let transaction = connection.transaction()?;
+    let expected_record_count: i64 = transaction
+        .query_row(
+            "SELECT expected_record_count FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [stage_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint stage does not exist",
+        ))?;
+    for (registry_key, primary_key, bytes, digest) in encoded {
+        let inserted = transaction.execute(
+            "INSERT OR IGNORE INTO library_checkpoint_stage_records
+             (stage_id, registry_key, primary_key_canonical, record_canonical, record_digest)
+             VALUES (?1, ?2, ?3, ?4, ?5);",
+            params![stage_id, registry_key, primary_key, bytes, digest],
+        )?;
+        if inserted == 0 {
+            let matches: bool = transaction.query_row(
+                "SELECT record_digest = ?4 AND record_canonical = ?5
+                 FROM library_checkpoint_stage_records
+                 WHERE stage_id = ?1 AND registry_key = ?2 AND primary_key_canonical = ?3;",
+                params![stage_id, registry_key, primary_key, digest, bytes],
+                |row| row.get(0),
+            )?;
+            if !matches {
+                return Err(NormalizedSqliteError::InvalidRequest(
+                    "normalized checkpoint record replay changed its bytes",
+                ));
+            }
+        }
+    }
+    let (staged_record_count, staged_canonical_bytes): (i64, i64) = transaction.query_row(
+        "SELECT count(*), COALESCE(sum(length(record_canonical)), 0)
+         FROM library_checkpoint_stage_records WHERE stage_id = ?1;",
+        [stage_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if staged_record_count > expected_record_count {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint stage exceeds its expected record count",
+        ));
+    }
+    transaction.execute(
+        "UPDATE library_checkpoint_stages
+         SET staged_record_count = ?2, staged_canonical_bytes = ?3
+         WHERE stage_id = ?1;",
+        params![stage_id, staged_record_count, staged_canonical_bytes],
+    )?;
+    transaction.commit()?;
+    stage_status(connection, stage_id)
 }
 
 fn parse_json(value: &str, label: &'static str) -> Result<Value, NormalizedSqliteError> {
@@ -172,6 +422,7 @@ pub fn export_normalized_checkpoint_page_v2(
             })?;
             object.insert("bytesBase64".into(), Value::String(BASE64.encode(bytes)));
         }
+        encode_fractional_payload(&registry_key, &mut payload)?;
         let record = checked_record(&registry_key, primary_key, payload)?;
         let canonical_bytes = encode_canonical_value(
             &serde_json::to_value(&record).map_err(|error| {
@@ -238,15 +489,56 @@ mod tests {
     use super::*;
     use crate::normalized_checkpoint::reassemble_content_records_v1;
     use crate::normalized_checkpoint::split_content_records_v1;
+    use crate::normalized_import::{
+        finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
+    };
     use crate::sqlite_contract_generated::{
         CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
     };
     use rusqlite::params;
+    use serde_json::json;
 
     fn fixture() -> Connection {
         let connection = Connection::open_in_memory().expect("open");
         install_normalized_schema_v1(&connection).expect("schema");
         connection
+    }
+
+    fn checkpoint_header() -> NormalizedCheckpointRecordV2 {
+        checked_record(
+            "00_checkpoint_header",
+            json!("checkpoint"),
+            json!({
+                "authorityEpoch": "epoch-1",
+                "checkpointId": "library-1:epoch-1:7",
+                "createdAtMs": 1000,
+                "libraryId": "library-1",
+                "schemaVersion": 1,
+                "sourceRevision": 7,
+            }),
+        )
+        .expect("checkpoint header")
+    }
+
+    fn begin_stage(
+        connection: &Connection,
+        stage_id: &str,
+        records: &[NormalizedCheckpointRecordV2],
+        digest: String,
+    ) {
+        begin_normalized_checkpoint_stage_v2(
+            connection,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: stage_id.into(),
+                library_id: "library-1".into(),
+                authority_epoch: "epoch-1".into(),
+                source_revision: 7,
+                expected_record_count: records.len(),
+                expected_checkpoint_digest: digest,
+                created_at: 1000,
+            },
+        )
+        .expect("begin stage");
     }
 
     #[test]
@@ -444,5 +736,331 @@ mod tests {
             reassemble_content_records_v1(&content).expect("reassemble"),
             original
         );
+    }
+
+    #[test]
+    fn stages_bounded_typed_pages_idempotently_without_a_shell() {
+        let mut connection = fixture();
+        let records = split_content_records_v1(
+            &vec![9; CONTENT_CHUNK_BYTES * 3 + 17],
+            "application/octet-stream",
+        )
+        .expect("records");
+        let request = BeginNormalizedCheckpointStageV2 {
+            stage_id: "stage-1".into(),
+            library_id: "library-1".into(),
+            authority_epoch: "epoch-1".into(),
+            source_revision: 7,
+            expected_record_count: records.len(),
+            expected_checkpoint_digest: "a".repeat(64),
+            created_at: 1000,
+        };
+        let initial = begin_normalized_checkpoint_stage_v2(&connection, &request).expect("begin");
+        assert_eq!(initial.staged_record_count, 0);
+        let first =
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-1", &records[..2])
+                .expect("first page");
+        assert_eq!(first.staged_record_count, 2);
+        let replay =
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-1", &records[..2])
+                .expect("exact replay");
+        assert_eq!(replay, first);
+        let complete =
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-1", &records[2..])
+                .expect("remaining page");
+        assert!(complete.complete);
+        assert_eq!(complete.staged_record_count, records.len());
+        let shell_count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_checkpoint_stage_records
+                 WHERE registry_key LIKE '%shell%';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("shell count");
+        assert_eq!(shell_count, 0);
+    }
+
+    #[test]
+    fn changed_staged_record_replay_fails_without_changing_the_stage() {
+        let mut connection = fixture();
+        let records =
+            split_content_records_v1(&[9; 17], "application/octet-stream").expect("records");
+        begin_stage(
+            &connection,
+            "stage-changed-replay",
+            &records,
+            "a".repeat(64),
+        );
+        let first = append_normalized_checkpoint_stage_page_v2(
+            &mut connection,
+            "stage-changed-replay",
+            &records[..1],
+        )
+        .expect("first record");
+        let mut changed = records[0].clone();
+        changed.payload["mediaType"] = json!("text/plain");
+        let error = append_normalized_checkpoint_stage_page_v2(
+            &mut connection,
+            "stage-changed-replay",
+            &[changed],
+        )
+        .expect_err("changed replay");
+        assert!(error
+            .to_string()
+            .contains("record replay changed its bytes"));
+        assert_eq!(
+            stage_status(&connection, "stage-changed-replay").expect("stage status"),
+            first
+        );
+    }
+
+    #[test]
+    fn checkpoint_digest_mismatch_rolls_back_activation_and_preserves_the_stage() {
+        let mut connection = fixture();
+        let records = vec![checkpoint_header()];
+        begin_stage(&connection, "stage-bad-digest", &records, "a".repeat(64));
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-bad-digest", &records)
+            .expect("stage records");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-bad-digest")
+            .expect_err("digest mismatch");
+        assert!(error.to_string().contains("digest does not match"));
+        let materialized: i64 = connection
+            .query_row("SELECT count(*) FROM library_meta;", [], |row| row.get(0))
+            .expect("materialized rows");
+        assert_eq!(materialized, 0);
+        assert!(
+            stage_status(&connection, "stage-bad-digest")
+                .expect("preserved stage")
+                .complete
+        );
+    }
+
+    #[test]
+    fn unresolved_foreign_reference_rolls_back_activation() {
+        let mut connection = fixture();
+        let records = vec![
+            checkpoint_header(),
+            checked_record(
+                "13_feed_item_tag",
+                json!(["missing-item", "favorite"]),
+                json!({ "tag": "favorite" }),
+            )
+            .expect("orphan tag"),
+        ];
+        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
+        begin_stage(&connection, "stage-orphan", &records, digest);
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-orphan", &records)
+            .expect("stage records");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-orphan")
+            .expect_err("foreign reference");
+        assert!(error.to_string().contains("unresolved foreign reference"));
+        let materialized: i64 = connection
+            .query_row(
+                "SELECT (SELECT count(*) FROM library_meta) +
+                        (SELECT count(*) FROM library_feed_item_tags);",
+                [],
+                |row| row.get(0),
+            )
+            .expect("materialized rows");
+        assert_eq!(materialized, 0);
+        assert!(
+            stage_status(&connection, "stage-orphan")
+                .expect("preserved stage")
+                .complete
+        );
+    }
+
+    #[test]
+    fn activates_staged_records_and_reexports_the_exact_normalized_checkpoint() {
+        let source = fixture();
+        source
+            .execute(
+                "INSERT INTO library_meta
+                 (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+                 VALUES (1, 'library-1', 1, 'epoch-1', 7, 1000);",
+                [],
+            )
+            .expect("meta");
+        source
+            .execute(
+                "INSERT INTO library_feed_items
+                 (global_id, platform, content_type, captured_at, published_at,
+                  author_id, author_handle, author_display_name, content_text,
+                  hidden, saved, archived, updated_at)
+                 VALUES ('saved:item-1', 'saved', 'article', 900, 800,
+                         'author-1', 'ada', 'Ada', 'bounded text',
+                         0, 1, 0, 1000);",
+                [],
+            )
+            .expect("item");
+        source
+            .execute(
+                "INSERT INTO library_feed_item_tags (global_id, tag)
+                 VALUES ('saved:item-1', 'favorite');",
+                [],
+            )
+            .expect("item tag");
+        source
+            .execute(
+                "INSERT INTO library_persons
+                 (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES ('person-1', 'Ada', 'friend', 5, 900, 1000);",
+                [],
+            )
+            .expect("person");
+        source
+            .execute(
+                "INSERT INTO library_person_tags (person_id, tag)
+                 VALUES ('person-1', 'mathematician');",
+                [],
+            )
+            .expect("person tag");
+        let content = vec![23; CONTENT_CHUNK_BYTES + 17];
+        let content_records =
+            split_content_records_v1(&content, "text/plain").expect("content records");
+        let content_digest = content_records[0]
+            .primary_key
+            .as_str()
+            .expect("content digest");
+        source
+            .execute(
+                "INSERT INTO library_blobs
+                 (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+                 VALUES (?1, ?2, ?3, ?4, 'text/plain');",
+                params![
+                    content_digest,
+                    i64::try_from(content.len()).expect("content length"),
+                    i64::try_from(CONTENT_CHUNK_BYTES).expect("chunk bytes"),
+                    i64::try_from(content_records.len() - 1).expect("chunk count")
+                ],
+            )
+            .expect("blob");
+        for (index, record) in content_records.iter().skip(1).enumerate() {
+            source
+                .execute(
+                    "INSERT INTO library_blob_chunks
+                     (content_digest, chunk_index, chunk_digest, bytes)
+                     VALUES (?1, ?2, ?3, ?4);",
+                    params![
+                        content_digest,
+                        i64::try_from(index).expect("index"),
+                        record.payload["chunkContentDigest"]
+                            .as_str()
+                            .expect("chunk digest"),
+                        BASE64
+                            .decode(record.payload["bytesBase64"].as_str().expect("base64"))
+                            .expect("chunk bytes")
+                    ],
+                )
+                .expect("chunk");
+        }
+        source
+            .execute(
+                "UPDATE library_feed_items
+                 SET content_text = NULL, content_text_blob_digest = ?1
+                 WHERE global_id = 'saved:item-1';",
+                [content_digest],
+            )
+            .expect("item blob reference");
+        source
+            .execute_batch(
+                "INSERT INTO library_feed_item_media
+                   (global_id, ordinal, source_url, media_type, blob_content_digest)
+                 VALUES ('saved:item-1', 0, 'https://example.com/media', 'link', NULL);
+                 INSERT INTO library_feed_item_topics (global_id, topic)
+                 VALUES ('saved:item-1', 'systems');
+                 INSERT INTO library_feed_item_highlights
+                   (global_id, ordinal, text_value, text_blob_digest, note, created_at)
+                 VALUES ('saved:item-1', 0, 'bounded highlight', NULL, 'note', 950);
+                 INSERT INTO library_feed_item_signals (global_id, version, method, inferred_at)
+                 VALUES ('saved:item-1', 1, 'rules', 960);
+                 INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
+                 VALUES ('saved:item-1', 'essay', 0.75, 1);
+                 INSERT INTO library_feed_item_events
+                   (global_id, version, method, detected_at, confidence, title)
+                 VALUES ('saved:item-1', 1, 'rules', 970, 0.8, 'Event');
+                 INSERT INTO library_rss_feeds
+                   (url, title, enabled, track_unread, updated_at)
+                 VALUES ('https://example.com/feed', 'Example', 1, 0, 1000);
+                 INSERT INTO library_person_reach_outs
+                   (person_id, ordinal, logged_at, channel, notes)
+                 VALUES ('person-1', 0, 980, 'email', 'hello');
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                 VALUES ('account-1', 'person-1', 'social', 'x', 'external-1', 700,
+                         900, 'captured_item', 700, 1000);
+                 INSERT INTO library_account_follow_roles (account_id, role)
+                 VALUES ('account-1', 'following');
+                 INSERT INTO library_preferences (path, value_type, updated_at)
+                 VALUES ('display.optional', 'null', 1000);
+                 INSERT INTO library_relationships
+                   (subject_type, subject_id, relation_type, object_type, object_id,
+                    created_at, updated_at)
+                 VALUES ('person', 'person-1', 'authored', 'item', 'saved:item-1', 900, 1000);
+                 INSERT INTO library_field_clocks
+                   (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at)
+                 VALUES ('feed_item', 'saved:item-1', 'saved', 'actor-1', 1, 'operation-1', 1000);
+                 INSERT INTO library_tombstones
+                   (entity_type, entity_id, actor_id, counter, operation_id, deleted_at)
+                 VALUES ('rss_feed', 'removed-feed', 'actor-1', 2, 'operation-2', 1000);
+                 INSERT INTO library_actors
+                   (actor_id, actor_kind, public_key, accepted_counter, created_at, updated_at)
+                 VALUES ('actor-1', 'desktop', 'public-key', 2, 500, 1000);
+                 INSERT INTO library_receipts
+                   (actor_id, operation_id, status, digest, accepted_at)
+                 VALUES ('actor-1', 'operation-1', 'accepted',
+                         'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1000);",
+            )
+            .expect("complete normalized fixture");
+        let page = export_normalized_checkpoint_page_v2(
+            &source,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .expect("source export");
+        assert!(page.done);
+        let registry_keys: std::collections::HashSet<_> = page
+            .records
+            .iter()
+            .map(|record| record.registry_key.as_str())
+            .collect();
+        assert_eq!(registry_keys.len(), 23);
+        let digest = normalized_checkpoint_digest_v2(&page.records).expect("digest");
+
+        let mut target = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &target,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "stage-activation".into(),
+                library_id: "library-1".into(),
+                authority_epoch: "epoch-1".into(),
+                source_revision: 7,
+                expected_record_count: page.records.len(),
+                expected_checkpoint_digest: digest.clone(),
+                created_at: 1000,
+            },
+        )
+        .expect("begin");
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
+            .expect("stage");
+        let receipt = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
+            .expect("activate");
+        assert_eq!(receipt.checkpoint_digest, digest);
+        assert_eq!(receipt.record_count, page.records.len());
+        let restored = export_normalized_checkpoint_page_v2(
+            &target,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .expect("target export");
+        assert_eq!(restored.records, page.records);
+        let staged_rows: i64 = target
+            .query_row(
+                "SELECT count(*) FROM library_checkpoint_stage_records;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("staged rows");
+        assert_eq!(staged_rows, 0);
     }
 }

@@ -276,6 +276,11 @@ Each record is a closed canonical object with:
 - typed primary key
 - closed typed payload
 
+Finite fractional SQLite values use the registered
+`ieee754_binary64_hex_v1` wrapper on the canonical wire. Native and browser
+importers restore ordinary REAL values only after record and checkpoint
+verification. This preserves every binary64 bit across clients.
+
 The exact canonical UTF-8 record ceiling is 131,072 bytes. The producer measures
 canonical bytes before append and flushes before crossing either page ceiling:
 
@@ -296,11 +301,13 @@ frontier, materialized-state digest, record counts by registry, contiguous page
 identities, exact canonical and stored byte lengths, stored-byte digests,
 transport object identities, and the reachable content-root commitment.
 
-Import writes a fresh staging database. It validates every record before a
-write, rejects unknown or duplicate identity, verifies the manifest and final
-state commitment, crosses a durability barrier, reads the staged database back,
-and activates it by one atomic local pointer change. Partial staging is never
-queryable.
+Import writes exact canonical records into a fresh staging database through
+bounded page transactions. Exact replay is idempotent and changed replay
+fails. Activation materializes every normalized table in one transaction,
+verifies the complete checkpoint digest, content chunks, foreign references,
+header identity, and record count, crosses a durability barrier, reads the
+staged database back, and selects it by one atomic local pointer change.
+Partial staging is never queryable.
 
 ## 10. Operation synchronization
 

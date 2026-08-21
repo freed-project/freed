@@ -63,6 +63,42 @@ describe("normalized SQLite checkpoint contract", () => {
     15_000,
   );
 
+  it("encodes fractional SQLite values as exact canonical binary64 wrappers", () => {
+    const record = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "16_feed_item_signal_score",
+      primaryKey: ["item:one", "essay"],
+      payload: { score: 0.75, signal: "essay", tagged: true },
+    });
+    expect(record.payload.score).toEqual({
+      bits: "3fe8000000000000",
+      codec: "ieee754_binary64_hex_v1",
+    });
+    expect(parseLibraryCoreNormalizedCheckpointRecordV2(record)).toEqual(record);
+  });
+
+  it("rejects malformed and nonfinite binary64 wrappers", () => {
+    const record = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "16_feed_item_signal_score",
+      primaryKey: ["item:one", "essay"],
+      payload: { score: 0.75, signal: "essay", tagged: true },
+    });
+    expect(() =>
+      parseLibraryCoreNormalizedCheckpointRecordV2({
+        ...record,
+        payload: { ...record.payload, score: { bits: "nope", codec: "ieee754_binary64_hex_v1" } },
+      }),
+    ).toThrow(/identity is invalid/);
+    expect(() =>
+      parseLibraryCoreNormalizedCheckpointRecordV2({
+        ...record,
+        payload: {
+          ...record.payload,
+          score: { bits: "7ff0000000000000", codec: "ieee754_binary64_hex_v1" },
+        },
+      }),
+    ).toThrow(/must be finite/);
+  });
+
   it("rejects missing chunks, changed bytes, unknown fields, and shell keys", () => {
     const records = splitLibraryCoreContentV1({
       bytes: new Uint8Array(65_537).fill(7),

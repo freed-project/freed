@@ -22,9 +22,11 @@
 > follower-intent, checkpoint-staging, Drive-control, receipt, backup, and
 > browser semantic foundations. The final normalized schema and closed row
 > registry now produce exact bounded native checkpoint pages directly from
-> SQLite. Staging import, complete mutation and query cutover, PWA SQLite,
-> selective content, one-epoch migration, retired-runtime deletion, and
-> physical-device acceptance remain open.
+> SQLite. Native staging accepts bounded canonical pages, rejects changed
+> replay, verifies the complete digest and content graph, and activates all
+> normalized rows in one transaction. Browser import, complete mutation and
+> query cutover, PWA SQLite, selective content, one-epoch migration,
+> retired-runtime deletion, and physical-device acceptance remain open.
 
 ## Current SQLite sync work
 
@@ -42,9 +44,12 @@
       indexes, manifests, and control tuples.
 - [ ] Remove the Library shell checkpoint record and every whole FeedItem JSON
       checkpoint row.
-- [ ] Import typed normalized records through bounded native and browser
-      SQLite staging transactions, then expose the same exporter in the PWA
-      worker.
+- [x] Stage and activate typed normalized records through bounded native SQLite
+      transactions. Exact replay is idempotent, changed replay fails, finite
+      fractions use exact binary64 wrappers, incomplete content and foreign
+      references fail, and staging bytes are removed after activation.
+- [ ] Expose the same exporter and staging activation contract in the PWA
+      SQLite worker.
 - [ ] Enforce the initial 131,072-byte canonical logical-record ceiling,
       128-record and 2,097,152-byte decoded page ceilings, and 1,048,576-byte
       native source-response ceiling, subject to the pre-freeze benchmark.

@@ -316,6 +316,27 @@ CREATE TABLE IF NOT EXISTS library_receipts (
   CHECK (result_text IS NULL OR result_blob_digest IS NULL)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_checkpoint_stages (
+  stage_id TEXT PRIMARY KEY CHECK (length(CAST(stage_id AS BLOB)) BETWEEN 1 AND 255),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  authority_epoch TEXT NOT NULL CHECK (length(CAST(authority_epoch AS BLOB)) BETWEEN 1 AND 255),
+  source_revision INTEGER NOT NULL CHECK (source_revision >= 0),
+  expected_record_count INTEGER NOT NULL CHECK (expected_record_count >= 1),
+  expected_checkpoint_digest TEXT NOT NULL CHECK (length(expected_checkpoint_digest) = 64 AND expected_checkpoint_digest NOT GLOB '*[^0-9a-f]*'),
+  staged_record_count INTEGER NOT NULL DEFAULT 0 CHECK (staged_record_count >= 0),
+  staged_canonical_bytes INTEGER NOT NULL DEFAULT 0 CHECK (staged_canonical_bytes >= 0),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_checkpoint_stage_records (
+  stage_id TEXT NOT NULL REFERENCES library_checkpoint_stages(stage_id) ON DELETE CASCADE,
+  registry_key TEXT NOT NULL CHECK (length(CAST(registry_key AS BLOB)) BETWEEN 1 AND 64 AND registry_key NOT LIKE '%shell%'),
+  primary_key_canonical BLOB NOT NULL CHECK (length(primary_key_canonical) BETWEEN 1 AND 4096),
+  record_canonical BLOB NOT NULL CHECK (length(record_canonical) BETWEEN 1 AND 131072),
+  record_digest TEXT NOT NULL CHECK (length(record_digest) = 64 AND record_digest NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY (stage_id, registry_key, primary_key_canonical)
+) STRICT, WITHOUT ROWID;
+
 CREATE VIEW IF NOT EXISTS library_checkpoint_export AS
 SELECT
   '00_checkpoint_header' AS registry_key,

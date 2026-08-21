@@ -10,7 +10,7 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "30b9ba59d06324133187f2503f35c96ed698cc2220fbc77b6d01703d7009abbb";
+    "a081e9a8147891f539684e8bf3dc9d3fe3bde251e44988e607c6316d8cd00c2b";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 
@@ -329,6 +329,35 @@ impl CheckpointRecordKind {
                 "chunkContentDigest",
                 "chunkIndex",
             ],
+        }
+    }
+
+    pub const fn fractional_fields(self) -> &'static [&'static str] {
+        use CheckpointRecordKind::*;
+        match self {
+            CheckpointHeader => &[],
+            FeedItem => &["locationLat", "locationLng", "priority"],
+            FeedItemMedia => &[],
+            FeedItemTopic => &[],
+            FeedItemTag => &[],
+            FeedItemHighlight => &[],
+            FeedItemSignal => &[],
+            FeedItemSignalScore => &["score"],
+            FeedItemEvent => &["confidence"],
+            RssFeed => &[],
+            Person => &[],
+            PersonTag => &[],
+            PersonReachOut => &[],
+            Account => &[],
+            AccountFollowRole => &[],
+            Preference => &["realValue"],
+            Relationship => &[],
+            FieldClock => &[],
+            Tombstone => &[],
+            ActorState => &[],
+            Receipt => &[],
+            BlobDescriptor => &[],
+            ContentChunk => &[],
         }
     }
 }

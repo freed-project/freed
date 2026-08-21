@@ -64,6 +64,7 @@ function assertContract(contract) {
     "checkpointFormat",
     "checkpointRecords",
     "contractVersion",
+    "fractionalFields",
     "limits",
     "mutations",
     "protocolVersion",
@@ -115,6 +116,7 @@ function assertContract(contract) {
   ]);
   let previous = "";
   const payloads = new Set();
+  const registryKeys = new Set();
   for (const entry of contract.checkpointRecords) {
     if (
       Object.keys(entry).sort().join(",") !==
@@ -133,8 +135,21 @@ function assertContract(contract) {
       throw new TypeError("checkpoint record payload names must be unique");
     }
     previous = entry.registryKey;
+    registryKeys.add(entry.registryKey);
     payloads.add(entry.payload);
     assertSortedUniqueFields(entry.fields, `${entry.registryKey} fields`);
+  }
+  for (const [registryKey, fields] of Object.entries(contract.fractionalFields)) {
+    const entry = contract.checkpointRecords.find(
+      (candidate) => candidate.registryKey === registryKey,
+    );
+    if (!registryKeys.has(registryKey) || entry === undefined) {
+      throw new TypeError("fractional field registry key is unsupported");
+    }
+    assertSortedUniqueFields(fields, `${registryKey} fractional fields`);
+    if (fields.some((field) => !entry.fields.includes(field))) {
+      throw new TypeError("fractional field is not in its checkpoint payload");
+    }
   }
 }
 
@@ -162,6 +177,7 @@ export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDige
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 
 export const LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY = ${entries} as const;
+export const LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS = ${JSON.stringify(contract.fractionalFields, null, 2)} as const;
 export type LibraryCoreCheckpointRegistryEntry = (typeof LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY)[number];
 export type LibraryCoreCheckpointRegistryKey = LibraryCoreCheckpointRegistryEntry["registryKey"];
 export type LibraryCoreCheckpointPayloadKind = LibraryCoreCheckpointRegistryEntry["payload"];
@@ -207,6 +223,12 @@ function rustSource(contract, schemaDigest) {
       (entry) =>
         `            ${rustVariant(entry.payload)} => &[\n${entry.fields.map((field) => `                ${JSON.stringify(field)},`).join("\n")}\n            ],`,
     )
+    .join("\n");
+  const fractionalFieldVariants = contract.checkpointRecords
+    .map((entry) => {
+      const fields = contract.fractionalFields[entry.registryKey] ?? [];
+      return `            ${rustVariant(entry.payload)} => &[${fields.map((field) => JSON.stringify(field)).join(", ")}],`;
+    })
     .join("\n");
   const operations = contract.mutations
     .map((value) => `    ${JSON.stringify(value)},`)
@@ -256,6 +278,13 @@ ${recordVariants}
         use CheckpointRecordKind::*;
         match self {
 ${fieldVariants}
+        }
+    }
+
+    pub const fn fractional_fields(self) -> &'static [&'static str] {
+        use CheckpointRecordKind::*;
+        match self {
+${fractionalFieldVariants}
         }
     }
 }

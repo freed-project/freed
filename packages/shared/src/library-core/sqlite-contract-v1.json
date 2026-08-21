@@ -10,6 +10,12 @@
     "nativeExportResponseBytes": 1048576,
     "contentChunkBytes": 65536
   },
+  "fractionalFields": {
+    "10_feed_item": ["locationLat", "locationLng", "priority"],
+    "16_feed_item_signal_score": ["score"],
+    "17_feed_item_event": ["confidence"],
+    "50_preference": ["realValue"]
+  },
   "checkpointRecords": [
     {
       "registryKey": "00_checkpoint_header",
