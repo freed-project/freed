@@ -9,6 +9,10 @@ const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const FEED_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FEED_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_MAXIMUM_CURSOR_BYTES: usize = 5_540;
+const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
+const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
+const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
 const CURSOR_FIXED_BYTES: usize = 59;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,10 +31,17 @@ pub struct NormalizedFacetSummaryRequestV1 {
     pub schema_version: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferencesSnapshotRequestV1 {
+    pub schema_version: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
+    PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,10 +117,32 @@ pub struct NormalizedFacetSummaryResponseV1 {
     pub summary: NormalizedFacetSummaryV1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceLeafV1 {
+    pub boolean_value: Option<bool>,
+    pub integer_value: Option<i64>,
+    pub path: String,
+    pub real_value: Option<f64>,
+    pub text_value: Option<String>,
+    pub updated_at: i64,
+    pub value_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferencesSnapshotResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedPreferenceLeafV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
+    PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -445,6 +478,96 @@ fn query_facet_summary(
     Ok(response)
 }
 
+fn query_preferences_snapshot(
+    connection: &mut Connection,
+    request: NormalizedPreferencesSnapshotRequestV1,
+) -> Result<NormalizedPreferencesSnapshotResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 {
+        return Err(invalid("normalized preferences query identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "preferences_snapshot_v1")
+        .ok_or(invalid("normalized preferences query program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map([], |row| {
+        Ok(NormalizedPreferenceLeafV1 {
+            boolean_value: optional_boolean(row, "booleanValue")?,
+            integer_value: row.get("integerValue")?,
+            path: row.get("path")?,
+            real_value: row.get("realValue")?,
+            text_value: row.get("textValue")?,
+            updated_at: row.get("updatedAt")?,
+            value_type: row.get("valueType")?,
+        })
+    })?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS || rows.len() >= program.1 {
+        return Err(invalid("normalized preferences exceed their row bound"));
+    }
+    for row in &rows {
+        let populated = [
+            row.boolean_value.is_some(),
+            row.integer_value.is_some(),
+            row.real_value.is_some(),
+            row.text_value.is_some(),
+        ];
+        let expected = [
+            row.value_type == "boolean",
+            row.value_type == "integer",
+            row.value_type == "real",
+            row.value_type == "text",
+        ];
+        if row.path.is_empty()
+            || row.path.len() > PREFERENCE_PATH_MAXIMUM_BYTES
+            || row
+                .text_value
+                .as_ref()
+                .is_some_and(|value| value.len() > PREFERENCE_TEXT_MAXIMUM_BYTES)
+            || !valid_safe_integer(row.updated_at)
+            || row
+                .integer_value
+                .is_some_and(|value| !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
+            || row.real_value.is_some_and(|value| !value.is_finite())
+            || !matches!(
+                row.value_type.as_str(),
+                "boolean" | "integer" | "real" | "text" | "null"
+            )
+            || populated != expected
+        {
+            return Err(invalid("normalized preference row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].path >= pair[1].path) {
+        return Err(invalid("normalized preferences are not in binary order"));
+    }
+    rows.shrink_to_fit();
+    let response = NormalizedPreferencesSnapshotResponseV1 {
+        query_id: "preferences_snapshot_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized preferences response is invalid"))?
+        .len()
+        > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized preferences response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 pub fn query_normalized_v1(
     connection: &mut Connection,
     request: NormalizedQueryRequestV1,
@@ -456,6 +579,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::FeedPage(request) => Ok(NormalizedQueryResponseV1::FeedPage(
             query_feed_page(connection, request)?,
         )),
+        NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
+            Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
+                query_preferences_snapshot(connection, request)?,
+            ))
+        }
     }
 }
 
@@ -636,5 +764,58 @@ mod tests {
         )
         .expect_err("stale cursor");
         assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_preferences_dispatch_returns_closed_leaves_in_binary_order() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 9, 1000);
+                 INSERT INTO library_preferences
+                   (path, value_type, boolean_value, integer_value, real_value,
+                    text_value, updated_at)
+                   VALUES
+                     ('😀', 'boolean', 1, NULL, NULL, NULL, 1),
+                     ('alpha', 'integer', NULL, 3, NULL, NULL, 2),
+                     ('null-value', 'null', NULL, NULL, NULL, NULL, 3),
+                     ('real-value', 'real', NULL, NULL, 0.5, NULL, 4),
+                     ('text-value', 'text', NULL, NULL, NULL, 'neon', 5),
+                     ('', 'boolean', 0, NULL, NULL, NULL, 6);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let NormalizedQueryResponseV1::PreferencesSnapshot(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1 {
+                schema_version: 1,
+            }),
+        )
+        .expect("preferences snapshot") else {
+            panic!("preferences response");
+        };
+        assert_eq!(response.source.projection_revision, 9);
+        assert_eq!(
+            response
+                .rows
+                .iter()
+                .map(|row| row.path.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "alpha",
+                "null-value",
+                "real-value",
+                "text-value",
+                "\u{e000}",
+                "😀"
+            ]
+        );
+        assert_eq!(response.rows[0].integer_value, Some(3));
+        assert_eq!(response.rows[2].real_value, Some(0.5));
+        assert_eq!(response.rows[3].text_value.as_deref(), Some("neon"));
     }
 }

@@ -19,6 +19,8 @@ import {
   parseLibraryCoreFeedPageResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
+  parseLibraryCorePreferencesSnapshotRequestV1,
+  parseLibraryCorePreferencesSnapshotResponseV1,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
   decodeLibraryCoreCanonicalValue,
@@ -38,6 +40,8 @@ import {
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryResponseV1,
+  type LibraryCorePreferencesSnapshotRequestV1,
+  type LibraryCorePreferencesSnapshotResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -597,7 +601,72 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryFeedPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "preferences_snapshot_v1":
+        return this.#queryPreferencesSnapshot(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
     }
+  }
+
+  #queryPreferencesSnapshot(
+    input: LibraryCorePreferencesSnapshotRequestV1,
+  ): LibraryCorePreferencesSnapshotResponseV1 {
+    const request = parseLibraryCorePreferencesSnapshotRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const sourceRows = this.#database.exec({
+      sql: "SELECT library_id, source_revision FROM library_meta WHERE singleton_id = 1;",
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (sourceRows.length !== 1) {
+      throw new Error("PWA Library SQLite has no active Library");
+    }
+    const generationId = text(sourceRows[0]![0], "Library identity");
+    const sourceRevision = safeInteger(
+      sourceRows[0]![1],
+      "Library source revision",
+    );
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preferences_snapshot_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length >= program.maximumScanRows) {
+      throw new Error("PWA Library SQLite preferences exceed their row bound");
+    }
+    const response = {
+      queryId: "preferences_snapshot_v1" as const,
+      rows: rawRows.map((row) => ({
+        booleanValue:
+          row.booleanValue === null
+            ? null
+            : nullableBoolean(row.booleanValue, "preference boolean"),
+        integerValue: nullableInteger(row.integerValue, "preference integer"),
+        path: text(row.path, "preference path"),
+        realValue:
+          row.realValue === null
+            ? null
+            : typeof row.realValue === "number" &&
+                Number.isFinite(row.realValue)
+              ? row.realValue
+              : (() => {
+                  throw new Error("preference real is invalid");
+                })(),
+        textValue: nullableText(row.textValue, "preference text"),
+        updatedAt: safeInteger(row.updatedAt, "preference update time"),
+        valueType: text(row.valueType, "preference value type"),
+      })),
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCorePreferencesSnapshotResponseV1(response);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
   }
 
   #queryFacetSummary(

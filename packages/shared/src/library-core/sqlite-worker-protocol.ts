@@ -15,6 +15,11 @@ import {
   type LibraryCoreFacetSummaryResponseV1,
 } from "./facet-summary-contracts.js";
 import {
+  parseLibraryCorePreferencesSnapshotRequestV1,
+  type LibraryCorePreferencesSnapshotRequestV1,
+  type LibraryCorePreferencesSnapshotResponseV1,
+} from "./preferences-snapshot-contracts.js";
+import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
@@ -27,7 +32,9 @@ import {
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
 export type LibraryCoreSqliteQueryRequest =
-  LibraryCoreFacetSummaryRequestV1 | LibraryCoreFeedPageRequestV1;
+  | LibraryCoreFacetSummaryRequestV1
+  | LibraryCoreFeedPageRequestV1
+  | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
@@ -35,7 +42,9 @@ export type LibraryCoreSqliteQueryResponseFor<
   ? LibraryCoreFacetSummaryResponseV1
   : T extends LibraryCoreFeedPageRequestV1
     ? LibraryCoreFeedPageResponseV1
-    : never;
+    : T extends LibraryCorePreferencesSnapshotRequestV1
+      ? LibraryCorePreferencesSnapshotResponseV1
+      : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -92,6 +101,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFacetSummaryResponseV1
   | LibraryCoreFeedPageResponseV1
+  | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2;
 
@@ -169,11 +179,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
     parseLibraryCoreNormalizedCheckpointStageIdV2(value.stageId);
   } else if (value.kind === "query") {
-    const query =
-      isClosedRecord(value.query) &&
-      value.query.queryId === "library_facet_summary_v1"
+    const query = isClosedRecord(value.query)
+      ? value.query.queryId === "library_facet_summary_v1"
         ? parseLibraryCoreFacetSummaryRequestV1(value.query)
-        : parseLibraryCoreFeedPageRequestV1(value.query);
+        : value.query.queryId === "preferences_snapshot_v1"
+          ? parseLibraryCorePreferencesSnapshotRequestV1(value.query)
+          : parseLibraryCoreFeedPageRequestV1(value.query)
+      : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;

@@ -318,6 +318,32 @@ describe("PWA Library Core SQLite engine", () => {
         totalCount: 3,
       },
     });
+    database.exec(`
+      INSERT INTO library_preferences
+        (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at)
+      VALUES
+        ('😀', 'boolean', 1, NULL, NULL, NULL, 1),
+        ('alpha', 'integer', NULL, 3, NULL, NULL, 2),
+        ('real-value', 'real', NULL, NULL, 0.5, NULL, 3),
+        ('text-value', 'text', NULL, NULL, NULL, 'neon', 4),
+        ('', 'null', NULL, NULL, NULL, NULL, 5);
+    `);
+    expect(
+      engine.query({
+        queryId: "preferences_snapshot_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      queryId: "preferences_snapshot_v1",
+      rows: [
+        { integerValue: 3, path: "alpha", valueType: "integer" },
+        { path: "real-value", realValue: 0.5, valueType: "real" },
+        { path: "text-value", textValue: "neon", valueType: "text" },
+        { path: "\ue000", valueType: "null" },
+        { booleanValue: true, path: "😀", valueType: "boolean" },
+      ],
+      source: { projectionRevision: 7 },
+    });
   });
 
   it("stages bounded normalized records idempotently and rejects changed replay", () => {

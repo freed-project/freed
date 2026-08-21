@@ -79,6 +79,15 @@ import {
   LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
   LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
 } from "./facet-summary-contracts.js";
+import {
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA,
+  LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY,
+} from "./preferences-snapshot-contracts.js";
 import type { LibraryCoreQueryId } from "./sqlite-contract.generated.js";
 
 export {
@@ -208,6 +217,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -222,6 +232,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -232,6 +243,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
@@ -239,6 +251,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
@@ -246,6 +259,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
@@ -328,7 +342,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -341,7 +356,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
@@ -350,19 +366,22 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
-    | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION;
+    | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
-    | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY;
+    | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
-    | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS;
+    | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -874,13 +893,28 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   preferences_snapshot_v1: plannedQuery({
-    defaultLimit: 1,
-    maximumLimit: 1,
-    maximumRows: 1,
+    defaultLimit: LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS,
+    maximumLimit: LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS,
+    maximumRows: LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_ROWS,
+    maximumResponseBytes:
+      LIBRARY_CORE_PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES,
     cursor: interactiveCursor("single_page"),
     totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["preferences"],
+    currentKinds: ["preferences_snapshot_v1"],
+    requestSchema: LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_PREFERENCES_SNAPSHOT_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "path", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "path",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   provider_action_claim_v1: plannedQuery({
     defaultLimit: 10,

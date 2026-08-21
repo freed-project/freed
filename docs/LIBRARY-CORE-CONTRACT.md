@@ -267,6 +267,12 @@ No query may scan or sort the full corpus in JavaScript. No query returns an
 unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
 typed summaries. A view refreshes only invalidated pages and aggregates.
 
+Synchronized preferences are individual typed SQLite leaves. The
+`preferences_snapshot_v1` query returns at most 512 leaves and 2 MiB in SQLite
+binary path order. Each leaf contains exactly one boolean, integer, real, text,
+or null value. Neither native nor browser code reconstructs a monolithic
+settings object at the storage or transport boundary.
+
 ## 9. Normalized checkpoint v2
 
 The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version

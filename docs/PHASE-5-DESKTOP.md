@@ -57,6 +57,11 @@
         browser and native dispatch. It returns one source-fenced typed
         aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
         FeedItem rows, and never sends item rows to React.
+  - [x] `preferences_snapshot_v1` now returns normalized preference leaves
+        through the native core in exact SQLite binary path order. The closed
+        response preserves boolean, integer, real, text, and null values,
+        rejects mismatched value columns, and enforces 512-row and 2 MiB
+        ceilings without constructing a settings shell.
 - [ ] Route the exhaustive mutation registry through atomic native
       journal-plus-materialization transactions with exact retry receipts.
   - [x] The dormant `feed_item_read_assignment` core path now uses its
