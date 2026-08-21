@@ -1381,9 +1381,19 @@ pub(crate) mod tests {
                         "kind": "social",
                         "provider": "instagram",
                         "externalId": "verified",
+                        "handle": "verified_account",
+                        "displayName": "Verified Account",
                         "discoveredFrom": "manual_entry",
                         "firstSeenAt": timestamp_ms,
                         "lastSeenAt": timestamp_ms,
+                        "followRosterActive": true,
+                        "followRosterRoles": ["follower", "following"],
+                        "sampleDataFingerprint": {
+                            "marker": "freed.sample-data.v1",
+                            "batchId": "batch:verified",
+                            "generatedAt": timestamp_ms,
+                            "generatorVersion": 1
+                        },
                         "createdAt": timestamp_ms,
                         "updatedAt": timestamp_ms
                     }

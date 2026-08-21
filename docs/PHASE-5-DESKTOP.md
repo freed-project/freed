@@ -112,6 +112,11 @@
         generated mutation program. Exact sample-data fingerprints are
         admitted, unknown shapes fail closed, and a removed feed cannot be
         resurrected within the storage epoch.
+  - [x] Account upsert now writes its typed root columns and replaces its
+        normalized follow-role rows through generated contract statements in
+        one verified transaction. Person references and provider identity
+        constraints remain enforced by SQLite, and a removed Account cannot be
+        resurrected within the storage epoch.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

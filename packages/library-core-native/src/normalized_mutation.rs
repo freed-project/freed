@@ -461,6 +461,28 @@ fn materialize_member(
             program,
         ),
         "remove" => materialize_remove(transaction, verified, member_index, program),
+        "account_upsert" => {
+            let member = &verified.members[member_index];
+            let account =
+                member
+                    .account_json
+                    .as_deref()
+                    .ok_or(NormalizedSqliteError::InvalidRequest(
+                        "normalized Account payload is missing",
+                    ))?;
+            let changed = transaction.execute(
+                program.materialize_sql,
+                params![member.entity_id, account],
+            )?;
+            if changed != 0 {
+                transaction.execute(program.dependent_delete_sql, [&member.entity_id])?;
+                transaction.execute(
+                    program.dependent_insert_sql,
+                    params![member.entity_id, account],
+                )?;
+            }
+            Ok(())
+        }
         "rss_feed_upsert" => {
             let member = &verified.members[member_index];
             let feed =
@@ -1406,6 +1428,124 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("RSS feed count"),
+            0
+        );
+    }
+
+    #[test]
+    fn signed_account_upsert_materializes_root_and_follow_roles_without_resurrection() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute(
+                "INSERT INTO library_persons (
+                   id, name, relationship_status, care_level, created_at, updated_at
+                 ) VALUES ('person:verified', 'Verified Person', 'friend', 3, 1, 1);",
+                [],
+            )
+            .expect("insert Account owner");
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("account:new", 1_000)],
+            "account_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert Account");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT person_id, provider, external_id, handle, display_name,
+                            follow_roster_active, sample_batch_id, updated_at
+                     FROM library_accounts WHERE id = 'account:new';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, i64>(5)?,
+                            row.get::<_, String>(6)?,
+                            row.get::<_, i64>(7)?,
+                        ))
+                    },
+                )
+                .expect("normalized Account"),
+            (
+                "person:verified".to_owned(),
+                "instagram".to_owned(),
+                "verified".to_owned(),
+                "verified_account".to_owned(),
+                "Verified Account".to_owned(),
+                1,
+                "batch:verified".to_owned(),
+                1_000,
+            )
+        );
+        assert_eq!(
+            connection
+                .prepare(
+                    "SELECT role FROM library_account_follow_roles
+                     WHERE account_id = 'account:new' ORDER BY role;",
+                )
+                .expect("prepare Account role query")
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("query Account roles")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("collect Account roles"),
+            vec!["follower".to_owned(), "following".to_owned()]
+        );
+
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:remove",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &[("account:new", 1_100)],
+            "account_remove",
+        );
+        let remove_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+                .expect("remove Account");
+        let blocked_upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:account:upsert-after-remove",
+            3,
+            Some(&remove_receipt.committed_operation_id),
+            &remove_receipt.committed_chain_digest,
+            &[("account:new", 1_200)],
+            "account_upsert",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &blocked_upsert, 2_200)
+            .expect("journal blocked Account resurrection");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_accounts WHERE id = 'account:new';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Account count"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_account_follow_roles
+                     WHERE account_id = 'account:new';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("Account role count"),
             0
         );
     }

@@ -425,6 +425,14 @@ time for the row revision. A feed tombstone is final within the storage epoch,
 so a later upsert can be journaled without resurrecting the removed feed. No
 feed shell or whole Library object participates.
 
+Account upsert writes the complete synchronized Account root into typed scalar
+columns, then replaces its normalized follow-role set from the same verified
+payload and inside the same transaction. Foreign person references must resolve,
+provider and external identity uniqueness remains enforced by SQLite, and an
+Account tombstone blocks later resurrection. The contract owns both the root
+statement and dependent role statements, so no runtime adapter can invent a
+second materialization policy.
+
 Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a
 transport adapter for these immutable objects. Provider endpoints, headers,
