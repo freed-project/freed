@@ -11,13 +11,10 @@ import {
   type FeedItem,
   type FilterOptions,
 } from "@freed/shared";
+import { LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION } from "@freed/shared/library-core";
 
 import { usePlatform } from "../context/PlatformContext.js";
-import {
-  collectArchivableFeedActionIds,
-  collectUnreadFeedActionIds,
-  getFeedActionCounts,
-} from "../lib/feed-action-scope.js";
+import { getFeedActionCounts } from "../lib/feed-action-scope.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
 
 interface ScopeCounts {
@@ -145,8 +142,9 @@ function compactScopeCounts(
 /**
  * Supply command-palette Library facts without mounting the Desktop corpus.
  *
- * Complex scope counts and bulk execution traverse the same filtered bounded
- * SQLite feed reader as the visible Feed. Missing or failed readers fail closed.
+ * Complex scope counts use the same filtered bounded SQLite feed reader as the
+ * visible Feed. Bulk execution stays behind one platform-owned SQLite action
+ * boundary, so React never retains the resolved entity set.
  */
 export function useLibraryCommandPaletteReader({
   activeFilter,
@@ -161,6 +159,7 @@ export function useLibraryCommandPaletteReader({
 }: UseLibraryCommandPaletteReaderOptions): LibraryCommandPaletteReaderResult {
   const platform = usePlatform();
   const {
+    executeLibraryScopeAction,
     openBoundedFeedReader,
     openBoundedFriendsFeedReader,
     readLibraryFacetSummary,
@@ -362,52 +361,26 @@ export function useLibraryCommandPaletteReader({
         JSON.stringify(normalizeLibraryCoreFeedBrowseFilterV1(state.activeFilter)) ===
           normalizedFilterSignature;
       const currentState = store.getState();
-      if (!matchesCurrentScope(currentState)) return;
-      if (inputHasQuery) {
-        const ids =
-          kind === "read"
-            ? collectUnreadFeedActionIds(commandScopeItems)
-            : collectArchivableFeedActionIds(commandScopeItems);
-        if (kind === "read") await currentState.markItemsAsRead(ids);
-        else await currentState.archiveItems(ids);
-        return;
-      }
-      if (!openScopeReader) return;
-
-      const ids: string[] = [];
-      const reader = await openScopeReader(stableFilter.input, Date.now());
-      try {
-        while (latestQueryFenceKey.current === queryFenceKey) {
-          const state = store.getState();
-          if (!matchesCurrentScope(state)) return;
-          const page = await reader.readNext();
-          if (page.length === 0) break;
-          ids.push(
-            ...(kind === "read"
-              ? collectUnreadFeedActionIds(page)
-              : collectArchivableFeedActionIds(page)),
-          );
-        }
-      } finally {
-        await reader.close();
-      }
-      if (latestQueryFenceKey.current !== queryFenceKey) return;
-      const state = store.getState();
-      if (!matchesCurrentScope(state)) return;
-      if (kind === "read") await state.markItemsAsRead(ids);
-      else await state.archiveItems(ids);
+      if (!matchesCurrentScope(currentState) || !executeLibraryScopeAction) return;
+      await executeLibraryScopeAction({
+        action: kind,
+        filter: normalizedFilter,
+        identityMode,
+        query: inputHasQuery ? searchQuery.trim() : null,
+        schemaVersion: LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION,
+      });
     },
     [
       activeView,
-      commandScopeItems,
+      executeLibraryScopeAction,
+      identityMode,
       inputHasQuery,
       normalizedFilter,
       normalizedFilterSignature,
-      openScopeReader,
       queryFenceKey,
       queryIsCommitted,
+      searchQuery,
       sourceVersion,
-      stableFilter,
       store,
     ],
   );

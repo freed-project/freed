@@ -507,6 +507,7 @@ export async function captureDomFeed(
 | 5.63 | Make shared search use only normalized SQLite search pages, retain at most 100 ranked cards, and delete the renderer MiniSearch index, corpus filter, scan fallback, and package dependency | High | ✓ Complete |
 | 5.64 | Delete SearchJump's rollback key, compatibility corpus lease, renderer-derived facets, and selected-item fallback so missing or failed SQLite readers fail closed | High | ✓ Complete |
 | 5.65 | Route SearchJump complex counts and bulk selection through the typed source-fenced feed reader and delete its generic whole-item scanner dependency | High | ✓ Complete |
+| 5.66 | Move SearchJump bulk resolution outside React, cover the complete SQLite feed or search scope, commit one explicit transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required | High | ✓ Complete |
 
 ---
 

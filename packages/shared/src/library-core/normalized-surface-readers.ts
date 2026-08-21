@@ -413,7 +413,7 @@ export async function searchLibraryCoreNormalizedItemsV1(
   input: LibraryCoreNormalizedSearchInputV1,
   visit: (
     matches: readonly LibraryCoreNormalizedSearchMatchV1[],
-  ) => "continue" | "stop",
+  ) => "continue" | "stop" | Promise<"continue" | "stop">,
 ): Promise<void> {
   const parsedFilter = parseLibraryCoreFeedBrowseFilterV1(
     normalizeLibraryCoreFeedBrowseFilterV1(input.filter),
@@ -442,7 +442,7 @@ export async function searchLibraryCoreNormalizedItemsV1(
     });
     if (
       response.rows.length > 0 &&
-      visit(
+      (await visit(
         response.rows.map((row) => ({
           item: {
             ...libraryCoreFeedCardToItemV1(row.card),
@@ -450,7 +450,7 @@ export async function searchLibraryCoreNormalizedItemsV1(
           },
           score: row.score,
         })),
-      ) === "stop"
+      )) === "stop"
     ) {
       return;
     }

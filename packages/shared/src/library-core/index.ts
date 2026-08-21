@@ -55,6 +55,7 @@ export * from "./item-reader-body-contracts.js";
 export * from "./item-scan-contracts.js";
 export * from "./search-contracts.js";
 export * from "./search-page-contracts.js";
+export * from "./scope-action-contracts.js";
 export * from "./surface-items-contracts.js";
 export * from "./secondary-surface-contracts.js";
 export * from "./facet-summary-contracts.js";

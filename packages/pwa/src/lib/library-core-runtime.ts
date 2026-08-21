@@ -26,11 +26,15 @@ import {
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   searchLibraryCoreNormalizedItemsV1,
+  executeLibraryCoreScopeActionV1,
+  libraryCoreFeedBrowseFilterInputFromV1,
   readLibraryCoreNormalizedSurfaceItemsV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type FeedItemUserStateAssignmentFieldV1,
   type LibraryCoreOperationInstanceId,
+  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionReceiptV1,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type {
@@ -783,6 +787,58 @@ export const searchPwaLibraryCoreItems: SearchLibraryItems = async (
     },
     visit,
   );
+
+/** Resolve a complete SQLite scope and emit only bounded explicit intents. */
+export async function executePwaLibraryCoreScopeAction(
+  request: LibraryCoreScopeActionRequestV1,
+): Promise<LibraryCoreScopeActionReceiptV1> {
+  const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  return executeLibraryCoreScopeActionV1(request, {
+    scan: async (visit) => {
+      if (request.query !== null) {
+        await searchLibraryCoreNormalizedItemsV1(
+          NORMALIZED_READER_RUNTIME,
+          {
+            filter,
+            identityMode: request.identityMode,
+            query: request.query,
+          },
+          async (matches) => {
+            await visit(matches.map((match) => match.item));
+            return "continue" as const;
+          },
+        );
+        return;
+      }
+      const reader = await openLibraryCoreNormalizedFeedReaderV1(
+        NORMALIZED_READER_RUNTIME,
+        filter,
+        Date.now(),
+        request.identityMode,
+      );
+      try {
+        for (;;) {
+          const items = await reader.readNext();
+          if (items.length === 0) return;
+          await visit(items);
+        }
+      } finally {
+        await reader.close();
+      }
+    },
+    commitBatch: async (action, entityIds) => {
+      if (action === "read") {
+        await enqueuePwaLibraryCoreReadAssignments(entityIds);
+      } else {
+        await enqueuePwaLibraryCoreUserStateAssignments(
+          entityIds,
+          "archived",
+          true,
+        );
+      }
+    },
+  });
+}
 
 /** Read one compact item detail through normalized SQLite. */
 export async function readPwaLibraryCoreItemDetail(

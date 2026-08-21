@@ -420,6 +420,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.35 | Make shared search use only normalized OPFS SQLite search pages, retain at most 100 ranked cards, and delete the browser MiniSearch index, corpus filter, scan fallback, compatibility tests, and package dependency | High | ✓ Complete |
 | 6.36 | Delete SearchJump's rollback key, compatibility corpus lease, browser-derived facets, and selected-item fallback so missing or failed OPFS SQLite readers fail closed | High | ✓ Complete |
 | 6.37 | Route SearchJump complex counts and bulk selection through the typed source-fenced OPFS feed reader and delete its generic whole-item scanner dependency | High | ✓ Complete |
+| 6.38 | Move SearchJump bulk resolution outside React, cover the complete OPFS SQLite feed or search scope, emit one explicit signed transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required | High | ✓ Complete |
 
 ---
 

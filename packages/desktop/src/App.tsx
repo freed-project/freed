@@ -5,7 +5,11 @@ import {
   type ProviderRiskId,
   type ReleaseChannel,
 } from "@freed/shared";
-import { searchLibraryCoreNormalizedItemsV1 } from "@freed/shared/library-core";
+import {
+  executeLibraryCoreScopeActionV1,
+  libraryCoreFeedBrowseFilterInputFromV1,
+  searchLibraryCoreNormalizedItemsV1,
+} from "@freed/shared/library-core";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
@@ -75,6 +79,8 @@ import {
 import {
   clearLocalDoc,
   acquireLegacyRendererItems,
+  docArchiveItems,
+  docMarkItemsAsRead,
 } from "./lib/library-client";
 import {
   openBoundedDesktopFeedReader,
@@ -282,6 +288,45 @@ const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
     },
     visit,
   );
+
+const executeDesktopLibraryScopeAction: NonNullable<
+  PlatformConfig["executeLibraryScopeAction"]
+> = async (request) => {
+  const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  return executeLibraryCoreScopeActionV1(request, {
+    scan: async (visit) => {
+      if (request.query !== null) {
+        await searchLibraryCoreItemsForDesktop(
+          request.query,
+          0,
+          async (matches) => {
+            await visit(matches.map((match) => match.item));
+            return "continue" as const;
+          },
+          { filter, identityMode: request.identityMode },
+        );
+        return;
+      }
+      const reader =
+        request.identityMode === "friends"
+          ? await openBoundedDesktopFriendsFeedReader(filter, Date.now())
+          : await openBoundedDesktopFeedReader(filter, Date.now());
+      try {
+        for (;;) {
+          const items = await reader.readNext();
+          if (items.length === 0) return;
+          await visit(items);
+        }
+      } finally {
+        await reader.close();
+      }
+    },
+    commitBatch: (action, entityIds) =>
+      action === "read"
+        ? docMarkItemsAsRead([...entityIds])
+        : docArchiveItems([...entityIds]),
+  });
+};
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
@@ -1541,6 +1586,10 @@ function App() {
       searchLibraryItems:
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? searchLibraryCoreItemsForDesktop
+          : undefined,
+      executeLibraryScopeAction:
+        tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
+          ? executeDesktopLibraryScopeAction
           : undefined,
       readFeedSignalCounts:
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()

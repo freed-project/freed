@@ -36,7 +36,11 @@ import type {
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
-import type { LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreScopeActionReceiptV1,
+  LibraryCoreScopeActionRequestV1,
+} from "@freed/shared/library-core";
 import type {
   ImportSummary,
   ProgressFn,
@@ -138,7 +142,9 @@ export interface ScoredLibraryItem {
 export type SearchLibraryItems = (
   query: string,
   searchCorpusVersion: number,
-  visit: (matches: readonly ScoredLibraryItem[]) => LibraryItemScanDecision,
+  visit: (
+    matches: readonly ScoredLibraryItem[],
+  ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
   options?: Readonly<{
     filter?: FilterOptions;
     identityMode?: "all_content" | "friends";
@@ -645,6 +651,11 @@ export interface PlatformConfig {
 
   /** Search a persistent local projection without building an in-memory corpus index. */
   searchLibraryItems?: SearchLibraryItems;
+
+  /** Resolve and commit one complete filtered SQLite action outside React. */
+  executeLibraryScopeAction?: (
+    request: LibraryCoreScopeActionRequestV1,
+  ) => Promise<LibraryCoreScopeActionReceiptV1>;
 
   /** Count signal presets inside the platform row store without streaming the corpus. */
   readFeedSignalCounts?: ReadFeedSignalCounts;

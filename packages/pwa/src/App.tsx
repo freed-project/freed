@@ -77,6 +77,7 @@ import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
   ensurePwaLibraryCoreLocalSampleState,
+  executePwaLibraryCoreScopeAction,
   openPwaLibraryCoreFeedReader,
   openPwaLibraryCoreFriendsFeedReader,
   openPwaLibraryCoreSavedFeedReader,
@@ -468,6 +469,7 @@ function App() {
       openBoundedSavedFeedReader: openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
+      executeLibraryScopeAction: executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
       readLibraryFacetSummary: readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,

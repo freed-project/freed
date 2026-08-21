@@ -831,6 +831,11 @@ describe("command palette", () => {
 
   it("archives current scope read items from bounded SQLite pages", async () => {
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const toggleArchived = vi.fn(async () => {});
     const visibleReadPost = createItem({
       globalId: "instagram:visible-read-post",
@@ -858,6 +863,7 @@ describe("command palette", () => {
     });
     const scopedItems = [visibleReadPost, unreadPost, savedPost];
     const platform = createPlatform(store, {
+      executeLibraryScopeAction,
       openBoundedFeedReader: boundedReaderFactory(scopedItems),
     });
     const render = renderNode(
@@ -881,13 +887,21 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(archiveItems).toHaveBeenCalledTimes(1);
-    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
+    expect(executeLibraryScopeAction).toHaveBeenCalledTimes(1);
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "archive", query: null }),
+    );
+    expect(archiveItems).not.toHaveBeenCalled();
     expect(toggleArchived).not.toHaveBeenCalled();
   });
 
   it("rejects a captured bulk action when the visible query is not committed", async () => {
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const scopedItem = createItem({
       globalId: "query-result",
       content: { text: "cats and dogs", mediaUrls: [], mediaTypes: [] },
@@ -905,7 +919,7 @@ describe("command palette", () => {
       items: [scopedItem],
       searchQuery: "cats",
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, { executeLibraryScopeAction });
     let result: LibraryCommandPaletteReaderResult | null = null;
     const currentResult = () => result;
     const onResult = (next: LibraryCommandPaletteReaderResult) => {
@@ -934,8 +948,10 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).toHaveBeenCalledWith(["query-result"]);
-    archiveItems.mockClear();
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "archive", query: "cats" }),
+    );
+    executeLibraryScopeAction.mockClear();
 
     act(() => render.root.render(probe("dogs")));
     await flush();
@@ -944,7 +960,7 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
 
     act(() => render.root.render(probe("")));
     await flush();
@@ -952,7 +968,7 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
-    expect(archiveItems).not.toHaveBeenCalled();
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
 
     act(() => render.root.render(probe("cats", 1)));
     await flush();
@@ -960,6 +976,7 @@ describe("command palette", () => {
     await act(async () => {
       await capturedAction();
     });
+    expect(executeLibraryScopeAction).not.toHaveBeenCalled();
     expect(archiveItems).not.toHaveBeenCalled();
   });
 
@@ -1009,6 +1026,11 @@ describe("command palette", () => {
 
   it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
     const archiveItems = vi.fn(async () => {});
+    const executeLibraryScopeAction = vi.fn(async () => ({
+      affectedCount: 1,
+      batchCount: 1,
+      schemaVersion: 1 as const,
+    }));
     const visibleReadPost = createItem({
       globalId: "instagram:visible-read-post",
       platform: "instagram",
@@ -1029,6 +1051,7 @@ describe("command palette", () => {
     });
     const openBoundedFeedReader = vi.fn(boundedReaderFactory(scopedItems));
     const platform = createPlatform(store, {
+      executeLibraryScopeAction,
       openBoundedFeedReader,
     });
     const render = renderNode(
@@ -1066,13 +1089,22 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
+    expect(executeLibraryScopeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "archive",
+        filter: expect.objectContaining({ platform: "rss" }),
+        query: null,
+      }),
+    );
+    expect(archiveItems).not.toHaveBeenCalled();
 
-    archiveItems.mockRejectedValueOnce(new Error("mutation unavailable"));
+    executeLibraryScopeAction.mockRejectedValueOnce(
+      new Error("mutation unavailable"),
+    );
     click(archiveAction!);
     await flush();
     await flush();
-    expect(archiveItems).toHaveBeenCalledTimes(2);
+    expect(executeLibraryScopeAction).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed across SQLite reader errors and recovers on a newer source", async () => {
