@@ -202,6 +202,8 @@ A successful Primary transaction atomically commits:
 - field clocks, tombstones, and relationship effects
 - receipt
 - replication outbox entry
+- authority-signed follower result and immutable result outbox entry
+- actor-scoped follower result cursor
 - invalidation topics
 
 A crash exposes either all of those effects or none. Exact retry returns the
@@ -257,6 +259,25 @@ those exact bytes, and an actor cursor keeps only the next result sequence and
 previous digest. Reusing a transaction or result identity with changed bytes,
 skipping a sequence, changing the authority, or omitting one optimistic field
 fails before settlement.
+
+Accepted admission is produced inside the native authority transaction. The
+Primary allocates the next actor-scoped result sequence, reads the exact
+post-materialization replacement fields, derives the domain-separated body
+digest, signs it with the active epoch authority key, stores the canonical
+bytes in `library_follower_result_outbox`, and advances
+`library_follower_result_cursors`. The authority key and epoch are rechecked
+after `BEGIN IMMEDIATE`. A failure in any result write rolls back the operation
+journal, normalized rows, actor tip, revision, receipts, replication entries,
+invalidations, result bytes, and cursor together. Exact retry returns the
+original canonical result without allocating a sequence or signing again.
+Receipt identities are the accepted operation envelope digests, so they are
+bounded, immutable, and already bound to the corresponding receipt row.
+
+Rejection and `already_applied` production use the same closed result envelope
+and outbox. They do not create a second mutation path. Rejections allocate a
+result without changing canonical product rows. `already_applied` references
+the original result digest. Their native admission branches remain required
+before follower write activation.
 
 ## 8. Query contract
 

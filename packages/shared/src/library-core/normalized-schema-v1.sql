@@ -738,6 +738,38 @@ CREATE INDEX IF NOT EXISTS library_replication_outbox_pending
   ON library_replication_outbox(actor_id, actor_counter)
   WHERE acknowledged_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS library_follower_result_cursors (
+  actor_id TEXT PRIMARY KEY REFERENCES library_actors(actor_id) ON DELETE CASCADE,
+  next_result_sequence INTEGER NOT NULL CHECK (next_result_sequence >= 1),
+  previous_result_digest TEXT CHECK (previous_result_digest IS NULL OR (length(previous_result_digest) = 64 AND previous_result_digest NOT GLOB '*[^0-9a-f]*')),
+  CHECK (
+    (next_result_sequence = 1 AND previous_result_digest IS NULL)
+    OR (next_result_sequence > 1 AND previous_result_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_follower_result_outbox (
+  transaction_id TEXT PRIMARY KEY REFERENCES library_transactions(transaction_id) ON DELETE CASCADE,
+  actor_id TEXT NOT NULL REFERENCES library_actors(actor_id),
+  result_sequence INTEGER NOT NULL CHECK (result_sequence >= 1),
+  previous_result_digest TEXT CHECK (previous_result_digest IS NULL OR (length(previous_result_digest) = 64 AND previous_result_digest NOT GLOB '*[^0-9a-f]*')),
+  result_digest TEXT NOT NULL CHECK (length(result_digest) = 64 AND result_digest NOT GLOB '*[^0-9a-f]*'),
+  authoritative_source_revision INTEGER NOT NULL CHECK (authoritative_source_revision >= 1),
+  canonical_result BLOB NOT NULL CHECK (length(canonical_result) BETWEEN 1 AND 131072),
+  enqueued_at INTEGER NOT NULL CHECK (enqueued_at >= 0),
+  acknowledged_at INTEGER CHECK (acknowledged_at IS NULL OR acknowledged_at >= enqueued_at),
+  UNIQUE (actor_id, result_sequence),
+  UNIQUE (result_digest),
+  CHECK (
+    (result_sequence = 1 AND previous_result_digest IS NULL)
+    OR (result_sequence > 1 AND previous_result_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS library_follower_result_outbox_pending
+  ON library_follower_result_outbox(actor_id, result_sequence)
+  WHERE acknowledged_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS library_invalidations (
   revision INTEGER NOT NULL CHECK (revision >= 1),
   ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 0 AND 255),

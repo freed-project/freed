@@ -1,3 +1,7 @@
+use crate::library_core_canonical::{
+    encode_canonical_value, encode_operation_digest_input, encode_signature_input,
+};
+use crate::library_core_hash::lower_hex;
 use crate::library_core_journal::actor_capability::parse_stored_capability;
 use crate::library_core_journal::operation_verifier::{
     verify_operation_transaction, OperationIdentity,
@@ -7,11 +11,23 @@ use crate::library_core_journal::{
 };
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::{SqliteMutationProgram, SQLITE_MUTATION_PROGRAMS};
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+type FeedItemUserStateRow = (
+    i64,
+    Option<i64>,
+    i64,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -27,6 +43,9 @@ pub struct NormalizedMutationReceiptV1 {
     pub previous_revision: i64,
     pub committed_revision: i64,
     pub committed_at: i64,
+    pub follower_result_digest: String,
+    pub follower_result_sequence: i64,
+    pub canonical_follower_result: Vec<u8>,
 }
 
 fn actor_state_at(
@@ -202,16 +221,277 @@ fn require_writer_admission(
     Ok(())
 }
 
+const FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES: usize = 131_072;
+
+fn follower_result_digest(domain: &str, value: &Value) -> Result<String, NormalizedSqliteError> {
+    let input =
+        encode_operation_digest_input(domain, value, FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES)
+            .map_err(|_| {
+                NormalizedSqliteError::InvalidRequest(
+                    "normalized follower result digest is invalid",
+                )
+            })?;
+    Ok(lower_hex(&Sha256::digest(input)))
+}
+
+fn active_result_authority(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    authority_key_pair: &Ed25519KeyPair,
+) -> Result<(String, i64), NormalizedSqliteError> {
+    let (authority_key_id, authority_public_key, epoch_number): (String, String, i64) = transaction
+        .query_row(
+            "SELECT epoch.authority_key_id, epoch.authority_public_key, epoch.epoch_number
+             FROM library_active_authority AS active
+             JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+             WHERE active.active_key = 'active'
+               AND active.library_id = ?1 AND active.epoch_id = ?2;",
+            params![verified.library_id, verified.epoch_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result authority is not active",
+        ))?;
+    if epoch_number != verified.epoch
+        || authority_public_key != lower_hex(authority_key_pair.public_key().as_ref())
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result signing key is not active",
+        ));
+    }
+    let expected_key_id = follower_result_digest(
+        "authority-key",
+        &json!({
+            "authority_public_key": authority_public_key,
+            "signature_algorithm": "ed25519",
+        }),
+    )?;
+    if expected_key_id != authority_key_id {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result authority key identity is invalid",
+        ));
+    }
+    Ok((authority_key_id, epoch_number))
+}
+
+fn follower_result_replacement_fields(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+) -> Result<Vec<Value>, NormalizedSqliteError> {
+    let mut identities = BTreeSet::new();
+    for member in &verified.members {
+        let paths: &[&str] = match member.operation_type.as_str() {
+            "feed_item_read_assignment" => &["read_at"],
+            "feed_item_saved_assignment" | "feed_item_archive_assignment" => {
+                &["archived", "archived_at", "saved", "saved_at"]
+            }
+            "feed_item_like_assignment" => &["liked", "liked_at"],
+            _ => &[],
+        };
+        for path in paths {
+            identities.insert((member.entity_id.clone(), *path));
+        }
+    }
+    let mut replacements = Vec::with_capacity(identities.len());
+    for (entity_id, field_path) in identities {
+        let row: FeedItemUserStateRow = transaction.query_row(
+            "SELECT saved, saved_at, archived, archived_at, liked, liked_at, read_at
+                 FROM library_feed_items WHERE global_id = ?1;",
+            [&entity_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
+        )?;
+        let (value_type, boolean_value, integer_value) = match field_path {
+            "saved" => ("boolean", Some(row.0 != 0), None),
+            "saved_at" => (
+                if row.1.is_some() { "integer" } else { "null" },
+                None,
+                row.1,
+            ),
+            "archived" => ("boolean", Some(row.2 != 0), None),
+            "archived_at" => (
+                if row.3.is_some() { "integer" } else { "null" },
+                None,
+                row.3,
+            ),
+            "liked" => (
+                "boolean",
+                Some(
+                    row.4.ok_or(NormalizedSqliteError::InvalidRequest(
+                        "normalized follower result liked state is absent",
+                    ))? != 0,
+                ),
+                None,
+            ),
+            "liked_at" => (
+                if row.5.is_some() { "integer" } else { "null" },
+                None,
+                row.5,
+            ),
+            "read_at" => (
+                if row.6.is_some() { "integer" } else { "null" },
+                None,
+                row.6,
+            ),
+            _ => unreachable!("replacement paths are closed above"),
+        };
+        replacements.push(json!({
+            "boolean_value": boolean_value,
+            "entity_id": entity_id,
+            "entity_type": "FeedItem",
+            "field_path": field_path,
+            "integer_value": integer_value,
+            "real_value": null,
+            "text_value": null,
+            "value_type": value_type,
+        }));
+    }
+    Ok(replacements)
+}
+
+fn persist_follower_result(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    authority_key_pair: &Ed25519KeyPair,
+    committed_revision: i64,
+    committed_at: i64,
+) -> Result<(i64, String, Vec<u8>), NormalizedSqliteError> {
+    let (authority_key_id, epoch_number) =
+        active_result_authority(transaction, verified, authority_key_pair)?;
+    transaction.execute(
+        "INSERT OR IGNORE INTO library_follower_result_cursors
+         (actor_id, next_result_sequence, previous_result_digest)
+         VALUES (?1, 1, NULL);",
+        [&verified.actor_id],
+    )?;
+    let (result_sequence, previous_result_digest): (i64, Option<String>) = transaction.query_row(
+        "SELECT next_result_sequence, previous_result_digest
+         FROM library_follower_result_cursors WHERE actor_id = ?1;",
+        [&verified.actor_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let operation_ids: Vec<&str> = verified
+        .members
+        .iter()
+        .map(|member| member.operation_id.as_str())
+        .collect();
+    let receipt_ids: Vec<&str> = verified
+        .members
+        .iter()
+        .map(|member| member.envelope_digest.as_str())
+        .collect();
+    let body = json!({
+        "actor_id": verified.actor_id,
+        "authoritative_source_revision": committed_revision,
+        "authority_key_id": authority_key_id,
+        "canonical_operation_ids": operation_ids,
+        "epoch": epoch_number,
+        "epoch_id": verified.epoch_id,
+        "format": "freed_follower_result_v1",
+        "library_id": verified.library_id,
+        "original_result_digest": null,
+        "previous_result_digest": previous_result_digest,
+        "receipt_ids": receipt_ids,
+        "rejection_reason": null,
+        "replacement_fields": follower_result_replacement_fields(transaction, verified)?,
+        "resolved_at_ms": committed_at,
+        "result_sequence": result_sequence,
+        "schema_version": 1,
+        "status": "accepted",
+        "transaction_digest": verified.transaction_digest,
+        "transaction_id": verified.transaction_id,
+    });
+    let result_digest = follower_result_digest("follower-result-body", &body)?;
+    let signature_input = encode_signature_input(
+        "follower-result-envelope",
+        &json!({ "result_body_digest": result_digest }),
+        FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES,
+    )
+    .map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized follower result signature is invalid")
+    })?;
+    let mut envelope = body
+        .as_object()
+        .cloned()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result body is invalid",
+        ))?;
+    envelope.insert("result_body_digest".to_string(), json!(result_digest));
+    envelope.insert(
+        "signature".to_string(),
+        json!(lower_hex(
+            authority_key_pair.sign(&signature_input).as_ref()
+        )),
+    );
+    envelope.insert("signature_algorithm".to_string(), json!("ed25519"));
+    let canonical_result = encode_canonical_value(
+        &Value::Object(envelope),
+        FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES,
+    )
+    .map_err(|_| {
+        NormalizedSqliteError::InvalidRequest("normalized follower result exceeds its wire bound")
+    })?;
+    transaction.execute(
+        "INSERT INTO library_follower_result_outbox
+         (transaction_id, actor_id, result_sequence, previous_result_digest,
+          result_digest, authoritative_source_revision, canonical_result, enqueued_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
+        params![
+            verified.transaction_id,
+            verified.actor_id,
+            result_sequence,
+            previous_result_digest,
+            result_digest,
+            committed_revision,
+            canonical_result,
+            committed_at,
+        ],
+    )?;
+    let cursor_updated = transaction.execute(
+        "UPDATE library_follower_result_cursors
+         SET next_result_sequence = ?2, previous_result_digest = ?3
+         WHERE actor_id = ?1 AND next_result_sequence = ?4
+           AND previous_result_digest IS ?5;",
+        params![
+            verified.actor_id,
+            result_sequence + 1,
+            result_digest,
+            result_sequence,
+            previous_result_digest,
+        ],
+    )?;
+    if cursor_updated != 1 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result cursor changed concurrently",
+        ));
+    }
+    Ok((result_sequence, result_digest, canonical_result))
+}
+
 fn stored_receipt(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
 ) -> Result<Option<NormalizedMutationReceiptV1>, NormalizedSqliteError> {
     let receipt = transaction
         .query_row(
-            "SELECT transaction_digest, actor_id, member_count, first_counter,
-                    last_counter, committed_operation_id, committed_chain_digest,
-                    previous_revision, committed_revision, committed_at
-             FROM library_transactions WHERE transaction_id = ?1;",
+            "SELECT txn.transaction_digest, txn.actor_id, txn.member_count, txn.first_counter,
+                    txn.last_counter, txn.committed_operation_id, txn.committed_chain_digest,
+                    txn.previous_revision, txn.committed_revision, txn.committed_at,
+                    result.result_digest, result.result_sequence, result.canonical_result
+             FROM library_transactions AS txn
+             JOIN library_follower_result_outbox AS result
+               ON result.transaction_id = txn.transaction_id
+             WHERE txn.transaction_id = ?1;",
             [&verified.transaction_id],
             |row| {
                 Ok(NormalizedMutationReceiptV1 {
@@ -227,6 +507,9 @@ fn stored_receipt(
                     previous_revision: row.get(7)?,
                     committed_revision: row.get(8)?,
                     committed_at: row.get(9)?,
+                    follower_result_digest: row.get(10)?,
+                    follower_result_sequence: row.get(11)?,
+                    canonical_follower_result: row.get(12)?,
                 })
             },
         )
@@ -771,6 +1054,7 @@ fn materialize_member(
 pub fn accept_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
     committed_at: i64,
 ) -> Result<NormalizedMutationReceiptV1, NormalizedSqliteError> {
     if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
@@ -1011,6 +1295,14 @@ pub fn accept_normalized_operation_transaction_v1(
             "normalized mutation revision changed concurrently",
         ));
     }
+    let (follower_result_sequence, follower_result_digest, canonical_follower_result) =
+        persist_follower_result(
+            &transaction,
+            &verified,
+            authority_key_pair,
+            committed_revision,
+            committed_at,
+        )?;
     let receipt = NormalizedMutationReceiptV1 {
         transaction_id: verified.transaction_id,
         transaction_digest: verified.transaction_digest,
@@ -1023,6 +1315,9 @@ pub fn accept_normalized_operation_transaction_v1(
         previous_revision,
         committed_revision,
         committed_at,
+        follower_result_digest,
+        follower_result_sequence,
+        canonical_follower_result,
     };
     transaction.commit()?;
     Ok(receipt)
@@ -1037,7 +1332,6 @@ mod tests {
         signed_envelopes_from_tip_with_payload,
     };
     use crate::normalized_sqlite::install_normalized_schema_v1;
-    use ring::rand::SystemRandom;
     use ring::signature::Ed25519KeyPair;
 
     type FeedState = (
@@ -1055,10 +1349,17 @@ mod tests {
         Ed25519KeyPair,
         crate::library_core_journal::VerifiedActorEnrollment,
     ) {
-        let random = SystemRandom::new();
-        let key_bytes = Ed25519KeyPair::generate_pkcs8(&random).expect("actor key bytes");
-        let key_pair = Ed25519KeyPair::from_pkcs8(key_bytes.as_ref()).expect("actor key");
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("actor key");
         let enrollment = enrollment(&key_pair);
+        let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+        let authority_key_id = follower_result_digest(
+            "authority-key",
+            &json!({
+                "authority_public_key": authority_public_key,
+                "signature_algorithm": "ed25519",
+            }),
+        )
+        .expect("authority key ID");
         let connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
         connection
@@ -1082,8 +1383,8 @@ mod tests {
                     enrollment.epoch_id,
                     enrollment.library_id,
                     enrollment.epoch,
-                    "6".repeat(64),
-                    "7".repeat(64),
+                    authority_key_id,
+                    authority_public_key,
                     "8".repeat(64),
                     "9".repeat(64),
                     "a".repeat(64),
@@ -1171,12 +1472,74 @@ mod tests {
     fn signed_read_transaction_commits_every_normalized_effect_and_exact_retry() {
         let (mut connection, key_pair, enrollment) = fixture();
         let envelopes = signed_envelopes(&key_pair, &enrollment);
-        let receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &envelopes, 2_000)
-                .expect("commit");
+        let receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .expect("commit");
         assert_eq!(receipt.member_count, 2);
         assert_eq!(receipt.previous_revision, 0);
         assert_eq!(receipt.committed_revision, 1);
+        assert_eq!(receipt.follower_result_sequence, 1);
+        assert!(receipt.canonical_follower_result.len() <= 131_072);
+        let native_vector: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/follower-result-native-vector-v1.json"
+        ))
+        .expect("shared native result vector");
+        assert_eq!(native_vector["schema_version"], 1);
+        assert_eq!(
+            native_vector["authority_public_key"],
+            lower_hex(key_pair.public_key().as_ref())
+        );
+        assert_eq!(
+            encode_canonical_value(
+                &native_vector["canonical_result"],
+                FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES,
+            )
+            .expect("shared native result bytes"),
+            receipt.canonical_follower_result
+        );
+        let follower_result: Value =
+            serde_json::from_slice(&receipt.canonical_follower_result).expect("follower result");
+        assert_eq!(
+            follower_result["result_body_digest"],
+            receipt.follower_result_digest
+        );
+        assert_eq!(follower_result["status"], "accepted");
+        assert_eq!(follower_result["authoritative_source_revision"], 1);
+        assert_eq!(
+            follower_result["replacement_fields"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let mut follower_body = follower_result.as_object().unwrap().clone();
+        let signature = follower_body
+            .remove("signature")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .expect("result signature");
+        follower_body.remove("signature_algorithm");
+        follower_body.remove("result_body_digest");
+        assert_eq!(
+            follower_result_digest("follower-result-body", &Value::Object(follower_body))
+                .expect("body digest"),
+            receipt.follower_result_digest
+        );
+        let signature_input = encode_signature_input(
+            "follower-result-envelope",
+            &json!({ "result_body_digest": receipt.follower_result_digest }),
+            FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES,
+        )
+        .expect("signature input");
+        assert!(crate::library_core_ed25519::verify_library_core_ed25519(
+            &lower_hex(key_pair.public_key().as_ref()),
+            &signature,
+            &signature_input,
+        )
+        .expect("signature encoding"));
         assert_eq!(
             connection
                 .query_row("SELECT count(*) FROM library_operations;", [], |row| row
@@ -1241,8 +1604,13 @@ mod tests {
             1
         );
         assert_eq!(
-            accept_normalized_operation_transaction_v1(&mut connection, &envelopes, 2_001)
-                .expect("exact retry"),
+            accept_normalized_operation_transaction_v1(
+                &mut connection,
+                &envelopes,
+                &key_pair,
+                2_001
+            )
+            .expect("exact retry"),
             receipt
         );
         assert_eq!(
@@ -1254,6 +1622,75 @@ mod tests {
                 .expect("transactions"),
             1
         );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_follower_result_outbox;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("follower result outbox"),
+            1
+        );
+    }
+
+    #[test]
+    fn late_follower_result_cursor_failure_rolls_back_the_entire_authority_commit() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute_batch(
+                "CREATE TRIGGER fail_follower_result_cursor
+                 BEFORE UPDATE ON library_follower_result_cursors
+                 BEGIN
+                   SELECT RAISE(ABORT, 'late follower result fault');
+                 END;",
+            )
+            .expect("fault trigger");
+        let envelopes = signed_envelopes(&key_pair, &enrollment);
+        let error = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .expect_err("late result fault");
+        assert!(error.to_string().contains("late follower result fault"));
+        for table in [
+            "library_transactions",
+            "library_operations",
+            "library_receipts",
+            "library_replication_outbox",
+            "library_follower_result_outbox",
+            "library_follower_result_cursors",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table};"), [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .expect("rolled back table"),
+                0,
+                "{table}"
+            );
+        }
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("rolled back revision"),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT read_at FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .expect("rolled back projection"),
+            None
+        );
     }
 
     #[test]
@@ -1261,9 +1698,13 @@ mod tests {
         let (mut connection, key_pair, enrollment) = fixture();
         let mut tampered = signed_envelopes(&key_pair, &enrollment);
         tampered[0][0] ^= 1;
-        assert!(
-            accept_normalized_operation_transaction_v1(&mut connection, &tampered, 2_000).is_err()
-        );
+        assert!(accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &tampered,
+            &key_pair,
+            2_000
+        )
+        .is_err());
         assert_eq!(
             connection
                 .query_row("SELECT count(*) FROM library_transactions;", [], |row| row
@@ -1274,7 +1715,7 @@ mod tests {
             0
         );
         let envelopes = signed_envelopes(&key_pair, &enrollment);
-        accept_normalized_operation_transaction_v1(&mut connection, &envelopes, 2_000)
+        accept_normalized_operation_transaction_v1(&mut connection, &envelopes, &key_pair, 2_000)
             .expect("commit");
         connection
             .execute(
@@ -1282,8 +1723,13 @@ mod tests {
                 [],
             )
             .expect("lose admission");
-        let error = accept_normalized_operation_transaction_v1(&mut connection, &envelopes, 2_001)
-            .expect_err("replay without admission");
+        let error = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_001,
+        )
+        .expect_err("replay without admission");
         assert!(error.to_string().contains("active authority is stale"));
         assert_eq!(
             connection
@@ -1318,7 +1764,7 @@ mod tests {
             "feed_item_saved_assignment",
         );
         let save_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &save, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &save, &key_pair, 2_000)
                 .expect("save");
 
         let archive = signed_envelopes_from_tip(
@@ -1332,7 +1778,7 @@ mod tests {
             "feed_item_archive_assignment",
         );
         let archive_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &archive, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &archive, &key_pair, 2_100)
                 .expect("archive");
 
         let stale_save = signed_envelopes_from_tip(
@@ -1345,9 +1791,13 @@ mod tests {
             &[("rss:item:1", 1_050)],
             "feed_item_saved_assignment",
         );
-        let stale_save_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &stale_save, 2_200)
-                .expect("journal stale save without changing projection");
+        let stale_save_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_save,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal stale save without changing projection");
 
         let like = signed_envelopes_from_tip(
             &key_pair,
@@ -1359,7 +1809,8 @@ mod tests {
             &[("rss:item:1", 1_200)],
             "feed_item_like_assignment",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &like, 2_300).expect("like");
+        accept_normalized_operation_transaction_v1(&mut connection, &like, &key_pair, 2_300)
+            .expect("like");
 
         let state: FeedState = connection
             .query_row(
@@ -1454,7 +1905,7 @@ mod tests {
             Some(&first_payload),
         );
         let first_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &first, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &first, &key_pair, 2_000)
                 .expect("capture FeedItem");
         assert_eq!(
             connection
@@ -1510,7 +1961,7 @@ mod tests {
             "feed_item_saved_assignment",
         );
         let save_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &save, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &save, &key_pair, 2_100)
                 .expect("save captured FeedItem");
         connection
             .execute(
@@ -1548,7 +1999,7 @@ mod tests {
             "feed_item_capture_upsert",
             Some(&second_payload),
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &second, 2_200)
+        accept_normalized_operation_transaction_v1(&mut connection, &second, &key_pair, 2_200)
             .expect("refresh captured FeedItem");
         assert_eq!(
             connection
@@ -1598,7 +2049,7 @@ mod tests {
             "feed_item_remove",
         );
         let removal_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &removal, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &removal, &key_pair, 2_000)
                 .expect("remove");
         let stale_removal = signed_envelopes_from_tip(
             &key_pair,
@@ -1610,8 +2061,13 @@ mod tests {
             &[("rss:item:1", 1_000)],
             "feed_item_remove",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &stale_removal, 2_100)
-            .expect("journal stale removal");
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_removal,
+            &key_pair,
+            2_100,
+        )
+        .expect("journal stale removal");
 
         assert_eq!(
             connection
@@ -1693,7 +2149,7 @@ mod tests {
             "account_remove",
         );
         let account_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &account, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &account, &key_pair, 2_000)
                 .expect("remove account");
         let person = signed_envelopes_from_tip(
             &key_pair,
@@ -1706,7 +2162,7 @@ mod tests {
             "person_remove_and_accounts",
         );
         let person_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &person, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &person, &key_pair, 2_100)
                 .expect("remove person and accounts");
         let keep_feed = signed_envelopes_from_tip(
             &key_pair,
@@ -1718,9 +2174,13 @@ mod tests {
             &[("feed:keep", 1_300)],
             "rss_feed_remove_keep_items",
         );
-        let keep_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &keep_feed, 2_200)
-                .expect("remove feed and keep items");
+        let keep_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &keep_feed,
+            &key_pair,
+            2_200,
+        )
+        .expect("remove feed and keep items");
         let remove_feed = signed_envelopes_from_tip(
             &key_pair,
             &enrollment,
@@ -1731,7 +2191,7 @@ mod tests {
             &[("feed:remove", 1_400)],
             "rss_feed_remove_with_items",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &remove_feed, 2_300)
+        accept_normalized_operation_transaction_v1(&mut connection, &remove_feed, &key_pair, 2_300)
             .expect("remove feed and items");
 
         assert_eq!(
@@ -1824,7 +2284,7 @@ mod tests {
             &[("person:detach", 1_100)],
             "person_remove_detach_accounts",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_000)
+        accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2_000)
             .expect("remove Person and detach Accounts");
 
         assert_eq!(
@@ -1874,7 +2334,7 @@ mod tests {
             "rss_feed_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert RSS feed");
         assert_eq!(
             connection
@@ -1906,7 +2366,7 @@ mod tests {
             "rss_feed_remove_keep_items",
         );
         let remove_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2_100)
                 .expect("remove RSS feed");
         let replay_upsert = signed_envelopes_from_tip(
             &key_pair,
@@ -1918,8 +2378,13 @@ mod tests {
             &[("feed:new", 1_200)],
             "rss_feed_upsert",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &replay_upsert, 2_200)
-            .expect("journal blocked resurrection");
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &replay_upsert,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal blocked resurrection");
         assert_eq!(
             connection
                 .query_row(
@@ -1946,7 +2411,7 @@ mod tests {
             "rss_feed_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert RSS feed");
         let rename = signed_envelopes_from_tip(
             &key_pair,
@@ -1959,7 +2424,7 @@ mod tests {
             "rss_feed_title_assignment",
         );
         let rename_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &rename, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &rename, &key_pair, 2_100)
                 .expect("rename RSS feed");
         let stale = signed_envelopes_from_tip(
             &key_pair,
@@ -1971,7 +2436,7 @@ mod tests {
             &[("feed:title", 1_100)],
             "rss_feed_title_assignment",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &stale, 2_200)
+        accept_normalized_operation_transaction_v1(&mut connection, &stale, &key_pair, 2_200)
             .expect("journal stale RSS title");
         assert_eq!(
             connection
@@ -2019,7 +2484,7 @@ mod tests {
             "account_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert Account");
         assert_eq!(
             connection
@@ -2078,7 +2543,7 @@ mod tests {
             "account_remove",
         );
         let remove_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2_100)
                 .expect("remove Account");
         let blocked_upsert = signed_envelopes_from_tip(
             &key_pair,
@@ -2090,8 +2555,13 @@ mod tests {
             &[("account:new", 1_200)],
             "account_upsert",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &blocked_upsert, 2_200)
-            .expect("journal blocked Account resurrection");
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &blocked_upsert,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal blocked Account resurrection");
         assert_eq!(
             connection
                 .query_row(
@@ -2138,7 +2608,7 @@ mod tests {
             "account_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert Account");
         let assignment_payload = serde_json::json!({
             "assigned_at_ms": 1_200,
@@ -2155,9 +2625,13 @@ mod tests {
             "account_person_assignment",
             Some(&assignment_payload),
         );
-        let assignment_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &assignment, 2_100)
-                .expect("assign Account owner");
+        let assignment_receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &assignment,
+            &key_pair,
+            2_100,
+        )
+        .expect("assign Account owner");
         let stale_detach_payload = serde_json::json!({
             "assigned_at_ms": 1_100,
             "person_id": null
@@ -2173,8 +2647,13 @@ mod tests {
             "account_person_assignment",
             Some(&stale_detach_payload),
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &stale_detach, 2_200)
-            .expect("journal stale Account owner assignment");
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &stale_detach,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal stale Account owner assignment");
         assert_eq!(
             connection
                 .query_row(
@@ -2213,7 +2692,7 @@ mod tests {
             "person_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert Person");
         assert_eq!(
             connection
@@ -2281,7 +2760,7 @@ mod tests {
             "person_remove_and_accounts",
         );
         let remove_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2_100)
                 .expect("remove Person");
         let blocked_upsert = signed_envelopes_from_tip(
             &key_pair,
@@ -2293,8 +2772,13 @@ mod tests {
             &[("person:new", 1_200)],
             "person_upsert",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &blocked_upsert, 2_200)
-            .expect("journal blocked Person resurrection");
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &blocked_upsert,
+            &key_pair,
+            2_200,
+        )
+        .expect("journal blocked Person resurrection");
         assert_eq!(
             connection
                 .query_row(
@@ -2334,7 +2818,7 @@ mod tests {
             "person_upsert",
         );
         let upsert_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, &key_pair, 2_000)
                 .expect("upsert Person");
         let entities = (0..21)
             .map(|index| ("person:reach-out", 1_000 + index))
@@ -2349,7 +2833,7 @@ mod tests {
             &entities,
             "person_reach_out_append",
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &reaches, 2_100)
+        accept_normalized_operation_transaction_v1(&mut connection, &reaches, &key_pair, 2_100)
             .expect("append reach-out events");
 
         let rows = connection
@@ -2408,7 +2892,7 @@ mod tests {
             Some(&initial_payload),
         );
         let initial_receipt =
-            accept_normalized_operation_transaction_v1(&mut connection, &initial, 2_000)
+            accept_normalized_operation_transaction_v1(&mut connection, &initial, &key_pair, 2_000)
                 .expect("initial preference patch");
         assert_eq!(
             connection
@@ -2450,7 +2934,7 @@ mod tests {
             "preferences_leaf_assignment",
             Some(&replacement_payload),
         );
-        accept_normalized_operation_transaction_v1(&mut connection, &replacement, 2_100)
+        accept_normalized_operation_transaction_v1(&mut connection, &replacement, &key_pair, 2_100)
             .expect("replacement preference patch");
         assert_eq!(
             connection

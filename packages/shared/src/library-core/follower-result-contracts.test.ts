@@ -1,5 +1,6 @@
-import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import nativeVector from "./follower-result-native-vector-v1.json" with { type: "json" };
 import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
@@ -13,6 +14,46 @@ import {
 } from "./follower-result-contracts.js";
 
 describe("follower result contract", () => {
+  it("verifies the exact canonical result emitted by the native Primary", async () => {
+    const canonicalBytes = encodeLibraryCoreCanonicalValue(
+      nativeVector.canonical_result as unknown as LibraryCoreCanonicalValue,
+    );
+    const publicKey = createPublicKey({
+      format: "der",
+      key: Buffer.concat([
+        Buffer.from("302a300506032b6570032100", "hex"),
+        Buffer.from(nativeVector.authority_public_key, "hex"),
+      ]),
+      type: "spki",
+    });
+    const verified = await verifyLibraryCoreFollowerResultV1(
+      canonicalBytes,
+      {
+        authorityKeyId: nativeVector.canonical_result.authority_key_id,
+        authorityPublicKey: nativeVector.authority_public_key,
+        epoch: nativeVector.canonical_result.epoch,
+        epochId: nativeVector.canonical_result.epoch_id,
+        libraryId: nativeVector.canonical_result.library_id,
+      },
+      {
+        async verifySignature(input) {
+          return verify(
+            null,
+            input.message,
+            publicKey,
+            Buffer.from(input.signatureHex, "hex"),
+          );
+        },
+      },
+    );
+    expect(nativeVector.schema_version).toBe(1);
+    expect(verified.canonicalBytes).toEqual(canonicalBytes);
+    expect(verified.resultDigest).toBe(
+      nativeVector.canonical_result.result_body_digest,
+    );
+    expect(verified.envelope.replacement_fields).toHaveLength(2);
+  });
+
   it("verifies exact bounded authority-signed result bytes", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const authorityPublicKey = publicKey

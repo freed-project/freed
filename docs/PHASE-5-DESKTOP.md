@@ -36,6 +36,13 @@
       invalidation, signed-intent, result, and sparse optimistic-field tables
       to the shared schema. Canonical protocol members remain individually
       bounded to 131,072 bytes and large content stays in chunk rows.
+- [x] Make accepted follower admission produce its authority-signed result in
+      the same native SQLite transaction as the canonical operation. The
+      active epoch key is rechecked under the write lock. Exact canonical
+      result bytes, the per-actor result cursor, materialized rows, actor tip,
+      revision, receipts, replication entries, and invalidations commit or
+      roll back together. Exact retry returns the stored result without a new
+      signature or sequence.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and
