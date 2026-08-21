@@ -2,8 +2,10 @@ import type { Database, SqlValue } from "@sqlite.org/sqlite-wasm";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SQL,
+  LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
@@ -14,24 +16,66 @@ import {
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
+  createLibraryCoreMediaBlobDigestStateV1,
+  decodeLibraryCoreCanonicalValue,
+  decodeLibraryCoreContentChunkBytesV1,
+  digestLibraryCoreMediaBlobBytesV1,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
   LibraryCoreSha256,
+  libraryCoreNormalizedCheckpointSqlitePayloadV2,
+  parseLibraryCoreNormalizedCheckpointStageIdV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageRequestV1,
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
+  type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreNormalizedCheckpointRecordV2,
 } from "@freed/shared/library-core";
 
 const stagedRecordDigestPrefix = Uint8Array.from(
   "freed.library-core.v2/digest-bytes/staged-checkpoint-record\u0000",
   (character) => character.charCodeAt(0),
 );
+const checkpointDigestPrefix = Uint8Array.from(
+  "freed.library-core.v2/digest-records/normalized-checkpoint\u0000",
+  (character) => character.charCodeAt(0),
+);
+
+function lengthBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, BigInt(length), false);
+  return bytes;
+}
+
+function validateCheckpointHeader(
+  record: LibraryCoreNormalizedCheckpointRecordV2,
+): void {
+  if (
+    record.registryKey !== "00_checkpoint_header" ||
+    record.primaryKey !== "checkpoint"
+  ) {
+    throw new Error("normalized checkpoint header identity is invalid");
+  }
+  const libraryId = record.payload.libraryId;
+  const authorityEpoch = record.payload.authorityEpoch;
+  const sourceRevision = record.payload.sourceRevision;
+  if (
+    typeof libraryId !== "string" ||
+    typeof authorityEpoch !== "string" ||
+    !Number.isSafeInteger(sourceRevision) ||
+    record.payload.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
+    record.payload.checkpointId !==
+      `${libraryId}:${authorityEpoch}:${String(sourceRevision)}`
+  ) {
+    throw new Error("normalized checkpoint header version identity is invalid");
+  }
+}
 
 function safeInteger(value: SqlValue | undefined, label: string): number {
   const number = typeof value === "bigint" ? Number(value) : value;
@@ -135,6 +179,11 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("PWA Library SQLite schema version is unsupported");
     }
     this.#verifyStorageIdentity();
+    for (const program of Object.values(
+      LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
+    )) {
+      this.#database.prepare(program.sql).finalize();
+    }
     const integrity = this.#database.exec({
       sql: "PRAGMA quick_check(1);",
       rowMode: 0,
@@ -319,6 +368,176 @@ export class PwaLibraryCoreSqliteEngine {
     return this.#checkpointStageStatus(page.stageId);
   }
 
+  activateNormalizedCheckpointStage(
+    input: string,
+  ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+    const stageId = parseLibraryCoreNormalizedCheckpointStageIdV2(input);
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec("PRAGMA defer_foreign_keys = ON;");
+      const stages = this.#database.exec({
+        sql: `SELECT library_id, authority_epoch, source_revision,
+                     expected_record_count, staged_canonical_bytes,
+                     expected_checkpoint_digest
+              FROM library_checkpoint_stages
+              WHERE stage_id = ?1 AND staged_record_count = expected_record_count;`,
+        bind: [stageId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (stages.length !== 1) {
+        throw new Error("normalized checkpoint stage is incomplete");
+      }
+      const stage = stages[0]!;
+      const libraryId = text(stage[0], "checkpoint Library identity");
+      const authorityEpoch = text(stage[1], "checkpoint authority epoch");
+      const sourceRevision = safeInteger(
+        stage[2],
+        "checkpoint source revision",
+      );
+      const expectedRecordCount = safeInteger(
+        stage[3],
+        "checkpoint expected record count",
+      );
+      const canonicalBytes = safeInteger(
+        stage[4],
+        "checkpoint canonical bytes",
+      );
+      const expectedDigest = text(stage[5], "checkpoint digest");
+      const existingRows = safeInteger(
+        this.#database.exec({
+          sql: `SELECT sum(row_count) FROM (
+                  SELECT count(*) AS row_count FROM library_meta
+                  UNION ALL SELECT count(*) FROM library_feed_items
+                  UNION ALL SELECT count(*) FROM library_rss_feeds
+                  UNION ALL SELECT count(*) FROM library_persons
+                  UNION ALL SELECT count(*) FROM library_accounts
+                  UNION ALL SELECT count(*) FROM library_preferences
+                  UNION ALL SELECT count(*) FROM library_relationships
+                  UNION ALL SELECT count(*) FROM library_field_clocks
+                  UNION ALL SELECT count(*) FROM library_tombstones
+                  UNION ALL SELECT count(*) FROM library_actors
+                  UNION ALL SELECT count(*) FROM library_receipts
+                  UNION ALL SELECT count(*) FROM library_blobs
+                );`,
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "checkpoint activation target rows",
+      );
+      if (existingRows !== 0) {
+        throw new Error("normalized checkpoint activation target is not empty");
+      }
+      const digest = new LibraryCoreSha256().update(checkpointDigestPrefix);
+      const statement = this.#database.prepare(
+        `SELECT record_canonical FROM library_checkpoint_stage_records
+         WHERE stage_id = ?1 ORDER BY registry_key, primary_key_canonical;`,
+      );
+      let recordCount = 0;
+      try {
+        statement.bind([stageId]);
+        while (statement.step()) {
+          const canonical = Uint8Array.from(
+            statement.getBlob(0) ??
+              (() => {
+                throw new Error(
+                  "normalized checkpoint canonical record is missing",
+                );
+              })(),
+          );
+          digest.update(lengthBytes(canonical.byteLength));
+          digest.update(canonical);
+          const record = parseLibraryCoreNormalizedCheckpointRecordV2(
+            decodeLibraryCoreCanonicalValue(canonical, {
+              maximumBytes:
+                LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+            }),
+          );
+          if (record.registryKey === "00_checkpoint_header") {
+            validateCheckpointHeader(record);
+          }
+          const program =
+            LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS[record.registryKey];
+          const primaryKeyJson = JSON.stringify(record.primaryKey);
+          const payloadJson = JSON.stringify(
+            libraryCoreNormalizedCheckpointSqlitePayloadV2(record),
+          );
+          const bind: SqlValue[] = [primaryKeyJson, payloadJson];
+          if (program.hasChunkBytes) {
+            bind.push(decodeLibraryCoreContentChunkBytesV1(record));
+          }
+          this.#database.exec({ sql: program.sql, bind });
+          const changes = safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "checkpoint import changes",
+          );
+          if (changes !== 1) {
+            throw new Error(
+              "checkpoint payload identity does not match its primary key",
+            );
+          }
+          recordCount += 1;
+        }
+      } finally {
+        statement.finalize();
+      }
+      const checkpointDigest = digest.digestLowerHex();
+      if (
+        recordCount !== expectedRecordCount ||
+        checkpointDigest !== expectedDigest
+      ) {
+        throw new Error(
+          "normalized checkpoint digest does not match its stage",
+        );
+      }
+      const meta = this.#database.exec({
+        sql: `SELECT library_id = ?1 AND authority_epoch = ?2 AND source_revision = ?3
+              FROM library_meta WHERE singleton_id = 1;`,
+        bind: [libraryId, authorityEpoch, sourceRevision],
+        rowMode: 0,
+        returnValue: "resultRows",
+      });
+      if (
+        meta.length !== 1 ||
+        safeInteger(meta[0], "checkpoint header match") !== 1
+      ) {
+        throw new Error("checkpoint header does not match its stage identity");
+      }
+      this.#verifyCheckpointContent();
+      const foreignKeys = this.#database.exec({
+        sql: "PRAGMA foreign_key_check;",
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (foreignKeys.length !== 0) {
+        throw new Error(
+          "normalized checkpoint has an unresolved foreign reference",
+        );
+      }
+      this.#database.exec({
+        sql: "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
+        bind: [stageId],
+      });
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        authorityEpoch,
+        canonicalBytes,
+        checkpointDigest,
+        libraryId,
+        recordCount,
+        sourceRevision,
+        stageId,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
   queryFeedPage(
     input: LibraryCoreFeedPageRequestV1,
   ): LibraryCoreFeedPageResponseV1 {
@@ -495,6 +714,75 @@ export class PwaLibraryCoreSqliteEngine {
       stagedRecordCount,
       stageId,
     });
+  }
+
+  #verifyCheckpointContent(): void {
+    const descriptors = this.#database.prepare(
+      "SELECT content_digest, byte_length, chunk_count FROM library_blobs ORDER BY content_digest;",
+    );
+    try {
+      while (descriptors.step()) {
+        const contentDigest = text(
+          descriptors.get(0),
+          "checkpoint content digest",
+        );
+        const expectedBytes = safeInteger(
+          descriptors.get(1),
+          "checkpoint content byte length",
+        );
+        const expectedChunks = safeInteger(
+          descriptors.get(2),
+          "checkpoint content chunk count",
+        );
+        const contentHash = createLibraryCoreMediaBlobDigestStateV1();
+        const chunks = this.#database.prepare(
+          `SELECT chunk_index, chunk_digest, bytes FROM library_blob_chunks
+           WHERE content_digest = ?1 ORDER BY chunk_index;`,
+        );
+        let byteLength = 0;
+        let chunkIndex = 0;
+        try {
+          chunks.bind([contentDigest]);
+          while (chunks.step()) {
+            if (
+              safeInteger(chunks.get(0), "checkpoint content chunk index") !==
+              chunkIndex
+            ) {
+              throw new Error("checkpoint content chunks are not contiguous");
+            }
+            const bytes = Uint8Array.from(
+              chunks.getBlob(2) ??
+                (() => {
+                  throw new Error("checkpoint content chunk bytes are missing");
+                })(),
+            );
+            if (
+              text(chunks.get(1), "checkpoint content chunk digest") !==
+              digestLibraryCoreMediaBlobBytesV1(bytes)
+            ) {
+              throw new Error("checkpoint content chunk digest is invalid");
+            }
+            byteLength += bytes.byteLength;
+            if (!Number.isSafeInteger(byteLength)) {
+              throw new Error("checkpoint content byte length overflowed");
+            }
+            contentHash.update(bytes);
+            chunkIndex += 1;
+          }
+        } finally {
+          chunks.finalize();
+        }
+        if (
+          chunkIndex !== expectedChunks ||
+          byteLength !== expectedBytes ||
+          contentHash.digestLowerHex() !== contentDigest
+        ) {
+          throw new Error("checkpoint content descriptor is incomplete");
+        }
+      }
+    } finally {
+      descriptors.finalize();
+    }
   }
 
   close(): void {

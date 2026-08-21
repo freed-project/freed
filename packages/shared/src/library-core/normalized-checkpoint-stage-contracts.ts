@@ -77,6 +77,12 @@ function boundedText(value: unknown, label: string): string {
   return value;
 }
 
+export function parseLibraryCoreNormalizedCheckpointStageIdV2(
+  value: unknown,
+): string {
+  return boundedText(value, "stageId");
+}
+
 export function parseLibraryCoreBeginNormalizedCheckpointStageV2(
   value: unknown,
 ): LibraryCoreBeginNormalizedCheckpointStageV2 {

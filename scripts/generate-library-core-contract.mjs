@@ -62,6 +62,7 @@ function assertSortedUniqueFields(values, label) {
 function assertContract(contract) {
   const expectedKeys = [
     "checkpointFormat",
+    "checkpointImports",
     "checkpointRecords",
     "contractVersion",
     "fractionalFields",
@@ -99,7 +100,9 @@ function assertContract(contract) {
     Object.keys(limits).length !== Object.keys(expectedLimits).length ||
     Object.entries(expectedLimits).some(([key, value]) => limits[key] !== value)
   ) {
-    throw new TypeError("SQLite contract transport limits changed without a version boundary");
+    throw new TypeError(
+      "SQLite contract transport limits changed without a version boundary",
+    );
   }
   assertSortedUnique(contract.mutations, "mutations");
   assertSortedUnique(contract.queries, "queries");
@@ -145,8 +148,13 @@ function assertContract(contract) {
     ) {
       throw new TypeError("checkpoint record registry is invalid");
     }
-    if (entry.registryKey.includes("shell") || entry.payload.includes("shell")) {
-      throw new TypeError("checkpoint record registry cannot contain a Library shell");
+    if (
+      entry.registryKey.includes("shell") ||
+      entry.payload.includes("shell")
+    ) {
+      throw new TypeError(
+        "checkpoint record registry cannot contain a Library shell",
+      );
     }
     if (payloads.has(entry.payload)) {
       throw new TypeError("checkpoint record payload names must be unique");
@@ -156,7 +164,9 @@ function assertContract(contract) {
     payloads.add(entry.payload);
     assertSortedUniqueFields(entry.fields, `${entry.registryKey} fields`);
   }
-  for (const [registryKey, fields] of Object.entries(contract.fractionalFields)) {
+  for (const [registryKey, fields] of Object.entries(
+    contract.fractionalFields,
+  )) {
     const entry = contract.checkpointRecords.find(
       (candidate) => candidate.registryKey === registryKey,
     );
@@ -168,6 +178,156 @@ function assertContract(contract) {
       throw new TypeError("fractional field is not in its checkpoint payload");
     }
   }
+  const importKeys = Object.keys(contract.checkpointImports).sort();
+  if (
+    importKeys.length !== registryKeys.size ||
+    importKeys.some((key, index) => key !== [...registryKeys].sort()[index])
+  ) {
+    throw new TypeError(
+      "checkpoint import registry must match the record registry",
+    );
+  }
+  const keyArities = Object.freeze({
+    chunk: 2,
+    digest: 1,
+    entity: 2,
+    field: 3,
+    ordinal: 2,
+    pair: 2,
+    receipt: 2,
+    relationship: 5,
+    singleton: 0,
+    text: 1,
+  });
+  for (const entry of contract.checkpointRecords) {
+    const program = contract.checkpointImports[entry.registryKey];
+    const keys = Object.keys(program);
+    if (
+      !keys.includes("primaryKeyColumns") ||
+      !keys.includes("table") ||
+      keys.some(
+        (key) =>
+          ![
+            "constantColumns",
+            "fieldColumns",
+            "identityPayloadFields",
+            "primaryKeyColumns",
+            "table",
+          ].includes(key),
+      ) ||
+      typeof program.table !== "string" ||
+      !/^[a-z][a-z0-9_]+$/.test(program.table) ||
+      !Array.isArray(program.primaryKeyColumns) ||
+      program.primaryKeyColumns.length !== keyArities[entry.primaryKey] ||
+      program.primaryKeyColumns.some(
+        (column) =>
+          typeof column !== "string" || !/^[a-z][a-z0-9_]*$/.test(column),
+      ) ||
+      new Set(program.primaryKeyColumns).size !==
+        program.primaryKeyColumns.length
+    ) {
+      throw new TypeError("checkpoint import program identity is invalid");
+    }
+    for (const [column, value] of Object.entries(
+      program.constantColumns ?? {},
+    )) {
+      if (!/^[a-z][a-z0-9_]*$/.test(column) || !Number.isSafeInteger(value)) {
+        throw new TypeError("checkpoint import constant is invalid");
+      }
+    }
+    for (const [field, column] of Object.entries(program.fieldColumns ?? {})) {
+      if (
+        !entry.fields.includes(field) ||
+        !(
+          column === null ||
+          column === "$chunkBytes" ||
+          (typeof column === "string" && /^[a-z][a-z0-9_]*$/.test(column))
+        )
+      ) {
+        throw new TypeError("checkpoint import field mapping is invalid");
+      }
+    }
+    for (const [field, keyIndex] of Object.entries(
+      program.identityPayloadFields ?? {},
+    )) {
+      if (
+        !entry.fields.includes(field) ||
+        !Number.isSafeInteger(keyIndex) ||
+        keyIndex < 0 ||
+        keyIndex >= program.primaryKeyColumns.length
+      ) {
+        throw new TypeError("checkpoint import identity field is invalid");
+      }
+    }
+  }
+}
+
+function camelToSnake(value) {
+  return value.replaceAll(/([A-Z])/g, "_$1").toLowerCase();
+}
+
+function checkpointImportPrograms(contract) {
+  return Object.fromEntries(
+    contract.checkpointRecords.map((entry) => {
+      const source = contract.checkpointImports[entry.registryKey];
+      const columns = [];
+      const expressions = [];
+      for (const [column, value] of Object.entries(
+        source.constantColumns ?? {},
+      )) {
+        columns.push(column);
+        expressions.push(String(value));
+      }
+      source.primaryKeyColumns.forEach((column, index) => {
+        columns.push(column);
+        expressions.push(
+          source.primaryKeyColumns.length === 1
+            ? "json_extract(?1, '$')"
+            : `json_extract(?1, '$[${index}]')`,
+        );
+      });
+      let hasChunkBytes = false;
+      for (const field of entry.fields) {
+        const override = source.fieldColumns?.[field];
+        if (override === null) continue;
+        const column = override ?? camelToSnake(field);
+        if (column === "$chunkBytes") {
+          const inferredColumn = camelToSnake(field).replace("_base64", "");
+          if (columns.includes(inferredColumn)) {
+            throw new TypeError("checkpoint import columns must be unique");
+          }
+          columns.push(inferredColumn);
+          expressions.push("?3");
+          hasChunkBytes = true;
+          continue;
+        }
+        if (columns.includes(column)) continue;
+        columns.push(column);
+        expressions.push(`json_extract(?2, '$.${field}')`);
+      }
+      if (new Set(columns).size !== columns.length) {
+        throw new TypeError("checkpoint import columns must be unique");
+      }
+      const identityChecks = Object.entries(
+        source.identityPayloadFields ?? {},
+      ).map(
+        ([field, keyIndex]) =>
+          `json_extract(?2, '$.${field}') = ${
+            source.primaryKeyColumns.length === 1
+              ? "json_extract(?1, '$')"
+              : `json_extract(?1, '$[${keyIndex}]')`
+          }`,
+      );
+      return [
+        entry.registryKey,
+        Object.freeze({
+          hasChunkBytes,
+          primaryKeyArity: source.primaryKeyColumns.length,
+          sql: `INSERT INTO ${source.table} (${columns.join(", ")}) SELECT ${expressions.join(", ")}${identityChecks.length === 0 ? "" : ` WHERE ${identityChecks.join(" AND ")}`};`,
+        }),
+      ];
+    }),
+  );
 }
 
 function typescriptSource(contract, schemaSql, schemaDigest) {
@@ -179,6 +339,7 @@ function typescriptSource(contract, schemaSql, schemaDigest) {
     .replaceAll(/: "([^"]+)"/g, ': "$1"');
   const stringTuple = (values) =>
     values.map((value) => `  ${JSON.stringify(value)},`).join("\n");
+  const importPrograms = checkpointImportPrograms(contract);
   return `/* This file is generated by scripts/generate-library-core-contract.mjs. */
 
 export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = ${contract.contractVersion} as const;
@@ -195,6 +356,7 @@ export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} a
 
 export const LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY = ${entries} as const;
 export const LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS = ${JSON.stringify(contract.fractionalFields, null, 2)} as const;
+export const LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS = ${JSON.stringify(importPrograms, null, 2)} as const;
 export type LibraryCoreCheckpointRegistryEntry = (typeof LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY)[number];
 export type LibraryCoreCheckpointRegistryKey = LibraryCoreCheckpointRegistryEntry["registryKey"];
 export type LibraryCoreCheckpointPayloadKind = LibraryCoreCheckpointRegistryEntry["payload"];
@@ -262,6 +424,12 @@ function rustSource(contract, schemaDigest) {
         `    (${JSON.stringify(queryId)}, ${program.maximumScanRows}, ${JSON.stringify(program.sql)}, ${JSON.stringify(program.countSql)}),`,
     )
     .join("\n");
+  const importPrograms = Object.entries(checkpointImportPrograms(contract))
+    .map(
+      ([registryKey, program]) =>
+        `    (${JSON.stringify(registryKey)}, ${program.primaryKeyArity}, ${program.hasChunkBytes}, ${JSON.stringify(program.sql)}),`,
+    )
+    .join("\n");
   return `// This file is generated by scripts/generate-library-core-contract.mjs.
 
 pub const SQLITE_CONTRACT_VERSION: u32 = ${contract.contractVersion};
@@ -326,6 +494,10 @@ ${queries}
 pub const SQLITE_QUERY_PROGRAMS: &[(&str, usize, &str, &str)] = &[
 ${queryPrograms}
 ];
+
+pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[
+${importPrograms}
+];
 `;
 }
 
@@ -343,5 +515,8 @@ const contract = JSON.parse(await readFile(sourcePath, "utf8"));
 const schemaSql = await readFile(schemaPath, "utf8");
 const schemaDigest = createHash("sha256").update(schemaSql).digest("hex");
 assertContract(contract);
-await update(typescriptPath, typescriptSource(contract, schemaSql, schemaDigest));
+await update(
+  typescriptPath,
+  typescriptSource(contract, schemaSql, schemaDigest),
+);
 await update(rustPath, rustSource(contract, schemaDigest));

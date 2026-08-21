@@ -25,6 +25,8 @@
       bounded native SQLite checkpoint exporter with stable keyset cursors.
       Native staging now activates every normalized record kind atomically
       after exact digest, binary64, content, and foreign-key verification.
+      The contract also generates the exact row import SQL used by native Rust
+      and browser TypeScript, so checkpoint transforms cannot drift by runtime.
 - [ ] Extend the executable contract across field schemas, payload codecs,
       mutation SQL, query SQL, invalidations, and deletion obligations.
 - [ ] Route feed, Saved, search, item detail, Friends, map, analytics, Story
@@ -237,38 +239,38 @@ export async function captureDomFeed(
 
 ### Desktop
 
-| Task | Description                                                             | Complexity |
-| ---- | ----------------------------------------------------------------------- | ---------- |
-| 5.1  | Tauri 2.0 project scaffold                                              | Medium     |
-| 5.2  | Embed PWA React app in WebView                                          | Medium     |
-| 5.3  | Native window vibrancy (macOS)                                          | Low        |
-| 5.4  | Menu bar icon + background mode                                         | Medium     |
-| 5.5  | Local WebSocket relay                                                   | Medium     |
-| 5.6  | Playwright subprocess setup                                             | High       |
-| 5.7  | System tray with sync status                                            | Low        |
-| 5.8  | QR code display for phone pairing                                       | Low        |
-| 5.9  | Auto-launch on login (optional)                                         | Low        |
-| 5.10 | macOS notarization + DMG packaging                                      | High       |
-| 5.11 | Windows installer                                                       | Medium     |
-| 5.12 | Linux AppImage/Flatpak                                                  | Medium     |
-| 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
-| 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
-| 5.24 | macOS code signing + notarization                                       | High       |
-| 5.25 | Windows code signing with Microsoft Artifact Signing                    | Medium     |
-| 5.26 | Independent update server domain                                        | Medium     |
-| 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
-| 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
-| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]`           | Low        |
-| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium     |
-| 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
-| 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
+| Task | Description                                                              | Complexity |
+| ---- | ------------------------------------------------------------------------ | ---------- |
+| 5.1  | Tauri 2.0 project scaffold                                               | Medium     |
+| 5.2  | Embed PWA React app in WebView                                           | Medium     |
+| 5.3  | Native window vibrancy (macOS)                                           | Low        |
+| 5.4  | Menu bar icon + background mode                                          | Medium     |
+| 5.5  | Local WebSocket relay                                                    | Medium     |
+| 5.6  | Playwright subprocess setup                                              | High       |
+| 5.7  | System tray with sync status                                             | Low        |
+| 5.8  | QR code display for phone pairing                                        | Low        |
+| 5.9  | Auto-launch on login (optional)                                          | Low        |
+| 5.10 | macOS notarization + DMG packaging                                       | High       |
+| 5.11 | Windows installer                                                        | Medium     |
+| 5.12 | Linux AppImage/Flatpak                                                   | Medium     |
+| 5.22 | Auto-updater (tauri-plugin-updater)                                      | Medium     |
+| 5.23 | CI/CD release pipeline (GH Actions)                                      | Medium     |
+| 5.24 | macOS code signing + notarization                                        | High       |
+| 5.25 | Windows code signing with Microsoft Artifact Signing                     | Medium     |
+| 5.26 | Independent update server domain                                         | Medium     |
+| 5.27 | First-run legal gate and local-only acceptance storage                   | Medium     |
+| 5.28 | Provider-specific risk interstitials for social capture                  | Medium     |
+| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]`            | Low        |
+| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards  | Medium     |
+| 5.31 | Provider health dashboard, charts, and unsubscribe flow                  | Medium     |
+| 5.32 | Rotating local database snapshots + restore UI                           | Medium     |
 | 5.33 | Public-safe bundles and private GitHub vulnerability reports             | Medium     |
-| 5.34 | Native startup recovery window outside the React tree                  | Medium     |
-| 5.35 | Hot-path side-effect scheduling for persistence, sync, and outbox work  | Medium     |
+| 5.34 | Native startup recovery window outside the React tree                    | Medium     |
+| 5.35 | Hot-path side-effect scheduling for persistence, sync, and outbox work   | Medium     |
 | 5.36 | Event-aware Automerge subscription metadata for item-patch outbox drains | Medium     |
 | 5.37 | Incremental main-thread item-patch state updates                         | Medium     |
 | 5.38 | Renderer recovery safe mode and deep local WebKit diagnostics            | Medium     |
-| 5.39 | Visible cloud transfer diagnostics, manual sync, and activity timeline    | Medium     |
+| 5.39 | Visible cloud transfer diagnostics, manual sync, and activity timeline   | Medium     |
 | 5.40 | Global toolbar background activity monitor                               | Medium     |
 | 5.41 | Multi-Desktop registration and duplicate provider request warning        | Low        |
 

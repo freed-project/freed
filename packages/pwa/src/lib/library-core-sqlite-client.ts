@@ -1,5 +1,6 @@
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
+  createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteFeedPageWorkerRequest,
@@ -12,6 +13,7 @@ import {
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
+  type LibraryCoreNormalizedCheckpointActivationReceiptV2,
 } from "@freed/shared/library-core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -22,6 +24,7 @@ interface PendingRequest {
     value:
       | LibraryCoreSqliteWorkerStatus
       | LibraryCoreFeedPageResponseV1
+      | LibraryCoreNormalizedCheckpointActivationReceiptV2
       | LibraryCoreNormalizedCheckpointStageStatusV2,
   ) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
@@ -79,6 +82,17 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
+  activateNormalizedCheckpointStage(
+    stageId: string,
+  ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteActivateCheckpointWorkerRequest(
+        requestId,
+        stageId,
+      ),
+    );
+  }
+
   async close(): Promise<LibraryCoreSqliteWorkerStatus> {
     const status = await this.#request("close");
     this.#closed = true;
@@ -101,6 +115,7 @@ export class PwaLibraryCoreSqliteClient {
     T extends
       | LibraryCoreSqliteWorkerStatus
       | LibraryCoreFeedPageResponseV1
+      | LibraryCoreNormalizedCheckpointActivationReceiptV2
       | LibraryCoreNormalizedCheckpointStageStatusV2,
   >(
     createRequest: (requestId: string) => LibraryCoreSqliteWorkerRequest,

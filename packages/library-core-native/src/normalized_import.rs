@@ -53,27 +53,6 @@ fn record_from_canonical(
     Ok(record)
 }
 
-fn key_text(record: &NormalizedCheckpointRecordV2) -> Result<&str, NormalizedSqliteError> {
-    record
-        .primary_key
-        .as_str()
-        .ok_or(invalid("checkpoint primary key must be text"))
-}
-
-fn key_array(
-    record: &NormalizedCheckpointRecordV2,
-    length: usize,
-) -> Result<&[Value], NormalizedSqliteError> {
-    let values = record
-        .primary_key
-        .as_array()
-        .ok_or(invalid("checkpoint primary key must be an array"))?;
-    if values.len() != length {
-        return Err(invalid("checkpoint primary key has the wrong length"));
-    }
-    Ok(values)
-}
-
 fn payload_json(record: &NormalizedCheckpointRecordV2) -> Result<String, NormalizedSqliteError> {
     let mut payload = record.payload.clone();
     decode_fractional_payload(&record.registry_key, &mut payload)?;
@@ -82,366 +61,78 @@ fn payload_json(record: &NormalizedCheckpointRecordV2) -> Result<String, Normali
     })
 }
 
-fn text_part(value: &Value) -> Result<&str, NormalizedSqliteError> {
-    value
-        .as_str()
-        .ok_or(invalid("checkpoint primary key text part is invalid"))
-}
-
-fn integer_part(value: &Value) -> Result<i64, NormalizedSqliteError> {
-    value
-        .as_u64()
-        .and_then(|number| i64::try_from(number).ok())
-        .ok_or(invalid("checkpoint primary key integer part is invalid"))
-}
-
-fn require_payload_value(
+fn validate_checkpoint_header(
     record: &NormalizedCheckpointRecordV2,
-    field: &str,
-    expected: &Value,
 ) -> Result<(), NormalizedSqliteError> {
-    if record.payload.get(field) != Some(expected) {
-        return Err(invalid(
-            "checkpoint payload identity does not match its primary key",
-        ));
+    if record.primary_key != Value::String("checkpoint".into()) {
+        return Err(invalid("checkpoint header primary key is invalid"));
+    }
+    let library_id = record.payload["libraryId"]
+        .as_str()
+        .ok_or(invalid("checkpoint header Library identity is invalid"))?;
+    let authority_epoch = record.payload["authorityEpoch"]
+        .as_str()
+        .ok_or(invalid("checkpoint header authority epoch is invalid"))?;
+    let source_revision = record.payload["sourceRevision"]
+        .as_u64()
+        .ok_or(invalid("checkpoint header source revision is invalid"))?;
+    let expected_checkpoint_id = format!("{library_id}:{authority_epoch}:{source_revision}");
+    if record.payload["schemaVersion"].as_u64()
+        != Some(u64::from(
+            crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION,
+        ))
+        || record.payload["checkpointId"].as_str() != Some(expected_checkpoint_id.as_str())
+    {
+        return Err(invalid("checkpoint header version identity is invalid"));
     }
     Ok(())
+}
+
+fn primary_key_arity(value: &Value) -> Option<usize> {
+    match value {
+        Value::String(_) => Some(1),
+        Value::Array(values) => Some(values.len()),
+        _ => None,
+    }
 }
 
 fn apply_record(
     transaction: &Transaction<'_>,
     record: &NormalizedCheckpointRecordV2,
 ) -> Result<(), NormalizedSqliteError> {
+    let (_, expected_arity, has_chunk_bytes, sql) =
+        crate::sqlite_contract_generated::SQLITE_CHECKPOINT_IMPORT_PROGRAMS
+            .iter()
+            .find(|program| program.0 == record.registry_key)
+            .copied()
+            .ok_or(invalid("checkpoint registry key is unsupported"))?;
+    if record.registry_key == "00_checkpoint_header" {
+        validate_checkpoint_header(record)?;
+    } else if primary_key_arity(&record.primary_key) != Some(expected_arity) {
+        return Err(invalid("checkpoint primary key has the wrong length"));
+    }
+    let primary_key = serde_json::to_string(&record.primary_key).map_err(|error| {
+        NormalizedSqliteError::Transport(format!("checkpoint primary key encoding failed: {error}"))
+    })?;
     let payload = payload_json(record)?;
-    match record.registry_key.as_str() {
-        "00_checkpoint_header" => {
-            if record.primary_key != Value::String("checkpoint".into()) {
-                return Err(invalid("checkpoint header primary key is invalid"));
-            }
-            let library_id = record.payload["libraryId"]
-                .as_str()
-                .ok_or(invalid("checkpoint header Library identity is invalid"))?;
-            let authority_epoch = record.payload["authorityEpoch"]
-                .as_str()
-                .ok_or(invalid("checkpoint header authority epoch is invalid"))?;
-            let source_revision = record.payload["sourceRevision"]
-                .as_u64()
-                .ok_or(invalid("checkpoint header source revision is invalid"))?;
-            let expected_checkpoint_id =
-                format!("{library_id}:{authority_epoch}:{source_revision}");
-            if record.payload["schemaVersion"].as_u64()
-                != Some(u64::from(
-                    crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION,
-                ))
-                || record.payload["checkpointId"].as_str() != Some(expected_checkpoint_id.as_str())
-            {
-                return Err(invalid("checkpoint header version identity is invalid"));
-            }
-            transaction.execute(
-                "INSERT INTO library_meta
-                 (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
-                 SELECT 1, json_extract(?1, '$.libraryId'), json_extract(?1, '$.schemaVersion'),
-                        json_extract(?1, '$.authorityEpoch'), json_extract(?1, '$.sourceRevision'),
-                        json_extract(?1, '$.createdAtMs');",
-                [&payload],
-            )?;
+    let changes = if has_chunk_bytes {
+        let encoded = record.payload["bytesBase64"]
+            .as_str()
+            .ok_or(invalid("checkpoint chunk base64 is missing"))?;
+        let bytes = BASE64
+            .decode(encoded)
+            .map_err(|_| invalid("checkpoint chunk base64 is invalid"))?;
+        if record.payload["byteLength"].as_u64() != u64::try_from(bytes.len()).ok() {
+            return Err(invalid("checkpoint chunk byte length is invalid"));
         }
-        "10_feed_item" => {
-            transaction.execute(
-                "INSERT INTO library_feed_items (
-                   global_id, platform, content_type, captured_at, published_at,
-                   author_id, author_handle, author_display_name, author_avatar_url,
-                   content_text, content_text_blob_digest, link_url, link_title, link_description,
-                   engagement_likes, engagement_reposts, engagement_comments, engagement_views,
-                   location_name, location_lat, location_lng, location_url, location_source,
-                   time_range_starts_at, time_range_ends_at, time_range_kind,
-                   rss_feed_url, rss_feed_title, rss_site_url, fb_group_id, fb_group_name, fb_group_url,
-                   preserved_text, preserved_text_blob_digest, preserved_author, preserved_published_at,
-                   preserved_word_count, preserved_reading_time, preserved_at,
-                   hidden, read_at, saved, saved_at, archived, archived_at, liked, liked_at,
-                   liked_synced_at, seen_synced_at, priority, priority_computed_at, source_url,
-                   sample_batch_id, sample_generated_at, sample_generator_version, updated_at
-                 ) SELECT
-                   ?1, json_extract(?2, '$.platform'), json_extract(?2, '$.contentType'),
-                   json_extract(?2, '$.capturedAt'), json_extract(?2, '$.publishedAt'),
-                   json_extract(?2, '$.authorId'), json_extract(?2, '$.authorHandle'),
-                   json_extract(?2, '$.authorDisplayName'), json_extract(?2, '$.authorAvatarUrl'),
-                   json_extract(?2, '$.contentText'), json_extract(?2, '$.contentTextBlobDigest'),
-                   json_extract(?2, '$.linkUrl'), json_extract(?2, '$.linkTitle'),
-                   json_extract(?2, '$.linkDescription'), json_extract(?2, '$.engagementLikes'),
-                   json_extract(?2, '$.engagementReposts'), json_extract(?2, '$.engagementComments'),
-                   json_extract(?2, '$.engagementViews'), json_extract(?2, '$.locationName'),
-                   json_extract(?2, '$.locationLat'), json_extract(?2, '$.locationLng'),
-                   json_extract(?2, '$.locationUrl'), json_extract(?2, '$.locationSource'),
-                   json_extract(?2, '$.timeRangeStartsAt'), json_extract(?2, '$.timeRangeEndsAt'),
-                   json_extract(?2, '$.timeRangeKind'), json_extract(?2, '$.rssFeedUrl'),
-                   json_extract(?2, '$.rssFeedTitle'), json_extract(?2, '$.rssSiteUrl'),
-                   json_extract(?2, '$.fbGroupId'), json_extract(?2, '$.fbGroupName'),
-                   json_extract(?2, '$.fbGroupUrl'), json_extract(?2, '$.preservedText'),
-                   json_extract(?2, '$.preservedTextBlobDigest'), json_extract(?2, '$.preservedAuthor'),
-                   json_extract(?2, '$.preservedPublishedAt'), json_extract(?2, '$.preservedWordCount'),
-                   json_extract(?2, '$.preservedReadingTime'), json_extract(?2, '$.preservedAt'),
-                   json_extract(?2, '$.hidden'), json_extract(?2, '$.readAt'),
-                   json_extract(?2, '$.saved'), json_extract(?2, '$.savedAt'),
-                   json_extract(?2, '$.archived'), json_extract(?2, '$.archivedAt'),
-                   json_extract(?2, '$.liked'), json_extract(?2, '$.likedAt'),
-                   json_extract(?2, '$.likedSyncedAt'), json_extract(?2, '$.seenSyncedAt'),
-                   json_extract(?2, '$.priority'), json_extract(?2, '$.priorityComputedAt'),
-                   json_extract(?2, '$.sourceUrl'), json_extract(?2, '$.sampleBatchId'),
-                   json_extract(?2, '$.sampleGeneratedAt'), json_extract(?2, '$.sampleGeneratorVersion'),
-                   json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "11_feed_item_media" => {
-            let key = key_array(record, 2)?;
-            transaction.execute(
-                "INSERT INTO library_feed_item_media
-                 (global_id, ordinal, source_url, media_type, blob_content_digest)
-                 SELECT ?1, ?2, json_extract(?3, '$.sourceUrl'),
-                        json_extract(?3, '$.mediaType'), json_extract(?3, '$.blobContentDigest');",
-                params![text_part(&key[0])?, integer_part(&key[1])?, payload],
-            )?;
-        }
-        "12_feed_item_topic" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "topic", &key[1])?;
-            transaction.execute(
-                "INSERT INTO library_feed_item_topics (global_id, topic) VALUES (?1, ?2);",
-                params![text_part(&key[0])?, text_part(&key[1])?],
-            )?;
-        }
-        "13_feed_item_tag" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "tag", &key[1])?;
-            transaction.execute(
-                "INSERT INTO library_feed_item_tags (global_id, tag) VALUES (?1, ?2);",
-                params![text_part(&key[0])?, text_part(&key[1])?],
-            )?;
-        }
-        "14_feed_item_highlight" => {
-            let key = key_array(record, 2)?;
-            transaction.execute(
-                "INSERT INTO library_feed_item_highlights
-                 (global_id, ordinal, text_value, text_blob_digest, note, created_at)
-                 SELECT ?1, ?2, json_extract(?3, '$.text'), json_extract(?3, '$.textBlobDigest'),
-                        json_extract(?3, '$.note'), json_extract(?3, '$.createdAt');",
-                params![text_part(&key[0])?, integer_part(&key[1])?, payload],
-            )?;
-        }
-        "15_feed_item_signal" => {
-            transaction.execute(
-                "INSERT INTO library_feed_item_signals (global_id, version, method, inferred_at)
-                 SELECT ?1, json_extract(?2, '$.version'), json_extract(?2, '$.method'),
-                        json_extract(?2, '$.inferredAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "16_feed_item_signal_score" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "signal", &key[1])?;
-            transaction.execute(
-                "INSERT INTO library_feed_item_signal_scores (global_id, signal, score, tagged)
-                 SELECT ?1, ?2, json_extract(?3, '$.score'), json_extract(?3, '$.tagged');",
-                params![text_part(&key[0])?, text_part(&key[1])?, payload],
-            )?;
-        }
-        "17_feed_item_event" => {
-            transaction.execute(
-                "INSERT INTO library_feed_item_events
-                 (global_id, version, method, detected_at, confidence, title, starts_at, ends_at,
-                  timezone, location_name, location_url, evidence, evidence_blob_digest)
-                 SELECT ?1, json_extract(?2, '$.version'), json_extract(?2, '$.method'),
-                        json_extract(?2, '$.detectedAt'), json_extract(?2, '$.confidence'),
-                        json_extract(?2, '$.title'), json_extract(?2, '$.startsAt'),
-                        json_extract(?2, '$.endsAt'), json_extract(?2, '$.timezone'),
-                        json_extract(?2, '$.locationName'), json_extract(?2, '$.locationUrl'),
-                        json_extract(?2, '$.evidence'), json_extract(?2, '$.evidenceBlobDigest');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "20_rss_feed" => {
-            transaction.execute(
-                "INSERT INTO library_rss_feeds
-                 (url, title, site_url, last_fetched, image_url, enabled, poll_interval,
-                  track_unread, folder, sample_batch_id, sample_generated_at,
-                  sample_generator_version, updated_at)
-                 SELECT ?1, json_extract(?2, '$.title'), json_extract(?2, '$.siteUrl'),
-                        json_extract(?2, '$.lastFetched'), json_extract(?2, '$.imageUrl'),
-                        json_extract(?2, '$.enabled'), json_extract(?2, '$.pollInterval'),
-                        json_extract(?2, '$.trackUnread'), json_extract(?2, '$.folder'),
-                        json_extract(?2, '$.sampleBatchId'), json_extract(?2, '$.sampleGeneratedAt'),
-                        json_extract(?2, '$.sampleGeneratorVersion'), json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "30_person" => {
-            transaction.execute(
-                "INSERT INTO library_persons
-                 (id, name, avatar_url, bio, relationship_status, care_level,
-                  reach_out_interval_days, notes, sample_batch_id, sample_generated_at,
-                  sample_generator_version, created_at, updated_at)
-                 SELECT ?1, json_extract(?2, '$.name'), json_extract(?2, '$.avatarUrl'),
-                        json_extract(?2, '$.bio'), json_extract(?2, '$.relationshipStatus'),
-                        json_extract(?2, '$.careLevel'), json_extract(?2, '$.reachOutIntervalDays'),
-                        json_extract(?2, '$.notes'), json_extract(?2, '$.sampleBatchId'),
-                        json_extract(?2, '$.sampleGeneratedAt'), json_extract(?2, '$.sampleGeneratorVersion'),
-                        json_extract(?2, '$.createdAt'), json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "31_person_tag" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "tag", &key[1])?;
-            transaction.execute(
-                "INSERT INTO library_person_tags (person_id, tag) VALUES (?1, ?2);",
-                params![text_part(&key[0])?, text_part(&key[1])?],
-            )?;
-        }
-        "32_person_reach_out" => {
-            let key = key_array(record, 2)?;
-            transaction.execute(
-                "INSERT INTO library_person_reach_outs (person_id, ordinal, logged_at, channel, notes)
-                 SELECT ?1, ?2, json_extract(?3, '$.loggedAt'), json_extract(?3, '$.channel'),
-                        json_extract(?3, '$.notes');",
-                params![text_part(&key[0])?, integer_part(&key[1])?, payload],
-            )?;
-        }
-        "40_account" => {
-            transaction.execute(
-                "INSERT INTO library_accounts
-                 (id, person_id, kind, provider, external_id, handle, display_name, avatar_url,
-                  profile_url, email, phone, address, imported_at, first_seen_at, last_seen_at,
-                  discovered_from, follow_roster_active, follow_roster_synced_at, sample_batch_id,
-                  sample_generated_at, sample_generator_version, created_at, updated_at)
-                 SELECT ?1, json_extract(?2, '$.personId'), json_extract(?2, '$.kind'),
-                        json_extract(?2, '$.provider'), json_extract(?2, '$.externalId'),
-                        json_extract(?2, '$.handle'), json_extract(?2, '$.displayName'),
-                        json_extract(?2, '$.avatarUrl'), json_extract(?2, '$.profileUrl'),
-                        json_extract(?2, '$.email'), json_extract(?2, '$.phone'),
-                        json_extract(?2, '$.address'), json_extract(?2, '$.importedAt'),
-                        json_extract(?2, '$.firstSeenAt'), json_extract(?2, '$.lastSeenAt'),
-                        json_extract(?2, '$.discoveredFrom'), json_extract(?2, '$.followRosterActive'),
-                        json_extract(?2, '$.followRosterSyncedAt'), json_extract(?2, '$.sampleBatchId'),
-                        json_extract(?2, '$.sampleGeneratedAt'), json_extract(?2, '$.sampleGeneratorVersion'),
-                        json_extract(?2, '$.createdAt'), json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "41_account_follow_role" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "role", &key[1])?;
-            transaction.execute(
-                "INSERT INTO library_account_follow_roles (account_id, role) VALUES (?1, ?2);",
-                params![text_part(&key[0])?, text_part(&key[1])?],
-            )?;
-        }
-        "50_preference" => {
-            transaction.execute(
-                "INSERT INTO library_preferences
-                 (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at)
-                 SELECT ?1, json_extract(?2, '$.valueType'), json_extract(?2, '$.booleanValue'),
-                        json_extract(?2, '$.integerValue'), json_extract(?2, '$.realValue'),
-                        json_extract(?2, '$.textValue'), json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "60_relationship" => {
-            let key = key_array(record, 5)?;
-            transaction.execute(
-                "INSERT INTO library_relationships
-                 (subject_type, subject_id, relation_type, object_type, object_id,
-                  metadata_text, metadata_blob_digest, created_at, updated_at)
-                 SELECT ?1, ?2, ?3, ?4, ?5, json_extract(?6, '$.metadataText'),
-                        json_extract(?6, '$.metadataBlobDigest'), json_extract(?6, '$.createdAt'),
-                        json_extract(?6, '$.updatedAt');",
-                params![
-                    text_part(&key[0])?,
-                    text_part(&key[1])?,
-                    text_part(&key[2])?,
-                    text_part(&key[3])?,
-                    text_part(&key[4])?,
-                    payload
-                ],
-            )?;
-        }
-        "70_field_clock" => {
-            let key = key_array(record, 3)?;
-            transaction.execute(
-                "INSERT INTO library_field_clocks
-                 (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at)
-                 SELECT ?1, ?2, ?3, json_extract(?4, '$.actorId'), json_extract(?4, '$.counter'),
-                        json_extract(?4, '$.operationId'), json_extract(?4, '$.updatedAt');",
-                params![
-                    text_part(&key[0])?,
-                    text_part(&key[1])?,
-                    text_part(&key[2])?,
-                    payload
-                ],
-            )?;
-        }
-        "80_tombstone" => {
-            let key = key_array(record, 2)?;
-            transaction.execute(
-                "INSERT INTO library_tombstones
-                 (entity_type, entity_id, actor_id, counter, operation_id, deleted_at)
-                 SELECT ?1, ?2, json_extract(?3, '$.actorId'), json_extract(?3, '$.counter'),
-                        json_extract(?3, '$.operationId'), json_extract(?3, '$.deletedAt');",
-                params![text_part(&key[0])?, text_part(&key[1])?, payload],
-            )?;
-        }
-        "90_actor_state" => {
-            transaction.execute(
-                "INSERT INTO library_actors
-                 (actor_id, actor_kind, public_key, accepted_counter, retired_at, created_at, updated_at)
-                 SELECT ?1, json_extract(?2, '$.actorKind'), json_extract(?2, '$.publicKey'),
-                        json_extract(?2, '$.acceptedCounter'), json_extract(?2, '$.retiredAt'),
-                        json_extract(?2, '$.createdAt'), json_extract(?2, '$.updatedAt');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "a0_receipt" => {
-            let key = key_array(record, 2)?;
-            transaction.execute(
-                "INSERT INTO library_receipts
-                 (actor_id, operation_id, status, digest, result_text, result_blob_digest, accepted_at)
-                 SELECT ?1, ?2, json_extract(?3, '$.status'), json_extract(?3, '$.digest'),
-                        json_extract(?3, '$.resultText'), json_extract(?3, '$.resultBlobDigest'),
-                        json_extract(?3, '$.acceptedAt');",
-                params![text_part(&key[0])?, text_part(&key[1])?, payload],
-            )?;
-        }
-        "b0_blob_descriptor" => {
-            require_payload_value(record, "blobContentDigest", &record.primary_key)?;
-            transaction.execute(
-                "INSERT INTO library_blobs
-                 (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
-                 SELECT ?1, json_extract(?2, '$.byteLength'), json_extract(?2, '$.chunkBytes'),
-                        json_extract(?2, '$.chunkCount'), json_extract(?2, '$.mediaType');",
-                params![key_text(record)?, payload],
-            )?;
-        }
-        "b1_content_chunk" => {
-            let key = key_array(record, 2)?;
-            require_payload_value(record, "blobContentDigest", &key[0])?;
-            require_payload_value(record, "chunkIndex", &key[1])?;
-            let bytes = BASE64
-                .decode(
-                    record.payload["bytesBase64"]
-                        .as_str()
-                        .ok_or(invalid("checkpoint chunk base64 is missing"))?,
-                )
-                .map_err(|_| invalid("checkpoint chunk base64 is invalid"))?;
-            if record.payload["byteLength"].as_u64() != u64::try_from(bytes.len()).ok() {
-                return Err(invalid("checkpoint chunk byte length is invalid"));
-            }
-            transaction.execute(
-                "INSERT INTO library_blob_chunks (content_digest, chunk_index, chunk_digest, bytes)
-                 SELECT ?1, ?2, json_extract(?3, '$.chunkContentDigest'), ?4;",
-                params![text_part(&key[0])?, integer_part(&key[1])?, payload, bytes],
-            )?;
-        }
-        _ => return Err(invalid("checkpoint registry key is unsupported")),
+        transaction.execute(sql, params![primary_key, payload, bytes])?
+    } else {
+        transaction.execute(sql, params![primary_key, payload])?
+    };
+    if changes != 1 {
+        return Err(invalid(
+            "checkpoint payload identity does not match its primary key",
+        ));
     }
     Ok(())
 }
@@ -527,7 +218,14 @@ pub fn finalize_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_feed_items) +
            (SELECT count(*) FROM library_rss_feeds) +
            (SELECT count(*) FROM library_persons) +
-           (SELECT count(*) FROM library_accounts);",
+           (SELECT count(*) FROM library_accounts) +
+           (SELECT count(*) FROM library_preferences) +
+           (SELECT count(*) FROM library_relationships) +
+           (SELECT count(*) FROM library_field_clocks) +
+           (SELECT count(*) FROM library_tombstones) +
+           (SELECT count(*) FROM library_actors) +
+           (SELECT count(*) FROM library_receipts) +
+           (SELECT count(*) FROM library_blobs);",
         [],
         |row| row.get(0),
     )?;

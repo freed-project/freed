@@ -10,6 +10,7 @@ import type {
 } from "./feed-page-contracts.js";
 import {
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
+  parseLibraryCoreNormalizedCheckpointStageIdV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
@@ -52,6 +53,12 @@ export type LibraryCoreSqliteWorkerRequest =
       page: LibraryCoreNormalizedCheckpointStagePageV2;
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
+    }>
+  | Readonly<{
+      kind: "activate_normalized_checkpoint_stage";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
     }>;
 
 export interface LibraryCoreSqliteWorkerStatus {
@@ -113,11 +120,14 @@ export function parseLibraryCoreSqliteWorkerRequest(
         ? ["kind", "protocolVersion", "requestId", "stage"]
         : value.kind === "append_normalized_checkpoint_stage_page"
           ? ["kind", "page", "protocolVersion", "requestId"]
-          : ["kind", "protocolVersion", "requestId"];
+          : value.kind === "activate_normalized_checkpoint_stage"
+            ? ["kind", "protocolVersion", "requestId", "stageId"]
+            : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
     ![
+      "activate_normalized_checkpoint_stage",
       "append_normalized_checkpoint_stage_page",
       "begin_normalized_checkpoint_stage",
       "close",
@@ -136,6 +146,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreBeginNormalizedCheckpointStageV2(value.stage);
   } else if (value.kind === "append_normalized_checkpoint_stage_page") {
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
+  } else if (value.kind === "activate_normalized_checkpoint_stage") {
+    parseLibraryCoreNormalizedCheckpointStageIdV2(value.stageId);
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
 }
@@ -184,5 +196,17 @@ export function createLibraryCoreSqliteAppendCheckpointPageWorkerRequest(
     page,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
+  });
+}
+
+export function createLibraryCoreSqliteActivateCheckpointWorkerRequest(
+  requestId: string,
+  stageId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "activate_normalized_checkpoint_stage",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    stageId,
   });
 }

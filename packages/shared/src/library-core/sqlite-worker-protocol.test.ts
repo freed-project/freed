@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createLibraryCoreNormalizedCheckpointRecordV2 } from "./normalized-checkpoint-contracts.js";
 import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
+  createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteFeedPageWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
@@ -63,6 +64,12 @@ describe("Library Core SQLite worker protocol", () => {
       { records: [record], stageId: "stage-1" },
     );
     expect(append.kind).toBe("append_normalized_checkpoint_stage_page");
+    expect(
+      createLibraryCoreSqliteActivateCheckpointWorkerRequest(
+        "request-5",
+        "stage-1",
+      ).kind,
+    ).toBe("activate_normalized_checkpoint_stage");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

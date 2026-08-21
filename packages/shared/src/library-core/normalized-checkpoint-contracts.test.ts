@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
+  digestLibraryCoreNormalizedCheckpointRecordsV2,
   libraryCoreNormalizedCheckpointRecordIdentityV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
   reassembleLibraryCoreContentV1,
@@ -13,11 +14,30 @@ import {
 } from "./sqlite-contract.generated.js";
 
 describe("normalized SQLite checkpoint contract", () => {
+  it("matches the native normalized checkpoint digest vector", () => {
+    const header = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: "epoch-1",
+        checkpointId: "library-1:epoch-1:7",
+        createdAtMs: 1_000,
+        libraryId: "library-1",
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2([header])).toBe(
+      "ce8a03cfece925243956fa104b7b583139da09036a14a1d7615a8994891d4104",
+    );
+  });
+
   it("has stable registry plus typed primary-key identity and no shell record", () => {
     expect(
       LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY.some(
         (entry) =>
-          entry.registryKey.includes("shell") || entry.payload.includes("shell"),
+          entry.registryKey.includes("shell") ||
+          entry.payload.includes("shell"),
       ),
     ).toBe(false);
     const record = createLibraryCoreNormalizedCheckpointRecordV2({
@@ -30,38 +50,36 @@ describe("normalized SQLite checkpoint contract", () => {
     );
   });
 
-  it(
-    "represents a legal maximum-sized item as bounded content records",
-    () => {
-      const bytes = Uint8Array.from(
-        { length: 4_194_304 },
-        (_, index) => (index * 31 + 17) % 251,
-      );
-      const records = splitLibraryCoreContentV1({
-        bytes,
-        mediaType: "application/json",
-      });
-      expect(records).toHaveLength(65);
-      expect(
-        records.every(
-          (record) =>
-            encodeLibraryCoreCanonicalValue(
-              record as unknown as {
-                readonly [key: string]: import("./canonical-codec.js").LibraryCoreCanonicalValue;
-              },
-            ).byteLength <=
-            LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
-        ),
-      ).toBe(true);
-      expect(
-        records.some(
-          (record) => String(record.registryKey) === "00_library_shell",
-        ),
-      ).toBe(false);
-      expect(reassembleLibraryCoreContentV1(records)).toEqual(bytes);
-    },
-    15_000,
-  );
+  it("represents a legal maximum-sized item as bounded content records", () => {
+    const bytes = Uint8Array.from(
+      { length: 4_194_304 },
+      (_, index) => (index * 31 + 17) % 251,
+    );
+    const records = splitLibraryCoreContentV1({
+      bytes,
+      mediaType: "application/json",
+    });
+    expect(records).toHaveLength(65);
+    expect(
+      records.every(
+        (record) =>
+          encodeLibraryCoreCanonicalValue(
+            record as unknown as {
+              readonly [
+                key: string
+              ]: import("./canonical-codec.js").LibraryCoreCanonicalValue;
+            },
+          ).byteLength <=
+          LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+      ),
+    ).toBe(true);
+    expect(
+      records.some(
+        (record) => String(record.registryKey) === "00_library_shell",
+      ),
+    ).toBe(false);
+    expect(reassembleLibraryCoreContentV1(records)).toEqual(bytes);
+  }, 15_000);
 
   it("encodes fractional SQLite values as exact canonical binary64 wrappers", () => {
     const record = createLibraryCoreNormalizedCheckpointRecordV2({
@@ -73,7 +91,9 @@ describe("normalized SQLite checkpoint contract", () => {
       bits: "3fe8000000000000",
       codec: "ieee754_binary64_hex_v1",
     });
-    expect(parseLibraryCoreNormalizedCheckpointRecordV2(record)).toEqual(record);
+    expect(parseLibraryCoreNormalizedCheckpointRecordV2(record)).toEqual(
+      record,
+    );
   });
 
   it("rejects malformed and nonfinite binary64 wrappers", () => {
@@ -85,7 +105,10 @@ describe("normalized SQLite checkpoint contract", () => {
     expect(() =>
       parseLibraryCoreNormalizedCheckpointRecordV2({
         ...record,
-        payload: { ...record.payload, score: { bits: "nope", codec: "ieee754_binary64_hex_v1" } },
+        payload: {
+          ...record.payload,
+          score: { bits: "nope", codec: "ieee754_binary64_hex_v1" },
+        },
       }),
     ).toThrow(/identity is invalid/);
     expect(() =>

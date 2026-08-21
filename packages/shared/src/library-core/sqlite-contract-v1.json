@@ -16,18 +16,199 @@
     "17_feed_item_event": ["confidence"],
     "50_preference": ["realValue"]
   },
+  "checkpointImports": {
+    "00_checkpoint_header": {
+      "table": "library_meta",
+      "primaryKeyColumns": [],
+      "constantColumns": { "singleton_id": 1 },
+      "fieldColumns": { "checkpointId": null, "createdAtMs": "updated_at" }
+    },
+    "10_feed_item": {
+      "table": "library_feed_items",
+      "primaryKeyColumns": ["global_id"]
+    },
+    "11_feed_item_media": {
+      "table": "library_feed_item_media",
+      "primaryKeyColumns": ["global_id", "ordinal"]
+    },
+    "12_feed_item_topic": {
+      "table": "library_feed_item_topics",
+      "primaryKeyColumns": ["global_id", "topic"],
+      "identityPayloadFields": { "topic": 1 }
+    },
+    "13_feed_item_tag": {
+      "table": "library_feed_item_tags",
+      "primaryKeyColumns": ["global_id", "tag"],
+      "identityPayloadFields": { "tag": 1 }
+    },
+    "14_feed_item_highlight": {
+      "table": "library_feed_item_highlights",
+      "primaryKeyColumns": ["global_id", "ordinal"],
+      "fieldColumns": { "text": "text_value" }
+    },
+    "15_feed_item_signal": {
+      "table": "library_feed_item_signals",
+      "primaryKeyColumns": ["global_id"]
+    },
+    "16_feed_item_signal_score": {
+      "table": "library_feed_item_signal_scores",
+      "primaryKeyColumns": ["global_id", "signal"],
+      "identityPayloadFields": { "signal": 1 }
+    },
+    "17_feed_item_event": {
+      "table": "library_feed_item_events",
+      "primaryKeyColumns": ["global_id"]
+    },
+    "20_rss_feed": {
+      "table": "library_rss_feeds",
+      "primaryKeyColumns": ["url"]
+    },
+    "30_person": {
+      "table": "library_persons",
+      "primaryKeyColumns": ["id"]
+    },
+    "31_person_tag": {
+      "table": "library_person_tags",
+      "primaryKeyColumns": ["person_id", "tag"],
+      "identityPayloadFields": { "tag": 1 }
+    },
+    "32_person_reach_out": {
+      "table": "library_person_reach_outs",
+      "primaryKeyColumns": ["person_id", "ordinal"]
+    },
+    "40_account": {
+      "table": "library_accounts",
+      "primaryKeyColumns": ["id"]
+    },
+    "41_account_follow_role": {
+      "table": "library_account_follow_roles",
+      "primaryKeyColumns": ["account_id", "role"],
+      "identityPayloadFields": { "role": 1 }
+    },
+    "50_preference": {
+      "table": "library_preferences",
+      "primaryKeyColumns": ["path"]
+    },
+    "60_relationship": {
+      "table": "library_relationships",
+      "primaryKeyColumns": [
+        "subject_type",
+        "subject_id",
+        "relation_type",
+        "object_type",
+        "object_id"
+      ]
+    },
+    "70_field_clock": {
+      "table": "library_field_clocks",
+      "primaryKeyColumns": ["entity_type", "entity_id", "field_path"]
+    },
+    "80_tombstone": {
+      "table": "library_tombstones",
+      "primaryKeyColumns": ["entity_type", "entity_id"]
+    },
+    "90_actor_state": {
+      "table": "library_actors",
+      "primaryKeyColumns": ["actor_id"]
+    },
+    "a0_receipt": {
+      "table": "library_receipts",
+      "primaryKeyColumns": ["actor_id", "operation_id"]
+    },
+    "b0_blob_descriptor": {
+      "table": "library_blobs",
+      "primaryKeyColumns": ["content_digest"],
+      "fieldColumns": { "blobContentDigest": null },
+      "identityPayloadFields": { "blobContentDigest": 0 }
+    },
+    "b1_content_chunk": {
+      "table": "library_blob_chunks",
+      "primaryKeyColumns": ["content_digest", "chunk_index"],
+      "fieldColumns": {
+        "blobContentDigest": null,
+        "byteLength": null,
+        "bytesBase64": "$chunkBytes",
+        "chunkContentDigest": "chunk_digest",
+        "chunkIndex": null
+      },
+      "identityPayloadFields": { "blobContentDigest": 0, "chunkIndex": 1 }
+    }
+  },
   "checkpointRecords": [
     {
       "registryKey": "00_checkpoint_header",
       "primaryKey": "singleton",
       "payload": "checkpoint_header",
-      "fields": ["authorityEpoch", "checkpointId", "createdAtMs", "libraryId", "schemaVersion", "sourceRevision"]
+      "fields": [
+        "authorityEpoch",
+        "checkpointId",
+        "createdAtMs",
+        "libraryId",
+        "schemaVersion",
+        "sourceRevision"
+      ]
     },
     {
       "registryKey": "10_feed_item",
       "primaryKey": "text",
       "payload": "feed_item",
-      "fields": ["archived", "archivedAt", "authorAvatarUrl", "authorDisplayName", "authorHandle", "authorId", "capturedAt", "contentText", "contentTextBlobDigest", "contentType", "engagementComments", "engagementLikes", "engagementReposts", "engagementViews", "fbGroupId", "fbGroupName", "fbGroupUrl", "hidden", "liked", "likedAt", "likedSyncedAt", "linkDescription", "linkTitle", "linkUrl", "locationLat", "locationLng", "locationName", "locationSource", "locationUrl", "platform", "preservedAt", "preservedAuthor", "preservedPublishedAt", "preservedReadingTime", "preservedText", "preservedTextBlobDigest", "preservedWordCount", "priority", "priorityComputedAt", "publishedAt", "readAt", "rssFeedTitle", "rssFeedUrl", "rssSiteUrl", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "saved", "savedAt", "seenSyncedAt", "sourceUrl", "timeRangeEndsAt", "timeRangeKind", "timeRangeStartsAt", "updatedAt"]
+      "fields": [
+        "archived",
+        "archivedAt",
+        "authorAvatarUrl",
+        "authorDisplayName",
+        "authorHandle",
+        "authorId",
+        "capturedAt",
+        "contentText",
+        "contentTextBlobDigest",
+        "contentType",
+        "engagementComments",
+        "engagementLikes",
+        "engagementReposts",
+        "engagementViews",
+        "fbGroupId",
+        "fbGroupName",
+        "fbGroupUrl",
+        "hidden",
+        "liked",
+        "likedAt",
+        "likedSyncedAt",
+        "linkDescription",
+        "linkTitle",
+        "linkUrl",
+        "locationLat",
+        "locationLng",
+        "locationName",
+        "locationSource",
+        "locationUrl",
+        "platform",
+        "preservedAt",
+        "preservedAuthor",
+        "preservedPublishedAt",
+        "preservedReadingTime",
+        "preservedText",
+        "preservedTextBlobDigest",
+        "preservedWordCount",
+        "priority",
+        "priorityComputedAt",
+        "publishedAt",
+        "readAt",
+        "rssFeedTitle",
+        "rssFeedUrl",
+        "rssSiteUrl",
+        "sampleBatchId",
+        "sampleGeneratedAt",
+        "sampleGeneratorVersion",
+        "saved",
+        "savedAt",
+        "seenSyncedAt",
+        "sourceUrl",
+        "timeRangeEndsAt",
+        "timeRangeKind",
+        "timeRangeStartsAt",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "11_feed_item_media",
@@ -69,19 +250,58 @@
       "registryKey": "17_feed_item_event",
       "primaryKey": "text",
       "payload": "feed_item_event",
-      "fields": ["confidence", "detectedAt", "endsAt", "evidence", "evidenceBlobDigest", "locationName", "locationUrl", "method", "startsAt", "timezone", "title", "version"]
+      "fields": [
+        "confidence",
+        "detectedAt",
+        "endsAt",
+        "evidence",
+        "evidenceBlobDigest",
+        "locationName",
+        "locationUrl",
+        "method",
+        "startsAt",
+        "timezone",
+        "title",
+        "version"
+      ]
     },
     {
       "registryKey": "20_rss_feed",
       "primaryKey": "text",
       "payload": "rss_feed",
-      "fields": ["enabled", "folder", "imageUrl", "lastFetched", "pollInterval", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "siteUrl", "title", "trackUnread", "updatedAt"]
+      "fields": [
+        "enabled",
+        "folder",
+        "imageUrl",
+        "lastFetched",
+        "pollInterval",
+        "sampleBatchId",
+        "sampleGeneratedAt",
+        "sampleGeneratorVersion",
+        "siteUrl",
+        "title",
+        "trackUnread",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "30_person",
       "primaryKey": "text",
       "payload": "person",
-      "fields": ["avatarUrl", "bio", "careLevel", "createdAt", "name", "notes", "reachOutIntervalDays", "relationshipStatus", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "updatedAt"]
+      "fields": [
+        "avatarUrl",
+        "bio",
+        "careLevel",
+        "createdAt",
+        "name",
+        "notes",
+        "reachOutIntervalDays",
+        "relationshipStatus",
+        "sampleBatchId",
+        "sampleGeneratedAt",
+        "sampleGeneratorVersion",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "31_person_tag",
@@ -99,7 +319,30 @@
       "registryKey": "40_account",
       "primaryKey": "text",
       "payload": "account",
-      "fields": ["address", "avatarUrl", "createdAt", "discoveredFrom", "displayName", "email", "externalId", "firstSeenAt", "followRosterActive", "followRosterSyncedAt", "handle", "importedAt", "kind", "lastSeenAt", "personId", "phone", "profileUrl", "provider", "sampleBatchId", "sampleGeneratedAt", "sampleGeneratorVersion", "updatedAt"]
+      "fields": [
+        "address",
+        "avatarUrl",
+        "createdAt",
+        "discoveredFrom",
+        "displayName",
+        "email",
+        "externalId",
+        "firstSeenAt",
+        "followRosterActive",
+        "followRosterSyncedAt",
+        "handle",
+        "importedAt",
+        "kind",
+        "lastSeenAt",
+        "personId",
+        "phone",
+        "profileUrl",
+        "provider",
+        "sampleBatchId",
+        "sampleGeneratedAt",
+        "sampleGeneratorVersion",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "41_account_follow_role",
@@ -111,7 +354,14 @@
       "registryKey": "50_preference",
       "primaryKey": "text",
       "payload": "preference",
-      "fields": ["booleanValue", "integerValue", "realValue", "textValue", "updatedAt", "valueType"]
+      "fields": [
+        "booleanValue",
+        "integerValue",
+        "realValue",
+        "textValue",
+        "updatedAt",
+        "valueType"
+      ]
     },
     {
       "registryKey": "60_relationship",
@@ -135,25 +385,50 @@
       "registryKey": "90_actor_state",
       "primaryKey": "text",
       "payload": "actor_state",
-      "fields": ["acceptedCounter", "actorKind", "createdAt", "publicKey", "retiredAt", "updatedAt"]
+      "fields": [
+        "acceptedCounter",
+        "actorKind",
+        "createdAt",
+        "publicKey",
+        "retiredAt",
+        "updatedAt"
+      ]
     },
     {
       "registryKey": "a0_receipt",
       "primaryKey": "receipt",
       "payload": "receipt",
-      "fields": ["acceptedAt", "digest", "resultBlobDigest", "resultText", "status"]
+      "fields": [
+        "acceptedAt",
+        "digest",
+        "resultBlobDigest",
+        "resultText",
+        "status"
+      ]
     },
     {
       "registryKey": "b0_blob_descriptor",
       "primaryKey": "digest",
       "payload": "blob_descriptor",
-      "fields": ["blobContentDigest", "byteLength", "chunkBytes", "chunkCount", "mediaType"]
+      "fields": [
+        "blobContentDigest",
+        "byteLength",
+        "chunkBytes",
+        "chunkCount",
+        "mediaType"
+      ]
     },
     {
       "registryKey": "b1_content_chunk",
       "primaryKey": "chunk",
       "payload": "content_chunk",
-      "fields": ["blobContentDigest", "byteLength", "bytesBase64", "chunkContentDigest", "chunkIndex"]
+      "fields": [
+        "blobContentDigest",
+        "byteLength",
+        "bytesBase64",
+        "chunkContentDigest",
+        "chunkIndex"
+      ]
     }
   ],
   "mutations": [

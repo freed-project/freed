@@ -6,8 +6,12 @@ import sqlite3InitModule, {
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
+  encodeLibraryCoreNormalizedCheckpointRecordV2,
+  splitLibraryCoreContentV1,
+  type LibraryCoreNormalizedCheckpointRecordV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -23,6 +27,61 @@ describe("PWA Library Core SQLite engine", () => {
   afterEach(() => {
     if (database.isOpen()) database.close();
   });
+
+  function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
+    return createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch: "epoch-1",
+        checkpointId: "library-1:epoch-1:7",
+        createdAtMs: 1_000,
+        libraryId: "library-1",
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+  }
+
+  function stageRecords(
+    engine: PwaLibraryCoreSqliteEngine,
+    records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+    stageId: string,
+    expectedCheckpointDigest = digestLibraryCoreNormalizedCheckpointRecordsV2(
+      records,
+    ),
+  ): void {
+    engine.beginNormalizedCheckpointStage({
+      authorityEpoch: "epoch-1",
+      createdAt: 1_000,
+      expectedCheckpointDigest,
+      expectedRecordCount: records.length,
+      libraryId: "library-1",
+      sourceRevision: 7,
+      stageId,
+    });
+    let page: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let pageBytes = 0;
+    for (const record of records) {
+      const recordBytes =
+        encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength;
+      if (
+        page.length > 0 &&
+        (page.length === 128 ||
+          pageBytes + recordBytes >
+            LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES)
+      ) {
+        engine.appendNormalizedCheckpointStagePage({ records: page, stageId });
+        page = [];
+        pageBytes = 0;
+      }
+      page.push(record);
+      pageBytes += recordBytes;
+    }
+    if (page.length > 0) {
+      engine.appendNormalizedCheckpointStagePage({ records: page, stageId });
+    }
+  }
 
   it("installs and verifies the exact generated normalized schema", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
@@ -108,18 +167,7 @@ describe("PWA Library Core SQLite engine", () => {
       sqlite3.version.libVersion,
     );
     engine.initialize();
-    const header = createLibraryCoreNormalizedCheckpointRecordV2({
-      registryKey: "00_checkpoint_header",
-      primaryKey: "checkpoint",
-      payload: {
-        authorityEpoch: "epoch-1",
-        checkpointId: "library-1:epoch-1:7",
-        createdAtMs: 1_000,
-        libraryId: "library-1",
-        schemaVersion: 1,
-        sourceRevision: 7,
-      },
-    });
+    const header = checkpointHeader();
     const stage = {
       authorityEpoch: "epoch-1",
       createdAt: 1_000,
@@ -162,5 +210,84 @@ describe("PWA Library Core SQLite engine", () => {
     expect(() =>
       engine.beginNormalizedCheckpointStage({ ...stage, sourceRevision: 8 }),
     ).toThrow(/replay changed its identity/);
+    expect(
+      engine.activateNormalizedCheckpointStage(stage.stageId),
+    ).toMatchObject({
+      checkpointDigest: stage.expectedCheckpointDigest,
+      libraryId: stage.libraryId,
+      recordCount: 1,
+      sourceRevision: stage.sourceRevision,
+    });
+    expect(
+      database.exec({
+        sql: "SELECT library_id FROM library_meta;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["library-1"]);
+  });
+
+  it("rolls back browser activation on digest mismatch and unresolved references", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const header = checkpointHeader();
+    stageRecords(engine, [header], "bad-digest", "a".repeat(64) as never);
+    expect(() =>
+      engine.activateNormalizedCheckpointStage("bad-digest"),
+    ).toThrow(/digest does not match/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_meta;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+    const orphan = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "13_feed_item_tag",
+      primaryKey: ["missing-item", "favorite"],
+      payload: { tag: "favorite" },
+    });
+    stageRecords(engine, [header, orphan], "orphan");
+    expect(() => engine.activateNormalizedCheckpointStage("orphan")).toThrow(
+      /unresolved foreign reference/,
+    );
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_feed_item_tags;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
+  it("activates a multi-page content blob losslessly without a large SQLite row", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const original = Uint8Array.from(
+      { length: 4_194_304 },
+      (_, index) => (index * 31 + 17) % 251,
+    );
+    const content = splitLibraryCoreContentV1({
+      bytes: original,
+      mediaType: "application/octet-stream",
+    });
+    const records = [checkpointHeader(), ...content];
+    stageRecords(engine, records, "large-content");
+    const receipt = engine.activateNormalizedCheckpointStage("large-content");
+    expect(receipt.recordCount).toBe(records.length);
+    expect(
+      database.exec({
+        sql: `SELECT count(*), sum(length(bytes)), max(length(bytes))
+              FROM library_blob_chunks;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[64, original.byteLength, 65_536]]);
   });
 });

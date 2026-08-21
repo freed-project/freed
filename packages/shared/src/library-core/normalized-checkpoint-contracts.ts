@@ -321,6 +321,53 @@ export function encodeLibraryCoreNormalizedCheckpointRecordV2(
   );
 }
 
+export function libraryCoreNormalizedCheckpointSqlitePayloadV2(
+  record: LibraryCoreNormalizedCheckpointRecordV2,
+): Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+  const payload = { ...parsed.payload };
+  const fields =
+    (
+      LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS as Partial<
+        Record<LibraryCoreCheckpointRegistryKey, readonly string[]>
+      >
+    )[parsed.registryKey] ?? [];
+  for (const field of fields) {
+    const value = payload[field];
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      payload[field] = decodeBinary64(value);
+    }
+  }
+  return Object.freeze(payload);
+}
+
+export function decodeLibraryCoreContentChunkBytesV1(
+  record: LibraryCoreNormalizedCheckpointRecordV2,
+): Uint8Array {
+  const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+  if (parsed.registryKey !== "b1_content_chunk") {
+    throw new TypeError("normalized checkpoint record is not a content chunk");
+  }
+  const bytesBase64 = parsed.payload.bytesBase64;
+  const byteLength = parsed.payload.byteLength;
+  const chunkContentDigest = parsed.payload.chunkContentDigest;
+  if (
+    typeof bytesBase64 !== "string" ||
+    !isLibraryCoreNonnegativeSafeInteger(byteLength) ||
+    !isLibraryCoreLowercaseHex64(chunkContentDigest)
+  ) {
+    throw new TypeError("content chunk payload is invalid");
+  }
+  const bytes = base64Decode(bytesBase64);
+  if (
+    bytes.byteLength !== byteLength ||
+    digestLibraryCoreMediaBlobBytesV1(bytes) !== chunkContentDigest
+  ) {
+    throw new TypeError("content chunk bytes do not match their descriptor");
+  }
+  return bytes;
+}
+
 function compareBytes(left: Uint8Array, right: Uint8Array): number {
   const length = Math.min(left.byteLength, right.byteLength);
   for (let index = 0; index < length; index += 1) {

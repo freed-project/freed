@@ -537,6 +537,14 @@ mod tests {
         .expect("checkpoint header")
     }
 
+    #[test]
+    fn normalized_checkpoint_digest_matches_the_typescript_vector() {
+        assert_eq!(
+            normalized_checkpoint_digest_v2(&[checkpoint_header()]).expect("digest"),
+            "ce8a03cfece925243956fa104b7b583139da09036a14a1d7615a8994891d4104"
+        );
+    }
+
     fn begin_stage(
         connection: &Connection,
         stage_id: &str,
@@ -868,6 +876,32 @@ mod tests {
                 .expect("preserved stage")
                 .complete
         );
+    }
+
+    #[test]
+    fn activation_refuses_an_independent_row_in_the_target() {
+        let mut connection = fixture();
+        connection
+            .execute(
+                "INSERT INTO library_preferences (path, value_type, updated_at)
+                 VALUES ('existing', 'null', 1);",
+                [],
+            )
+            .expect("existing preference");
+        let records = vec![checkpoint_header()];
+        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
+        begin_stage(&connection, "stage-nonempty", &records, digest);
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-nonempty", &records)
+            .expect("stage records");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-nonempty")
+            .expect_err("nonempty target");
+        assert!(error.to_string().contains("target is not empty"));
+        let preferences: i64 = connection
+            .query_row("SELECT count(*) FROM library_preferences;", [], |row| {
+                row.get(0)
+            })
+            .expect("preferences");
+        assert_eq!(preferences, 1);
     }
 
     #[test]

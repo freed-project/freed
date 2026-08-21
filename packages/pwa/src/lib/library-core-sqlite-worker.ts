@@ -85,7 +85,9 @@ function failure(
       ? "library_busy"
       : message.includes("quick check") || message.includes("storage identity")
         ? "sqlite_integrity_failed"
-        : "sqlite_initialization_failed",
+        : engine === null
+          ? "sqlite_initialization_failed"
+          : "invalid_request",
     message,
     ok: false,
     requestId,
@@ -100,6 +102,14 @@ scope.onmessage = (event) => {
       requestId = request.requestId;
       const active = request.kind === "open" ? await open() : engine;
       if (!active) throw new Error("PWA Library SQLite is not open");
+      if (request.kind === "activate_normalized_checkpoint_stage") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.activateNormalizedCheckpointStage(request.stageId),
+        });
+        return;
+      }
       if (request.kind === "begin_normalized_checkpoint_stage") {
         scope.postMessage({
           ok: true,

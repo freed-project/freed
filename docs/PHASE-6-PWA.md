@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, and single-worker OPFS runtime are implemented; product query cutover, checkpoint activation, physical iPhone proof, and IndexedDB Library deletion remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, and normalized checkpoint activation are implemented; product query cutover, physical iPhone proof, and IndexedDB Library deletion remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -35,6 +35,10 @@
         exact 128-record and 2,097,152-byte page ceilings, canonical byte
         identity, idempotent replay, and changed-replay rejection. IndexedDB
         and Library shells do not participate in staging.
+  - [x] Verify the cross-runtime checkpoint digest, apply generated row import
+        SQL in one transaction, validate every foreign key and content chunk,
+        and activate only an empty SQLite target. Failure preserves the staged
+        records and leaves the active Library empty.
 - [ ] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.
   - [x] `feed_page_v1` executes the generated normalized SQL in SQLite
