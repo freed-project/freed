@@ -155,7 +155,11 @@ import {
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
+  type LibraryCoreSqliteMutationProgramId,
 } from "@freed/shared/library-core";
+
+type LibraryCoreSqliteMutationProgram =
+  (typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS)[LibraryCoreSqliteMutationProgramId];
 
 const stagedRecordDigestPrefix = Uint8Array.from(
   "freed.library-core.v2/digest-bytes/staged-checkpoint-record\u0000",
@@ -254,6 +258,19 @@ function nullableFiniteNumber(
     throw new Error(`${label} is not a bounded SQLite number`);
   }
   return number;
+}
+
+function sqliteMutationProgram(
+  operationType: string,
+): LibraryCoreSqliteMutationProgram {
+  if (!Object.hasOwn(LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS, operationType)) {
+    throw new TypeError(
+      `SQLite mutation materializer is not registered for ${operationType}`,
+    );
+  }
+  return LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS[
+    operationType as LibraryCoreSqliteMutationProgramId
+  ];
 }
 
 function nullableBoolean(
@@ -1001,6 +1018,22 @@ export class PwaLibraryCoreSqliteEngine {
           verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
       },
     );
+    const transactionProgram = sqliteMutationProgram(
+      verified.members[0]!.envelope.operation_type,
+    );
+    if (
+      verified.members.length > transactionProgram.maximumMembers ||
+      verified.members.some(
+        (member) =>
+          member.envelope.operation_type !==
+            verified.members[0]!.envelope.operation_type ||
+          member.envelope.entity_type !== transactionProgram.entityType,
+      )
+    ) {
+      throw new TypeError(
+        "follower intent transaction exceeds its registered mutation program",
+      );
+    }
     const effects = verified.members.flatMap((member) => {
       const envelope = member.envelope;
       const payload = envelope.payload as Readonly<
@@ -1063,7 +1096,12 @@ export class PwaLibraryCoreSqliteEngine {
           ),
         ];
       }
-      if (envelope.operation_type === "feed_item_capture_upsert") {
+      if (
+        Object.hasOwn(
+          LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
+          envelope.operation_type,
+        )
+      ) {
         return [];
       }
       throw new TypeError(
@@ -1549,55 +1587,247 @@ export class PwaLibraryCoreSqliteEngine {
         Record<string, LibraryCoreCanonicalValue>
       >;
       if (
-        envelope.operation_type !== "feed_item_capture_upsert" ||
-        envelope.entity_type !== "FeedItem" ||
+        typeof envelope.operation_type !== "string" ||
+        typeof envelope.entity_type !== "string" ||
         typeof envelope.entity_id !== "string" ||
+        typeof envelope.actor_id !== "string" ||
+        typeof envelope.actor_sequence !== "number" ||
+        !Number.isSafeInteger(envelope.actor_sequence) ||
+        typeof envelope.operation_id !== "string" ||
         envelope.payload === null ||
         typeof envelope.payload !== "object" ||
         Array.isArray(envelope.payload)
       ) {
         throw new Error("accepted follower intent materializer is unavailable");
       }
+      const program = sqliteMutationProgram(envelope.operation_type);
+      if (envelope.entity_type !== program.entityType) {
+        throw new Error("accepted follower intent entity type is invalid");
+      }
       const payload = envelope.payload as Readonly<
         Record<string, LibraryCoreCanonicalValue>
       >;
-      if (
-        payload.item === null ||
-        typeof payload.item !== "object" ||
-        Array.isArray(payload.item)
-      ) {
-        throw new Error("accepted FeedItem capture payload is invalid");
-      }
-      const program =
-        LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert;
-      const itemJson = JSON.stringify(payload.item);
-      this.#database.exec({
-        sql: program.materializeSql,
-        bind: [envelope.entity_id, itemJson, resolvedAt],
-      });
-      if (
+      const objectJson = (
+        value: LibraryCoreCanonicalValue | undefined,
+        label: string,
+      ): string => {
+        if (
+          value === null ||
+          typeof value !== "object" ||
+          Array.isArray(value)
+        ) {
+          throw new Error(`accepted follower ${label} payload is invalid`);
+        }
+        return JSON.stringify(value);
+      };
+      const requiredInteger = (
+        value: LibraryCoreCanonicalValue | undefined,
+        label: string,
+      ): number => {
+        if (
+          typeof value !== "number" ||
+          !Number.isSafeInteger(value) ||
+          value < 0
+        ) {
+          throw new Error(`accepted follower ${label} is invalid`);
+        }
+        return value;
+      };
+      const changed = (): number =>
         safeInteger(
           this.#database.exec({
             sql: "SELECT changes();",
             rowMode: 0,
             returnValue: "resultRows",
           })[0],
-          "accepted FeedItem capture materialization",
-        ) !== 1
-      ) {
-        throw new Error(
-          "accepted FeedItem capture target was not materialized",
+          "accepted follower materialization change",
         );
-      }
-      for (const sql of program.dependentDeleteSql) {
-        this.#database.exec({ sql, bind: [envelope.entity_id] });
-      }
-      for (const sql of program.dependentInsertSql) {
-        this.#database.exec({
-          sql,
-          bind: [envelope.entity_id, itemJson],
+      const clockWins = (sourceAt: number): boolean => {
+        const clock = this.#database.exec({
+          sql: program.clockReadSql,
+          bind: [envelope.entity_id],
+          rowMode: "array",
+          returnValue: "resultRows",
         });
+        if (clock.length === 0) return true;
+        if (clock.length !== 1) {
+          throw new Error("accepted follower intent field clock is invalid");
+        }
+        const currentAt = safeInteger(clock[0]![0], "field clock time");
+        const currentOperation = text(clock[0]![1], "field clock operation ID");
+        return (
+          sourceAt > currentAt ||
+          (sourceAt === currentAt && envelope.operation_id < currentOperation)
+        );
+      };
+      const writeClock = (sourceAt: number): void => {
+        this.#database.exec({
+          sql: program.clockWriteSql,
+          bind: [
+            envelope.entity_id,
+            envelope.actor_id,
+            envelope.actor_sequence,
+            envelope.operation_id,
+            sourceAt,
+          ],
+        });
+      };
+
+      if (
+        program.payloadKind === "account_upsert" ||
+        program.payloadKind === "feed_item_capture_upsert" ||
+        program.payloadKind === "person_upsert" ||
+        program.payloadKind === "rss_feed_upsert"
+      ) {
+        const property =
+          program.payloadKind === "account_upsert"
+            ? "account"
+            : program.payloadKind === "feed_item_capture_upsert"
+              ? "item"
+              : program.payloadKind === "person_upsert"
+                ? "person"
+                : "feed";
+        const recordJson = objectJson(payload[property], property);
+        this.#database.exec({
+          sql: program.materializeSql,
+          bind:
+            program.payloadKind === "account_upsert" ||
+            program.payloadKind === "person_upsert"
+              ? [envelope.entity_id, recordJson]
+              : [envelope.entity_id, recordJson, resolvedAt],
+        });
+        if (changed() !== 0) {
+          for (const sql of program.dependentDeleteSql) {
+            this.#database.exec({ sql, bind: [envelope.entity_id] });
+          }
+          for (const sql of program.dependentInsertSql) {
+            this.#database.exec({
+              sql,
+              bind: [envelope.entity_id, recordJson],
+            });
+          }
+        }
+        continue;
       }
+
+      if (program.payloadKind === "preferences_leaf_assignment") {
+        const patchJson = objectJson(payload.updates, "preference patch");
+        const bounds = this.#database.exec({
+          sql: `SELECT count(*),
+                       coalesce(max(length(CAST(fullkey AS BLOB)) + 2), 0),
+                       coalesce(max(CASE WHEN type = 'text'
+                                         THEN length(CAST(atom AS BLOB))
+                                         ELSE 0 END), 0)
+                FROM json_tree(?1) WHERE fullkey <> '$';`,
+          bind: [patchJson],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        const nodeCount = safeInteger(
+          bounds[0]?.[0],
+          "preference patch node count",
+        );
+        if (
+          bounds.length !== 1 ||
+          nodeCount < 1 ||
+          nodeCount > 512 ||
+          safeInteger(bounds[0]![1], "preference patch path bytes") > 4_096 ||
+          safeInteger(bounds[0]![2], "preference patch text bytes") > 8_192
+        ) {
+          throw new Error("accepted follower preference patch exceeds bounds");
+        }
+        for (const sql of program.dependentDeleteSql) {
+          this.#database.exec({ sql, bind: [patchJson] });
+        }
+        this.#database.exec({
+          sql: program.materializeSql,
+          bind: [patchJson, resolvedAt],
+        });
+        continue;
+      }
+
+      if (program.payloadKind === "person_reach_out_append") {
+        const loggedAt = requiredInteger(
+          payload.logged_at_ms,
+          "reach-out time",
+        );
+        const channel = payload.channel;
+        const notes = payload.notes;
+        if (
+          (channel !== null && typeof channel !== "string") ||
+          (notes !== null && typeof notes !== "string")
+        ) {
+          throw new Error("accepted follower reach-out payload is invalid");
+        }
+        this.#database.exec({
+          sql: program.materializeSql,
+          bind: [
+            envelope.entity_id,
+            envelope.operation_id,
+            loggedAt,
+            channel,
+            notes,
+          ],
+        });
+        for (const sql of program.dependentDeleteSql) {
+          this.#database.exec({ sql, bind: [envelope.entity_id] });
+        }
+        continue;
+      }
+
+      if (program.payloadKind === "remove") {
+        const removedAt = requiredInteger(
+          payload.removed_at_ms,
+          "removal time",
+        );
+        if (clockWins(removedAt)) {
+          for (const sql of program.dependentDeleteSql) {
+            this.#database.exec({ sql, bind: [envelope.entity_id] });
+          }
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [envelope.entity_id],
+          });
+          writeClock(removedAt);
+        }
+        continue;
+      }
+
+      if (
+        program.payloadKind === "text_assignment" ||
+        program.payloadKind === "nullable_text_assignment"
+      ) {
+        const assignedAt = requiredInteger(
+          payload.assigned_at_ms,
+          "assignment time",
+        );
+        const assignedValue =
+          program.payloadKind === "text_assignment"
+            ? payload.title
+            : payload.person_id;
+        if (
+          (program.payloadKind === "text_assignment" &&
+            typeof assignedValue !== "string") ||
+          (program.payloadKind === "nullable_text_assignment" &&
+            assignedValue !== null &&
+            typeof assignedValue !== "string")
+        ) {
+          throw new Error("accepted follower assignment payload is invalid");
+        }
+        if (clockWins(assignedAt)) {
+          this.#database.exec({
+            sql: program.materializeSql,
+            bind: [assignedValue as SqlValue, resolvedAt, envelope.entity_id],
+          });
+          if (changed() !== 1) {
+            throw new Error("accepted follower assignment target changed");
+          }
+          writeClock(assignedAt);
+        }
+        continue;
+      }
+
+      throw new Error("accepted follower intent materializer is unavailable");
     }
   }
 
@@ -1840,7 +2070,10 @@ export class PwaLibraryCoreSqliteEngine {
         }
       }
 
-      if (envelope.authoritative_source_revision > sourceRevision) {
+      const isExactNextSourceRevision =
+        sourceRevision < Number.MAX_SAFE_INTEGER &&
+        envelope.authoritative_source_revision === sourceRevision + 1;
+      if (isExactNextSourceRevision) {
         if (
           envelope.status === "accepted" &&
           envelope.replacement_fields.length === 0
@@ -1893,11 +2126,28 @@ export class PwaLibraryCoreSqliteEngine {
                 WHERE singleton_id = 1 AND revision = ?2;`,
           bind: [envelope.authoritative_source_revision, sourceRevision],
         });
-        this.#database.exec({
-          sql: `INSERT INTO library_invalidations
-                  (revision, ordinal, topic, entity_id, reset_required)
-                VALUES (?1, 0, 'feed', NULL, 1);`,
-          bind: [envelope.authoritative_source_revision],
+        const invalidations = this.#database.exec({
+          sql: `SELECT mutation_id, entity_id FROM library_intent_members
+                WHERE transaction_id = ?1 ORDER BY member_index;`,
+          bind: [envelope.transaction_id],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        invalidations.forEach((row, ordinal) => {
+          const program = sqliteMutationProgram(
+            text(row[0], "follower invalidation mutation ID"),
+          );
+          this.#database.exec({
+            sql: `INSERT INTO library_invalidations
+                    (revision, ordinal, topic, entity_id, reset_required)
+                  VALUES (?1, ?2, ?3, ?4, 0);`,
+            bind: [
+              envelope.authoritative_source_revision,
+              ordinal,
+              program.invalidationTopic,
+              text(row[1], "follower invalidation entity ID"),
+            ],
+          });
         });
       }
 

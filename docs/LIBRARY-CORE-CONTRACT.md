@@ -367,14 +367,30 @@ resolved transaction fails without altering the intent, optimistic overlay,
 actor tip, or canonical projection. The mutation does not perform cloud I/O or
 interpret provider receipts.
 
-An accepted FeedItem capture result materializes the follower's exact stored
-signed member through the generated `feed_item_capture_upsert` program. Intent
-commit does not write a canonical FeedItem and needs no shell-shaped optimistic
-copy. Result admission reopens the immutable canonical envelope, requires the
-closed FeedItem capture payload, and runs the same generated root, media, and
-topic SQL used by the native Primary before advancing the local source
-revision. Refresh preserves synchronized user state by contract. Tombstones,
-oversized members, absent programs, and changed signed bytes fail closed.
+An accepted result materializes the follower's exact stored signed members
+through the generated mutation registry. The shared verifier selects each
+closed member schema from the executable operation registry. A transaction
+must contain one registered operation and entity family and remain within that
+program's member bound. Browser SQLite then runs the same generated root,
+dependent-row, field-clock, and tombstone SQL used by native Rust for FeedItem,
+RSS, Person, Account, preference, reach-out, assignment, and removal programs.
+Intent commit writes only sparse scalar optimistic fields. Upserts and removals
+do not create shell-shaped optimistic copies or canonical rows before result
+admission. Refresh preserves synchronized user state by contract. Tombstones,
+oversized members, absent programs, mixed transactions, and changed signed
+bytes fail closed.
+
+An accepted result may advance canonical state only when its authoritative
+source revision is exactly one greater than the browser's current revision.
+That transaction materializes every member, emits one generated entity-scoped
+invalidation per member, and advances materialized and change-feed revisions
+together. A result that names the current revision verifies its scalar
+replacement values against the existing projection. A result beyond the next
+revision settles the signed result, intent state, and actor result cursor but
+does not materialize rows or advance either source revision. Ordered operation
+or checkpoint catchup must first supply every intervening authoritative
+revision. A result therefore cannot make a sparse follower claim a revision it
+has not actually applied.
 
 Native result export is one actor-bound keyset page over
 `(actor_id, result_sequence)`. The request carries the actor and, after the

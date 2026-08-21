@@ -48,10 +48,13 @@
         active authority key, requires a contiguous actor-scoped result chain,
         binds the result to one pending intent and its complete optimistic
         field identity set, stores the immutable result, removes the overlay,
-        advances the authoritative projection revision and result cursor, and
-        settles the intent in one immediate transaction. Exact retries return
-        the durable receipt. Changed bytes, gaps, incomplete projections, stale
-        authority, and a late cursor fault cannot partially settle the result.
+        and settles the intent plus result cursor in one immediate transaction.
+        It advances the canonical projection only for the exact next source
+        revision. A later result is retained without skipping intervening
+        authoritative revisions or materializing its rows ahead of catchup.
+        Exact retries return the durable receipt. Changed bytes, result-chain
+        gaps, incomplete projections, stale authority, and a late cursor fault
+        cannot partially settle the result.
   - [x] Page pending and published signed intent members directly from browser
         SQLite through one closed actor-bound worker request. Each page returns
         at most 128 exact canonical members and 1,048,576 serialized bytes in
@@ -80,6 +83,14 @@
         materializes the exact stored payload through that generated program
         only after a valid accepted Primary result advances the source
         revision.
+  - [x] Verify signed transaction members through the executable operation
+        registry instead of a hand-maintained operation list. Accepted results
+        replay every registered upsert, assignment, reach-out, preference, and
+        removal family through the same generated SQL used by native Rust.
+        Transactions are homogeneous and honor each program's member bound.
+        Exact next-revision commits emit one entity-scoped invalidation per
+        member. Results beyond the next revision settle durably but wait for
+        ordered operation or checkpoint catchup before changing canonical rows.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

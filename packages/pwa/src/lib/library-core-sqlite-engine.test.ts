@@ -26,6 +26,9 @@ import {
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
@@ -1144,6 +1147,464 @@ describe("PWA Library Core SQLite engine", () => {
         "https://example.com/image.jpg",
         "sqlite",
       ],
+    ]);
+
+    const gapItem = {
+      ...item,
+      content: { ...item.content, text: "Must wait for revision two" },
+      globalId: "captured-item-gap",
+    };
+    const gapMember =
+      FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 2_200,
+          entity_id: gapItem.globalId,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_200,
+          library_id: libraryId,
+          operation_id: "capture-operation-gap",
+          payload: { item: gapItem },
+          previous_actor_operation_id: "capture-operation-1",
+          transaction_id: "capture-transaction-gap",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const gapAssembled = assembleLibraryCoreTransactionV1(
+      [gapMember],
+      finalized.members[0]!.envelope.actor_chain_digest,
+      { digest: coreDigest },
+    );
+    const gapFinalized = await finalizeLibraryCoreTransactionV1(gapAssembled, {
+      digest: coreDigest,
+      async signOperation(message) {
+        return sign(null, message, actorKeys.privateKey).toString("hex");
+      },
+    });
+    await engine.commitFollowerIntent({
+      envelopeBytes: gapFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const unsignedGapResult = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: actorId,
+      authoritative_source_revision: 3,
+      authority_key_id: "55".repeat(32),
+      canonical_operation_ids: ["canonical-capture-operation-gap"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: resultDigest,
+      receipt_ids: ["capture-receipt-gap"],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 2_300,
+      result_body_digest: "0".repeat(64),
+      result_sequence: 2,
+      schema_version: 1,
+      signature: "0".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: gapFinalized.transaction_digest,
+      transaction_id: "capture-transaction-gap",
+    });
+    const gapResultDigest = coreDigest(
+      "follower-result-body",
+      libraryCoreFollowerResultBodyV1(unsignedGapResult),
+    );
+    const gapResultBytes = encodeLibraryCoreCanonicalValue({
+      ...unsignedGapResult,
+      result_body_digest: gapResultDigest,
+      signature: sign(
+        null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: gapResultDigest,
+        }),
+        authorityKeys.privateKey,
+      ).toString("hex"),
+    } as unknown as LibraryCoreCanonicalValue);
+    await engine.applyFollowerResult({
+      canonicalResultBytes: gapResultBytes,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT source_revision FROM library_meta WHERE singleton_id = 1),
+                (SELECT revision FROM library_change_state WHERE singleton_id = 1),
+                (SELECT count(*) FROM library_feed_items
+                 WHERE global_id = 'captured-item-gap'),
+                (SELECT state FROM library_intent_transactions
+                 WHERE transaction_id = 'capture-transaction-gap'),
+                (SELECT authoritative_source_revision FROM library_intent_results
+                 WHERE transaction_id = 'capture-transaction-gap');`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[1, 1, 0, "accepted", 3]]);
+  });
+
+  it("materializes an accepted signed RSS lifecycle through generated programs", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+      { now: () => 1_000 },
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1000);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_materialization_generation
+              (singleton_id, generation_id) VALUES (1, ?1);`,
+      bind: ["99".repeat(32)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        "55".repeat(32),
+        authorityPublicKey,
+        "77".repeat(32),
+        "88".repeat(32),
+        "aa".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actors
+              (actor_id, authority_epoch_id, actor_kind, public_key,
+               enrollment_operation_id, enrollment_certificate_digest,
+               canonical_enrollment_certificate, chain_genesis_digest,
+               accepted_counter, accepted_operation_id, accepted_chain_digest,
+               retired_at, created_at, updated_at)
+            VALUES (?1, ?2, 'pwa', ?3, 'enroll-rss', ?4, '{}', ?5,
+                    0, NULL, ?5, NULL, 1, 1);`,
+      bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
+    });
+    database.exec({
+      sql: `INSERT INTO library_actor_capabilities
+              (capability_id, actor_id, certificate_version, actor_class,
+               scope_mode, scope_kind, scope_id, issuance_identity,
+               retirement_identity, certificate_digest, canonical_certificate,
+               issued_at, retired_at)
+            VALUES ('rss-capability', ?1, 2, 'editor', 'library_wide',
+                    NULL, NULL, ?2, ?3, ?4, '{}', 1, NULL);`,
+      bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
+    });
+    database.exec(`INSERT INTO library_actor_capability_mutations
+        (capability_id, mutation_id) VALUES
+        ('rss-capability', 'rss_feed_upsert'),
+        ('rss-capability', 'rss_feed_title_assignment'),
+        ('rss-capability', 'rss_feed_remove_keep_items');`);
+
+    const feedUrl = "https://example.com/feed.xml";
+    const feed = {
+      enabled: true,
+      folder: "Reading",
+      pollInterval: 900,
+      siteUrl: "https://example.com",
+      title: "Original title",
+      trackUnread: true,
+      url: feedUrl,
+    };
+    const upsertMember = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+      {
+        actor_id: actorId,
+        actor_sequence: 1,
+        causal_frontier: [],
+        created_at_ms: 1_500,
+        entity_id: feedUrl,
+        epoch: 1,
+        epoch_id: epochId,
+        hlc_counter: 0,
+        hlc_wall_ms: 1_500,
+        library_id: libraryId,
+        operation_id: "rss-upsert-operation",
+        payload: { feed },
+        previous_actor_operation_id: null,
+        transaction_id: "rss-upsert-transaction",
+        transaction_member_count: 1,
+        transaction_member_index: 0,
+      },
+      { digest: coreDigest },
+    );
+    const upsertFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1([upsertMember], chainGenesis, {
+        digest: coreDigest,
+      }),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: upsertFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+
+    const applyAccepted = async (input: {
+      canonicalOperationId: string;
+      previousResultDigest: string | null;
+      receiptId: string;
+      resolvedAt: number;
+      resultSequence: number;
+      sourceRevision: number;
+      transactionDigest: string;
+      transactionId: string;
+    }): Promise<string> => {
+      const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id: actorId,
+        authoritative_source_revision: input.sourceRevision,
+        authority_key_id: "55".repeat(32),
+        canonical_operation_ids: [input.canonicalOperationId],
+        epoch: 1,
+        epoch_id: epochId,
+        format: "freed_follower_result_v1",
+        intent_epoch: 1,
+        intent_epoch_id: epochId,
+        library_id: libraryId,
+        original_result_digest: null,
+        previous_result_digest: input.previousResultDigest,
+        receipt_ids: [input.receiptId],
+        rejection_reason: null,
+        replacement_fields: [],
+        resolved_at_ms: input.resolvedAt,
+        result_body_digest: "0".repeat(64),
+        result_sequence: input.resultSequence,
+        schema_version: 1,
+        signature: "0".repeat(128),
+        signature_algorithm: "ed25519",
+        status: "accepted",
+        transaction_digest: input.transactionDigest,
+        transaction_id: input.transactionId,
+      });
+      const digest = coreDigest(
+        "follower-result-body",
+        libraryCoreFollowerResultBodyV1(unsigned),
+      );
+      await engine.applyFollowerResult({
+        canonicalResultBytes: encodeLibraryCoreCanonicalValue({
+          ...unsigned,
+          result_body_digest: digest,
+          signature: sign(
+            null,
+            encodeLibraryCoreSignatureInput("follower-result-envelope", {
+              result_body_digest: digest,
+            }),
+            authorityKeys.privateKey,
+          ).toString("hex"),
+        } as unknown as LibraryCoreCanonicalValue),
+      });
+      return digest;
+    };
+
+    const upsertResultDigest = await applyAccepted({
+      canonicalOperationId: "canonical-rss-upsert",
+      previousResultDigest: null,
+      receiptId: "rss-upsert-receipt",
+      resolvedAt: 2_000,
+      resultSequence: 1,
+      sourceRevision: 1,
+      transactionDigest: upsertFinalized.transaction_digest,
+      transactionId: "rss-upsert-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT title, enabled, track_unread, folder, updated_at
+              FROM library_rss_feeds WHERE url = ?1;`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["Original title", 1, 1, "Reading", 2_000]]);
+
+    const titleMember =
+      RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 2,
+          causal_frontier: [],
+          created_at_ms: 2_100,
+          entity_id: feedUrl,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_100,
+          library_id: libraryId,
+          operation_id: "rss-title-operation",
+          payload: { assigned_at_ms: 2_100, title: "Renamed title" },
+          previous_actor_operation_id: "rss-upsert-operation",
+          transaction_id: "rss-title-transaction",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const titleFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(
+        [titleMember],
+        upsertFinalized.members[0]!.envelope.actor_chain_digest,
+        { digest: coreDigest },
+      ),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: titleFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    const titleResultDigest = await applyAccepted({
+      canonicalOperationId: "canonical-rss-title",
+      previousResultDigest: upsertResultDigest,
+      receiptId: "rss-title-receipt",
+      resolvedAt: 2_200,
+      resultSequence: 2,
+      sourceRevision: 2,
+      transactionDigest: titleFinalized.transaction_digest,
+      transactionId: "rss-title-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT title, updated_at,
+                     (SELECT updated_at FROM library_field_clocks
+                      WHERE entity_type = 'rss_feed' AND entity_id = ?1
+                        AND field_path = 'title')
+              FROM library_rss_feeds WHERE url = ?1;`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([["Renamed title", 2_200, 2_100]]);
+
+    const removeMember =
+      RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          actor_id: actorId,
+          actor_sequence: 3,
+          causal_frontier: [],
+          created_at_ms: 2_300,
+          entity_id: feedUrl,
+          epoch: 1,
+          epoch_id: epochId,
+          hlc_counter: 0,
+          hlc_wall_ms: 2_300,
+          library_id: libraryId,
+          operation_id: "rss-remove-operation",
+          payload: { removed_at_ms: 2_300 },
+          previous_actor_operation_id: "rss-title-operation",
+          transaction_id: "rss-remove-transaction",
+          transaction_member_count: 1,
+          transaction_member_index: 0,
+        },
+        { digest: coreDigest },
+      );
+    const removeFinalized = await finalizeLibraryCoreTransactionV1(
+      assembleLibraryCoreTransactionV1(
+        [removeMember],
+        titleFinalized.members[0]!.envelope.actor_chain_digest,
+        { digest: coreDigest },
+      ),
+      {
+        digest: coreDigest,
+        async signOperation(message) {
+          return sign(null, message, actorKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    await engine.commitFollowerIntent({
+      envelopeBytes: removeFinalized.members.map((value) =>
+        encodeLibraryCoreCanonicalValue(
+          value.envelope as unknown as LibraryCoreCanonicalValue,
+        ),
+      ),
+    });
+    await applyAccepted({
+      canonicalOperationId: "canonical-rss-remove",
+      previousResultDigest: titleResultDigest,
+      receiptId: "rss-remove-receipt",
+      resolvedAt: 2_400,
+      resultSequence: 3,
+      sourceRevision: 3,
+      transactionDigest: removeFinalized.transaction_digest,
+      transactionId: "rss-remove-transaction",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_rss_feeds WHERE url = ?1),
+                (SELECT deleted_at FROM library_tombstones
+                 WHERE entity_type = 'rss_feed' AND entity_id = ?1),
+                (SELECT source_revision FROM library_meta WHERE singleton_id = 1);`,
+        bind: [feedUrl],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 2_300, 3]]);
+    expect(
+      database.exec({
+        sql: `SELECT revision, ordinal, topic, entity_id, reset_required
+              FROM library_invalidations ORDER BY revision, ordinal;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [1, 0, "rss_feed", feedUrl, 0],
+      [2, 0, "rss_feed", feedUrl, 0],
+      [3, 0, "rss_feed", feedUrl, 0],
     ]);
   });
 

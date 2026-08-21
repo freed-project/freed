@@ -5,23 +5,16 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
-  FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
-  FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
-  RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
-  RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
-  ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA,
-  ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
+  type LibraryCoreOperationDigestDependencies,
+  type LibraryCoreTransactionMemberBodyV1,
+  type LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
+import {
+  LIBRARY_CORE_OPERATION_REGISTRY,
+  type LibraryCoreOperationId,
+} from "./operation-registry.js";
 import {
   LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES,
   type LibraryCoreOperationEnvelopeV1,
@@ -43,6 +36,13 @@ import {
 } from "./protocol-scalars.js";
 
 const VERIFIED_OPERATION_TRANSACTIONS = new WeakSet<object>();
+
+interface ClosedTransactionMemberSchema {
+  readonly construct: (
+    input: FeedItemReadAssignmentTransactionMemberInputV1,
+    dependencies: LibraryCoreOperationDigestDependencies,
+  ) => LibraryCoreTransactionMemberConstruction<LibraryCoreTransactionMemberBodyV1>;
+}
 
 const ENVELOPE_KEYS = [
   "operation_id",
@@ -412,38 +412,17 @@ export async function verifyLibraryCoreOperationTransactionV1(
     ),
   );
   const memberConstructions = decodedEnvelopes.map((envelope) => {
+    const definition =
+      typeof envelope.operation_type === "string" &&
+      Object.hasOwn(LIBRARY_CORE_OPERATION_REGISTRY, envelope.operation_type)
+        ? LIBRARY_CORE_OPERATION_REGISTRY[
+            envelope.operation_type as LibraryCoreOperationId
+          ]
+        : null;
     const schema =
-      envelope.operation_type === "feed_item_capture_upsert"
-        ? FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA
-        : envelope.operation_type === "feed_item_read_assignment"
-          ? FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-          : envelope.operation_type === "feed_item_saved_assignment"
-            ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-            : envelope.operation_type === "feed_item_archive_assignment"
-              ? FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-              : envelope.operation_type === "feed_item_like_assignment"
-                ? FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-                : envelope.operation_type === "feed_item_remove"
-                  ? FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA
-                  : envelope.operation_type === "rss_feed_upsert"
-                    ? RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA
-                    : envelope.operation_type === "rss_feed_remove_keep_items"
-                      ? RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA
-                      : envelope.operation_type === "rss_feed_remove_with_items"
-                        ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
-                        : envelope.operation_type ===
-                            "preferences_leaf_assignment"
-                          ? PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
-                          : envelope.operation_type === "person_upsert"
-                            ? PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA
-                            : envelope.operation_type ===
-                                "person_remove_and_accounts"
-                              ? PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA
-                              : envelope.operation_type === "account_upsert"
-                                ? ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA
-                                : envelope.operation_type === "account_remove"
-                                  ? ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA
-                                  : null;
+      definition !== null && "transactionMemberSchema" in definition
+        ? (definition.transactionMemberSchema as unknown as ClosedTransactionMemberSchema)
+        : null;
     if (schema === null) {
       throw new TypeError(
         "operation envelope has an unsupported operation_type",
