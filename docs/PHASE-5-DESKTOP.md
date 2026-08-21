@@ -56,6 +56,11 @@
         retry returns the stored receipt only while writer admission and the
         signed capability remain valid. The old source-text locator test was
         deleted because executable native tests now prove this contract.
+  - [x] The dormant saved, archived, and liked assignment paths now consume
+        generated programs through the same native transaction executor.
+        Saved and archived share one deterministic clock and always clear the
+        opposing state. Like state uses an independent clock and clears its
+        obsolete provider receipt. No path performs provider traffic.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

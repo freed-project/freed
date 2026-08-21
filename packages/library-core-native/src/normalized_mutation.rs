@@ -300,12 +300,16 @@ fn materialize_read_assignment(
         .ok_or(NormalizedSqliteError::InvalidRequest(
             "normalized read mutation target does not exist",
         ))?;
-    let current_operation_id = transaction
+    let current_clock = transaction
         .query_row(program.current_clock_sql, [&member.entity_id], |row| {
-            row.get::<_, String>(0)
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })
         .optional()?;
-    if current_read_at.is_some() != current_operation_id.is_some() {
+    if current_read_at.is_some() != current_clock.is_some()
+        || current_read_at
+            .zip(current_clock.as_ref().map(|clock| clock.0))
+            .is_some_and(|(current, clock_source_at)| current != clock_source_at)
+    {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized read field clock is inconsistent",
         ));
@@ -313,15 +317,21 @@ fn materialize_read_assignment(
     let wins = current_read_at.is_none_or(|current| {
         read_at < current
             || (read_at == current
-                && current_operation_id
-                    .as_deref()
+                && current_clock
+                    .as_ref()
+                    .map(|clock| clock.1.as_str())
                     .is_none_or(|operation| member.operation_id.as_str() < operation))
     });
     if wins {
-        transaction.execute(
+        let updated = transaction.execute(
             program.materialize_sql,
-            params![read_at, committed_at, member.entity_id],
+            params![read_at, read_at, committed_at, member.entity_id],
         )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized read mutation target changed",
+            ));
+        }
         transaction.execute(
             program.field_clock_sql,
             params![
@@ -329,11 +339,91 @@ fn materialize_read_assignment(
                 verified.actor_id,
                 member.actor_sequence,
                 member.operation_id,
-                committed_at,
+                read_at,
             ],
         )?;
     }
     Ok(())
+}
+
+fn materialize_boolean_assignment(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let assigned = member
+        .assigned
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized assignment payload is missing",
+        ))?;
+    let assigned_at = member
+        .assigned_at_ms
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized assignment payload is missing",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.current_clock_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        assigned_at > clock.0
+            || (assigned_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![
+                i64::from(assigned),
+                assigned_at,
+                committed_at,
+                member.entity_id,
+            ],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized assignment target changed",
+            ));
+        }
+        transaction.execute(
+            program.field_clock_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                assigned_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn materialize_member(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    match program.payload_kind {
+        "read_at" => {
+            materialize_read_assignment(transaction, verified, member_index, committed_at, program)
+        }
+        "boolean_assignment" => materialize_boolean_assignment(
+            transaction,
+            verified,
+            member_index,
+            committed_at,
+            program,
+        ),
+        _ => Err(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation payload kind is not registered",
+        )),
+    }
 }
 
 pub fn accept_normalized_operation_transaction_v1(
@@ -409,7 +499,7 @@ pub fn accept_normalized_operation_transaction_v1(
             })?;
         if !exists {
             return Err(NormalizedSqliteError::InvalidRequest(
-                "normalized read mutation target does not exist",
+                "normalized mutation target does not exist",
             ));
         }
     }
@@ -495,7 +585,7 @@ pub fn accept_normalized_operation_transaction_v1(
                 ],
             )?;
         }
-        materialize_read_assignment(&transaction, &verified, member_index, committed_at, program)?;
+        materialize_member(&transaction, &verified, member_index, committed_at, program)?;
         transaction.execute(
             "INSERT INTO library_replication_outbox
              (operation_id, actor_id, actor_counter, enqueued_at)
@@ -597,10 +687,22 @@ pub fn accept_normalized_operation_transaction_v1(
 mod tests {
     use super::*;
     use crate::library_core_journal::actor_capability::legacy_editor_operation_types;
-    use crate::library_core_journal::operation_verifier::tests::{enrollment, signed_envelopes};
+    use crate::library_core_journal::operation_verifier::tests::{
+        enrollment, signed_envelopes, signed_envelopes_from_tip,
+    };
     use crate::normalized_sqlite::install_normalized_schema_v1;
     use ring::rand::SystemRandom;
     use ring::signature::Ed25519KeyPair;
+
+    type FeedState = (
+        i64,
+        Option<i64>,
+        i64,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+    );
 
     fn fixture() -> (
         Connection,
@@ -842,6 +944,113 @@ mod tests {
                 ),)
                 .expect("transactions"),
             1
+        );
+    }
+
+    #[test]
+    fn signed_state_assignments_use_generated_sql_and_one_coupled_saved_archive_clock() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        connection
+            .execute(
+                "UPDATE library_feed_items SET liked_synced_at = 700
+                 WHERE global_id = 'rss:item:1';",
+                [],
+            )
+            .expect("install prior like receipt");
+
+        let save = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:save:first",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_000)],
+            "feed_item_saved_assignment",
+        );
+        let save_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &save, 2_000)
+                .expect("save");
+
+        let archive = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:archive:newer",
+            2,
+            Some(&save_receipt.committed_operation_id),
+            &save_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_100)],
+            "feed_item_archive_assignment",
+        );
+        let archive_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &archive, 2_100)
+                .expect("archive");
+
+        let stale_save = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:save:older",
+            3,
+            Some(&archive_receipt.committed_operation_id),
+            &archive_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_050)],
+            "feed_item_saved_assignment",
+        );
+        let stale_save_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &stale_save, 2_200)
+                .expect("journal stale save without changing projection");
+
+        let like = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:like:newer",
+            4,
+            Some(&stale_save_receipt.committed_operation_id),
+            &stale_save_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_200)],
+            "feed_item_like_assignment",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &like, 2_300).expect("like");
+
+        let state: FeedState = connection
+            .query_row(
+                "SELECT saved, saved_at, archived, archived_at,
+                            liked, liked_at, liked_synced_at
+                     FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("state");
+        assert_eq!(state, (0, None, 1, Some(1_100), Some(1), Some(1_200), None));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT updated_at FROM library_field_clocks
+                     WHERE entity_id = 'rss:item:1'
+                       AND field_path = 'saved_archive_state';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("coupled state clock"),
+            1_100
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_transactions;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("journaled transactions"),
+            4
         );
     }
 }

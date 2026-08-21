@@ -549,14 +549,48 @@
     }
   ],
   "mutationPrograms": {
+    "feed_item_archive_assignment": {
+      "currentClockSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'saved_archive_state';",
+      "currentValueSql": "SELECT archived_at FROM library_feed_items WHERE global_id = ?1;",
+      "entityType": "FeedItem",
+      "fieldClockSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'saved_archive_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET saved = 0, saved_at = NULL, archived = ?1, archived_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, updated_at = ?3 WHERE global_id = ?4;",
+      "maximumMembers": 256,
+      "payloadKind": "boolean_assignment",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
+    "feed_item_like_assignment": {
+      "currentClockSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'liked_state';",
+      "currentValueSql": "SELECT liked_at FROM library_feed_items WHERE global_id = ?1;",
+      "entityType": "FeedItem",
+      "fieldClockSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'liked_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET liked = ?1, liked_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, liked_synced_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
+      "maximumMembers": 256,
+      "payloadKind": "boolean_assignment",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
     "feed_item_read_assignment": {
-      "currentClockSql": "SELECT operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'read_at';",
+      "currentClockSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'read_at';",
       "currentValueSql": "SELECT read_at FROM library_feed_items WHERE global_id = ?1;",
       "entityType": "FeedItem",
       "fieldClockSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'read_at', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
       "invalidationTopic": "feed_item",
-      "materializeSql": "UPDATE library_feed_items SET read_at = ?1, updated_at = ?2 WHERE global_id = ?3;",
+      "materializeSql": "UPDATE library_feed_items SET read_at = ?1, updated_at = ?3 WHERE global_id = ?4;",
       "maximumMembers": 256,
+      "payloadKind": "read_at",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
+    },
+    "feed_item_saved_assignment": {
+      "currentClockSql": "SELECT updated_at, operation_id FROM library_field_clocks WHERE entity_type = 'feed_item' AND entity_id = ?1 AND field_path = 'saved_archive_state';",
+      "currentValueSql": "SELECT saved_at FROM library_feed_items WHERE global_id = ?1;",
+      "entityType": "FeedItem",
+      "fieldClockSql": "INSERT INTO library_field_clocks (entity_type, entity_id, field_path, actor_id, counter, operation_id, updated_at) VALUES ('feed_item', ?1, 'saved_archive_state', ?2, ?3, ?4, ?5) ON CONFLICT(entity_type, entity_id, field_path) DO UPDATE SET actor_id = excluded.actor_id, counter = excluded.counter, operation_id = excluded.operation_id, updated_at = excluded.updated_at;",
+      "invalidationTopic": "feed_item",
+      "materializeSql": "UPDATE library_feed_items SET saved = ?1, saved_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, archived = 0, archived_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
+      "maximumMembers": 256,
+      "payloadKind": "boolean_assignment",
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
     }
   },

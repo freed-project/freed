@@ -31,10 +31,11 @@
   - [x] Install the shared strict transaction, operation, replication,
         invalidation, signed-intent, result, and sparse optimistic-field table
         catalog in browser SQLite with the same schema digest as native Rust.
-  - [x] Consume the generated `feed_item_read_assignment` SQLite program,
-        member bound, entity identity, and invalidation topic from the same
-        executable contract as the native Primary. Browser intent and sparse
-        overlay routing remain open.
+  - [x] Include the generated FeedItem read, saved, archived, and liked
+        programs, member bounds, entity identity, and invalidation topics in
+        the shared browser contract. The saved-archive program uses one coupled
+        clock and like state uses an independent clock. Browser signing,
+        optimistic execution, and result reconciliation remain open.
 - [ ] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.

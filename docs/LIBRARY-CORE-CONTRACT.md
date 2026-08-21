@@ -169,6 +169,16 @@ Each mutation definition binds:
 - replication behavior
 - idempotency key and receipt shape
 
+Saved and archived state form one coupled last-writer register. A winning save
+sets saved and clears archived. A winning archive sets archived and clears
+saved. Clearing either produces the neutral state. The register compares the
+signed assignment time, then the operation ID as a deterministic tie breaker.
+It stores one `saved_archive_state` clock, so concurrent operations converge
+without ever materializing an item that is both saved and archived. Like state
+uses the same bounded assignment rule with its own clock and clears its prior
+provider receipt when a new local assignment wins. These mutations create no
+provider traffic. Provider execution remains a separate registered mutation.
+
 A successful Primary transaction atomically commits:
 
 - complete operation members

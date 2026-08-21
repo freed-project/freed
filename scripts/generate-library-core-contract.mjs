@@ -132,6 +132,7 @@ function assertContract(contract) {
     "invalidationTopic",
     "materializeSql",
     "maximumMembers",
+    "payloadKind",
     "targetExistsSql",
   ];
   for (const [mutationId, program] of Object.entries(
@@ -145,6 +146,7 @@ function assertContract(contract) {
       !/^[A-Z][A-Za-z0-9]*$/.test(program.entityType) ||
       typeof program.invalidationTopic !== "string" ||
       !/^[a-z][a-z0-9_]*$/.test(program.invalidationTopic) ||
+      !["boolean_assignment", "read_at"].includes(program.payloadKind) ||
       !Number.isSafeInteger(program.maximumMembers) ||
       program.maximumMembers < 1 ||
       program.maximumMembers > 256 ||
@@ -505,7 +507,7 @@ function rustSource(contract, schemaDigest) {
   const mutationPrograms = Object.entries(contract.mutationPrograms)
     .map(
       ([mutationId, program]) =>
-        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, current_clock_sql: ${JSON.stringify(program.currentClockSql)}, materialize_sql: ${JSON.stringify(program.materializeSql)}, field_clock_sql: ${JSON.stringify(program.fieldClockSql)} },`,
+        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, payload_kind: ${JSON.stringify(program.payloadKind)}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, current_clock_sql: ${JSON.stringify(program.currentClockSql)}, materialize_sql: ${JSON.stringify(program.materializeSql)}, field_clock_sql: ${JSON.stringify(program.fieldClockSql)} },`,
     )
     .join("\n");
   const importPrograms = Object.entries(checkpointImportPrograms(contract))
@@ -588,6 +590,7 @@ pub struct SqliteMutationProgram {
     pub maximum_members: usize,
     pub entity_type: &'static str,
     pub invalidation_topic: &'static str,
+    pub payload_kind: &'static str,
     pub target_exists_sql: &'static str,
     pub current_value_sql: &'static str,
     pub current_clock_sql: &'static str,
