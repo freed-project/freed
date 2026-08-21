@@ -19,6 +19,8 @@ const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
 const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT: usize = 128;
+const FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTENT_CHUNK_BYTES: usize = 65_536;
@@ -90,6 +92,26 @@ pub struct NormalizedAccountDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonGraphPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountGraphPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRequestV1 {
     pub body_kind: String,
     pub global_id: String,
@@ -101,6 +123,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
     AccountDetail(NormalizedAccountDetailRequestV1),
+    AccountGraphPage(NormalizedAccountGraphPageRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
@@ -108,6 +131,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
+    PersonGraphPage(NormalizedPersonGraphPageRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
 }
 
@@ -337,6 +361,57 @@ pub struct NormalizedAccountDetailResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonGraphRowV1 {
+    pub avatar_url: Option<String>,
+    pub care_level: i64,
+    pub id: String,
+    pub last_reach_out_at: Option<i64>,
+    pub name: String,
+    pub reach_out_interval_days: Option<i64>,
+    pub relationship_status: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountGraphRowV1 {
+    pub avatar_url: Option<String>,
+    pub discovered_from: String,
+    pub display_name: Option<String>,
+    pub external_id: String,
+    pub first_seen_at: i64,
+    pub follow_roster_active: Option<bool>,
+    pub handle: Option<String>,
+    pub id: String,
+    pub kind: String,
+    pub last_seen_at: i64,
+    pub person_id: Option<String>,
+    pub provider: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonGraphPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedPersonGraphRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountGraphPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedAccountGraphRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRangeV1 {
     pub blob_digest: Option<String>,
     pub bytes_base64: String,
@@ -358,6 +433,7 @@ pub struct NormalizedItemReaderBodyResponseV1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
+    AccountGraphPage(NormalizedAccountGraphPageResponseV1),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
@@ -365,6 +441,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
+    PersonGraphPage(NormalizedPersonGraphPageResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
 }
 
@@ -1294,6 +1371,257 @@ fn query_account_detail(
     Ok(response)
 }
 
+fn query_person_graph_page(
+    connection: &mut Connection,
+    request: NormalizedPersonGraphPageRequestV1,
+) -> Result<NormalizedPersonGraphPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized Person graph page request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "person_graph_page_v1")
+        .ok_or(invalid("normalized Person graph page program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.sort_at != 0
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized Person graph page cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(
+        params![
+            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+            i64::try_from(request.limit + 1).expect("bounded Person graph page limit"),
+        ],
+        |row| {
+            Ok(NormalizedPersonGraphRowV1 {
+                avatar_url: row.get("avatarUrl")?,
+                care_level: row.get("careLevel")?,
+                id: row.get("id")?,
+                last_reach_out_at: row.get("lastReachOutAt")?,
+                name: row.get("name")?,
+                reach_out_interval_days: row.get("reachOutIntervalDays")?,
+                relationship_status: row.get("relationshipStatus")?,
+                updated_at: row.get("updatedAt")?,
+            })
+        },
+    )?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.1 {
+        return Err(invalid(
+            "normalized Person graph page exceeded its row bound",
+        ));
+    }
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    for row in &rows {
+        if row.id.is_empty()
+            || row.id.len() > 2_048
+            || row.name.is_empty()
+            || row.name.len() > 4_096
+            || row.relationship_status.is_empty()
+            || row.relationship_status.len() > 255
+            || row
+                .avatar_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || !(1..=5).contains(&row.care_level)
+            || !valid_safe_integer(row.updated_at)
+            || row
+                .last_reach_out_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .reach_out_interval_days
+                .is_some_and(|value| !valid_safe_integer(value))
+        {
+            return Err(invalid("normalized Person graph page row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].id >= pair[1].id) {
+        return Err(invalid("normalized Person graph page order is invalid"));
+    }
+    let next_cursor = if has_more {
+        let last = rows.last().ok_or(invalid(
+            "normalized Person graph page cursor row is missing",
+        ))?;
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            sort_at: 0,
+            global_id: last.id.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedPersonGraphPageResponseV1 {
+        next_cursor,
+        query_id: "person_graph_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Person graph page response is invalid"))?
+        .len()
+        > FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized Person graph page response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn query_account_graph_page(
+    connection: &mut Connection,
+    request: NormalizedAccountGraphPageRequestV1,
+) -> Result<NormalizedAccountGraphPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized Account graph page request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "account_graph_page_v1")
+        .ok_or(invalid("normalized Account graph page program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.sort_at != 0
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized Account graph page cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(
+        params![
+            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+            i64::try_from(request.limit + 1).expect("bounded Account graph page limit"),
+        ],
+        |row| {
+            let follow_roster_active = row
+                .get::<_, Option<i64>>("followRosterActive")?
+                .map(|value| match value {
+                    0 => Ok(false),
+                    1 => Ok(true),
+                    _ => Err(rusqlite::Error::InvalidQuery),
+                })
+                .transpose()?;
+            Ok(NormalizedAccountGraphRowV1 {
+                avatar_url: row.get("avatarUrl")?,
+                discovered_from: row.get("discoveredFrom")?,
+                display_name: row.get("displayName")?,
+                external_id: row.get("externalId")?,
+                first_seen_at: row.get("firstSeenAt")?,
+                follow_roster_active,
+                handle: row.get("handle")?,
+                id: row.get("id")?,
+                kind: row.get("kind")?,
+                last_seen_at: row.get("lastSeenAt")?,
+                person_id: row.get("personId")?,
+                provider: row.get("provider")?,
+                updated_at: row.get("updatedAt")?,
+            })
+        },
+    )?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.1 {
+        return Err(invalid(
+            "normalized Account graph page exceeded its row bound",
+        ));
+    }
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    for row in &rows {
+        let bounded = |value: &Option<String>, maximum| {
+            value.as_ref().is_none_or(|text| text.len() <= maximum)
+        };
+        if row.id.is_empty()
+            || row.id.len() > 2_048
+            || row.external_id.is_empty()
+            || row.external_id.len() > 4_096
+            || row.kind.is_empty()
+            || row.kind.len() > 64
+            || row.provider.is_empty()
+            || row.provider.len() > 64
+            || row.discovered_from.is_empty()
+            || row.discovered_from.len() > 64
+            || !bounded(&row.person_id, 2_048)
+            || !bounded(&row.handle, 512)
+            || !bounded(&row.display_name, 512)
+            || !bounded(&row.avatar_url, 8_192)
+            || !valid_safe_integer(row.first_seen_at)
+            || !valid_safe_integer(row.last_seen_at)
+            || !valid_safe_integer(row.updated_at)
+        {
+            return Err(invalid("normalized Account graph page row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].id >= pair[1].id) {
+        return Err(invalid("normalized Account graph page order is invalid"));
+    }
+    let next_cursor = if has_more {
+        let last = rows.last().ok_or(invalid(
+            "normalized Account graph page cursor row is missing",
+        ))?;
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            sort_at: 0,
+            global_id: last.id.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedAccountGraphPageResponseV1 {
+        next_cursor,
+        query_id: "account_graph_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Account graph page response is invalid"))?
+        .len()
+        > FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized Account graph page response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_item_detail(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -1519,6 +1847,11 @@ pub fn query_normalized_v1(
                 query_account_detail(connection, request)?,
             )))
         }
+        NormalizedQueryRequestV1::AccountGraphPage(request) => {
+            Ok(NormalizedQueryResponseV1::AccountGraphPage(
+                query_account_graph_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
             query_change_feed(connection, request)?,
         )),
@@ -1541,6 +1874,11 @@ pub fn query_normalized_v1(
             Ok(NormalizedQueryResponseV1::PersonDetail(Box::new(
                 query_person_detail(connection, request)?,
             )))
+        }
+        NormalizedQueryRequestV1::PersonGraphPage(request) => {
+            Ok(NormalizedQueryResponseV1::PersonGraphPage(
+                query_person_graph_page(connection, request)?,
+            ))
         }
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
@@ -2235,6 +2573,135 @@ mod tests {
             panic!("account detail response");
         };
         assert!(missing.account.is_none());
+    }
+
+    #[test]
+    fn native_friends_identity_pages_use_source_fenced_primary_key_keysets() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 12, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'friend', 5, 50, 200),
+                          ('person-2', 'Grace', 'friend', 4, 60, 210);
+                 INSERT INTO library_person_reach_outs
+                   (person_id, reach_out_id, logged_at)
+                   VALUES ('person-1', 'reach-1', 100),
+                          ('person-1', 'reach-2', 200);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, first_seen_at,
+                    last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada', 50, 200, 'capture', 50, 200),
+                          ('account-2', 'person-2', 'social', 'x', 'grace', 60, 210, 'capture', 60, 210);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        for query_id in ["person_graph_page_v1", "account_graph_page_v1"] {
+            let program = SQLITE_QUERY_PROGRAMS
+                .iter()
+                .find(|program| program.0 == query_id)
+                .expect("graph page program");
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program.2))
+                .expect("graph page plan")
+                .query_map(params![Option::<String>::None, 2], |row| {
+                    row.get::<_, String>(3)
+                })
+                .expect("plan rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("plan");
+            assert!(plan
+                .iter()
+                .all(|detail| !detail.contains("USE TEMP B-TREE")));
+            let root = if query_id == "person_graph_page_v1" {
+                "SEARCH person USING INDEX"
+            } else {
+                "SEARCH account USING INDEX"
+            };
+            assert!(plan.iter().any(|detail| detail.contains(root)));
+        }
+
+        let request = NormalizedPersonGraphPageRequestV1 {
+            cancellation_id: "cancel-person-graph".to_owned(),
+            cursor: None,
+            limit: 1,
+            reader_session_id: "reader-person-graph".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::PersonGraphPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonGraphPage(request.clone()),
+        )
+        .expect("Person graph page") else {
+            panic!("Person graph page response");
+        };
+        assert_eq!(first.rows[0].id, "person-1");
+        assert_eq!(first.rows[0].last_reach_out_at, Some(200));
+        let person_cursor = first.next_cursor.clone();
+        let NormalizedQueryResponseV1::PersonGraphPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonGraphPage(NormalizedPersonGraphPageRequestV1 {
+                cursor: first.next_cursor,
+                ..request
+            }),
+        )
+        .expect("second Person graph page") else {
+            panic!("Person graph page response");
+        };
+        assert_eq!(second.rows[0].id, "person-2");
+
+        let account_request = NormalizedAccountGraphPageRequestV1 {
+            cancellation_id: "cancel-account-graph".to_owned(),
+            cursor: None,
+            limit: 1,
+            reader_session_id: "reader-account-graph".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::AccountGraphPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountGraphPage(account_request.clone()),
+        )
+        .expect("Account graph page") else {
+            panic!("Account graph page response");
+        };
+        assert_eq!(first.rows[0].id, "account-1");
+        let NormalizedQueryResponseV1::AccountGraphPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountGraphPage(NormalizedAccountGraphPageRequestV1 {
+                cursor: first.next_cursor,
+                ..account_request
+            }),
+        )
+        .expect("second Account graph page") else {
+            panic!("Account graph page response");
+        };
+        assert_eq!(second.rows[0].id, "account-2");
+        connection
+            .execute_batch(
+                "UPDATE library_meta SET source_revision = 13 WHERE singleton_id = 1;
+                 UPDATE library_change_state SET revision = 13 WHERE singleton_id = 1;",
+            )
+            .expect("advance source");
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::PersonGraphPage(NormalizedPersonGraphPageRequestV1 {
+                cancellation_id: "cancel-person-graph-stale".to_owned(),
+                cursor: person_cursor,
+                limit: 1,
+                reader_session_id: "reader-person-graph-stale".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect_err("stale Person graph cursor");
+        assert!(error.to_string().contains("cursor is stale"));
     }
 
     #[test]

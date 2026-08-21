@@ -289,7 +289,8 @@ describe("PWA Library Core SQLite engine", () => {
          reach_out_interval_days, notes, created_at, updated_at)
       VALUES
         ('person-1', 'Ada', 'https://example.com/ada', 'Mathematician',
-         'friend', 5, 14, 'Write soon', 50, 200);
+         'friend', 5, 14, 'Write soon', 50, 200),
+        ('person-2', 'Grace', NULL, NULL, 'friend', 4, NULL, NULL, 60, 210);
       INSERT INTO library_person_tags (person_id, tag)
       VALUES ('person-1', 'close'), ('person-1', 'science');
       INSERT INTO library_person_reach_outs
@@ -303,7 +304,9 @@ describe("PWA Library Core SQLite engine", () => {
          follow_roster_synced_at, created_at, updated_at)
       VALUES
         ('account-1', 'person-1', 'social', 'x', 'ada-remote', 'ada', 'Ada',
-         50, 200, 'capture', 1, 200, 50, 200);
+         50, 200, 'capture', 1, 200, 50, 200),
+        ('account-2', 'person-2', 'social', 'x', 'grace-remote', 'grace', 'Grace',
+         60, 210, 'capture', NULL, NULL, 60, 210);
       INSERT INTO library_account_follow_roles (account_id, role)
       VALUES ('account-1', 'following'), ('account-1', 'follower');
     `);
@@ -474,6 +477,47 @@ describe("PWA Library Core SQLite engine", () => {
         schemaVersion: 1,
       }).account,
     ).toBeNull();
+    const personGraphRequest = {
+      cancellationId: operationId("cancel-person-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "person_graph_page_v1" as const,
+      readerSessionId: operationId("reader-person-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstPersonGraphPage = engine.query(personGraphRequest);
+    expect(firstPersonGraphPage.rows.map((row) => row.id)).toEqual([
+      "person-1",
+    ]);
+    expect(firstPersonGraphPage.rows[0]?.lastReachOutAt).toBe(200);
+    expect(
+      engine
+        .query({
+          ...personGraphRequest,
+          cursor: firstPersonGraphPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["person-2"]);
+    const accountGraphRequest = {
+      cancellationId: operationId("cancel-account-graph-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "account_graph_page_v1" as const,
+      readerSessionId: operationId("reader-account-graph-1"),
+      schemaVersion: 1 as const,
+    };
+    const firstAccountGraphPage = engine.query(accountGraphRequest);
+    expect(firstAccountGraphPage.rows.map((row) => row.id)).toEqual([
+      "account-1",
+    ]);
+    expect(
+      engine
+        .query({
+          ...accountGraphRequest,
+          cursor: firstAccountGraphPage.nextCursor,
+        })
+        .rows.map((row) => row.id),
+    ).toEqual(["account-2"]);
     const inlineBody = engine.query({
       bodyKind: "content",
       globalId: "item-2",
@@ -595,6 +639,18 @@ describe("PWA Library Core SQLite engine", () => {
     ).toMatchObject([{ revision: 8, entityId: "item-1" }]);
     expect(() =>
       engine.query({ ...scanRequest, cursor: firstScan.nextCursor }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...personGraphRequest,
+        cursor: firstPersonGraphPage.nextCursor,
+      }),
+    ).toThrow(/cursor is stale/);
+    expect(() =>
+      engine.query({
+        ...accountGraphRequest,
+        cursor: firstAccountGraphPage.nextCursor,
+      }),
     ).toThrow(/cursor is stale/);
   });
 

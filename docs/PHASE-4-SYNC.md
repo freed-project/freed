@@ -322,6 +322,7 @@ loads an alternate Library engine or compatibility path.
 | 4.173 | Generated Person detach removal with closed signed admission, SQLite foreign-key detachment that preserves linked Accounts, convergent Person tombstone, and atomic receipt, outbox, invalidation, and revision effects | ✓ | High |
 | 4.174 | Shared `person_detail_v1` SQLite point query across native and browser dispatch, returning one closed Person header with at most 64 binary-ordered tags and the latest 20 stable reach-out events under a 512 KiB response ceiling | ✓ | High |
 | 4.175 | Shared `account_detail_v1` SQLite point query across native and browser dispatch, returning one closed Account with at most eight binary-ordered follow-roster roles, no Person or FeedItem corpus, and a 512 KiB response ceiling | ✓ | High |
+| 4.176 | Shared `person_graph_page_v1` and `account_graph_page_v1` SQLite keyset queries across native and browser dispatch, each returning at most 128 compact identity roots and 2 MiB from one source-fenced binary primary-key page without notes, contact fields, histories, or a renderer corpus | ✓ | High |
 
 ---
 

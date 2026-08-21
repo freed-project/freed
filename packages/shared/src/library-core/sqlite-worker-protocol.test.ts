@@ -26,6 +26,26 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-person-graph", {
+        cancellationId: "cancel-person-graph",
+        cursor: null,
+        limit: 64,
+        queryId: "person_graph_page_v1",
+        readerSessionId: "reader-person-graph",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-account-graph", {
+        cancellationId: "cancel-account-graph",
+        cursor: null,
+        limit: 64,
+        queryId: "account_graph_page_v1",
+        readerSessionId: "reader-account-graph",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
     const request = createLibraryCoreSqliteQueryWorkerRequest("request-2", {
       cancellationId: "cancel-1" as never,
       cursor: null,

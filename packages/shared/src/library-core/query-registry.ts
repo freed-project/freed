@@ -67,6 +67,19 @@ import {
   LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY,
 } from "./account-detail-contracts.js";
 import {
+  LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION,
+  LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY,
+  LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION,
+  LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA,
+} from "./friends-identity-page-contracts.js";
+import {
   LIBRARY_CORE_ITEM_DETAIL_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
   LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
@@ -239,6 +252,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   };
   readonly requestSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
@@ -259,6 +274,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
@@ -279,6 +296,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
@@ -296,6 +315,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
@@ -309,6 +329,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
@@ -391,6 +412,8 @@ interface PlannedQueryInput {
   readonly currentKinds?: readonly string[];
   readonly requestSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
@@ -409,6 +432,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
@@ -427,6 +452,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
@@ -442,6 +469,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
@@ -453,6 +481,7 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PREFERENCES_SNAPSHOT_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
@@ -601,6 +630,33 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     sourceIdentity: LIBRARY_CORE_ACCOUNT_DETAIL_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_ACCOUNT_DETAIL_NESTED_BOUNDS,
     sortNotApplicable: true,
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  account_graph_page_v1: plannedQuery({
+    defaultLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes:
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("keyset"),
+    totalCountIntent: "none",
+    rendererCache: false,
+    invalidationKeyIntent: ["friends-graph:accounts"],
+    currentKinds: [
+      "query_normalized_v1::account_graph_page_v1",
+      "PwaLibraryCoreSqliteEngine.query::account_graph_page_v1",
+    ],
+    requestSchema: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "id", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "id",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   background_item_page_v1: plannedQuery({
@@ -960,6 +1016,33 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     sourceIdentity: LIBRARY_CORE_PERSON_DETAIL_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_PERSON_DETAIL_NESTED_BOUNDS,
     sortNotApplicable: true,
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  person_graph_page_v1: plannedQuery({
+    defaultLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes:
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    cursor: interactiveCursor("keyset"),
+    totalCountIntent: "none",
+    rendererCache: false,
+    invalidationKeyIntent: ["friends-graph:persons"],
+    currentKinds: [
+      "query_normalized_v1::person_graph_page_v1",
+      "PwaLibraryCoreSqliteEngine.query::person_graph_page_v1",
+    ],
+    requestSchema: LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [{ column: "id", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "id",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   person_timeline_v1: plannedQuery({

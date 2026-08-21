@@ -871,6 +871,11 @@
       "countSql": "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;",
       "sql": "SELECT account.id, account.person_id AS personId, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.profile_url AS profileUrl, account.email, account.phone, account.address, account.imported_at AS importedAt, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.follow_roster_synced_at AS followRosterSyncedAt, account.sample_batch_id AS sampleBatchId, account.sample_generated_at AS sampleGeneratedAt, account.sample_generator_version AS sampleGeneratorVersion, account.created_at AS createdAt, account.updated_at AS updatedAt, (SELECT json_group_array(role) FROM (SELECT role FROM library_account_follow_roles WHERE account_id = account.id ORDER BY role COLLATE BINARY LIMIT 8)) AS followRosterRolesJson FROM library_accounts AS account WHERE account.id = ?1 COLLATE BINARY LIMIT 1;"
     },
+    "account_graph_page_v1": {
+      "maximumScanRows": 129,
+      "countSql": "SELECT count(*) FROM library_accounts;",
+      "sql": "SELECT account.id, account.person_id AS personId, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.updated_at AS updatedAt FROM library_accounts AS account WHERE account.id > COALESCE(?1, '') COLLATE BINARY ORDER BY account.id COLLATE BINARY ASC LIMIT ?2;"
+    },
     "background_item_page_v1": {
       "maximumScanRows": 65,
       "countSql": "SELECT count(*) FROM library_feed_items;",
@@ -906,6 +911,11 @@
       "countSql": "SELECT count(*) FROM library_persons WHERE id = ?1 COLLATE BINARY;",
       "sql": "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.bio, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.notes, person.sample_batch_id AS sampleBatchId, person.sample_generated_at AS sampleGeneratedAt, person.sample_generator_version AS sampleGeneratorVersion, person.created_at AS createdAt, person.updated_at AS updatedAt, (SELECT json_group_array(tag) FROM (SELECT tag FROM library_person_tags WHERE person_id = person.id ORDER BY tag COLLATE BINARY LIMIT 64)) AS tagsJson, (SELECT json_group_array(json_object('reachOutId', reach_out_id, 'loggedAt', logged_at, 'channel', channel, 'notes', notes)) FROM (SELECT reach_out_id, logged_at, channel, notes FROM library_person_reach_outs WHERE person_id = person.id ORDER BY logged_at DESC, reach_out_id COLLATE BINARY ASC LIMIT 20)) AS reachOutsJson FROM library_persons AS person WHERE person.id = ?1 COLLATE BINARY LIMIT 1;"
     },
+    "person_graph_page_v1": {
+      "maximumScanRows": 129,
+      "countSql": "SELECT count(*) FROM library_persons;",
+      "sql": "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.updated_at AS updatedAt, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastReachOutAt FROM library_persons AS person WHERE person.id > COALESCE(?1, '') COLLATE BINARY ORDER BY person.id COLLATE BINARY ASC LIMIT ?2;"
+    },
     "preferences_snapshot_v1": {
       "maximumScanRows": 513,
       "countSql": "SELECT count(*) FROM library_preferences;",
@@ -914,6 +924,7 @@
   },
   "queries": [
     "account_detail_v1",
+    "account_graph_page_v1",
     "background_item_page_v1",
     "change_feed_v1",
     "content_fetch_claim_v1",
@@ -930,6 +941,7 @@
     "library_surface_items_v1",
     "map_markers_v1",
     "person_detail_v1",
+    "person_graph_page_v1",
     "person_timeline_v1",
     "persons_graph_v1",
     "preferences_snapshot_v1",

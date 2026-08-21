@@ -37,6 +37,12 @@ import {
   parseLibraryCorePersonDetailResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
+  decodeLibraryCoreIdentityPageCursorV1,
+  encodeLibraryCoreIdentityPageCursorV1,
+  parseLibraryCoreAccountGraphPageRequestV1,
+  parseLibraryCoreAccountGraphPageResponseV1,
+  parseLibraryCorePersonGraphPageRequestV1,
+  parseLibraryCorePersonGraphPageResponseV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -71,6 +77,10 @@ import {
   type LibraryCorePersonDetailResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
+  type LibraryCoreAccountGraphPageRequestV1,
+  type LibraryCoreAccountGraphPageResponseV1,
+  type LibraryCorePersonGraphPageRequestV1,
+  type LibraryCorePersonGraphPageResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -704,6 +714,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryAccountDetail(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "account_graph_page_v1":
+        return this.#queryAccountGraphPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "change_feed_v1":
         return this.#queryChangeFeed(
           input,
@@ -730,6 +744,10 @@ export class PwaLibraryCoreSqliteEngine {
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_detail_v1":
         return this.#queryPersonDetail(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_graph_page_v1":
+        return this.#queryPersonGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
@@ -1069,6 +1087,172 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreAccountDetailResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryPersonGraphPage(
+    input: LibraryCorePersonGraphPageRequestV1,
+  ): LibraryCorePersonGraphPageResponseV1 {
+    const request = parseLibraryCorePersonGraphPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const cursor =
+      request.value.cursor === null
+        ? null
+        : decodeLibraryCoreIdentityPageCursorV1(request.value.cursor);
+    if (
+      cursor !== null &&
+      (!cursor.ok ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision)
+    ) {
+      throw new Error("PWA Library SQLite Person graph cursor is stale");
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_graph_page_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        cursor?.ok ? cursor.value.entityId : null,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Person graph page exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      avatarUrl: nullableText(row.avatarUrl, "Person graph avatar URL"),
+      careLevel: safeInteger(row.careLevel, "Person graph care level"),
+      id: text(row.id, "Person graph identity"),
+      lastReachOutAt: nullableInteger(
+        row.lastReachOutAt,
+        "Person graph last reach-out",
+      ),
+      name: text(row.name, "Person graph name"),
+      reachOutIntervalDays: nullableInteger(
+        row.reachOutIntervalDays,
+        "Person graph reach-out interval",
+      ),
+      relationshipStatus: text(
+        row.relationshipStatus,
+        "Person graph relationship status",
+      ),
+      updatedAt: safeInteger(row.updatedAt, "Person graph update time"),
+    }));
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreIdentityPageCursorV1({
+              entityId: last.id,
+              generationId,
+              projectionRevision: sourceRevision,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "person_graph_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCorePersonGraphPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryAccountGraphPage(
+    input: LibraryCoreAccountGraphPageRequestV1,
+  ): LibraryCoreAccountGraphPageResponseV1 {
+    const request = parseLibraryCoreAccountGraphPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const cursor =
+      request.value.cursor === null
+        ? null
+        : decodeLibraryCoreIdentityPageCursorV1(request.value.cursor);
+    if (
+      cursor !== null &&
+      (!cursor.ok ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision)
+    ) {
+      throw new Error("PWA Library SQLite Account graph cursor is stale");
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_graph_page_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        cursor?.ok ? cursor.value.entityId : null,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite Account graph page exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows = rawRows.slice(0, request.value.limit).map((row) => ({
+      avatarUrl: nullableText(row.avatarUrl, "Account graph avatar URL"),
+      discoveredFrom: text(
+        row.discoveredFrom,
+        "Account graph discovery source",
+      ),
+      displayName: nullableText(row.displayName, "Account graph display name"),
+      externalId: text(row.externalId, "Account graph external identity"),
+      firstSeenAt: safeInteger(row.firstSeenAt, "Account graph first seen"),
+      followRosterActive: nullableBoolean(
+        row.followRosterActive,
+        "Account graph follow-roster active",
+      ),
+      handle: nullableText(row.handle, "Account graph handle"),
+      id: text(row.id, "Account graph identity"),
+      kind: text(row.kind, "Account graph kind"),
+      lastSeenAt: safeInteger(row.lastSeenAt, "Account graph last seen"),
+      personId: nullableText(row.personId, "Account graph Person identity"),
+      provider: text(row.provider, "Account graph provider"),
+      updatedAt: safeInteger(row.updatedAt, "Account graph update time"),
+    }));
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreIdentityPageCursorV1({
+              entityId: last.id,
+              generationId,
+              projectionRevision: sourceRevision,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "account_graph_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreAccountGraphPageResponseV1(
       response,
       request.value,
     );

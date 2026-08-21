@@ -4,6 +4,14 @@ import {
   type LibraryCoreAccountDetailResponseV1,
 } from "./account-detail-contracts.js";
 import {
+  parseLibraryCoreAccountGraphPageRequestV1,
+  parseLibraryCorePersonGraphPageRequestV1,
+  type LibraryCoreAccountGraphPageRequestV1,
+  type LibraryCoreAccountGraphPageResponseV1,
+  type LibraryCorePersonGraphPageRequestV1,
+  type LibraryCorePersonGraphPageResponseV1,
+} from "./friends-identity-page-contracts.js";
+import {
   parseLibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedRequestV1,
   type LibraryCoreChangeFeedResponseV1,
@@ -63,6 +71,7 @@ export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
 export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreAccountDetailRequestV1
+  | LibraryCoreAccountGraphPageRequestV1
   | LibraryCoreChangeFeedRequestV1
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedPageRequestV1
@@ -70,6 +79,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
   | LibraryCorePersonDetailRequestV1
+  | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -78,21 +88,25 @@ export type LibraryCoreSqliteQueryResponseFor<
   ? LibraryCoreFacetSummaryResponseV1
   : T extends LibraryCoreAccountDetailRequestV1
     ? LibraryCoreAccountDetailResponseV1
-    : T extends LibraryCoreChangeFeedRequestV1
-      ? LibraryCoreChangeFeedResponseV1
-      : T extends LibraryCoreFeedPageRequestV1
-        ? LibraryCoreFeedPageResponseV1
-        : T extends LibraryCoreItemDetailRequestV1
-          ? LibraryCoreItemDetailResponseV1
-          : T extends LibraryCoreItemReaderBodyRequestV1
-            ? LibraryCoreItemReaderBodyResponseV1
-            : T extends LibraryCoreItemScanRequestV1
-              ? LibraryCoreItemScanResponseV1
-              : T extends LibraryCorePersonDetailRequestV1
-                ? LibraryCorePersonDetailResponseV1
-                : T extends LibraryCorePreferencesSnapshotRequestV1
-                  ? LibraryCorePreferencesSnapshotResponseV1
-                  : never;
+    : T extends LibraryCoreAccountGraphPageRequestV1
+      ? LibraryCoreAccountGraphPageResponseV1
+      : T extends LibraryCoreChangeFeedRequestV1
+        ? LibraryCoreChangeFeedResponseV1
+        : T extends LibraryCoreFeedPageRequestV1
+          ? LibraryCoreFeedPageResponseV1
+          : T extends LibraryCoreItemDetailRequestV1
+            ? LibraryCoreItemDetailResponseV1
+            : T extends LibraryCoreItemReaderBodyRequestV1
+              ? LibraryCoreItemReaderBodyResponseV1
+              : T extends LibraryCoreItemScanRequestV1
+                ? LibraryCoreItemScanResponseV1
+                : T extends LibraryCorePersonDetailRequestV1
+                  ? LibraryCorePersonDetailResponseV1
+                  : T extends LibraryCorePersonGraphPageRequestV1
+                    ? LibraryCorePersonGraphPageResponseV1
+                    : T extends LibraryCorePreferencesSnapshotRequestV1
+                      ? LibraryCorePreferencesSnapshotResponseV1
+                      : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -148,6 +162,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreAccountDetailResponseV1
+  | LibraryCoreAccountGraphPageResponseV1
   | LibraryCoreChangeFeedResponseV1
   | LibraryCoreFacetSummaryResponseV1
   | LibraryCoreFeedPageResponseV1
@@ -155,6 +170,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemReaderBodyResponseV1
   | LibraryCoreItemScanResponseV1
   | LibraryCorePersonDetailResponseV1
+  | LibraryCorePersonGraphPageResponseV1
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2;
@@ -236,23 +252,27 @@ export function parseLibraryCoreSqliteWorkerRequest(
     const query = isClosedRecord(value.query)
       ? value.query.queryId === "account_detail_v1"
         ? parseLibraryCoreAccountDetailRequestV1(value.query)
-        : value.query.queryId === "library_facet_summary_v1"
-          ? parseLibraryCoreFacetSummaryRequestV1(value.query)
-          : value.query.queryId === "change_feed_v1"
-            ? parseLibraryCoreChangeFeedRequestV1(value.query)
-            : value.query.queryId === "item_detail_v1"
-              ? parseLibraryCoreItemDetailRequestV1(value.query)
-              : value.query.queryId === "item_reader_body_v1"
-                ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
-                : value.query.queryId === "background_item_page_v1"
-                  ? parseLibraryCoreItemScanRequestV1(value.query)
-                  : value.query.queryId === "person_detail_v1"
-                    ? parseLibraryCorePersonDetailRequestV1(value.query)
-                    : value.query.queryId === "preferences_snapshot_v1"
-                      ? parseLibraryCorePreferencesSnapshotRequestV1(
-                          value.query,
-                        )
-                      : parseLibraryCoreFeedPageRequestV1(value.query)
+        : value.query.queryId === "account_graph_page_v1"
+          ? parseLibraryCoreAccountGraphPageRequestV1(value.query)
+          : value.query.queryId === "library_facet_summary_v1"
+            ? parseLibraryCoreFacetSummaryRequestV1(value.query)
+            : value.query.queryId === "change_feed_v1"
+              ? parseLibraryCoreChangeFeedRequestV1(value.query)
+              : value.query.queryId === "item_detail_v1"
+                ? parseLibraryCoreItemDetailRequestV1(value.query)
+                : value.query.queryId === "item_reader_body_v1"
+                  ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
+                  : value.query.queryId === "background_item_page_v1"
+                    ? parseLibraryCoreItemScanRequestV1(value.query)
+                    : value.query.queryId === "person_detail_v1"
+                      ? parseLibraryCorePersonDetailRequestV1(value.query)
+                      : value.query.queryId === "person_graph_page_v1"
+                        ? parseLibraryCorePersonGraphPageRequestV1(value.query)
+                        : value.query.queryId === "preferences_snapshot_v1"
+                          ? parseLibraryCorePreferencesSnapshotRequestV1(
+                              value.query,
+                            )
+                          : parseLibraryCoreFeedPageRequestV1(value.query)
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   }
