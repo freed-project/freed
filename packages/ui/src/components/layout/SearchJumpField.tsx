@@ -331,7 +331,6 @@ export function SearchJumpField({
   const openSettingsTo = useSettingsStore((s) => s.openTo);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
-  const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
@@ -405,7 +404,6 @@ export function SearchJumpField({
     activeView,
     commandScopeItems,
     enabled: showCommandSurface,
-    fallbackItems: items,
     identityMode: deviceDisplay.friendsMode,
     inputValue,
     searchQuery,

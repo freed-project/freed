@@ -10,7 +10,6 @@ import { SettingsDialog } from "../../../ui/src/components/SettingsDialog.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
 import { SearchJumpField } from "../../../ui/src/components/layout/SearchJumpField.tsx";
 import {
-  LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY,
   useLibraryCommandPaletteReader,
   type LibraryCommandPaletteReaderResult,
 } from "../../../ui/src/hooks/useLibraryCommandPaletteReader.ts";
@@ -313,7 +312,6 @@ function LibraryCommandPaletteReaderProbe({
     activeView: "feed",
     commandScopeItems,
     enabled: true,
-    fallbackItems: commandScopeItems,
     identityMode: "all_content",
     inputValue,
     searchQuery,
@@ -378,7 +376,6 @@ describe("command palette", () => {
 
   beforeEach(() => {
     resetSurfaceStores();
-    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     document.body.innerHTML = "";
     setViewportWidth(1280);
     Object.defineProperty(window, "matchMedia", {
@@ -402,7 +399,6 @@ describe("command palette", () => {
       cleanups.pop()?.();
     }
     vi.restoreAllMocks();
-    localStorage.removeItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY);
     resetSurfaceStores();
     document.body.innerHTML = "";
   });
@@ -959,7 +955,6 @@ describe("command palette", () => {
   });
 
   it("reads SearchJump facets and simple-scope counts without hydrating the Desktop corpus", async () => {
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const scannedItems = [
       createItem({
         globalId: "visible-archived",
@@ -1006,7 +1001,6 @@ describe("command palette", () => {
       totalUnreadCount: 17,
     });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       scanLibraryItems,
     });
     const render = renderNode(
@@ -1019,7 +1013,6 @@ describe("command palette", () => {
     await flush();
 
     expect(scanLibraryItems).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
 
     const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
@@ -1033,12 +1026,9 @@ describe("command palette", () => {
     expect(document.querySelector("[data-testid='search-command-action-go-tag-Secret']")).not.toBeNull();
     expect(document.querySelector("[data-testid='search-command-action-scope-unarchive-saved']")).not.toBeNull();
     expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("fails closed when a native SearchJump tag exceeds its byte bound", async () => {
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
     const oversizedTag = "x".repeat(1_025);
     const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
       async (visit) => {
@@ -1055,7 +1045,6 @@ describe("command palette", () => {
     );
     const store = createTestStore({ items: [] });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       scanLibraryItems,
     });
     const render = renderNode(
@@ -1074,13 +1063,10 @@ describe("command palette", () => {
     await flush();
 
     expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
     expect(document.body.textContent).not.toContain(oversizedTag);
-    expect(release).not.toHaveBeenCalled();
   });
 
   it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
-    const release = vi.fn();
     const archiveItems = vi.fn(async () => {});
     const visibleReadPost = createItem({
       globalId: "instagram:visible-read-post",
@@ -1106,17 +1092,12 @@ describe("command palette", () => {
       archiveItems,
       items: [],
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => {
-      store.setState({ items: scannedItems });
-      return release;
-    });
     const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
       async (visit) => {
         await visit(scannedItems);
       },
     );
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       scanLibraryItems,
     });
     const render = renderNode(
@@ -1134,7 +1115,6 @@ describe("command palette", () => {
     await flush();
 
     expect(scanLibraryItems).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     changeInput(input!, "archive");
     await flush();
     expect(
@@ -1151,32 +1131,23 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
-    expect(release).not.toHaveBeenCalled();
 
     archiveItems.mockRejectedValueOnce(new Error("mutation unavailable"));
     click(archiveAction!);
     await flush();
     await flush();
     expect(archiveItems).toHaveBeenCalledTimes(2);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-    expect(release).not.toHaveBeenCalled();
   });
 
-  it("keeps one compatibility lease across persistent native reader retries", async () => {
+  it("fails closed across SQLite reader errors and recovers on a newer source", async () => {
     let scanFails = true;
     let detailFails = true;
-    const release = vi.fn();
     const selectedItem = createItem({ globalId: "selected" });
     const store = createTestStore({
       items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
-    });
-    const acquireLegacyLibraryItems = vi.fn(async () => {
-      store.setState({ items: [selectedItem] });
-      return release;
     });
     const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
       async () => {
@@ -1190,7 +1161,6 @@ describe("command palette", () => {
       },
     );
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       readLibraryItemDetail,
       scanLibraryItems,
     });
@@ -1208,53 +1178,34 @@ describe("command palette", () => {
     act(() => input!.focus());
     await flush();
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
-    ).not.toBeNull();
+    ).toBeNull();
 
     act(() => store.setState({ persons: {}, accounts: {}, friends: {} }));
     await flush();
     expect(scanLibraryItems).toHaveBeenCalledOnce();
     expect(readLibraryItemDetail).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
 
     act(() => store.setState({ libraryItemVersion: 2 }));
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
-    ).not.toBeNull();
+    ).toBeNull();
     await flush();
     await flush();
     expect(scanLibraryItems).toHaveBeenCalledTimes(2);
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
 
     scanFails = false;
+    detailFails = false;
     act(() => store.setState({ libraryItemVersion: 3 }));
     await flush();
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).not.toHaveBeenCalled();
-
-    act(() => {
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    });
-    await flush();
-    expect(release).toHaveBeenCalledOnce();
-
-    detailFails = false;
-    act(() => {
-      input!.blur();
-      input!.focus();
-    });
-    await flush();
-    await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(release).toHaveBeenCalledOnce();
-    expect(scanLibraryItems).toHaveBeenCalledTimes(4);
-    expect(readLibraryItemDetail).toHaveBeenCalledTimes(4);
+    expect(
+      document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
+    ).not.toBeNull();
+    expect(scanLibraryItems).toHaveBeenCalledTimes(3);
+    expect(readLibraryItemDetail).toHaveBeenCalledTimes(3);
   });
 
   it("cancels a bounded scope scan without falling back to corpus hydration", async () => {
@@ -1265,10 +1216,8 @@ describe("command palette", () => {
         await new Promise<void>(() => {});
       },
     );
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const store = createTestStore({ activeFilter: { tags: ["Research"] } });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         sampleItemCount: 0,
@@ -1296,7 +1245,6 @@ describe("command palette", () => {
 
     render.cleanup();
     expect(await visit!([])).toBe("stop");
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("keeps the newest source-fenced selected item and ignores a stale detail response", async () => {
@@ -1312,14 +1260,12 @@ describe("command palette", () => {
       .fn<NonNullable<PlatformConfig["readLibraryItemDetail"]>>()
       .mockReturnValueOnce(first)
       .mockReturnValueOnce(second);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const store = createTestStore({
       items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
     const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
       readLibraryItemDetail,
       scanLibraryItems: async () => {},
     });
@@ -1354,7 +1300,6 @@ describe("command palette", () => {
     expect(readLibraryItemDetail).toHaveBeenCalledTimes(2);
     expect(document.querySelector("[data-testid='search-command-action-item-toggle-saved']")?.textContent)
       .toContain("Unsave current item");
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
 
     readLibraryItemDetail.mockResolvedValueOnce(createItem({
       globalId: "selected",
@@ -1371,52 +1316,6 @@ describe("command palette", () => {
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
     ).not.toBeNull();
-  });
-
-  it("keeps SQLite facets active during the remaining SearchJump compatibility path", async () => {
-    localStorage.setItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY, "1");
-    const release = vi.fn();
-    const acquireLegacyLibraryItems = vi.fn(async () => release);
-    const readLibraryFacetSummary = vi.fn(async () => ({
-      archivedCount: 0,
-      sampleItemCount: 0,
-      savedArchivedCount: 0,
-      savedCount: 0,
-      savedPlatformCount: 0,
-      tags: [],
-      totalCount: 1,
-    }));
-    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
-      async () => {},
-    );
-    const store = createTestStore({
-      items: [createItem()],
-      totalUnreadCount: 1,
-    });
-    const platform = createPlatform(store, {
-      acquireLegacyLibraryItems,
-      readLibraryFacetSummary,
-      scanLibraryItems,
-    });
-    const render = renderNode(
-      createElement(
-        PlatformProvider,
-        { value: platform, children: createElement(SearchJumpField) },
-      ),
-    );
-    cleanups.push(render.cleanup);
-    await flush();
-
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
-
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
-    expect(input).not.toBeNull();
-    act(() => input!.focus());
-    await flush();
-
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
-    expect(readLibraryFacetSummary).toHaveBeenCalledOnce();
-    expect(scanLibraryItems).not.toHaveBeenCalled();
   });
 
   it("renders command action icons and keeps reset confirmation mounted after blur", async () => {
@@ -1472,7 +1371,17 @@ describe("command palette", () => {
       items: [archivedItem],
       deleteAllArchived: deleteArchived,
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, {
+      readLibraryFacetSummary: async () => ({
+        archivedCount: 1,
+        sampleItemCount: 0,
+        savedArchivedCount: 0,
+        savedCount: 0,
+        savedPlatformCount: 0,
+        tags: [],
+        totalCount: 1,
+      }),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,

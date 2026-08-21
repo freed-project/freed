@@ -418,6 +418,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.33 | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed OPFS SQLite readers, with no browser corpus or scan fallback | High | ✓ Complete |
 | 6.34 | Make the primary Feed surface use only bounded ordinary, Friends, Saved, and search OPFS SQLite readers, with no browser corpus, JavaScript Saved ordering, or reader-failure authority switch | High | ✓ Complete |
 | 6.35 | Make shared search use only normalized OPFS SQLite search pages, retain at most 100 ranked cards, and delete the browser MiniSearch index, corpus filter, scan fallback, compatibility tests, and package dependency | High | ✓ Complete |
+| 6.36 | Delete SearchJump's rollback key, compatibility corpus lease, browser-derived facets, and selected-item fallback so missing or failed OPFS SQLite readers fail closed | High | ✓ Complete |
 
 ---
 

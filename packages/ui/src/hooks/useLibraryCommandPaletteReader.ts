@@ -22,14 +22,8 @@ import {
   collectArchivableFeedActionIds,
   collectUnreadFeedActionIds,
   getFeedActionCounts,
-  getFeedArchiveCounts,
 } from "../lib/feed-action-scope.js";
-import { collectAllTags } from "../lib/tag-navigation.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
-import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
-
-export const LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY =
-  "freed.libraryCore.searchJumpReaderV1.disabled";
 
 interface ScopeCounts {
   readonly archivableCount: number;
@@ -55,7 +49,6 @@ export interface UseLibraryCommandPaletteReaderOptions {
   readonly activeView: BaseAppState["activeView"];
   readonly commandScopeItems: FeedItem[];
   readonly enabled: boolean;
-  readonly fallbackItems: FeedItem[];
   readonly identityMode: "friends" | "all_content";
   readonly inputValue: string;
   readonly searchQuery: string;
@@ -94,13 +87,6 @@ function emptyPaletteScan(
     status,
     tags: [],
   };
-}
-
-function readerDisabled(): boolean {
-  return (
-    typeof localStorage !== "undefined" &&
-    localStorage.getItem(LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY) === "1"
-  );
 }
 
 function compactScopeCounts(
@@ -203,16 +189,14 @@ function collectScopeActionIds(
 /**
  * Supply command-palette Library facts without mounting the Desktop corpus.
  *
- * Desktop bulk execution scans bounded row-store pages and retains only the
- * matching entity IDs needed for the mutation. PWA and non-row-store clients
- * may still use the in-memory fallback.
+ * Bulk execution scans bounded SQLite pages and retains only the matching
+ * entity IDs needed for the mutation. Missing or failed readers fail closed.
  */
 export function useLibraryCommandPaletteReader({
   activeFilter,
   activeView,
   commandScopeItems,
   enabled,
-  fallbackItems,
   identityMode,
   inputValue,
   searchQuery,
@@ -226,7 +210,6 @@ export function useLibraryCommandPaletteReader({
     scanLibraryItems,
     store,
   } = platform;
-  const nativeReaderDisabled = readerDisabled();
   const archivableCountByPlatform = store(
     (state) => state.archivableCountByPlatform,
   );
@@ -261,9 +244,7 @@ export function useLibraryCommandPaletteReader({
     () => compactScopeCounts(activeFilter, identityMode, compactInputs),
     [activeFilter, compactInputs, identityMode],
   );
-  const nativeReaderAvailable = Boolean(
-    scanLibraryItems && !nativeReaderDisabled,
-  );
+  const scanReaderAvailable = Boolean(scanLibraryItems);
   const libraryFacets = useLibraryFacetSummary(
     sourceVersion,
     enabled && Boolean(readLibraryFacetSummary),
@@ -287,22 +268,19 @@ export function useLibraryCommandPaletteReader({
   );
   const scanNeedsFacets = !readLibraryFacetSummary;
   const scanNeeded =
-    enabled && nativeReaderAvailable && (scanComplexScope || scanNeedsFacets);
+    enabled && scanReaderAvailable && (scanComplexScope || scanNeedsFacets);
   const [paletteScan, setPaletteScan] = useState<PaletteScanState>(() =>
     emptyPaletteScan("idle", sourceVersion),
   );
-  const [scanFallbackLatched, setScanFallbackLatched] = useState(false);
   const detailKey = `${sourceVersion}:${selectedItemId ?? ""}`;
   const [itemDetail, setItemDetail] = useState<ItemDetailState>({
     item: null,
     key: "",
     status: "loading",
   });
-  const [detailFallbackLatched, setDetailFallbackLatched] = useState(false);
 
   useEffect(() => {
     if (!scanNeeded || !scanLibraryItems) {
-      if (!enabled) setScanFallbackLatched(false);
       setPaletteScan(emptyPaletteScan("idle", sourceVersion));
       return;
     }
@@ -361,7 +339,6 @@ export function useLibraryCommandPaletteReader({
         return "continue";
       });
       if (!cancelled) {
-        setScanFallbackLatched(false);
         setPaletteScan({
           archivableCount,
           archivedUnsavedCount,
@@ -375,7 +352,6 @@ export function useLibraryCommandPaletteReader({
     })()
       .catch(() => {
         if (!cancelled) {
-          setScanFallbackLatched(true);
           setPaletteScan(emptyPaletteScan("failed", sourceVersion));
         }
       });
@@ -394,14 +370,8 @@ export function useLibraryCommandPaletteReader({
   ]);
 
   useEffect(() => {
-    if (
-      !enabled ||
-      !nativeReaderAvailable ||
-      !selectedItemId ||
-      !readLibraryItemDetail
-    ) {
+    if (!enabled || !selectedItemId || !readLibraryItemDetail) {
       if (!enabled || !selectedItemId) {
-        setDetailFallbackLatched(false);
         setItemDetail({ item: null, key: "", status: "loading" });
       }
       return;
@@ -411,7 +381,6 @@ export function useLibraryCommandPaletteReader({
     void readLibraryItemDetail(selectedItemId)
       .then((item) => {
         if (!cancelled) {
-          setDetailFallbackLatched(false);
           setItemDetail({
             item,
             key: detailKey,
@@ -421,61 +390,28 @@ export function useLibraryCommandPaletteReader({
       })
       .catch(() => {
         if (!cancelled) {
-          setDetailFallbackLatched(true);
           setItemDetail({ item: null, key: detailKey, status: "failed" });
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [
-    detailKey,
-    enabled,
-    nativeReaderAvailable,
-    readLibraryItemDetail,
-    selectedItemId,
-  ]);
+  }, [detailKey, enabled, readLibraryItemDetail, selectedItemId]);
 
-  const detailFailed = Boolean(
-    selectedItemId &&
-      (!readLibraryItemDetail ||
-        (itemDetail.key === detailKey && itemDetail.status === "failed")),
-  );
   const paletteScanIsCurrent = paletteScan.sourceVersion === sourceVersion;
   const paletteScanReady =
     paletteScanIsCurrent && paletteScan.status === "ready";
-  const scanFailed =
-    scanNeeded && paletteScanIsCurrent && paletteScan.status === "failed";
-  const fallbackActive =
-    !nativeReaderAvailable ||
-    detailFailed ||
-    detailFallbackLatched ||
-    scanFailed ||
-    scanFallbackLatched;
-  useLegacyLibraryItems(
-    enabled && fallbackActive,
-  );
 
-  const fallbackCounts = useMemo(
+  const searchCounts = useMemo(
     () => getFeedActionCounts(commandScopeItems),
     [commandScopeItems],
-  );
-  const fallbackArchiveCounts = useMemo(
-    () => getFeedArchiveCounts(fallbackItems),
-    [fallbackItems],
-  );
-  const fallbackTags = useMemo(
-    () => collectAllTags(fallbackItems),
-    [fallbackItems],
   );
   let scopeCounts = EMPTY_COUNTS;
   if (activeView === "feed") {
     if (!queryIsCommitted) {
       scopeCounts = EMPTY_COUNTS;
     } else if (inputHasQuery) {
-      scopeCounts = committedSearchHasQuery ? fallbackCounts : EMPTY_COUNTS;
-    } else if (fallbackActive) {
-      scopeCounts = fallbackCounts;
+      scopeCounts = committedSearchHasQuery ? searchCounts : EMPTY_COUNTS;
     } else if (compactCounts) {
       scopeCounts = compactCounts;
     } else if (paletteScanReady) {
@@ -483,28 +419,12 @@ export function useLibraryCommandPaletteReader({
     }
   }
 
-  const selectedItem = useMemo(() => {
-    if (!selectedItemId) return null;
-    if (
-      nativeReaderAvailable &&
-      itemDetail.key === detailKey &&
-      itemDetail.status === "ready"
-    ) {
-      return itemDetail.item;
-    }
-    if (!nativeReaderAvailable || detailFailed || detailFallbackLatched) {
-      return fallbackItems.find((item) => item.globalId === selectedItemId) ?? null;
-    }
-    return null;
-  }, [
-    detailFailed,
-    detailFallbackLatched,
-    detailKey,
-    fallbackItems,
-    itemDetail,
-    nativeReaderAvailable,
-    selectedItemId,
-  ]);
+  const selectedItem =
+    selectedItemId &&
+    itemDetail.key === detailKey &&
+    itemDetail.status === "ready"
+      ? itemDetail.item
+      : null;
 
   const runScopeAction = useCallback(
     async (kind: "archive" | "read") => {
@@ -521,7 +441,7 @@ export function useLibraryCommandPaletteReader({
           normalizedFilterSignature;
       const currentState = store.getState();
       if (!matchesCurrentScope(currentState)) return;
-      if (!nativeReaderAvailable || inputHasQuery || !scanLibraryItems) {
+      if (inputHasQuery) {
         const ids =
           kind === "read"
             ? collectUnreadFeedActionIds(commandScopeItems)
@@ -530,6 +450,7 @@ export function useLibraryCommandPaletteReader({
         else await currentState.archiveItems(ids);
         return;
       }
+      if (!scanLibraryItems) return;
 
       const ids: string[] = [];
       await scanLibraryItems((page) => {
@@ -557,7 +478,6 @@ export function useLibraryCommandPaletteReader({
       commandScopeItems,
       identityMode,
       inputHasQuery,
-      nativeReaderAvailable,
       normalizedFilter,
       normalizedFilterSignature,
       queryFenceKey,
@@ -570,24 +490,21 @@ export function useLibraryCommandPaletteReader({
 
   return {
     archivableScopeCount: scopeCounts.archivableCount,
-    archivedUnsavedCount: fallbackActive
-      ? fallbackArchiveCounts.archivedCount
-      : scanNeedsFacets && paletteScanReady
-        ? paletteScan.archivedUnsavedCount
-        : Math.max(0, libraryFacets.archivedCount - libraryFacets.savedArchivedCount),
+    archivedUnsavedCount: scanNeedsFacets && paletteScanReady
+      ? paletteScan.archivedUnsavedCount
+      : Math.max(
+          0,
+          libraryFacets.archivedCount - libraryFacets.savedArchivedCount,
+        ),
     archiveScopeRead: () => runScopeAction("archive"),
     markScopeRead: () => runScopeAction("read"),
-    savedArchivedCount: fallbackActive
-      ? fallbackArchiveCounts.savedArchivedCount
-      : scanNeedsFacets && paletteScanReady
-        ? paletteScan.savedArchivedCount
-        : libraryFacets.savedArchivedCount,
+    savedArchivedCount: scanNeedsFacets && paletteScanReady
+      ? paletteScan.savedArchivedCount
+      : libraryFacets.savedArchivedCount,
     selectedItem,
-    tags: fallbackActive
-      ? fallbackTags
-      : scanNeedsFacets && paletteScanReady
-        ? paletteScan.tags
-        : libraryFacets.tags,
+    tags: scanNeedsFacets && paletteScanReady
+      ? paletteScan.tags
+      : libraryFacets.tags,
     unreadScopeCount: scopeCounts.unreadCount,
   };
 }

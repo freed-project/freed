@@ -23,7 +23,6 @@ describe("useLibraryCommandPaletteReader", () => {
   });
 
   afterEach(() => {
-    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -80,7 +79,6 @@ describe("useLibraryCommandPaletteReader", () => {
         activeView: "feed",
         commandScopeItems: [],
         enabled: true,
-        fallbackItems: [],
         identityMode: "all_content",
         inputValue: "",
         searchQuery: "",
