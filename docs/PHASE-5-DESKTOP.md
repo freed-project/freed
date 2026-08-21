@@ -72,6 +72,10 @@
         64 binary-ordered tags, and the latest 20 stable reach-out events under
         a 512 KiB ceiling. Accounts and timeline cards remain separate bounded
         queries. Freed Desktop view wiring remains open.
+  - [x] `account_detail_v1` now performs one primary-key SQLite lookup through
+        the shared native and PWA dispatch, returns at most eight ordered
+        follow-roster roles, and never hydrates a Person or FeedItem corpus.
+        Freed Desktop view wiring remains open.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

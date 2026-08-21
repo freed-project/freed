@@ -151,7 +151,7 @@ sample-library, repair, bulk, restore, and tombstone behavior.
 
 Actor capability profiles live in this same executable contract. Generation
 fails if a profile names an undeclared mutation. The Primary writer profile
-grows only as executable mutation programs land. It currently admits 16
+grows only as executable mutation programs land. It currently admits 17
 verified mutations. The capture actor remains limited to
 `feed_item_capture_upsert`. Declaring a future mutation does not grant it to
 any profile. Rust and TypeScript consume generated profile constants, so no
@@ -293,6 +293,12 @@ latest 20 events in descending time order with accepted operation IDs as the
 stable tie-break identity. The source-fenced response is capped at 512 KiB.
 Accounts and timeline cards use their own bounded page queries, so opening one
 Person never hydrates the Friends graph or a hidden Library shell.
+
+`account_detail_v1` is the matching normalized point query for one visible
+Account. It reads one Account primary key, returns at most eight follow-roster
+roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.
+The source-fenced response is capped at 512 KiB. Missing Accounts return a
+typed null result rather than causing a whole-library fallback.
 
 `item_reader_body_v1` is the only interactive reader-body byte path. The
 request names the item, selects content or preserved text, and supplies an

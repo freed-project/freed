@@ -942,6 +942,7 @@ describe("Library Core query registry", () => {
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
       if (
+        definition === LIBRARY_CORE_QUERY_REGISTRY.account_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||

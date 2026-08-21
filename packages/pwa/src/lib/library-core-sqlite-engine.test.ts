@@ -297,6 +297,15 @@ describe("PWA Library Core SQLite engine", () => {
       VALUES
         ('person-1', 'reach-2', 200, 'text', 'Latest'),
         ('person-1', 'reach-1', 100, NULL, NULL);
+      INSERT INTO library_accounts
+        (id, person_id, kind, provider, external_id, handle, display_name,
+         first_seen_at, last_seen_at, discovered_from, follow_roster_active,
+         follow_roster_synced_at, created_at, updated_at)
+      VALUES
+        ('account-1', 'person-1', 'social', 'x', 'ada-remote', 'ada', 'Ada',
+         50, 200, 'capture', 1, 200, 50, 200);
+      INSERT INTO library_account_follow_roles (account_id, role)
+      VALUES ('account-1', 'following'), ('account-1', 'follower');
     `);
     const blobDigest = "7".repeat(64);
     const firstChunk = new Uint8Array(65_536).fill(11);
@@ -441,6 +450,29 @@ describe("PWA Library Core SQLite engine", () => {
         queryId: "person_detail_v1",
         schemaVersion: 1,
       }).person,
+    ).toBeNull();
+    expect(
+      engine.query({
+        accountId: "account-1",
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      account: {
+        followRosterActive: true,
+        followRosterRoles: ["follower", "following"],
+        id: "account-1",
+        personId: "person-1",
+      },
+      queryId: "account_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        accountId: "missing",
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      }).account,
     ).toBeNull();
     const inlineBody = engine.query({
       bodyKind: "content",

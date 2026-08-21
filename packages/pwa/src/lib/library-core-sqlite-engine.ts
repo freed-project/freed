@@ -35,6 +35,8 @@ import {
   parseLibraryCoreItemScanResponseV1,
   parseLibraryCorePersonDetailRequestV1,
   parseLibraryCorePersonDetailResponseV1,
+  parseLibraryCoreAccountDetailRequestV1,
+  parseLibraryCoreAccountDetailResponseV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -67,6 +69,8 @@ import {
   type LibraryCoreItemScanResponseV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
+  type LibraryCoreAccountDetailRequestV1,
+  type LibraryCoreAccountDetailResponseV1,
   type LibraryCoreSqliteQueryRequest,
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -696,6 +700,10 @@ export class PwaLibraryCoreSqliteEngine {
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
     switch (input.queryId) {
+      case "account_detail_v1":
+        return this.#queryAccountDetail(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "change_feed_v1":
         return this.#queryChangeFeed(
           input,
@@ -974,6 +982,93 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCorePersonDetailResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryAccountDetail(
+    input: LibraryCoreAccountDetailRequestV1,
+  ): LibraryCoreAccountDetailResponseV1 {
+    const request = parseLibraryCoreAccountDetailRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_detail_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.accountId],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite account detail exceeded its row bound",
+      );
+    }
+    const row = rows[0];
+    const account =
+      row === undefined
+        ? null
+        : {
+            address: nullableText(row.address, "Account address"),
+            avatarUrl: nullableText(row.avatarUrl, "Account avatar URL"),
+            createdAt: safeInteger(row.createdAt, "Account creation time"),
+            discoveredFrom: text(
+              row.discoveredFrom,
+              "Account discovery source",
+            ),
+            displayName: nullableText(row.displayName, "Account display name"),
+            email: nullableText(row.email, "Account email"),
+            externalId: text(row.externalId, "Account external identity"),
+            firstSeenAt: safeInteger(row.firstSeenAt, "Account first seen"),
+            followRosterActive: nullableBoolean(
+              row.followRosterActive,
+              "Account follow-roster active",
+            ),
+            followRosterRoles: stringArray(
+              row.followRosterRolesJson,
+              "Account follow-roster roles",
+            ),
+            followRosterSyncedAt: nullableInteger(
+              row.followRosterSyncedAt,
+              "Account follow-roster sync time",
+            ),
+            handle: nullableText(row.handle, "Account handle"),
+            id: text(row.id, "Account identity"),
+            importedAt: nullableInteger(row.importedAt, "Account import time"),
+            kind: text(row.kind, "Account kind"),
+            lastSeenAt: safeInteger(row.lastSeenAt, "Account last seen"),
+            personId: nullableText(row.personId, "Account Person identity"),
+            phone: nullableText(row.phone, "Account phone"),
+            profileUrl: nullableText(row.profileUrl, "Account profile URL"),
+            provider: text(row.provider, "Account provider"),
+            sampleBatchId: nullableText(
+              row.sampleBatchId,
+              "Account sample batch",
+            ),
+            sampleGeneratedAt: nullableInteger(
+              row.sampleGeneratedAt,
+              "Account sample generation time",
+            ),
+            sampleGeneratorVersion: nullableInteger(
+              row.sampleGeneratorVersion,
+              "Account sample generator version",
+            ),
+            updatedAt: safeInteger(row.updatedAt, "Account update time"),
+          };
+    const response = {
+      account,
+      queryId: "account_detail_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreAccountDetailResponseV1(
       response,
       request.value,
     );

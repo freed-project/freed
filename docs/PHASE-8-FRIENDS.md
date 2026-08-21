@@ -622,6 +622,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 | 8.175 | Repaint the live MapLibre style and markers in place across theme changes, including transient hovers and cached-theme round trips, without losing markers or changing the camera | High       | Done        |
 | 8.176 | Coalesce exact coincident Map locations into one newest-marker representation with a combined update count while preserving a focused marker | Medium     | Done        |
 | 8.177 | Move the PWA Friends-only feed, compact graph activity, selected-person timelines, exact location details, and Map candidates beyond the 512-card renderer window onto bounded source-fenced IndexedDB reads | High       | Done        |
+| 8.178 | Add the shared native and PWA `account_detail_v1` SQLite point query for one source-fenced Account with eight binary-ordered follow-roster roles, no Person or FeedItem corpus, and a 512 KiB response ceiling | High       | Done        |
 
 ---
 

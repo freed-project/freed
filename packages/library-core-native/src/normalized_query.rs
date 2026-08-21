@@ -18,6 +18,7 @@ const PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
 const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RANGE_BYTES: usize = 256 * 1_024;
 const ITEM_READER_BODY_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const CONTENT_CHUNK_BYTES: usize = 65_536;
@@ -82,6 +83,13 @@ pub struct NormalizedPersonDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountDetailRequestV1 {
+    pub account_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRequestV1 {
     pub body_kind: String,
     pub global_id: String,
@@ -92,6 +100,7 @@ pub struct NormalizedItemReaderBodyRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
+    AccountDetail(NormalizedAccountDetailRequestV1),
     ChangeFeed(NormalizedChangeFeedRequestV1),
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedPage(NormalizedFeedPageRequestV1),
@@ -290,6 +299,44 @@ pub struct NormalizedPersonDetailResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountDetailV1 {
+    pub address: Option<String>,
+    pub avatar_url: Option<String>,
+    pub created_at: i64,
+    pub discovered_from: String,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub external_id: String,
+    pub first_seen_at: i64,
+    pub follow_roster_active: Option<bool>,
+    pub follow_roster_roles: Vec<String>,
+    pub follow_roster_synced_at: Option<i64>,
+    pub handle: Option<String>,
+    pub id: String,
+    pub imported_at: Option<i64>,
+    pub kind: String,
+    pub last_seen_at: i64,
+    pub person_id: Option<String>,
+    pub phone: Option<String>,
+    pub profile_url: Option<String>,
+    pub provider: String,
+    pub sample_batch_id: Option<String>,
+    pub sample_generated_at: Option<i64>,
+    pub sample_generator_version: Option<i64>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountDetailResponseV1 {
+    pub account: Option<NormalizedAccountDetailV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemReaderBodyRangeV1 {
     pub blob_digest: Option<String>,
     pub bytes_base64: String,
@@ -310,6 +357,7 @@ pub struct NormalizedItemReaderBodyResponseV1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
+    AccountDetail(Box<NormalizedAccountDetailResponseV1>),
     ChangeFeed(NormalizedChangeFeedResponseV1),
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedPage(NormalizedFeedPageResponseV1),
@@ -1117,6 +1165,135 @@ fn query_person_detail(
     Ok(response)
 }
 
+fn query_account_detail(
+    connection: &mut Connection,
+    request: NormalizedAccountDetailRequestV1,
+) -> Result<NormalizedAccountDetailResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.account_id.is_empty()
+        || request.account_id.len() > 2_048
+    {
+        return Err(invalid("normalized account detail identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "account_detail_v1")
+        .ok_or(invalid("normalized account detail program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.2)?;
+    let mapped = statement.query_map(params![request.account_id], |row| {
+        let follow_roster_active = row
+            .get::<_, Option<i64>>("followRosterActive")?
+            .map(|value| match value {
+                0 => Ok(false),
+                1 => Ok(true),
+                _ => Err(rusqlite::Error::InvalidQuery),
+            })
+            .transpose()?;
+        Ok(NormalizedAccountDetailV1 {
+            address: row.get("address")?,
+            avatar_url: row.get("avatarUrl")?,
+            created_at: row.get("createdAt")?,
+            discovered_from: row.get("discoveredFrom")?,
+            display_name: row.get("displayName")?,
+            email: row.get("email")?,
+            external_id: row.get("externalId")?,
+            first_seen_at: row.get("firstSeenAt")?,
+            follow_roster_active,
+            follow_roster_roles: string_array(row, "followRosterRolesJson", 8, 64)?,
+            follow_roster_synced_at: row.get("followRosterSyncedAt")?,
+            handle: row.get("handle")?,
+            id: row.get("id")?,
+            imported_at: row.get("importedAt")?,
+            kind: row.get("kind")?,
+            last_seen_at: row.get("lastSeenAt")?,
+            person_id: row.get("personId")?,
+            phone: row.get("phone")?,
+            profile_url: row.get("profileUrl")?,
+            provider: row.get("provider")?,
+            sample_batch_id: row.get("sampleBatchId")?,
+            sample_generated_at: row.get("sampleGeneratedAt")?,
+            sample_generator_version: row.get("sampleGeneratorVersion")?,
+            updated_at: row.get("updatedAt")?,
+        })
+    })?;
+    let mut accounts = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if accounts.len() > program.1 {
+        return Err(invalid("normalized account detail exceeded its row bound"));
+    }
+    if let Some(account) = accounts.first() {
+        let bounded_optional = |value: &Option<String>, maximum| {
+            value.as_ref().is_none_or(|text| text.len() <= maximum)
+        };
+        if account.id != request.account_id
+            || account.id.is_empty()
+            || account.id.len() > 2_048
+            || account.external_id.is_empty()
+            || account.external_id.len() > 4_096
+            || account.kind.is_empty()
+            || account.kind.len() > 64
+            || account.provider.is_empty()
+            || account.provider.len() > 64
+            || account.discovered_from.is_empty()
+            || account.discovered_from.len() > 64
+            || !bounded_optional(&account.person_id, 2_048)
+            || !bounded_optional(&account.handle, 512)
+            || !bounded_optional(&account.display_name, 512)
+            || !bounded_optional(&account.avatar_url, 8_192)
+            || !bounded_optional(&account.profile_url, 8_192)
+            || !bounded_optional(&account.email, 4_096)
+            || !bounded_optional(&account.phone, 512)
+            || !bounded_optional(&account.address, 4_096)
+            || !bounded_optional(&account.sample_batch_id, 255)
+            || !valid_safe_integer(account.created_at)
+            || !valid_safe_integer(account.first_seen_at)
+            || !valid_safe_integer(account.last_seen_at)
+            || !valid_safe_integer(account.updated_at)
+            || account
+                .imported_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || account
+                .follow_roster_synced_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || account
+                .sample_generated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || account
+                .sample_generator_version
+                .is_some_and(|value| !valid_safe_integer(value))
+            || account
+                .follow_roster_roles
+                .windows(2)
+                .any(|roles| roles[0] >= roles[1])
+        {
+            return Err(invalid("normalized account detail row is invalid"));
+        }
+    }
+    let response = NormalizedAccountDetailResponseV1 {
+        account: accounts.pop(),
+        query_id: "account_detail_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized account detail response is invalid"))?
+        .len()
+        > ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized account detail response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_item_detail(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -1337,6 +1514,11 @@ pub fn query_normalized_v1(
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
     match request {
+        NormalizedQueryRequestV1::AccountDetail(request) => {
+            Ok(NormalizedQueryResponseV1::AccountDetail(Box::new(
+                query_account_detail(connection, request)?,
+            )))
+        }
         NormalizedQueryRequestV1::ChangeFeed(request) => Ok(NormalizedQueryResponseV1::ChangeFeed(
             query_change_feed(connection, request)?,
         )),
@@ -1980,6 +2162,79 @@ mod tests {
             panic!("person detail response");
         };
         assert!(missing.person.is_none());
+    }
+
+    #[test]
+    fn native_account_detail_returns_one_bounded_normalized_record() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 12, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                   VALUES ('person-1', 'Ada', 'friend', 5, 50, 200);
+                 INSERT INTO library_accounts
+                   (id, person_id, kind, provider, external_id, handle, display_name,
+                    first_seen_at, last_seen_at, discovered_from, follow_roster_active,
+                    follow_roster_synced_at, created_at, updated_at)
+                   VALUES ('account-1', 'person-1', 'social', 'x', 'ada-remote',
+                           'ada', 'Ada', 50, 200, 'capture', 1, 200, 50, 200);
+                 INSERT INTO library_account_follow_roles (account_id, role)
+                   VALUES ('account-1', 'following'), ('account-1', 'follower');",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let account_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.0 == "account_detail_v1")
+            .expect("account detail program");
+        let plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", account_program.2))
+            .expect("account detail plan")
+            .query_map(params!["account-1"], |row| row.get::<_, String>(3))
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH account USING INDEX")));
+        assert!(plan
+            .iter()
+            .all(|detail| !detail.contains("USE TEMP B-TREE")));
+
+        let NormalizedQueryResponseV1::AccountDetail(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountDetail(NormalizedAccountDetailRequestV1 {
+                account_id: "account-1".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("account detail") else {
+            panic!("account detail response");
+        };
+        let account = response.account.expect("account");
+        assert_eq!(account.id, "account-1");
+        assert_eq!(account.person_id.as_deref(), Some("person-1"));
+        assert_eq!(account.follow_roster_roles, ["follower", "following"]);
+
+        let NormalizedQueryResponseV1::AccountDetail(missing) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::AccountDetail(NormalizedAccountDetailRequestV1 {
+                account_id: "missing".to_owned(),
+                schema_version: 1,
+            }),
+        )
+        .expect("missing account detail") else {
+            panic!("account detail response");
+        };
+        assert!(missing.account.is_none());
     }
 
     #[test]

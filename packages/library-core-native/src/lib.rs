@@ -80,7 +80,8 @@ pub use normalized_mutation::{
     accept_normalized_operation_transaction_v1, NormalizedMutationReceiptV1,
 };
 pub use normalized_query::{
-    query_normalized_v1, NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1,
+    query_normalized_v1, NormalizedAccountDetailRequestV1, NormalizedAccountDetailResponseV1,
+    NormalizedAccountDetailV1, NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1,
     NormalizedChangeFeedRowV1, NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1,
     NormalizedFacetSummaryV1, NormalizedFeedCardV1, NormalizedFeedPageRequestV1,
     NormalizedFeedPageResponseV1, NormalizedFeedPageSourceV1, NormalizedItemScanRequestV1,

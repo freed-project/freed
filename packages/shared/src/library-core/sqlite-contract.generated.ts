@@ -991,6 +991,11 @@ export const LIBRARY_CORE_QUERY_IDS = [
 export type LibraryCoreQueryId = (typeof LIBRARY_CORE_QUERY_IDS)[number];
 
 export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
+  "account_detail_v1": {
+    "maximumScanRows": 1,
+    "countSql": "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;",
+    "sql": "SELECT account.id, account.person_id AS personId, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.profile_url AS profileUrl, account.email, account.phone, account.address, account.imported_at AS importedAt, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.follow_roster_synced_at AS followRosterSyncedAt, account.sample_batch_id AS sampleBatchId, account.sample_generated_at AS sampleGeneratedAt, account.sample_generator_version AS sampleGeneratorVersion, account.created_at AS createdAt, account.updated_at AS updatedAt, (SELECT json_group_array(role) FROM (SELECT role FROM library_account_follow_roles WHERE account_id = account.id ORDER BY role COLLATE BINARY LIMIT 8)) AS followRosterRolesJson FROM library_accounts AS account WHERE account.id = ?1 COLLATE BINARY LIMIT 1;"
+  },
   "background_item_page_v1": {
     "maximumScanRows": 65,
     "countSql": "SELECT count(*) FROM library_feed_items;",

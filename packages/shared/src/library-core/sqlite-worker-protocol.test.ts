@@ -19,6 +19,13 @@ describe("Library Core SQLite worker protocol", () => {
   });
 
   it("carries only registered closed query contracts", () => {
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-account", {
+        accountId: "account-1",
+        queryId: "account_detail_v1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
     const request = createLibraryCoreSqliteQueryWorkerRequest("request-2", {
       cancellationId: "cancel-1" as never,
       cursor: null,
