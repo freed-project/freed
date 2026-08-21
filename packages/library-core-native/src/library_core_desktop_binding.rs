@@ -5,9 +5,11 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use rusqlite::{Connection, OpenFlags};
+use serde::{Deserialize, Serialize};
 
 use crate::library_core_bound_root::LibraryCoreBoundRoot;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
+use crate::library_core_canonical::encode_canonical_value;
 use crate::{
     install_normalized_schema_v1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
     LibraryCoreStoreError, ProcessLeaseIdentity,
@@ -15,6 +17,19 @@ use crate::{
 
 const LIBRARY_DIRECTORY: &str = "library-core";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
+const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
+const AUTHORITY_SELECTION_MAXIMUM_BYTES: usize = 16_384;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DesktopAuthoritySelectionV1 {
+    format: String,
+    library_id: String,
+    epoch_id: String,
+    transition_certificate_digest: String,
+    normalized_product_digest: String,
+    selected_at: u64,
+}
 
 fn normalized_open_flags(create: bool) -> OpenFlags {
     let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -51,7 +66,7 @@ pub struct LibraryCoreDesktopBinding {
     _normalized_lease: LibraryCoreProcessLease,
     _library_root: LibraryCoreBoundRoot,
     _normalized_root: LibraryCoreBoundRoot,
-    _app_root: LibraryCoreBoundRoot,
+    app_root: LibraryCoreBoundRoot,
 }
 
 static DESKTOP_BINDING: OnceLock<LibraryCoreDesktopBinding> = OnceLock::new();
@@ -131,16 +146,18 @@ impl LibraryCoreDesktopBinding {
             _normalized_lease: normalized_lease,
             _library_root: library_root,
             _normalized_root: normalized_root,
-            _app_root: app_root,
+            app_root,
         })
     }
 
     pub fn connect(&self) -> Result<Connection, LibraryCoreStoreError> {
+        self.require_legacy_authority()?;
         self.store.connect()
     }
 
     /// Opens Freed Desktop's final normalized SQLite authority.
     pub fn connect_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+        self.authority_selection()?;
         let connection = self
             .normalized_database
             .open(normalized_open_flags(false))?;
@@ -149,11 +166,109 @@ impl LibraryCoreDesktopBinding {
     }
 
     pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
+        self.require_legacy_authority()?;
         self.store.open_bound_journal()
     }
 
-    pub fn store(&self) -> &LibraryCoreStore {
-        &self.store
+    pub fn store(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
+        self.require_legacy_authority()?;
+        Ok(&self.store)
+    }
+
+    fn require_legacy_authority(&self) -> Result<(), LibraryCoreStoreError> {
+        if self.authority_selection()?.is_some() {
+            return Err(LibraryCoreStoreError::from(
+                "historical Desktop Library authority is retired".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn authority_selection(
+        &self,
+    ) -> Result<Option<DesktopAuthoritySelectionV1>, LibraryCoreStoreError> {
+        let Some(bytes) = self.app_root.read_bounded_private_file(
+            AUTHORITY_SELECTION_FILE,
+            AUTHORITY_SELECTION_MAXIMUM_BYTES,
+        )?
+        else {
+            return Ok(None);
+        };
+        let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
+            LibraryCoreStoreError::from("Desktop authority selection is invalid JSON".to_string())
+        })?;
+        let canonical =
+            encode_canonical_value(&value, AUTHORITY_SELECTION_MAXIMUM_BYTES).map_err(|_| {
+                LibraryCoreStoreError::from(
+                    "Desktop authority selection is not canonical".to_string(),
+                )
+            })?;
+        if canonical != bytes {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop authority selection is not canonical".to_string(),
+            ));
+        }
+        let selection: DesktopAuthoritySelectionV1 =
+            serde_json::from_value(value).map_err(|_| {
+                LibraryCoreStoreError::from(
+                    "Desktop authority selection has an invalid field set".to_string(),
+                )
+            })?;
+        let valid_digest = |value: &str| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        };
+        if selection.format != "freed_desktop_sqlite_authority_selection_v1"
+            || !valid_digest(&selection.library_id)
+            || !valid_digest(&selection.epoch_id)
+            || !valid_digest(&selection.transition_certificate_digest)
+            || !valid_digest(&selection.normalized_product_digest)
+            || selection.selected_at > 9_007_199_254_740_991
+        {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop authority selection identity is invalid".to_string(),
+            ));
+        }
+        let connection = self
+            .normalized_database
+            .open(normalized_open_flags(false))?;
+        configure_normalized_connection(&connection)?;
+        let matches: i64 = connection.query_row(
+            "SELECT count(*)
+             FROM library_active_authority AS active
+             JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+             JOIN library_meta AS meta ON meta.singleton_id = 1
+             JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+             WHERE active.active_key = 'active'
+               AND active.library_id = ?1
+               AND active.epoch_id = ?2
+               AND epoch.transition_certificate_digest = ?3
+               AND epoch.materialized_state_digest = ?4
+               AND generation.generation_id = ?4
+               AND epoch.accepted_at = ?5
+               AND meta.library_id = active.library_id
+               AND meta.authority_epoch = active.epoch_id;",
+            rusqlite::params![
+                selection.library_id,
+                selection.epoch_id,
+                selection.transition_certificate_digest,
+                selection.normalized_product_digest,
+                i64::try_from(selection.selected_at).map_err(|_| {
+                    LibraryCoreStoreError::from(
+                        "Desktop authority selection time is invalid".to_string(),
+                    )
+                })?,
+            ],
+            |row| row.get(0),
+        )?;
+        if matches != 1 {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop authority selection does not match normalized SQLite".to_string(),
+            ));
+        }
+        Ok(Some(selection))
     }
 }
 
@@ -162,6 +277,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
+    use serde_json::json;
 
     const TEST_IDENTITY: ProcessLeaseIdentity<'static> =
         ProcessLeaseIdentity::new("desktop-binding-test", "1");
@@ -202,6 +318,90 @@ mod tests {
             binding
                 .connect_normalized()
                 .expect("open normalized Desktop database"),
+        );
+    }
+
+    #[test]
+    fn verified_selector_fences_every_historical_opening_path() {
+        let fixture = tempfile::TempDir::new().expect("create Desktop selector fixture");
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).expect("create app root");
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700))
+            .expect("set app root permissions");
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("open Desktop binding");
+        let normalized = binding
+            .connect_normalized()
+            .expect("open normalized database");
+        normalized
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 VALUES (?1, ?2, 4, ?3, ?4, ?5, '{}', 0, ?6, ?7, 400);",
+                rusqlite::params![
+                    "a".repeat(64),
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "d".repeat(64),
+                    "e".repeat(64),
+                    "f".repeat(64),
+                    "1".repeat(64),
+                ],
+            )
+            .expect("insert authority epoch");
+        normalized
+            .execute(
+                "INSERT INTO library_active_authority
+                 (active_key, library_id, epoch_id, writer_id,
+                  accepted_manifest_generation, activated_at)
+                 VALUES ('active', ?1, ?2, 'primary:desktop', 0, 400);",
+                rusqlite::params!["b".repeat(64), "a".repeat(64)],
+            )
+            .expect("insert active authority");
+        normalized
+            .execute(
+                "INSERT INTO library_meta
+                 (singleton_id, library_id, schema_version, authority_epoch,
+                  source_revision, updated_at)
+                 VALUES (1, ?1, 1, ?2, 0, 400);",
+                rusqlite::params!["b".repeat(64), "a".repeat(64)],
+            )
+            .expect("insert meta");
+        normalized
+            .execute(
+                "INSERT INTO library_materialization_generation
+                 (singleton_id, generation_id) VALUES (1, ?1);",
+                ["1".repeat(64)],
+            )
+            .expect("insert generation");
+        drop(normalized);
+        let selection = encode_canonical_value(
+            &json!({
+                "epochId": "a".repeat(64),
+                "format": "freed_desktop_sqlite_authority_selection_v1",
+                "libraryId": "b".repeat(64),
+                "normalizedProductDigest": "1".repeat(64),
+                "selectedAt": 400,
+                "transitionCertificateDigest": "e".repeat(64)
+            }),
+            AUTHORITY_SELECTION_MAXIMUM_BYTES,
+        )
+        .expect("canonical selector");
+        let selector_path = app_root.join(AUTHORITY_SELECTION_FILE);
+        fs::write(&selector_path, selection).expect("write selector");
+        fs::set_permissions(&selector_path, fs::Permissions::from_mode(0o600))
+            .expect("set selector permissions");
+
+        assert!(binding.connect().is_err());
+        assert!(binding.open_journal().is_err());
+        assert!(binding.store().is_err());
+        drop(
+            binding
+                .connect_normalized()
+                .expect("selected normalized database remains available"),
         );
     }
 }

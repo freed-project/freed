@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::fs::File;
+use std::io::Read;
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
@@ -132,6 +133,61 @@ impl LibraryCoreBoundRoot {
             }
         }
         Ok(descriptor)
+    }
+
+    pub(crate) fn read_bounded_private_file(
+        &self,
+        name: &str,
+        maximum_bytes: usize,
+    ) -> Result<Option<Vec<u8>>, LibraryCoreStoreError> {
+        if name.is_empty()
+            || matches!(name, "." | "..")
+            || name.as_bytes().contains(&b'/')
+            || maximum_bytes == 0
+        {
+            return Err(LibraryCoreStoreError::from(
+                "invalid bound file request".to_string(),
+            ));
+        }
+        let name = CString::new(name)
+            .map_err(|_| LibraryCoreStoreError::from("invalid bound file name".to_string()))?;
+        let descriptor = unsafe {
+            libc::openat(
+                self.descriptor(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            )
+        };
+        if descriptor < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Ok(None);
+            }
+            return Err(error.into());
+        }
+        let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor) };
+        let mut file = File::from(descriptor);
+        let metadata = file.metadata()?;
+        if !metadata.file_type().is_file()
+            || metadata.file_type().is_symlink()
+            || metadata.uid() != self.owner
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
+            || metadata.len() == 0
+            || metadata.len() > maximum_bytes as u64
+        {
+            return Err(LibraryCoreStoreError::from(
+                "bound control file is invalid".to_string(),
+            ));
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.read_to_end(&mut bytes)?;
+        if bytes.len() != metadata.len() as usize || bytes.len() > maximum_bytes {
+            return Err(LibraryCoreStoreError::from(
+                "bound control file changed while reading".to_string(),
+            ));
+        }
+        Ok(Some(bytes))
     }
 }
 

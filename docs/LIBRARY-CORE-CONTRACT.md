@@ -887,6 +887,16 @@ inserts the actor, capability, and closed mutation rows. No retired operation,
 legacy editor policy, inferred mutation, or blank-frontier enrollment can enter
 the normalized epoch.
 
+Freed Desktop has one descriptor-bound local authority selector. The selector
+is a private, bounded, canonical closed record under the already leased app-data
+root. It names the normalized library, epoch, transition certificate, product
+generation, and selection time. Every read verifies those fields against the
+signed normalized SQLite authority before accepting the selector. Once valid,
+all historical database, journal, store, backup, restore, clear, and mutation
+opening paths fail closed for the rest of the process and after restart. A
+missing selector preserves the pre-cutover state. A malformed selector or one
+that does not match normalized SQLite activates neither side.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

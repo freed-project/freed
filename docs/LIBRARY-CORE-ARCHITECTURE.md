@@ -932,6 +932,14 @@ and names exactly the generated Primary-writer mutation set with library-wide
 scope. Actor, capability, and mutation rows commit together after native
 certificate verification. Followers enroll separately under the same epoch.
 
+Desktop selection uses one bounded canonical record under the descriptor-bound
+app-data root. It binds the normalized library ID, epoch ID, transition
+certificate digest, materialized product digest, and selection time. The host
+verifies it against normalized SQLite on every authority opening. A valid
+selector permanently fences every old database, journal, store, backup,
+restore, clear, and mutation route. A missing selector means cutover has not
+occurred. A malformed, foreign, or stale selector fails both sides closed.
+
 ### 16.2 Cutover
 
 Cutover:

@@ -959,7 +959,7 @@ fn open_journal_at(root: &Path) -> Result<LibraryCoreJournal, String> {
 fn open_store_at(root: &Path) -> Result<LibraryCoreStore, String> {
     #[cfg(unix)]
     if let Ok(binding) = freed_library_core::desktop_binding() {
-        return Ok(binding.store().clone());
+        return binding.store().cloned().map_err(|error| error.to_string());
     }
     LibraryCoreStore::open(root).map_err(|error| error.to_string())
 }
@@ -3865,6 +3865,7 @@ pub(super) fn list_sqlite_library_backups(
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
             .store()
+            .map_err(|error| error.to_string())?
             .list_bound_backups()
             .map(|records| records.into_iter().map(Into::into).collect())
             .map_err(|error| error.to_string());
@@ -3928,6 +3929,7 @@ fn read_sqlite_library_backup_chunk_at(
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
             .store()
+            .map_err(|error| error.to_string())?
             .read_bound_backup_chunk(&request.backup_id, request.offset, request.limit)
             .map(Into::into)
             .map_err(|error| error.to_string());
@@ -4006,6 +4008,7 @@ fn restore_sqlite_library_backup_at(
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
             .store()
+            .map_err(|error| error.to_string())?
             .restore_bound_backup(backup_id)
             .map(Into::into)
             .map_err(|error| error.to_string());
@@ -4142,6 +4145,7 @@ fn clear_sqlite_library_backups_at(root: &Path) -> Result<(), String> {
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
             .store()
+            .map_err(|error| error.to_string())?
             .clear_bound_backups()
             .map_err(|error| error.to_string());
     }
@@ -4168,6 +4172,7 @@ pub(super) fn clear_sqlite_library(app: tauri::AppHandle) -> Result<(), String> 
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
             .store()
+            .map_err(|error| error.to_string())?
             .clear_bound_all()
             .map_err(|error| error.to_string());
     }
