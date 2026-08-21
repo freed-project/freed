@@ -41,6 +41,11 @@ import {
   type LibraryCoreFacetSummaryResponseV1,
 } from "./facet-summary-contracts.js";
 import {
+  parseLibraryCoreSavedAnalyticsRequestV2,
+  type LibraryCoreSavedAnalyticsRequestV2,
+  type LibraryCoreSavedAnalyticsResponseV2,
+} from "./saved-analytics-v2-contracts.js";
+import {
   parseLibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotResponseV1,
@@ -101,6 +106,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePersonTimelineRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
+  | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCorePreferencesSnapshotRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
@@ -131,9 +137,11 @@ export type LibraryCoreSqliteQueryResponseFor<
                         ? LibraryCorePersonTimelineResponseV1
                         : T extends LibraryCoreRssFeedGraphPageRequestV1
                           ? LibraryCoreRssFeedGraphPageResponseV1
-                          : T extends LibraryCorePreferencesSnapshotRequestV1
-                            ? LibraryCorePreferencesSnapshotResponseV1
-                            : never;
+                          : T extends LibraryCoreSavedAnalyticsRequestV2
+                            ? LibraryCoreSavedAnalyticsResponseV2
+                            : T extends LibraryCorePreferencesSnapshotRequestV1
+                              ? LibraryCorePreferencesSnapshotResponseV1
+                              : never;
 
 export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
@@ -207,6 +215,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCorePersonTimelineResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
+  | LibraryCoreSavedAnalyticsResponseV2
   | LibraryCorePreferencesSnapshotResponseV1
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
@@ -320,12 +329,18 @@ export function parseLibraryCoreSqliteWorkerRequest(
                               ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                   value.query,
                                 )
-                              : value.query.queryId ===
-                                  "preferences_snapshot_v1"
-                                ? parseLibraryCorePreferencesSnapshotRequestV1(
+                              : value.query.queryId === "saved_analytics_v2"
+                                ? parseLibraryCoreSavedAnalyticsRequestV2(
                                     value.query,
                                   )
-                                : parseLibraryCoreFeedPageRequestV1(value.query)
+                                : value.query.queryId ===
+                                    "preferences_snapshot_v1"
+                                  ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                      value.query,
+                                    )
+                                  : parseLibraryCoreFeedPageRequestV1(
+                                      value.query,
+                                    )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {

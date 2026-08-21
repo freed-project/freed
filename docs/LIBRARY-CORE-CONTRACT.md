@@ -292,6 +292,16 @@ No query may scan or sort the full corpus in JavaScript. No query returns an
 unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
 typed summaries. A view refreshes only invalidated pages and aggregates.
 
+`saved_analytics_v2` is the normalized Saved overview aggregate. One deferred
+SQLite snapshot materializes only each saved row's bounded platform, content
+type, and effective saved time, then returns exact totals, latest time, seven
+contiguous day buckets, 24 contiguous hour buckets, and binary-ordered label
+counts. Native Rust and browser SQLite execute the same generated SQL. The
+request accepts no SQL or arbitrary grouping, the result is one row under
+2 MiB, and source generation or revision movement invalidates the response.
+The historical Saved analytics reader and its document-head source vocabulary
+are not part of this final query.
+
 Synchronized preferences are normalized typed SQLite nodes. The
 `preferences_snapshot_v1` query returns at most 512 nodes and 2 MiB in SQLite
 binary path order. Scalar rows use a `v:` path prefix. Object markers use `o:`

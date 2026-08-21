@@ -22,7 +22,11 @@
       "status": "current",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
-    { "id": 6, "status": "current", "source": "docs/PHASE-6-PWA.md" },
+    {
+      "id": 6,
+      "source": "docs/PHASE-6-PWA.md",
+      "status": "current"
+    },
     {
       "id": 7,
       "status": "current",

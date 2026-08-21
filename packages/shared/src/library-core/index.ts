@@ -38,6 +38,7 @@ export * from "./portable-checkpoint-contracts.js";
 export * from "./protocol-scalars.js";
 export * from "./saved-feed-page-contracts.js";
 export * from "./saved-analytics-contracts.js";
+export * from "./saved-analytics-v2-contracts.js";
 export * from "./person-timeline-contracts.js";
 export * from "./persons-graph-contracts.js";
 export * from "./person-detail-contracts.js";

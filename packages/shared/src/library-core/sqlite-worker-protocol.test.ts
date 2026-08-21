@@ -75,6 +75,19 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    const analyticsWindows = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        endMs: (index + 1) * 100,
+        startMs: index * 100,
+      }));
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-saved-analytics", {
+        dailyWindows: analyticsWindows(7),
+        hourlyWindows: analyticsWindows(24),
+        queryId: "saved_analytics_v2",
+        schemaVersion: 2,
+      }).kind,
+    ).toBe("query");
     expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-item", {
         globalId: "item-1",

@@ -29,6 +29,8 @@ import {
   parseLibraryCoreChangeFeedResponseV1,
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
+  parseLibraryCoreSavedAnalyticsRequestV2,
+  parseLibraryCoreSavedAnalyticsResponseV2,
   parseLibraryCorePreferencesSnapshotRequestV1,
   parseLibraryCorePreferencesSnapshotResponseV1,
   parseLibraryCoreItemDetailRequestV1,
@@ -82,6 +84,8 @@ import {
   type LibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFacetSummaryRequestV1,
   type LibraryCoreFacetSummaryResponseV1,
+  type LibraryCoreSavedAnalyticsRequestV2,
+  type LibraryCoreSavedAnalyticsResponseV2,
   type LibraryCorePreferencesSnapshotRequestV1,
   type LibraryCorePreferencesSnapshotResponseV1,
   type LibraryCoreItemDetailRequestV1,
@@ -894,6 +898,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryRssFeedGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "saved_analytics_v2":
+        return this.#querySavedAnalytics(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -1585,6 +1593,56 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreFacetSummaryResponseV1(response);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #querySavedAnalytics(
+    input: LibraryCoreSavedAnalyticsRequestV2,
+  ): LibraryCoreSavedAnalyticsResponseV2 {
+    const request = parseLibraryCoreSavedAnalyticsRequestV2(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.saved_analytics_v2;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        JSON.stringify(request.value.dailyWindows),
+        JSON.stringify(request.value.hourlyWindows),
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite saved analytics returned an invalid row count",
+      );
+    }
+    const row = rows[0]!;
+    const response = {
+      contentMix: JSON.parse(
+        text(row.contentMixJson, "saved content mix"),
+      ) as unknown,
+      dailyCounts: JSON.parse(
+        text(row.dailyCountsJson, "saved daily counts"),
+      ) as unknown,
+      hourlyCounts: JSON.parse(
+        text(row.hourlyCountsJson, "saved hourly counts"),
+      ) as unknown,
+      latestSavedAt: nullableInteger(row.latestSavedAt, "latest saved time"),
+      queryId: "saved_analytics_v2" as const,
+      schemaVersion: 2 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+      sourceCounts: JSON.parse(
+        text(row.sourceCountsJson, "saved source counts"),
+      ) as unknown,
+      totalCount: safeInteger(row.totalCount, "saved total count"),
+    };
+    const parsed = parseLibraryCoreSavedAnalyticsResponseV2(response);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

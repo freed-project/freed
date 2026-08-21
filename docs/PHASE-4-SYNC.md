@@ -24,8 +24,9 @@
 > registry now produce exact bounded native checkpoint pages directly from
 > SQLite. Native staging accepts bounded canonical pages, rejects changed
 > replay, verifies the complete digest and content graph, and activates all
-> normalized rows in one transaction. Browser SQLite activation and fourteen
-> equivalent generated query programs are implemented. Complete mutation and
+> normalized rows in one transaction. Browser SQLite activation and fifteen
+> equivalent generated query programs are implemented, including one-row
+> normalized Saved analytics. Complete mutation and
 > product query cutover, selective content, one-epoch migration,
 > retired-runtime deletion, and physical-device acceptance remain open.
 
@@ -49,6 +50,11 @@
       with complete filters, forward and reverse keyset paging, source-fenced
       cursors, a 129-row scan ceiling, and no historical source-enumeration
       field.
+- [x] Generate equivalent native Rust and browser SQLite
+      `saved_analytics_v2` programs. One source-fenced response returns exact
+      Saved totals, latest time, seven day buckets, 24 hour buckets, and
+      bounded binary-ordered source and content counts under 2 MiB. No
+      FeedItem row crosses into application code for this aggregate.
 - [x] Stage and activate typed normalized records through bounded native SQLite
       transactions. Exact replay is idempotent, changed replay fails, finite
       fractions use exact binary64 wrappers, incomplete content and foreign

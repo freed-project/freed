@@ -111,6 +111,21 @@ pub struct NormalizedFacetSummaryRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedAnalyticsWindowV2 {
+    pub end_ms: i64,
+    pub start_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedAnalyticsRequestV2 {
+    pub daily_windows: Vec<NormalizedSavedAnalyticsWindowV2>,
+    pub hourly_windows: Vec<NormalizedSavedAnalyticsWindowV2>,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPreferencesSnapshotRequestV1 {
     pub schema_version: u32,
 }
@@ -192,6 +207,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonTimeline(NormalizedPersonTimelineRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
+    SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,6 +347,27 @@ pub struct NormalizedFacetSummaryResponseV1 {
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
     pub summary: NormalizedFacetSummaryV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedAnalyticsCountV2 {
+    pub count: i64,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedSavedAnalyticsResponseV2 {
+    pub content_mix: Vec<NormalizedSavedAnalyticsCountV2>,
+    pub daily_counts: Vec<i64>,
+    pub hourly_counts: Vec<i64>,
+    pub latest_saved_at: Option<i64>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub source_counts: Vec<NormalizedSavedAnalyticsCountV2>,
+    pub total_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -576,6 +613,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonTimeline(NormalizedPersonTimelineResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
+    SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1662,6 +1700,142 @@ fn query_facet_summary(
     Ok(response)
 }
 
+fn valid_analytics_windows(
+    windows: &[NormalizedSavedAnalyticsWindowV2],
+    expected_count: usize,
+) -> bool {
+    windows.len() == expected_count
+        && windows.iter().enumerate().all(|(index, window)| {
+            valid_safe_integer(window.start_ms)
+                && valid_safe_integer(window.end_ms)
+                && window.end_ms > window.start_ms
+                && (index == 0 || windows[index - 1].end_ms == window.start_ms)
+        })
+}
+
+fn query_saved_analytics(
+    connection: &mut Connection,
+    request: NormalizedSavedAnalyticsRequestV2,
+) -> Result<NormalizedSavedAnalyticsResponseV2, NormalizedSqliteError> {
+    if request.schema_version != 2
+        || !valid_analytics_windows(&request.daily_windows, 7)
+        || !valid_analytics_windows(&request.hourly_windows, 24)
+    {
+        return Err(invalid(
+            "normalized saved analytics query identity is invalid",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "saved_analytics_v2")
+        .ok_or(invalid(
+            "normalized saved analytics query program is missing",
+        ))?;
+    let daily_windows = serde_json::to_string(&request.daily_windows)
+        .map_err(|_| invalid("normalized saved daily windows are invalid"))?;
+    let hourly_windows = serde_json::to_string(&request.hourly_windows)
+        .map_err(|_| invalid("normalized saved hourly windows are invalid"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut response =
+        transaction.query_row(program.sql, params![daily_windows, hourly_windows], |row| {
+            let source_counts_json: String = row.get("sourceCountsJson")?;
+            let content_mix_json: String = row.get("contentMixJson")?;
+            let daily_counts_json: String = row.get("dailyCountsJson")?;
+            let hourly_counts_json: String = row.get("hourlyCountsJson")?;
+            Ok(NormalizedSavedAnalyticsResponseV2 {
+                content_mix: serde_json::from_str(&content_mix_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+                daily_counts: serde_json::from_str(&daily_counts_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+                hourly_counts: serde_json::from_str(&hourly_counts_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+                latest_saved_at: row.get("latestSavedAt")?,
+                query_id: "saved_analytics_v2".to_owned(),
+                schema_version: 2,
+                source: NormalizedFeedPageSourceV1 {
+                    generation_id: generation_id.clone(),
+                    projection_revision: source_revision,
+                    transition_sequence: source_revision,
+                },
+                source_counts: serde_json::from_str(&source_counts_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
+                total_count: row.get("totalCount")?,
+            })
+        })?;
+    let valid_counts = |counts: &[NormalizedSavedAnalyticsCountV2], maximum: usize| {
+        counts.len() <= maximum
+            && counts.iter().all(|count| {
+                !count.label.is_empty()
+                    && count.label.len() <= 256
+                    && (1..=response.total_count).contains(&count.count)
+            })
+            && counts.windows(2).all(|pair| pair[0].label < pair[1].label)
+    };
+    if !valid_safe_integer(response.total_count)
+        || response
+            .latest_saved_at
+            .is_some_and(|value| !valid_safe_integer(value))
+        || (response.total_count == 0) != response.latest_saved_at.is_none()
+        || !valid_counts(&response.source_counts, 64)
+        || !valid_counts(&response.content_mix, 64)
+        || response
+            .source_counts
+            .iter()
+            .map(|count| count.count)
+            .sum::<i64>()
+            != response.total_count
+        || response
+            .content_mix
+            .iter()
+            .map(|count| count.count)
+            .sum::<i64>()
+            != response.total_count
+        || response.daily_counts.len() != 7
+        || response.hourly_counts.len() != 24
+        || response
+            .daily_counts
+            .iter()
+            .chain(&response.hourly_counts)
+            .any(|count| !(0..=response.total_count).contains(count))
+    {
+        return Err(invalid("normalized saved analytics response is invalid"));
+    }
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized saved analytics response is invalid"))?
+        .len()
+        > FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized saved analytics response exceeds its byte bound",
+        ));
+    }
+    response.content_mix.shrink_to_fit();
+    response.source_counts.shrink_to_fit();
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_preferences_snapshot(
     connection: &mut Connection,
     request: NormalizedPreferencesSnapshotRequestV1,
@@ -2722,6 +2896,9 @@ pub fn query_normalized_v1(
                 query_rss_feed_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::SavedAnalytics(request) => Ok(
+            NormalizedQueryResponseV1::SavedAnalytics(query_saved_analytics(connection, request)?),
+        ),
     }
 }
 
@@ -3027,6 +3204,97 @@ mod tests {
         assert_eq!(updated.summary.saved_platform_count, 0);
         assert_eq!(updated.summary.sample_item_count, 1);
         assert_eq!(updated.summary.tags, ["\u{e000}"]);
+    }
+
+    #[test]
+    fn native_saved_analytics_dispatch_returns_one_source_fenced_aggregate() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let analytics_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "saved_analytics_v2")
+            .expect("saved analytics program");
+        let mut plan_statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", analytics_program.sql))
+            .expect("saved analytics query plan");
+        let plan = plan_statement
+            .query_map(params!["[]", "[]"], |row| row.get::<_, String>(3))
+            .expect("saved analytics plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("saved analytics plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("library_feed_items_saved")));
+        drop(plan_statement);
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, hidden, saved,
+                    saved_at, archived, updated_at)
+                   VALUES
+                     ('item-1', 'rss', 'article', 100, 100, 'a', 'a', 'A', 0, 1, 150, 0, 100),
+                     ('item-2', 'saved', 'video', 200, 200, 'b', 'b', 'B', 0, 1, NULL, 0, 200),
+                     ('item-3', 'saved', 'post', 300, 300, 'c', 'c', 'C', 0, 0, NULL, 0, 300);",
+                "a".repeat(64)
+            ))
+            .expect("analytics fixture");
+        let windows = |count: usize| {
+            (0..count)
+                .map(|index| NormalizedSavedAnalyticsWindowV2 {
+                    end_ms: ((index + 1) * 100) as i64,
+                    start_ms: (index * 100) as i64,
+                })
+                .collect::<Vec<_>>()
+        };
+        let NormalizedQueryResponseV1::SavedAnalytics(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::SavedAnalytics(NormalizedSavedAnalyticsRequestV2 {
+                daily_windows: windows(7),
+                hourly_windows: windows(24),
+                schema_version: 2,
+            }),
+        )
+        .expect("saved analytics") else {
+            panic!("saved analytics response");
+        };
+        assert_eq!(response.source.projection_revision, 7);
+        assert_eq!(response.total_count, 2);
+        assert_eq!(response.latest_saved_at, Some(200));
+        assert_eq!(response.daily_counts, [0, 1, 1, 0, 0, 0, 0]);
+        assert_eq!(
+            response.source_counts,
+            [
+                NormalizedSavedAnalyticsCountV2 {
+                    count: 1,
+                    label: "rss".to_owned(),
+                },
+                NormalizedSavedAnalyticsCountV2 {
+                    count: 1,
+                    label: "saved".to_owned(),
+                },
+            ]
+        );
+        assert_eq!(
+            response.content_mix,
+            [
+                NormalizedSavedAnalyticsCountV2 {
+                    count: 1,
+                    label: "article".to_owned(),
+                },
+                NormalizedSavedAnalyticsCountV2 {
+                    count: 1,
+                    label: "video".to_owned(),
+                },
+            ]
+        );
     }
 
     #[test]

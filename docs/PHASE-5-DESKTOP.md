@@ -18,7 +18,7 @@
       `packages/library-core-native` so Freed Desktop and the headless Primary
       call the same Rust core.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
-      IDs, and 31 bounded query IDs for Rust and TypeScript from one executable
+      IDs, and 32 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
       defines the 16-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
@@ -57,6 +57,11 @@
         browser and native dispatch. It returns one source-fenced typed
         aggregate, orders Unicode tags by SQLite binary UTF-8 bytes, never scans
         FeedItem rows, and never sends item rows to React.
+  - [x] `saved_analytics_v2` now computes the Saved overview through one
+        generated native SQLite aggregate. It returns exact totals, latest
+        time, fixed day and hour buckets, and bounded binary-ordered source and
+        content counts in one source-fenced response under 2 MiB. Final
+        Freed Desktop view wiring and historical reader deletion remain open.
   - [x] `preferences_snapshot_v1` now returns normalized preference nodes
         through the native core in exact SQLite binary path order. The closed
         response preserves boolean, integer, real, text, and null values,

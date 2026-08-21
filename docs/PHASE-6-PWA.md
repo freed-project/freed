@@ -64,6 +64,11 @@
         saved-platform counts, and tag refcounts without scanning FeedItem
         rows. The worker returns one source-fenced bounded summary with exact
         binary UTF-8 tag order through the same typed query request.
+  - [x] `saved_analytics_v2` executes the same generated one-row aggregate as
+        native Rust. Browser SQLite returns exact Saved totals, latest time,
+        seven day buckets, 24 hour buckets, and bounded source and content
+        counts without scanning FeedItems in TypeScript or returning item rows
+        to React.
   - [x] `preferences_snapshot_v1` reads normalized typed nodes directly from
         browser SQLite through the shared typed query request. It preserves all
         five value kinds, exact binary UTF-8 path order, and the shared 512-row

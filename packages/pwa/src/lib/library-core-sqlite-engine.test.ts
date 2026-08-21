@@ -765,6 +765,27 @@ describe("PWA Library Core SQLite engine", () => {
         totalCount: 3,
       },
     });
+    const analyticsWindows = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        endMs: (index + 1) * 100,
+        startMs: index * 100,
+      }));
+    expect(
+      engine.query({
+        dailyWindows: analyticsWindows(7),
+        hourlyWindows: analyticsWindows(24),
+        queryId: "saved_analytics_v2",
+        schemaVersion: 2,
+      }),
+    ).toMatchObject({
+      contentMix: [{ count: 1, label: "article" }],
+      dailyCounts: [0, 0, 1, 0, 0, 0, 0],
+      latestSavedAt: 200,
+      queryId: "saved_analytics_v2",
+      source: { projectionRevision: 7 },
+      sourceCounts: [{ count: 1, label: "x" }],
+      totalCount: 1,
+    });
     database.exec(`
       INSERT INTO library_preferences
         (path, value_type, boolean_value, integer_value, real_value, text_value, updated_at)
