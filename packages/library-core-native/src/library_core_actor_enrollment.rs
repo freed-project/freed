@@ -30,7 +30,11 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
-use crate::library_core_journal::{ActorState, LibraryCoreJournal};
+use crate::library_core_journal::actor_capability::primary_writer_operation_types;
+use crate::library_core_journal::{
+    verify_actor_enrollment_certificate, AcceptedAuthorityState, ActorState, LibraryCoreJournal,
+    VerifiedActorEnrollment,
+};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
@@ -206,8 +210,6 @@ fn build_certificate_body(
         "actor_id": identity.actor_id,
         "actor_public_key": identity.actor_public_key,
         "actor_public_key_fingerprint": identity.actor_public_key_fingerprint,
-        // The genesis epoch observes nothing, and the verifier requires this
-        // to equal the authority's frontier exactly.
         "observed_frontier": [],
         "created_at_ms": created_at_ms,
         "signature_algorithm": SIGNATURE_ALGORITHM,
@@ -229,6 +231,134 @@ fn build_certificate_body(
 
     let certificate_digest = digest_value("actor-enrollment-certificate", &certificate_body)?;
     Ok((certificate_body, certificate_digest))
+}
+
+pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
+    authority: &AcceptedAuthorityState,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    created_at_ms: i64,
+) -> Result<VerifiedActorEnrollment, String> {
+    let enrollment_authority = EnrollmentAuthority {
+        library_id: authority.library_id.clone(),
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id.clone(),
+        authority_key_id: authority.authority_key_id.clone(),
+        installation_witness: installation_witness.to_owned(),
+    };
+    let actor_key_pair =
+        load_or_create_actor_key_pair(actor_store, &enrollment_authority.library_id)?;
+    let authority_key_pair =
+        load_established_authority_key_pair(authority_store, &enrollment_authority.library_id)?;
+    if lower_hex(authority_key_pair.public_key().as_ref()) != authority.authority_public_key {
+        return Err("Library Core normalized authority key lineage is unavailable".to_owned());
+    }
+    let identity = actor_identity(&enrollment_authority, &actor_key_pair)?;
+    if created_at_ms < 0 {
+        return Err("Library Core enrollment time is invalid".to_owned());
+    }
+    let observed_frontier = authority
+        .observed_frontier
+        .iter()
+        .map(|tip| {
+            json!({
+                "actor_id": tip.actor_id,
+                "sequence": tip.sequence,
+                "operation_id": tip.operation_id,
+                "chain_digest": tip.chain_digest,
+            })
+        })
+        .collect::<Vec<_>>();
+    let actor_enrollment_body = json!({
+        "operation_id": format!("actor-enrolled:{}", identity.actor_id),
+        "operation_type": OPERATION_TYPE,
+        "library_id": authority.library_id,
+        "epoch": authority.epoch,
+        "epoch_id": authority.epoch_id,
+        "schema_version": SCHEMA_VERSION,
+        "authority_key_id": authority.authority_key_id,
+        "installation_incarnation": identity.installation_incarnation,
+        "actor_incarnation_nonce": identity.actor_incarnation_nonce,
+        "actor_id": identity.actor_id,
+        "actor_public_key": identity.actor_public_key,
+        "actor_public_key_fingerprint": identity.actor_public_key_fingerprint,
+        "observed_frontier": observed_frontier,
+        "created_at_ms": created_at_ms,
+        "signature_algorithm": SIGNATURE_ALGORITHM,
+    });
+    let enrollment_body_digest = digest_value("actor-enrollment-body", &actor_enrollment_body)?;
+    let actor_proof_input = encode_signature_input(
+        "actor-enrollment-proof",
+        &json!({ "enrollment_body_digest": enrollment_body_digest }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core normalized actor proof input is invalid".to_owned())?;
+    let actor_proof = lower_hex(actor_key_pair.sign(&actor_proof_input).as_ref());
+    let issuance_identity = digest_value(
+        "actor-capability-issuance",
+        &json!({
+            "library_id": authority.library_id,
+            "epoch_id": authority.epoch_id,
+            "authority_key_id": authority.authority_key_id,
+            "actor_id": identity.actor_id,
+            "enrollment_body_digest": enrollment_body_digest,
+        }),
+    )?;
+    let retirement_identity = digest_value(
+        "actor-capability-retirement",
+        &json!({
+            "library_id": authority.library_id,
+            "epoch_id": authority.epoch_id,
+            "actor_id": identity.actor_id,
+            "issuance_identity": issuance_identity,
+        }),
+    )?;
+    let allowed_operation_types = primary_writer_operation_types();
+    let capability_body = json!({
+        "format": "freed_library_core_actor_capability_v2",
+        "library_id": authority.library_id,
+        "epoch": authority.epoch,
+        "epoch_id": authority.epoch_id,
+        "authority_key_id": authority.authority_key_id,
+        "actor_id": identity.actor_id,
+        "actor_public_key": identity.actor_public_key,
+        "actor_class": "editor",
+        "allowed_operation_types": allowed_operation_types,
+        "scope": { "mode": "library_wide" },
+        "issuance_identity": issuance_identity,
+        "retirement_identity": retirement_identity,
+        "issued_at_ms": created_at_ms,
+        "signature_algorithm": SIGNATURE_ALGORITHM,
+    });
+    let capability_body_digest = digest_value("actor-capability-body", &capability_body)?;
+    let certificate_body = json!({
+        "actor_enrollment_body": actor_enrollment_body,
+        "enrollment_body_digest": enrollment_body_digest,
+        "actor_proof": actor_proof,
+        "actor_capability_body": capability_body,
+        "actor_capability_body_digest": capability_body_digest,
+    });
+    let certificate_digest = digest_value("actor-capability-certificate", &certificate_body)?;
+    let authority_signature_input = encode_signature_input(
+        "actor-capability-authority",
+        &json!({ "certificate_digest": certificate_digest }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core normalized actor authority input is invalid".to_owned())?;
+    let canonical = encode_canonical_value(
+        &json!({
+            "certificate_body": certificate_body,
+            "certificate_digest": certificate_digest,
+            "authority_signature": lower_hex(
+                authority_key_pair.sign(&authority_signature_input).as_ref(),
+            ),
+        }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core normalized actor certificate is invalid".to_owned())?;
+    verify_actor_enrollment_certificate(&canonical, authority)
+        .map_err(|error| format!("Library Core normalized actor certificate failed: {error}"))
 }
 
 fn build_certificate(

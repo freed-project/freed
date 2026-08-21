@@ -1,9 +1,14 @@
+use crate::library_core_actor_enrollment::{
+    prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
+};
 use crate::library_core_authority_genesis::AuthorityKeyStore;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
 use crate::library_core_hash::lower_hex;
+use crate::library_core_journal::actor_capability::ActorCapabilityScope;
+use crate::library_core_journal::{AcceptedAuthorityState, VerifiedCausalTip};
 use crate::normalized_checkpoint::blob_digest;
 use crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2;
 use crate::normalized_sqlite::{
@@ -1370,6 +1375,157 @@ fn install_normalized_candidate_authority_v1(
     Ok(())
 }
 
+fn install_normalized_primary_actor_v2(
+    target: &mut Connection,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    created_at: i64,
+) -> Result<String, NormalizedSqliteError> {
+    if !valid_sha256(installation_witness) || created_at < 0 {
+        return Err(invalid("normalized Primary actor request is invalid"));
+    }
+    let transaction = target.transaction()?;
+    let (library_id, epoch, epoch_id, authority_key_id, authority_public_key): (
+        String,
+        i64,
+        String,
+        String,
+        String,
+    ) = transaction.query_row(
+        "SELECT epoch.library_id, epoch.epoch_number, epoch.epoch_id,
+                epoch.authority_key_id, epoch.authority_public_key
+         FROM library_active_authority AS active
+         JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+         JOIN library_writer_admission AS admission ON admission.singleton_id = 1
+         WHERE active.active_key = 'active'
+           AND admission.local_writer_id = admission.active_writer_id
+           AND admission.active_writer_id = active.writer_id
+           AND admission.observed_manifest_generation = active.accepted_manifest_generation;",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
+    )?;
+    let existing_actor: Option<String> = transaction
+        .query_row(
+            "SELECT actor_id FROM library_actors
+             WHERE authority_epoch_id = ?1 AND retired_at IS NULL;",
+            [&epoch_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if existing_actor.is_some() {
+        return Err(invalid("normalized Primary actor is already installed"));
+    }
+    let mut statement = transaction.prepare(
+        "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
+         FROM library_authority_frontier WHERE epoch_id = ?1 ORDER BY ordinal;",
+    )?;
+    let observed_frontier = statement
+        .query_map([&epoch_id], |row| {
+            Ok(VerifiedCausalTip {
+                actor_id: row.get(0)?,
+                sequence: row.get(1)?,
+                operation_id: row.get(2)?,
+                chain_digest: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
+    let authority = AcceptedAuthorityState {
+        library_id,
+        epoch,
+        epoch_id: epoch_id.clone(),
+        authority_key_id,
+        authority_public_key,
+        observed_frontier,
+    };
+    let enrollment = prepare_normalized_primary_actor_enrollment_v2(
+        &authority,
+        installation_witness,
+        actor_store,
+        authority_store,
+        created_at,
+    )
+    .map_err(|_| invalid("normalized Primary actor enrollment failed"))?;
+    if enrollment.library_id != authority.library_id
+        || enrollment.epoch != authority.epoch
+        || enrollment.epoch_id != authority.epoch_id
+        || enrollment.capability.certificate_version != 2
+        || enrollment.capability.actor_class != "editor"
+        || enrollment.capability.retired
+    {
+        return Err(invalid("normalized Primary actor enrollment is invalid"));
+    }
+    let (scope_mode, scope_kind, scope_id) = match &enrollment.capability.scope {
+        ActorCapabilityScope::LibraryWide => {
+            ("library_wide", Option::<&str>::None, Option::<&str>::None)
+        }
+        _ => return Err(invalid("normalized Primary actor scope is invalid")),
+    };
+    transaction.execute(
+        "INSERT INTO library_actors
+         (actor_id, authority_epoch_id, actor_kind, public_key,
+          enrollment_operation_id, enrollment_certificate_digest,
+          canonical_enrollment_certificate, chain_genesis_digest,
+          accepted_counter, accepted_operation_id, accepted_chain_digest,
+          created_at, updated_at)
+         VALUES (?1, ?2, 'desktop', ?3, ?4, ?5, ?6, ?7, 0, NULL, ?7, ?8, ?8);",
+        params![
+            enrollment.actor_id,
+            enrollment.epoch_id,
+            enrollment.actor_public_key,
+            enrollment.enrollment_operation_id,
+            enrollment.enrollment_certificate_digest,
+            enrollment.canonical_enrollment_certificate_json,
+            enrollment.actor_chain_genesis,
+            enrollment.enrolled_at_ms,
+        ],
+    )?;
+    transaction.execute(
+        "INSERT INTO library_actor_capabilities
+         (capability_id, actor_id, certificate_version, actor_class,
+          scope_mode, scope_kind, scope_id, issuance_identity,
+          retirement_identity, certificate_digest, canonical_certificate,
+          issued_at, retired_at, retirement_certificate_digest)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, NULL);",
+        params![
+            enrollment.capability.capability_certificate_digest,
+            enrollment.actor_id,
+            enrollment.capability.certificate_version,
+            enrollment.capability.actor_class,
+            scope_mode,
+            scope_kind,
+            scope_id,
+            enrollment.capability.issuance_identity,
+            enrollment.capability.retirement_identity,
+            enrollment.capability.capability_certificate_digest,
+            enrollment.canonical_enrollment_certificate_json,
+            enrollment.capability.issued_at_ms,
+        ],
+    )?;
+    for mutation_id in &enrollment.capability.allowed_operation_types {
+        transaction.execute(
+            "INSERT INTO library_actor_capability_mutations
+             (capability_id, mutation_id) VALUES (?1, ?2);",
+            params![
+                enrollment.capability.capability_certificate_digest,
+                mutation_id
+            ],
+        )?;
+    }
+    let actor_id = enrollment.actor_id;
+    transaction.commit()?;
+    Ok(actor_id)
+}
+
 /// Decomposes one historical FeedItem JSON row into final normalized product
 /// tables. This is used only inside the one-epoch migration transaction. It
 /// never writes a shell, whole-item JSON row, operation, receipt, or authority
@@ -1622,6 +1778,18 @@ mod tests {
         }
     }
 
+    struct TestActorKeyStore(Vec<u8>);
+
+    impl ActorKeyStore for TestActorKeyStore {
+        fn load(&self, _library_id: &str) -> Result<Option<Vec<u8>>, String> {
+            Ok(Some(self.0.clone()))
+        }
+
+        fn store(&self, _library_id: &str, _bytes: &[u8]) -> Result<(), String> {
+            Err("test store is read only".to_owned())
+        }
+    }
+
     fn legacy_source_fixture() -> (Connection, Vec<u8>) {
         let authority_key_bytes = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         let authority_key_pair = Ed25519KeyPair::from_pkcs8(authority_key_bytes.as_ref()).unwrap();
@@ -1849,7 +2017,7 @@ mod tests {
         assert_eq!(
             sign_normalized_storage_transition_v1(
                 &receipt,
-                &TestAuthorityKeyStore(authority_key_bytes),
+                &TestAuthorityKeyStore(authority_key_bytes.clone()),
                 "primary:desktop",
                 1_000,
             )
@@ -1873,6 +2041,54 @@ mod tests {
         );
         install_normalized_candidate_authority_v1(&mut source, &mut target, &receipt, &transition)
             .unwrap();
+        let actor_key_bytes = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let primary_actor_id = install_normalized_primary_actor_v2(
+            &mut target,
+            &"9".repeat(64),
+            &TestActorKeyStore(actor_key_bytes.as_ref().to_vec()),
+            &TestAuthorityKeyStore(authority_key_bytes),
+            1_001,
+        )
+        .unwrap();
+        assert_eq!(primary_actor_id.len(), 64);
+        let primary_certificate: String = target
+            .query_row(
+                "SELECT canonical_enrollment_certificate FROM library_actors
+                 WHERE actor_id = ?1;",
+                [&primary_actor_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let primary_certificate: Value = serde_json::from_str(&primary_certificate).unwrap();
+        assert_eq!(
+            primary_certificate["certificate_body"]["actor_enrollment_body"]["observed_frontier"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            primary_certificate["certificate_body"]["actor_capability_body"]
+                ["allowed_operation_types"]
+                .as_array()
+                .unwrap()
+                .len(),
+            crate::library_core_journal::actor_capability::primary_writer_operation_types().len()
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_actor_capability_mutations;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            i64::try_from(
+                crate::library_core_journal::actor_capability::primary_writer_operation_types()
+                    .len()
+            )
+            .unwrap()
+        );
         let installed: (String, String, String, i64) = target
             .query_row(
                 "SELECT active.library_id, active.epoch_id, active.writer_id,

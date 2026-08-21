@@ -878,6 +878,15 @@ candidate byte, certificate byte, signature, count, or foreign key leaves the
 target inert. Installation does not select the target file or retire the old
 writer. Those actions belong to the later host compare-and-swap barrier.
 
+The installed normalized epoch enrolls a fresh Primary actor from the host's
+existing actor-key store. Its version 2 certificate is signed by both the actor
+and accepted authority key, binds the complete carried causal frontier, and
+grants exactly the generated Primary-writer mutation set under a library-wide
+scope. The native verifier checks the certificate before one transaction
+inserts the actor, capability, and closed mutation rows. No retired operation,
+legacy editor policy, inferred mutation, or blank-frontier enrollment can enter
+the normalized epoch.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

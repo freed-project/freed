@@ -42,16 +42,16 @@ pub(crate) enum ActorCapabilityScope {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ActorCapabilityState {
-    pub(super) certificate_version: i64,
-    pub(super) actor_class: String,
-    pub(super) allowed_operation_types: Vec<String>,
-    pub(super) scope: ActorCapabilityScope,
-    pub(super) issuance_identity: Option<String>,
-    pub(super) retirement_identity: Option<String>,
-    pub(super) capability_certificate_digest: String,
-    pub(super) issued_at_ms: i64,
-    pub(super) retired: bool,
-    pub(super) retirement_certificate_digest: Option<String>,
+    pub(crate) certificate_version: i64,
+    pub(crate) actor_class: String,
+    pub(crate) allowed_operation_types: Vec<String>,
+    pub(crate) scope: ActorCapabilityScope,
+    pub(crate) issuance_identity: Option<String>,
+    pub(crate) retirement_identity: Option<String>,
+    pub(crate) capability_certificate_digest: String,
+    pub(crate) issued_at_ms: i64,
+    pub(crate) retired: bool,
+    pub(crate) retirement_certificate_digest: Option<String>,
 }
 
 impl ActorCapabilityState {

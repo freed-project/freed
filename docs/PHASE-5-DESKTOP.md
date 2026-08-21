@@ -490,6 +490,7 @@ export async function captureDomFeed(
 | 5.46 | Decompose the historical RSS, Person, Account, reach-out, follow-role, and preference shell fields into final typed tables, using one generated preference ownership policy across Rust and TypeScript while excluding device-local and compatibility-only state | High | ✓ Complete |
 | 5.47 | Build an inert final-schema migration candidate from one old SQLite snapshot, bind its authority tuple and causal frontier, close live and excluded row counts plus foreign keys, and stream its normalized product digest across bounded export pages without shell evidence or activation | High | ✓ Complete |
 | 5.48 | Sign the next normalized storage epoch with the accepted authority key, bind the complete candidate and final contract identities, recheck every old source fence, and install authority, causal baseline, writer admission, metadata, and generation atomically inside the candidate without selecting it | High | ✓ Complete |
+| 5.49 | Enroll a fresh normalized Primary actor with actor and authority signatures, bind the carried source frontier, and install exactly the generated Primary-writer mutation capability in one transaction | High | ✓ Complete |
 
 ---
 

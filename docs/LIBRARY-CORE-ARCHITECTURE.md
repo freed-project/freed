@@ -925,6 +925,13 @@ one target transaction. This makes the candidate internally complete. It does
 not switch the host's selected database or retire the old writer. The host does
 that only inside the final writer barrier and compare-and-swap.
 
+The new epoch receives a fresh installation actor, not an actor copied from the
+old epoch. Its version 2 enrollment proves the host actor key, is countersigned
+by the accepted authority key, observes the complete carried source frontier,
+and names exactly the generated Primary-writer mutation set with library-wide
+scope. Actor, capability, and mutation rows commit together after native
+certificate verification. Followers enroll separately under the same epoch.
+
 ### 16.2 Cutover
 
 Cutover:

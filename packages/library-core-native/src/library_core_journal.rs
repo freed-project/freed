@@ -337,6 +337,13 @@ pub(crate) struct VerifiedActorEnrollment {
     pub(crate) capability: ActorCapabilityState,
 }
 
+pub(crate) fn verify_actor_enrollment_certificate(
+    canonical_certificate: &[u8],
+    authority: &AcceptedAuthorityState,
+) -> JournalResult<VerifiedActorEnrollment> {
+    enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
+}
+
 #[derive(Debug)]
 struct StoredActorRow {
     library_id: String,
