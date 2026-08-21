@@ -360,6 +360,7 @@ loads an alternate Library engine or compatibility path.
 | 4.184 | Native authority-signed rejected and already-applied result production through the same bounded envelope and actor result chain as acceptance, with closed reasons, original accepted-result proof, original canonical operation and receipt identities, exact sparse replacements, response-loss replay, and no product-row, operation, actor-tip, or source-revision writes | ✓ | High |
 | 4.185 | Atomic normalized mutation resolution for missing and tombstoned targets, with exact signed rejection reasons, source-revision fencing, immutable response-loss replay, and no fabricated transaction, operation, receipt, invalidation, actor-tip, or product revision effect | ✓ | High |
 | 4.186 | Atomic stale actor-tip resolution as an authority-signed precondition failure, after complete transaction and signature verification, with current source-revision binding and no accepted operation, actor-tip, product-row, invalidation, or revision write | ✓ | High |
+| 4.187 | Native typed follower-result export keyed by actor and result sequence, with exact digest-chain cursors, 128-row and 1,048,576-byte response bounds, lossless 131,072-byte canonical records, exact serialized-page measurement, and indexed keyset paging without scans or temporary sorts | ✓ | High |
 
 ---
 

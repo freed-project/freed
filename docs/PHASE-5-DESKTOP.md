@@ -63,6 +63,12 @@
       accepted actor tip as `precondition_failed`. The Primary signs the current
       source revision and advances only the follower result chain. The stale
       transaction cannot create an accepted operation or change product state.
+- [x] Export exact signed follower results through an actor-bound native keyset
+      page. Each page is capped at 128 records and 1,048,576 serialized bytes,
+      carries a sequence and digest cursor, preserves every canonical byte, and
+      rejects gaps, chain splices, cross-actor cursors, and undersized pages.
+      The SQLite plan uses the actor and result sequence index without an
+      offset, scan, or temporary sort.
 - [x] Store accepted authority epochs, the active authority pointer, signed
       transition state, frontier tips, complete actor chain tips, enrollment
       certificates, and normalized actor capabilities in the final schema and

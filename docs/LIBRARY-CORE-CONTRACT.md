@@ -299,6 +299,19 @@ signatures that no longer extends the accepted actor tip produces
 `precondition_failed` under that same transaction. It cannot become an
 accepted operation or advance the product revision.
 
+Native result export is one actor-bound keyset page over
+`(actor_id, result_sequence)`. The request carries the actor and, after the
+first page, the exact prior sequence and digest. A page returns at most 128
+closed typed rows and at most 1,048,576 serialized response bytes. It measures
+the complete serialized page before admitting each row, preserves the stored
+canonical result JSON byte for byte, and never splits a result record. A legal
+131,072-byte result always fits the default page. Sequence gaps, digest-chain
+splices, cross-actor cursor reuse, invalid UTF-8, and a response bound too small
+for the next record fail closed. The query uses the actor and sequence index
+with no offset, table scan, or temporary sort. A transport can convert these
+records into immutable objects, but it cannot reinterpret their status,
+signature, ordering, or identity.
+
 ## 8. Query contract
 
 The generated query registry contains bounded SQLite queries only. Whole

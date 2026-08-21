@@ -1,7 +1,7 @@
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
-use crate::library_core_hash::lower_hex;
+use crate::library_core_hash::{is_lower_sha256, lower_hex};
 use crate::library_core_journal::actor_capability::parse_stored_capability;
 use crate::library_core_journal::operation_verifier::{
     verify_operation_transaction, OperationIdentity,
@@ -239,6 +239,17 @@ fn require_writer_admission(
 }
 
 const FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES: usize = 131_072;
+const FOLLOWER_RESULT_PAGE_MAXIMUM_RECORDS: usize = 128;
+const FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 1_048_576;
+const FOLLOWER_RESULT_PAGE_SQL: &str =
+    "SELECT transaction_id, transaction_digest, actor_id, result_sequence,
+            previous_result_digest, result_digest, status, rejection_reason,
+            original_result_digest, authoritative_source_revision,
+            canonical_result, enqueued_at
+     FROM library_follower_result_outbox
+     WHERE actor_id = ?1 AND result_sequence > ?2
+     ORDER BY result_sequence
+     LIMIT ?3;";
 const FOLLOWER_RESULT_REJECTION_REASONS: &[&str] = &[
     "actor_retired",
     "capability_denied",
@@ -247,6 +258,49 @@ const FOLLOWER_RESULT_REJECTION_REASONS: &[&str] = &[
     "target_missing",
     "target_tombstoned",
 ];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NormalizedFollowerResultCursorV1 {
+    pub actor_id: String,
+    pub result_sequence: i64,
+    pub result_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NormalizedFollowerResultPageRequestV1 {
+    pub actor_id: String,
+    pub after: Option<NormalizedFollowerResultCursorV1>,
+    pub maximum_records: usize,
+    pub maximum_response_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NormalizedFollowerResultRecordV1 {
+    pub transaction_id: String,
+    pub transaction_digest: String,
+    pub actor_id: String,
+    pub result_sequence: i64,
+    pub previous_result_digest: Option<String>,
+    pub result_digest: String,
+    pub status: String,
+    pub rejection_reason: Option<String>,
+    pub original_result_digest: Option<String>,
+    pub authoritative_source_revision: i64,
+    pub canonical_result_json: String,
+    pub enqueued_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NormalizedFollowerResultPageV1 {
+    pub records: Vec<NormalizedFollowerResultRecordV1>,
+    pub next_cursor: Option<NormalizedFollowerResultCursorV1>,
+    pub done: bool,
+    pub canonical_record_bytes: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FollowerResultOutcome<'a> {
@@ -712,6 +766,175 @@ fn persist_follower_result_outcome(
         ));
     }
     Ok((result_sequence, result_digest, canonical_result))
+}
+
+fn serialized_follower_result_page_bytes(
+    page: &NormalizedFollowerResultPageV1,
+) -> Result<usize, NormalizedSqliteError> {
+    serde_json::to_vec(page)
+        .map(|bytes| bytes.len())
+        .map_err(|error| {
+            NormalizedSqliteError::Transport(format!(
+                "normalized follower result page encoding failed: {error}"
+            ))
+        })
+}
+
+pub(crate) fn export_normalized_follower_result_page_v1(
+    connection: &Connection,
+    request: &NormalizedFollowerResultPageRequestV1,
+) -> Result<NormalizedFollowerResultPageV1, NormalizedSqliteError> {
+    if request.actor_id.is_empty() || request.actor_id.len() > 255 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result actorId is invalid",
+        ));
+    }
+    if request.maximum_records == 0
+        || request.maximum_records > FOLLOWER_RESULT_PAGE_MAXIMUM_RECORDS
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result maximumRecords is outside its bound",
+        ));
+    }
+    if request.maximum_response_bytes == 0
+        || request.maximum_response_bytes > FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result maximumResponseBytes is outside its bound",
+        ));
+    }
+    let (after_sequence, after_digest) = match request.after.as_ref() {
+        Some(cursor)
+            if cursor.actor_id == request.actor_id
+                && (1..=MAX_SAFE_INTEGER).contains(&cursor.result_sequence)
+                && is_lower_sha256(&cursor.result_digest) =>
+        {
+            (cursor.result_sequence, Some(cursor.result_digest.as_str()))
+        }
+        Some(_) => {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized follower result cursor is invalid",
+            ));
+        }
+        None => (0, None),
+    };
+    if let Some(expected_digest) = after_digest {
+        let stored_digest = connection
+            .query_row(
+                "SELECT result_digest FROM library_follower_result_outbox
+                 WHERE actor_id = ?1 AND result_sequence = ?2;",
+                params![request.actor_id, after_sequence],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if stored_digest.as_deref() != Some(expected_digest) {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized follower result cursor does not name a stored result",
+            ));
+        }
+    }
+    let fetch_limit = request.maximum_records.saturating_add(1);
+    let mut statement = connection.prepare(FOLLOWER_RESULT_PAGE_SQL)?;
+    let mut rows = statement.query(params![
+        request.actor_id,
+        after_sequence,
+        i64::try_from(fetch_limit).map_err(|_| NormalizedSqliteError::InvalidRequest(
+            "normalized follower result maximumRecords is invalid"
+        ))?,
+    ])?;
+    let mut page = NormalizedFollowerResultPageV1 {
+        records: Vec::with_capacity(request.maximum_records),
+        next_cursor: request.after.clone(),
+        done: true,
+        canonical_record_bytes: 0,
+    };
+    let mut expected_sequence = after_sequence + 1;
+    let mut expected_previous_digest = after_digest.map(str::to_owned);
+    while let Some(row) = rows.next()? {
+        if page.records.len() == request.maximum_records {
+            break;
+        }
+        let canonical_result: Vec<u8> = row.get(10)?;
+        if canonical_result.is_empty()
+            || canonical_result.len() > FOLLOWER_RESULT_MAXIMUM_CANONICAL_BYTES
+        {
+            return Err(NormalizedSqliteError::Transport(
+                "normalized follower result record exceeds its exact byte bound".into(),
+            ));
+        }
+        let record = NormalizedFollowerResultRecordV1 {
+            transaction_id: row.get(0)?,
+            transaction_digest: row.get(1)?,
+            actor_id: row.get(2)?,
+            result_sequence: row.get(3)?,
+            previous_result_digest: row.get(4)?,
+            result_digest: row.get(5)?,
+            status: row.get(6)?,
+            rejection_reason: row.get(7)?,
+            original_result_digest: row.get(8)?,
+            authoritative_source_revision: row.get(9)?,
+            canonical_result_json: String::from_utf8(canonical_result).map_err(|_| {
+                NormalizedSqliteError::Transport(
+                    "normalized follower result record is not canonical UTF-8 JSON".into(),
+                )
+            })?,
+            enqueued_at: row.get(11)?,
+        };
+        if record.actor_id != request.actor_id
+            || record.result_sequence != expected_sequence
+            || record.previous_result_digest != expected_previous_digest
+            || !is_lower_sha256(&record.transaction_digest)
+            || !is_lower_sha256(&record.result_digest)
+        {
+            return Err(NormalizedSqliteError::Transport(
+                "normalized follower result chain is not one contiguous actor range".into(),
+            ));
+        }
+        let canonical_bytes = record.canonical_result_json.len();
+        let cursor = NormalizedFollowerResultCursorV1 {
+            actor_id: record.actor_id.clone(),
+            result_sequence: record.result_sequence,
+            result_digest: record.result_digest.clone(),
+        };
+        let previous_cursor = page.next_cursor.clone();
+        page.records.push(record);
+        page.next_cursor = Some(cursor.clone());
+        page.canonical_record_bytes += canonical_bytes;
+        page.done = false;
+        if serialized_follower_result_page_bytes(&page)? > request.maximum_response_bytes {
+            page.records.pop();
+            page.next_cursor = previous_cursor;
+            page.canonical_record_bytes -= canonical_bytes;
+            break;
+        }
+        expected_sequence += 1;
+        expected_previous_digest = Some(cursor.result_digest);
+    }
+    let next_sequence = page
+        .next_cursor
+        .as_ref()
+        .map(|cursor| cursor.result_sequence)
+        .unwrap_or(0);
+    page.done = connection
+        .query_row(
+            "SELECT 1 FROM library_follower_result_outbox
+             WHERE actor_id = ?1 AND result_sequence > ?2 LIMIT 1;",
+            params![request.actor_id, next_sequence],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_none();
+    if page.records.is_empty() && !page.done {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized follower result response bound cannot fit the next record",
+        ));
+    }
+    if serialized_follower_result_page_bytes(&page)? > request.maximum_response_bytes {
+        return Err(NormalizedSqliteError::Transport(
+            "normalized follower result response exceeded its exact byte bound".into(),
+        ));
+    }
+    Ok(page)
 }
 
 fn stored_receipt(
@@ -2079,6 +2302,189 @@ mod tests {
             ],
         );
         assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn follower_result_pages_are_actor_bound_contiguous_and_exactly_byte_bounded() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let accepted = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &signed_envelopes(&key_pair, &enrollment),
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted result");
+        let maximum_canonical_result = format!("\"{}\"", "a".repeat(131_070));
+        assert_eq!(maximum_canonical_result.len(), 131_072);
+        connection
+            .execute(
+                "INSERT INTO library_follower_result_outbox
+                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                  previous_result_digest, result_digest, status, rejection_reason,
+                  original_result_digest, authoritative_source_revision,
+                  canonical_result, enqueued_at)
+                 VALUES ('already-applied-page', ?1, ?2, 2, ?3, ?4,
+                         'already_applied', NULL, ?3, 1, ?5, 2100);",
+                params![
+                    "b".repeat(64),
+                    enrollment.actor_id,
+                    accepted.follower_result_digest,
+                    "d".repeat(64),
+                    maximum_canonical_result.as_bytes(),
+                ],
+            )
+            .expect("maximum result");
+        connection
+            .execute(
+                "INSERT INTO library_follower_result_outbox
+                 (transaction_id, transaction_digest, actor_id, result_sequence,
+                  previous_result_digest, result_digest, status, rejection_reason,
+                  original_result_digest, authoritative_source_revision,
+                  canonical_result, enqueued_at)
+                 VALUES ('rejected-page', ?1, ?2, 3, ?3, ?4,
+                         'rejected', 'target_missing', NULL, 1, x'7b7d', 2200);",
+                params![
+                    "c".repeat(64),
+                    enrollment.actor_id,
+                    "d".repeat(64),
+                    "e".repeat(64),
+                ],
+            )
+            .expect("rejected result");
+        connection
+            .execute(
+                "UPDATE library_follower_result_cursors
+                 SET next_result_sequence = 4, previous_result_digest = ?2
+                 WHERE actor_id = ?1;",
+                params![enrollment.actor_id, "e".repeat(64)],
+            )
+            .expect("result cursor");
+
+        let first = export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: None,
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .expect("first page");
+        assert_eq!(first.records.len(), 1);
+        assert!(!first.done);
+        assert_eq!(
+            first.records[0].canonical_result_json.as_bytes(),
+            accepted.canonical_follower_result
+        );
+        let exact_first_page_bytes = serialized_follower_result_page_bytes(&first).unwrap();
+
+        let byte_limited = export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: None,
+                maximum_records: FOLLOWER_RESULT_PAGE_MAXIMUM_RECORDS,
+                maximum_response_bytes: exact_first_page_bytes,
+            },
+        )
+        .expect("exact first-page bound");
+        assert_eq!(byte_limited.records.len(), 1);
+        assert!(!byte_limited.done);
+        assert_eq!(
+            serialized_follower_result_page_bytes(&byte_limited).unwrap(),
+            exact_first_page_bytes
+        );
+        assert!(export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: None,
+                maximum_records: FOLLOWER_RESULT_PAGE_MAXIMUM_RECORDS,
+                maximum_response_bytes: exact_first_page_bytes - 1,
+            },
+        )
+        .is_err());
+
+        let second = export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: first.next_cursor.clone(),
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .expect("maximum record page");
+        assert_eq!(second.records.len(), 1);
+        assert_eq!(second.canonical_record_bytes, 131_072);
+        assert_eq!(
+            second.records[0].canonical_result_json,
+            maximum_canonical_result
+        );
+        assert!(!second.done);
+
+        let third = export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: second.next_cursor.clone(),
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .expect("final page");
+        assert_eq!(third.records.len(), 1);
+        assert_eq!(third.records[0].result_sequence, 3);
+        assert!(third.done);
+
+        let mut wrong_chain_cursor = first.next_cursor.unwrap();
+        wrong_chain_cursor.result_digest = "f".repeat(64);
+        assert!(export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: Some(wrong_chain_cursor),
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .is_err());
+        assert!(export_normalized_follower_result_page_v1(
+            &connection,
+            &NormalizedFollowerResultPageRequestV1 {
+                actor_id: enrollment.actor_id.clone(),
+                after: Some(NormalizedFollowerResultCursorV1 {
+                    actor_id: enrollment.actor_id.clone(),
+                    result_sequence: 4,
+                    result_digest: "1".repeat(64),
+                }),
+                maximum_records: 1,
+                maximum_response_bytes: FOLLOWER_RESULT_PAGE_MAXIMUM_RESPONSE_BYTES,
+            },
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn follower_result_page_uses_actor_sequence_keyset_index_without_a_sort() {
+        let (connection, _key_pair, enrollment) = fixture();
+        let mut statement = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {FOLLOWER_RESULT_PAGE_SQL}"))
+            .expect("query plan");
+        let plan = statement
+            .query_map(params![enrollment.actor_id, 0, 129], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("query plan details");
+        assert!(plan.iter().any(|detail| {
+            detail.contains("SEARCH library_follower_result_outbox USING INDEX")
+        }));
+        assert!(plan.iter().all(|detail| !detail.contains("SCAN")));
+        assert!(plan
+            .iter()
+            .all(|detail| !detail.contains("USE TEMP B-TREE")));
     }
 
     #[test]
