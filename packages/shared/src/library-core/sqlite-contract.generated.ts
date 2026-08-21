@@ -686,6 +686,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "DELETE FROM library_accounts WHERE id = ?1;",
     "maximumMembers": 256,
     "payloadKind": "remove",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1);"
   },
   "feed_item_archive_assignment": {
@@ -698,6 +699,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "UPDATE library_feed_items SET saved = 0, saved_at = NULL, archived = ?1, archived_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, updated_at = ?3 WHERE global_id = ?4;",
     "maximumMembers": 256,
     "payloadKind": "boolean_assignment",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
   },
   "feed_item_like_assignment": {
@@ -710,6 +712,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "UPDATE library_feed_items SET liked = ?1, liked_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, liked_synced_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
     "maximumMembers": 256,
     "payloadKind": "boolean_assignment",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
   },
   "feed_item_read_assignment": {
@@ -722,6 +725,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "UPDATE library_feed_items SET read_at = ?1, updated_at = ?3 WHERE global_id = ?4;",
     "maximumMembers": 256,
     "payloadKind": "read_at",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
   },
   "feed_item_remove": {
@@ -734,6 +738,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "DELETE FROM library_feed_items WHERE global_id = ?1;",
     "maximumMembers": 256,
     "payloadKind": "remove",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1);"
   },
   "feed_item_saved_assignment": {
@@ -746,6 +751,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "UPDATE library_feed_items SET saved = ?1, saved_at = CASE WHEN ?1 = 1 THEN ?2 ELSE NULL END, archived = 0, archived_at = NULL, updated_at = ?3 WHERE global_id = ?4;",
     "maximumMembers": 256,
     "payloadKind": "boolean_assignment",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1);"
   },
   "person_remove_and_accounts": {
@@ -758,6 +764,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "DELETE FROM library_persons WHERE id = ?1;",
     "maximumMembers": 256,
     "payloadKind": "remove",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);"
   },
   "rss_feed_remove_keep_items": {
@@ -770,6 +777,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
     "maximumMembers": 256,
     "payloadKind": "remove",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
   },
   "rss_feed_remove_with_items": {
@@ -782,7 +790,21 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = {
     "materializeSql": "DELETE FROM library_rss_feeds WHERE url = ?1;",
     "maximumMembers": 256,
     "payloadKind": "remove",
+    "requiresExistingTarget": true,
     "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1 UNION ALL SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);"
+  },
+  "rss_feed_upsert": {
+    "clockReadSql": "",
+    "clockWriteSql": "",
+    "currentValueSql": "",
+    "dependentDeleteSql": "",
+    "entityType": "RssFeed",
+    "invalidationTopic": "rss_feed",
+    "materializeSql": "INSERT INTO library_rss_feeds (url, title, site_url, last_fetched, image_url, enabled, poll_interval, track_unread, folder, sample_batch_id, sample_generated_at, sample_generator_version, updated_at) SELECT ?1, json_extract(?2, '$.title'), json_extract(?2, '$.siteUrl'), json_extract(?2, '$.lastFetched'), json_extract(?2, '$.imageUrl'), json_extract(?2, '$.enabled'), json_extract(?2, '$.pollInterval'), json_extract(?2, '$.trackUnread'), json_extract(?2, '$.folder'), json_extract(?2, '$.sampleDataFingerprint.batchId'), json_extract(?2, '$.sampleDataFingerprint.generatedAt'), json_extract(?2, '$.sampleDataFingerprint.generatorVersion'), ?3 WHERE NOT EXISTS (SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) ON CONFLICT(url) DO UPDATE SET title = excluded.title, site_url = excluded.site_url, last_fetched = excluded.last_fetched, image_url = excluded.image_url, enabled = excluded.enabled, poll_interval = excluded.poll_interval, track_unread = excluded.track_unread, folder = excluded.folder, sample_batch_id = excluded.sample_batch_id, sample_generated_at = excluded.sample_generated_at, sample_generator_version = excluded.sample_generator_version, updated_at = excluded.updated_at;",
+    "maximumMembers": 256,
+    "payloadKind": "rss_feed_upsert",
+    "requiresExistingTarget": false,
+    "targetExistsSql": "SELECT 1;"
   }
 } as const;
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;

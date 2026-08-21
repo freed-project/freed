@@ -134,6 +134,7 @@ function assertContract(contract) {
     "materializeSql",
     "maximumMembers",
     "payloadKind",
+    "requiresExistingTarget",
     "targetExistsSql",
   ];
   for (const [mutationId, program] of Object.entries(
@@ -148,9 +149,10 @@ function assertContract(contract) {
       typeof program.invalidationTopic !== "string" ||
       !/^[a-z][a-z0-9_]*$/.test(program.invalidationTopic) ||
       typeof program.dependentDeleteSql !== "string" ||
-      !["boolean_assignment", "read_at", "remove"].includes(
+      !["boolean_assignment", "read_at", "remove", "rss_feed_upsert"].includes(
         program.payloadKind,
       ) ||
+      typeof program.requiresExistingTarget !== "boolean" ||
       !Number.isSafeInteger(program.maximumMembers) ||
       program.maximumMembers < 1 ||
       program.maximumMembers > 256 ||
@@ -160,7 +162,15 @@ function assertContract(contract) {
         program.currentValueSql,
         program.materializeSql,
         program.targetExistsSql,
-      ].some((sql) => typeof sql !== "string" || sql.length === 0)
+      ].some((sql) => typeof sql !== "string") ||
+      program.materializeSql.length === 0 ||
+      program.targetExistsSql.length === 0 ||
+      (program.payloadKind !== "rss_feed_upsert" &&
+        [
+          program.clockReadSql,
+          program.clockWriteSql,
+          program.currentValueSql,
+        ].some((sql) => sql.length === 0))
     ) {
       throw new TypeError("SQLite mutation program registry is invalid");
     }
@@ -511,7 +521,7 @@ function rustSource(contract, schemaDigest) {
   const mutationPrograms = Object.entries(contract.mutationPrograms)
     .map(
       ([mutationId, program]) =>
-        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, payload_kind: ${JSON.stringify(program.payloadKind)}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, clock_read_sql: ${JSON.stringify(program.clockReadSql)}, dependent_delete_sql: ${JSON.stringify(program.dependentDeleteSql)}, materialize_sql: ${JSON.stringify(program.materializeSql)}, clock_write_sql: ${JSON.stringify(program.clockWriteSql)} },`,
+        `    SqliteMutationProgram { mutation_id: ${JSON.stringify(mutationId)}, maximum_members: ${program.maximumMembers}, entity_type: ${JSON.stringify(program.entityType)}, invalidation_topic: ${JSON.stringify(program.invalidationTopic)}, payload_kind: ${JSON.stringify(program.payloadKind)}, requires_existing_target: ${program.requiresExistingTarget}, target_exists_sql: ${JSON.stringify(program.targetExistsSql)}, current_value_sql: ${JSON.stringify(program.currentValueSql)}, clock_read_sql: ${JSON.stringify(program.clockReadSql)}, dependent_delete_sql: ${JSON.stringify(program.dependentDeleteSql)}, materialize_sql: ${JSON.stringify(program.materializeSql)}, clock_write_sql: ${JSON.stringify(program.clockWriteSql)} },`,
     )
     .join("\n");
   const importPrograms = Object.entries(checkpointImportPrograms(contract))
@@ -595,6 +605,7 @@ pub struct SqliteMutationProgram {
     pub entity_type: &'static str,
     pub invalidation_topic: &'static str,
     pub payload_kind: &'static str,
+    pub requires_existing_target: bool,
     pub target_exists_sql: &'static str,
     pub current_value_sql: &'static str,
     pub clock_read_sql: &'static str,

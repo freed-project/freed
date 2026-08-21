@@ -204,6 +204,23 @@ fn validate_rss_feed(
             return Err(invalid(index, "feed"));
         }
     }
+    if feed.get("sampleDataFingerprint").is_some_and(|value| {
+        value.as_object().is_none_or(|fingerprint| {
+            fingerprint.len() != 4
+                || fingerprint.get("marker").and_then(Value::as_str) != Some("freed.sample-data.v1")
+                || fingerprint.get("batchId").and_then(Value::as_str).is_none()
+                || fingerprint
+                    .get("generatedAt")
+                    .and_then(Value::as_i64)
+                    .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                || fingerprint
+                    .get("generatorVersion")
+                    .and_then(Value::as_i64)
+                    .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+        })
+    }) {
+        return Err(invalid(index, "feed"));
+    }
     Ok(())
 }
 

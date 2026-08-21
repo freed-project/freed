@@ -363,6 +363,28 @@ function validateRssFeedUpsertPayload(
         return invalid(`feed.${key} must be a nonnegative safe integer`);
       }
     }
+    const fingerprint = feed.sampleDataFingerprint;
+    if (fingerprint !== undefined) {
+      if (
+        typeof fingerprint !== "object" ||
+        fingerprint === null ||
+        Array.isArray(fingerprint)
+      ) {
+        return invalid("feed.sampleDataFingerprint is invalid");
+      }
+      const record = fingerprint as Readonly<
+        Record<string, LibraryCoreCanonicalValue>
+      >;
+      if (
+        Object.keys(record).length !== 4 ||
+        record.marker !== "freed.sample-data.v1" ||
+        typeof record.batchId !== "string" ||
+        !isLibraryCoreNonnegativeSafeInteger(record.generatedAt) ||
+        !isLibraryCoreNonnegativeSafeInteger(record.generatorVersion)
+      ) {
+        return invalid("feed.sampleDataFingerprint is invalid");
+      }
+    }
     return { ok: true, value: Object.freeze({ feed }) };
   } catch (error) {
     return invalid(

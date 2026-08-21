@@ -107,6 +107,11 @@
         generated mutation programs. Relationship deletes, root deletes,
         convergent tombstones, exact receipts, invalidations, and revisions
         commit in the same verified native transaction.
+  - [x] RSS feed upsert now verifies one closed signed payload and writes its
+        synchronized fields directly into typed normalized columns through a
+        generated mutation program. Exact sample-data fingerprints are
+        admitted, unknown shapes fail closed, and a removed feed cannot be
+        resurrected within the storage epoch.
 - [ ] Replace whole-corpus subscriptions with a compact bounded invalidation
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration

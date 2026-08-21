@@ -116,6 +116,56 @@ describe("Library Core operation payload contracts", () => {
     }
   });
 
+  it("requires an exact RSS sample-data fingerprint", () => {
+    const feed = {
+      url: "https://example.com/feed.xml",
+      title: "Example",
+      enabled: true,
+      trackUnread: true,
+    };
+    expect(
+      RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
+        feed: {
+          ...feed,
+          sampleDataFingerprint: {
+            marker: "freed.sample-data.v1",
+            batchId: "batch",
+            generatedAt: 1,
+            generatorVersion: 1,
+          },
+        },
+      }),
+    ).toMatchObject({ ok: true });
+
+    for (const sampleDataFingerprint of [
+      {
+        marker: "freed.sample-data.v1",
+        batchId: "batch",
+        generatedAt: -1,
+        generatorVersion: 1,
+      },
+      {
+        marker: "wrong",
+        batchId: "batch",
+        generatedAt: 1,
+        generatorVersion: 1,
+      },
+      {
+        marker: "freed.sample-data.v1",
+        batchId: "batch",
+        generatedAt: 1,
+        generatorVersion: 1,
+        extra: true,
+      },
+    ]) {
+      expect(
+        RSS_FEED_UPSERT_PAYLOAD_SCHEMA.validate({
+          feed: { ...feed, sampleDataFingerprint },
+        }),
+      ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
   it("requires an exact RSS removal timestamp", () => {
     expect(
       RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA.validate({

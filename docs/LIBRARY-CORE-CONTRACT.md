@@ -418,6 +418,13 @@ replication outbox, invalidation, and source revision commit in one SQLite
 transaction. A stale removal is journaled but cannot replace the winning
 tombstone or repeat relationship effects.
 
+RSS feed upsert verifies the closed signed payload, then writes only typed
+normalized feed columns through its generated program. It validates the exact
+sample-data fingerprint shape when present and uses the committed operation
+time for the row revision. A feed tombstone is final within the storage epoch,
+so a later upsert can be journaled without resurrecting the removed feed. No
+feed shell or whole Library object participates.
+
 Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a
 transport adapter for these immutable objects. Provider endpoints, headers,

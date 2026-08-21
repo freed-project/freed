@@ -461,6 +461,21 @@ fn materialize_member(
             program,
         ),
         "remove" => materialize_remove(transaction, verified, member_index, program),
+        "rss_feed_upsert" => {
+            let member = &verified.members[member_index];
+            let feed =
+                member
+                    .rss_feed_json
+                    .as_deref()
+                    .ok_or(NormalizedSqliteError::InvalidRequest(
+                        "normalized RSS feed payload is missing",
+                    ))?;
+            transaction.execute(
+                program.materialize_sql,
+                params![member.entity_id, feed, committed_at],
+            )?;
+            Ok(())
+        }
         _ => Err(NormalizedSqliteError::InvalidRequest(
             "normalized mutation payload kind is not registered",
         )),
@@ -534,6 +549,9 @@ pub fn accept_normalized_operation_transaction_v1(
     }
     require_causal_tips(&transaction, &verified)?;
     for member in &verified.members {
+        if !program.requires_existing_target {
+            continue;
+        }
         let exists: bool =
             transaction.query_row(program.target_exists_sql, [&member.entity_id], |row| {
                 row.get(0)
@@ -1317,6 +1335,78 @@ mod tests {
                 })
                 .expect("revision"),
             4
+        );
+    }
+
+    #[test]
+    fn signed_rss_feed_upsert_materializes_normalized_columns_without_resurrection() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:upsert",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("feed:new", 1_000)],
+            "rss_feed_upsert",
+        );
+        let upsert_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &upsert, 2_000)
+                .expect("upsert RSS feed");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT title, enabled, track_unread, updated_at
+                     FROM library_rss_feeds WHERE url = 'feed:new';",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .expect("normalized RSS feed"),
+            ("Verified feed".to_owned(), 1, 1, 2_000)
+        );
+
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:remove",
+            2,
+            Some(&upsert_receipt.committed_operation_id),
+            &upsert_receipt.committed_chain_digest,
+            &[("feed:new", 1_100)],
+            "rss_feed_remove_keep_items",
+        );
+        let remove_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, 2_100)
+                .expect("remove RSS feed");
+        let replay_upsert = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:rss:upsert-after-remove",
+            3,
+            Some(&remove_receipt.committed_operation_id),
+            &remove_receipt.committed_chain_digest,
+            &[("feed:new", 1_200)],
+            "rss_feed_upsert",
+        );
+        accept_normalized_operation_transaction_v1(&mut connection, &replay_upsert, 2_200)
+            .expect("journal blocked resurrection");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_rss_feeds WHERE url = 'feed:new';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("RSS feed count"),
+            0
         );
     }
 }

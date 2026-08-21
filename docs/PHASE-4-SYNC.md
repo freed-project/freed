@@ -312,6 +312,7 @@ loads an alternate Library engine or compatibility path.
 | 4.163 | Shared `background_item_page_v1` primary-key traversal across native and browser SQLite, with source-fenced binary global ID cursors, a 64-row response limit, a 65-row scan ceiling, hidden and archived metadata coverage, and no bodies or offset paging | ✓ | High |
 | 4.164 | Shared `change_feed_v1` invalidation paging across native and browser SQLite, with a pinned upper revision, 512-row and 2 MiB ceilings, primary-key query plans, gap refusal, checkpoint reset notices, and no entity rows or reader content | ✓ | High |
 | 4.165 | Generated Account, Person with linked Accounts, RSS feed retaining items, and RSS feed with items removal programs, with verified signed admission, declared relationship deletes, convergent typed tombstones, exact retry receipts, replication outbox rows, invalidations, and revisions in one native SQLite transaction | ✓ | High |
+| 4.166 | Generated normalized RSS feed upsert with closed signed payload verification, exact sample-data fingerprint validation, typed scalar column writes, committed-time revision, and tombstone-protected no-resurrection semantics | ✓ | High |
 
 ---
 
