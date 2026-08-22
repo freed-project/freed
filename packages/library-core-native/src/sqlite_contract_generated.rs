@@ -4,6 +4,7 @@ pub const SQLITE_CONTRACT_VERSION: u32 = 1;
 pub const SQLITE_APPLICATION_ID: u32 = 1179796804;
 pub const SQLITE_SCHEMA_VERSION: u32 = 1;
 pub const SQLITE_PROTOCOL_VERSION: u32 = 2;
+pub const NATIVE_COMMAND_PROTOCOL_VERSION: u32 = 1;
 pub const NORMALIZED_CHECKPOINT_FORMAT: &str = "freed_normalized_checkpoint_v2";
 pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = "freed_normalized_checkpoint_export_v2";
 pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = "library_core_normalized_checkpoint_v2";
@@ -11,6 +12,7 @@ pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = 131072;
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = 2097152;
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
+pub const NATIVE_COMMAND_MAXIMUM_FRAME_BYTES: usize = 4194304;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
@@ -481,6 +483,16 @@ pub const OPERATION_IDS: &[&str] = &[
     "rss_feeds_remove_with_items",
     "sample_library_import",
     "sample_library_remove",
+];
+
+pub const NATIVE_COMMAND_IDS: &[&str] = &[
+    "append_checkpoint_stage_v2",
+    "begin_checkpoint_stage_v2",
+    "describe_checkpoint_export_v2",
+    "export_checkpoint_page_v2",
+    "finalize_checkpoint_stage_v2",
+    "inspect_storage_v1",
+    "query_v1",
 ];
 
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[

@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound normalized sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, and bounded native checkpoint and query command ingress have landed; installed Drive coordination, authority-key mutation admission, production v2 issuance and retirement, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -116,10 +116,12 @@ approves that contract.
 
 Freed Desktop retains the historical checkpoint store only as fenced migration
 input while the one-epoch normalized cutover is completed. The headless
-sidecar never opens that store. Task 11.6 adds a bounded typed command channel
-directly to normalized checkpoint staging, queries, and mutations. It does not
-translate the old import, status, backup, or whole-item DTOs. Installed
-headless checkpoint import remains unshipped.
+sidecar never opens that store. The sidecar command channel calls normalized
+checkpoint staging, pinned export, and registered query functions directly. It
+does not translate the old import, status, backup, or whole-item DTOs.
+Canonical mutation admission remains closed until the service can supply the
+established authority key through the separately governed task 11.5 secret
+contract. Installed headless Drive coordination remains unshipped.
 
 The macOS and Linux native authorities never reopen a verified root through a
 discovered pathname and never change the process working directory. A shared
@@ -201,10 +203,22 @@ coordinator is responsible for:
 authority sidecar. Only the sidecar opens SQLite and holds the local process
 lease. The first production service exposes no public network listener.
 
-The current sidecar protocol uses only stdin, stdout, and fixed inherited file
-descriptors 3 through 8. One strict v1 admission record binds the exact start
-envelope, executable digest, data and state root identities, and credential
-descriptor digest. Only private bounded mounted credential material is
+The sidecar uses stdin and stdout once for the closed startup control protocol.
+Control protocol 2 binds fixed inherited descriptors 3 through 10. Descriptor
+8 is the lifetime watchdog. Descriptor 9 carries command requests and
+descriptor 10 carries command responses. Every command frame has a four-byte
+unsigned big-endian length and a generated 4 MiB maximum. The independent data
+command protocol is version 1. It accepts only the generated command registry,
+one 64-character request ID, and exact payload fields. The registry contains
+normalized checkpoint begin, append, finalize, pinned export, registered
+query, and storage-inspection commands. Startup performs one storage inspection
+and verifies the exact generated application, contract, schema, wire protocol,
+and schema digest before the supervisor reports running. A malformed,
+truncated, oversized, unknown-version, or broken transport frame fails closed.
+
+One strict v1 admission record binds the exact start envelope, executable
+digest, data and state root identities, and credential descriptor digest. Only
+private bounded mounted credential material is
 accepted today. `os-vault`, Drive OAuth, cloud writer readiness, and every
 provider request fail closed or remain absent until task 11.5. A true ready
 receipt means only that the private physical record was securely and exactly
@@ -426,7 +440,7 @@ review before implementation.
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Open the final normalized SQLite catalog behind the descriptor-bound native sidecar, then add bounded typed checkpoint, query, and mutation command ingress |
+| 11.6 | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, pinned export, and registered query commands; bind installed Drive coordination and authority-key mutation admission next |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |

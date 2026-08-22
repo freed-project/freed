@@ -1,5 +1,5 @@
 export const LIBRARY_SERVICE_CONFIG_SCHEMA_VERSION = 1 as const;
-export const LIBRARY_SERVICE_PROTOCOL_VERSION = 1 as const;
+export const LIBRARY_SERVICE_PROTOCOL_VERSION = 2 as const;
 export const LIBRARY_SERVICE_STATUS_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_SERVICE_MAX_CONFIG_BYTES = 32 * 1_024;
 export const LIBRARY_SERVICE_MAX_DESCRIPTOR_BYTES = 4 * 1_024;
@@ -11,6 +11,8 @@ export const LIBRARY_SERVICE_STATE_ROOT_FD = 5 as const;
 export const LIBRARY_SERVICE_ADMISSION_FD = 6 as const;
 export const LIBRARY_SERVICE_CREDENTIAL_DESCRIPTOR_FD = 7 as const;
 export const LIBRARY_SERVICE_LIFETIME_FD = 8 as const;
+export const LIBRARY_SERVICE_COMMAND_REQUEST_FD = 9 as const;
+export const LIBRARY_SERVICE_COMMAND_RESPONSE_FD = 10 as const;
 
 export type LibraryServiceRole = "primary";
 
@@ -23,6 +25,8 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "config_invalid",
   "config_missing",
   "config_not_private",
+  "command_channel_failed",
+  "command_response_invalid",
   "credential_descriptor_invalid",
   "credential_descriptor_missing",
   "credential_descriptor_not_private",
@@ -104,6 +108,8 @@ export interface LibraryServiceStartEnvelope {
   admissionFd: typeof LIBRARY_SERVICE_ADMISSION_FD;
   credentialDescriptorFd: typeof LIBRARY_SERVICE_CREDENTIAL_DESCRIPTOR_FD;
   lifetimeFd: typeof LIBRARY_SERVICE_LIFETIME_FD;
+  commandRequestFd: typeof LIBRARY_SERVICE_COMMAND_REQUEST_FD;
+  commandResponseFd: typeof LIBRARY_SERVICE_COMMAND_RESPONSE_FD;
 }
 
 export interface LibraryServiceReadyRecord {
@@ -116,6 +122,7 @@ export interface LibraryServiceReadyRecord {
   admissionAccepted: true;
   credentialsReady: true;
   watchdogActive: true;
+  commandChannelReady: true;
   parentNonce: string;
   configDigest: string;
   executableDigest: string;
@@ -209,6 +216,10 @@ export interface LibraryServiceSidecarProcess {
   writeControl(contents: string): Promise<void>;
   closeControlInput(): Promise<void>;
   readControlOutput(maximumBytes: number): Promise<Uint8Array>;
+  exchangeCommand(
+    request: Uint8Array,
+    maximumResponseBytes: number,
+  ): Promise<Uint8Array>;
   terminate(signal: "SIGTERM" | "SIGKILL"): void;
   closeLifetime(): void;
 }

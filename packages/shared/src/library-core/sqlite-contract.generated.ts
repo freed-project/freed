@@ -4,6 +4,7 @@ export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_APPLICATION_ID = 1179796804 as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = 2 as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT = "freed_normalized_checkpoint_v2" as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT = "freed_normalized_checkpoint_export_v2" as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID = "library_core_normalized_checkpoint_v2" as const;
@@ -11,6 +12,7 @@ export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = 131072 as 
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = 2097152 as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = 128 as const;
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = 1048576 as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = 4194304 as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = 65536 as const;
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = 128 as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = 1000 as const;
@@ -758,6 +760,16 @@ export const LIBRARY_CORE_OPERATION_IDS = [
   "sample_library_import",
   "sample_library_remove",
 ] as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
+  "append_checkpoint_stage_v2",
+  "begin_checkpoint_stage_v2",
+  "describe_checkpoint_export_v2",
+  "export_checkpoint_page_v2",
+  "finalize_checkpoint_stage_v2",
+  "inspect_storage_v1",
+  "query_v1",
+] as const;
+export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([

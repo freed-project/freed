@@ -1,5 +1,7 @@
 import {
   LIBRARY_SERVICE_ADMISSION_FD,
+  LIBRARY_SERVICE_COMMAND_REQUEST_FD,
+  LIBRARY_SERVICE_COMMAND_RESPONSE_FD,
   LIBRARY_SERVICE_CREDENTIAL_DESCRIPTOR_FD,
   LIBRARY_SERVICE_DATA_ROOT_FD,
   LIBRARY_SERVICE_EXECUTABLE_FD,
@@ -23,6 +25,15 @@ import {
   type LibraryServiceStartEnvelope,
 } from "./contracts.js";
 import {
+  LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES,
+  LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+  LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+  LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+  LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+} from "./library-core-command-contract.generated.js";
+import {
   assertLibraryServiceBindingsStable,
   bindLibraryServiceConfig,
   type BoundLibraryServiceConfiguration,
@@ -43,6 +54,7 @@ const READY_KEYS = new Set([
   "admissionAccepted",
   "credentialsReady",
   "watchdogActive",
+  "commandChannelReady",
   "parentNonce",
   "configDigest",
   "executableDigest",
@@ -172,6 +184,7 @@ function parseReadyRecord(bytes: Uint8Array): LibraryServiceReadyRecord {
     raw.admissionAccepted !== true ||
     raw.credentialsReady !== true ||
     raw.watchdogActive !== true ||
+    raw.commandChannelReady !== true ||
     typeof raw.parentNonce !== "string" ||
     typeof raw.configDigest !== "string" ||
     typeof raw.executableDigest !== "string" ||
@@ -185,6 +198,66 @@ function parseReadyRecord(bytes: Uint8Array): LibraryServiceReadyRecord {
     throw new LibraryServiceFailure("ready_malformed");
   }
   return raw as unknown as LibraryServiceReadyRecord;
+}
+
+async function inspectNormalizedCommandStorage(
+  child: LibraryServiceSidecarProcess,
+  requestId: string,
+): Promise<void> {
+  if (!NONCE_HEX.test(requestId)) {
+    throw new LibraryServiceFailure("filesystem_failure");
+  }
+  const request = Buffer.from(
+    JSON.stringify({
+      protocolVersion: LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+      requestId,
+      commandId: "inspect_storage_v1",
+      payload: {},
+    }),
+    "utf8",
+  );
+  let responseBytes: Uint8Array;
+  try {
+    responseBytes = await child.exchangeCommand(
+      request,
+      LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES,
+    );
+  } catch {
+    throw new LibraryServiceFailure("command_channel_failed");
+  }
+  let response: unknown;
+  try {
+    response = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(responseBytes));
+  } catch {
+    throw new LibraryServiceFailure("command_response_invalid");
+  }
+  if (!isObject(response)) {
+    throw new LibraryServiceFailure("command_response_invalid");
+  }
+  const keys = Object.keys(response).sort();
+  if (
+    keys.join(",") !== "ok,protocolVersion,requestId,result" ||
+    response.protocolVersion !== LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION ||
+    response.requestId !== requestId ||
+    response.ok !== true ||
+    !isObject(response.result)
+  ) {
+    throw new LibraryServiceFailure("command_response_invalid");
+  }
+  const resultKeys = Object.keys(response.result).sort();
+  if (
+    resultKeys.join(",") !==
+      "activeAuthority,applicationId,contractVersion,protocolVersion,schemaSha256,schemaVersion" ||
+    response.result.applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID ||
+    response.result.contractVersion !== LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
+    response.result.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
+    response.result.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
+    response.result.schemaSha256 !== LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 ||
+    (response.result.activeAuthority !== null &&
+      !isObject(response.result.activeAuthority))
+  ) {
+    throw new LibraryServiceFailure("command_response_invalid");
+  }
 }
 
 function assertReadyBinding(
@@ -579,6 +652,8 @@ export class LibraryServiceSupervisor {
         admissionFd: LIBRARY_SERVICE_ADMISSION_FD,
         credentialDescriptorFd: LIBRARY_SERVICE_CREDENTIAL_DESCRIPTOR_FD,
         lifetimeFd: LIBRARY_SERVICE_LIFETIME_FD,
+        commandRequestFd: LIBRARY_SERVICE_COMMAND_REQUEST_FD,
+        commandResponseFd: LIBRARY_SERVICE_COMMAND_RESPONSE_FD,
       };
       const encodedEnvelope = `${JSON.stringify(envelope)}\n`;
       if (
@@ -624,6 +699,7 @@ export class LibraryServiceSupervisor {
       }
       const ready = parseReadyRecord(readiness.bytes);
       assertReadyBinding(ready, child, bound, parentNonce);
+      await inspectNormalizedCommandStorage(child, this.#entropy.nonceHex(32));
       throwIfAborted(signal);
 
       this.#state = "running";

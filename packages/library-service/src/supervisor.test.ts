@@ -103,7 +103,7 @@ describe("LibraryServiceSupervisor", () => {
     expect(child.controlClosed).toBe(true);
     expect(JSON.parse(child.controlWrites[0])).toEqual({
       type: "start",
-      protocolVersion: 1,
+      protocolVersion: 2,
       role: "primary",
       parentNonce: "1".repeat(64),
       configDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -114,7 +114,17 @@ describe("LibraryServiceSupervisor", () => {
       admissionFd: 6,
       credentialDescriptorFd: 7,
       lifetimeFd: 8,
+      commandRequestFd: 9,
+      commandResponseFd: 10,
     });
+    expect(child.commandRequests).toEqual([
+      {
+        protocolVersion: 1,
+        requestId: "1".repeat(64),
+        commandId: "inspect_storage_v1",
+        payload: {},
+      },
+    ]);
     expect(child.controlWrites[0]).not.toContain("/safe");
     const statuses = fileSystem.writes.map(({ contents }) =>
       JSON.parse(contents),

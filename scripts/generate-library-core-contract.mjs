@@ -22,6 +22,10 @@ const rustPath = resolve(
   root,
   "packages/library-core-native/src/sqlite_contract_generated.rs",
 );
+const libraryServicePath = resolve(
+  root,
+  "packages/library-service/src/library-core-command-contract.generated.ts",
+);
 const check = process.argv.includes("--check");
 
 function fail(message) {
@@ -74,6 +78,8 @@ function assertContract(contract) {
     "localMutationPrograms",
     "mutationPrograms",
     "mutations",
+    "nativeCommandProtocolVersion",
+    "nativeCommands",
     "preferenceWritePolicies",
     "protocolVersion",
     "queries",
@@ -93,6 +99,7 @@ function assertContract(contract) {
     contract.contractVersion !== 1 ||
     contract.schemaVersion !== 1 ||
     contract.protocolVersion !== 2 ||
+    contract.nativeCommandProtocolVersion !== 1 ||
     contract.checkpointFormat !== "freed_normalized_checkpoint_v2" ||
     contract.checkpointExportFormat !==
       "freed_normalized_checkpoint_export_v2" ||
@@ -108,6 +115,7 @@ function assertContract(contract) {
     checkpointRecordCanonicalBytes: 131_072,
     contentChunkBytes: 65_536,
     nativeExportResponseBytes: 1_048_576,
+    nativeCommandFrameBytes: 4_194_304,
     followerIntentPageRecords: 128,
     operationTransactionMembers: 1_000,
     operationTransactionBytes: 4_194_304,
@@ -121,6 +129,7 @@ function assertContract(contract) {
     );
   }
   assertSortedUnique(contract.mutations, "mutations");
+  assertSortedUnique(contract.nativeCommands, "nativeCommands");
   assertSortedUnique(contract.queries, "queries");
   const scopeActionProgramKeys = Object.keys(contract.scopeActionPrograms).sort();
   const expectedScopeActionProgramKeys = [
@@ -564,6 +573,7 @@ export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = ${contract.contractVersion} 
 export const LIBRARY_CORE_SQLITE_APPLICATION_ID = ${contract.applicationId} as const;
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = ${contract.schemaVersion} as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = ${contract.protocolVersion} as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = ${contract.nativeCommandProtocolVersion} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT = ${JSON.stringify(contract.checkpointFormat)} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT = ${JSON.stringify(contract.checkpointExportFormat)} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID = ${JSON.stringify(contract.checkpointDatasetSchemaId)} as const;
@@ -571,6 +581,7 @@ export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.limits.checkpointPageDecodedBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.limits.nativeExportResponseBytes} as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = ${contract.limits.nativeCommandFrameBytes} as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = ${contract.limits.contentChunkBytes} as const;
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.operationTransactionMembers} as const;
@@ -590,6 +601,10 @@ export type LibraryCoreCheckpointPrimaryKeyCodec = LibraryCoreCheckpointRegistry
 export const LIBRARY_CORE_OPERATION_IDS = [
 ${stringTuple(contract.mutations)}
 ] as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
+${stringTuple(contract.nativeCommands)}
+] as const;
+export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];
 export type LibraryCoreOperationId = (typeof LIBRARY_CORE_OPERATION_IDS)[number];
 
 export const LIBRARY_CORE_CAPABILITY_OPERATION_IDS = Object.freeze([
@@ -712,6 +727,7 @@ pub const SQLITE_CONTRACT_VERSION: u32 = ${contract.contractVersion};
 pub const SQLITE_APPLICATION_ID: u32 = ${contract.applicationId};
 pub const SQLITE_SCHEMA_VERSION: u32 = ${contract.schemaVersion};
 pub const SQLITE_PROTOCOL_VERSION: u32 = ${contract.protocolVersion};
+pub const NATIVE_COMMAND_PROTOCOL_VERSION: u32 = ${contract.nativeCommandProtocolVersion};
 pub const NORMALIZED_CHECKPOINT_FORMAT: &str = ${JSON.stringify(contract.checkpointFormat)};
 pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = ${JSON.stringify(contract.checkpointExportFormat)};
 pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = ${JSON.stringify(contract.checkpointDatasetSchemaId)};
@@ -719,6 +735,7 @@ pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = ${contract.limits.c
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.checkpointPageDecodedBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.limits.nativeExportResponseBytes};
+pub const NATIVE_COMMAND_MAXIMUM_FRAME_BYTES: usize = ${contract.limits.nativeCommandFrameBytes};
 pub const CONTENT_CHUNK_BYTES: usize = ${contract.limits.contentChunkBytes};
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.followerIntentPageRecords};
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.operationTransactionMembers};
@@ -769,6 +786,10 @@ ${fractionalFieldVariants}
 
 pub const OPERATION_IDS: &[&str] = &[
 ${operations}
+];
+
+pub const NATIVE_COMMAND_IDS: &[&str] = &[
+${rustStringSlice(contract.nativeCommands)}
 ];
 
 pub const CAPABILITY_OPERATION_IDS: &[&str] = &[
@@ -845,6 +866,26 @@ ${importPrograms}
 `;
 }
 
+function libraryServiceSource(contract, schemaDigest) {
+  const commandIds = contract.nativeCommands
+    .map((value) => `  ${JSON.stringify(value)},`)
+    .join("\n");
+  return `/* This file is generated by scripts/generate-library-core-contract.mjs. */
+
+export const LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION = ${contract.nativeCommandProtocolVersion} as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = ${contract.limits.nativeCommandFrameBytes} as const;
+export const LIBRARY_CORE_SQLITE_APPLICATION_ID = ${contract.applicationId} as const;
+export const LIBRARY_CORE_SQLITE_CONTRACT_VERSION = ${contract.contractVersion} as const;
+export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = ${contract.schemaVersion} as const;
+export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = ${contract.protocolVersion} as const;
+export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
+export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
+${commandIds}
+] as const;
+export type LibraryCoreNativeCommandId = (typeof LIBRARY_CORE_NATIVE_COMMAND_IDS)[number];
+`;
+}
+
 async function update(path, contents) {
   const current = await readFile(path, "utf8").catch(() => null);
   if (current === contents) return;
@@ -864,3 +905,4 @@ await update(
   typescriptSource(contract, schemaSql, schemaDigest),
 );
 await update(rustPath, rustSource(contract, schemaDigest));
+await update(libraryServicePath, libraryServiceSource(contract, schemaDigest));

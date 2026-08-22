@@ -200,6 +200,15 @@ The extracted native crate owns:
 Tauri owns only command registration, serialization, cancellation, and host
 capability wiring. The headless Primary calls the same crate without Tauri.
 
+The headless supervisor never receives a SQLite path and never interprets SQL.
+It passes descriptor-bound roots to the native sidecar, then uses a generated,
+versioned command registry over dedicated inherited pipes. Four-byte
+big-endian frame lengths cap each request and response at 4 MiB. The native
+side accepts normalized checkpoint staging and pinned export, registered
+bounded queries, and exact storage inspection. Mutation commands require the
+established authority key and remain unavailable until the headless secret
+contract supplies that key without exposing it to workers or Drive adapters.
+
 Rust uses a bundled, pinned SQLite release with the required features. Runtime
 behavior must not depend on whichever SQLite happens to ship with an operating
 system.

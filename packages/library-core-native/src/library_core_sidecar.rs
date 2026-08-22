@@ -4,6 +4,7 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::{FileExt, FileTypeExt, MetadataExt};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -12,15 +13,26 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
-use crate::{lower_hex, LibraryCoreProcessLease, ProcessLeaseIdentity};
+use crate::sqlite_contract_generated::{
+    NATIVE_COMMAND_MAXIMUM_FRAME_BYTES, NATIVE_COMMAND_PROTOCOL_VERSION,
+};
+use crate::{
+    append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
+    describe_normalized_checkpoint_export_v2, export_pinned_normalized_checkpoint_page_v2,
+    finalize_normalized_checkpoint_stage_v2, lower_hex, query_normalized_json_v1,
+    BeginNormalizedCheckpointStageV2, LibraryCoreProcessLease, NormalizedCheckpointRecordV2,
+    NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
+};
 
-const PROTOCOL_VERSION: u8 = 1;
+const PROTOCOL_VERSION: u8 = 2;
 const EXECUTABLE_FD: RawFd = 3;
 const DATA_ROOT_FD: RawFd = 4;
 const STATE_ROOT_FD: RawFd = 5;
 const ADMISSION_FD: RawFd = 6;
 const CREDENTIAL_DESCRIPTOR_FD: RawFd = 7;
 const LIFETIME_FD: RawFd = 8;
+const COMMAND_REQUEST_FD: RawFd = 9;
+const COMMAND_RESPONSE_FD: RawFd = 10;
 const MAX_CONTROL_BYTES: usize = 4 * 1_024;
 const MAX_ADMISSION_BYTES: usize = 64 * 1_024;
 const MAX_CREDENTIAL_DESCRIPTOR_BYTES: usize = 4 * 1_024;
@@ -61,6 +73,8 @@ struct StartEnvelope {
     admission_fd: RawFd,
     credential_descriptor_fd: RawFd,
     lifetime_fd: RawFd,
+    command_request_fd: RawFd,
+    command_response_fd: RawFd,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +112,7 @@ struct ReadyRecord<'a> {
     admission_accepted: bool,
     credentials_ready: bool,
     watchdog_active: bool,
+    command_channel_ready: bool,
     parent_nonce: &'a str,
     config_digest: &'a str,
     executable_digest: &'a str,
@@ -108,6 +123,44 @@ struct ReadyRecord<'a> {
     admission_digest: String,
     credential_descriptor_digest: String,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NativeCommandRequestV1 {
+    protocol_version: u32,
+    request_id: String,
+    command_id: String,
+    payload: Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeCommandResponseV1<'a> {
+    protocol_version: u32,
+    request_id: &'a str,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<&'static str>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AppendCheckpointStageCommandV2 {
+    stage_id: String,
+    records: Vec<NormalizedCheckpointRecordV2>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FinalizeCheckpointStageCommandV2 {
+    stage_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmptyCommandPayload {}
 
 /// Native normalized Library authority owned by one inherited data-root descriptor.
 struct LibraryCoreSidecarAuthority {
@@ -211,9 +264,12 @@ pub fn run_library_authority_sidecar() -> Result<(), LibraryCoreSidecarError> {
         &credential_descriptor_digest,
     )?;
     validate_lifetime_descriptor(LIFETIME_FD)?;
+    validate_command_descriptor(COMMAND_REQUEST_FD)?;
+    validate_command_descriptor(COMMAND_RESPONSE_FD)?;
 
     let authority = LibraryCoreSidecarAuthority::open_from_inherited_descriptor(DATA_ROOT_FD)?;
     drop(authority.connect()?);
+    start_command_loop(authority.database.clone())?;
 
     let ready = ReadyRecord {
         r#type: "ready",
@@ -225,6 +281,7 @@ pub fn run_library_authority_sidecar() -> Result<(), LibraryCoreSidecarError> {
         admission_accepted: true,
         credentials_ready: true,
         watchdog_active: true,
+        command_channel_ready: true,
         parent_nonce: &envelope.parent_nonce,
         config_digest: &envelope.config_digest,
         executable_digest: &executable_digest,
@@ -239,6 +296,220 @@ pub fn run_library_authority_sidecar() -> Result<(), LibraryCoreSidecarError> {
     wait_for_lifetime_close(LIFETIME_FD)?;
     drop(authority);
     Ok(())
+}
+
+fn start_command_loop(database: BoundSqliteDatabase) -> Result<(), LibraryCoreSidecarError> {
+    let request = unsafe { File::from_raw_fd(COMMAND_REQUEST_FD) };
+    let response = unsafe { File::from_raw_fd(COMMAND_RESPONSE_FD) };
+    std::thread::Builder::new()
+        .name("freed-library-command-v1".to_string())
+        .spawn(move || {
+            if run_command_loop(database, request, response).is_err() {
+                std::process::exit(1);
+            }
+        })
+        .map_err(|_| failure("command_channel_unavailable"))?;
+    Ok(())
+}
+
+fn run_command_loop(
+    database: BoundSqliteDatabase,
+    mut request: File,
+    mut response: File,
+) -> Result<(), LibraryCoreSidecarError> {
+    loop {
+        let payload = read_command_frame(&mut request)?;
+        let command: NativeCommandRequestV1 =
+            serde_json::from_slice(&payload).map_err(|_| failure("command_invalid"))?;
+        if command.protocol_version != NATIVE_COMMAND_PROTOCOL_VERSION
+            || !valid_digest(&command.request_id)
+        {
+            return Err(failure("command_invalid"));
+        }
+        let mut connection = database
+            .open(normalized_sqlite_open_flags(false))
+            .map_err(|_| failure("command_storage_failed"))?;
+        configure_normalized_sqlite_connection(&connection)
+            .map_err(|_| failure("command_storage_failed"))?;
+        let outcome = execute_native_command_v1(
+            &mut connection,
+            command.command_id.as_str(),
+            command.payload,
+        );
+        let response_record = match outcome {
+            Ok(result) => NativeCommandResponseV1 {
+                protocol_version: NATIVE_COMMAND_PROTOCOL_VERSION,
+                request_id: &command.request_id,
+                ok: true,
+                result: Some(result),
+                error_code: None,
+            },
+            Err(error_code) => NativeCommandResponseV1 {
+                protocol_version: NATIVE_COMMAND_PROTOCOL_VERSION,
+                request_id: &command.request_id,
+                ok: false,
+                result: None,
+                error_code: Some(error_code),
+            },
+        };
+        write_command_frame(&mut response, &response_record)?;
+    }
+}
+
+fn execute_native_command_v1(
+    connection: &mut rusqlite::Connection,
+    command_id: &str,
+    payload: Value,
+) -> Result<Value, &'static str> {
+    match command_id {
+        "append_checkpoint_stage_v2" => {
+            let command: AppendCheckpointStageCommandV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                append_normalized_checkpoint_stage_page_v2(
+                    connection,
+                    &command.stage_id,
+                    &command.records,
+                )
+                .map_err(normalized_command_error)?,
+            )
+        }
+        "begin_checkpoint_stage_v2" => {
+            let command: BeginNormalizedCheckpointStageV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                begin_normalized_checkpoint_stage_v2(connection, &command)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "describe_checkpoint_export_v2" => {
+            serde_json::from_value::<EmptyCommandPayload>(payload)
+                .map_err(|_| "request_invalid")?;
+            encode_command_result(
+                describe_normalized_checkpoint_export_v2(connection)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "export_checkpoint_page_v2" => {
+            let command: PinnedNormalizedCheckpointExportRequestV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                export_pinned_normalized_checkpoint_page_v2(connection, &command)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "finalize_checkpoint_stage_v2" => {
+            let command: FinalizeCheckpointStageCommandV2 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                finalize_normalized_checkpoint_stage_v2(connection, &command.stage_id)
+                    .map_err(normalized_command_error)?,
+            )
+        }
+        "inspect_storage_v1" => {
+            serde_json::from_value::<EmptyCommandPayload>(payload)
+                .map_err(|_| "request_invalid")?;
+            inspect_normalized_storage_v1(connection)
+        }
+        "query_v1" => {
+            query_normalized_json_v1(connection, payload).map_err(normalized_command_error)
+        }
+        _ => Err("command_unknown"),
+    }
+}
+
+fn encode_command_result<T: Serialize>(value: T) -> Result<Value, &'static str> {
+    serde_json::to_value(value).map_err(|_| "response_invalid")
+}
+
+fn inspect_normalized_storage_v1(connection: &rusqlite::Connection) -> Result<Value, &'static str> {
+    let (contract_version, schema_version, protocol_version, schema_sha256): (
+        u32,
+        u32,
+        u32,
+        String,
+    ) = connection
+        .query_row(
+            "SELECT contract_version, schema_version, protocol_version, schema_sha256
+             FROM library_storage_meta WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|_| "storage_unavailable")?;
+    let authority = connection
+        .query_row(
+            "SELECT meta.library_id, meta.authority_epoch, meta.source_revision, active.writer_id
+             FROM library_meta AS meta
+             JOIN library_active_authority AS active
+               ON active.active_key = 'active'
+              AND active.library_id = meta.library_id
+              AND active.epoch_id = meta.authority_epoch
+             WHERE meta.singleton_id = 1",
+            [],
+            |row| {
+                Ok(json!({
+                    "authorityEpoch": row.get::<_, String>(1)?,
+                    "libraryId": row.get::<_, String>(0)?,
+                    "sourceRevision": row.get::<_, u64>(2)?,
+                    "writerId": row.get::<_, String>(3)?,
+                }))
+            },
+        )
+        .or_else(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => Ok(Value::Null),
+            error => Err(error),
+        })
+        .map_err(|_| "storage_unavailable")?;
+    Ok(json!({
+        "activeAuthority": authority,
+        "applicationId": crate::sqlite_contract_generated::SQLITE_APPLICATION_ID,
+        "contractVersion": contract_version,
+        "protocolVersion": protocol_version,
+        "schemaSha256": schema_sha256,
+        "schemaVersion": schema_version,
+    }))
+}
+
+fn normalized_command_error(error: NormalizedSqliteError) -> &'static str {
+    match error {
+        NormalizedSqliteError::Content(_)
+        | NormalizedSqliteError::InvalidRequest(_)
+        | NormalizedSqliteError::Transport(_) => "request_invalid",
+        NormalizedSqliteError::Journal(_) | NormalizedSqliteError::Sqlite(_) => "command_failed",
+    }
+}
+
+fn read_command_frame(reader: &mut File) -> Result<Vec<u8>, LibraryCoreSidecarError> {
+    let mut length = [0_u8; 4];
+    reader
+        .read_exact(&mut length)
+        .map_err(|_| failure("command_channel_closed"))?;
+    let length =
+        usize::try_from(u32::from_be_bytes(length)).map_err(|_| failure("command_invalid"))?;
+    if length == 0 || length > NATIVE_COMMAND_MAXIMUM_FRAME_BYTES {
+        return Err(failure("command_invalid"));
+    }
+    let mut payload = vec![0_u8; length];
+    reader
+        .read_exact(&mut payload)
+        .map_err(|_| failure("command_channel_closed"))?;
+    Ok(payload)
+}
+
+fn write_command_frame<T: Serialize>(
+    writer: &mut File,
+    response: &T,
+) -> Result<(), LibraryCoreSidecarError> {
+    let payload = serde_json::to_vec(response).map_err(|_| failure("response_invalid"))?;
+    if payload.is_empty() || payload.len() > NATIVE_COMMAND_MAXIMUM_FRAME_BYTES {
+        return Err(failure("response_invalid"));
+    }
+    let length = u32::try_from(payload.len()).map_err(|_| failure("response_invalid"))?;
+    writer
+        .write_all(&length.to_be_bytes())
+        .and_then(|()| writer.write_all(&payload))
+        .and_then(|()| writer.flush())
+        .map_err(|_| failure("command_channel_closed"))
 }
 
 fn read_start_envelope() -> Result<StartEnvelope, LibraryCoreSidecarError> {
@@ -268,6 +539,8 @@ fn read_start_envelope() -> Result<StartEnvelope, LibraryCoreSidecarError> {
         || envelope.admission_fd != ADMISSION_FD
         || envelope.credential_descriptor_fd != CREDENTIAL_DESCRIPTOR_FD
         || envelope.lifetime_fd != LIFETIME_FD
+        || envelope.command_request_fd != COMMAND_REQUEST_FD
+        || envelope.command_response_fd != COMMAND_RESPONSE_FD
     {
         return Err(failure("control_invalid"));
     }
@@ -572,6 +845,14 @@ fn validate_lifetime_descriptor(descriptor: RawFd) -> Result<(), LibraryCoreSide
     Ok(())
 }
 
+fn validate_command_descriptor(descriptor: RawFd) -> Result<(), LibraryCoreSidecarError> {
+    let metadata = descriptor_metadata(descriptor)?;
+    if !metadata.file_type().is_fifo() && !metadata.file_type().is_socket() {
+        return Err(failure("command_channel_invalid"));
+    }
+    Ok(())
+}
+
 fn write_ready_record(ready: &ReadyRecord<'_>) -> Result<(), LibraryCoreSidecarError> {
     let mut bytes = serde_json::to_vec(ready).map_err(|_| failure("ready_encode_failed"))?;
     bytes.push(b'\n');
@@ -621,7 +902,7 @@ fn valid_record_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
-    use std::io::Error;
+    use std::io::{Error, Seek, SeekFrom};
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::{symlink, MetadataExt, OpenOptionsExt, PermissionsExt};
     use std::process::Command;
@@ -634,7 +915,7 @@ mod tests {
     const BOUND_AUTHORITY_HELPER_ROOT: &str = "FREED_BOUND_AUTHORITY_HELPER_ROOT";
 
     fn exercise_authority(authority: &LibraryCoreSidecarAuthority) {
-        let connection = authority.connect().expect("connect normalized authority");
+        let mut connection = authority.connect().expect("connect normalized authority");
         let user_version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read normalized schema version");
@@ -669,6 +950,14 @@ mod tests {
             crate::sqlite_contract_generated::SQLITE_PROTOCOL_VERSION
         );
         assert_eq!(legacy_tables, 0);
+        let inspection =
+            execute_native_command_v1(&mut connection, "inspect_storage_v1", json!({}))
+                .expect("inspect normalized command storage");
+        assert_eq!(inspection["activeAuthority"], Value::Null);
+        assert_eq!(
+            inspection["schemaSha256"],
+            crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256
+        );
     }
 
     #[test]
@@ -755,6 +1044,45 @@ mod tests {
         assert_eq!(application_id, 7);
         assert!(!root.path().join("library-core").exists());
         assert!(!root.path().join("library-backups").exists());
+    }
+
+    #[test]
+    fn native_command_registry_is_closed_and_frames_are_bounded() {
+        let root = tempdir().expect("temporary root");
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
+            .expect("set root permissions");
+        let descriptor = File::open(root.path()).expect("open root descriptor");
+        let authority =
+            LibraryCoreSidecarAuthority::open_from_inherited_descriptor(descriptor.as_raw_fd())
+                .expect("open normalized authority");
+        let mut connection = authority.connect().expect("connect normalized authority");
+        for command_id in crate::sqlite_contract_generated::NATIVE_COMMAND_IDS {
+            assert_ne!(
+                execute_native_command_v1(&mut connection, command_id, json!({})),
+                Err("command_unknown"),
+                "generated command {command_id} is not dispatched"
+            );
+        }
+        assert_eq!(
+            execute_native_command_v1(&mut connection, "shell_import_v1", json!({})),
+            Err("command_unknown")
+        );
+
+        let mut oversized = tempfile::tempfile().expect("temporary frame");
+        oversized
+            .write_all(
+                &u32::try_from(NATIVE_COMMAND_MAXIMUM_FRAME_BYTES + 1)
+                    .expect("frame bound fits u32")
+                    .to_be_bytes(),
+            )
+            .expect("write oversized frame header");
+        oversized
+            .seek(SeekFrom::Start(0))
+            .expect("rewind oversized frame");
+        assert_eq!(
+            read_command_frame(&mut oversized),
+            Err(failure("command_invalid"))
+        );
     }
 
     #[test]
@@ -1097,6 +1425,8 @@ mod tests {
             admission_fd: 6,
             credential_descriptor_fd: 7,
             lifetime_fd: 8,
+            command_request_fd: 9,
+            command_response_fd: 10,
         };
         let mut admission = AdmissionRecord {
             format: "freed_library_service_admission_v1".to_string(),

@@ -88,6 +88,20 @@ cursors, row and byte bounds, nested limits, and exact closed fields, and
 returns the request-specific response type. A host cannot widen or reinterpret
 the result shape.
 
+The headless native boundary uses generated command protocol 1 over dedicated
+inherited request and response descriptors. Each frame starts with one
+four-byte unsigned big-endian payload length and cannot exceed 4 MiB. Requests
+bind a 64-character lowercase hexadecimal request ID, one generated command
+ID, and one exact command payload. The closed registry contains normalized
+checkpoint begin, append, finalize, pinned export, registered query, and
+storage-inspection commands. Startup must round-trip storage inspection and
+match the generated SQLite application ID, contract version, schema version,
+wire protocol version, and schema digest before the service reports running.
+Unknown commands, extra fields, changed versions, malformed UTF-8, truncated
+frames, oversized frames, response identity drift, and transport closure fail
+closed. This command protocol never carries raw SQL, SQLite files, shell JSON,
+whole-item JSON, Drive credentials, or authority private keys.
+
 ### 3.2 Browser core
 
 The PWA runs official SQLite WebAssembly in a dedicated worker and persists the

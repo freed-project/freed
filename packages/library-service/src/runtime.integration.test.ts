@@ -21,6 +21,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { bindLibraryServiceConfig } from "./config.js";
 import { createNodeLibraryServicePorts } from "./node-ports.js";
 import {
+  LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION,
+  LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_SQLITE_APPLICATION_ID,
+  LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
+  LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+  LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+} from "./library-core-command-contract.generated.js";
+import {
   bindLibraryServiceStatusFile,
   createLibraryServiceStatusRecord,
   writeLibraryServiceStatus,
@@ -176,10 +184,41 @@ for await (const chunk of process.stdin) control += chunk.toString("utf8");
 const envelope = JSON.parse(control.trim());
 let stopping = false;
 const watchdog = new Socket({ fd: 8, readable: true, writable: false });
+const commandRequest = new Socket({ fd: 9, readable: true, writable: false });
+const commandResponse = new Socket({ fd: 10, readable: false, writable: true });
+let commandBytes = Buffer.alloc(0);
+commandRequest.on("data", (chunk) => {
+  commandBytes = Buffer.concat([commandBytes, chunk]);
+  if (commandBytes.length < 4) return;
+  const length = commandBytes.readUInt32BE(0);
+  if (length === 0 || commandBytes.length !== length + 4) process.exit(72);
+  const request = JSON.parse(commandBytes.subarray(4).toString("utf8"));
+  if (request.commandId !== "inspect_storage_v1") process.exit(73);
+  const payload = Buffer.from(JSON.stringify({
+    protocolVersion: ${LIBRARY_CORE_NATIVE_COMMAND_PROTOCOL_VERSION},
+    requestId: request.requestId,
+    ok: true,
+    result: {
+      activeAuthority: null,
+      applicationId: ${LIBRARY_CORE_SQLITE_APPLICATION_ID},
+      contractVersion: ${LIBRARY_CORE_SQLITE_CONTRACT_VERSION},
+      protocolVersion: ${LIBRARY_CORE_SQLITE_PROTOCOL_VERSION},
+      schemaSha256: ${JSON.stringify(LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256)},
+      schemaVersion: ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION},
+    },
+  }));
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(payload.length, 0);
+  commandResponse.write(Buffer.concat([header, payload]));
+  commandBytes = Buffer.alloc(0);
+});
+commandRequest.resume();
 async function stop() {
   if (stopping) return;
   stopping = true;
   watchdog.destroy();
+  commandRequest.destroy();
+  commandResponse.destroy();
   descendant.kill("SIGTERM");
   const kill = setTimeout(() => descendant.kill("SIGKILL"), 200);
   if (descendant.exitCode === null && descendant.signalCode === null) {
@@ -200,7 +239,7 @@ const data = identity(4);
 const state = identity(5);
 const receipt = {
   type: "ready",
-  protocolVersion: 1,
+  protocolVersion: 2,
   role: "primary",
   pid: process.pid,
   leaseHeld: true,
@@ -208,6 +247,7 @@ const receipt = {
   admissionAccepted: true,
   credentialsReady: true,
   watchdogActive: true,
+  commandChannelReady: true,
   parentNonce: envelope.parentNonce,
   configDigest: envelope.configDigest,
   executableDigest: digest(3),
@@ -578,7 +618,7 @@ afterEach(async () => {
 
 describe("compiled freed-library runtime", () => {
   darwinIt(
-    "runs the real descriptor-bound native sidecar with one lease and no SQLite transport",
+    "runs the real descriptor-bound native sidecar against normalized SQLite",
     async () => {
       const { dataRoot, stateRoot, supervisorArgs } =
         await createNativeSidecarFixture();
@@ -587,9 +627,12 @@ describe("compiled freed-library runtime", () => {
       expect(sidecarPid).toBeGreaterThan(0);
       expect(
         await stat(
-          path.join(dataRoot, "library-core", "library-core.sqlite"),
+          path.join(dataRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
+      await expect(stat(path.join(dataRoot, "library-core"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
       const stateFiles = await readdir(stateRoot, { recursive: true });
       expect(
         stateFiles.filter((file) => /(?:\.sqlite|\.sqlite-wal|\.sqlite-shm)$/.test(file)),
@@ -624,13 +667,13 @@ describe("compiled freed-library runtime", () => {
       expect(await stat(path.join(movedRoot, "process.lock"))).toBeDefined();
       expect(
         await stat(
-          path.join(movedRoot, "library-core", "library-core.sqlite"),
+          path.join(movedRoot, "library-sqlite", "library-core.sqlite"),
         ),
       ).toBeDefined();
       await expect(stat(path.join(dataRoot, "process.lock"))).rejects.toMatchObject({
         code: "ENOENT",
       });
-      await expect(stat(path.join(dataRoot, "library-core"))).rejects.toMatchObject({
+      await expect(stat(path.join(dataRoot, "library-sqlite"))).rejects.toMatchObject({
         code: "ENOENT",
       });
 
