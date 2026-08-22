@@ -621,6 +621,19 @@ The Primary additionally reads actor-scoped intent heads, admits or rejects
 complete intent transactions, publishes result segments, and advances the
 authenticated manifest.
 
+Normalized result segments use protocol v2. Each immutable object contains one
+closed header followed by the canonical authority-signed follower result
+envelopes themselves. The segment does not project those results into receipt
+summaries and does not wrap canonical JSON in another JSON string. Every result
+record remains at or below 131,072 canonical bytes. One segment contains at
+most 128 results and at most 1,048,576 canonical result bytes. Its header binds
+the Library, storage epoch, actor, exact result sequence range, previous
+transport segment digest, total canonical result bytes, and a domain-separated
+semantic digest. The immutable descriptor independently binds the stored bytes
+and exact object key. Followers verify both layers plus the logical
+`previous_result_digest` chain before passing canonical result bytes to SQLite
+for authority-signature verification and atomic reconciliation.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 

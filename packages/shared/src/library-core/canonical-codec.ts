@@ -49,6 +49,7 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "operation-segment-body",
   "intent-segment-body",
   "result-segment-body",
+  "normalized-result-segment-body-v2",
   "follower-result-body",
   "causal-frontier",
   "legacy-source-admission-key",

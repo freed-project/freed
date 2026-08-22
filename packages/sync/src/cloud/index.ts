@@ -90,6 +90,12 @@ export {
   type LibraryCoreResultOutboxEntryV1,
 } from "./library-core-result-segments.js";
 export {
+  importLibraryCoreNormalizedResultSegmentV2,
+  prepareLibraryCoreNormalizedResultSegmentV2,
+  type LibraryCoreNormalizedResultSegmentImportWriterV2,
+  type PreparedLibraryCoreNormalizedResultSegmentV2,
+} from "./library-core-normalized-result-segments.js";
+export {
   publishLibraryCoreResultEntriesV1,
   type LibraryCoreResultHeadReadV1,
   type LibraryCoreResultPublicationAdapterV1,
