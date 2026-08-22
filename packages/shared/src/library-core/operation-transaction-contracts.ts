@@ -13,11 +13,14 @@ import type {
   FeedItemRemoveTransactionMemberBodyV1,
   FeedItemUserStateAssignmentTransactionMemberBodyV1,
   RssFeedRemoveTransactionMemberBodyV1,
+  RssFeedTitleAssignmentTransactionMemberBodyV1,
   RssFeedUpsertTransactionMemberBodyV1,
   PreferencesLeafAssignmentTransactionMemberBodyV1,
+  PersonReachOutAppendTransactionMemberBodyV1,
   PersonUpsertTransactionMemberBodyV1,
   PersonRemoveTransactionMemberBodyV1,
   AccountUpsertTransactionMemberBodyV1,
+  AccountPersonAssignmentTransactionMemberBodyV1,
   AccountRemoveTransactionMemberBodyV1,
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
@@ -71,6 +74,12 @@ export interface RssFeedRemoveSigningBodyV1 extends RssFeedRemoveTransactionMemb
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface RssFeedTitleAssignmentSigningBodyV1 extends RssFeedTitleAssignmentTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export interface PreferencesLeafAssignmentSigningBodyV1 extends PreferencesLeafAssignmentTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
@@ -78,6 +87,12 @@ export interface PreferencesLeafAssignmentSigningBodyV1 extends PreferencesLeafA
 }
 
 export interface PersonUpsertSigningBodyV1 extends PersonUpsertTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
+export interface PersonReachOutAppendSigningBodyV1 extends PersonReachOutAppendTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly transaction_digest: LibraryCoreLowercaseHex64;
@@ -101,6 +116,12 @@ export interface AccountRemoveSigningBodyV1 extends AccountRemoveTransactionMemb
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface AccountPersonAssignmentSigningBodyV1 extends AccountPersonAssignmentTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemCaptureUpsertSigningBodyV1
   | FeedItemReadAssignmentSigningBodyV1
@@ -108,11 +129,14 @@ export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemRemoveSigningBodyV1
   | RssFeedUpsertSigningBodyV1
   | RssFeedRemoveSigningBodyV1
+  | RssFeedTitleAssignmentSigningBodyV1
   | PreferencesLeafAssignmentSigningBodyV1
   | PersonUpsertSigningBodyV1
+  | PersonReachOutAppendSigningBodyV1
   | PersonRemoveSigningBodyV1
   | AccountUpsertSigningBodyV1
-  | AccountRemoveSigningBodyV1;
+  | AccountRemoveSigningBodyV1
+  | AccountPersonAssignmentSigningBodyV1;
 
 export interface LibraryCoreSigningMemberV1 {
   readonly member_digest: LibraryCoreLowercaseHex64;

@@ -16,10 +16,13 @@ import {
   type FeedItemRemoveSigningBodyV1,
   type FeedItemUserStateAssignmentSigningBodyV1,
   type RssFeedRemoveSigningBodyV1,
+  type RssFeedTitleAssignmentSigningBodyV1,
   type RssFeedUpsertSigningBodyV1,
   type PreferencesLeafAssignmentSigningBodyV1,
+  type PersonReachOutAppendSigningBodyV1,
   type PersonUpsertSigningBodyV1,
   type PersonRemoveSigningBodyV1,
+  type AccountPersonAssignmentSigningBodyV1,
   type AccountUpsertSigningBodyV1,
   type AccountRemoveSigningBodyV1,
   type LibraryCoreOperationSigningBodyV1,
@@ -57,11 +60,19 @@ export interface RssFeedRemoveEnvelopeV1 extends RssFeedRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface RssFeedTitleAssignmentEnvelopeV1 extends RssFeedTitleAssignmentSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export interface PreferencesLeafAssignmentEnvelopeV1 extends PreferencesLeafAssignmentSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
 export interface PersonUpsertEnvelopeV1 extends PersonUpsertSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export interface PersonReachOutAppendEnvelopeV1 extends PersonReachOutAppendSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
@@ -77,6 +88,10 @@ export interface AccountRemoveEnvelopeV1 extends AccountRemoveSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface AccountPersonAssignmentEnvelopeV1 extends AccountPersonAssignmentSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemCaptureUpsertEnvelopeV1
   | FeedItemReadAssignmentEnvelopeV1
@@ -84,11 +99,14 @@ export type LibraryCoreOperationEnvelopeV1 =
   | FeedItemRemoveEnvelopeV1
   | RssFeedUpsertEnvelopeV1
   | RssFeedRemoveEnvelopeV1
+  | RssFeedTitleAssignmentEnvelopeV1
   | PreferencesLeafAssignmentEnvelopeV1
   | PersonUpsertEnvelopeV1
+  | PersonReachOutAppendEnvelopeV1
   | PersonRemoveEnvelopeV1
   | AccountUpsertEnvelopeV1
-  | AccountRemoveEnvelopeV1;
+  | AccountRemoveEnvelopeV1
+  | AccountPersonAssignmentEnvelopeV1;
 
 export interface LibraryCoreFinalizedEnvelopeV1 {
   readonly envelope: LibraryCoreOperationEnvelopeV1;

@@ -178,7 +178,10 @@ legal content uses descriptors and content-addressed chunks. The capture actor
 remains limited to this one feed-capture mutation. Declaring a future mutation
 does not grant it to any profile. Rust and TypeScript consume generated profile
 constants, so no second capability-operation registry can drift from the
-mutation catalog.
+mutation catalog. All 18 generated mutation programs also share one closed TypeScript
+assembly, signing-body, and final-envelope path before the native verifier and
+materializer. No supported program can bypass canonical transaction bounds by
+falling out of a handwritten transform union.
 
 Each mutation definition binds:
 

@@ -8,8 +8,11 @@ import {
   type LibraryCoreDigestDomain,
 } from "./canonical-codec.js";
 import {
+  ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
@@ -111,7 +114,8 @@ function oversizedCaptureInput(): FeedItemCaptureUpsertTransactionMemberInputV1 
         content: {
           mediaUrls: Array.from(
             { length: 16 },
-            (_, index) => `https://example.com/${String(index)}/${"x".repeat(8_070)}`,
+            (_, index) =>
+              `https://example.com/${String(index)}/${"x".repeat(8_070)}`,
           ),
           mediaTypes: Array.from({ length: 16 }, () => "image"),
         },
@@ -129,6 +133,105 @@ function oversizedCaptureInput(): FeedItemCaptureUpsertTransactionMemberInputV1 
 }
 
 describe("Library Core operation envelope finalization", () => {
+  it("finalizes every generated assignment and append family", async () => {
+    const transactionId = "tx:remaining-generated-families:1";
+    const common = {
+      library_id: HEX.library,
+      epoch: 1,
+      epoch_id: HEX.epoch,
+      actor_id: HEX.actor,
+      causal_frontier: [],
+      hlc_wall_ms: 1_783_000_000_000,
+      transaction_id: transactionId,
+      transaction_member_count: 3,
+      created_at_ms: 1_783_000_000_000,
+    };
+    const inputs = [
+      {
+        schema: RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+        input: {
+          ...common,
+          operation_id: "op:rss-title:1",
+          actor_sequence: 1,
+          previous_actor_operation_id: null,
+          hlc_counter: 0,
+          transaction_member_index: 0,
+          entity_id: "https://example.com/feed.xml",
+          payload: {
+            assigned_at_ms: 1_783_000_000_000,
+            title: "Example feed",
+          },
+        },
+      },
+      {
+        schema: PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
+        input: {
+          ...common,
+          operation_id: "op:reach-out:1",
+          actor_sequence: 2,
+          previous_actor_operation_id: "op:rss-title:1",
+          hlc_counter: 1,
+          transaction_member_index: 1,
+          entity_id: "person:ada",
+          payload: {
+            channel: "text",
+            logged_at_ms: 1_783_000_000_000,
+            notes: "Checked in",
+          },
+        },
+      },
+      {
+        schema: ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+        input: {
+          ...common,
+          operation_id: "op:account-person:1",
+          actor_sequence: 3,
+          previous_actor_operation_id: "op:reach-out:1",
+          hlc_counter: 2,
+          transaction_member_index: 2,
+          entity_id: "account:ada",
+          payload: {
+            assigned_at_ms: 1_783_000_000_000,
+            person_id: "person:ada",
+          },
+        },
+      },
+    ] as const;
+    const members = inputs.map(({ schema, input }) =>
+      schema.construct(input, {
+        digest(domain: LibraryCoreConstructionDigestDomain, value: unknown) {
+          return digest(domain, value);
+        },
+      }),
+    );
+    const transaction = assembleLibraryCoreTransactionV1(members, HEX.chain, {
+      digest(domain, value) {
+        return digest(domain, value);
+      },
+    });
+
+    const result = await finalizeLibraryCoreTransactionV1(transaction, {
+      async signOperation() {
+        return HEX.signature;
+      },
+      digest(domain, value) {
+        return digest(domain, value);
+      },
+    });
+
+    expect(
+      result.members.map(({ envelope }) => envelope.operation_type),
+    ).toEqual([
+      "rss_feed_title_assignment",
+      "person_reach_out_append",
+      "account_person_assignment",
+    ]);
+    expect(result.canonical_envelope_bytes).toBeLessThanOrEqual(4_194_304);
+    for (const member of result.members) {
+      expect(member.envelope_digest).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
   it("signs exact domain inputs and returns immutable final envelopes", async () => {
     const signingInputs: string[] = [];
     const result = await finalizeLibraryCoreTransactionV1(assembled(), {
@@ -160,9 +263,7 @@ describe("Library Core operation envelope finalization", () => {
     expect(isLibraryCoreFinalizedTransactionV1(result)).toBe(true);
     expect(Object.getOwnPropertySymbols(result)).toHaveLength(0);
     expect(
-      isLibraryCoreFinalizedTransactionV1(
-        Object.freeze(Object.create(result)),
-      ),
+      isLibraryCoreFinalizedTransactionV1(Object.freeze(Object.create(result))),
     ).toBe(false);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.members)).toBe(true);
