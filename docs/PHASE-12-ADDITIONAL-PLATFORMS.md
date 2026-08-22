@@ -17,8 +17,9 @@
 > media bytes. The PWA worker publishes verified content-addressed OPFS ranges
 > through bounded frames. Freed Desktop streams the same verified ranges into
 > its private descriptor-bound content vault. Both runtimes reconcile physical
-> objects against local SQLite proofs at startup. Playback streaming, complete
-> cache closure, pinning, and eviction remain in progress.
+> objects against local SQLite proofs at startup and serve bounded verified
+> range windows without exposing physical paths. Complete cache closure,
+> pinning, transport scheduling, and eviction remain in progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
@@ -30,6 +31,8 @@
       integrity metadata.
 - [x] Verify independently retrievable ranges through a paged authenticated
       range map so multi-gigabyte media never becomes one logical wire record.
+- [x] Read locally cached playback bytes through bounded, proof-checked range
+      windows on Freed Desktop and the PWA without allocating a full rendition.
 - [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
       follower hydration.
 - [ ] Let a client stream selected ranges through the approved user-owned

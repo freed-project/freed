@@ -8,11 +8,15 @@ import {
   parseLibraryCoreContentRangePublicationBeginV1,
   parseLibraryCoreContentRangePublicationFinalizeV1,
   parseLibraryCoreContentRangePublicationStatusV1,
+  parseLibraryCoreContentRangeReadRequestV1,
+  parseLibraryCoreContentRangeReadResponseV1,
   type LibraryCoreContentRangePublicationAbortV1,
   type LibraryCoreContentRangePublicationAppendV1,
   type LibraryCoreContentRangePublicationBeginV1,
   type LibraryCoreContentRangePublicationFinalizeV1,
   type LibraryCoreContentRangePublicationStatusV1,
+  type LibraryCoreContentRangeReadRequestV1,
+  type LibraryCoreContentRangeReadResponseV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
 } from "@freed/shared/library-core";
 
@@ -38,8 +42,15 @@ export interface PwaContentRangeStorageV1 {
     storageKey: string,
   ): Promise<PwaContentRangeObjectV1>;
   remove(storageKey: string): Promise<void>;
+  read(
+    storageKey: string,
+    at: number,
+    maximumBytes: number,
+  ): Promise<Uint8Array>;
   scan(
-    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+    visit: (
+      entry: Readonly<{ byteLength: number; storageKey: string }>,
+    ) => Promise<void>,
   ): Promise<void>;
   stat(storageKey: string): Promise<number | null>;
 }
@@ -110,7 +121,10 @@ export class PwaLibraryCoreOpfsContentVault {
       request.rangeIndex,
       canonical.rangeContentDigest,
     );
-    const object = await this.#storage.create(request.publicationId, storageKey);
+    const object = await this.#storage.create(
+      request.publicationId,
+      storageKey,
+    );
     const session: PublicationSession = {
       contentDigest: request.contentDigest,
       expectedByteLength: canonical.byteLength,
@@ -137,7 +151,9 @@ export class PwaLibraryCoreOpfsContentVault {
       request.expectedOffset !== session.nextOffset ||
       request.bytes.byteLength > session.expectedByteLength - session.nextOffset
     ) {
-      throw new TypeError("content range publication append request is invalid");
+      throw new TypeError(
+        "content range publication append request is invalid",
+      );
     }
     const written = await session.writer.write(
       request.bytes,
@@ -187,13 +203,54 @@ export class PwaLibraryCoreOpfsContentVault {
     }
   }
 
-  async abort(input: LibraryCoreContentRangePublicationAbortV1): Promise<boolean> {
+  async abort(
+    input: LibraryCoreContentRangePublicationAbortV1,
+  ): Promise<boolean> {
     const parsed = parseLibraryCoreContentRangePublicationAbortV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const session = this.#sessions.get(parsed.value.publicationId);
     if (!session) return false;
     await this.#discard(session);
     return true;
+  }
+
+  async read(
+    input: LibraryCoreContentRangeReadRequestV1,
+  ): Promise<LibraryCoreContentRangeReadResponseV1> {
+    const parsed = parseLibraryCoreContentRangeReadRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const proof = this.#engine.readVerifiedContentRangeReadProof(
+      request.contentDigest,
+      request.rangeIndex,
+    );
+    if (request.rangeOffset >= proof.byteLength) {
+      throw new TypeError("content range read offset is outside the range");
+    }
+    const expectedBytes = Math.min(
+      request.maximumBytes,
+      proof.byteLength - request.rangeOffset,
+    );
+    const bytes = await this.#storage.read(
+      proof.storageKey,
+      request.rangeOffset,
+      expectedBytes,
+    );
+    if (bytes.byteLength !== expectedBytes) {
+      throw new Error("verified content range object is truncated");
+    }
+    const response = parseLibraryCoreContentRangeReadResponseV1({
+      bytes,
+      contentDigest: request.contentDigest,
+      nextRangeOffset: request.rangeOffset + bytes.byteLength,
+      rangeComplete:
+        request.rangeOffset + bytes.byteLength === proof.byteLength,
+      rangeIndex: request.rangeIndex,
+      rangeOffset: request.rangeOffset,
+      schemaVersion: 1,
+    });
+    if (!response.ok) throw new TypeError(response.error);
+    return response.value;
   }
 
   async close(): Promise<void> {
@@ -226,9 +283,8 @@ export class PwaLibraryCoreOpfsContentVault {
 
     let afterStorageKey: string | null = null;
     while (true) {
-      const page = this.#engine.pageVerifiedContentRangeStorageProofs(
-        afterStorageKey,
-      );
+      const page =
+        this.#engine.pageVerifiedContentRangeStorageProofs(afterStorageKey);
       if (page.length === 0) return;
       for (const proof of page) {
         const byteLength = await this.#storage.stat(proof.storageKey);
@@ -261,8 +317,7 @@ export class PwaLibraryCoreOpfsContentVault {
       contentDigest: session.contentDigest,
       expectedByteLength: session.expectedByteLength,
       expectedRangeContentDigest: session.expectedRangeContentDigest,
-      maximumAppendBytes:
-        LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
+      maximumAppendBytes: LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
       nextOffset: session.nextOffset,
       publicationId: session.publicationId,
       rangeIndex: session.rangeIndex,
@@ -325,8 +380,26 @@ class BrowserOpfsContentRangeStorageV1 implements PwaContentRangeStorageV1 {
     await directory.removeEntry(storageKey);
   }
 
+  async read(
+    storageKey: string,
+    at: number,
+    maximumBytes: number,
+  ): Promise<Uint8Array> {
+    const root = await navigator.storage.getDirectory();
+    const directory = await root.getDirectoryHandle(
+      PWA_LIBRARY_CORE_CONTENT_VAULT_DIRECTORY,
+      { create: true },
+    );
+    const file = await (await directory.getFileHandle(storageKey)).getFile();
+    return new Uint8Array(
+      await file.slice(at, at + maximumBytes).arrayBuffer(),
+    );
+  }
+
   async scan(
-    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+    visit: (
+      entry: Readonly<{ byteLength: number; storageKey: string }>,
+    ) => Promise<void>,
   ): Promise<void> {
     const root = await navigator.storage.getDirectory();
     const directory = await root.getDirectoryHandle(

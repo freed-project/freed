@@ -12,6 +12,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
+  createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -33,6 +34,7 @@ import {
   parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreSqliteCheckpointSelectionResponse,
   parseLibraryCoreSqliteFollowerMutationContextResponse,
+  parseLibraryCoreContentRangeReadResponseV1,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -51,6 +53,8 @@ import {
   type LibraryCoreContentRangePublicationBeginV1,
   type LibraryCoreContentRangePublicationFinalizeV1,
   type LibraryCoreContentRangePublicationStatusV1,
+  type LibraryCoreContentRangeReadRequestV1,
+  type LibraryCoreContentRangeReadResponseV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
@@ -158,6 +162,18 @@ export class PwaLibraryCoreSqliteClient {
     return this.#send((requestId) =>
       createLibraryCoreSqliteContentStateWorkerRequest(requestId, request),
     );
+  }
+
+  readContentRange(
+    request: LibraryCoreContentRangeReadRequestV1,
+  ): Promise<LibraryCoreContentRangeReadResponseV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentRangeReadWorkerRequest(requestId, request),
+    ).then((value) => {
+      const parsed = parseLibraryCoreContentRangeReadResponseV1(value);
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
   }
 
   beginContentRangePublication(

@@ -937,6 +937,11 @@ No range size becomes protocol law before that measurement.
 Streaming verifies each fetched range against the authenticated range map.
 Complete-file digest verification closes full offline hydration.
 
+Playback reads one verified local range window at a time. Each read is capped
+at 262,144 bytes and resolves the physical object only after SQLite proves the
+canonical range identity. Views never receive a reconstructed media shell or
+an unbounded file allocation.
+
 ### 13.5 Reachability and garbage collection
 
 Cloud retention follows authoritative references, checkpoints, backups,

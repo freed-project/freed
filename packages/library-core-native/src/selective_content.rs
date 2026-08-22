@@ -162,6 +162,28 @@ pub struct ContentRangePublicationRequestV1 {
     pub verified_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentRangeReadRequestV1 {
+    pub content_digest: String,
+    pub maximum_bytes: i64,
+    pub range_index: i64,
+    pub range_offset: i64,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentRangeReadResponseV1 {
+    pub bytes: Vec<u8>,
+    pub content_digest: String,
+    pub next_range_offset: i64,
+    pub range_complete: bool,
+    pub range_index: i64,
+    pub range_offset: i64,
+    pub schema_version: u32,
+}
+
 pub trait DurableContentRangeObjectV1: Write {
     fn discard(&mut self) -> std::io::Result<()>;
     fn make_durable(&mut self) -> std::io::Result<()>;

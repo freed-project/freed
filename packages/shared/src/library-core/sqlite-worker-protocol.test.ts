@@ -25,6 +25,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
+  createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -500,6 +501,24 @@ describe("Library Core SQLite worker protocol", () => {
         { publicationId, schemaVersion: 1 },
       ).kind,
     ).toBe("abort_content_range_publication");
+    expect(
+      createLibraryCoreSqliteContentRangeReadWorkerRequest("range-read", {
+        contentDigest,
+        maximumBytes: 262_144,
+        rangeIndex: 2,
+        rangeOffset: 4,
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("read_content_range");
+    expect(() =>
+      createLibraryCoreSqliteContentRangeReadWorkerRequest("range-read", {
+        contentDigest,
+        maximumBytes: 262_145,
+        rangeIndex: 2,
+        rangeOffset: 4,
+        schemaVersion: 1,
+      }),
+    ).toThrow(/read request is invalid/);
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({
         ...append,

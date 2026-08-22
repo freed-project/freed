@@ -275,6 +275,10 @@
         content-addressed vault without routing complete media through the
         renderer or native IPC. Startup removes partial and orphan objects,
         prunes missing or mismatched SQLite proofs, and preserves exact files.
+  - [x] Read verified cached media through a descriptor-bound native range API.
+        Every call rechecks canonical SQLite proof, file ownership, private
+        mode, link count, and exact length, and returns at most 256 KiB without
+        trusting a renderer path.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.

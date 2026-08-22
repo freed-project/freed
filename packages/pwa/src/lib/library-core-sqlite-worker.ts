@@ -230,6 +230,15 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "read_content_range") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await contentVault.read(request.request),
+        });
+        return;
+      }
       if (request.kind === "begin_content_range_publication") {
         if (!contentVault) throw new Error("PWA content vault is not open");
         scope.postMessage({

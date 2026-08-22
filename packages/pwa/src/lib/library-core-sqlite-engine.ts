@@ -1558,10 +1558,43 @@ export class PwaLibraryCoreSqliteEngine {
     }
     return Object.freeze({
       byteLength: safeInteger(rows[0]![0], "canonical content range length"),
-      rangeContentDigest: text(
-        rows[0]![1],
-        "canonical content range digest",
-      ),
+      rangeContentDigest: text(rows[0]![1], "canonical content range digest"),
+    });
+  }
+
+  readVerifiedContentRangeReadProof(
+    contentDigest: string,
+    rangeIndex: number,
+  ): Readonly<{ byteLength: number; storageKey: string }> {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      !Number.isSafeInteger(rangeIndex) ||
+      rangeIndex < 0
+    ) {
+      throw new TypeError("verified content range read identity is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT local.verified_byte_length, local.storage_key
+            FROM library_device_content_ranges AS local
+            JOIN library_content_ranges AS canonical
+              ON canonical.content_digest = local.content_digest
+             AND canonical.range_index = local.range_index
+             AND canonical.byte_length = local.verified_byte_length
+             AND canonical.range_digest = local.verified_range_digest
+            WHERE local.content_digest = ?1 COLLATE BINARY
+              AND local.range_index = ?2
+              AND local.storage_kind = 'opfs'
+            LIMIT 1;`,
+      bind: [contentDigest, rangeIndex],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("verified content range is unavailable");
+    }
+    return Object.freeze({
+      byteLength: safeInteger(rows[0]![0], "verified content range length"),
+      storageKey: text(rows[0]![1], "verified content range storage key"),
     });
   }
 
@@ -1719,9 +1752,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  readVerifiedContentRangeStorageProof(
-    storageKey: string,
-  ): Readonly<{
+  readVerifiedContentRangeStorageProof(storageKey: string): Readonly<{
     byteLength: number;
     canonicalStorageKey: string;
     storageKey: string;
@@ -1802,9 +1833,7 @@ export class PwaLibraryCoreSqliteEngine {
     );
   }
 
-  pruneVerifiedContentRangeStorageProofs(
-    storageKeys: readonly string[],
-  ): void {
+  pruneVerifiedContentRangeStorageProofs(storageKeys: readonly string[]): void {
     if (
       storageKeys.length > 128 ||
       new Set(storageKeys).size !== storageKeys.length ||

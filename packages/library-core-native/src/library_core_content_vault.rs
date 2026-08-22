@@ -1,15 +1,19 @@
 use std::ffi::{CStr, CString};
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 
 use crate::library_core_bound_root::file_from_duplicated_descriptor;
 use crate::sqlite_contract_generated::{
-    CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES, CONTENT_RANGE_STORAGE_KEY_PREFIX,
-    CONTENT_RANGE_STORAGE_KEY_SUFFIX, SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
+    CONTENT_RANGE_MAXIMUM_APPEND_BYTES, CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES,
+    CONTENT_RANGE_STORAGE_KEY_PREFIX, CONTENT_RANGE_STORAGE_KEY_SUFFIX,
+    SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
 };
-use crate::{DurableContentRangeObjectV1, LibraryCoreStoreError};
+use crate::{
+    ContentRangeReadRequestV1, ContentRangeReadResponseV1, DurableContentRangeObjectV1,
+    LibraryCoreStoreError,
+};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 
 const RECONCILIATION_PAGE_ROWS: i64 = 128;
@@ -173,6 +177,95 @@ impl LibraryCoreContentVault {
             }
         }
         transaction.commit().map_err(store_error)
+    }
+
+    pub(crate) fn read_range_v1(
+        &self,
+        connection: &Connection,
+        request: &ContentRangeReadRequestV1,
+    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
+        if request.schema_version != 1
+            || !valid_digest(&request.content_digest)
+            || request.range_index < 0
+            || request.range_offset < 0
+            || !(1..=i64::try_from(CONTENT_RANGE_MAXIMUM_APPEND_BYTES).expect("append bound"))
+                .contains(&request.maximum_bytes)
+        {
+            return Err(LibraryCoreStoreError::from(
+                "content range read request is invalid".to_string(),
+            ));
+        }
+        let proof = connection
+            .query_row(
+                "SELECT local.verified_byte_length, local.storage_key
+                 FROM library_device_content_ranges AS local
+                 JOIN library_content_ranges AS canonical
+                   ON canonical.content_digest = local.content_digest
+                  AND canonical.range_index = local.range_index
+                  AND canonical.byte_length = local.verified_byte_length
+                  AND canonical.range_digest = local.verified_range_digest
+                 WHERE local.content_digest = ?1 COLLATE BINARY
+                   AND local.range_index = ?2
+                   AND local.storage_kind = 'content_vault'
+                 LIMIT 1;",
+                rusqlite::params![request.content_digest, request.range_index],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()
+            .map_err(store_error)?
+            .ok_or_else(|| {
+                LibraryCoreStoreError::from("verified content range is unavailable".to_string())
+            })?;
+        if request.range_offset >= proof.0 {
+            return Err(LibraryCoreStoreError::from(
+                "content range read offset is outside the range".to_string(),
+            ));
+        }
+        let name = c_name(&proof.1)?;
+        let descriptor = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            )
+        };
+        if descriptor < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let mut file = unsafe { File::from_raw_fd(descriptor) };
+        let metadata = file.metadata()?;
+        if !metadata.is_file()
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.uid() != self.owner
+            || metadata.nlink() != 1
+            || i64::try_from(metadata.len()).ok() != Some(proof.0)
+        {
+            return Err(LibraryCoreStoreError::from(
+                "verified content range object is invalid".to_string(),
+            ));
+        }
+        let byte_count =
+            usize::try_from((proof.0 - request.range_offset).min(request.maximum_bytes)).map_err(
+                |_| LibraryCoreStoreError::from("content range read length is invalid".to_string()),
+            )?;
+        let mut bytes = vec![0u8; byte_count];
+        file.seek(SeekFrom::Start(
+            u64::try_from(request.range_offset).map_err(|_| {
+                LibraryCoreStoreError::from("content range read offset is invalid".to_string())
+            })?,
+        ))?;
+        file.read_exact(&mut bytes)?;
+        let next_range_offset =
+            request.range_offset + i64::try_from(bytes.len()).expect("bounded read");
+        Ok(ContentRangeReadResponseV1 {
+            bytes,
+            content_digest: request.content_digest.clone(),
+            next_range_offset,
+            range_complete: next_range_offset == proof.0,
+            range_index: request.range_index,
+            range_offset: request.range_offset,
+            schema_version: 1,
+        })
     }
 
     fn reconcile_directory_entries(

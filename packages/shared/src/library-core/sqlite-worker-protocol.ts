@@ -144,6 +144,7 @@ import {
   parseLibraryCoreContentRangePublicationAppendV1,
   parseLibraryCoreContentRangePublicationBeginV1,
   parseLibraryCoreContentRangePublicationFinalizeV1,
+  parseLibraryCoreContentRangeReadRequestV1,
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
   type LibraryCoreContentRangePublicationAbortReceiptV1,
@@ -152,6 +153,8 @@ import {
   type LibraryCoreContentRangePublicationBeginV1,
   type LibraryCoreContentRangePublicationFinalizeV1,
   type LibraryCoreContentRangePublicationStatusV1,
+  type LibraryCoreContentRangeReadRequestV1,
+  type LibraryCoreContentRangeReadResponseV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
@@ -501,6 +504,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "read_content_range";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      request: LibraryCoreContentRangeReadRequestV1;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "follower_mutation_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -650,6 +659,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreContentStateV1
   | LibraryCoreContentRangePublicationStatusV1
   | LibraryCoreContentRangePublicationAbortReceiptV1
+  | LibraryCoreContentRangeReadResponseV1
   | LibraryCoreVerifiedContentRangeReceiptV1
   | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
@@ -722,91 +732,107 @@ export function parseLibraryCoreSqliteWorkerRequest(
       : value.kind === "mutate_device_graph_layout" ||
           value.kind === "mutate_content_policy"
         ? ["kind", "mutation", "protocolVersion", "requestId"]
-        : value.kind === "read_content_state"
+        : value.kind === "read_content_state" ||
+            value.kind === "read_content_range"
           ? ["kind", "protocolVersion", "request", "requestId"]
           : value.kind === "begin_content_range_publication" ||
               value.kind === "append_content_range_publication" ||
               value.kind === "finalize_content_range_publication" ||
               value.kind === "abort_content_range_publication"
             ? ["kind", "protocolVersion", "publication", "requestId"]
-          : value.kind === "commit_follower_intent"
-            ? ["commit", "kind", "protocolVersion", "requestId"]
-            : value.kind === "page_follower_intents" ||
-                value.kind === "page_follower_transport"
-              ? ["kind", "page", "protocolVersion", "requestId"]
-              : value.kind === "publish_follower_intent"
-                ? ["kind", "protocolVersion", "publication", "requestId"]
-                : value.kind === "apply_follower_result"
-                  ? ["apply", "kind", "protocolVersion", "requestId"]
-                  : value.kind ===
-                      "publish_normalized_follower_intent_transport"
-                    ? ["kind", "protocolVersion", "publication", "requestId"]
+            : value.kind === "commit_follower_intent"
+              ? ["commit", "kind", "protocolVersion", "requestId"]
+              : value.kind === "page_follower_intents" ||
+                  value.kind === "page_follower_transport"
+                ? ["kind", "page", "protocolVersion", "requestId"]
+                : value.kind === "publish_follower_intent"
+                  ? ["kind", "protocolVersion", "publication", "requestId"]
+                  : value.kind === "apply_follower_result"
+                    ? ["apply", "kind", "protocolVersion", "requestId"]
                     : value.kind ===
-                        "import_normalized_follower_result_transport"
-                      ? ["import", "kind", "protocolVersion", "requestId"]
-                      : value.kind === "store_follower_actor_request"
-                        ? ["kind", "protocolVersion", "requestId", "store"]
-                        : value.kind === "install_follower_actor_enrollment"
-                          ? ["install", "kind", "protocolVersion", "requestId"]
-                          : value.kind === "begin_normalized_checkpoint_stage"
-                            ? ["kind", "protocolVersion", "requestId", "stage"]
-                            : value.kind ===
-                                "append_normalized_checkpoint_stage_page"
-                              ? ["kind", "page", "protocolVersion", "requestId"]
+                        "publish_normalized_follower_intent_transport"
+                      ? ["kind", "protocolVersion", "publication", "requestId"]
+                      : value.kind ===
+                          "import_normalized_follower_result_transport"
+                        ? ["import", "kind", "protocolVersion", "requestId"]
+                        : value.kind === "store_follower_actor_request"
+                          ? ["kind", "protocolVersion", "requestId", "store"]
+                          : value.kind === "install_follower_actor_enrollment"
+                            ? [
+                                "install",
+                                "kind",
+                                "protocolVersion",
+                                "requestId",
+                              ]
+                            : value.kind === "begin_normalized_checkpoint_stage"
+                              ? [
+                                  "kind",
+                                  "protocolVersion",
+                                  "requestId",
+                                  "stage",
+                                ]
                               : value.kind ===
-                                  "activate_normalized_checkpoint_stage"
+                                  "append_normalized_checkpoint_stage_page"
                                 ? [
-                                    "activation",
                                     "kind",
+                                    "page",
                                     "protocolVersion",
                                     "requestId",
                                   ]
-                                : value.kind === "begin_scope_action"
+                                : value.kind ===
+                                    "activate_normalized_checkpoint_stage"
                                   ? [
-                                      "createdAt",
+                                      "activation",
                                       "kind",
                                       "protocolVersion",
-                                      "request",
                                       "requestId",
-                                      "stageId",
                                     ]
-                                  : value.kind === "append_scope_action"
+                                  : value.kind === "begin_scope_action"
                                     ? [
-                                        "entityIds",
-                                        "expectedOrdinal",
+                                        "createdAt",
                                         "kind",
                                         "protocolVersion",
+                                        "request",
                                         "requestId",
                                         "stageId",
                                       ]
-                                    : value.kind === "finalize_scope_action"
+                                    : value.kind === "append_scope_action"
                                       ? [
-                                          "expectedMemberCount",
+                                          "entityIds",
+                                          "expectedOrdinal",
                                           "kind",
                                           "protocolVersion",
                                           "requestId",
                                           "stageId",
                                         ]
-                                      : value.kind === "page_scope_action"
+                                      : value.kind === "finalize_scope_action"
                                         ? [
-                                            "afterOrdinal",
+                                            "expectedMemberCount",
                                             "kind",
                                             "protocolVersion",
                                             "requestId",
                                             "stageId",
                                           ]
-                                        : value.kind === "close_scope_action"
+                                        : value.kind === "page_scope_action"
                                           ? [
+                                              "afterOrdinal",
                                               "kind",
                                               "protocolVersion",
                                               "requestId",
                                               "stageId",
                                             ]
-                                          : [
-                                              "kind",
-                                              "protocolVersion",
-                                              "requestId",
-                                            ];
+                                          : value.kind === "close_scope_action"
+                                            ? [
+                                                "kind",
+                                                "protocolVersion",
+                                                "requestId",
+                                                "stageId",
+                                              ]
+                                            : [
+                                                "kind",
+                                                "protocolVersion",
+                                                "requestId",
+                                              ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -840,6 +866,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "query",
       "read_normalized_checkpoint_receipt",
       "read_content_state",
+      "read_content_range",
       "read_follower_actor_enrollment_context",
       "store_follower_actor_request",
       "status",
@@ -960,6 +987,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
     if (!mutation.ok) throw new TypeError(mutation.error);
   } else if (value.kind === "read_content_state") {
     const request = parseLibraryCoreContentStateRequestV1(value.request);
+    if (!request.ok) throw new TypeError(request.error);
+  } else if (value.kind === "read_content_range") {
+    const request = parseLibraryCoreContentRangeReadRequestV1(value.request);
     if (!request.ok) throw new TypeError(request.error);
   } else if (value.kind === "begin_content_range_publication") {
     const publication = parseLibraryCoreContentRangePublicationBeginV1(
@@ -1290,6 +1320,18 @@ export function createLibraryCoreSqliteContentStateWorkerRequest(
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind: "read_content_state",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    request,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentRangeReadWorkerRequest(
+  requestId: string,
+  request: LibraryCoreContentRangeReadRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "read_content_range",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     request,
     requestId,

@@ -16,7 +16,8 @@ use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
 use crate::{
-    publish_content_range_from_reader_v1, ContentRangePublicationRequestV1, LibraryCoreJournal,
+    publish_content_range_from_reader_v1, ContentRangePublicationRequestV1,
+    ContentRangeReadRequestV1, ContentRangeReadResponseV1, LibraryCoreJournal,
     LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
     NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
@@ -191,6 +192,14 @@ impl LibraryCoreDesktopBinding {
         )?;
         publish_content_range_from_reader_v1(&mut connection, request, reader, &mut object)
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    pub fn read_content_range_v1(
+        &self,
+        request: &ContentRangeReadRequestV1,
+    ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
+        let connection = self.connect_selected_normalized()?;
+        self.content_vault.read_range_v1(&connection, request)
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
@@ -562,6 +571,18 @@ mod tests {
             storage_key,
             format!("range-{content_digest}-0-{content_digest}.bin")
         );
+        let range_read = binding
+            .read_content_range_v1(&ContentRangeReadRequestV1 {
+                content_digest: content_digest.clone(),
+                maximum_bytes: 3,
+                range_index: 0,
+                range_offset: 1,
+                schema_version: 1,
+            })
+            .expect("read descriptor-bound content range");
+        assert_eq!(range_read.bytes, bytes[1..4]);
+        assert_eq!(range_read.next_range_offset, 4);
+        assert!(!range_read.range_complete);
         assert_eq!(
             fs::read(moved_vault.join(&storage_key)).expect("bound range bytes"),
             bytes

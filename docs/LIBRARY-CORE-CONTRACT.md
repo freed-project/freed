@@ -985,6 +985,15 @@ descriptor, writes a 0600 staging file, syncs it, renames it to the canonical
 key, syncs the directory, and only then registers SQLite proof. The PWA follows
 the same proof order with its worker-owned OPFS handle.
 
+Cached reads use the same proof boundary. A request names one content digest,
+range index, in-range offset, and a byte ceiling no larger than 262,144 bytes.
+SQLite must prove that the local row still matches the canonical range before
+the vault opens its physical object. Freed Desktop opens that object relative
+to its held directory descriptor and rechecks file ownership, mode, link count,
+and exact length on the opened descriptor. The PWA worker reads the equivalent
+bounded OPFS slice. Neither runtime returns an unbounded rendition or trusts a
+renderer-supplied storage key.
+
 Every runtime reconciles physical objects before declaring the vault ready.
 The scan keeps at most 128 SQLite proofs in memory. It deletes unfinished and
 unreferenced objects, prunes proofs for missing or length-mismatched files,

@@ -139,6 +139,24 @@ export interface LibraryCoreContentRangePublicationAbortReceiptV1 {
   readonly schemaVersion: 1;
 }
 
+export interface LibraryCoreContentRangeReadRequestV1 {
+  readonly contentDigest: string;
+  readonly maximumBytes: number;
+  readonly rangeIndex: number;
+  readonly rangeOffset: number;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentRangeReadResponseV1 {
+  readonly bytes: Uint8Array;
+  readonly contentDigest: string;
+  readonly nextRangeOffset: number;
+  readonly rangeComplete: boolean;
+  readonly rangeIndex: number;
+  readonly rangeOffset: number;
+  readonly schemaVersion: 1;
+}
+
 type ParseResult<T> =
   Readonly<{ ok: true; value: T }> | Readonly<{ error: string; ok: false }>;
 
@@ -480,6 +498,82 @@ export function parseLibraryCoreContentRangePublicationBeginV1(
   });
 }
 
+export function parseLibraryCoreContentRangeReadRequestV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangeReadRequestV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "maximumBytes",
+      "rangeIndex",
+      "rangeOffset",
+      "schemaVersion",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.maximumBytes) ||
+    candidate.maximumBytes < 1 ||
+    candidate.maximumBytes > LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeOffset) ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range read request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangeReadRequestV1,
+  });
+}
+
+export function parseLibraryCoreContentRangeReadResponseV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangeReadResponseV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "bytes",
+      "contentDigest",
+      "nextRangeOffset",
+      "rangeComplete",
+      "rangeIndex",
+      "rangeOffset",
+      "schemaVersion",
+    ]) ||
+    !(candidate.bytes instanceof Uint8Array) ||
+    candidate.bytes.byteLength < 1 ||
+    candidate.bytes.byteLength >
+      LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.nextRangeOffset) ||
+    typeof candidate.rangeComplete !== "boolean" ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeOffset) ||
+    candidate.nextRangeOffset !==
+      candidate.rangeOffset + candidate.bytes.byteLength ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range read response is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      ...candidate,
+      bytes: candidate.bytes.slice(),
+    }) as unknown as LibraryCoreContentRangeReadResponseV1,
+  });
+}
+
 export function parseLibraryCoreContentRangePublicationAppendV1(
   value: unknown,
 ): ParseResult<LibraryCoreContentRangePublicationAppendV1> {
@@ -520,11 +614,7 @@ export function parseLibraryCoreContentRangePublicationFinalizeV1(
   const candidate = record(value);
   if (
     !candidate ||
-    !exactKeys(candidate, [
-      "publicationId",
-      "schemaVersion",
-      "verifiedAt",
-    ]) ||
+    !exactKeys(candidate, ["publicationId", "schemaVersion", "verifiedAt"]) ||
     !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
     candidate.schemaVersion !== 1 ||
     !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedAt)

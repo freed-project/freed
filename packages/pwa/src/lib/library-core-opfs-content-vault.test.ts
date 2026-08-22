@@ -51,8 +51,20 @@ class MemoryRangeStorage implements PwaContentRangeStorageV1 {
     this.objects.delete(storageKey);
   }
 
+  async read(
+    storageKey: string,
+    at: number,
+    maximumBytes: number,
+  ): Promise<Uint8Array> {
+    const bytes = this.objects.get(storageKey);
+    if (!bytes) throw new Error("test content range is absent");
+    return bytes.slice(at, at + maximumBytes);
+  }
+
   async scan(
-    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+    visit: (
+      entry: Readonly<{ byteLength: number; storageKey: string }>,
+    ) => Promise<void>,
   ): Promise<void> {
     for (const [storageKey, bytes] of [...this.objects]) {
       await visit({ byteLength: bytes.byteLength, storageKey });
@@ -154,6 +166,24 @@ describe("PWA Library Core OPFS content vault", () => {
       contentDigest,
     );
     expect(storage.objects.get(storageKey)).toEqual(bytes);
+    const read = await vault.read({
+      contentDigest,
+      maximumBytes: 19,
+      rangeIndex: 0,
+      rangeOffset: bytes.byteLength - 19,
+      schemaVersion: 1,
+    });
+    expect(read.bytes).toEqual(bytes.slice(-19));
+    expect(read.rangeComplete).toBe(true);
+    await expect(
+      vault.read({
+        contentDigest,
+        maximumBytes: 1,
+        rangeIndex: 0,
+        rangeOffset: bytes.byteLength,
+        schemaVersion: 1,
+      }),
+    ).rejects.toThrow(/outside the range/);
     expect(
       engine.readContentState({ contentDigest, schemaVersion: 1 }),
     ).toMatchObject({
