@@ -1074,13 +1074,13 @@ pub(super) fn commit_normalized_library_transaction(
     request: CommitNormalizedTransactionRequest,
 ) -> Result<DesktopNormalizedMutationReceipt, String> {
     use freed_library_core::sqlite_contract_generated::{
-        CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES,
-        FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS,
+        CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, OPERATION_TRANSACTION_MAXIMUM_BYTES,
+        OPERATION_TRANSACTION_MAXIMUM_MEMBERS,
     };
 
     if request.committed_at_ms < 0
         || request.canonical_envelope_json.is_empty()
-        || request.canonical_envelope_json.len() > FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS
+        || request.canonical_envelope_json.len() > OPERATION_TRANSACTION_MAXIMUM_MEMBERS
         || request.canonical_envelope_json.iter().any(|member| {
             member.is_empty() || member.len() > CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
         })
@@ -1088,7 +1088,7 @@ pub(super) fn commit_normalized_library_transaction(
             .canonical_envelope_json
             .iter()
             .try_fold(0_usize, |total, member| total.checked_add(member.len()))
-            .is_none_or(|total| total > FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES)
+            .is_none_or(|total| total > OPERATION_TRANSACTION_MAXIMUM_BYTES)
     {
         return Err("normalized mutation transaction exceeds its closed bounds".into());
     }

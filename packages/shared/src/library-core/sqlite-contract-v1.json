@@ -171,8 +171,8 @@
     "nativeExportResponseBytes": 1048576,
     "contentChunkBytes": 65536,
     "followerIntentPageRecords": 128,
-    "followerIntentTransactionMembers": 1000,
-    "followerIntentTransactionBytes": 4194304
+    "operationTransactionMembers": 1000,
+    "operationTransactionBytes": 4194304
   },
   "fractionalFields": {
     "10_feed_item": [

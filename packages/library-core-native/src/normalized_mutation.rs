@@ -15,8 +15,8 @@ use crate::library_core_journal::{
 use crate::normalized_sqlite::NormalizedSqliteError;
 use crate::sqlite_contract_generated::{
     SqliteMutationProgram, CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
-    FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS, FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES,
-    FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS, SQLITE_MUTATION_PROGRAMS,
+    FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS, OPERATION_TRANSACTION_MAXIMUM_BYTES,
+    OPERATION_TRANSACTION_MAXIMUM_MEMBERS, SQLITE_MUTATION_PROGRAMS,
 };
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -1189,7 +1189,7 @@ pub(crate) fn ingest_normalized_follower_intent_page_v1(
             || !(1..=MAX_SAFE_INTEGER).contains(&record.intent_epoch)
             || !(1..=MAX_SAFE_INTEGER).contains(&record.actor_counter)
             || record.member_count == 0
-            || record.member_count > FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS
+            || record.member_count > OPERATION_TRANSACTION_MAXIMUM_MEMBERS
             || record.member_index >= record.member_count
             || canonical.is_empty()
             || canonical.len() > CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
@@ -1352,7 +1352,7 @@ pub(crate) fn ingest_normalized_follower_intent_page_v1(
                 record.transaction_id,
                 canonical_bytes,
                 received_at,
-                i64::try_from(FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES).map_err(|_| {
+                i64::try_from(OPERATION_TRANSACTION_MAXIMUM_BYTES).map_err(|_| {
                     NormalizedSqliteError::InvalidRequest(
                         "normalized follower intent transaction byte bound is invalid",
                     )

@@ -193,6 +193,11 @@ Each mutation definition binds:
 - replication behavior
 - idempotency key and receipt shape
 
+Every canonical operation transaction, whether created by a Primary or a
+follower, uses the same generated ceiling of 1,000 members and 4,194,304 exact
+canonical bytes. Follower page limits govern transport pagination only. They
+do not define a second transaction format or a second mutation authority.
+
 Saved and archived state form one coupled last-writer register. A winning save
 sets saved and clears archived. A winning archive sets archived and clears
 saved. Clearing either produces the neutral state. The register compares the

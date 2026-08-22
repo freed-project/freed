@@ -103,8 +103,8 @@ function assertContract(contract) {
     contentChunkBytes: 65_536,
     nativeExportResponseBytes: 1_048_576,
     followerIntentPageRecords: 128,
-    followerIntentTransactionMembers: 1_000,
-    followerIntentTransactionBytes: 4_194_304,
+    operationTransactionMembers: 1_000,
+    operationTransactionBytes: 4_194_304,
   });
   if (
     Object.keys(limits).length !== Object.keys(expectedLimits).length ||
@@ -564,8 +564,8 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.ch
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.limits.nativeExportResponseBytes} as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = ${contract.limits.contentChunkBytes} as const;
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
-export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.followerIntentTransactionMembers} as const;
-export const LIBRARY_CORE_FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.followerIntentTransactionBytes} as const;
+export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.operationTransactionMembers} as const;
+export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.operationTransactionBytes} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = ${JSON.stringify(contract.preferenceWritePolicies, null, 2)} as const;
@@ -710,8 +710,8 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointP
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.limits.nativeExportResponseBytes};
 pub const CONTENT_CHUNK_BYTES: usize = ${contract.limits.contentChunkBytes};
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.followerIntentPageRecords};
-pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.followerIntentTransactionMembers};
-pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES: usize = ${contract.limits.followerIntentTransactionBytes};
+pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.operationTransactionMembers};
+pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = ${contract.limits.operationTransactionBytes};
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     ${JSON.stringify(schemaDigest)};
 pub const NORMALIZED_SCHEMA_SQL: &str =
