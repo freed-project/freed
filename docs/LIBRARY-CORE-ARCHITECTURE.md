@@ -932,6 +932,14 @@ and names exactly the generated Primary-writer mutation set with library-wide
 scope. Actor, capability, and mutation rows commit together after native
 certificate verification. Followers enroll separately under the same epoch.
 
+One restartable native preparation operation composes candidate construction,
+transition identity binding, authority installation, and Primary actor
+enrollment. The first invocation pins the installation witness and acceptance
+time in local normalized SQLite. Later invocations reuse those exact values,
+even when the wall clock has advanced. Its state moves only from candidate to
+authority installed to actor installed. The returned receipt contains exactly
+the fields needed by the Desktop selector plus the admitted Primary actor ID.
+
 Desktop selection uses one bounded canonical record under the descriptor-bound
 app-data root. It binds the normalized library ID, epoch ID, transition
 certificate digest, materialized product digest, and selection time. The host
@@ -943,6 +951,11 @@ Publication flushes one private pending file, atomically renames it to the
 fixed selector name, flushes the bound directory, and reads the exact record
 back through the same verifier. A different existing selector is never
 overwritten. Exact response-loss replay is idempotent.
+
+Freed Desktop runs this preparation before opening its product window while it
+holds the historical and normalized process leases. A fresh or inactive
+historical store is not a migration source. A complete active source is
+prepared and selected before renderer code can observe either authority.
 
 Freed Desktop and PWA product adapters call one shared query orchestration
 layer. The host supplies only a typed executor. Freed Desktop's executor calls

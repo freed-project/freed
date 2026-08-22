@@ -12,7 +12,7 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::{
     install_normalized_schema_v1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
-    LibraryCoreStoreError, ProcessLeaseIdentity,
+    LibraryCoreStoreError, NormalizedDesktopCutoverPreparedV1, ProcessLeaseIdentity,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
@@ -179,6 +179,10 @@ impl LibraryCoreDesktopBinding {
         Ok(connection)
     }
 
+    pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
+        Ok(self.authority_selection()?.is_some())
+    }
+
     pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
         self.require_legacy_authority()?;
         self.store.open_bound_journal()
@@ -293,7 +297,6 @@ impl LibraryCoreDesktopBinding {
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn write_authority_selection(
         &self,
         selection: &DesktopAuthoritySelectionV1,
@@ -328,6 +331,27 @@ impl LibraryCoreDesktopBinding {
             ));
         }
         Ok(())
+    }
+
+    pub fn publish_normalized_authority_selection_v1(
+        &self,
+        prepared: &NormalizedDesktopCutoverPreparedV1,
+    ) -> Result<(), LibraryCoreStoreError> {
+        if prepared.format != "freed_normalized_desktop_cutover_prepared_v1"
+            || prepared.primary_actor_id.is_empty()
+        {
+            return Err(LibraryCoreStoreError::from(
+                "Desktop normalized cutover receipt is invalid".to_string(),
+            ));
+        }
+        self.write_authority_selection(&DesktopAuthoritySelectionV1 {
+            format: "freed_desktop_sqlite_authority_selection_v1".to_owned(),
+            library_id: prepared.library_id.clone(),
+            epoch_id: prepared.epoch_id.clone(),
+            transition_certificate_digest: prepared.transition_certificate_digest.clone(),
+            normalized_product_digest: prepared.normalized_product_digest.clone(),
+            selected_at: prepared.selected_at,
+        })
     }
 }
 
@@ -445,9 +469,18 @@ mod tests {
             normalized_product_digest: "1".repeat(64),
             selected_at: 400,
         };
+        let prepared = NormalizedDesktopCutoverPreparedV1 {
+            format: "freed_normalized_desktop_cutover_prepared_v1".to_owned(),
+            library_id: selection.library_id.clone(),
+            epoch_id: selection.epoch_id.clone(),
+            transition_certificate_digest: selection.transition_certificate_digest.clone(),
+            normalized_product_digest: selection.normalized_product_digest.clone(),
+            selected_at: selection.selected_at,
+            primary_actor_id: "primary-actor".to_owned(),
+        };
         binding
-            .write_authority_selection(&selection)
-            .expect("write selector");
+            .publish_normalized_authority_selection_v1(&prepared)
+            .expect("publish selector from prepared receipt");
         binding
             .write_authority_selection(&selection)
             .expect("replay exact selector");

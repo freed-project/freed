@@ -80,6 +80,18 @@ struct NormalizedMigrationCandidateReceiptV1 {
     normalized_product_digest: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedDesktopCutoverPreparedV1 {
+    pub format: String,
+    pub library_id: String,
+    pub epoch_id: String,
+    pub transition_certificate_digest: String,
+    pub normalized_product_digest: String,
+    pub selected_at: u64,
+    pub primary_actor_id: String,
+}
+
 fn canonical_migration_candidate_v1(
     candidate: &NormalizedMigrationCandidateReceiptV1,
 ) -> Result<(String, String), NormalizedSqliteError> {
@@ -902,6 +914,15 @@ fn normalized_product_digest(
                 }
                 continue;
             }
+            if matches!(
+                record.registry_key.as_str(),
+                "90_actor_state"
+                    | "91_actor_capability"
+                    | "92_actor_capability_mutation"
+                    | "a0_receipt"
+            ) {
+                continue;
+            }
             accumulator.push(record)?;
         }
         if page.done {
@@ -1714,6 +1735,156 @@ fn install_normalized_primary_actor_v2(
     Ok(actor_id)
 }
 
+fn bind_normalized_transition_identity_v1(
+    target: &mut Connection,
+    installation_witness: &str,
+    requested_accepted_at: i64,
+) -> Result<u64, NormalizedSqliteError> {
+    if !valid_sha256(installation_witness) || requested_accepted_at < 0 {
+        return Err(invalid("normalized transition identity is invalid"));
+    }
+    let transaction = target.transaction()?;
+    let stored: (Option<String>, Option<i64>, String) = transaction.query_row(
+        "SELECT installation_witness, accepted_at, state
+         FROM library_storage_transition_plan WHERE singleton_id = 1;",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    let accepted_at = match (stored.0, stored.1) {
+        (None, None) if stored.2 == "candidate" => {
+            transaction.execute(
+                "UPDATE library_storage_transition_plan
+                 SET installation_witness = ?1, accepted_at = ?2, updated_at = ?2
+                 WHERE singleton_id = 1
+                   AND installation_witness IS NULL
+                   AND accepted_at IS NULL
+                   AND state = 'candidate';",
+                params![installation_witness, requested_accepted_at],
+            )?;
+            requested_accepted_at
+        }
+        (Some(stored_witness), Some(stored_accepted_at))
+            if stored_witness == installation_witness =>
+        {
+            stored_accepted_at
+        }
+        _ => return Err(invalid("normalized transition identity changed")),
+    };
+    transaction.commit()?;
+    unsigned_count(accepted_at, "normalized transition time is invalid")
+}
+
+fn advance_normalized_transition_plan_v1(
+    target: &mut Connection,
+    candidate: &NormalizedMigrationCandidateReceiptV1,
+    installation_witness: &str,
+    accepted_at: u64,
+    completed_state: &str,
+) -> Result<(), NormalizedSqliteError> {
+    let allowed_prior = match completed_state {
+        "authority_installed" => "candidate",
+        "actor_installed" => "authority_installed",
+        _ => return Err(invalid("normalized transition state is invalid")),
+    };
+    let accepted_at =
+        i64::try_from(accepted_at).map_err(|_| invalid("normalized transition time is invalid"))?;
+    let (_, candidate_digest) = canonical_migration_candidate_v1(candidate)?;
+    let transaction = target.transaction()?;
+    let stored_state: String = transaction.query_row(
+        "SELECT state FROM library_storage_transition_plan
+         WHERE singleton_id = 1
+           AND candidate_digest = ?1
+           AND installation_witness = ?2
+           AND accepted_at = ?3;",
+        params![candidate_digest, installation_witness, accepted_at],
+        |row| row.get(0),
+    )?;
+    if stored_state == completed_state || stored_state == "actor_installed" {
+        transaction.commit()?;
+        return Ok(());
+    }
+    if stored_state != allowed_prior {
+        return Err(invalid("normalized transition state changed"));
+    }
+    let changed = transaction.execute(
+        "UPDATE library_storage_transition_plan
+         SET state = ?1, updated_at = ?2
+         WHERE singleton_id = 1
+           AND candidate_digest = ?3
+           AND installation_witness = ?4
+           AND accepted_at = ?2
+           AND state = ?5;",
+        params![
+            completed_state,
+            accepted_at,
+            candidate_digest,
+            installation_witness,
+            allowed_prior,
+        ],
+    )?;
+    if changed != 1 {
+        return Err(invalid("normalized transition state did not advance"));
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+pub fn prepare_normalized_desktop_cutover_v1(
+    source: &mut Connection,
+    target: &mut Connection,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    requested_accepted_at: i64,
+) -> Result<NormalizedDesktopCutoverPreparedV1, NormalizedSqliteError> {
+    let candidate = match load_normalized_migration_candidate_v1(target)? {
+        Some(candidate) => candidate,
+        None => migrate_legacy_snapshot_v1(source, target)?,
+    };
+    let accepted_at = bind_normalized_transition_identity_v1(
+        target,
+        installation_witness,
+        requested_accepted_at,
+    )?;
+    let transition = sign_normalized_storage_transition_v1(
+        &candidate,
+        authority_store,
+        "primary:desktop",
+        accepted_at,
+    )?;
+    install_normalized_candidate_authority_v1(source, target, &candidate, &transition)?;
+    advance_normalized_transition_plan_v1(
+        target,
+        &candidate,
+        installation_witness,
+        accepted_at,
+        "authority_installed",
+    )?;
+    let primary_actor_id = install_normalized_primary_actor_v2(
+        target,
+        installation_witness,
+        actor_store,
+        authority_store,
+        i64::try_from(accepted_at).map_err(|_| invalid("normalized transition time is invalid"))?,
+    )?;
+    advance_normalized_transition_plan_v1(
+        target,
+        &candidate,
+        installation_witness,
+        accepted_at,
+        "actor_installed",
+    )?;
+    Ok(NormalizedDesktopCutoverPreparedV1 {
+        format: "freed_normalized_desktop_cutover_prepared_v1".to_owned(),
+        library_id: candidate.library_id,
+        epoch_id: transition.epoch_id,
+        transition_certificate_digest: transition.transition_certificate_digest,
+        normalized_product_digest: candidate.normalized_product_digest,
+        selected_at: accepted_at,
+        primary_actor_id,
+    })
+}
+
 /// Decomposes one historical FeedItem JSON row into final normalized product
 /// tables. This is used only inside the one-epoch migration transaction. It
 /// never writes a shell, whole-item JSON row, operation, receipt, or authority
@@ -2468,6 +2639,64 @@ mod tests {
             &TestActorKeyStore(actor_key_bytes),
             &TestAuthorityKeyStore(authority_key_bytes),
             1_001,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn cutover_preparation_pins_identity_and_replays_one_selector_receipt() {
+        let (mut source, authority_key_bytes) = legacy_source_fixture();
+        let mut target = Connection::open_in_memory().unwrap();
+        migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
+        let actor_key_bytes = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let actor_key_bytes = actor_key_bytes.as_ref().to_vec();
+        let witness = "9".repeat(64);
+
+        let prepared = prepare_normalized_desktop_cutover_v1(
+            &mut source,
+            &mut target,
+            &witness,
+            &TestActorKeyStore(actor_key_bytes.clone()),
+            &TestAuthorityKeyStore(authority_key_bytes.clone()),
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(prepared.selected_at, 1_000);
+        assert_eq!(
+            prepared.format,
+            "freed_normalized_desktop_cutover_prepared_v1"
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT state FROM library_storage_transition_plan
+                     WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "actor_installed"
+        );
+
+        assert_eq!(
+            prepare_normalized_desktop_cutover_v1(
+                &mut source,
+                &mut target,
+                &witness,
+                &TestActorKeyStore(actor_key_bytes.clone()),
+                &TestAuthorityKeyStore(authority_key_bytes.clone()),
+                2_000,
+            )
+            .expect("restart reuses the first accepted time"),
+            prepared
+        );
+        assert!(prepare_normalized_desktop_cutover_v1(
+            &mut source,
+            &mut target,
+            &"8".repeat(64),
+            &TestActorKeyStore(actor_key_bytes),
+            &TestAuthorityKeyStore(authority_key_bytes),
+            2_000,
         )
         .is_err());
     }

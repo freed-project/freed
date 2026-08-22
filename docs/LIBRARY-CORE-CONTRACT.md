@@ -1024,6 +1024,15 @@ complete actor row, capability certificate, and every generated mutation
 grant. Merely finding existing rows never counts as success. Missing, extra,
 or changed rows fail closed.
 
+The native Desktop cutover preparation operation owns the stage sequence. It
+creates the candidate only when none exists, binds the installation witness and
+first acceptance time once, installs the signed authority, enrolls the local
+Primary actor, and returns one selector-ready receipt. Its local plan advances
+monotonically from `candidate` through `authority_installed` to
+`actor_installed`. A restart with the same installation witness returns the
+same receipt. A different witness, changed source fence, changed certificate,
+or changed installed row fails before selector publication.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

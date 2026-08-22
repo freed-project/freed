@@ -30,6 +30,7 @@ use super::library_core_actor_enrollment::{
 use super::library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,
     reassign_writer_epoch, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
+    PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
@@ -1030,6 +1031,55 @@ fn open_selected_normalized_database(app: &tauri::AppHandle) -> Result<Connectio
     }
     let _ = app;
     Err("normalized SQLite authority selection is unavailable on this host".into())
+}
+
+#[cfg(unix)]
+pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, String> {
+    let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+    if binding
+        .normalized_authority_is_selected_v1()
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(false);
+    }
+    let mut source = binding.connect().map_err(|error| error.to_string())?;
+    let source_state: Option<(i64, i64, i64, Option<i64>)> = source
+        .query_row(
+            "SELECT active, expectedItemCount, importedItemCount, activatedAtMs
+             FROM library_core_desktop_state WHERE singletonId = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((active, expected_items, imported_items, activated_at)) = source_state else {
+        return Ok(false);
+    };
+    if active == 0 && activated_at.is_none() {
+        return Ok(false);
+    }
+    if active != 1 || activated_at.is_none() || expected_items != imported_items {
+        return Err("historical Library is not a complete migration source".to_owned());
+    }
+    let mut target = binding
+        .connect_normalized()
+        .map_err(|error| error.to_string())?;
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    let accepted_at = i64::try_from(crate::unix_millis_now())
+        .map_err(|_| "Desktop cutover time is invalid".to_owned())?;
+    let prepared = freed_library_core::prepare_normalized_desktop_cutover_v1(
+        &mut source,
+        &mut target,
+        &installation_witness,
+        &PlatformActorKeyStore,
+        &PlatformAuthorityKeyStore,
+        accepted_at,
+    )
+    .map_err(|error| error.to_string())?;
+    binding
+        .publish_normalized_authority_selection_v1(&prepared)
+        .map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 #[tauri::command]

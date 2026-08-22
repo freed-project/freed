@@ -13020,6 +13020,12 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+            #[cfg(unix)]
+            if library_core_desktop_runtime::complete_normalized_desktop_cutover_if_ready()
+                .map_err(std::io::Error::other)?
+            {
+                info!("[library-core] selected normalized SQLite authority");
+            }
             let dev_sync_result_data_dir = data_dir.clone();
             app.listen("dev-sync-trigger-native-result", move |event| {
                 handle_dev_sync_trigger_result_event(&dev_sync_result_data_dir, event.payload());
