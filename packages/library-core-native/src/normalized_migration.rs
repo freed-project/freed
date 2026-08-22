@@ -884,6 +884,7 @@ fn unsigned_count(value: i64, label: &'static str) -> Result<u64, NormalizedSqli
 
 fn normalized_product_digest(
     target: &Transaction<'_>,
+    require_empty_authority: bool,
 ) -> Result<(String, u64, u64), NormalizedSqliteError> {
     let mut request = NormalizedCheckpointExportRequestV2::default();
     let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
@@ -894,9 +895,12 @@ fn normalized_product_digest(
         }
         for record in &page.records {
             if record.registry_key.as_str() < "10_feed_item" {
-                return Err(invalid(
-                    "normalized migration candidate contains authority records",
-                ));
+                if require_empty_authority {
+                    return Err(invalid(
+                        "normalized migration candidate contains authority records",
+                    ));
+                }
+                continue;
             }
             accumulator.push(record)?;
         }
@@ -1146,7 +1150,7 @@ fn migrate_legacy_snapshot_v1(
         return Err(invalid("normalized migration foreign key closure failed"));
     }
     let (normalized_product_digest, normalized_record_count, normalized_canonical_bytes) =
-        normalized_product_digest(&target_transaction)?;
+        normalized_product_digest(&target_transaction, true)?;
 
     let receipt = NormalizedMigrationCandidateReceiptV1 {
         format: "freed_normalized_migration_candidate_v1".to_owned(),
@@ -1296,7 +1300,8 @@ fn install_normalized_candidate_authority_v1(
     }
 
     let target = target.transaction()?;
-    let (product_digest, product_records, product_bytes) = normalized_product_digest(&target)?;
+    let (product_digest, product_records, product_bytes) =
+        normalized_product_digest(&target, false)?;
     if product_digest != candidate.normalized_product_digest
         || product_records != candidate.normalized_record_count
         || product_bytes != candidate.normalized_canonical_bytes
@@ -1314,9 +1319,54 @@ fn install_normalized_candidate_authority_v1(
         |row| row.get(0),
     )?;
     if authority_rows != 0 {
-        return Err(invalid(
-            "normalized migration authority is already installed",
-        ));
+        let matching_authority: i64 = target.query_row(
+            "SELECT count(*)
+             FROM library_authority_epochs AS epoch
+             JOIN library_active_authority AS active
+               ON active.active_key = 'active' AND active.epoch_id = epoch.epoch_id
+             JOIN library_writer_admission AS admission ON admission.singleton_id = 1
+             JOIN library_meta AS meta ON meta.singleton_id = 1
+             JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+             WHERE epoch.epoch_id = ?1
+               AND epoch.library_id = ?2
+               AND epoch.transition_certificate_digest = ?3
+               AND epoch.canonical_transition_certificate = ?4
+               AND epoch.materialized_state_digest = ?5
+               AND active.library_id = epoch.library_id
+               AND active.writer_id = ?6
+               AND admission.local_writer_id = active.writer_id
+               AND admission.active_writer_id = active.writer_id
+               AND meta.library_id = epoch.library_id
+               AND meta.authority_epoch = epoch.epoch_id
+               AND generation.generation_id = epoch.materialized_state_digest;",
+            params![
+                signed.epoch_id,
+                candidate.library_id,
+                signed.transition_certificate_digest,
+                signed.canonical_transition_certificate,
+                candidate.normalized_product_digest,
+                certificate.certificate_body.writer_id,
+            ],
+            |row| row.get(0),
+        )?;
+        let frontier_rows: i64 = target.query_row(
+            "SELECT count(*) FROM library_authority_frontier WHERE epoch_id = ?1;",
+            [&signed.epoch_id],
+            |row| row.get(0),
+        )?;
+        if matching_authority != 1
+            || unsigned_count(frontier_rows, "normalized authority frontier is invalid")?
+                != candidate.source_frontier_count
+            || authority_rows
+                != frontier_rows
+                    .checked_add(5)
+                    .ok_or_else(|| invalid("normalized authority row count is invalid"))?
+        {
+            return Err(invalid("normalized migration authority changed"));
+        }
+        target.commit()?;
+        source.commit()?;
+        return Ok(());
     }
     let body = &certificate.certificate_body;
     target.execute(
@@ -1465,17 +1515,6 @@ fn install_normalized_primary_actor_v2(
             ))
         },
     )?;
-    let existing_actor: Option<String> = transaction
-        .query_row(
-            "SELECT actor_id FROM library_actors
-             WHERE authority_epoch_id = ?1 AND retired_at IS NULL;",
-            [&epoch_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    if existing_actor.is_some() {
-        return Err(invalid("normalized Primary actor is already installed"));
-    }
     let mut statement = transaction.prepare(
         "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
          FROM library_authority_frontier WHERE epoch_id = ?1 ORDER BY ordinal;",
@@ -1522,6 +1561,103 @@ fn install_normalized_primary_actor_v2(
         }
         _ => return Err(invalid("normalized Primary actor scope is invalid")),
     };
+    let actor_rows: i64 = transaction.query_row(
+        "SELECT count(*) FROM library_actors WHERE authority_epoch_id = ?1;",
+        [&epoch_id],
+        |row| row.get(0),
+    )?;
+    if actor_rows != 0 {
+        let matching_actor: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_actors
+             WHERE authority_epoch_id = ?1
+               AND actor_id = ?2
+               AND actor_kind = 'desktop'
+               AND public_key = ?3
+               AND enrollment_operation_id = ?4
+               AND enrollment_certificate_digest = ?5
+               AND canonical_enrollment_certificate = ?6
+               AND chain_genesis_digest = ?7
+               AND accepted_counter = 0
+               AND accepted_operation_id IS NULL
+               AND accepted_chain_digest = ?7
+               AND created_at = ?8
+               AND updated_at = ?8
+               AND retired_at IS NULL;",
+            params![
+                enrollment.epoch_id,
+                enrollment.actor_id,
+                enrollment.actor_public_key,
+                enrollment.enrollment_operation_id,
+                enrollment.enrollment_certificate_digest,
+                enrollment.canonical_enrollment_certificate_json,
+                enrollment.actor_chain_genesis,
+                enrollment.enrolled_at_ms,
+            ],
+            |row| row.get(0),
+        )?;
+        let matching_capability: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_actor_capabilities
+             WHERE capability_id = ?1
+               AND actor_id = ?2
+               AND certificate_version = ?3
+               AND actor_class = ?4
+               AND scope_mode = ?5
+               AND scope_kind IS ?6
+               AND scope_id IS ?7
+               AND issuance_identity IS ?8
+               AND retirement_identity IS ?9
+               AND certificate_digest = ?1
+               AND canonical_certificate = ?10
+               AND issued_at = ?11
+               AND retired_at IS NULL
+               AND retirement_certificate_digest IS NULL;",
+            params![
+                enrollment.capability.capability_certificate_digest,
+                enrollment.actor_id,
+                enrollment.capability.certificate_version,
+                enrollment.capability.actor_class,
+                scope_mode,
+                scope_kind,
+                scope_id,
+                enrollment.capability.issuance_identity,
+                enrollment.capability.retirement_identity,
+                enrollment.canonical_enrollment_certificate_json,
+                enrollment.capability.issued_at_ms,
+            ],
+            |row| row.get(0),
+        )?;
+        let stored_mutations: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_actor_capability_mutations
+             WHERE capability_id = ?1;",
+            [&enrollment.capability.capability_certificate_digest],
+            |row| row.get(0),
+        )?;
+        let mut matching_mutations = 0_i64;
+        for mutation_id in &enrollment.capability.allowed_operation_types {
+            matching_mutations += transaction.query_row(
+                "SELECT count(*) FROM library_actor_capability_mutations
+                 WHERE capability_id = ?1 AND mutation_id = ?2;",
+                params![
+                    enrollment.capability.capability_certificate_digest,
+                    mutation_id
+                ],
+                |row| row.get::<_, i64>(0),
+            )?;
+        }
+        if actor_rows != 1
+            || matching_actor != 1
+            || matching_capability != 1
+            || stored_mutations
+                != i64::try_from(enrollment.capability.allowed_operation_types.len())
+                    .map_err(|_| invalid("normalized Primary actor capability is invalid"))?
+            || matching_mutations != stored_mutations
+        {
+            return Err(invalid("normalized Primary actor enrollment changed"));
+        }
+        let actor_id = enrollment.actor_id;
+        transaction.commit()?;
+        return Ok(actor_id);
+    }
     transaction.execute(
         "INSERT INTO library_actors
          (actor_id, authority_epoch_id, actor_kind, public_key,
@@ -2261,6 +2397,79 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn authority_and_primary_actor_installation_replay_only_exact_state() {
+        let (mut source, authority_key_bytes) = legacy_source_fixture();
+        let mut target = Connection::open_in_memory().unwrap();
+        let candidate = migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
+        let transition = sign_normalized_storage_transition_v1(
+            &candidate,
+            &TestAuthorityKeyStore(authority_key_bytes.clone()),
+            "primary:desktop",
+            1_000,
+        )
+        .unwrap();
+        install_normalized_candidate_authority_v1(
+            &mut source,
+            &mut target,
+            &candidate,
+            &transition,
+        )
+        .unwrap();
+        install_normalized_candidate_authority_v1(
+            &mut source,
+            &mut target,
+            &candidate,
+            &transition,
+        )
+        .expect("replay exact normalized authority");
+
+        let actor_key_bytes = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+        let actor_key_bytes = actor_key_bytes.as_ref().to_vec();
+        let actor_id = install_normalized_primary_actor_v2(
+            &mut target,
+            &"9".repeat(64),
+            &TestActorKeyStore(actor_key_bytes.clone()),
+            &TestAuthorityKeyStore(authority_key_bytes.clone()),
+            1_001,
+        )
+        .unwrap();
+        assert_eq!(
+            install_normalized_primary_actor_v2(
+                &mut target,
+                &"9".repeat(64),
+                &TestActorKeyStore(actor_key_bytes.clone()),
+                &TestAuthorityKeyStore(authority_key_bytes.clone()),
+                1_001,
+            )
+            .expect("replay exact normalized Primary actor"),
+            actor_id
+        );
+
+        target
+            .execute(
+                "DELETE FROM library_actor_capability_mutations
+                 WHERE capability_id = (
+                     SELECT capability_id FROM library_actor_capabilities WHERE actor_id = ?1
+                 ) AND mutation_id = (
+                     SELECT mutation_id FROM library_actor_capability_mutations
+                     WHERE capability_id = (
+                         SELECT capability_id FROM library_actor_capabilities WHERE actor_id = ?1
+                     ) ORDER BY mutation_id LIMIT 1
+                 );",
+                [&actor_id],
+            )
+            .unwrap();
+        assert!(install_normalized_primary_actor_v2(
+            &mut target,
+            &"9".repeat(64),
+            &TestActorKeyStore(actor_key_bytes),
+            &TestAuthorityKeyStore(authority_key_bytes),
+            1_001,
+        )
+        .is_err());
     }
 
     #[test]

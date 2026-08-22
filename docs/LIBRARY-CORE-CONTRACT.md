@@ -1015,6 +1015,15 @@ item. It is excluded from checkpoint export because it is local cutover state,
 not synchronized Library data. Restart resumes only from those exact bytes. A
 changed, malformed, or noncanonical plan fails before authority installation.
 
+Authority installation and local Primary actor enrollment are exact replay
+operations. After response loss, authority recovery verifies the full signed
+epoch tuple, active writer, admission row, Library metadata, materialization
+generation, and complete frontier. Actor recovery reconstructs the expected
+certificate from the stored keys and transition identity, then verifies the
+complete actor row, capability certificate, and every generated mutation
+grant. Merely finding existing rows never counts as success. Missing, extra,
+or changed rows fail closed.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner
