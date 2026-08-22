@@ -998,9 +998,11 @@ the normalized epoch.
 
 Freed Desktop has one descriptor-bound local authority selector. The selector
 is a private, bounded, canonical closed record under the already leased app-data
-root. It names the normalized library, epoch, transition certificate, product
-generation, and selection time. Every read verifies those fields against the
-signed normalized SQLite authority before accepting the selector. Once valid,
+root. It permanently selects normalized SQLite for one Library. It does not
+duplicate the live epoch, transition certificate, actor, or materialization
+generation. Every read verifies the selected Library and one internally
+consistent active authority plus generation inside SQLite. Writer transfer
+advances SQLite authority without changing this one-way selector. Once valid,
 all historical database, journal, store, backup, restore, clear, and mutation
 opening paths fail closed for the rest of the process and after restart. A
 missing selector preserves the pre-cutover state. A malformed selector or one

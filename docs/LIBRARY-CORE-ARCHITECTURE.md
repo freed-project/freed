@@ -937,16 +937,18 @@ transition identity binding, authority installation, and Primary actor
 enrollment. The first invocation pins the installation witness and acceptance
 time in local normalized SQLite. Later invocations reuse those exact values,
 even when the wall clock has advanced. Its state moves only from candidate to
-authority installed to actor installed. The returned receipt contains exactly
-the fields needed by the Desktop selector plus the admitted Primary actor ID.
+authority installed to actor installed. The returned receipt proves the
+selected Library and admitted Primary actor.
 
 Desktop selection uses one bounded canonical record under the descriptor-bound
-app-data root. It binds the normalized library ID, epoch ID, transition
-certificate digest, materialized product digest, and selection time. The host
-verifies it against normalized SQLite on every authority opening. A valid
-selector permanently fences every old database, journal, store, backup,
-restore, clear, and mutation route. A missing selector means cutover has not
-occurred. A malformed, foreign, or stale selector fails both sides closed.
+app-data root. It is a one-way choice of normalized SQLite for one Library. The
+record binds the normalized Library ID, while SQLite owns the changing active
+epoch, certificate chain, actor, and materialization generation. The host
+verifies one internally consistent active authority and generation on every
+opening. A legitimate writer transition therefore never rewrites the selector.
+A valid selector permanently fences every old database, journal, store,
+backup, restore, clear, and mutation route. A missing selector means cutover
+has not occurred. A malformed selector or foreign Library fails both sides closed.
 Publication flushes one private pending file, atomically renames it to the
 fixed selector name, flushes the bound directory, and reads the exact record
 back through the same verifier. A different existing selector is never

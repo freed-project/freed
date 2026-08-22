@@ -25,10 +25,6 @@ const AUTHORITY_SELECTION_MAXIMUM_BYTES: usize = 16_384;
 struct DesktopAuthoritySelectionV1 {
     format: String,
     library_id: String,
-    epoch_id: String,
-    transition_certificate_digest: String,
-    normalized_product_digest: String,
-    selected_at: u64,
 }
 
 fn normalized_open_flags(create: bool) -> OpenFlags {
@@ -248,10 +244,6 @@ impl LibraryCoreDesktopBinding {
         };
         if selection.format != "freed_desktop_sqlite_authority_selection_v1"
             || !valid_digest(&selection.library_id)
-            || !valid_digest(&selection.epoch_id)
-            || !valid_digest(&selection.transition_certificate_digest)
-            || !valid_digest(&selection.normalized_product_digest)
-            || selection.selected_at > 9_007_199_254_740_991
         {
             return Err(LibraryCoreStoreError::from(
                 "Desktop authority selection identity is invalid".to_string(),
@@ -269,24 +261,11 @@ impl LibraryCoreDesktopBinding {
              JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
              WHERE active.active_key = 'active'
                AND active.library_id = ?1
-               AND active.epoch_id = ?2
-               AND epoch.transition_certificate_digest = ?3
-               AND epoch.materialized_state_digest = ?4
-               AND generation.generation_id = ?4
-               AND epoch.accepted_at = ?5
                AND meta.library_id = active.library_id
-               AND meta.authority_epoch = active.epoch_id;",
-            rusqlite::params![
-                &selection.library_id,
-                &selection.epoch_id,
-                &selection.transition_certificate_digest,
-                &selection.normalized_product_digest,
-                i64::try_from(selection.selected_at).map_err(|_| {
-                    LibraryCoreStoreError::from(
-                        "Desktop authority selection time is invalid".to_string(),
-                    )
-                })?,
-            ],
+               AND meta.authority_epoch = active.epoch_id
+               AND epoch.library_id = active.library_id
+               AND epoch.materialized_state_digest = generation.generation_id;",
+            [&selection.library_id],
             |row| row.get(0),
         )?;
         if matches != 1 {
@@ -347,10 +326,6 @@ impl LibraryCoreDesktopBinding {
         self.write_authority_selection(&DesktopAuthoritySelectionV1 {
             format: "freed_desktop_sqlite_authority_selection_v1".to_owned(),
             library_id: prepared.library_id.clone(),
-            epoch_id: prepared.epoch_id.clone(),
-            transition_certificate_digest: prepared.transition_certificate_digest.clone(),
-            normalized_product_digest: prepared.normalized_product_digest.clone(),
-            selected_at: prepared.selected_at,
         })
     }
 }
@@ -464,18 +439,14 @@ mod tests {
         let selection = DesktopAuthoritySelectionV1 {
             format: "freed_desktop_sqlite_authority_selection_v1".to_owned(),
             library_id: "b".repeat(64),
-            epoch_id: "a".repeat(64),
-            transition_certificate_digest: "e".repeat(64),
-            normalized_product_digest: "1".repeat(64),
-            selected_at: 400,
         };
         let prepared = NormalizedDesktopAuthorityPreparedV1 {
             format: "freed_normalized_desktop_authority_prepared_v1".to_owned(),
             library_id: selection.library_id.clone(),
-            epoch_id: selection.epoch_id.clone(),
-            transition_certificate_digest: selection.transition_certificate_digest.clone(),
-            normalized_product_digest: selection.normalized_product_digest.clone(),
-            selected_at: selection.selected_at,
+            epoch_id: "a".repeat(64),
+            transition_certificate_digest: "e".repeat(64),
+            normalized_product_digest: "1".repeat(64),
+            selected_at: 400,
             primary_actor_id: "primary-actor".to_owned(),
         };
         binding
@@ -497,6 +468,48 @@ mod tests {
             binding
                 .connect_selected_normalized()
                 .expect("selected authority opening remains available"),
+        );
+        let normalized = binding
+            .connect_selected_normalized()
+            .expect("open selected authority for epoch advance");
+        normalized
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 VALUES (?1, ?2, 5, ?3, ?4, ?5, '{}', 0, ?6, ?7, 500);",
+                rusqlite::params![
+                    "2".repeat(64),
+                    "b".repeat(64),
+                    "3".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                    "6".repeat(64),
+                    "1".repeat(64),
+                ],
+            )
+            .expect("insert next authority epoch");
+        normalized
+            .execute(
+                "UPDATE library_active_authority SET epoch_id = ?1, activated_at = 500
+                 WHERE active_key = 'active';",
+                ["2".repeat(64)],
+            )
+            .expect("advance active authority");
+        normalized
+            .execute(
+                "UPDATE library_meta SET authority_epoch = ?1, updated_at = 500
+                 WHERE singleton_id = 1;",
+                ["2".repeat(64)],
+            )
+            .expect("advance metadata authority");
+        drop(normalized);
+        drop(
+            binding
+                .connect_selected_normalized()
+                .expect("stable selector accepts a verified authority advance"),
         );
     }
 }
