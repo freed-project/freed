@@ -875,6 +875,13 @@ header identity, and record count, crosses a durability barrier, reads the
 staged database back, and selects it by one atomic local pointer change.
 Partial staging is never queryable.
 
+Desktop and PWA use one storage-neutral checkpoint staging state machine. Each
+runtime supplies only its typed SQLite begin, append, selection, and activation
+calls. Desktop follower bootstrap and writer transfer consume normalized v2
+records directly. No portable checkpoint codec, Library shell extraction,
+whole-item append command, or offset-based payload page exists in the runtime
+surface.
+
 The verified checkpoint digest becomes the local materialization generation
 ID. Every bounded query cursor binds to that generation ID, never to the human
 Library ID. The generation metadata is local and is not included in checkpoint

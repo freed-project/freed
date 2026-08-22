@@ -174,16 +174,6 @@ type MockSqliteLibrary = {
   };
 };
 
-type MockSqliteImportStage = Pick<
-  MockSqliteLibrary,
-  | "sourceGeneration"
-  | "sourceRevision"
-  | "sourceDigest"
-  | "expectedItemCount"
-  | "shell"
-  | "items"
->;
-
 function sqliteLibrary(): MockSqliteLibrary {
   const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
   w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
@@ -197,16 +187,6 @@ function sqliteLibrary(): MockSqliteLibrary {
     items: {},
   };
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
-}
-
-function sqliteImportStage(): MockSqliteImportStage | null {
-  return (
-    (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ ?? null
-  );
 }
 
 function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
@@ -363,21 +343,6 @@ function sqliteMutateItems(request: MockSqliteMutationRequest): number {
 browserTestWindow.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ ??=
   sqliteMutateItems;
 
-function sqliteAppendImportItems(args: Record<string, unknown>): null {
-  const stage = sqliteImportStage();
-  if (!stage) throw new Error("SQLite Library has no active staged import");
-  const request = (args.request ?? {}) as { itemsBase64?: string[] };
-  for (const encoded of request.itemsBase64 ?? []) {
-    const binary = atob(encoded);
-    const json = new TextDecoder().decode(
-      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
-    );
-    const item = JSON.parse(json) as MockSqliteItem;
-    stage.items[item.globalId] = item;
-  }
-  return null;
-}
-
 function sqliteSyncDescriptor(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
@@ -385,7 +350,6 @@ function sqliteSyncDescriptor(): Record<string, unknown> {
     revision: state.revision,
     itemCount: items.length,
     sourceDigest: state.sourceDigest || "0".repeat(64),
-    shellJson: JSON.stringify(state.shell ?? {}),
     materializedDigest: "1".repeat(64),
   };
 }
@@ -439,52 +403,6 @@ const handlers: Record<string, Handler> = {
       sourceRevision: state.sourceRevision,
       sourceDigest: state.sourceDigest,
     } : null;
-  },
-  begin_sqlite_library_import: (args: Record<string, unknown>) => {
-    const request = args.request as {
-      sourceGeneration: number;
-      sourceRevision: number;
-      sourceDigest: string;
-      expectedItemCount: number;
-      shellJson: string;
-    };
-    (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
-      sourceGeneration: request.sourceGeneration,
-      sourceRevision: request.sourceRevision,
-      sourceDigest: request.sourceDigest,
-      expectedItemCount: request.expectedItemCount,
-      shell: JSON.parse(request.shellJson) as Record<string, unknown>,
-      items: {},
-    };
-    return null;
-  },
-  append_sqlite_library_import: sqliteAppendImportItems,
-  finalize_sqlite_library_import: () => {
-    const stage = sqliteImportStage();
-    if (!stage) throw new Error("SQLite Library has no complete staged import");
-    if (Object.keys(stage.items).length !== stage.expectedItemCount) {
-      throw new Error("SQLite Library import count mismatch");
-    }
-    const state = sqliteLibrary();
-    Object.assign(state, stage, { active: true, revision: 1 });
-    delete (
-      window as unknown as {
-        __TAURI_MOCK_SQLITE_IMPORT_STAGE__?: MockSqliteImportStage;
-      }
-    ).__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-    return {
-      active: true,
-      revision: state.revision,
-      expectedItemCount: state.expectedItemCount,
-      importedItemCount: Object.keys(state.items).length,
-      sourceGeneration: state.sourceGeneration,
-      sourceRevision: state.sourceRevision,
-      sourceDigest: state.sourceDigest,
-    };
   },
   recover_sqlite_library_follower_overlay: () => ({
     transactionCount: 0,

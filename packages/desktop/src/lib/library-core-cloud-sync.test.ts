@@ -17,14 +17,31 @@ const mocks = vi.hoisted(() => ({
   publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
   readDescriptor: vi.fn(),
-  readPage: vi.fn(),
   describeNormalizedCheckpoint: vi.fn(),
   readNormalizedCheckpointPage: vi.fn(),
-  beginPortableImport: vi.fn(async () => {}),
-  appendPortableItems: vi.fn(async () => {}),
-  finalizePortableImport: vi.fn(async () => ({ active: true })),
-  createBackup: vi.fn(async () => ({ backupId: "backup-before-cloud-import" })),
-  restoreBackup: vi.fn(async () => ({})),
+  beginNormalizedImport: vi.fn(async (input: Record<string, unknown>) => ({
+    complete: false,
+    expectedRecordCount: input.expectedRecordCount,
+    stagedCanonicalBytes: 0,
+    stagedRecordCount: 0,
+    stageId: input.stageId,
+  })),
+  appendNormalizedPage: vi.fn(async (input: Record<string, unknown>) => ({
+    complete: true,
+    expectedRecordCount: 3,
+    stagedCanonicalBytes: 1,
+    stagedRecordCount: 3,
+    stageId: input.stageId,
+  })),
+  activateNormalizedImport: vi.fn(async (input: Record<string, unknown>) => ({
+    authorityEpoch: "cd".repeat(32),
+    canonicalBytes: 1,
+    checkpointDigest: "67".repeat(32),
+    libraryId: "ab".repeat(32),
+    recordCount: 3,
+    sourceRevision: 9,
+    stageId: input.stageId,
+  })),
   clearSqliteLibrary: vi.fn(async () => {}),
   acceptActorEnrollment: vi.fn(async () => ({})),
   acknowledgeIntentResults: vi.fn(async () => {}),
@@ -130,16 +147,15 @@ vi.mock("./native-json-store", () => ({
 vi.mock("./sqlite-library", () => ({
   acknowledgePwaIntentResultOutbox: mocks.acknowledgeIntentResults,
   acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
-  appendPortableSqliteLibraryItems: mocks.appendPortableItems,
+  activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
+  appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   appendSqliteLibraryFollowerResultSegment: mocks.appendFollowerResultSegment,
-  beginPortableSqliteLibraryImport: mocks.beginPortableImport,
+  beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
   bootstrapSqliteLibraryAuthority: mocks.bootstrapNative.mockImplementation(
     async () => mocks.bootstrapAuthority,
   ),
   clearSqliteLibrary: mocks.clearSqliteLibrary,
-  createSqliteLibraryBackup: mocks.createBackup,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
-  finalizePortableSqliteLibraryImport: mocks.finalizePortableImport,
   installSqliteLibraryFollowerActorEnrollment:
     mocks.installFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments: vi.fn(async () => [
@@ -156,7 +172,6 @@ vi.mock("./sqlite-library", () => ({
     },
   ]),
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
-  readSqliteLibrarySyncPage: mocks.readPage,
   readNormalizedLibraryCheckpointPage: mocks.readNormalizedCheckpointPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
   prepareSqliteLibraryFollowerActorRequest: mocks.prepareFollowerActorRequest,
@@ -167,7 +182,6 @@ vi.mock("./sqlite-library", () => ({
   recordSqliteLibraryFollowerIntentPublication:
     mocks.recordFollowerIntentPublication,
   reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
-  restoreSqliteLibraryBackup: mocks.restoreBackup,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
 }));
@@ -175,51 +189,6 @@ vi.mock("./sqlite-library", () => ({
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@freed/sync/cloud/library-core")>();
-  const publicationResult = (
-    request: Record<string, unknown>,
-    entries: readonly unknown[],
-  ) => {
-    const header = request.header as Record<string, unknown>;
-    const generation = Number(request.generation);
-    const libraryId = String(header.library_id);
-    const storageEpoch = String(header.epoch_id);
-    const digest = "67".repeat(32) as LibraryCoreLowercaseHex64;
-    const manifest = {
-      descriptor: {
-        byteLength: 123,
-        contentDigest: digest,
-        objectKey: createLibraryCoreImmutableObjectKey({
-          digest,
-          epochId: storageEpoch,
-          generation,
-          kind: "checkpoint_manifest",
-          libraryId,
-        }),
-      },
-      transportObjectId: `manifest-${generation.toLocaleString("en-US")}`,
-    };
-    return {
-      status: mocks.publishStatus,
-      revision: '"etag-2"',
-      dependencies: [],
-      manifest,
-      controlPointer: {
-        activeTransport: "google_drive_app_data_v1",
-        causalFrontierDigest: String(
-          (header.materializer_position as Record<string, unknown>)
-            .frontier_digest,
-        ),
-        generation,
-        libraryId,
-        manifest,
-        protocolVersion: 1,
-        schemaVersion: 1,
-        storageEpoch,
-        writerId: String(request.writerId),
-      },
-      entries,
-    };
-  };
   const normalizedPublicationResult = (
     request: Record<string, unknown>,
     records: readonly unknown[],
@@ -296,26 +265,18 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
         async (reference: { descriptor: unknown }) => reference.descriptor,
       ),
     })),
-    publishLibraryCorePortableCheckpointV1: mocks.publish.mockImplementation(
+    publishLibraryCoreNormalizedCheckpointV2: mocks.publish.mockImplementation(
       async (request: Record<string, unknown>) => {
         mocks.publishRequest = request;
-        if ("records" in request) {
-          const records: unknown[] = [];
-          for await (const record of request.records as AsyncIterable<unknown>) {
-            records.push(record);
-          }
-          mocks.publishedRecords = records;
-          return normalizedPublicationResult(request, records);
+        const records: unknown[] = [];
+        for await (const record of request.records as AsyncIterable<unknown>) {
+          records.push(record);
         }
-        const entries: unknown[] = [];
-        for await (const entry of request.entries as AsyncIterable<unknown>) {
-          entries.push(entry);
-        }
-        return publicationResult(request, entries);
+        mocks.publishedRecords = records;
+        return normalizedPublicationResult(request, records);
       },
     ),
-    publishLibraryCoreNormalizedCheckpointV2: mocks.publish,
-    importLibraryCorePortableCheckpointV1:
+    importLibraryCoreNormalizedCheckpointV2:
       mocks.importCheckpoint.mockImplementation(
         async (request: Record<string, unknown>) => {
           const writer = request.writer as {
@@ -327,98 +288,62 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
             finalizeImport(input: unknown): Promise<unknown>;
           };
           const header = {
-            kind: "logical_checkpoint_header",
-            format: "freed_logical_checkpoint_v1",
-            library_id: String(request.libraryId),
-            epoch: 2,
-            epoch_id: String(request.storageEpoch),
-            schema_version: 2,
-            field_registry_version: 1,
-            canonical_codec_version: 1,
-            anchor_kind: "accepted_authority",
-            accepted_authority: mocks.bootstrapAuthority.authority,
-            source_transition_digest:
-              mocks.bootstrapAuthority.protocol.transition_certificate_digest,
-            source_manifest_digest:
-              mocks.bootstrapAuthority.protocol.source_manifest_digest,
-            transition_candidate_anchor: null,
-            promoted_receipt_digests: [],
-            materializer_position: {
-              frontier_digest: "ef".repeat(32),
-              ingest_sequence: 9,
-              materialized_digest: "34".repeat(32),
-            },
-            collection_counts: {
-              accepted_frontier: 0,
-              quarantined_frontier: 0,
-              materialized_rows: 3,
-              field_clocks: 0,
-              relationships: 0,
-              tombstones: 0,
-              actor_states: 1,
-              receipt_records: 0,
-              blob_roots: 0,
-              excluded_registry_keys: 0,
+            format: "freed_normalized_checkpoint_v2",
+            protocolVersion: 2,
+            registryKey: "00_checkpoint_header",
+            primaryKey: "checkpoint",
+            payload: {
+              authorityEpoch: String(request.storageEpoch),
+              checkpointId: `${String(request.libraryId)}:${String(request.storageEpoch)}:9`,
+              createdAtMs: 1_000,
+              libraryId: String(request.libraryId),
+              schemaVersion: 1,
+              sourceRevision: 9,
             },
           };
-          await writer.beginImport({ manifest: {}, manifestReference: {} });
+          const manifest = {
+            libraryId: String(request.libraryId),
+            storageEpoch: String(request.storageEpoch),
+            totalRecordCount: 3,
+          };
+          await writer.beginImport({
+            header,
+            manifest,
+            manifestReference: request.manifest,
+          });
           await writer.appendPage(0, [
             header,
             {
-              kind: "logical_checkpoint_entry",
-              collection: "materialized_rows",
-              ordinal: 0,
-              value: {
-                primary_key: "shell",
-                registry_key: "00_library_shell",
-                row: { accounts: {}, feeds: {}, persons: {} },
+              format: "freed_normalized_checkpoint_v2",
+              protocolVersion: 2,
+              registryKey: "10_feed_item",
+              primaryKey: "item-1",
+              payload: {
+                globalId: "item-1",
+                platform: "rss",
               },
             },
             {
-              kind: "logical_checkpoint_entry",
-              collection: "materialized_rows",
-              ordinal: 1,
-              value: {
-                primary_key: "item-1",
-                registry_key: "10_feed_items",
-                row: { globalId: "item-1", platform: "rss" },
-              },
-            },
-            {
-              kind: "logical_checkpoint_entry",
-              collection: "materialized_rows",
-              ordinal: 2,
-              value: {
-                primary_key: "item-2",
-                registry_key: "10_feed_items",
-                row: { globalId: "item-2", platform: "youtube" },
-              },
-            },
-          ]);
-          await writer.appendPage(1, [
-            {
-              kind: "logical_checkpoint_entry",
-              collection: "actor_states",
-              ordinal: 0,
-              value: {
-                accepted_chain_digest: "45".repeat(32),
-                accepted_operation_id: null,
-                accepted_sequence: 0,
-                actor_id: "12".repeat(32),
-                enrollment_certificate_digest: "44".repeat(32),
-                retired: false,
-                retirement_certificate_digest: null,
+              format: "freed_normalized_checkpoint_v2",
+              protocolVersion: 2,
+              registryKey: "10_feed_item",
+              primaryKey: "item-2",
+              payload: {
+                globalId: "item-2",
+                platform: "youtube",
               },
             },
           ]);
           await writer.finalizeImport({
-            header,
-            manifest: { totalRecordCount: 5 },
+            canonicalBytes: 1,
+            checkpointDigest: "67".repeat(32),
+            recordCount: 3,
           });
           return {
+            activationReceipt: null,
             status: "imported",
             importedPageCount: 1,
-            importedRecordCount: 5,
+            importedRecordCount: 3,
           };
         },
       ),
@@ -499,10 +424,9 @@ describe("SQLite Library Google Drive production wiring", () => {
       .mockReset()
       .mockImplementation(async () => mocks.bootstrapAuthority);
     mocks.importCheckpoint.mockClear();
-    mocks.beginPortableImport.mockClear();
-    mocks.appendPortableItems.mockClear();
-    mocks.createBackup.mockClear();
-    mocks.restoreBackup.mockClear();
+    mocks.beginNormalizedImport.mockClear();
+    mocks.appendNormalizedPage.mockClear();
+    mocks.activateNormalizedImport.mockClear();
     mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
     mocks.readNative
@@ -535,16 +459,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       revision: 7,
       itemCount: 2,
       sourceDigest: "ab".repeat(32),
-      shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
       materializedDigest: "cd".repeat(32),
-    });
-    mocks.readPage.mockReset().mockResolvedValue({
-      revision: 7,
-      itemsJson: [
-        '{"globalId":"item-1","platform":"rss"}',
-        '{"globalId":"item-2","platform":"youtube"}',
-      ],
-      nextOffset: null,
     });
   });
 
@@ -696,15 +611,16 @@ describe("SQLite Library Google Drive production wiring", () => {
     ).resolves.toEqual({ status: "follower_synced", revision: 7 });
 
     expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
-    expect(mocks.finalizePortableImport).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(mocks.activateNormalizedImport).toHaveBeenCalledWith({
+      followerReceipt: expect.objectContaining({
+        checkpointGeneration: 9,
         controlRevision: '"etag-follower"',
-        generation: 9,
         manifestContentDigest: manifestDigest,
         manifestTransportObjectId: "manifest-9",
-        writerId: mocks.bootstrapAuthority.actor.actor_id,
+        writerActorId: mocks.bootstrapAuthority.actor.actor_id,
       }),
-    );
+      stageId: manifestDigest,
+    });
     expect(mocks.prepareFollowerActorRequest).toHaveBeenCalledTimes(1);
     expect(mocks.discoverActorEnrollments).toHaveBeenCalledWith(
       expect.objectContaining({ epochId, libraryId }),
@@ -956,7 +872,6 @@ describe("SQLite Library Google Drive production wiring", () => {
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 7 });
 
-    expect(mocks.readPage).not.toHaveBeenCalled();
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     expect(mocks.bootstrapNative).toHaveBeenCalledWith({
       descriptor: expect.objectContaining({
@@ -1047,16 +962,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       revision: 8,
       itemCount: 2,
       sourceDigest: "ab".repeat(32),
-      shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
       materializedDigest: "ce".repeat(32),
-    });
-    mocks.readPage.mockResolvedValue({
-      revision: 8,
-      itemsJson: [
-        '{"globalId":"item-1","platform":"rss"}',
-        '{"globalId":"item-2","platform":"youtube"}',
-      ],
-      nextOffset: null,
     });
     mocks.describeNormalizedCheckpoint.mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
@@ -1204,7 +1110,6 @@ describe("SQLite Library Google Drive production wiring", () => {
       revision: 7,
       itemCount: 2,
       sourceDigest: "ab".repeat(32),
-      shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
       materializedDigest: "cd".repeat(32),
     });
     await expect(
@@ -1343,7 +1248,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
   });
 
-  it("backs up and imports the active cloud checkpoint before taking over from a newer epoch", async () => {
+  it("atomically imports the normalized cloud checkpoint before taking over from a newer epoch", async () => {
     const libraryId = "ab".repeat(32);
     const cloudEpoch = "78".repeat(32);
     const cloudWriter = "56".repeat(32);
@@ -1386,14 +1291,12 @@ describe("SQLite Library Google Drive production wiring", () => {
         revision: 8,
         itemCount: 2,
         sourceDigest: "ab".repeat(32),
-        shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
         materializedDigest: "cd".repeat(32),
       })
       .mockResolvedValue({
         revision: 1,
         itemCount: 2,
         sourceDigest: "ab".repeat(32),
-        shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
         materializedDigest: "34".repeat(32),
       });
     mocks.controlRead = {
@@ -1430,25 +1333,26 @@ describe("SQLite Library Google Drive production wiring", () => {
       makeThisSqliteLibraryDesktopWriter({ accessToken: "token" }),
     ).resolves.toEqual({ status: "writer_transferred", revision: 1 });
 
-    expect(mocks.createBackup).toHaveBeenCalledWith("manual");
     expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
-    expect(mocks.beginPortableImport).toHaveBeenCalledWith(
+    expect(mocks.beginNormalizedImport).toHaveBeenCalledWith(
       expect.objectContaining({
-        expectedItemCount: 2,
-        sourceCheckpoint: {
-          objectKey: expect.stringContaining("freed-v2-manifest"),
-          contentDigest: "56".repeat(32),
-          transportObjectId: "manifest-9",
-        },
-        sourceDigest: "ab".repeat(32),
+        expectedRecordCount: 3,
         sourceRevision: 9,
+        stageId: "56".repeat(32),
       }),
     );
-    expect(mocks.appendPortableItems).toHaveBeenCalledWith([
-      { globalId: "item-1", platform: "rss" },
-      { globalId: "item-2", platform: "youtube" },
-    ]);
+    expect(mocks.appendNormalizedPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        records: expect.arrayContaining([
+          expect.objectContaining({ registryKey: "10_feed_item" }),
+        ]),
+        stageId: "56".repeat(32),
+      }),
+    );
+    expect(mocks.activateNormalizedImport).toHaveBeenCalledWith({
+      followerReceipt: undefined,
+      stageId: "56".repeat(32),
+    });
     expect(mocks.reassign).toHaveBeenCalledTimes(1);
-    expect(mocks.restoreBackup).not.toHaveBeenCalled();
   });
 });

@@ -18,7 +18,6 @@ export * from "./library-core-normalized-checkpoint.js";
 export * from "./library-core-normalized-intent-segments.js";
 export * from "./library-core-normalized-result-segments.js";
 export * from "./library-core-normalized-segment-publication.js";
-export * from "./library-core-portable-checkpoint.js";
 export * from "./library-core-primary-coordinator.js";
 export * from "./library-core-result-publication.js";
 export * from "./library-core-result-segments.js";

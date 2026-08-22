@@ -91,7 +91,6 @@ import {
   type RssFeedTitleAssignmentTransactionMemberInputV1,
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
-import { encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
@@ -111,14 +110,7 @@ export interface SqliteLibrarySyncDescriptor {
   revision: number;
   itemCount: number;
   sourceDigest: string;
-  shellJson: string;
   materializedDigest: string;
-}
-
-export interface SqliteLibrarySyncPage {
-  revision: number;
-  itemsJson: string[];
-  nextOffset: number | null;
 }
 
 export type SqliteLibraryAcceptedAuthority =
@@ -218,27 +210,6 @@ export interface SqliteLibraryFollowerRuntimeStatus {
   readonly importedResultCount: number;
 }
 
-export interface SqliteLibraryFollowerCheckpointActor {
-  readonly actor_id: string;
-  readonly accepted_sequence: number;
-  readonly accepted_operation_id: string | null;
-  readonly accepted_chain_digest: string;
-  readonly enrollment_certificate_digest: string;
-}
-
-export interface SqliteLibraryFollowerAnchorInput {
-  readonly authority: SqliteLibraryAcceptedAuthority;
-  readonly manifestObjectKey: string;
-  readonly manifestTransportObjectId: string;
-  readonly manifestContentDigest: string;
-  readonly generation: number;
-  readonly remoteIngestSequence: number;
-  readonly remoteMaterializedDigest: string;
-  readonly writerId: string;
-  readonly controlRevision: string;
-  readonly checkpointActor: SqliteLibraryFollowerCheckpointActor | null;
-  readonly installedAtMs: number;
-}
 
 export interface SqliteLibraryFollowerOverlayReplayReceipt {
   readonly transactionCount: number;
@@ -1514,19 +1485,6 @@ export async function sqliteLibraryCloudWriterAdmissionStatus(): Promise<SqliteL
   );
 }
 
-export interface PortableSqliteLibraryImportRequest {
-  expectedItemCount: number;
-  shell: unknown;
-  sourceCheckpoint?: Readonly<{
-    objectKey: string;
-    contentDigest: string;
-    transportObjectId: string;
-  }>;
-  sourceDigest: string;
-  sourceGeneration: number;
-  sourceRevision: number;
-}
-
 export interface SqliteLibraryFacetSummary {
   archivedCount: number;
   sampleItemCount: number;
@@ -1568,15 +1526,6 @@ export interface SqliteLibraryBackupChunk {
 }
 
 let sqliteActive = false;
-
-function encodeUtf8Base64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 32_768) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
-  }
-  return btoa(binary);
-}
 
 export function isSqliteLibraryActive(): boolean {
   return sqliteActive;
@@ -1903,70 +1852,6 @@ export async function listSqliteLibraryActorEnrollments(input: {
     "list_sqlite_library_actor_enrollments",
     { request: input },
   );
-}
-
-export async function readSqliteLibrarySyncPage(input: {
-  revision: number;
-  offset: number;
-  limit?: number;
-}): Promise<SqliteLibrarySyncPage> {
-  return invoke<SqliteLibrarySyncPage>("read_sqlite_library_sync_page", {
-    request: {
-      revision: input.revision,
-      offset: input.offset,
-      limit: input.limit ?? 128,
-    },
-  });
-}
-
-export async function beginPortableSqliteLibraryImport(
-  request: PortableSqliteLibraryImportRequest,
-): Promise<void> {
-  await invoke("begin_sqlite_library_import", {
-    request: {
-      expectedItemCount: request.expectedItemCount,
-      shellJson: encodeJson(request.shell),
-      sourceDigest: request.sourceDigest,
-      sourceCheckpointObjectKey: request.sourceCheckpoint?.objectKey,
-      sourceCheckpointContentDigest: request.sourceCheckpoint?.contentDigest,
-      sourceCheckpointTransportObjectId:
-        request.sourceCheckpoint?.transportObjectId,
-      sourceGeneration: request.sourceGeneration,
-      sourceRevision: request.sourceRevision,
-      startedAtMs: Date.now(),
-    },
-  });
-  // Native imports stage beside the active Library. Preserve its runtime
-  // admission fences until finalize atomically swaps the staged checkpoint.
-  // A first import still reports inactive here and becomes active at finalize.
-  await sqliteLibraryStatus();
-}
-
-export async function appendPortableSqliteLibraryItems(
-  items: readonly unknown[],
-): Promise<void> {
-  if (items.length === 0) return;
-  for (let start = 0; start < items.length; start += 1_000) {
-    await invoke("append_sqlite_library_import", {
-      request: {
-        itemsBase64: items
-          .slice(start, start + 1_000)
-          .map((item) => encodeUtf8Base64(encodeJson(item))),
-        updatedAtMs: Date.now(),
-      },
-    });
-  }
-}
-
-export async function finalizePortableSqliteLibraryImport(
-  followerAnchor?: SqliteLibraryFollowerAnchorInput,
-): Promise<SqliteStatus> {
-  const status = await invoke<SqliteStatus>("finalize_sqlite_library_import", {
-    activatedAtMs: Date.now(),
-    followerAnchor,
-  });
-  sqliteActive = status.active;
-  return status;
 }
 
 export async function loadSqliteLibraryState(): Promise<DocState> {

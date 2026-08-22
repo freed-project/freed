@@ -19,8 +19,12 @@ import {
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreActivateNormalizedCheckpointStageV2,
+  type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
+  type LibraryCoreNormalizedCheckpointSelectionV2,
+  type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "@freed/shared/library-core";
 import {
   publishLibraryCoreCheckpointGenerationV1,
@@ -61,6 +65,127 @@ export interface LibraryCoreNormalizedCheckpointImportWriterV2 {
     readonly recordCount: number;
   }): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2>;
   abortImport?(): Promise<void>;
+}
+
+export interface LibraryCoreNormalizedCheckpointStageRuntimeV2 {
+  readSelection?(): Promise<LibraryCoreNormalizedCheckpointSelectionV2>;
+  begin(
+    stage: LibraryCoreBeginNormalizedCheckpointStageV2,
+  ): Promise<LibraryCoreNormalizedCheckpointStageStatusV2>;
+  appendPage(input: {
+    readonly stageId: string;
+    readonly records: readonly LibraryCoreNormalizedCheckpointRecordV2[];
+  }): Promise<LibraryCoreNormalizedCheckpointStageStatusV2>;
+  activate(
+    input: LibraryCoreActivateNormalizedCheckpointStageV2,
+  ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2>;
+}
+
+export interface CreateLibraryCoreNormalizedCheckpointWriterV2Input {
+  readonly checkpointGeneration: number;
+  readonly controlRevision: string;
+  readonly installedAt: number;
+  readonly runtime: LibraryCoreNormalizedCheckpointStageRuntimeV2;
+  readonly writerActorId: string | null;
+}
+
+function exactFollowerSelectionMatches(
+  selection: LibraryCoreNormalizedCheckpointSelectionV2,
+  manifest: LibraryCoreCheckpointManifestV1,
+  reference: LibraryCoreImmutableObjectReferenceV1,
+  input: CreateLibraryCoreNormalizedCheckpointWriterV2Input,
+): boolean {
+  const receipt = selection.receipt;
+  return (
+    input.writerActorId !== null &&
+    receipt !== null &&
+    receipt.libraryId === manifest.libraryId &&
+    receipt.authorityEpoch === manifest.storageEpoch &&
+    receipt.checkpointGeneration === input.checkpointGeneration &&
+    receipt.manifestContentDigest === reference.descriptor.contentDigest &&
+    receipt.manifestObjectKey === reference.descriptor.objectKey &&
+    receipt.manifestTransportObjectId === reference.transportObjectId &&
+    receipt.controlRevision === input.controlRevision &&
+    receipt.writerActorId === input.writerActorId
+  );
+}
+
+/** Build the same bounded normalized checkpoint staging protocol for every runtime. */
+export function createLibraryCoreNormalizedCheckpointWriterV2(
+  input: CreateLibraryCoreNormalizedCheckpointWriterV2Input,
+): LibraryCoreNormalizedCheckpointImportWriterV2 {
+  if (
+    !Number.isSafeInteger(input.checkpointGeneration) ||
+    input.checkpointGeneration < 0 ||
+    !Number.isSafeInteger(input.installedAt) ||
+    input.installedAt < 0 ||
+    input.controlRevision.length === 0 ||
+    (input.writerActorId !== null && input.writerActorId.length === 0)
+  ) {
+    throw new TypeError("normalized checkpoint writer identity is invalid");
+  }
+  let stageId: string | null = null;
+  let manifestReference: LibraryCoreImmutableObjectReferenceV1 | null = null;
+  let nextPageIndex = 0;
+  let replaceExisting = false;
+
+  const writer: LibraryCoreNormalizedCheckpointImportWriterV2 = {
+    async prepareImport(manifest, reference) {
+      const selection = await input.runtime.readSelection?.();
+      if (
+        selection !== undefined &&
+        exactFollowerSelectionMatches(selection, manifest, reference, input)
+      ) {
+        return "already_complete";
+      }
+      replaceExisting = selection !== undefined && selection.receipt !== null;
+      return "import";
+    },
+    async beginImport({ header, manifest, manifestReference: reference }) {
+      const nextStageId = reference.descriptor.contentDigest;
+      stageId = nextStageId;
+      manifestReference = reference;
+      nextPageIndex = 0;
+      await input.runtime.begin({
+        authorityEpoch: manifest.storageEpoch,
+        createdAt: input.installedAt,
+        expectedRecordCount: manifest.totalRecordCount,
+        libraryId: manifest.libraryId,
+        sourceRevision: header.payload.sourceRevision as number,
+        stageId: nextStageId,
+      });
+    },
+    async appendPage(pageIndex, records) {
+      if (stageId === null || pageIndex !== nextPageIndex) {
+        throw new Error("normalized checkpoint page order changed");
+      }
+      await input.runtime.appendPage({ records, stageId });
+      nextPageIndex += 1;
+    },
+    async finalizeImport() {
+      if (stageId === null || manifestReference === null) {
+        throw new Error("normalized checkpoint import did not begin");
+      }
+      return input.runtime.activate({
+        followerReceipt:
+          input.writerActorId === null
+            ? null
+            : {
+                checkpointGeneration: input.checkpointGeneration,
+                controlRevision: input.controlRevision,
+                installedAt: input.installedAt,
+                manifestContentDigest:
+                  manifestReference.descriptor.contentDigest,
+                manifestObjectKey: manifestReference.descriptor.objectKey,
+                manifestTransportObjectId: manifestReference.transportObjectId,
+                writerActorId: input.writerActorId,
+              },
+        replaceExisting,
+        stageId,
+      });
+    },
+  };
+  return Object.freeze(writer);
 }
 
 export interface ImportLibraryCoreNormalizedCheckpointRequestV2 {

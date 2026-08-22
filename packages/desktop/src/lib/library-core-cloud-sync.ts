@@ -10,8 +10,6 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreControlPointerV1,
   type LibraryCoreLowercaseHex64,
-  type LibraryCorePortableCheckpointHeaderV1,
-  type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreResultHeadV1,
@@ -21,6 +19,7 @@ import {
   createLibraryCorePrimaryCoordinatorV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreResultAdapterV1,
+  createLibraryCoreNormalizedCheckpointWriterV2,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
@@ -30,7 +29,7 @@ import {
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreIntentSegmentV1,
   importLibraryCoreResultSegmentV1,
-  importLibraryCorePortableCheckpointV1,
+  importLibraryCoreNormalizedCheckpointV2,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   provisionGoogleDriveLibraryCoreResultHeadV1,
@@ -47,16 +46,15 @@ import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
 import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger";
 import {
-  appendPortableSqliteLibraryItems,
+  activateNormalizedLibraryCheckpointImport,
+  appendNormalizedLibraryCheckpointImportPage,
   appendSqliteLibraryFollowerResultSegment,
   acknowledgePwaIntentResultOutbox,
   acceptPwaActorEnrollmentRequest,
   acceptPwaIntentTransaction,
-  beginPortableSqliteLibraryImport,
+  beginNormalizedLibraryCheckpointImport,
   bootstrapSqliteLibraryAuthority,
-  createSqliteLibraryBackup,
   describeNormalizedLibraryCheckpoint,
-  finalizePortableSqliteLibraryImport,
   installSqliteLibraryFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments,
   readSqliteLibrarySyncDescriptor,
@@ -67,14 +65,12 @@ import {
   readSqliteLibraryFollowerResultImportCursor,
   readSqliteLibraryFollowerRuntimeStatus,
   reassignNormalizedLibraryWriterEpoch,
-  restoreSqliteLibraryBackup,
   recordSqliteLibraryFollowerIntentPublication,
   setSqliteLibraryCloudWriterAdmission,
   sqliteLibraryStatus,
   type SqliteLibrarySyncDescriptor,
   type SqliteLibraryAuthorityBootstrap,
   type SqliteLibraryActorCheckpointState,
-  type SqliteLibraryFollowerCheckpointActor,
   type SqliteLibraryIntentResultOutboxEntry,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
@@ -933,225 +929,37 @@ async function flushPwaIntentResultOutbox(input: {
   throw new Error("PWA result outbox exceeded the bounded flush budget");
 }
 
-function materializedRow(record: LibraryCorePortableCheckpointRecordV1): {
-  readonly registryKey: string;
-  readonly row: unknown;
-} | null {
-  if (record.kind === "logical_checkpoint_header") return null;
-  // Actor state authenticates the checkpoint and its operation frontier, but
-  // it belongs to the retiring writer epoch. A restored Desktop creates a
-  // fresh epoch and actor after importing the materialized Library, so these
-  // rows must be verified by the portable checkpoint reader and then omitted
-  // from the new local authority instead of making ownership transfer
-  // impossible for every real checkpoint.
-  if (record.collection === "actor_states") return null;
-  if (record.collection !== "materialized_rows") {
-    throw new Error(
-      `SQLite cloud import does not support ${record.collection} checkpoint rows yet`,
-    );
-  }
-  const value = record.value;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("SQLite cloud import materialized row is invalid");
-  }
-  const row = value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
-  if (typeof row.registry_key !== "string" || !("row" in row)) {
-    throw new Error("SQLite cloud import materialized row is invalid");
-  }
-  return { registryKey: row.registry_key, row: row.row };
-}
-
 async function bootstrapCloudCheckpointIntoSqlite(input: {
   readonly adapter: LibraryCoreImmutableReadAdapterV1;
+  readonly controlRevision: string;
   readonly pointer: LibraryCoreControlPointerV1;
-  readonly sourceDigest: string;
-  readonly follower?: Readonly<{
-    controlRevision: string;
-    actorId: string | null;
-  }>;
+  readonly follower: boolean;
 }): Promise<SqliteLibrarySyncDescriptor> {
-  const previousStatus = await sqliteLibraryStatus();
-  const backup =
-    previousStatus?.active === true
-      ? await createSqliteLibraryBackup("manual")
-      : null;
-  let nativeImportStarted = false;
-  let importedHeader: LibraryCorePortableCheckpointHeaderV1 | null = null;
-  let checkpointActor: SqliteLibraryFollowerCheckpointActor | null = null;
-  try {
-    await importLibraryCorePortableCheckpointV1({
-      adapter: input.adapter,
-      generation: input.pointer.generation,
-      libraryId: input.pointer.libraryId,
-      manifest: input.pointer.manifest,
-      storageEpoch: input.pointer.storageEpoch,
-      subtle: crypto.subtle,
-      writer: {
-        async beginImport() {
-          return "import";
-        },
-        async appendPage(pageIndex, records) {
-          const feedItems: unknown[] = [];
-          for (const record of records) {
-            if (
-              record.kind !== "logical_checkpoint_entry" ||
-              record.collection !== "actor_states" ||
-              input.follower?.actorId === null
-            ) {
-              continue;
-            }
-            const value = record.value as Readonly<
-              Record<string, LibraryCoreCanonicalValue>
-            >;
-            if (value.actor_id === input.follower?.actorId) {
-              checkpointActor = {
-                actor_id: String(value.actor_id),
-                accepted_sequence: Number(value.accepted_sequence),
-                accepted_operation_id:
-                  value.accepted_operation_id === null
-                    ? null
-                    : String(value.accepted_operation_id),
-                accepted_chain_digest: String(value.accepted_chain_digest),
-                enrollment_certificate_digest: String(
-                  value.enrollment_certificate_digest,
-                ),
-              };
-            }
-          }
-          if (!nativeImportStarted) {
-            if (
-              pageIndex !== 0 ||
-              records[0]?.kind !== "logical_checkpoint_header"
-            ) {
-              throw new Error(
-                "SQLite cloud import did not begin with its logical header",
-              );
-            }
-            const header = records[0];
-            const unsupportedCount = Object.entries(
-              header.collection_counts,
-            ).some(
-              ([collection, count]) =>
-                collection !== "materialized_rows" &&
-                collection !== "actor_states" &&
-                count !== 0,
-            );
-            if (unsupportedCount) {
-              throw new Error(
-                "SQLite cloud import contains unsupported Library collections",
-              );
-            }
-            const rows = records
-              .slice(1)
-              .map(materializedRow)
-              .filter((row) => row !== null);
-            const shell = rows.find(
-              (row) => row.registryKey === "00_library_shell",
-            );
-            if (shell === undefined) {
-              throw new Error(
-                "SQLite cloud import is missing the Library shell",
-              );
-            }
-            await beginPortableSqliteLibraryImport({
-              expectedItemCount: header.collection_counts.materialized_rows - 1,
-              shell: shell.row,
-              sourceCheckpoint: {
-                objectKey: input.pointer.manifest.descriptor.objectKey,
-                contentDigest: input.pointer.manifest.descriptor.contentDigest,
-                transportObjectId: input.pointer.manifest.transportObjectId,
-              },
-              sourceDigest: input.sourceDigest,
-              sourceGeneration: header.epoch,
-              sourceRevision: header.materializer_position.ingest_sequence,
-            });
-            nativeImportStarted = true;
-            importedHeader = header;
-            for (const row of rows) {
-              if (row.registryKey === "10_feed_items") feedItems.push(row.row);
-              else if (row.registryKey !== "00_library_shell") {
-                throw new Error(
-                  `SQLite cloud import does not support ${row.registryKey}`,
-                );
-              }
-            }
-          } else {
-            for (const record of records) {
-              if (
-                record.kind === "logical_checkpoint_entry" &&
-                record.collection === "actor_states"
-              ) {
-                continue;
-              }
-              const row = materializedRow(record);
-              if (row === null) {
-                throw new Error(
-                  "SQLite cloud import repeats its logical header",
-                );
-              }
-              if (row.registryKey !== "10_feed_items") {
-                throw new Error(
-                  `SQLite cloud import does not support ${row.registryKey}`,
-                );
-              }
-              feedItems.push(row.row);
-            }
-          }
-          await appendPortableSqliteLibraryItems(feedItems);
-        },
-        async finalizeImport({ header, manifest }) {
-          if (!nativeImportStarted || importedHeader === null) {
-            throw new Error(
-              "SQLite cloud import never initialized native staging",
-            );
-          }
-          if (
-            input.follower !== undefined &&
-            header.accepted_authority === null
-          ) {
-            throw new Error(
-              "Follower checkpoint has no accepted authority anchor",
-            );
-          }
-          await finalizePortableSqliteLibraryImport(
-            input.follower === undefined
-              ? undefined
-              : {
-                  authority: header.accepted_authority!,
-                  manifestObjectKey: input.pointer.manifest.descriptor.objectKey,
-                  manifestTransportObjectId:
-                    input.pointer.manifest.transportObjectId,
-                  manifestContentDigest:
-                    input.pointer.manifest.descriptor.contentDigest,
-                  generation: input.pointer.generation,
-                  remoteIngestSequence:
-                    header.materializer_position.ingest_sequence,
-                  remoteMaterializedDigest:
-                    header.materializer_position.materialized_digest,
-                  writerId: input.pointer.writerId,
-                  controlRevision: input.follower.controlRevision,
-                  checkpointActor,
-                  installedAtMs: Date.now(),
-                },
-          );
-          const descriptor = await readSqliteLibrarySyncDescriptor();
-          return {
-            frontierDigest: header.materializer_position.frontier_digest,
-            ingestSequence: header.materializer_position.ingest_sequence,
-            libraryId: header.library_id,
-            materializedDigest:
-              descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
-            recordCount: manifest.totalRecordCount,
-            storageEpoch: header.epoch_id,
-          };
-        },
+  const installedAt = Date.now();
+  await importLibraryCoreNormalizedCheckpointV2({
+    adapter: input.adapter,
+    generation: input.pointer.generation,
+    libraryId: input.pointer.libraryId,
+    manifest: input.pointer.manifest,
+    storageEpoch: input.pointer.storageEpoch,
+    subtle: crypto.subtle,
+    writer: createLibraryCoreNormalizedCheckpointWriterV2({
+      checkpointGeneration: input.pointer.generation,
+      controlRevision: input.controlRevision,
+      installedAt,
+      runtime: {
+        activate: (request) =>
+          activateNormalizedLibraryCheckpointImport({
+            followerReceipt: request.followerReceipt ?? undefined,
+            stageId: request.stageId,
+          }),
+        appendPage: appendNormalizedLibraryCheckpointImportPage,
+        begin: beginNormalizedLibraryCheckpointImport,
       },
-    });
-    return await readSqliteLibrarySyncDescriptor();
-  } catch (error) {
-    if (backup !== null) await restoreSqliteLibraryBackup(backup.backupId);
-    throw error;
-  }
+      writerActorId: input.follower ? input.pointer.writerId : null,
+    }),
+  });
+  return readSqliteLibrarySyncDescriptor();
 }
 
 /**
@@ -1222,8 +1030,9 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
   ) {
     descriptor = await bootstrapCloudCheckpointIntoSqlite({
       adapter,
+      controlRevision: controlRead.revision,
+      follower: false,
       pointer,
-      sourceDigest: state.sourceDigest,
     });
     state = Object.freeze({
       ...state,
@@ -1910,20 +1719,11 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
     before.epochId !== pointer.storageEpoch ||
     before.checkpointGeneration !== pointer.generation
   ) {
-    let sourceDigest = EMPTY_LIBRARY_SOURCE_DIGEST;
-    try {
-      sourceDigest = (await readSqliteLibrarySyncDescriptor()).sourceDigest;
-    } catch {
-      // A first follower checkpoint may replace an inactive local Library.
-    }
     await bootstrapCloudCheckpointIntoSqlite({
       adapter,
-      follower: {
-        actorId: before.actorId,
-        controlRevision: control.revision,
-      },
+      controlRevision: control.revision,
+      follower: true,
       pointer,
-      sourceDigest,
     });
   }
   const afterCheckpoint = await readSqliteLibraryFollowerRuntimeStatus();

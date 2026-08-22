@@ -59,7 +59,6 @@ export function tauriInitScript(): string {
         revision: state.revision,
         itemCount: items.length,
         sourceDigest: state.sourceDigest || '0'.repeat(64),
-        shellJson: JSON.stringify(state.shell || {}),
         materializedDigest: '1'.repeat(64),
       };
     }
@@ -123,20 +122,6 @@ export function tauriInitScript(): string {
       state.revision += 1;
       persistSqliteState();
     };
-    function sqliteAppendImportItems(args) {
-      var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-      if (!stage) throw new Error('SQLite Library has no active staged import');
-      var request = args && args.request ? args.request : {};
-      (request.itemsBase64 || []).forEach(function(encoded) {
-        var binary = atob(encoded);
-        var bytes = Uint8Array.from(binary, function(character) {
-          return character.charCodeAt(0);
-        });
-        var item = JSON.parse(new TextDecoder().decode(bytes));
-        stage.items[item.globalId] = item;
-      });
-      return null;
-    }
     function sqliteMutateItems(args) {
       var state = sqliteState();
       var request = args && args.request ? args.request : {};
@@ -511,39 +496,6 @@ export function tauriInitScript(): string {
           sourceRevision: state.sourceRevision,
           sourceDigest: state.sourceDigest,
         } : null;
-      },
-      begin_sqlite_library_import: (args) => {
-        var request = args.request;
-        window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__ = {
-          sourceGeneration: request.sourceGeneration,
-          sourceRevision: request.sourceRevision,
-          sourceDigest: request.sourceDigest,
-          expectedItemCount: request.expectedItemCount,
-          shell: JSON.parse(request.shellJson),
-          items: {},
-        };
-        return null;
-      },
-      append_sqlite_library_import: sqliteAppendImportItems,
-      finalize_sqlite_library_import: () => {
-        var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-        if (!stage) throw new Error('SQLite Library has no complete staged import');
-        if (Object.keys(stage.items).length !== stage.expectedItemCount) {
-          throw new Error('SQLite Library import count mismatch');
-        }
-        var state = sqliteState();
-        Object.assign(state, stage, { active: true, revision: 1 });
-        delete window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
-        persistSqliteState();
-        return {
-          active: true,
-          revision: state.revision,
-          expectedItemCount: state.expectedItemCount,
-          importedItemCount: Object.keys(state.items).length,
-          sourceGeneration: state.sourceGeneration,
-          sourceRevision: state.sourceRevision,
-          sourceDigest: state.sourceDigest,
-        };
       },
       recover_sqlite_library_follower_overlay: () => ({
         transactionCount: 0,

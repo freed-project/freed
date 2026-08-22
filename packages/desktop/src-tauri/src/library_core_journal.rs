@@ -1,10 +1,9 @@
 //! Freed Desktop import surface for the runtime-neutral native journal.
 
 pub(super) use freed_library_core::{
-    AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
+    FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
     FollowerIntentPublicationReceipt, FollowerOverlayReplayReceipt, FollowerResultImportCursor,
     FollowerResultImportReceipt, FollowerRuntimeStatus, IntentResultOutboxEntry,
     LibraryCoreJournal, StoredFollowerActorEnrollment, StoredFollowerActorRequest,
-    VerifiedCausalTip, VerifiedFollowerAnchor, VerifiedFollowerCheckpointActor,
     VerifiedFollowerIntentPublication, VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };
