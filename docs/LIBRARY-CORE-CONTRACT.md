@@ -630,7 +630,11 @@ after reading at most 65 rows. Its opaque cursor binds the final identity to
 the exact Library generation and source revision. SQLite satisfies the order
 from the FeedItem primary key. The query has no offset, no total count, and no
 reader-body bytes. A job that needs content follows an explicit locator through
-the ranged reader or selective content plane.
+the ranged reader or selective content plane. Its closed row also carries the
+exact hidden bit, optional RSS source identity, and optional sample-data
+provenance needed by maintenance actions. Desktop and PWA call one shared
+adapter for this traversal. PWA reads OPFS SQLite directly and never reconstructs
+these pages from IndexedDB materializations.
 
 `provider_media_page_v1` is the query-specific source for provider settings,
 Facebook group-name repair, media backup, and saved YouTube discovery. The

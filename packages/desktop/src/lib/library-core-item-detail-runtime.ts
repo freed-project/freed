@@ -1,7 +1,4 @@
-import {
-  type ContentSignal,
-  type FeedItem,
-} from "@freed/shared";
+import { type ContentSignal, type FeedItem } from "@freed/shared";
 import {
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedAccountTimelineV1,
@@ -11,6 +8,7 @@ import {
   readLibraryCoreNormalizedSurfaceItemsV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
 } from "@freed/shared/library-core";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { querySqliteItems } from "./sqlite-library";
@@ -157,16 +155,6 @@ const NORMALIZED_READER_RUNTIME = Object.freeze({
   randomId: () => crypto.randomUUID(),
 });
 
-export interface LibraryCoreItemScanPage {
-  readonly items: readonly FeedItem[];
-  readonly done: boolean;
-}
-
-export interface LibraryCoreItemScanSession {
-  nextPage(): Promise<LibraryCoreItemScanPage>;
-  close(): Promise<void>;
-}
-
 export async function readLibraryCoreItemDetail(
   globalId: string,
 ): Promise<FeedItem | null> {
@@ -230,26 +218,15 @@ export async function readLibraryCoreSurfaceItems(
   );
 }
 
-export async function openLibraryCoreItemScanSession(): Promise<LibraryCoreItemScanSession> {
-  let offset: number | null = 0;
-  let closed = false;
-  return {
-    async nextPage(): Promise<LibraryCoreItemScanPage> {
-      if (closed) throw new Error("Library Core item scan session is closed");
-      if (offset === null) return { items: [], done: true };
-      const page = await querySqliteItems({
-        offset,
-        limit: ITEM_SCAN_PAGE_LIMIT,
-        showHidden: true,
-        includeTotalCount: false,
-      });
-      offset = page.nextOffset;
-      return { items: page.items, done: offset === null };
-    },
-    async close(): Promise<void> {
-      closed = true;
-    },
-  };
+export async function scanLibraryCoreBackgroundItems(
+  visitPage: (
+    items: readonly FeedItem[],
+  ) => "continue" | "stop" | Promise<"continue" | "stop">,
+): Promise<void> {
+  return scanLibraryCoreNormalizedBackgroundItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    visitPage,
+  );
 }
 
 export interface LibraryCoreItemScanFilter {

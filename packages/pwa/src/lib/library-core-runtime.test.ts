@@ -165,6 +165,39 @@ function normalizedItemDetail(
   };
 }
 
+function backgroundRow(
+  globalId: string,
+  userState: Readonly<{
+    archived?: boolean;
+    liked?: boolean;
+    readAt?: number | null;
+    saved?: boolean;
+  }> = {},
+  options: Readonly<{
+    hidden?: boolean;
+    platform?: "rss" | "youtube";
+    rssSource?: {
+      feedTitle: string;
+      feedUrl: string;
+      siteUrl: string;
+    } | null;
+    sampleDataFingerprint?: {
+      batchId: string;
+      generatedAt: number;
+      generatorVersion: number;
+      marker: "freed.sample-data.v1";
+    } | null;
+  }> = {},
+) {
+  return {
+    ...normalizedItemDetail(globalId, userState).item.card,
+    hidden: options.hidden ?? false,
+    platform: options.platform ?? "rss",
+    rssSource: options.rssSource ?? null,
+    sampleDataFingerprint: options.sampleDataFingerprint ?? null,
+  };
+}
+
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -228,7 +261,10 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
-    mocks.queryNormalizedLibrary.mockResolvedValue({ rows: [] });
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: null,
+      rows: [],
+    });
     mocks.resetNormalizedLibrary.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
@@ -480,22 +516,15 @@ describe("PWA Library Core bounded scanner", () => {
     });
   });
 
-  it("pages the selected IndexedDB generation and stops without reading another page", async () => {
-    mocks.readSelectedMaterializedPage
+  it("pages OPFS SQLite and stops without issuing another query", async () => {
+    mocks.queryNormalizedLibrary
       .mockResolvedValueOnce({
-        entries: [entry("10_feed_items", "item-1")],
         nextCursor: "cursor-1",
-        source: SELECTED_SOURCE,
+        rows: [backgroundRow("item-1")],
       })
       .mockResolvedValueOnce({
-        entries: [entry("00_library_shell", "shell")],
-        nextCursor: "cursor-2",
-        source: SELECTED_SOURCE,
-      })
-      .mockResolvedValueOnce({
-        entries: [entry("10_feed_items", "item-2")],
-        nextCursor: "cursor-3",
-        source: SELECTED_SOURCE,
+        nextCursor: "unused-cursor",
+        rows: [backgroundRow("item-2")],
       });
     const visited: string[][] = [];
 
@@ -505,32 +534,33 @@ describe("PWA Library Core bounded scanner", () => {
     });
 
     expect(visited).toEqual([["item-1"], ["item-2"]]);
-    expect(mocks.readSelectedMaterializedPage).toHaveBeenCalledTimes(3);
-    expect(mocks.readSelectedMaterializedPage.mock.calls).toEqual([
-      [{ cursor: null, limit: 32 }],
-      [{ cursor: "cursor-1", limit: 32 }],
-      [{ cursor: "cursor-2", limit: 32 }],
-    ]);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledTimes(2);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        cursor: null,
+        limit: 64,
+        queryId: "background_item_page_v1",
+      }),
+    );
+    expect(mocks.queryNormalizedLibrary).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: "cursor-1" }),
+    );
   });
 
-  it("rejects a checkpoint selection change instead of mixing generations", async () => {
-    mocks.readSelectedMaterializedPage
+  it("propagates a stale SQLite cursor instead of mixing generations", async () => {
+    mocks.queryNormalizedLibrary
       .mockResolvedValueOnce({
-        entries: [entry("10_feed_items", "old-item")],
         nextCursor: "cursor-1",
-        source: SELECTED_SOURCE,
+        rows: [backgroundRow("old-item")],
       })
-      .mockResolvedValueOnce({
-        entries: [entry("10_feed_items", "new-item")],
-        nextCursor: null,
-        source: {
-          generationId: "67".repeat(32),
-          selectionSequence: SELECTED_SOURCE.selectionSequence + 1,
-        },
-      });
+      .mockRejectedValueOnce(
+        new Error("PWA Library SQLite item scan cursor is stale"),
+      );
 
     await expect(scanPwaLibraryCoreItems(() => "continue")).rejects.toThrow(
-      "changed during its bounded scan",
+      "item scan cursor is stale",
     );
   });
 
@@ -733,34 +763,17 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.enqueueFeedItemCaptures.mock.calls[3]?.[0]).toHaveLength(1);
   });
 
-  it("repairs saved archived items without waking Automerge", async () => {
+  it("repairs saved archived items from bounded SQLite rows", async () => {
     mocks.enqueueUserStateAssignments.mockResolvedValue({
       operationId: "op:unarchive",
     });
-    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
-      entries: [
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "saved-archived",
-              userState: { saved: true, archived: true },
-            },
-          },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "plain-archived",
-              userState: { archived: true },
-            },
-          },
-        },
+    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
+      nextCursor: null,
+      rows: [
+        backgroundRow("saved-archived", { archived: true, saved: true }),
+        backgroundRow("plain-archived", { archived: true }),
       ],
-      nextOrdinal: null,
     });
-
     await enqueuePwaLibraryCoreUnarchiveSavedItems();
 
     expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
@@ -773,32 +786,15 @@ describe("PWA Library Core bounded scanner", () => {
     ]);
   });
 
-  it("deletes only archived unsaved items without waking Automerge", async () => {
+  it("deletes only archived unsaved items from bounded SQLite rows", async () => {
     mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
-    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
-      entries: [
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "plain-archived",
-              userState: { archived: true },
-            },
-          },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "saved-archived",
-              userState: { saved: true, archived: true },
-            },
-          },
-        },
+    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
+      nextCursor: null,
+      rows: [
+        backgroundRow("plain-archived", { archived: true }),
+        backgroundRow("saved-archived", { archived: true, saved: true }),
       ],
-      nextOrdinal: null,
     });
-
     await enqueuePwaLibraryCoreDeleteAllArchived();
 
     expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
@@ -810,40 +806,13 @@ describe("PWA Library Core bounded scanner", () => {
 
   it("marks the complete selected platform read in bounded intent batches", async () => {
     mocks.enqueueReadAssignments.mockResolvedValue({ operationId: "op:read" });
-    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
-      entries: [
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "rss-unread",
-              platform: "rss",
-              userState: {},
-            },
-          },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "youtube-unread",
-              platform: "youtube",
-              userState: {},
-            },
-          },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "rss-read",
-              platform: "rss",
-              userState: { readAt: 1 },
-            },
-          },
-        },
+    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
+      nextCursor: null,
+      rows: [
+        backgroundRow("rss-unread"),
+        backgroundRow("youtube-unread", {}, { platform: "youtube" }),
+        backgroundRow("rss-read", { readAt: 1 }),
       ],
-      nextOrdinal: null,
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
 
@@ -890,45 +859,44 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.enqueueUserStateAssignments.mockResolvedValue({
       operationId: "op:bulk",
     });
-    mocks.readSelectedCollectionPage.mockResolvedValueOnce({
-      entries: [
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "rss-eligible",
-              platform: "rss",
-              rssSource: { feedUrl: "https://example.test/feed" },
-              userState: { readAt: 1 },
+    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
+      nextCursor: null,
+      rows: [
+        backgroundRow(
+          "rss-eligible",
+          { readAt: 1 },
+          {
+            rssSource: {
+              feedTitle: "Example",
+              feedUrl: "https://example.test/feed",
+              siteUrl: "https://example.test",
             },
           },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "rss-saved",
-              platform: "rss",
-              rssSource: { feedUrl: "https://example.test/feed" },
-              userState: { readAt: 1, saved: true },
+        ),
+        backgroundRow(
+          "rss-saved",
+          { readAt: 1, saved: true },
+          {
+            rssSource: {
+              feedTitle: "Example",
+              feedUrl: "https://example.test/feed",
+              siteUrl: "https://example.test",
             },
           },
-        },
-        {
-          value: {
-            registry_key: "10_feed_items",
-            row: {
-              globalId: "other-feed",
-              platform: "rss",
-              rssSource: { feedUrl: "https://other.test/feed" },
-              userState: { readAt: 1 },
+        ),
+        backgroundRow(
+          "other-feed",
+          { readAt: 1 },
+          {
+            rssSource: {
+              feedTitle: "Other",
+              feedUrl: "https://other.test/feed",
+              siteUrl: "https://other.test",
             },
           },
-        },
+        ),
       ],
-      nextOrdinal: null,
     });
-
     await enqueuePwaLibraryCoreArchiveAllReadUnsaved(
       "rss",
       "https://example.test/feed",
@@ -1135,26 +1103,15 @@ describe("PWA Library Core bounded scanner", () => {
       },
       preferences: createDefaultPreferences(),
     });
-    mocks.readSelectedCollectionPage.mockImplementation(({ limit }) =>
-      Promise.resolve({
-        entries:
-          limit === 32
-            ? [
-                {
-                  value: {
-                    registry_key: "10_feed_items",
-                    row: {
-                      globalId: "item:sample",
-                      sampleDataFingerprint,
-                    },
-                  },
-                },
-              ]
-            : [],
-        nextOrdinal: null,
-      }),
-    );
+    mocks.readSelectedCollectionPage.mockResolvedValue({
+      entries: [],
+      nextOrdinal: null,
+    });
     await initializePwaLibraryCoreState();
+    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
+      nextCursor: null,
+      rows: [backgroundRow("item:sample", {}, { sampleDataFingerprint })],
+    });
 
     await expect(clearPwaLibraryCoreSampleData()).resolves.toEqual({
       feeds: 1,

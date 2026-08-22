@@ -3777,9 +3777,47 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("PWA Library SQLite item scan exceeded its row bound");
     }
     const hasMore = rows.length > request.value.limit;
-    const cards = rows
-      .slice(0, request.value.limit)
-      .map((row) => feedCardFromSqliteRow(row));
+    const cards = rows.slice(0, request.value.limit).map((row) => {
+      const hiddenState = safeInteger(row.hidden, "hidden state");
+      const rssFeedUrl = nullableText(row.rssFeedUrl, "RSS feed URL");
+      const sampleBatchId = nullableText(row.sampleBatchId, "sample batch ID");
+      const sampleGeneratedAt =
+        row.sampleGeneratedAt === null
+          ? null
+          : safeInteger(row.sampleGeneratedAt, "sample generation time");
+      const sampleGeneratorVersion =
+        row.sampleGeneratorVersion === null
+          ? null
+          : safeInteger(row.sampleGeneratorVersion, "sample generator version");
+      if (
+        ![0, 1].includes(hiddenState) ||
+        (sampleBatchId === null) !== (sampleGeneratedAt === null) ||
+        (sampleBatchId === null) !== (sampleGeneratorVersion === null)
+      ) {
+        throw new Error("PWA Library SQLite sample provenance is incomplete");
+      }
+      return {
+        ...feedCardFromSqliteRow(row),
+        hidden: hiddenState === 1,
+        rssSource:
+          rssFeedUrl === null
+            ? null
+            : {
+                feedTitle: text(row.rssFeedTitle, "RSS feed title"),
+                feedUrl: rssFeedUrl,
+                siteUrl: text(row.rssSiteUrl, "RSS site URL"),
+              },
+        sampleDataFingerprint:
+          sampleBatchId === null
+            ? null
+            : {
+                batchId: sampleBatchId,
+                generatedAt: sampleGeneratedAt!,
+                generatorVersion: sampleGeneratorVersion!,
+                marker: "freed.sample-data.v1" as const,
+              },
+      };
+    });
     const last = cards.at(-1);
     const response = {
       nextCursor:

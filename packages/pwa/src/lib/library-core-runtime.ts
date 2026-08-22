@@ -25,6 +25,7 @@ import {
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
   searchLibraryCoreNormalizedItemsV1,
   executeLibraryCoreScopeActionV1,
   libraryCoreFeedBrowseFilterInputFromV1,
@@ -80,7 +81,6 @@ const DATABASE_NAME = "freed-library-core-portable-v1";
 const READ_MODEL_DATABASE_NAME = "freed-library-core-read-model-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
-const LIBRARY_SCAN_PAGE_LIMIT = 32;
 const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
 const MAXIMUM_RESULT_SEGMENTS_PER_SYNC = 128;
 
@@ -718,62 +718,9 @@ async function enqueuePwaLibraryCoreUserStateAssignments(
   );
 }
 
-/**
- * Visit the complete selected PWA Library one bounded IndexedDB page at a time.
- *
- * Shared search, facet, and command surfaces already consume this contract
- * without retaining the scanned corpus. Keeping the adapter here means an
- * active Library Core PWA never has to restart Automerge merely to search
- * beyond its initial renderer window.
- */
-export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
-  const store = getPortableStore();
-  const readModelRevision = libraryReadModelRevision;
-  let cursor: string | null = null;
-  let source: Readonly<{
-    generationId: string;
-    selectionSequence: number;
-  }> | null = null;
-  const assertSourceCurrent = async () => {
-    if (libraryReadModelRevision !== readModelRevision) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-    if (!source) return;
-    const selected = await store.readSelectedCheckpointReceipt();
-    if (
-      !selected ||
-      selected.generationId !== source.generationId ||
-      selected.selectionSequence !== source.selectionSequence
-    ) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-  };
-  do {
-    const page = await store.readSelectedMaterializedPage({
-      cursor,
-      limit: LIBRARY_SCAN_PAGE_LIMIT,
-    });
-    if (source === null) source = page.source;
-    else if (
-      page.source.generationId !== source.generationId ||
-      page.source.selectionSequence !== source.selectionSequence
-    ) {
-      throw new Error("Selected PWA Library changed during its bounded scan");
-    }
-    const items: FeedItem[] = [];
-    for (const entry of page.entries) {
-      if (entry.registryKey === "10_feed_items") {
-        items.push(entry.row as unknown as FeedItem);
-      }
-    }
-    if (items.length > 0 && (await visit(Object.freeze(items))) === "stop") {
-      await assertSourceCurrent();
-      return;
-    }
-    cursor = page.nextCursor;
-  } while (cursor !== null);
-  await assertSourceCurrent();
-};
+/** Visit compact background metadata directly through PWA OPFS SQLite. */
+export const scanPwaLibraryCoreItems: ScanLibraryItems = (visit) =>
+  scanLibraryCoreNormalizedBackgroundItemsV1(NORMALIZED_READER_RUNTIME, visit);
 
 /** Search the selected Library directly through normalized OPFS SQLite. */
 export const searchPwaLibraryCoreItems: SearchLibraryItems = async (

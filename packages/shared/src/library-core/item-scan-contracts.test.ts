@@ -34,6 +34,7 @@ function card(globalId: string) {
     eventConfidenceBasisPoints: null,
     eventStartsAt: null,
     globalId,
+    hidden: globalId === "hidden",
     liked: false,
     likedAt: null,
     likedSyncedAt: null,
@@ -45,7 +46,9 @@ function card(globalId: string) {
     publishedAt: 1,
     readAt: null,
     readingTimeMinutes: null,
+    rssSource: null,
     saved: false,
+    sampleDataFingerprint: null,
     sourceUrl: null,
     tags: [],
   };
@@ -106,5 +109,44 @@ describe("Library Core background item scan", () => {
         request,
       ).ok,
     ).toBe(false);
+  });
+
+  it("preserves hidden, RSS, and sample provenance needed by background jobs", () => {
+    const row = {
+      ...card("rss:sample"),
+      hidden: true,
+      rssSource: {
+        feedTitle: "Example",
+        feedUrl: "https://example.test/feed.xml",
+        siteUrl: "https://example.test",
+      },
+      sampleDataFingerprint: {
+        batchId: "sample-batch",
+        generatedAt: 1,
+        generatorVersion: 1,
+        marker: "freed.sample-data.v1",
+      },
+    };
+    const parsed = parseLibraryCoreItemScanResponseV1(
+      {
+        nextCursor: null,
+        queryId: "background_item_page_v1",
+        rows: [row],
+        schemaVersion: 1,
+        source: {
+          generationId,
+          projectionRevision: 7,
+          transitionSequence: 7,
+        },
+      },
+      request,
+    );
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ rows: [row] }),
+      }),
+    );
   });
 });

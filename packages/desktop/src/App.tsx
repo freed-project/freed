@@ -91,7 +91,6 @@ import {
 import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
 import { queryNormalizedLibrary } from "./lib/library-core-normalized-query-client";
 import {
-  openLibraryCoreItemScanSession,
   readLibraryCoreFacetSummary,
   readLibraryCoreFriendsGraph,
   readLibraryCoreFriendsLocationItem,
@@ -99,6 +98,7 @@ import {
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
+  scanLibraryCoreBackgroundItems,
 } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -254,21 +254,8 @@ async function runManualProviderSync<T>(
   }
 }
 
-const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
-  const session = await openLibraryCoreItemScanSession();
-  try {
-    for (;;) {
-      const page = await session.nextPage();
-      if (page.items.length > 0) {
-        const decision = await visit(page.items);
-        if (decision === "stop") return;
-      }
-      if (page.done) return;
-    }
-  } finally {
-    await session.close();
-  }
-};
+const scanLibraryCoreItemsForDesktop: ScanLibraryItems =
+  scanLibraryCoreBackgroundItems;
 
 const searchLibraryCoreItemsForDesktop: SearchLibraryItems = async (
   query,

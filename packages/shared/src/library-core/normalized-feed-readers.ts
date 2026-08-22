@@ -21,6 +21,12 @@ import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   libraryCoreFeedCardToItemV1,
 } from "./feed-page-contracts.js";
+import {
+  LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
+  LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
+  LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
+  type LibraryCoreItemScanResponseV1,
+} from "./item-scan-contracts.js";
 import { LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION } from "./feed-recommendation-order-contract.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
 import {
@@ -58,6 +64,55 @@ export interface LibraryCoreNormalizedFeedReader {
 export interface LibraryCoreNormalizedReaderRuntime {
   readonly query: LibraryCoreNormalizedQueryExecutor;
   readonly randomId: () => string;
+}
+
+export type LibraryCoreBackgroundScanDecision = "continue" | "stop";
+
+/**
+ * Visit compact background metadata through one source-fenced SQLite query.
+ *
+ * The executor owns storage and validates every response against the exact
+ * request. Callers receive one bounded page at a time and never see a storage
+ * cursor, database handle, or whole-library materialization.
+ */
+export async function scanLibraryCoreNormalizedBackgroundItemsV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  visit: (
+    items: readonly FeedItem[],
+  ) =>
+    | LibraryCoreBackgroundScanDecision
+    | Promise<LibraryCoreBackgroundScanDecision>,
+): Promise<void> {
+  const readerSessionId = operationId(runtime, "background-reader");
+  let cursor: string | null = null;
+  do {
+    const page: LibraryCoreItemScanResponseV1 = await runtime.query({
+      cancellationId: operationId(runtime, "background-page"),
+      cursor,
+      limit: LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_ITEM_SCAN_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
+    });
+    const items = Object.freeze(
+      page.rows.map((row) => {
+        const item = libraryCoreFeedCardToItemV1(row);
+        return Object.freeze({
+          ...item,
+          ...(row.rssSource === null ? {} : { rssSource: row.rssSource }),
+          ...(row.sampleDataFingerprint === null
+            ? {}
+            : { sampleDataFingerprint: row.sampleDataFingerprint }),
+          userState: Object.freeze({
+            ...item.userState,
+            hidden: row.hidden,
+          }),
+        });
+      }),
+    );
+    if (items.length > 0 && (await visit(items)) === "stop") return;
+    cursor = page.nextCursor;
+  } while (cursor !== null);
 }
 
 function operationId(

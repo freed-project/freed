@@ -147,7 +147,10 @@
         cursor as native Rust to traverse compact background metadata. Browser
         SQLite returns at most 64 rows from a 65-row primary-key read, includes
         hidden and archived records, and never returns reader bodies or accepts
-        arbitrary SQL.
+        arbitrary SQL. PWA product scans call the shared adapter against OPFS
+        SQLite and no longer page IndexedDB materialized FeedItem records. The
+        closed row preserves RSS identity and sample provenance for maintenance
+        actions.
   - [x] `provider_media_page_v1` runs through OPFS SQLite with the same closed
         request, compact projection, generated SQL, 64-row response ceiling,
         and request-bound cursor as native Rust. Provider settings can share

@@ -558,9 +558,36 @@ pub struct NormalizedStoryWallCandidatesResponseV1 {
 pub struct NormalizedItemScanResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
-    pub rows: Vec<NormalizedFeedCardV1>,
+    pub rows: Vec<NormalizedItemScanRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemScanRssSourceV1 {
+    pub feed_title: String,
+    pub feed_url: String,
+    pub site_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemScanSampleFingerprintV1 {
+    pub batch_id: String,
+    pub generated_at: i64,
+    pub generator_version: i64,
+    pub marker: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemScanRowV1 {
+    #[serde(flatten)]
+    pub card: NormalizedFeedCardV1,
+    pub hidden: bool,
+    pub rss_source: Option<NormalizedItemScanRssSourceV1>,
+    pub sample_data_fingerprint: Option<NormalizedItemScanSampleFingerprintV1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1578,6 +1605,50 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         saved: optional_boolean(row, "saved")?,
         source_url: row.get("sourceUrl")?,
         tags: string_array(row, "tagsJson", 32, 1_024)?,
+    })
+}
+
+fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV1> {
+    let hidden = optional_boolean(row, "hidden")?.ok_or(rusqlite::Error::InvalidQuery)?;
+    let rss_feed_url: Option<String> = row.get("rssFeedUrl")?;
+    let rss_source = match rss_feed_url {
+        Some(feed_url) => Some(NormalizedItemScanRssSourceV1 {
+            feed_title: row.get("rssFeedTitle")?,
+            feed_url,
+            site_url: row.get("rssSiteUrl")?,
+        }),
+        None => None,
+    };
+    let sample_batch_id: Option<String> = row.get("sampleBatchId")?;
+    let sample_generated_at: Option<i64> = row.get("sampleGeneratedAt")?;
+    let sample_generator_version: Option<i64> = row.get("sampleGeneratorVersion")?;
+    let sample_data_fingerprint = match (
+        sample_batch_id,
+        sample_generated_at,
+        sample_generator_version,
+    ) {
+        (None, None, None) => None,
+        (Some(batch_id), Some(generated_at), Some(generator_version))
+            if !batch_id.is_empty()
+                && valid_safe_integer(generated_at)
+                && generated_at >= 0
+                && valid_safe_integer(generator_version)
+                && generator_version >= 1 =>
+        {
+            Some(NormalizedItemScanSampleFingerprintV1 {
+                batch_id,
+                generated_at,
+                generator_version,
+                marker: "freed.sample-data.v1".to_owned(),
+            })
+        }
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    };
+    Ok(NormalizedItemScanRowV1 {
+        card: feed_card(row)?,
+        hidden,
+        rss_source,
+        sample_data_fingerprint,
     })
 }
 
@@ -2808,7 +2879,7 @@ fn query_item_scan(
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
             i64::try_from(request.limit + 1).expect("bounded item scan limit"),
         ],
-        feed_card,
+        background_item_row,
     )?;
     let mut cards = Vec::with_capacity(request.limit + 1);
     for row in rows.by_ref() {
@@ -2830,7 +2901,7 @@ fn query_item_scan(
             transition_sequence: source_revision,
             projection_revision: source_revision,
             sort_at: 0,
-            global_id: last.global_id.clone(),
+            global_id: last.card.global_id.clone(),
         })?)
     } else {
         None
@@ -5998,10 +6069,11 @@ mod tests {
             first
                 .rows
                 .iter()
-                .map(|row| row.global_id.as_str())
+                .map(|row| row.card.global_id.as_str())
                 .collect::<Vec<_>>(),
             ["hidden", "item-1"]
         );
+        assert!(first.rows[0].hidden);
         let cursor = first.next_cursor.expect("item scan cursor");
         let NormalizedQueryResponseV1::ItemScan(second) = query_normalized_v1(
             &mut connection,
@@ -6013,8 +6085,8 @@ mod tests {
         .expect("second item scan page") else {
             panic!("item scan response");
         };
-        assert_eq!(second.rows[0].global_id, "item-2");
-        assert_eq!(second.rows[0].archived, Some(true));
+        assert_eq!(second.rows[0].card.global_id, "item-2");
+        assert_eq!(second.rows[0].card.archived, Some(true));
         assert!(second.next_cursor.is_none());
 
         connection

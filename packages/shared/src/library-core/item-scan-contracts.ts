@@ -3,6 +3,7 @@ import {
   LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
 } from "./item-detail-contracts.js";
 import {
+  LIBRARY_CORE_FEED_PAGE_PROJECTION,
   decodeLibraryCoreFeedPageCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
   parseLibraryCoreFeedCardV1,
@@ -68,6 +69,12 @@ export const LIBRARY_CORE_ITEM_SCAN_PROJECTION = Object.freeze({
   projectionId: "library_core_background_item_metadata_v1",
   sourceTable: "library_feed_items",
   fullContentAllowed: false,
+  selectedFields: Object.freeze([
+    ...LIBRARY_CORE_FEED_PAGE_PROJECTION.selectedFields,
+    "hidden",
+    "rssSource",
+    "sampleDataFingerprint",
+  ]),
   orderedColumns: Object.freeze(["globalId"]),
 });
 export const LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY =
@@ -87,9 +94,28 @@ export interface LibraryCoreItemScanRequestV1 {
 export interface LibraryCoreItemScanResponseV1 {
   readonly nextCursor: string | null;
   readonly queryId: typeof LIBRARY_CORE_ITEM_SCAN_QUERY_ID;
-  readonly rows: readonly LibraryCoreFeedCardV1[];
+  readonly rows: readonly LibraryCoreItemScanRowV1[];
   readonly schemaVersion: typeof LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
+}
+
+export interface LibraryCoreItemScanRssSourceV1 {
+  readonly feedTitle: string;
+  readonly feedUrl: string;
+  readonly siteUrl: string;
+}
+
+export interface LibraryCoreItemScanSampleFingerprintV1 {
+  readonly batchId: string;
+  readonly generatedAt: number;
+  readonly generatorVersion: number;
+  readonly marker: "freed.sample-data.v1";
+}
+
+export interface LibraryCoreItemScanRowV1 extends LibraryCoreFeedCardV1 {
+  readonly hidden: boolean;
+  readonly rssSource: LibraryCoreItemScanRssSourceV1 | null;
+  readonly sampleDataFingerprint: LibraryCoreItemScanSampleFingerprintV1 | null;
 }
 
 export type LibraryCoreItemScanCursorV1 = Omit<
@@ -99,6 +125,7 @@ export type LibraryCoreItemScanCursorV1 = Omit<
 
 const REQUEST_KEYS = LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA.canonicalKeys;
 const RESPONSE_KEYS = LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA.canonicalKeys;
+const ROW_KEYS = LIBRARY_CORE_ITEM_SCAN_PROJECTION.selectedFields;
 const textEncoder = new TextEncoder();
 
 function failure<T>(error: string): LibraryCoreFeedPageParseResult<T> {
@@ -128,6 +155,80 @@ function closedRecord(
     return null;
   }
   return Object.fromEntries(keys.map((key) => [key, descriptors[key]!.value]));
+}
+
+function boundedText(value: unknown, maximumBytes: number): value is string {
+  return (
+    typeof value === "string" &&
+    textEncoder.encode(value).byteLength <= maximumBytes
+  );
+}
+
+function parseRow(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreItemScanRowV1> {
+  const record = closedRecord(value, ROW_KEYS);
+  if (!record) return failure("item scan row is invalid");
+  const { hidden, rssSource, sampleDataFingerprint, ...cardInput } = record;
+  const card = parseLibraryCoreFeedCardV1(cardInput);
+  const rss =
+    rssSource === null
+      ? null
+      : closedRecord(rssSource, ["feedTitle", "feedUrl", "siteUrl"]);
+  const fingerprint =
+    sampleDataFingerprint === null
+      ? null
+      : closedRecord(sampleDataFingerprint, [
+          "batchId",
+          "generatedAt",
+          "generatorVersion",
+          "marker",
+        ]);
+  if (
+    !card.ok ||
+    typeof hidden !== "boolean" ||
+    (rssSource !== null && rss === null) ||
+    (rss !== null &&
+      (!boundedText(rss.feedUrl, 8_192) ||
+        rss.feedUrl.length === 0 ||
+        !boundedText(rss.feedTitle, 2_048) ||
+        !boundedText(rss.siteUrl, 8_192))) ||
+    (sampleDataFingerprint !== null && fingerprint === null) ||
+    (fingerprint !== null &&
+      (fingerprint.marker !== "freed.sample-data.v1" ||
+        !boundedText(fingerprint.batchId, 4_096) ||
+        fingerprint.batchId.length === 0 ||
+        !Number.isSafeInteger(fingerprint.generatedAt) ||
+        (fingerprint.generatedAt as number) < 0 ||
+        !Number.isSafeInteger(fingerprint.generatorVersion) ||
+        (fingerprint.generatorVersion as number) < 1))
+  ) {
+    return failure("item scan row is invalid");
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      ...card.value,
+      hidden,
+      rssSource:
+        rss === null
+          ? null
+          : Object.freeze({
+              feedTitle: rss.feedTitle as string,
+              feedUrl: rss.feedUrl as string,
+              siteUrl: rss.siteUrl as string,
+            }),
+      sampleDataFingerprint:
+        fingerprint === null
+          ? null
+          : Object.freeze({
+              batchId: fingerprint.batchId as string,
+              generatedAt: fingerprint.generatedAt as number,
+              generatorVersion: fingerprint.generatorVersion as number,
+              marker: "freed.sample-data.v1" as const,
+            }),
+    }),
+  });
 }
 
 export function encodeLibraryCoreItemScanCursorV1(
@@ -209,9 +310,9 @@ export function parseLibraryCoreItemScanResponseV1(
   ) {
     return failure("item scan response is invalid");
   }
-  const rows: LibraryCoreFeedCardV1[] = [];
+  const rows: LibraryCoreItemScanRowV1[] = [];
   for (const candidate of record.rows) {
-    const row = parseLibraryCoreFeedCardV1(candidate);
+    const row = parseRow(candidate);
     if (!row.ok) return failure(row.error);
     const previous = rows.at(-1);
     if (previous && previous.globalId >= row.value.globalId) {

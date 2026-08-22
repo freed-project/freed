@@ -3,6 +3,7 @@ import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
 import {
@@ -44,7 +45,67 @@ const feedCard = (globalId: string) => ({
   tags: [],
 });
 
+const backgroundCard = (globalId: string) => ({
+  ...feedCard(globalId),
+  hidden: false,
+  rssSource: null,
+  sampleDataFingerprint: null,
+});
+
 describe("cross-platform normalized feed readers", () => {
+  it("streams bounded background pages through one source-fenced query contract", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        nextCursor: "opaque-background-next",
+        rows: [backgroundCard("first")],
+      })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [backgroundCard("second")],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visited: string[][] = [];
+
+    await scanLibraryCoreNormalizedBackgroundItemsV1(
+      { query, randomId: () => "test" },
+      (items) => {
+        visited.push(items.map((item) => item.globalId));
+        return "continue";
+      },
+    );
+
+    expect(visited).toEqual([["first"], ["second"]]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      cancellationId: "background-page:test",
+      cursor: null,
+      limit: 64,
+      queryId: "background_item_page_v1",
+      readerSessionId: "background-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: "opaque-background-next",
+        readerSessionId: "background-reader:test",
+      }),
+    );
+  });
+
+  it("stops a background scan without issuing another SQLite query", async () => {
+    const query = vi.fn(async () => ({
+      nextCursor: "unused-next",
+      rows: [backgroundCard("first")],
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await scanLibraryCoreNormalizedBackgroundItemsV1(
+      { query, randomId: () => "test" },
+      () => "stop",
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+  });
+
   it("batches Friends aggregates through the bounded SQLite contract", async () => {
     const sources = Array.from({ length: 129 }, (_, index) => ({
       authorId: `author-${index}`,
@@ -168,7 +229,10 @@ describe("cross-platform normalized feed readers", () => {
         nextCursor: "opaque-search-next",
         rows: [{ card: feedCard("match"), priority: 91, score: 12 }],
       })
-      .mockResolvedValueOnce({ nextCursor: null, rows: [] }) as unknown as LibraryCoreNormalizedQueryExecutor;
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const visit = vi.fn(() => "continue" as const);
 
     await searchLibraryCoreNormalizedItemsV1(
