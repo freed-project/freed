@@ -22,15 +22,7 @@ vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    sqliteLibraryStatus: vi.fn(async () => ({
-      active: true,
-      revision: 4,
-      expectedItemCount: 0,
-      importedItemCount: 0,
-      sourceGeneration: 2,
-      sourceRevision: 3,
-      sourceDigest: "ab".repeat(32),
-    })),
+    ensureFreshNormalizedDesktopLibrary: vi.fn(async () => true),
     recoverSqliteLibraryFollowerOverlay: vi.fn(async () => {
       mocks.calls.push("recover");
       return {

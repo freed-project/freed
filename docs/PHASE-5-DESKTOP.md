@@ -553,6 +553,7 @@ export async function captureDomFeed(
 | 5.92 | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open native SQLite pages that retain at most 25 matching feeds and 25 matching social channels | High | ✓ Complete |
 | 5.93 | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained native SQLite facets | High | ✓ Complete |
 | 5.94 | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed native SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary | High | ✓ Complete |
+| 5.95 | Require production renderer startup to obtain verified normalized SQLite authority from native startup, fail closed before loading Library state when migration or fresh genesis is unavailable, and keep portable shell setup confined to the isolated browser test projection | High | ✓ Complete |
 
 ---
 

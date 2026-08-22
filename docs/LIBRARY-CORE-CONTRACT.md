@@ -1052,6 +1052,15 @@ opening paths fail closed for the rest of the process and after restart. A
 missing selector preserves the pre-cutover state. A malformed selector or one
 that does not match normalized SQLite activates neither side.
 
+Production renderer startup accepts only a verified normalized SQLite
+selection. If native startup cannot complete migration or fresh genesis, the
+renderer stops before loading Library state or opening a historical mutation
+path. Existing historical bytes remain untouched for diagnosis and retry. The
+renderer never creates a portable shell, promotes historical storage, or
+chooses a fallback authority. Browser-only test projections may construct an
+isolated compatibility fixture, but that fixture is not compiled as a product
+authority path.
+
 The renderer asks native code for one mutation context. Native code returns a
 Primary context only after this selector verifies. Before selection, the same
 request can resolve only to an enrolled follower intent context or no Library

@@ -126,6 +126,7 @@ async function initializeEmptySqliteLibrary(): Promise<void> {
 
 async function ensureInitialized(): Promise<DocState> {
   if (lastState) return lastState;
+  const browserTestProjection = import.meta.env.VITE_TEST_TAURI === "1";
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
   let legacyDataPresent = false;
   if (!normalizedSelected) {
@@ -134,22 +135,31 @@ async function ensureInitialized(): Promise<DocState> {
       !legacyDataPresent,
     );
   }
-  const status = normalizedSelected ? null : await sqliteLibraryStatus();
-  if (shouldBlockForLegacyLibrary(status, legacyDataPresent)) {
+  if (!normalizedSelected && !browserTestProjection) {
     throw new Error(
-      "Freed Desktop found legacy Library data and refused to replace it with an empty SQLite Library. Recover the existing Library before continuing.",
+      legacyDataPresent
+        ? "Freed Desktop could not complete the one-time SQLite Library transition. The historical source remains untouched."
+        : "Freed Desktop could not establish SQLite Library authority.",
     );
   }
-  if (!normalizedSelected && !status?.active) {
-    await initializeEmptySqliteLibrary();
-  }
-  if (readLibraryCoreDesktopRole() === "follower") {
+  if (normalizedSelected && readLibraryCoreDesktopRole() === "follower") {
     await recoverSqliteLibraryFollowerOverlay();
   } else if (!normalizedSelected) {
-    await bootstrapSqliteLibraryAuthority({
-      descriptor: await readSqliteLibrarySyncDescriptor(),
-      persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),
-    });
+    const status = await sqliteLibraryStatus();
+    if (shouldBlockForLegacyLibrary(status, legacyDataPresent)) {
+      throw new Error(
+        "The Desktop browser test projection refused an occupied historical Library.",
+      );
+    }
+    if (!status?.active) await initializeEmptySqliteLibrary();
+    if (readLibraryCoreDesktopRole() === "follower") {
+      await recoverSqliteLibraryFollowerOverlay();
+    } else {
+      await bootstrapSqliteLibraryAuthority({
+        descriptor: await readSqliteLibrarySyncDescriptor(),
+        persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),
+      });
+    }
   }
   const state = await loadSqliteLibraryState();
   lastState = state;

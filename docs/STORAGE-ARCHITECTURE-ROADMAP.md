@@ -286,6 +286,13 @@ and Primary actor, and publishes the final selector during the first launch.
 Existing installations with any historical row remain on the migration path
 and cannot be mistaken for a fresh Library.
 
+Production renderer startup proceeds only after native code verifies that
+normalized SQLite is selected. A failed migration or genesis stops startup
+without creating a portable shell or reopening historical authority. Historical
+bytes remain untouched for diagnosis and an exact retry. Compatibility setup is
+limited to the isolated browser test projection and cannot select product
+storage.
+
 Delete:
 
 - Automerge runtime, worker, persistence, merge, and cloud paths
