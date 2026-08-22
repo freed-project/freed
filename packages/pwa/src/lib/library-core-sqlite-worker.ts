@@ -265,6 +265,30 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "read_follower_actor_enrollment_context") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.followerActorEnrollmentContext(),
+        });
+        return;
+      }
+      if (request.kind === "store_follower_actor_request") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await active.storeFollowerActorRequest(request.store),
+        });
+        return;
+      }
+      if (request.kind === "install_follower_actor_enrollment") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await active.installFollowerActorEnrollment(request.install),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();

@@ -16,8 +16,16 @@ export * from "./actor-enrollment-certificate.js";
 export * from "./actor-enrollment-request.js";
 export {
   LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+  constructLibraryCoreActorCapabilityRequestV2,
+  constructLibraryCoreActorCapabilityCertificateV2,
+  isLibraryCoreActorCapabilityCertificateConstructionV2,
+  isLibraryCoreActorCapabilityRequestConstructionV2,
   verifyLibraryCoreActorCapabilityCertificateV2,
+  type LibraryCoreActorCapabilityAuthorityStateV2,
   type LibraryCoreActorCapabilityBodyV2,
+  type LibraryCoreActorCapabilityRequestConstructionV2,
+  type LibraryCoreActorCapabilityRequestV2,
 } from "./actor-capability-certificate-v2.js";
 export * from "./ed25519-verification.js";
 export * from "./checkpoint-manifest-contracts.js";
@@ -31,6 +39,7 @@ export * from "./media-blob-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
 export * from "./follower-intent-contracts.js";
 export * from "./follower-mutation-context-contracts.js";
+export * from "./follower-actor-enrollment-contracts.js";
 export * from "./follower-result-contracts.js";
 export * from "./result-segment-contracts.js";
 export * from "./operation-registry.js";

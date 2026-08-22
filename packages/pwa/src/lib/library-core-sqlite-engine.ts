@@ -29,12 +29,25 @@ import {
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
   type LibraryCoreNormalizedResultTransportImportV2,
+  type LibraryCoreFollowerActorEnrollmentContextV2,
+  type LibraryCoreFollowerActorRequestReceiptV2,
+  type LibraryCoreFollowerActorEnrollmentReceiptV2,
+  type LibraryCoreInstallFollowerActorEnrollmentV2,
+  type LibraryCoreStoreFollowerActorRequestV2,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreFollowerResultVerificationAuthorityV1,
   type LibraryCoreVerifiedFollowerResultV1,
   type LibraryCoreAcceptedActorStateV1,
   encodeLibraryCoreDigestInput,
+  encodeLibraryCoreSignatureInput,
+  constructLibraryCoreActorEnrollmentBodyV1,
+  isLibraryCoreEd25519PublicKeyHex,
+  isLibraryCoreLowercaseHex64,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+  parseLibraryCoreInstallFollowerActorEnrollmentV2,
+  parseLibraryCoreStoreFollowerActorRequestV2,
+  snapshotLibraryCoreCausalFrontier,
   parseLibraryCoreFollowerIntentCommitV1,
   parseLibraryCoreFollowerIntentPageRequestV1,
   parseLibraryCoreFollowerIntentPageResponseV1,
@@ -49,6 +62,7 @@ import {
   verifyLibraryCoreEd25519WithWebCrypto,
   verifyLibraryCoreOperationTransactionV1,
   verifyLibraryCoreFollowerResultV1,
+  verifyLibraryCoreActorCapabilityCertificateV2,
   decodeLibraryCoreFeedPageCursorV1,
   decodeLibraryCoreFeedBrowsePageCursorV2,
   decodeLibraryCoreChangeFeedCursorV1,
@@ -277,6 +291,34 @@ function text(value: SqlValue | undefined, label: string): string {
     throw new Error(`${label} is not SQLite text`);
   }
   return value;
+}
+
+function canonicalRecord(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const keys = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(`${label} has unknown or missing fields`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function coreDigest(
+  domain: Parameters<typeof encodeLibraryCoreDigestInput>[0],
+  value: unknown,
+) {
+  return sha256LowerHex(
+    encodeLibraryCoreDigestInput(domain, value as LibraryCoreCanonicalValue),
+  );
 }
 
 function bytes(value: SqlValue | undefined, label: string): Uint8Array {
@@ -744,7 +786,8 @@ export class PwaLibraryCoreSqliteEngine {
   activateNormalizedCheckpointStage(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
-    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
+    const activation =
+      parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
     const { followerReceipt, replaceExisting, stageId } = activation;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
@@ -1019,7 +1062,9 @@ export class PwaLibraryCoreSqliteEngine {
           "checkpoint active writer match count",
         );
         if (writerMatches !== 1) {
-          throw new Error("normalized follower checkpoint writer is not active");
+          throw new Error(
+            "normalized follower checkpoint writer is not active",
+          );
         }
         this.#database.exec({
           sql: `INSERT INTO library_follower_checkpoint_receipt
@@ -1130,10 +1175,7 @@ export class PwaLibraryCoreSqliteEngine {
     return parseLibraryCoreNormalizedCheckpointSelectionV2({
       receipt: Object.freeze({
         authorityEpoch: text(row[0], "checkpoint receipt authority epoch"),
-        checkpointDigest: text(
-          row[1],
-          "checkpoint receipt digest",
-        ),
+        checkpointDigest: text(row[1], "checkpoint receipt digest"),
         checkpointGeneration: safeInteger(
           row[2],
           "checkpoint receipt generation",
@@ -1241,6 +1283,428 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  followerActorEnrollmentContext(): LibraryCoreFollowerActorEnrollmentContextV2 {
+    const rows = this.#database.exec({
+      sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                   e.authority_key_id, e.authority_public_key
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("PWA follower enrollment authority is unavailable");
+    }
+    const row = rows[0]!;
+    const libraryId = text(row[0], "PWA follower enrollment Library");
+    const epochId = text(row[2], "PWA follower enrollment epoch");
+    const authorityKeyId = text(row[3], "PWA follower authority key ID");
+    const authorityPublicKey = text(row[4], "PWA follower authority key");
+    if (
+      !isLibraryCoreLowercaseHex64(libraryId) ||
+      !isLibraryCoreLowercaseHex64(epochId) ||
+      !isLibraryCoreLowercaseHex64(authorityKeyId) ||
+      !isLibraryCoreEd25519PublicKeyHex(authorityPublicKey)
+    ) {
+      throw new Error("PWA follower enrollment authority identity is invalid");
+    }
+    const frontier = this.#database.exec({
+      sql: `SELECT actor_id, accepted_counter, accepted_operation_id,
+                   accepted_chain_digest
+            FROM library_authority_frontier
+            WHERE epoch_id = ?1 ORDER BY ordinal;`,
+      bind: [epochId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const requestRows = this.#database.exec({
+      sql: `SELECT actor_id, actor_public_key, enrollment_request_digest,
+                   canonical_enrollment_request, created_at,
+                   enrollment_certificate_digest
+            FROM library_follower_actor_request
+            WHERE singleton_id = 1 AND library_id = ?1
+              AND authority_epoch_id = ?2;`,
+      bind: [libraryId, epochId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (requestRows.length > 1) {
+      throw new Error("PWA follower actor request is ambiguous");
+    }
+    let request: LibraryCoreFollowerActorRequestReceiptV2 | null = null;
+    if (requestRows.length === 1) {
+      const stored = requestRows[0]!;
+      const actorId = text(stored[0], "PWA follower actor identity");
+      const actorPublicKey = text(stored[1], "PWA follower actor key");
+      const enrollmentRequestDigest = text(
+        stored[2],
+        "PWA follower request digest",
+      );
+      if (
+        !isLibraryCoreLowercaseHex64(actorId) ||
+        !isLibraryCoreEd25519PublicKeyHex(actorPublicKey) ||
+        !isLibraryCoreLowercaseHex64(enrollmentRequestDigest)
+      ) {
+        throw new Error("PWA follower actor request identity is invalid");
+      }
+      request = Object.freeze({
+        actorId,
+        actorPublicKey,
+        canonicalRequestBytes: new TextEncoder().encode(
+          text(stored[3], "PWA follower request bytes"),
+        ),
+        createdAt: safeInteger(stored[4], "PWA follower request time"),
+        enrollmentRequestDigest,
+        state: stored[5] === null ? "pending" : "enrolled",
+      });
+    }
+    return Object.freeze({
+      authority: Object.freeze({
+        authority_key_id: authorityKeyId,
+        authority_public_key: authorityPublicKey,
+        epoch: safeInteger(row[1], "PWA follower authority epoch"),
+        epoch_id: epochId,
+        library_id: libraryId,
+        observed_frontier: snapshotLibraryCoreCausalFrontier(
+          frontier.map((tip) => ({
+            actor_id: text(tip[0], "PWA follower frontier actor"),
+            chain_digest: text(tip[3], "PWA follower frontier digest"),
+            operation_id: text(tip[2], "PWA follower frontier operation"),
+            sequence: safeInteger(tip[1], "PWA follower frontier sequence"),
+          })),
+          "PWA follower enrollment frontier",
+        ),
+      }),
+      request,
+      schemaVersion: 2,
+    });
+  }
+
+  async storeFollowerActorRequest(
+    input: LibraryCoreStoreFollowerActorRequestV2,
+  ): Promise<LibraryCoreFollowerActorRequestReceiptV2> {
+    const request = parseLibraryCoreStoreFollowerActorRequestV2(input);
+    const context = this.followerActorEnrollmentContext();
+    if (context.request) {
+      if (
+        context.request.createdAt !== request.createdAt ||
+        context.request.canonicalRequestBytes.byteLength !==
+          request.canonicalRequestBytes.byteLength ||
+        !context.request.canonicalRequestBytes.every(
+          (byte, index) => byte === request.canonicalRequestBytes[index],
+        )
+      ) {
+        throw new Error("PWA follower actor request replay changed");
+      }
+      return context.request;
+    }
+    const decoded = decodeLibraryCoreCanonicalValue(
+      request.canonicalRequestBytes,
+      { maximumBytes: 65_536 },
+    );
+    const canonical = encodeLibraryCoreCanonicalValue(decoded, {
+      maximumBytes: 65_536,
+    });
+    if (
+      canonical.byteLength !== request.canonicalRequestBytes.byteLength ||
+      !canonical.every(
+        (byte, index) => byte === request.canonicalRequestBytes[index],
+      )
+    ) {
+      throw new Error("PWA follower actor request is not canonical");
+    }
+    const outer = canonicalRecord(
+      decoded,
+      ["certificate_body", "certificate_digest"],
+      "PWA follower actor request",
+    );
+    const body = canonicalRecord(
+      outer.certificate_body,
+      [
+        "actor_enrollment_body",
+        "enrollment_body_digest",
+        "actor_proof",
+        "actor_capability_body",
+        "actor_capability_body_digest",
+      ],
+      "PWA follower actor request body",
+    );
+    const enrollmentInput = canonicalRecord(
+      body.actor_enrollment_body,
+      [
+        "operation_id",
+        "operation_type",
+        "library_id",
+        "epoch",
+        "epoch_id",
+        "schema_version",
+        "authority_key_id",
+        "installation_incarnation",
+        "actor_incarnation_nonce",
+        "actor_id",
+        "actor_public_key",
+        "actor_public_key_fingerprint",
+        "observed_frontier",
+        "created_at_ms",
+        "signature_algorithm",
+      ],
+      "PWA follower actor enrollment body",
+    );
+    const derivedEnrollment = constructLibraryCoreActorEnrollmentBodyV1(
+      {
+        actor_incarnation_nonce: enrollmentInput.actor_incarnation_nonce,
+        actor_public_key: enrollmentInput.actor_public_key,
+        authority_key_id: enrollmentInput.authority_key_id,
+        created_at_ms: enrollmentInput.created_at_ms,
+        epoch: enrollmentInput.epoch,
+        epoch_id: enrollmentInput.epoch_id,
+        installation_incarnation: enrollmentInput.installation_incarnation,
+        library_id: enrollmentInput.library_id,
+        observed_frontier: enrollmentInput.observed_frontier,
+        operation_id: enrollmentInput.operation_id,
+      },
+      { digest: coreDigest },
+    );
+    const capability = canonicalRecord(
+      body.actor_capability_body,
+      [
+        "format",
+        "library_id",
+        "epoch",
+        "epoch_id",
+        "authority_key_id",
+        "actor_id",
+        "actor_public_key",
+        "actor_class",
+        "allowed_operation_types",
+        "scope",
+        "issuance_identity",
+        "retirement_identity",
+        "issued_at_ms",
+        "signature_algorithm",
+      ],
+      "PWA follower actor capability",
+    );
+    const requestDigest = coreDigest("actor-capability-certificate", body);
+    const actorProof = body.actor_proof;
+    if (
+      outer.certificate_digest !== requestDigest ||
+      body.enrollment_body_digest !==
+        derivedEnrollment.enrollment_body_digest ||
+      derivedEnrollment.body.library_id !== context.authority.library_id ||
+      derivedEnrollment.body.epoch !== context.authority.epoch ||
+      derivedEnrollment.body.epoch_id !== context.authority.epoch_id ||
+      derivedEnrollment.body.authority_key_id !==
+        context.authority.authority_key_id ||
+      derivedEnrollment.body.created_at_ms !== request.createdAt ||
+      capability.actor_id !== derivedEnrollment.body.actor_id ||
+      capability.actor_public_key !== derivedEnrollment.body.actor_public_key ||
+      capability.library_id !== context.authority.library_id ||
+      capability.epoch_id !== context.authority.epoch_id ||
+      capability.actor_class !== "editor" ||
+      JSON.stringify(capability.scope) !== '{"mode":"library_wide"}' ||
+      JSON.stringify(capability.allowed_operation_types) !==
+        JSON.stringify(LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2) ||
+      !isLibraryCoreLowercaseHex64(requestDigest) ||
+      typeof actorProof !== "string" ||
+      !(await verifyLibraryCoreEd25519WithWebCrypto(
+        {
+          message: encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
+            enrollment_body_digest: derivedEnrollment.enrollment_body_digest,
+          }),
+          publicKeyHex: derivedEnrollment.body.actor_public_key,
+          signatureHex: actorProof as never,
+        },
+        this.#subtle,
+      ))
+    ) {
+      throw new Error("PWA follower actor request proof is invalid");
+    }
+    this.#database.exec({
+      sql: `INSERT INTO library_follower_actor_request
+              (singleton_id, library_id, authority_epoch_id, actor_id,
+               actor_public_key, enrollment_request_digest,
+               canonical_enrollment_request, created_at,
+               enrollment_certificate_digest, canonical_enrollment_certificate,
+               actor_chain_genesis, enrolled_at)
+            VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                    NULL, NULL, NULL, NULL);`,
+      bind: [
+        context.authority.library_id,
+        context.authority.epoch_id,
+        derivedEnrollment.body.actor_id,
+        derivedEnrollment.body.actor_public_key,
+        requestDigest,
+        new TextDecoder("utf-8", { fatal: true }).decode(
+          request.canonicalRequestBytes,
+        ),
+        request.createdAt,
+      ],
+    });
+    return this.followerActorEnrollmentContext().request!;
+  }
+
+  async installFollowerActorEnrollment(
+    input: LibraryCoreInstallFollowerActorEnrollmentV2,
+  ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    const install = parseLibraryCoreInstallFollowerActorEnrollmentV2(input);
+    const context = this.followerActorEnrollmentContext();
+    if (!context.request) {
+      throw new Error("PWA follower actor request is unavailable");
+    }
+    if (context.request.state === "enrolled") {
+      const rows = this.#database.exec({
+        sql: `SELECT canonical_enrollment_certificate, actor_chain_genesis,
+                     enrolled_at
+              FROM library_follower_actor_request
+              WHERE singleton_id = 1 AND actor_id = ?1;`,
+        bind: [context.request.actorId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (rows.length !== 1) {
+        throw new Error("PWA follower enrollment receipt is unavailable");
+      }
+      const canonicalBytes = new TextEncoder().encode(
+        text(rows[0]![0], "PWA follower enrollment certificate"),
+      );
+      const actorChainGenesis = text(
+        rows[0]![1],
+        "PWA follower enrollment chain genesis",
+      );
+      const enrolledAt = safeInteger(
+        rows[0]![2],
+        "PWA follower enrollment time",
+      );
+      if (
+        enrolledAt !== install.enrolledAt ||
+        canonicalBytes.byteLength !==
+          install.canonicalCertificateBytes.byteLength ||
+        !canonicalBytes.every(
+          (byte, index) => byte === install.canonicalCertificateBytes[index],
+        ) ||
+        !isLibraryCoreLowercaseHex64(actorChainGenesis)
+      ) {
+        throw new Error("PWA follower enrollment replay changed");
+      }
+      return Object.freeze({
+        actorChainGenesis,
+        actorId: context.request.actorId,
+        actorPublicKey: context.request.actorPublicKey,
+        enrolledAt,
+        enrollmentCertificateDigest: context.request.enrollmentRequestDigest,
+      });
+    }
+    const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
+      install.canonicalCertificateBytes,
+      context.authority,
+      {
+        digest: coreDigest,
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+      },
+    );
+    const certificate = verified.certificate;
+    const enrollment = certificate.certificate_body.actor_enrollment_body;
+    const capability = certificate.certificate_body.actor_capability_body;
+    if (
+      enrollment.actor_id !== context.request.actorId ||
+      enrollment.actor_public_key !== context.request.actorPublicKey ||
+      certificate.certificate_digest !==
+        context.request.enrollmentRequestDigest ||
+      capability.actor_class !== "editor" ||
+      capability.scope.mode !== "library_wide"
+    ) {
+      throw new Error("PWA follower enrollment changed its request");
+    }
+    const canonicalCertificate = new TextDecoder("utf-8", {
+      fatal: true,
+    }).decode(install.canonicalCertificateBytes);
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_actors
+                (actor_id, authority_epoch_id, actor_kind, public_key,
+                 enrollment_operation_id, enrollment_certificate_digest,
+                 canonical_enrollment_certificate, chain_genesis_digest,
+                 accepted_counter, accepted_operation_id, accepted_chain_digest,
+                 retired_at, created_at, updated_at)
+              VALUES (?1, ?2, 'pwa', ?3, ?4, ?5, ?6, ?7,
+                      0, NULL, ?7, NULL, ?8, ?8);`,
+        bind: [
+          enrollment.actor_id,
+          enrollment.epoch_id,
+          enrollment.actor_public_key,
+          enrollment.operation_id,
+          certificate.certificate_digest,
+          canonicalCertificate,
+          verified.actor_chain_genesis,
+          install.enrolledAt,
+        ],
+      });
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_actor_capabilities
+                (capability_id, actor_id, certificate_version, actor_class,
+                 scope_mode, scope_kind, scope_id, issuance_identity,
+                 retirement_identity, certificate_digest,
+                 canonical_certificate, issued_at, retired_at)
+              VALUES (?1, ?2, 2, ?3, 'library_wide', NULL, NULL, ?1, ?4,
+                      ?5, ?6, ?7, NULL);`,
+        bind: [
+          capability.issuance_identity,
+          enrollment.actor_id,
+          capability.actor_class,
+          capability.retirement_identity,
+          certificate.certificate_digest,
+          canonicalCertificate,
+          capability.issued_at_ms,
+        ],
+      });
+      for (const mutationId of capability.allowed_operation_types) {
+        this.#database.exec({
+          sql: `INSERT OR IGNORE INTO library_actor_capability_mutations
+                  (capability_id, mutation_id) VALUES (?1, ?2);`,
+          bind: [capability.issuance_identity, mutationId],
+        });
+      }
+      this.#database.exec({
+        sql: `UPDATE library_follower_actor_request
+              SET enrollment_certificate_digest = ?1,
+                  canonical_enrollment_certificate = ?2,
+                  actor_chain_genesis = ?3, enrolled_at = ?4
+              WHERE singleton_id = 1 AND actor_id = ?5
+                AND enrollment_request_digest = ?1;`,
+        bind: [
+          certificate.certificate_digest,
+          canonicalCertificate,
+          verified.actor_chain_genesis,
+          install.enrolledAt,
+          enrollment.actor_id,
+        ],
+      });
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_intent_actors
+                (actor_id, next_counter, previous_operation_id,
+                 previous_chain_digest) VALUES (?1, 1, NULL, ?2);`,
+        bind: [enrollment.actor_id, verified.actor_chain_genesis],
+      });
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+    return Object.freeze({
+      actorChainGenesis: verified.actor_chain_genesis,
+      actorId: enrollment.actor_id,
+      actorPublicKey: enrollment.actor_public_key,
+      enrolledAt: install.enrolledAt,
+      enrollmentCertificateDigest: certificate.certificate_digest,
+    });
   }
 
   followerMutationContext(): LibraryCoreFollowerMutationContextV1 {
@@ -1968,8 +2432,7 @@ export class PwaLibraryCoreSqliteEngine {
           header.library_id ||
         text(authorityRows[0]![1], "intent transport epoch") !==
           header.storage_epoch_id ||
-        text(authorityRows[0]![2], "intent transport actor") !==
-          header.actor_id
+        text(authorityRows[0]![2], "intent transport actor") !== header.actor_id
       ) {
         throw new Error("normalized intent transport authority changed");
       }
@@ -1994,8 +2457,7 @@ export class PwaLibraryCoreSqliteEngine {
       const head = headRows[0]!;
       if (
         text(head[0], "intent transport head Library") !== header.library_id ||
-        text(head[1], "intent transport head epoch") !==
-          header.storage_epoch_id
+        text(head[1], "intent transport head epoch") !== header.storage_epoch_id
       ) {
         throw new Error("normalized intent transport head identity changed");
       }
@@ -2055,7 +2517,9 @@ export class PwaLibraryCoreSqliteEngine {
         nullableText(head[3], "intent transport latest digest") !==
           header.previous_segment_digest
       ) {
-        throw new Error("normalized intent transport page does not extend its head");
+        throw new Error(
+          "normalized intent transport page does not extend its head",
+        );
       }
       const storedCount = safeInteger(
         this.#database.exec({
@@ -2078,7 +2542,9 @@ export class PwaLibraryCoreSqliteEngine {
         "intent transport stored record count",
       );
       if (storedCount !== header.record_count) {
-        throw new Error("normalized intent transport range is not fully durable");
+        throw new Error(
+          "normalized intent transport range is not fully durable",
+        );
       }
       const publishableRows = this.#database.exec({
         sql: `SELECT count(*), max(created_at)
@@ -2101,7 +2567,9 @@ export class PwaLibraryCoreSqliteEngine {
         latestCreatedAt !== null &&
         publication.publishedAt < latestCreatedAt
       ) {
-        throw new Error("normalized intent transport publication predates its transaction");
+        throw new Error(
+          "normalized intent transport publication predates its transaction",
+        );
       }
       this.#database.exec({
         sql: `INSERT INTO library_intent_transport_segments
@@ -2143,7 +2611,9 @@ export class PwaLibraryCoreSqliteEngine {
         "intent transport published transaction count",
       );
       if (changed !== publishedCount) {
-        throw new Error("normalized intent transport publication count changed");
+        throw new Error(
+          "normalized intent transport publication count changed",
+        );
       }
       const nextActorCounter = header.last_actor_counter + 1;
       this.#database.exec({
@@ -2169,7 +2639,9 @@ export class PwaLibraryCoreSqliteEngine {
           "intent transport head update",
         ) !== 1
       ) {
-        throw new Error("normalized intent transport head changed concurrently");
+        throw new Error(
+          "normalized intent transport head changed concurrently",
+        );
       }
       this.#database.exec("COMMIT;");
       return Object.freeze({
@@ -2488,7 +2960,8 @@ export class PwaLibraryCoreSqliteEngine {
   async importNormalizedFollowerResultTransport(
     input: LibraryCoreNormalizedResultTransportImportV2,
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
-    const publication = parseLibraryCoreNormalizedResultTransportImportV2(input);
+    const publication =
+      parseLibraryCoreNormalizedResultTransportImportV2(input);
     const body = normalizedResultSegmentBodyFromRecordsV2(
       publication.header,
       publication.results,
@@ -2519,14 +2992,20 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const authorityRow = authorityRows[0]!;
     const authority = Object.freeze({
-      authorityKeyId: text(authorityRow[3], "normalized result authority key ID"),
+      authorityKeyId: text(
+        authorityRow[3],
+        "normalized result authority key ID",
+      ),
       authorityPublicKey: text(
         authorityRow[4],
         "normalized result authority public key",
       ),
       epoch: safeInteger(authorityRow[1], "normalized result authority epoch"),
       epochId: text(authorityRow[2], "normalized result authority epoch ID"),
-      libraryId: text(authorityRow[0], "normalized result authority Library ID"),
+      libraryId: text(
+        authorityRow[0],
+        "normalized result authority Library ID",
+      ),
     });
     if (
       authority.libraryId !== publication.header.library_id ||
@@ -2594,17 +3073,22 @@ export class PwaLibraryCoreSqliteEngine {
       if (existingRows.length === 1) {
         const row = existingRows[0]!;
         if (
-          safeInteger(row[0], "stored result last sequence") !== lastResultSequence ||
+          safeInteger(row[0], "stored result last sequence") !==
+            lastResultSequence ||
           nullableText(row[1], "stored result previous digest") !==
             publication.header.previous_segment_digest ||
-          text(row[2], "stored result semantic digest") !== semanticSegmentDigest ||
-          text(row[3], "stored result content digest") !== storedSegmentDigest ||
+          text(row[2], "stored result semantic digest") !==
+            semanticSegmentDigest ||
+          text(row[3], "stored result content digest") !==
+            storedSegmentDigest ||
           text(row[4], "stored result object key") !==
             publication.reference.descriptor.objectKey ||
           text(row[5], "stored result transport object ID") !==
             publication.reference.transportObjectId ||
-          safeInteger(row[6], "stored result received time") !== publication.receivedAt ||
-          safeInteger(row[7], "stored result count") !== publication.results.length
+          safeInteger(row[6], "stored result received time") !==
+            publication.receivedAt ||
+          safeInteger(row[7], "stored result count") !==
+            publication.results.length
         ) {
           throw new Error("normalized result transport replay changed");
         }
@@ -2696,7 +3180,9 @@ export class PwaLibraryCoreSqliteEngine {
           "normalized result head update",
         ) !== 1
       ) {
-        throw new Error("normalized result transport head changed concurrently");
+        throw new Error(
+          "normalized result transport head changed concurrently",
+        );
       }
       this.#database.exec("COMMIT;");
       return Object.freeze({

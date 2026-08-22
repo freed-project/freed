@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   importCheckpoint: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
   resetNormalizedLibrary: vi.fn(),
+  prepareFollowerEnrollment: vi.fn(),
 }));
 
 vi.mock("./library-core-pwa-follower-mutations", () => ({
@@ -48,6 +49,10 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
 
 vi.mock("./library-core-pwa-normalized-checkpoint-writer", () => ({
   createPwaNormalizedCheckpointWriter: mocks.createNormalizedCheckpointWriter,
+}));
+
+vi.mock("./library-core-pwa-follower-enrollment", () => ({
+  preparePwaLibraryCoreFollowerEnrollment: mocks.prepareFollowerEnrollment,
 }));
 
 vi.mock("./factory-reset-coordinator", () => ({
@@ -202,6 +207,8 @@ describe("PWA Library Core bounded scanner", () => {
       rows: [],
     });
     mocks.resetNormalizedLibrary.mockReset();
+    mocks.prepareFollowerEnrollment.mockReset();
+    mocks.prepareFollowerEnrollment.mockResolvedValue(null);
     mocks.commitReadAssignments.mockReset();
     mocks.commitUserStateAssignments.mockReset();
     mocks.commitFeedItemCaptures.mockReset();
@@ -910,5 +917,4 @@ describe("PWA Library Core bounded scanner", () => {
       expect.any(Number),
     );
   });
-
 });

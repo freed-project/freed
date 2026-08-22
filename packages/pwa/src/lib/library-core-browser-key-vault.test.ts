@@ -1,6 +1,10 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it } from "vitest";
-import { parseLibraryCoreFollowerMutationContextV1 } from "@freed/shared/library-core";
+import {
+  isLibraryCoreLowercaseHex64,
+  parseLibraryCoreFollowerMutationContextV1,
+  type LibraryCoreLowercaseHex64,
+} from "@freed/shared/library-core";
 
 import {
   getOrCreatePwaLibraryCoreActorIdentity,
@@ -13,6 +17,11 @@ const HEX = {
   epoch: "33".repeat(32),
   library: "44".repeat(32),
 } as const;
+
+function lowercaseHex64(value: string): LibraryCoreLowercaseHex64 {
+  if (!isLibraryCoreLowercaseHex64(value)) throw new TypeError("invalid hex");
+  return value;
+}
 
 function context(actorId: string, actorPublicKey: string) {
   return parseLibraryCoreFollowerMutationContextV1({
@@ -38,8 +47,12 @@ describe("PWA Library Core browser key vault", () => {
   });
 
   it("creates one stable nonextractable actor identity per Library", async () => {
-    const first = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
-    const second = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const first = await getOrCreatePwaLibraryCoreActorIdentity(
+      lowercaseHex64(HEX.library),
+    );
+    const second = await getOrCreatePwaLibraryCoreActorIdentity(
+      lowercaseHex64(HEX.library),
+    );
 
     expect(second).toEqual(first);
     expect(first.actorId).toMatch(/^[0-9a-f]{64}$/);
@@ -50,7 +63,9 @@ describe("PWA Library Core browser key vault", () => {
   });
 
   it("signs with the identity accepted by SQLite", async () => {
-    const identity = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const identity = await getOrCreatePwaLibraryCoreActorIdentity(
+      lowercaseHex64(HEX.library),
+    );
     const authority = context(identity.actorId, identity.actorPublicKey);
 
     await expect(
@@ -62,7 +77,9 @@ describe("PWA Library Core browser key vault", () => {
   });
 
   it("refuses an actor identity that differs from SQLite authority", async () => {
-    const identity = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const identity = await getOrCreatePwaLibraryCoreActorIdentity(
+      lowercaseHex64(HEX.library),
+    );
     const authority = context("55".repeat(32), identity.actorPublicKey);
 
     await expect(

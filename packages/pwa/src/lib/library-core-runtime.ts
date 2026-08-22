@@ -62,6 +62,7 @@ import {
 } from "./library-core-sqlite-runtime";
 import { createPwaNormalizedCheckpointWriter } from "./library-core-pwa-normalized-checkpoint-writer";
 import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-vault";
+import { preparePwaLibraryCoreFollowerEnrollment } from "./library-core-pwa-follower-enrollment";
 import {
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountUpserts,
@@ -827,6 +828,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       writerActorId: pointer.writerId,
     }),
   });
+  await preparePwaLibraryCoreFollowerEnrollment();
   return publishSelectedStateAfterLibraryCoreSync();
 }
 

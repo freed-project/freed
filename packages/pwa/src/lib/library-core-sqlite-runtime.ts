@@ -17,6 +17,11 @@ import type {
   LibraryCoreNormalizedIntentTransportPublicationV2,
   LibraryCoreNormalizedResultTransportImportReceiptV2,
   LibraryCoreNormalizedResultTransportImportV2,
+  LibraryCoreFollowerActorEnrollmentContextV2,
+  LibraryCoreFollowerActorEnrollmentReceiptV2,
+  LibraryCoreFollowerActorRequestReceiptV2,
+  LibraryCoreInstallFollowerActorEnrollmentV2,
+  LibraryCoreStoreFollowerActorRequestV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -141,6 +146,25 @@ export async function importPwaNormalizedFollowerResultTransport(
 ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
   const active = await openClient();
   return active.importNormalizedFollowerResultTransport(imported);
+}
+
+export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {
+  const active = await openClient();
+  return active.followerActorEnrollmentContext();
+}
+
+export async function storePwaFollowerActorRequest(
+  store: LibraryCoreStoreFollowerActorRequestV2,
+): Promise<LibraryCoreFollowerActorRequestReceiptV2> {
+  const active = await openClient();
+  return active.storeFollowerActorRequest(store);
+}
+
+export async function installPwaFollowerActorEnrollment(
+  install: LibraryCoreInstallFollowerActorEnrollmentV2,
+): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+  const active = await openClient();
+  return active.installFollowerActorEnrollment(install);
 }
 
 export async function closePwaNormalizedLibrary(): Promise<void> {

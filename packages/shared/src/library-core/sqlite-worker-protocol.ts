@@ -154,6 +154,15 @@ import {
   type LibraryCoreFollowerMutationContextV1,
 } from "./follower-mutation-context-contracts.js";
 import {
+  parseLibraryCoreInstallFollowerActorEnrollmentV2,
+  parseLibraryCoreStoreFollowerActorRequestV2,
+  type LibraryCoreFollowerActorEnrollmentContextV2,
+  type LibraryCoreFollowerActorEnrollmentReceiptV2,
+  type LibraryCoreFollowerActorRequestReceiptV2,
+  type LibraryCoreInstallFollowerActorEnrollmentV2,
+  type LibraryCoreStoreFollowerActorRequestV2,
+} from "./follower-actor-enrollment-contracts.js";
+import {
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
   type LibraryCoreNormalizedIntentTransportPublicationV2,
@@ -455,6 +464,23 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "read_follower_actor_enrollment_context";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "store_follower_actor_request";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      store: LibraryCoreStoreFollowerActorRequestV2;
+    }>
+  | Readonly<{
+      install: LibraryCoreInstallFollowerActorEnrollmentV2;
+      kind: "install_follower_actor_enrollment";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "begin_normalized_checkpoint_stage";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -538,6 +564,9 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFollowerResultApplyReceiptV1
   | LibraryCoreNormalizedIntentTransportPublicationReceiptV2
   | LibraryCoreNormalizedResultTransportImportReceiptV2
+  | LibraryCoreFollowerActorEnrollmentContextV2
+  | LibraryCoreFollowerActorRequestReceiptV2
+  | LibraryCoreFollowerActorEnrollmentReceiptV2
   | LibraryCoreScopeActionStagePageV1
   | LibraryCoreScopeActionStageStatusV1;
 
@@ -608,59 +637,69 @@ export function parseLibraryCoreSqliteWorkerRequest(
                   ? ["kind", "protocolVersion", "publication", "requestId"]
                   : value.kind === "import_normalized_follower_result_transport"
                     ? ["import", "kind", "protocolVersion", "requestId"]
-                    : value.kind === "begin_normalized_checkpoint_stage"
-                      ? ["kind", "protocolVersion", "requestId", "stage"]
-                      : value.kind === "append_normalized_checkpoint_stage_page"
-                        ? ["kind", "page", "protocolVersion", "requestId"]
-                        : value.kind === "activate_normalized_checkpoint_stage"
-                          ? [
-                              "activation",
-                              "kind",
-                              "protocolVersion",
-                              "requestId",
-                            ]
-                          : value.kind === "begin_scope_action"
-                            ? [
-                                "createdAt",
-                                "kind",
-                                "protocolVersion",
-                                "request",
-                                "requestId",
-                                "stageId",
-                              ]
-                            : value.kind === "append_scope_action"
+                    : value.kind === "store_follower_actor_request"
+                      ? ["kind", "protocolVersion", "requestId", "store"]
+                      : value.kind === "install_follower_actor_enrollment"
+                        ? ["install", "kind", "protocolVersion", "requestId"]
+                        : value.kind === "begin_normalized_checkpoint_stage"
+                          ? ["kind", "protocolVersion", "requestId", "stage"]
+                          : value.kind ===
+                              "append_normalized_checkpoint_stage_page"
+                            ? ["kind", "page", "protocolVersion", "requestId"]
+                            : value.kind ===
+                                "activate_normalized_checkpoint_stage"
                               ? [
-                                  "entityIds",
-                                  "expectedOrdinal",
+                                  "activation",
                                   "kind",
                                   "protocolVersion",
                                   "requestId",
-                                  "stageId",
                                 ]
-                              : value.kind === "finalize_scope_action"
+                              : value.kind === "begin_scope_action"
                                 ? [
-                                    "expectedMemberCount",
+                                    "createdAt",
                                     "kind",
                                     "protocolVersion",
+                                    "request",
                                     "requestId",
                                     "stageId",
                                   ]
-                                : value.kind === "page_scope_action"
+                                : value.kind === "append_scope_action"
                                   ? [
-                                      "afterOrdinal",
+                                      "entityIds",
+                                      "expectedOrdinal",
                                       "kind",
                                       "protocolVersion",
                                       "requestId",
                                       "stageId",
                                     ]
-                                  : value.kind === "close_scope_action"
+                                  : value.kind === "finalize_scope_action"
                                     ? [
+                                        "expectedMemberCount",
                                         "kind",
                                         "protocolVersion",
                                         "requestId",
                                         "stageId",
                                       ]
-                                    : ["kind", "protocolVersion", "requestId"];
+                                    : value.kind === "page_scope_action"
+                                      ? [
+                                          "afterOrdinal",
+                                          "kind",
+                                          "protocolVersion",
+                                          "requestId",
+                                          "stageId",
+                                        ]
+                                      : value.kind === "close_scope_action"
+                                        ? [
+                                            "kind",
+                                            "protocolVersion",
+                                            "requestId",
+                                            "stageId",
+                                          ]
+                                        : [
+                                            "kind",
+                                            "protocolVersion",
+                                            "requestId",
+                                          ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -677,6 +716,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "finalize_scope_action",
       "follower_mutation_context",
       "import_normalized_follower_result_transport",
+      "install_follower_actor_enrollment",
       "mutate_device_graph_layout",
       "open",
       "page_follower_intents",
@@ -685,6 +725,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "publish_normalized_follower_intent_transport",
       "query",
       "read_normalized_checkpoint_receipt",
+      "read_follower_actor_enrollment_context",
+      "store_follower_actor_request",
       "status",
     ].includes(String(value.kind)) ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
@@ -879,6 +921,20 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "store_follower_actor_request") {
+    return Object.freeze({
+      kind: "store_follower_actor_request",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+      store: parseLibraryCoreStoreFollowerActorRequestV2(value.store),
+    });
+  } else if (value.kind === "install_follower_actor_enrollment") {
+    return Object.freeze({
+      install: parseLibraryCoreInstallFollowerActorEnrollmentV2(value.install),
+      kind: "install_follower_actor_enrollment",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
 }
@@ -914,6 +970,40 @@ export function createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequ
   return parseLibraryCoreSqliteWorkerRequest({
     import: imported,
     kind: "import_normalized_follower_result_transport",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "read_follower_actor_enrollment_context",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest(
+  requestId: string,
+  store: LibraryCoreStoreFollowerActorRequestV2,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "store_follower_actor_request",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    store,
+  });
+}
+
+export function createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest(
+  requestId: string,
+  install: LibraryCoreInstallFollowerActorEnrollmentV2,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    install,
+    kind: "install_follower_actor_enrollment",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });

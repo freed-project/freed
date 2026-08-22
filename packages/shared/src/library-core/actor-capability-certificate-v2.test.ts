@@ -18,7 +18,9 @@ import { constructLibraryCoreActorEnrollmentBodyV1 } from "./actor-enrollment-co
 import capabilityVectors from "./actor-capability-certificate-v2-vectors.json" with { type: "json" };
 import {
   constructLibraryCoreActorCapabilityCertificateV2,
+  constructLibraryCoreActorCapabilityRequestV2,
   isLibraryCoreActorCapabilityCertificateConstructionV2,
+  isLibraryCoreActorCapabilityRequestConstructionV2,
   isLibraryCoreVerifiedActorCapabilityCertificateV2,
   LIBRARY_CORE_ACTOR_CAPABILITY_OPERATION_TYPES_V2,
   LIBRARY_CORE_LEGACY_EDITOR_OPERATION_TYPES_V1,
@@ -145,6 +147,37 @@ async function certificate(
 }
 
 describe("Library Core actor capability certificate v2", () => {
+  it("constructs the same proof-only bytes that the full certificate countersigns", async () => {
+    const request = await constructLibraryCoreActorCapabilityRequestV2(
+      enrollment(),
+      {
+        actor_class: "agent",
+        allowed_operation_types: [
+          "feed_item_read_assignment",
+          "feed_item_saved_assignment",
+        ],
+        scope: { mode: "library_wide" },
+      },
+      {
+        digest,
+        async signActorProof() {
+          return HEX.actorProof;
+        },
+      },
+    );
+    const complete = await certificate();
+
+    expect(isLibraryCoreActorCapabilityRequestConstructionV2(request)).toBe(
+      true,
+    );
+    expect(request.request).toStrictEqual({
+      certificate_body: complete.certificate.certificate_body,
+      certificate_digest: complete.certificate.certificate_digest,
+    });
+    expect(request.actor_chain_genesis).toBe(complete.actor_chain_genesis);
+    expect(request.request).not.toHaveProperty("authority_signature");
+  });
+
   it("matches and verifies the deterministic cross-runtime certificate vector", async () => {
     const vector = capabilityVectors.vectors[0];
     expect(vector.authority_seed_hex).toBe(AUTHORITY_SEED);

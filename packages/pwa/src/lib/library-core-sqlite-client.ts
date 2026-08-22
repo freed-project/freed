@@ -18,6 +18,9 @@ import {
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
   createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
+  createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest,
+  createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest,
+  createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreSqliteCheckpointSelectionResponse,
@@ -43,6 +46,11 @@ import {
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
   type LibraryCoreNormalizedResultTransportImportV2,
+  type LibraryCoreFollowerActorEnrollmentContextV2,
+  type LibraryCoreFollowerActorEnrollmentReceiptV2,
+  type LibraryCoreFollowerActorRequestReceiptV2,
+  type LibraryCoreInstallFollowerActorEnrollmentV2,
+  type LibraryCoreStoreFollowerActorRequestV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -237,6 +245,36 @@ export class PwaLibraryCoreSqliteClient {
       createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest(
         requestId,
         imported,
+      ),
+    );
+  }
+
+  followerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest(
+        requestId,
+      ),
+    );
+  }
+
+  storeFollowerActorRequest(
+    store: LibraryCoreStoreFollowerActorRequestV2,
+  ): Promise<LibraryCoreFollowerActorRequestReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest(
+        requestId,
+        store,
+      ),
+    );
+  }
+
+  installFollowerActorEnrollment(
+    install: LibraryCoreInstallFollowerActorEnrollmentV2,
+  ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest(
+        requestId,
+        install,
       ),
     );
   }

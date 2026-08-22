@@ -233,6 +233,9 @@ export async function signPwaLibraryCoreFollowerOperation(
   if (!isLibraryCoreLowercaseHex64(operationSigningBodyDigest)) {
     throw new TypeError("PWA follower signing digest is invalid");
   }
+  if (!isLibraryCoreLowercaseHex64(context.library_id)) {
+    throw new Error("PWA Library actor authority identity is invalid");
+  }
   const stored = await readStoredActorKey(context.library_id);
   if (
     !stored ||

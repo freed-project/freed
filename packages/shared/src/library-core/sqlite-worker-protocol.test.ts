@@ -24,6 +24,9 @@ import {
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
   createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
+  createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest,
+  createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest,
+  createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
   createLibraryCoreSqliteFollowerMutationContextWorkerRequest,
   createLibraryCoreSqlitePageScopeActionWorkerRequest,
@@ -569,6 +572,43 @@ describe("Library Core SQLite worker protocol", () => {
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...imported, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
+  });
+
+  it("snapshots the closed follower enrollment lifecycle", () => {
+    expect(
+      createLibraryCoreSqliteFollowerActorEnrollmentContextWorkerRequest(
+        "request-enrollment-context",
+      ),
+    ).toEqual({
+      kind: "read_follower_actor_enrollment_context",
+      protocolVersion: 2,
+      requestId: "request-enrollment-context",
+    });
+    const requestBytes = Uint8Array.of(123, 125);
+    const store = createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest(
+      "request-enrollment-store",
+      { canonicalRequestBytes: requestBytes, createdAt: 100 },
+    );
+    requestBytes[0] = 0;
+    expect(store.kind).toBe("store_follower_actor_request");
+    if (store.kind !== "store_follower_actor_request") {
+      throw new Error("follower actor request lane is invalid");
+    }
+    expect(store.store.canonicalRequestBytes).toEqual(Uint8Array.of(123, 125));
+    const certificateBytes = Uint8Array.of(123, 125);
+    const install =
+      createLibraryCoreSqliteInstallFollowerActorEnrollmentWorkerRequest(
+        "request-enrollment-install",
+        { canonicalCertificateBytes: certificateBytes, enrolledAt: 101 },
+      );
+    certificateBytes[0] = 0;
+    expect(install.kind).toBe("install_follower_actor_enrollment");
+    if (install.kind !== "install_follower_actor_enrollment") {
+      throw new Error("follower actor enrollment lane is invalid");
+    }
+    expect(install.install.canonicalCertificateBytes).toEqual(
+      Uint8Array.of(123, 125),
+    );
   });
 
   it("carries closed bounded normalized checkpoint stage requests", () => {

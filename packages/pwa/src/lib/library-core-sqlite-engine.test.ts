@@ -45,6 +45,10 @@ import {
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   parseLibraryCoreNormalizedResultSegmentBodyV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
+  constructLibraryCoreActorEnrollmentBodyV1,
+  constructLibraryCoreActorCapabilityCertificateV2,
+  constructLibraryCoreActorCapabilityRequestV2,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -330,6 +334,142 @@ describe("PWA Library Core SQLite engine", () => {
       sqlite3.version.libVersion,
     );
     expect(() => second.initialize()).toThrow(/does not match this build/);
+  });
+
+  it("stores one proof-only follower request and installs only its countersigned certificate", async () => {
+    const libraryId = "11".repeat(32);
+    const epochId = "22".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519");
+    const authorityKeys = generateKeyPairSync("ed25519");
+    const actorPublicKey = actorKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityPublicKey = authorityKeys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("hex");
+    const authorityKeyId = coreDigest("authority-key", {
+      authority_public_key: authorityPublicKey,
+      signature_algorithm: "ed25519",
+    });
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec({
+      sql: `INSERT INTO library_meta
+              (singleton_id, library_id, schema_version, authority_epoch,
+               source_revision, updated_at)
+            VALUES (1, ?1, 1, ?2, 0, 1);`,
+      bind: [libraryId, epochId],
+    });
+    database.exec({
+      sql: `INSERT INTO library_authority_epochs
+              (epoch_id, library_id, epoch_number, authority_key_id,
+               authority_public_key, transition_certificate_digest,
+               canonical_transition_certificate, accepted_manifest_generation,
+               checkpoint_frontier_digest, materialized_state_digest,
+               accepted_at)
+            VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 1, ?6, ?7, 1);`,
+      bind: [
+        epochId,
+        libraryId,
+        authorityKeyId,
+        authorityPublicKey,
+        "33".repeat(32),
+        "44".repeat(32),
+        "55".repeat(32),
+      ],
+    });
+    database.exec({
+      sql: `INSERT INTO library_active_authority
+              (active_key, library_id, epoch_id, writer_id,
+               accepted_manifest_generation, activated_at)
+            VALUES ('active', ?1, ?2, 'writer-1', 1, 1);`,
+      bind: [libraryId, epochId],
+    });
+    const enrollment = constructLibraryCoreActorEnrollmentBodyV1(
+      {
+        actor_incarnation_nonce: "66".repeat(32),
+        actor_public_key: actorPublicKey,
+        authority_key_id: authorityKeyId,
+        created_at_ms: 1_000,
+        epoch: 1,
+        epoch_id: epochId,
+        installation_incarnation: "77".repeat(32),
+        library_id: libraryId,
+        observed_frontier: [],
+        operation_id: "actor-enrolled:test",
+      },
+      { digest: coreDigest },
+    );
+    const capabilityInput = {
+      actor_class: "editor" as const,
+      allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      scope: { mode: "library_wide" as const },
+    };
+    const signActorProof = async (message: Uint8Array) =>
+      sign(null, message, actorKeys.privateKey).toString("hex");
+    const request = await constructLibraryCoreActorCapabilityRequestV2(
+      enrollment,
+      capabilityInput,
+      { digest: coreDigest, signActorProof },
+    );
+    const canonicalRequestBytes = encodeLibraryCoreCanonicalValue(
+      request.request as unknown as LibraryCoreCanonicalValue,
+    );
+    const stored = await engine.storeFollowerActorRequest({
+      canonicalRequestBytes,
+      createdAt: 1_000,
+    });
+    expect(stored).toMatchObject({
+      actorId: enrollment.body.actor_id,
+      state: "pending",
+    });
+    const certificate = await constructLibraryCoreActorCapabilityCertificateV2(
+      enrollment,
+      capabilityInput,
+      {
+        digest: coreDigest,
+        signActorProof,
+        async signAuthorityCertificate(message) {
+          return sign(null, message, authorityKeys.privateKey).toString("hex");
+        },
+      },
+    );
+    const canonicalCertificateBytes = encodeLibraryCoreCanonicalValue(
+      certificate.certificate as unknown as LibraryCoreCanonicalValue,
+    );
+    const installed = await engine.installFollowerActorEnrollment({
+      canonicalCertificateBytes,
+      enrolledAt: 1_100,
+    });
+    expect(installed).toMatchObject({
+      actorId: enrollment.body.actor_id,
+      enrollmentCertificateDigest: certificate.certificate.certificate_digest,
+    });
+    expect(engine.followerActorEnrollmentContext().request?.state).toBe(
+      "enrolled",
+    );
+    await expect(
+      engine.installFollowerActorEnrollment({
+        canonicalCertificateBytes,
+        enrolledAt: 1_100,
+      }),
+    ).resolves.toEqual(installed);
+    await expect(
+      engine.installFollowerActorEnrollment({
+        canonicalCertificateBytes,
+        enrolledAt: 1_101,
+      }),
+    ).rejects.toThrow(/replay changed/);
+    expect(engine.followerMutationContext()).toMatchObject({
+      actor_id: enrollment.body.actor_id,
+      next_actor_sequence: 1,
+      previous_actor_chain_digest: certificate.actor_chain_genesis,
+    });
   });
 
   it("atomically commits verified follower intents, optimistic fields, and exact retries", async () => {
@@ -736,30 +876,32 @@ describe("PWA Library Core SQLite engine", () => {
       resultBody,
     );
     const storedResultDigest = "14".repeat(32);
-    const resultPublication = parseLibraryCoreNormalizedResultTransportImportV2({
-      header: normalizedResultSegmentHeaderFromBodyV2(
-        resultBody,
-        semanticResultDigest,
-      ),
-      receivedAt: 2_100,
-      reference: {
-        descriptor: {
-          byteLength: canonicalResultBytes.byteLength,
-          contentDigest: storedResultDigest,
-          objectKey: createLibraryCoreImmutableObjectKey({
-            actorId,
-            digest: storedResultDigest,
-            epochId,
-            firstSequence: 1,
-            kind: "result_segment",
-            lastSequence: 1,
-            libraryId,
-          }),
+    const resultPublication = parseLibraryCoreNormalizedResultTransportImportV2(
+      {
+        header: normalizedResultSegmentHeaderFromBodyV2(
+          resultBody,
+          semanticResultDigest,
+        ),
+        receivedAt: 2_100,
+        reference: {
+          descriptor: {
+            byteLength: canonicalResultBytes.byteLength,
+            contentDigest: storedResultDigest,
+            objectKey: createLibraryCoreImmutableObjectKey({
+              actorId,
+              digest: storedResultDigest,
+              epochId,
+              firstSequence: 1,
+              kind: "result_segment",
+              lastSequence: 1,
+              libraryId,
+            }),
+          },
+          transportObjectId: "drive-result-object-1",
         },
-        transportObjectId: "drive-result-object-1",
+        results: [resultEnvelope],
       },
-      results: [resultEnvelope],
-    });
+    );
     database.exec(`CREATE TEMP TRIGGER fail_result_transport_receipt
       BEFORE INSERT ON library_result_transport_segments
       BEGIN SELECT RAISE(ABORT, 'injected result transport fault'); END;`);
@@ -803,16 +945,14 @@ describe("PWA Library Core SQLite engine", () => {
         },
       }),
     ).rejects.toThrow(/replay changed/);
-    expect(await engine.applyFollowerResult({ canonicalResultBytes })).toEqual(
-      {
-        actorId,
-        resultDigest,
-        resultSequence: 1,
-        sourceRevision: 8,
-        status: "accepted",
-        transactionId: "intent-transaction-1",
-      },
-    );
+    expect(await engine.applyFollowerResult({ canonicalResultBytes })).toEqual({
+      actorId,
+      resultDigest,
+      resultSequence: 1,
+      sourceRevision: 8,
+      status: "accepted",
+      transactionId: "intent-transaction-1",
+    });
     expect(
       database.exec({
         sql: `SELECT read_at, (SELECT count(*) FROM library_optimistic_fields),
@@ -3017,8 +3157,7 @@ describe("PWA Library Core SQLite engine", () => {
         stageId: stage.stageId,
       }),
     ).toMatchObject({
-      checkpointDigest:
-        digestLibraryCoreNormalizedCheckpointRecordsV2(records),
+      checkpointDigest: digestLibraryCoreNormalizedCheckpointRecordsV2(records),
       libraryId: stage.libraryId,
       recordCount: records.length,
       sourceRevision: stage.sourceRevision,
