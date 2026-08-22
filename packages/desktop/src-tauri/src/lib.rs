@@ -14241,7 +14241,6 @@ pub fn run() {
             library_core_desktop_runtime::acknowledge_pwa_intent_result_outbox,
             library_core_desktop_runtime::list_sqlite_library_actor_enrollments,
             library_core_desktop_runtime::read_sqlite_library_sync_page,
-            library_core_desktop_runtime::mutate_sqlite_library_items,
             library_core_desktop_runtime::set_sqlite_library_cloud_writer_admission,
             library_core_desktop_runtime::sqlite_library_cloud_writer_admission_status,
             library_core_desktop_runtime::create_sqlite_library_backup,

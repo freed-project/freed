@@ -30,9 +30,11 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
@@ -66,6 +68,7 @@ import {
   type FeedItemCaptureUpsertTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type FeedItemRemoveTransactionMemberInputV1,
+  type FeedItemSyncReceiptTransactionMemberInputV1,
   type FeedItemUserStateAssignmentFieldV1,
   type FeedItemUserStateAssignmentTransactionMemberInputV1,
   type LibraryCoreCanonicalValue,
@@ -864,6 +867,55 @@ async function maybeSubmitUserStateAssignments(
     }
   }
   return true;
+}
+
+async function submitProviderSyncReceipt(
+  operationType:
+    | "feed_item_like_sync_receipt"
+    | "feed_item_seen_sync_receipt",
+  entityId: string,
+  syncedAtMs: number,
+): Promise<void> {
+  const context = await primaryMutationContext();
+  if (!context) {
+    requireBrowserTestProjection("provider delivery receipt");
+    await mutateItems(
+      operationType === "feed_item_like_sync_receipt"
+        ? "confirm_liked"
+        : "confirm_seen",
+      { ids: [entityId], timestampMs: syncedAtMs },
+    );
+    return;
+  }
+  const transactionId =
+    `desktop-provider-receipt:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const input: FeedItemSyncReceiptTransactionMemberInputV1 = {
+    operation_id: `${transactionId}:0`,
+    library_id: context.libraryId,
+    epoch: context.epoch,
+    epoch_id: context.epochId,
+    actor_id: context.actorId,
+    actor_sequence: context.nextSequence,
+    previous_actor_operation_id: context.previousOperationId,
+    causal_frontier: context.observedFrontier,
+    hlc_wall_ms: syncedAtMs,
+    hlc_counter: 0,
+    transaction_id: transactionId,
+    transaction_member_index: 0,
+    transaction_member_count: 1,
+    entity_id: entityId,
+    payload: { synced_at_ms: syncedAtMs },
+    created_at_ms: syncedAtMs,
+  };
+  const schema =
+    operationType === "feed_item_like_sync_receipt"
+      ? FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA
+      : FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA;
+  await finalizeAndSubmitTransaction(
+    context,
+    [schema.construct(input, { digest: operationDigest })],
+    syncedAtMs,
+  );
 }
 
 const FOLLOWER_ENTITY_BATCH_LIMIT = 128;
@@ -1945,12 +1997,6 @@ function requireBrowserTestProjection(operation: string): void {
   }
 }
 
-const HISTORICAL_PROVIDER_STATE_MUTATIONS = new Set([
-  "confirm_liked",
-  "confirm_seen",
-  "toggle_liked",
-]);
-
 async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
   if (items.length === 0) return;
   requireBrowserTestProjection("whole-item upsert");
@@ -2075,26 +2121,37 @@ async function mutateItems(
     maxAgeMs?: number;
   } = {},
 ): Promise<number> {
-  if (!HISTORICAL_PROVIDER_STATE_MUTATIONS.has(mutation)) {
-    requireBrowserTestProjection("generic item mutation");
-  }
+  requireBrowserTestProjection("generic item mutation");
   const ids = options.ids ?? [];
   const timestampMs = options.timestampMs ?? Date.now();
-  const invokeBatch = (batch: readonly string[]) =>
-    invoke<number>("mutate_sqlite_library_items", {
-      request: {
-        mutation,
-        ids: [...batch],
-        platform: options.platform ?? null,
-        feedUrl: options.feedUrl ?? null,
-        timestampMs,
-        maxAgeMs: options.maxAgeMs ?? null,
-      },
+  const mutate = (
+    window as unknown as {
+      __FREED_E2E_NORMALIZED_MUTATE_ITEMS__?: (request: {
+        mutation: string;
+        ids: readonly string[],
+        platform: string | null;
+        feedUrl: string | null;
+        timestampMs: number;
+        maxAgeMs: number | null;
+      }) => number;
+    }
+  ).__FREED_E2E_NORMALIZED_MUTATE_ITEMS__;
+  if (!mutate) {
+    throw new Error("Browser SQLite test mutation bridge is unavailable");
+  }
+  const mutateBatch = (batch: readonly string[]) =>
+    mutate({
+      mutation,
+      ids: [...batch],
+      platform: options.platform ?? null,
+      feedUrl: options.feedUrl ?? null,
+      timestampMs,
+      maxAgeMs: options.maxAgeMs ?? null,
     });
-  if (ids.length === 0) return invokeBatch([]);
+  if (ids.length === 0) return mutateBatch([]);
   let affected = 0;
   for (let start = 0; start < ids.length; start += 1_000) {
-    affected += await invokeBatch(ids.slice(start, start + 1_000));
+    affected += mutateBatch(ids.slice(start, start + 1_000));
   }
   return affected;
 }
@@ -2681,18 +2738,20 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "CONFIRM_LIKED_SYNCED":
-      await mutateItems("confirm_liked", {
-        ids: [message.globalId],
-        timestampMs: message.syncedAt ?? timestamp,
-      });
+      await submitProviderSyncReceipt(
+        "feed_item_like_sync_receipt",
+        message.globalId,
+        message.syncedAt ?? timestamp,
+      );
       changedIds = [message.globalId];
       source = "item_patch";
       break;
     case "CONFIRM_SEEN_SYNCED":
-      await mutateItems("confirm_seen", {
-        ids: [message.globalId],
-        timestampMs: message.syncedAt ?? timestamp,
-      });
+      await submitProviderSyncReceipt(
+        "feed_item_seen_sync_receipt",
+        message.globalId,
+        message.syncedAt ?? timestamp,
+      );
       changedIds = [message.globalId];
       source = "item_patch";
       break;

@@ -223,7 +223,11 @@ It stores one `saved_archive_state` clock, so concurrent operations converge
 without ever materializing an item that is both saved and archived. Like state
 uses the same bounded assignment rule with its own clock and clears its prior
 provider receipt when a new local assignment wins. These mutations create no
-provider traffic. Provider execution remains a separate registered mutation.
+provider traffic. A completed provider action records either a like or seen
+delivery acknowledgement through a separate Primary-only signed operation.
+Each acknowledgement carries one exact timestamp, uses its own deterministic
+field clock, and materializes only the named receipt column. It cannot schedule,
+retry, or otherwise initiate provider traffic.
 
 FeedItem removal writes a typed tombstone and deletes the normalized root in
 the same transaction. SQLite cascades every owned child row. Removal clocks

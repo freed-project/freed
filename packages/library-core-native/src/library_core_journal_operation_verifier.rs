@@ -50,6 +50,7 @@ const ENVELOPE_KEYS: [&str; 26] = [
 ];
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
 const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
+const SYNC_RECEIPT_PAYLOAD_KEYS: [&str; 1] = ["synced_at_ms"];
 const CAPTURE_PAYLOAD_KEYS: [&str; 1] = ["item"];
 const ASSIGNMENT_PAYLOAD_KEYS: [&str; 2] = ["assigned", "assigned_at_ms"];
 const REMOVE_PAYLOAD_KEYS: [&str; 1] = ["removed_at_ms"];
@@ -186,6 +187,7 @@ struct ParsedEnvelope {
     read_at_ms: Option<i64>,
     assigned: Option<bool>,
     assigned_at_ms: Option<i64>,
+    synced_at_ms: Option<i64>,
     removed_at_ms: Option<i64>,
     previous_actor_chain_digest: String,
     actor_chain_digest: String,
@@ -1136,6 +1138,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         read_at_ms,
         assigned,
         assigned_at_ms,
+        synced_at_ms,
         removed_at_ms,
     ) = match operation_type.as_str() {
         "feed_item_capture_upsert" => {
@@ -1165,6 +1168,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "feed_item_read_assignment" => {
@@ -1176,6 +1180,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 Some(safe_integer(payload_object, "read_at_ms", index)?),
+                None,
                 None,
                 None,
                 None,
@@ -1199,6 +1204,23 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 Some(assigned),
                 Some(safe_integer(payload_object, "assigned_at_ms", index)?),
                 None,
+                None,
+            )
+        }
+        "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt" => {
+            let payload_object =
+                exact_object(payload, &SYNC_RECEIPT_PAYLOAD_KEYS, index, "payload")?;
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(safe_integer(payload_object, "synced_at_ms", index)?),
+                None,
             )
         }
         "feed_item_remove"
@@ -1207,6 +1229,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         | "account_remove" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -1239,6 +1262,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "rss_feed_title_assignment" => {
@@ -1257,6 +1281,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
             (
                 None,
                 Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
                 None,
                 None,
                 None,
@@ -1292,6 +1317,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "person_upsert" => {
@@ -1310,6 +1336,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
                 None,
                 None,
                 None,
@@ -1351,6 +1378,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "account_upsert" => {
@@ -1370,6 +1398,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 Some(String::from_utf8(canonical).expect("canonical encoder emits UTF-8")),
+                None,
                 None,
                 None,
                 None,
@@ -1402,11 +1431,13 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
                 None,
                 None,
                 None,
+                None,
             )
         }
         "rss_feed_remove_keep_items" | "rss_feed_remove_with_items" => {
             let payload_object = exact_object(payload, &REMOVE_PAYLOAD_KEYS, index, "payload")?;
             (
+                None,
                 None,
                 None,
                 None,
@@ -1492,6 +1523,7 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         read_at_ms,
         assigned,
         assigned_at_ms,
+        synced_at_ms,
         removed_at_ms,
         previous_actor_chain_digest,
         actor_chain_digest,
@@ -1650,6 +1682,7 @@ where
             read_at_ms: member.read_at_ms,
             assigned: member.assigned,
             assigned_at_ms: member.assigned_at_ms,
+            synced_at_ms: member.synced_at_ms,
             removed_at_ms: member.removed_at_ms,
             canonical_envelope_json: member.canonical_json.clone(),
             causal_tips: member.causal_tips.clone(),
@@ -1819,6 +1852,9 @@ pub(crate) mod tests {
                     | "feed_item_archive_assignment"
                     | "feed_item_like_assignment" => {
                         json!({ "assigned": true, "assigned_at_ms": timestamp_ms })
+                    }
+                    "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt" => {
+                        json!({ "synced_at_ms": timestamp_ms })
                     }
                     "feed_item_remove" => json!({ "removed_at_ms": timestamp_ms }),
                     "rss_feed_upsert" => json!({

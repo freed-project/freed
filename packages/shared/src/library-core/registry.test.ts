@@ -80,8 +80,10 @@ import {
 import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -97,7 +99,9 @@ import {
 } from "./operation-envelope-contracts.js";
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
@@ -329,14 +333,20 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // Traced from `confirmSeenSynced`, one leaf.
   feed_item_seen_sync_receipt: {
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema:
+      FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `confirmLikedSynced`, one leaf.
   feed_item_like_sync_receipt: {
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+    transactionMemberSchema:
+      FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Bulk repairs, declared by reference to their single-item counterparts.
   feed_items_read_frozen: {
@@ -806,7 +816,7 @@ describe("Library Core operation registry", () => {
     );
   });
 
-  it("keeps frozen membership, provider intent, and execution receipts unresolved", () => {
+  it("keeps frozen membership and provider intent unresolved while closing execution receipts", () => {
     for (const operationId of LIBRARY_CORE_OPERATION_IDS.filter((id) =>
       id.includes("_frozen"),
     )) {
@@ -841,8 +851,11 @@ describe("Library Core operation registry", () => {
       expect(definition.intendedAuthority).toBe(
         "provider_action_executor_receipt",
       );
-      expect(definition.blockers).toContain(
+      expect(definition.blockers).not.toContain(
         "provider_action_lifecycle_contract_unresolved",
+      );
+      expect(definition.blockers).not.toContain(
+        "provider_intent_execution_receipt_unresolved",
       );
     }
     expect(

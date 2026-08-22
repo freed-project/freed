@@ -53,6 +53,14 @@ export interface FeedItemReadAssignmentPayloadV1 {
   readonly read_at_ms: number;
 }
 
+export interface FeedItemSyncReceiptPayloadV1 {
+  readonly synced_at_ms: number;
+}
+
+export type FeedItemSyncReceiptOperationTypeV1 =
+  | "feed_item_like_sync_receipt"
+  | "feed_item_seen_sync_receipt";
+
 export interface FeedItemRemovePayloadV1 {
   readonly removed_at_ms: number;
 }
@@ -145,6 +153,7 @@ export interface LibraryCoreOperationPayloadSchema<
 }
 
 const READ_ASSIGNMENT_KEYS = ["read_at_ms"] as const;
+const SYNC_RECEIPT_KEYS = ["synced_at_ms"] as const;
 const FEED_ITEM_CAPTURE_UPSERT_KEYS = ["item"] as const;
 const FEED_ITEM_REMOVE_KEYS = ["removed_at_ms"] as const;
 const RSS_FEED_UPSERT_KEYS = ["feed"] as const;
@@ -221,6 +230,38 @@ function validateFeedItemReadAssignmentPayload(
   return {
     ok: true,
     value: Object.freeze({ read_at_ms: descriptor.value }),
+  };
+}
+
+function validateFeedItemSyncReceiptPayload(
+  value: unknown,
+): LibraryCorePayloadValidationResult<FeedItemSyncReceiptPayloadV1> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalid("payload must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalid("payload must be a plain object");
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0) {
+    return invalid("payload may not contain symbol keys");
+  }
+  const keys = Object.getOwnPropertyNames(value);
+  if (keys.length !== 1 || keys[0] !== SYNC_RECEIPT_KEYS[0]) {
+    return invalid("payload must contain only synced_at_ms");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, "synced_at_ms");
+  if (
+    descriptor === undefined ||
+    !descriptor.enumerable ||
+    !("value" in descriptor) ||
+    !isLibraryCoreNonnegativeSafeInteger(descriptor.value)
+  ) {
+    return invalid("synced_at_ms must be a nonnegative safe integer");
+  }
+  return {
+    ok: true,
+    value: Object.freeze({ synced_at_ms: descriptor.value }),
   };
 }
 
@@ -1168,6 +1209,23 @@ export const FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA = Object.freeze({
   "feed_item_read_assignment",
   FeedItemReadAssignmentPayloadV1
 >;
+
+function feedItemSyncReceiptPayloadSchema(
+  operationType: FeedItemSyncReceiptOperationTypeV1,
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_payload_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    canonicalKeys: SYNC_RECEIPT_KEYS,
+    validate: validateFeedItemSyncReceiptPayload,
+  });
+}
+
+export const FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA =
+  feedItemSyncReceiptPayloadSchema("feed_item_like_sync_receipt");
+export const FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA =
+  feedItemSyncReceiptPayloadSchema("feed_item_seen_sync_receipt");
 
 export const FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA = Object.freeze({
   schemaId: "feed_item_capture_upsert_payload_v1",

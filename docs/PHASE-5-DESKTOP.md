@@ -588,6 +588,7 @@ export async function captureDomFeed(
 | 5.98 | Page hydration and least-recently-used eviction candidates through one generated source-fenced SQLite contract shared with the PWA, coalesce device-local access recency, and reject stale cache-pressure deletion before physical bytes are removed                                                                             | High       | ✓ Complete |
 | 5.99 | Delete the native Library shell read, shell replacement, and historical count commands. Make the browser harness bootstrap and refresh counts through the same bounded normalized facet and preference contracts as Freed Desktop                                                                                                  | High       | ✓ Complete |
 | 5.100 | Delete the native and browser-harness whole-item upsert, point-read, and generic offset-query commands plus their payload-JSON query plans and tests. Browser item reads and background scans now use the normalized item-detail and background-page contracts                                                                          | High       | ✓ Complete |
+| 5.101 | Delete the native and browser-harness generic item mutation command. Route like and seen delivery acknowledgements through Primary-only signed normalized operations, and leave ordinary browser mutation simulation behind an explicit test-only bridge with no native command identity | High       | ✓ Complete |
 
 ---
 

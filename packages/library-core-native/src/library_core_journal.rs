@@ -435,6 +435,7 @@ pub(crate) struct VerifiedOperation {
     pub(crate) read_at_ms: Option<i64>,
     pub(crate) assigned: Option<bool>,
     pub(crate) assigned_at_ms: Option<i64>,
+    pub(crate) synced_at_ms: Option<i64>,
     pub(crate) removed_at_ms: Option<i64>,
     pub(crate) canonical_envelope_json: String,
     pub(crate) causal_tips: Vec<VerifiedCausalTip>,
@@ -719,10 +720,20 @@ pub(crate) fn validate_transaction(
             + usize::from(member.account_json.is_some())
             + usize::from(member.read_at_ms.is_some())
             + usize::from(member.assigned.is_some() || member.assigned_at_ms.is_some())
+            + usize::from(member.synced_at_ms.is_some())
             + usize::from(member.removed_at_ms.is_some());
         if payload_slot_count != 1 {
             return Err(JournalError::InvalidVerifiedInput {
                 field: "operation_payload",
+            });
+        }
+        let is_sync_receipt = matches!(
+            member.operation_type.as_str(),
+            "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt"
+        );
+        if !is_sync_receipt && member.synced_at_ms.is_some() {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "synced_at_ms",
             });
         }
         match member.operation_type.as_str() {
@@ -772,6 +783,26 @@ pub(crate) fn validate_transaction(
                 {
                     return Err(JournalError::InvalidVerifiedInput {
                         field: "user_state_assignment",
+                    });
+                }
+            }
+            "feed_item_like_sync_receipt" | "feed_item_seen_sync_receipt" => {
+                if member.entity_type != "FeedItem"
+                    || member.item_json.is_some()
+                    || member.rss_feed_json.is_some()
+                    || member.preferences_patch_json.is_some()
+                    || member.person_json.is_some()
+                    || member.account_json.is_some()
+                    || member.read_at_ms.is_some()
+                    || member.assigned.is_some()
+                    || member.assigned_at_ms.is_some()
+                    || member
+                        .synced_at_ms
+                        .is_none_or(|value| !(0..=MAX_SAFE_INTEGER).contains(&value))
+                    || member.removed_at_ms.is_some()
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "sync_receipt",
                     });
                 }
             }
@@ -3418,6 +3449,7 @@ mod tests {
                 read_at_ms: Some(*read_at_ms),
                 assigned: None,
                 assigned_at_ms: None,
+                synced_at_ms: None,
                 removed_at_ms: None,
                 canonical_envelope_json,
                 causal_tips: Vec::new(),

@@ -2,9 +2,11 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -19,6 +21,8 @@ import {
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
   type FeedItemCaptureUpsertPayloadV1,
   type FeedItemUserStateAssignmentOperationTypeV1,
+  type FeedItemSyncReceiptOperationTypeV1,
+  type FeedItemSyncReceiptPayloadV1,
   type RssFeedUpsertPayloadV1,
   type RssFeedTitleAssignmentPayloadV1,
   type PreferencesLeafAssignmentPayloadV1,
@@ -70,6 +74,8 @@ export interface FeedItemReadAssignmentTransactionMemberInputV1 {
 export type FeedItemUserStateAssignmentTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemCaptureUpsertTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+export type FeedItemSyncReceiptTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
 export type FeedItemRemoveTransactionMemberInputV1 =
   FeedItemReadAssignmentTransactionMemberInputV1;
@@ -166,6 +172,31 @@ export interface FeedItemUserStateAssignmentTransactionMemberBodyV1 {
     assigned: boolean;
     assigned_at_ms: number;
   }>;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export interface FeedItemSyncReceiptTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: FeedItemSyncReceiptOperationTypeV1;
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: FeedItemSyncReceiptPayloadV1;
   readonly payload_digest: LibraryCoreLowercaseHex64;
   readonly blob_references: readonly [];
   readonly created_at_ms: number;
@@ -454,6 +485,7 @@ export type LibraryCoreTransactionMemberBodyV1 =
   | FeedItemCaptureUpsertTransactionMemberBodyV1
   | FeedItemReadAssignmentTransactionMemberBodyV1
   | FeedItemUserStateAssignmentTransactionMemberBodyV1
+  | FeedItemSyncReceiptTransactionMemberBodyV1
   | FeedItemRemoveTransactionMemberBodyV1
   | RssFeedUpsertTransactionMemberBodyV1
   | RssFeedTitleAssignmentTransactionMemberBodyV1
@@ -769,6 +801,11 @@ function constructEntityTransactionMember(
         readonly entityType: "FeedItem";
       }
     | {
+        readonly operationType: FeedItemSyncReceiptOperationTypeV1;
+        readonly validatePayload: typeof FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate;
+        readonly entityType: "FeedItem";
+      }
+    | {
         readonly operationType: "feed_item_remove";
         readonly validatePayload: typeof FEED_ITEM_REMOVE_PAYLOAD_SCHEMA.validate;
         readonly entityType: "FeedItem";
@@ -1019,6 +1056,21 @@ function constructFeedItemUserStateAssignmentTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateAssignmentTransactionMemberBodyV1>;
 }
 
+function constructFeedItemSyncReceiptTransactionMember(
+  input: FeedItemSyncReceiptTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+  operationType: FeedItemSyncReceiptOperationTypeV1,
+): LibraryCoreTransactionMemberConstruction<FeedItemSyncReceiptTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType,
+    validatePayload:
+      operationType === "feed_item_like_sync_receipt"
+        ? FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate
+        : FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA.validate,
+    entityType: "FeedItem",
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemSyncReceiptTransactionMemberBodyV1>;
+}
+
 function constructFeedItemRemoveTransactionMember(
   input: FeedItemRemoveTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -1223,6 +1275,32 @@ export const FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
   userStateAssignmentTransactionMemberSchema("feed_item_archive_assignment");
 export const FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
   userStateAssignmentTransactionMemberSchema("feed_item_like_assignment");
+
+function feedItemSyncReceiptTransactionMemberSchema(
+  operationType: FeedItemSyncReceiptOperationTypeV1,
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_transaction_member_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    entityType: "FeedItem" as const,
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: FeedItemSyncReceiptTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructFeedItemSyncReceiptTransactionMember(
+        input,
+        dependencies,
+        operationType,
+      ),
+  });
+}
+
+export const FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA =
+  feedItemSyncReceiptTransactionMemberSchema("feed_item_like_sync_receipt");
+export const FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA =
+  feedItemSyncReceiptTransactionMemberSchema("feed_item_seen_sync_receipt");
 
 export const FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA = Object.freeze({
   schemaId: "feed_item_remove_transaction_member_v1",

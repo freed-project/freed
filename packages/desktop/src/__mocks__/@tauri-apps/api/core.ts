@@ -242,6 +242,9 @@ const browserTestWindow = window as unknown as {
   __FREED_E2E_NORMALIZED_CAPTURE_ITEMS__?: (
     items: readonly MockSqliteItem[],
   ) => void;
+  __FREED_E2E_NORMALIZED_MUTATE_ITEMS__?: (
+    request: MockSqliteMutationRequest,
+  ) => number;
 };
 browserTestWindow.__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__ ??= (items) => {
   const state = sqliteLibrary();
@@ -250,6 +253,115 @@ browserTestWindow.__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__ ??= (items) => {
   }
   state.revision += 1;
 };
+
+type MockSqliteMutationRequest = {
+  mutation: string;
+  ids: readonly string[];
+  platform: string | null;
+  feedUrl: string | null;
+  timestampMs: number;
+  maxAgeMs: number | null;
+};
+
+function sqliteMutateItems(request: MockSqliteMutationRequest): number {
+  const state = sqliteLibrary();
+  const candidates = request.ids.length
+    ? request.ids.flatMap((id) => (state.items[id] ? [state.items[id]] : []))
+    : Object.values(state.items);
+  let affected = 0;
+  for (const item of candidates) {
+    if (
+      item.__deleted ||
+      (request.platform && item.platform !== request.platform)
+    ) {
+      continue;
+    }
+    if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
+    const user = sqliteItemUserState(item);
+    switch (request.mutation) {
+      case "mark_read":
+      case "mark_all_read":
+        user.readAt ??= request.timestampMs;
+        break;
+      case "toggle_saved":
+        user.saved = !user.saved;
+        if (user.saved) {
+          user.savedAt = request.timestampMs;
+          user.archived = false;
+          delete user.archivedAt;
+        } else {
+          delete user.savedAt;
+        }
+        break;
+      case "toggle_archived":
+        if (user.saved) continue;
+        user.archived = !user.archived;
+        if (user.archived) user.archivedAt = request.timestampMs;
+        else delete user.archivedAt;
+        break;
+      case "archive":
+      case "archive_all_read_unsaved":
+        if (user.saved || user.hidden || user.readAt == null) continue;
+        user.archived = true;
+        user.archivedAt ??= request.timestampMs;
+        break;
+      case "toggle_liked":
+        user.liked = !user.liked;
+        if (user.liked) user.likedAt = request.timestampMs;
+        else {
+          delete user.likedAt;
+          delete user.likedSyncedAt;
+        }
+        break;
+      case "confirm_liked":
+        user.likedSyncedAt = request.timestampMs;
+        break;
+      case "confirm_seen":
+        user.seenSyncedAt = request.timestampMs;
+        break;
+      case "unarchive_saved":
+        if (!user.saved || !user.archived) continue;
+        user.archived = false;
+        delete user.archivedAt;
+        break;
+      case "delete_all_archived":
+        if (!user.archived || user.saved) continue;
+        item.__deleted = true;
+        break;
+      case "prune_archived":
+        if (
+          !user.archived ||
+          user.saved ||
+          user.archivedAt == null ||
+          Number(user.archivedAt) >
+            request.timestampMs - (request.maxAgeMs ?? 0)
+        ) {
+          continue;
+        }
+        item.__deleted = true;
+        break;
+      case "delete_rss":
+        if (item.platform !== "rss") continue;
+        item.__deleted = true;
+        break;
+      case "delete":
+        item.__deleted = true;
+        break;
+      case "clear_sample":
+        if (!item.sampleData) continue;
+        item.__deleted = true;
+        break;
+      default:
+        continue;
+    }
+    affected += 1;
+  }
+  state.revision += 1;
+  return affected;
+}
+
+browserTestWindow.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ ??=
+  sqliteMutateItems;
 
 function sqliteAppendImportItems(args: Record<string, unknown>): null {
   const stage = sqliteImportStage();
@@ -383,99 +495,6 @@ const handlers: Record<string, Handler> = {
   read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
   bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
-  mutate_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as {
-      mutation?: string;
-      ids?: string[];
-      platform?: string | null;
-      feedUrl?: string | null;
-      timestampMs?: number;
-      maxAgeMs?: number;
-    };
-    const state = sqliteLibrary();
-    const candidates = request.ids?.length
-      ? request.ids.flatMap((id) => state.items[id] ? [state.items[id]] : [])
-      : Object.values(state.items);
-    let affected = 0;
-    for (const item of candidates) {
-      if (item.__deleted || (request.platform && item.platform !== request.platform)) continue;
-      if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
-      const user = sqliteItemUserState(item);
-      const timestampMs = request.timestampMs ?? Date.now();
-      switch (request.mutation) {
-        case "mark_read":
-        case "mark_all_read":
-          user.readAt ??= timestampMs;
-          break;
-        case "toggle_saved":
-          user.saved = !user.saved;
-          if (user.saved) {
-            user.savedAt = timestampMs;
-            user.archived = false;
-            delete user.archivedAt;
-          } else {
-            delete user.savedAt;
-          }
-          break;
-        case "toggle_archived":
-          if (user.saved) continue;
-          user.archived = !user.archived;
-          if (user.archived) user.archivedAt = timestampMs;
-          else delete user.archivedAt;
-          break;
-        case "archive":
-        case "archive_all_read_unsaved":
-          if (user.saved || user.hidden || user.readAt == null) continue;
-          user.archived = true;
-          user.archivedAt ??= timestampMs;
-          break;
-        case "toggle_liked":
-          user.liked = !user.liked;
-          if (user.liked) user.likedAt = timestampMs;
-          else {
-            delete user.likedAt;
-            delete user.likedSyncedAt;
-          }
-          break;
-        case "confirm_liked":
-          user.likedSyncedAt = timestampMs;
-          break;
-        case "confirm_seen":
-          user.seenSyncedAt = timestampMs;
-          break;
-        case "unarchive_saved":
-          if (!user.saved || !user.archived) continue;
-          user.archived = false;
-          delete user.archivedAt;
-          break;
-        case "delete_all_archived":
-          if (!user.archived || user.saved) continue;
-          item.__deleted = true;
-          break;
-        case "prune_archived":
-          if (!user.archived || user.saved || user.archivedAt == null
-            || Number(user.archivedAt) > timestampMs - (request.maxAgeMs ?? 0)) continue;
-          item.__deleted = true;
-          break;
-        case "delete_rss":
-          if (item.platform !== "rss") continue;
-          item.__deleted = true;
-          break;
-        case "delete":
-          item.__deleted = true;
-          break;
-        case "clear_sample":
-          if (!item.sampleData) continue;
-          item.__deleted = true;
-          break;
-        default:
-          continue;
-      }
-      affected += 1;
-    }
-    state.revision += 1;
-    return affected;
-  },
   set_sqlite_library_cloud_writer_admission: (args: Record<string, unknown>) => {
     const request = args.request as {
       localWriterId: string;

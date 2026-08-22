@@ -1673,6 +1673,52 @@ fn materialize_boolean_assignment(
     Ok(())
 }
 
+fn materialize_sync_receipt(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    member_index: usize,
+    committed_at: i64,
+    program: SqliteMutationProgram,
+) -> Result<(), NormalizedSqliteError> {
+    let member = &verified.members[member_index];
+    let synced_at = member
+        .synced_at_ms
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized sync receipt payload is missing",
+        ))?;
+    let current_clock = transaction
+        .query_row(program.clock_read_sql, [&member.entity_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .optional()?;
+    let wins = current_clock.as_ref().is_none_or(|clock| {
+        synced_at > clock.0
+            || (synced_at == clock.0 && member.operation_id.as_str() < clock.1.as_str())
+    });
+    if wins {
+        let updated = transaction.execute(
+            program.materialize_sql,
+            params![synced_at, committed_at, member.entity_id],
+        )?;
+        if updated != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized sync receipt target changed",
+            ));
+        }
+        transaction.execute(
+            program.clock_write_sql,
+            params![
+                member.entity_id,
+                verified.actor_id,
+                member.actor_sequence,
+                member.operation_id,
+                synced_at,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn materialize_text_assignment(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
@@ -1909,6 +1955,9 @@ fn materialize_member(
             committed_at,
             program,
         ),
+        "sync_receipt" => {
+            materialize_sync_receipt(transaction, verified, member_index, committed_at, program)
+        }
         "text_assignment" => {
             materialize_text_assignment(transaction, verified, member_index, committed_at, program)
         }
@@ -4170,6 +4219,75 @@ mod tests {
                 })
                 .expect("journaled transactions"),
             4
+        );
+    }
+
+    #[test]
+    fn signed_provider_sync_receipts_materialize_only_the_named_timestamp() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let like = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:receipt:like-state",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 1_000)],
+            "feed_item_like_assignment",
+        );
+        let like_receipt =
+            accept_normalized_operation_transaction_v1(&mut connection, &like, &key_pair, 1_000)
+                .expect("like item");
+        let confirm_like = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:receipt:liked",
+            2,
+            Some(&like_receipt.committed_operation_id),
+            &like_receipt.committed_chain_digest,
+            &[("rss:item:1", 1_100)],
+            "feed_item_like_sync_receipt",
+        );
+        let confirmed_like = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &confirm_like,
+            &key_pair,
+            1_100,
+        )
+        .expect("confirm like delivery");
+        let confirm_seen = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:receipt:seen",
+            3,
+            Some(&confirmed_like.committed_operation_id),
+            &confirmed_like.committed_chain_digest,
+            &[("rss:item:1", 1_200)],
+            "feed_item_seen_sync_receipt",
+        );
+        accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &confirm_seen,
+            &key_pair,
+            1_200,
+        )
+        .expect("confirm seen delivery");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT liked, liked_at, liked_synced_at, seen_synced_at
+                     FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?
+                    )),
+                )
+                .expect("provider receipt projection"),
+            (1, 1_000, 1_100, 1_200)
         );
     }
 

@@ -10,6 +10,8 @@ import {
 import {
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_REMOVE_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
@@ -48,6 +50,8 @@ import {
 import {
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
@@ -344,14 +348,13 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   feed_item_like_sync_receipt: plannedOperation({
     entityType: "FeedItem",
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      FEED_ITEM_LIKE_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["CONFIRM_LIKED_SYNCED"],
     intendedAuthority: "provider_action_executor_receipt",
-    additionalBlockers: [
-      "provider_action_lifecycle_contract_unresolved",
-      "provider_intent_execution_receipt_unresolved",
-    ],
   }),
   feed_item_read_assignment: localUserOperation({
     entityType: "FeedItem",
@@ -388,14 +391,13 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   feed_item_seen_sync_receipt: plannedOperation({
     entityType: "FeedItem",
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    payloadSchema: FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+    transactionMemberSchema:
+      FEED_ITEM_SEEN_SYNC_RECEIPT_TRANSACTION_MEMBER_SCHEMA,
     touchedFieldRegistryKeys:
       FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["CONFIRM_SEEN_SYNCED"],
     intendedAuthority: "provider_action_executor_receipt",
-    additionalBlockers: [
-      "provider_action_lifecycle_contract_unresolved",
-      "provider_intent_execution_receipt_unresolved",
-    ],
   }),
   feed_items_archive_frozen: localUserOperation({
     entityType: "FeedItem",

@@ -279,6 +279,7 @@ function assertContract(contract) {
         "read_at",
         "remove",
         "rss_feed_upsert",
+        "sync_receipt",
         "text_assignment",
       ].includes(program.payloadKind) ||
       typeof program.requiresExistingTarget !== "boolean" ||

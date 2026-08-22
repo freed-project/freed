@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_PAYLOAD_SCHEMA,
   RSS_FEED_UPSERT_PAYLOAD_SCHEMA,
   RSS_FEED_TITLE_ASSIGNMENT_PAYLOAD_SCHEMA,
@@ -104,6 +106,32 @@ describe("Library Core operation payload contracts", () => {
       expect(
         FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate(invalid),
       ).toMatchObject({ ok: false, code: "invalid" });
+    }
+  });
+
+  it("closes provider sync receipts to one exact timestamp", () => {
+    for (const schema of [
+      FEED_ITEM_LIKE_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+      FEED_ITEM_SEEN_SYNC_RECEIPT_PAYLOAD_SCHEMA,
+    ]) {
+      expect(
+        schema.validate({ synced_at_ms: 1_783_000_000_000 }),
+      ).toStrictEqual({
+        ok: true,
+        value: { synced_at_ms: 1_783_000_000_000 },
+      });
+      for (const invalid of [
+        {},
+        { synced_at_ms: -1 },
+        { synced_at_ms: 1.5 },
+        { synced_at_ms: "1" },
+        { synced_at_ms: 1, provider: "x" },
+      ]) {
+        expect(schema.validate(invalid)).toMatchObject({
+          ok: false,
+          code: "invalid",
+        });
+      }
     }
   });
 

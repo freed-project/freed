@@ -222,10 +222,6 @@ describe("SQLite editable follower mutations", () => {
       entity_id: ITEM_ID,
     });
     expect(parsed[0].payload.read_at_ms).toEqual(expect.any(Number));
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "mutate_sqlite_library_items",
-      expect.anything(),
-    );
     expect(result.event).toMatchObject({
       source: "item_patch",
       mutation: "MARK_AS_READ",
@@ -250,10 +246,6 @@ describe("SQLite editable follower mutations", () => {
       payload: { assigned: true },
     });
     expect(parsed[0].payload.assigned_at_ms).toEqual(expect.any(Number));
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "mutate_sqlite_library_items",
-      expect.anything(),
-    );
   });
 
   it("routes RSS edits through a signed intent without replacing the shell", async () => {
@@ -297,10 +289,6 @@ describe("SQLite editable follower mutations", () => {
         (value) => value.operation_type === "feed_item_read_assignment",
       ),
     ).toBe(true);
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "mutate_sqlite_library_items",
-      expect.anything(),
-    );
   });
 });
 
@@ -565,11 +553,42 @@ describe("SQLite Primary mutations", () => {
       "normalized_library_follower_mutation_context",
       expect.anything(),
     );
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "mutate_sqlite_library_items",
-      expect.anything(),
-    );
   });
+
+  it.each([
+    ["CONFIRM_LIKED_SYNCED", "feed_item_like_sync_receipt"],
+    ["CONFIRM_SEEN_SYNCED", "feed_item_seen_sync_receipt"],
+  ] as const)(
+    "commits %s as a typed normalized provider receipt",
+    async (requestType, operationType) => {
+      await dispatchSqliteMutation(
+        {
+          reqId: 6,
+          type: requestType,
+          globalId: ITEM_ID,
+          syncedAt: 1_783_000_000_000,
+        },
+        state(),
+      );
+
+      const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+        JSON.parse(value),
+      );
+      expect(envelope).toMatchObject({
+        operation_type: operationType,
+        entity_id: ITEM_ID,
+        payload: { synced_at_ms: 1_783_000_000_000 },
+      });
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        "commit_normalized_library_transaction",
+        expect.objectContaining({
+          request: expect.objectContaining({
+            canonicalEnvelopeJson: expect.any(Array),
+          }),
+        }),
+      );
+    },
+  );
 
   it("reads an exact Person before applying a partial normalized update", async () => {
     await dispatchSqliteMutation(

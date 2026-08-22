@@ -207,6 +207,9 @@ export function tauriInitScript(): string {
       persistSqliteState();
       return affected;
     }
+    window.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ = function(request) {
+      return sqliteMutateItems({ request: request });
+    };
     function sqliteFeedCard(item) {
       var user = sqliteItemState(item);
       var content = item.content || {};
@@ -552,7 +555,6 @@ export function tauriInitScript(): string {
       bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
-      mutate_sqlite_library_items: sqliteMutateItems,
       set_sqlite_library_cloud_writer_admission: (args) => {
         var request = args.request;
         var admission = {

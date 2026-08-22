@@ -48,7 +48,6 @@ const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const MAX_IMPORT_BATCH: usize = 1_000;
 const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
-const MAX_IDS: usize = 10_000;
 const MAX_BACKUP_CHUNK_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Serialize)]
@@ -593,17 +592,6 @@ pub(super) struct BeginImportRequest {
 pub(super) struct AppendImportRequest {
     items_base64: Vec<String>,
     updated_at_ms: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ItemMutationRequest {
-    mutation: String,
-    ids: Vec<String>,
-    platform: Option<String>,
-    feed_url: Option<String>,
-    timestamp_ms: i64,
-    max_age_ms: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2674,6 +2662,7 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
     })
 }
 
+#[cfg(test)]
 fn require_writer_admission(connection: &Connection) -> Result<(), String> {
     let status = writer_admission_status(connection)?;
     if status.allowed {
@@ -3014,210 +3003,6 @@ pub(super) fn read_sqlite_library_sync_page(
         items_json,
         next_offset,
     })
-}
-
-#[tauri::command]
-pub(super) fn mutate_sqlite_library_items(
-    app: tauri::AppHandle,
-    request: ItemMutationRequest,
-) -> Result<i64, String> {
-    if request.ids.len() > MAX_IDS {
-        return Err("SQLite Library mutation contains too many item IDs".into());
-    }
-    let mut connection = open_database(&app)?;
-    require_active(&connection)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    require_writer_admission(&transaction)?;
-    let mut affected = 0_i64;
-    let mut apply_to_id = |global_id: &str| -> Result<(), String> {
-        let (set_clause, predicate, values): (&str, &str, Vec<i64>) = match request.mutation.as_str() {
-            "mark_read" => (
-                "readAt = COALESCE(readAt, ?2), payloadJson = json_set(payloadJson, '$.userState.readAt', COALESCE(readAt, ?2))",
-                "",
-                vec![request.timestamp_ms],
-            ),
-            "toggle_saved" => (
-                "saved = CASE WHEN saved = 1 THEN 0 ELSE 1 END,
-                 archived = CASE WHEN saved = 1 THEN archived ELSE 0 END,
-                 archivedAt = CASE WHEN saved = 1 THEN archivedAt ELSE NULL END,
-                 payloadJson = CASE WHEN saved = 1
-                   THEN json_remove(json_set(payloadJson, '$.userState.saved', json('false')), '$.userState.savedAt')
-                   ELSE json_remove(json_set(payloadJson,
-                     '$.userState.saved', json('true'),
-                     '$.userState.savedAt', ?2,
-                     '$.userState.archived', json('false')), '$.userState.archivedAt')
-                 END",
-                "",
-                vec![request.timestamp_ms],
-            ),
-            "toggle_archived" => (
-                "archived = CASE WHEN archived = 1 THEN 0 ELSE 1 END,
-                 archivedAt = CASE WHEN archived = 1 THEN NULL ELSE ?2 END,
-                 payloadJson = CASE WHEN archived = 1
-                   THEN json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt')
-                   ELSE json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', ?2)
-                 END",
-                " AND saved IS NOT 1",
-                vec![request.timestamp_ms],
-            ),
-            "archive" => (
-                "archived = 1, archivedAt = COALESCE(archivedAt, ?2), payloadJson = json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', COALESCE(archivedAt, ?2))",
-                " AND archived IS NOT 1 AND hidden IS NOT 1 AND saved IS NOT 1 AND readAt IS NOT NULL",
-                vec![request.timestamp_ms],
-            ),
-            "toggle_liked" => (
-                "liked = CASE WHEN liked = 1 THEN 0 ELSE 1 END,
-                 likedAt = CASE WHEN liked = 1 THEN NULL ELSE ?2 END,
-                 likedSyncedAt = NULL,
-                 payloadJson = CASE WHEN liked = 1
-                   THEN json_remove(json_set(payloadJson, '$.userState.liked', json('false')), '$.userState.likedAt', '$.userState.likedSyncedAt')
-                   ELSE json_remove(json_set(payloadJson, '$.userState.liked', json('true'), '$.userState.likedAt', ?2), '$.userState.likedSyncedAt')
-                 END",
-                "",
-                vec![request.timestamp_ms],
-            ),
-            "confirm_liked" => (
-                "likedSyncedAt = ?2, payloadJson = json_set(payloadJson, '$.userState.likedSyncedAt', ?2)",
-                "",
-                vec![request.timestamp_ms],
-            ),
-            "confirm_seen" => (
-                "seenSyncedAt = ?2, payloadJson = json_set(payloadJson, '$.userState.seenSyncedAt', ?2)",
-                "",
-                vec![request.timestamp_ms],
-            ),
-            "delete" => ("deletedAt = ?2", "", vec![request.timestamp_ms]),
-            _ => return Err("unsupported SQLite Library item mutation".into()),
-        };
-        let sql = format!(
-            "UPDATE library_core_feed_items SET {set_clause}, updatedAtMs = ?{} WHERE globalId = ?1 AND deletedAt IS NULL{predicate};",
-            values.len() + 2,
-        );
-        let mut parameters: Vec<&dyn rusqlite::ToSql> = vec![&global_id];
-        for value in &values {
-            parameters.push(value);
-        }
-        parameters.push(&request.timestamp_ms);
-        affected += i64::try_from(
-            transaction
-                .execute(&sql, parameters.as_slice())
-                .map_err(|error| error.to_string())?,
-        )
-        .map_err(|_| "SQLite mutation affected too many rows")?;
-        Ok(())
-    };
-
-    match request.mutation.as_str() {
-        "mark_all_read" => {
-            affected += i64::try_from(transaction
-                .execute(
-                    "UPDATE library_core_feed_items
-                     SET readAt = COALESCE(readAt, ?1),
-                         payloadJson = json_set(payloadJson, '$.userState.readAt', COALESCE(readAt, ?1)),
-                         updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND readAt IS NULL
-                       AND (?2 IS NULL OR platform = ?2);",
-                    params![request.timestamp_ms, request.platform],
-                )
-                .map_err(|error| error.to_string())?)
-                .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "archive_all_read_unsaved" => {
-            affected += i64::try_from(transaction
-                .execute(
-                    "UPDATE library_core_feed_items
-                     SET archived = 1, archivedAt = COALESCE(archivedAt, ?1),
-                         payloadJson = json_set(payloadJson, '$.userState.archived', json('true'), '$.userState.archivedAt', COALESCE(archivedAt, ?1)),
-                         updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND readAt IS NOT NULL AND saved IS NOT 1
-                       AND archived IS NOT 1 AND hidden IS NOT 1
-                       AND (?2 IS NULL OR platform = ?2)
-                       AND (?3 IS NULL OR feedUrl = ?3);",
-                    params![request.timestamp_ms, request.platform, request.feed_url],
-                )
-                .map_err(|error| error.to_string())?)
-                .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "unarchive_saved" => {
-            affected += i64::try_from(transaction
-                .execute(
-                    "UPDATE library_core_feed_items
-                     SET archived = 0, archivedAt = NULL,
-                         payloadJson = json_remove(json_set(payloadJson, '$.userState.archived', json('false')), '$.userState.archivedAt'),
-                         updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND saved = 1 AND archived = 1;",
-                    [request.timestamp_ms],
-                )
-                .map_err(|error| error.to_string())?)
-                .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "delete_all_archived" => {
-            affected += i64::try_from(
-                transaction
-                    .execute(
-                        "UPDATE library_core_feed_items SET deletedAt = ?1, updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND archived = 1 AND saved IS NOT 1;",
-                        [request.timestamp_ms],
-                    )
-                    .map_err(|error| error.to_string())?,
-            )
-            .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "prune_archived" => {
-            let cutoff = request.timestamp_ms - request.max_age_ms.unwrap_or(0).max(0);
-            affected += i64::try_from(
-                transaction
-                    .execute(
-                        "UPDATE library_core_feed_items SET deletedAt = ?1, updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND archived = 1 AND saved IS NOT 1
-                       AND archivedAt IS NOT NULL AND archivedAt <= ?2;",
-                        params![request.timestamp_ms, cutoff],
-                    )
-                    .map_err(|error| error.to_string())?,
-            )
-            .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "clear_sample" => {
-            affected += i64::try_from(
-                transaction
-                    .execute(
-                        "UPDATE library_core_feed_items SET deletedAt = ?1, updatedAtMs = ?1
-                     WHERE deletedAt IS NULL AND sampleData = 1;",
-                        [request.timestamp_ms],
-                    )
-                    .map_err(|error| error.to_string())?,
-            )
-            .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        "delete_rss" => {
-            affected += i64::try_from(
-                transaction
-                    .execute(
-                        "UPDATE library_core_feed_items SET deletedAt = ?1, updatedAtMs = ?1
-                         WHERE deletedAt IS NULL AND platform = 'rss'
-                           AND (?2 IS NULL OR feedUrl = ?2);",
-                        params![request.timestamp_ms, request.feed_url],
-                    )
-                    .map_err(|error| error.to_string())?,
-            )
-            .map_err(|_| "SQLite mutation affected too many rows")?;
-        }
-        _ => {
-            for global_id in &request.ids {
-                apply_to_id(global_id)?;
-            }
-        }
-    }
-    transaction
-        .execute(
-            "UPDATE library_core_desktop_state SET revision = revision + 1 WHERE singletonId = 1;",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())?;
-    Ok(affected)
 }
 
 #[tauri::command]

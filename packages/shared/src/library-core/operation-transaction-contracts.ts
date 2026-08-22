@@ -10,6 +10,7 @@ import {
 import type {
   FeedItemCaptureUpsertTransactionMemberBodyV1,
   FeedItemReadAssignmentTransactionMemberBodyV1,
+  FeedItemSyncReceiptTransactionMemberBodyV1,
   FeedItemRemoveTransactionMemberBodyV1,
   FeedItemUserStateAssignmentTransactionMemberBodyV1,
   RssFeedRemoveTransactionMemberBodyV1,
@@ -51,6 +52,12 @@ export interface FeedItemCaptureUpsertSigningBodyV1 extends FeedItemCaptureUpser
 }
 
 export interface FeedItemUserStateAssignmentSigningBodyV1 extends FeedItemUserStateAssignmentTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
+export interface FeedItemSyncReceiptSigningBodyV1 extends FeedItemSyncReceiptTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly transaction_digest: LibraryCoreLowercaseHex64;
@@ -126,6 +133,7 @@ export type LibraryCoreOperationSigningBodyV1 =
   | FeedItemCaptureUpsertSigningBodyV1
   | FeedItemReadAssignmentSigningBodyV1
   | FeedItemUserStateAssignmentSigningBodyV1
+  | FeedItemSyncReceiptSigningBodyV1
   | FeedItemRemoveSigningBodyV1
   | RssFeedUpsertSigningBodyV1
   | RssFeedRemoveSigningBodyV1
