@@ -370,6 +370,7 @@ loads an alternate Library engine or compatibility path.
 | 4.194 | Registry-driven PWA signed-intent verification and accepted-result materialization for every registered mutation family, with homogeneous per-program transaction bounds, generated root, child, field-clock, and tombstone SQL, entity-scoped invalidations, exact next-revision advancement, and gap settlement that cannot skip unapplied authoritative revisions                                                                                                                                                    | ✓      | High       |
 | 4.195 | Shared `account_timeline_v1` query across native and browser SQLite for unlinked Accounts, with an indexed typed Account-to-FeedItem join, exact counts, a 100-row and 2 MiB response bound, and cursors bound to Account identity plus the canonical source fence | ✓ | High |
 | 4.196 | Shared installation-local SQLite scope-action staging, with a closed generated SQL registry, 256-member staging appends, finalized-set read fences, 1,000-member signed transactions, cascade cleanup, and no checkpoint or replication records | ✓ | High |
+| 4.197 | Delete the provider-settings rollback key, shared legacy-item lease hook, and dormant platform acquisition capability so provider settings fail closed on bounded SQLite reads | ✓ | High |
 
 ---
 

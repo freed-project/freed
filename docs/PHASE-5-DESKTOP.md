@@ -509,6 +509,7 @@ export async function captureDomFeed(
 | 5.65 | Route SearchJump complex counts and bulk selection through the typed source-fenced feed reader and delete its generic whole-item scanner dependency | High | ✓ Complete |
 | 5.66 | Move SearchJump bulk resolution outside React, cover the complete SQLite feed or search scope, commit one explicit transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required | High | ✓ Complete |
 | 5.67 | Freeze complete SearchJump scope actions in installation-local native SQLite before the first mutation, then execute the stable set through bounded 1,000-member transactions without returning selected IDs to React | High | ✓ Complete |
+| 5.68 | Delete the provider-settings rollback key and legacy renderer-item acquisition path, leaving Facebook group repair, media backup, and saved YouTube discovery on bounded source-fenced SQLite reads | High | ✓ Complete |
 
 ---
 

@@ -1,14 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 
 import {
-  isLibraryCoreProviderSettingsReaderDisabled,
   readSavedLibraryCoreYouTubeVideoUrls,
   scanLibraryCoreProviderItems,
 } from "./library-core-provider-settings-runtime";
 
-const LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY =
-  "freed.libraryCore.providerSettingsReaderV1.disabled";
 type ScanLibraryCoreProviderSettingsItems = (
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
 ) => Promise<void>;
@@ -47,10 +44,6 @@ function pagedScan(
 }
 
 describe("Library Core provider settings runtime", () => {
-  beforeEach(() => {
-    localStorage.removeItem(LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY);
-  });
-
   it("streams more than 2,500 rows through provider-filtered pages bounded at 64", async () => {
     const corpus = Array.from({ length: 2_624 }, (_, index) =>
       item(
@@ -98,23 +91,6 @@ describe("Library Core provider settings runtime", () => {
         )
         .map((entry) => entry.globalId),
     );
-  });
-
-  it("reports and enforces the device-local rollback before scanning", async () => {
-    localStorage.setItem(
-      LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY,
-      "1",
-    );
-    const scan = vi.fn<ScanLibraryCoreProviderSettingsItems>();
-
-    expect(isLibraryCoreProviderSettingsReaderDisabled()).toBe(true);
-    await expect(
-      scanLibraryCoreProviderItems("facebook", vi.fn(), { scanItems: scan }),
-    ).rejects.toThrow("provider settings reader is disabled");
-    await expect(
-      readSavedLibraryCoreYouTubeVideoUrls({ scanItems: scan }),
-    ).rejects.toThrow("provider settings reader is disabled");
-    expect(scan).not.toHaveBeenCalled();
   });
 
   it("fails closed on invalid scanner pages and propagates source and visitor failures", async () => {

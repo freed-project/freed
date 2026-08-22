@@ -4,9 +4,6 @@ import { scanLibraryCoreItems } from "./library-core-item-detail-runtime";
 
 const LIBRARY_CORE_PROVIDER_SETTINGS_PAGE_LIMIT = 64;
 
-const LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY =
-  "freed.libraryCore.providerSettingsReaderV1.disabled";
-
 type LibraryCoreProviderSettingsSource = "facebook" | "instagram" | "youtube";
 
 type ScanLibraryCoreProviderSettingsItems = (
@@ -16,22 +13,6 @@ type ScanLibraryCoreProviderSettingsItems = (
 interface LibraryCoreProviderSettingsScanOptions {
   readonly scanItems?: ScanLibraryCoreProviderSettingsItems;
   readonly signal?: AbortSignal;
-}
-
-export function isLibraryCoreProviderSettingsReaderDisabled(
-  storage: Pick<Storage, "getItem"> | null = typeof localStorage === "undefined"
-    ? null
-    : localStorage,
-): boolean {
-  return (
-    storage?.getItem(LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY) === "1"
-  );
-}
-
-function assertLibraryCoreProviderSettingsReaderEnabled(): void {
-  if (isLibraryCoreProviderSettingsReaderDisabled()) {
-    throw new Error("Library Core provider settings reader is disabled");
-  }
 }
 
 async function scanBoundedLibraryCoreProviderSettingsPages(
@@ -44,10 +25,8 @@ async function scanBoundedLibraryCoreProviderSettingsPages(
       throw new Error("Library Core provider settings scan was cancelled");
     }
   };
-  assertLibraryCoreProviderSettingsReaderEnabled();
   assertActive();
   await scanItems(async (page) => {
-    assertLibraryCoreProviderSettingsReaderEnabled();
     assertActive();
     if (page.length > LIBRARY_CORE_PROVIDER_SETTINGS_PAGE_LIMIT) {
       throw new Error("Library Core provider settings page exceeds 64 rows");

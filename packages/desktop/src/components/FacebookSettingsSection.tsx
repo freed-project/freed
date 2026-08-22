@@ -22,8 +22,7 @@ import {
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import { Tooltip } from "@freed/ui/components/Tooltip";
-import { useLegacyLibraryItems } from "@freed/ui/hooks/useLegacyLibraryItems";
-import type { FbGroupInfo, FeedItem, UserPreferences } from "@freed/shared";
+import type { FbGroupInfo, UserPreferences } from "@freed/shared";
 import { TrashIcon } from "@freed/ui/components/icons";
 import { useAppStore } from "../lib/store";
 import {
@@ -73,16 +72,12 @@ import {
   getFacebookGroupDiscovery,
   useFacebookGroupDiscovery,
 } from "../lib/facebook-group-discovery";
-import {
-  isLibraryCoreProviderSettingsReaderDisabled,
-  scanLibraryCoreProviderItems,
-} from "../lib/library-core-provider-settings-runtime";
+import { scanLibraryCoreProviderItems } from "../lib/library-core-provider-settings-runtime";
 
 const FACEBOOK_LEAVE_CHECK_DELAY_MS =
   import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
 const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS =
   import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
-const EMPTY_FEED_ITEMS: readonly FeedItem[] = [];
 
 // =============================================================================
 // Diagnostic Panel
@@ -285,11 +280,6 @@ export function FacebookSettingsSection({
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
   const sourceVersion = useAppStore((s) => s.searchCorpusVersion);
-  const useLegacyItems = isLibraryCoreProviderSettingsReaderDisabled();
-  const legacyItemsReady = useLegacyLibraryItems(useLegacyItems);
-  const legacyItems = useAppStore((s) =>
-    useLegacyItems ? s.items : EMPTY_FEED_ITEMS,
-  );
   const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
   const healthSnapshot = useDebugStore(
     (s) => s.health?.providers.facebook ?? null,
@@ -385,18 +375,10 @@ export function FacebookSettingsSection({
       setGroupRepairUnavailable(false);
       return;
     }
-    if (useLegacyItems && !legacyItemsReady) return;
-
     const controller = new AbortController();
     setGroupRepairUnavailable(false);
     void (async () => {
       try {
-        if (useLegacyItems) {
-          if (legacyItems.length > 0) {
-            await repairStoredFacebookGroupNamesFromItems(legacyItems);
-          }
-          return;
-        }
         await scanLibraryCoreProviderItems(
           "facebook",
           async (page) => {
@@ -416,13 +398,7 @@ export function FacebookSettingsSection({
     return () => {
       controller.abort();
     };
-  }, [
-    fbAuth.isAuthenticated,
-    legacyItems,
-    legacyItemsReady,
-    sourceVersion,
-    useLegacyItems,
-  ]);
+  }, [fbAuth.isAuthenticated, sourceVersion]);
 
   const handleLogin = useCallback(async () => {
     log.info(

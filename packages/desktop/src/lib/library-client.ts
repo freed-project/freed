@@ -195,10 +195,6 @@ export async function reloadSqliteLibraryState(): Promise<DocState> {
   return state;
 }
 
-export async function acquireLegacyRendererItems(): Promise<() => void> {
-  return () => {};
-}
-
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
   const items: FeedItem[] = [];
   await scanAllItems((page) => items.push(...page));

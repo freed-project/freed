@@ -80,7 +80,6 @@ import {
 } from "./lib/sync";
 import {
   clearLocalDoc,
-  acquireLegacyRendererItems,
   docArchiveItems,
   docMarkItemsAsRead,
 } from "./lib/library-client";
@@ -1632,10 +1631,6 @@ function App() {
       readFeedSignalCounts:
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? readDesktopFeedSignalCounts
-          : undefined,
-      acquireLegacyLibraryItems:
-        tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()
-          ? acquireLegacyRendererItems
           : undefined,
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized

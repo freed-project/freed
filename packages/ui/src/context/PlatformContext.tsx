@@ -660,13 +660,6 @@ export interface PlatformConfig {
   /** Count signal presets inside the platform row store without streaming the corpus. */
   readFeedSignalCounts?: ReadFeedSignalCounts;
 
-  /**
-   * Temporarily acquire the legacy full item projection for a surface that has
-   * not yet moved to bounded row-store reads. Releasing the final lease evicts
-   * that projection from the renderer again.
-   */
-  acquireLegacyLibraryItems?: () => Promise<() => void>;
-
   /** Exact corpus-wide counts and tags computed inside the local row store. */
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
 

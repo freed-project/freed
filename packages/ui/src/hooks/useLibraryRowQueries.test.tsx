@@ -538,10 +538,8 @@ describe("Library row query hooks", () => {
         totalCount: 130,
         nextCursor: "page-2",
       });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     const config = platformConfig({
-      acquireLegacyLibraryItems,
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
@@ -642,7 +640,6 @@ describe("Library row query hooks", () => {
       cursor: null,
     });
     expect(readLibraryPersonTimeline).toHaveBeenCalledTimes(4);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
 
     act(() =>
       root?.render(renderFriends([], { accountId: "account-unlinked" })),
@@ -672,12 +669,10 @@ describe("Library row query hooks", () => {
       ],
     });
     const readLibraryFriendsLocationItem = vi.fn(async () => olderLocation);
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -714,7 +709,6 @@ describe("Library row query hooks", () => {
       referenceTimeMs: friendsGraphRequest.recentWindow.endMs,
       sourceToken: graph.sourceToken,
     });
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("ignores a stale location batch after the graph source changes", async () => {
@@ -818,13 +812,11 @@ describe("Library row query hooks", () => {
       locationCandidateCount: 9,
       locationCandidates: candidates,
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -849,7 +841,6 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
@@ -864,13 +855,11 @@ describe("Library row query hooks", () => {
         effectiveAt: entry.publishedAt,
       })),
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -895,7 +884,6 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
@@ -923,7 +911,6 @@ describe("Library row query hooks", () => {
         },
       ],
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn(
       async () => mismatchedLocation,
     );
@@ -931,7 +918,6 @@ describe("Library row query hooks", () => {
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -956,7 +942,6 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("accepts all-time location history with no current-visible candidates", async () => {
@@ -965,13 +950,11 @@ describe("Library row query hooks", () => {
       locationCandidateCount: 0,
       locationCandidates: [],
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -996,7 +979,6 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.locationItems).toEqual(
       [],
     );
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
   });
 
@@ -1010,13 +992,11 @@ describe("Library row query hooks", () => {
       locationCandidateCount: 9,
       locationCandidates: candidates,
     });
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsLocationItem = vi.fn();
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph: vi.fn(async () => graph),
           readLibraryFriendsLocationItem,
           readLibraryPersonTimeline: vi.fn(async () => ({
@@ -1043,7 +1023,6 @@ describe("Library row query hooks", () => {
       [],
     );
     expect(readLibraryFriendsLocationItem).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("does not read a timeline or lease the corpus on the overview", async () => {
@@ -1054,12 +1033,10 @@ describe("Library row query hooks", () => {
       totalCount: 0,
       nextCursor: null,
     }));
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     let current: LibraryFriendsRowsState | null = null;
     renderHarness(
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph,
           readLibraryPersonTimeline,
         })}
@@ -1080,11 +1057,9 @@ describe("Library row query hooks", () => {
       false,
     );
     expect(readLibraryPersonTimeline).not.toHaveBeenCalled();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("fails closed when Friends SQLite reads reject", async () => {
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const readLibraryFriendsGraph = vi.fn(async () => {
       throw new Error("graph read failed");
     });
@@ -1092,7 +1067,6 @@ describe("Library row query hooks", () => {
       throw new Error("timeline read failed");
     });
     const config = platformConfig({
-      acquireLegacyLibraryItems,
       readLibraryFriendsGraph,
       readLibraryPersonTimeline,
     });
@@ -1117,11 +1091,9 @@ describe("Library row query hooks", () => {
     expect((current as LibraryFriendsRowsState | null)?.timelineLoading).toBe(false);
     expect(readLibraryFriendsGraph).toHaveBeenCalledOnce();
     expect(readLibraryPersonTimeline).toHaveBeenCalledOnce();
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 
   it("retries failed Friends reads when the native reader changes", async () => {
-    const acquireLegacyLibraryItems = vi.fn(async () => vi.fn());
     const firstGraphReader = vi.fn(async () => {
       throw new Error("first graph failure");
     });
@@ -1141,7 +1113,6 @@ describe("Library row query hooks", () => {
     ) => (
       <PlatformProvider
         value={platformConfig({
-          acquireLegacyLibraryItems,
           readLibraryFriendsGraph,
           readLibraryPersonTimeline,
         })}
@@ -1174,6 +1145,5 @@ describe("Library row query hooks", () => {
     expect(secondTimelineReader).toHaveBeenCalledOnce();
     expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
     expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
-    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
   });
 });

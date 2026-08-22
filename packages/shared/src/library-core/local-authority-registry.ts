@@ -1073,7 +1073,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
           "freed.libraryCore.friendsFeedReaderV1.disabled",
           "freed.libraryCore.friendsReaderV1.disabled",
           "freed.libraryCore.itemDetailReaderV1.disabled",
-          "freed.libraryCore.providerSettingsReaderV1.disabled",
           "freed.libraryCore.rendererItemEvictionV1.disabled",
           "freed.libraryCore.savedAnalyticsReaderV1.disabled",
           "freed.libraryCore.savedFeedReaderV1.disabled",
@@ -2678,15 +2677,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       "freed.libraryCore.friendsReaderV1.disabled",
       "freed.libraryCore.savedAnalyticsReaderV1.disabled",
     ],
-  },
-  {
-    registryKey: "library-core-derived-runtime",
-    sourcePath: "packages/desktop/src/lib/library-core-provider-settings-runtime.ts",
-    sourceTokens: [
-      "LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY =",
-      '"freed.libraryCore.providerSettingsReaderV1.disabled"',
-    ],
-    registeredKeys: ["freed.libraryCore.providerSettingsReaderV1.disabled"],
   },
   {
     registryKey: "library-core-derived-runtime",
