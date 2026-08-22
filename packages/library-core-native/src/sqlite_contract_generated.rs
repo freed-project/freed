@@ -24,7 +24,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "54697e32bd3388a88b1361000bcd71851bedafd6bcba1c361217ff737523ae2b";
+    "5d62a648ffcded619e6e2c0c61f78b75e8e53fa6b68197eb82b4ee05f98b6135";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -512,6 +512,8 @@ pub const OPERATION_IDS: &[&str] = &[
 pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",
+    "content_eviction_candidates_page_v1",
+    "content_hydration_candidates_page_v1",
     "content_policy_set_v1",
     "content_state_get_v1",
     "describe_checkpoint_export_v2",
@@ -630,6 +632,11 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
 
 pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
     ("content_checkpoint_reconcile_v1", "DELETE FROM library_device_content_policies WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_policies.content_digest); DELETE FROM library_device_content_ranges WHERE NOT EXISTS (SELECT 1 FROM library_content_ranges AS range WHERE range.content_digest = library_device_content_ranges.content_digest AND range.range_index = library_device_content_ranges.range_index AND range.byte_length = library_device_content_ranges.verified_byte_length AND range.range_digest = library_device_content_ranges.verified_range_digest); DELETE FROM library_device_content_availability WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_availability.content_digest); UPDATE library_device_content_availability SET hydration_state = 'partially_cached', verified_bytes = COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0), complete_digest_verified_at = NULL WHERE complete_digest_verified_at IS NOT NULL AND EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_availability.content_digest AND (blob.byte_length IS NOT COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = blob.content_digest), 0) OR blob.range_count IS NOT (SELECT count(*) FROM library_device_content_ranges AS local WHERE local.content_digest = blob.content_digest))); UPDATE library_device_content_availability SET verified_bytes = COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0) WHERE complete_digest_verified_at IS NULL AND verified_bytes IS NOT COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0); DELETE FROM library_device_content_availability WHERE complete_digest_verified_at IS NULL AND verified_bytes = 0;"),
+];
+
+pub const SQLITE_CONTENT_WORK_PROGRAMS: &[(&str, &str)] = &[
+    ("eviction_candidates_page_v1", "SELECT CASE COALESCE(policy.policy, 'metadata_only') WHEN 'metadata_only' THEN 0 WHEN 'stream_on_demand' THEN 1 WHEN 'partial_cache' THEN 2 ELSE 3 END, availability.last_accessed_at, availability.content_digest, COALESCE(policy.policy, 'metadata_only'), availability.hydration_state, availability.verified_bytes FROM library_device_content_availability AS availability INDEXED BY library_device_content_availability_lru LEFT JOIN library_device_content_policies AS policy ON policy.content_digest = availability.content_digest WHERE COALESCE(policy.policy, 'metadata_only') IN ('metadata_only', 'stream_on_demand', 'partial_cache', 'complete_cache') AND availability.verified_bytes > 0 AND availability.last_accessed_at <= ?1 AND (?2 IS NULL OR availability.last_accessed_at > ?3 OR (availability.last_accessed_at = ?3 AND availability.content_digest > ?4 COLLATE BINARY)) ORDER BY availability.last_accessed_at, availability.content_digest COLLATE BINARY LIMIT ?5;"),
+    ("hydration_candidates_page_v1", "SELECT CASE policy.policy WHEN 'pinned_offline' THEN 0 ELSE 1 END, policy.updated_at, range.content_digest, range.range_index, range.byte_offset, range.byte_length, range.range_digest, blob.media_type, policy.policy, blob.cloud_availability_commitment FROM library_device_content_policies AS policy INDEXED BY library_device_content_policies_hydration_queue JOIN library_blobs AS blob ON blob.content_digest = policy.content_digest JOIN library_content_ranges AS range ON range.content_digest = policy.content_digest LEFT JOIN library_device_content_ranges AS local ON local.content_digest = range.content_digest AND local.range_index = range.range_index AND local.verified_byte_length = range.byte_length AND local.verified_range_digest = range.range_digest WHERE policy.policy IN ('complete_cache', 'pinned_offline') AND blob.storage_layout = 'authenticated_ranges' AND local.content_digest IS NULL AND (?1 IS NULL OR CASE policy.policy WHEN 'pinned_offline' THEN 0 ELSE 1 END > ?1 OR (CASE policy.policy WHEN 'pinned_offline' THEN 0 ELSE 1 END = ?1 AND policy.updated_at > ?2) OR (CASE policy.policy WHEN 'pinned_offline' THEN 0 ELSE 1 END = ?1 AND policy.updated_at = ?2 AND range.content_digest > ?3 COLLATE BINARY) OR (CASE policy.policy WHEN 'pinned_offline' THEN 0 ELSE 1 END = ?1 AND policy.updated_at = ?2 AND range.content_digest = ?3 COLLATE BINARY AND range.range_index > ?4)) ORDER BY policy.policy DESC, policy.updated_at, range.content_digest COLLATE BINARY, range.range_index LIMIT ?5;"),
 ];
 
 pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[

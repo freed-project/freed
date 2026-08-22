@@ -28,6 +28,8 @@ import {
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteContentCompletionWorkerRequest,
   createLibraryCoreSqliteContentEvictionWorkerRequest,
+  createLibraryCoreSqliteEvictionCandidatePageWorkerRequest,
+  createLibraryCoreSqliteHydrationCandidatePageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -505,6 +507,7 @@ describe("Library Core SQLite worker protocol", () => {
     ).toBe("abort_content_range_publication");
     expect(
       createLibraryCoreSqliteContentRangeReadWorkerRequest("range-read", {
+        accessedAt: 50,
         contentDigest,
         maximumBytes: 262_144,
         rangeIndex: 2,
@@ -514,6 +517,7 @@ describe("Library Core SQLite worker protocol", () => {
     ).toBe("read_content_range");
     expect(() =>
       createLibraryCoreSqliteContentRangeReadWorkerRequest("range-read", {
+        accessedAt: 50,
         contentDigest,
         maximumBytes: 262_145,
         rangeIndex: 2,
@@ -532,9 +536,28 @@ describe("Library Core SQLite worker protocol", () => {
       createLibraryCoreSqliteContentEvictionWorkerRequest("evict", {
         contentDigest,
         evictedAt: 52,
+        expectedLastAccessedAt: null,
+        reason: "explicit",
         schemaVersion: 1,
       }).kind,
     ).toBe("evict_content");
+    expect(
+      createLibraryCoreSqliteHydrationCandidatePageWorkerRequest("hydrate", {
+        after: null,
+        limit: 128,
+        schemaVersion: 1,
+        source: null,
+      }).kind,
+    ).toBe("page_hydration_candidates");
+    expect(
+      createLibraryCoreSqliteEvictionCandidatePageWorkerRequest("collect", {
+        after: null,
+        limit: 128,
+        notAccessedAfter: 100,
+        schemaVersion: 1,
+        source: null,
+      }).kind,
+    ).toBe("page_eviction_candidates");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({
         ...append,

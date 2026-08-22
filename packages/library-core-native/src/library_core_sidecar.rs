@@ -20,10 +20,11 @@ use crate::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_pinned_normalized_checkpoint_page_v2,
     finalize_normalized_checkpoint_stage_v2, get_content_state_v1, lower_hex,
-    query_normalized_json_v1, set_content_policy_v1, BeginNormalizedCheckpointStageV2,
-    ContentPolicyMutationV1, ContentStateRequestV1, LibraryCoreProcessLease,
-    NormalizedCheckpointRecordV2, NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2,
-    ProcessLeaseIdentity, SelectiveContentError,
+    page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
+    set_content_policy_v1, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
+    ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
+    LibraryCoreProcessLease, NormalizedCheckpointRecordV2, NormalizedSqliteError,
+    PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity, SelectiveContentError,
 };
 
 const PROTOCOL_VERSION: u8 = 2;
@@ -389,6 +390,22 @@ fn execute_native_command_v1(
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
             encode_command_result(
                 set_content_policy_v1(connection, &command).map_err(selective_content_error)?,
+            )
+        }
+        "content_eviction_candidates_page_v1" => {
+            let command: EvictionCandidatePageRequestV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                page_eviction_candidates_v1(connection, &command)
+                    .map_err(selective_content_error)?,
+            )
+        }
+        "content_hydration_candidates_page_v1" => {
+            let command: HydrationCandidatePageRequestV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                page_hydration_candidates_v1(connection, &command)
+                    .map_err(selective_content_error)?,
             )
         }
         "content_state_get_v1" => {

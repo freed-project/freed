@@ -246,6 +246,7 @@ export class PwaLibraryCoreOpfsContentVault {
     if (bytes.byteLength !== expectedBytes) {
       throw new Error("verified content range object is truncated");
     }
+    this.#engine.markContentAccessed(request.contentDigest, request.accessedAt);
     const response = parseLibraryCoreContentRangeReadResponseV1({
       bytes,
       contentDigest: request.contentDigest,
@@ -332,6 +333,12 @@ export class PwaLibraryCoreOpfsContentVault {
       throw new Error(
         "pinned offline content must be unpinned before eviction",
       );
+    }
+    if (
+      request.reason === "cache_pressure" &&
+      state.availability?.lastAccessedAt !== request.expectedLastAccessedAt
+    ) {
+      throw new Error("content eviction candidate is stale");
     }
     const active = [...this.#sessions.values()].filter(
       (session) => session.contentDigest === request.contentDigest,

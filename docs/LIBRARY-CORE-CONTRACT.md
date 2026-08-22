@@ -994,6 +994,18 @@ and exact length on the opened descriptor. The PWA worker reads the equivalent
 bounded OPFS slice. Neither runtime returns an unbounded rendition or trusts a
 renderer-supplied storage key.
 
+Every successful cached read records device-local recency. SQLite coalesces
+that write to at most once per content digest per 60,000 milliseconds. Read
+recency never enters checkpoints, authority revisions, or replication.
+
+Background hydration discovers work through
+`hydration_candidates_page_v1`. The generated SQL runs unchanged in native
+Rust and browser SQLite. It returns at most 128 missing authenticated ranges,
+prioritizes pinned offline content before complete-cache content, and uses a
+stable keyset cursor. The page binds the materialization generation, canonical
+source revision, transition sequence, and device content revision. Any source
+movement invalidates continuation instead of mixing generations.
+
 Full-cache promotion streams every verified range in canonical index order
 through the blob-content digest domain. The verifier retains one 262,144-byte
 window, one page of at most 128 range proofs, and incremental hash state. It
@@ -1016,6 +1028,15 @@ transition away from the pin. Setting `excluded` at the runtime storage
 boundary cancels local staging for that digest and completes the same eviction
 before returning. A crash between physical deletion and SQLite cleanup leaves
 only a stale proof for startup reconciliation to remove.
+
+Cache-pressure discovery uses `eviction_candidates_page_v1`, the same
+generated SQL in native Rust and browser SQLite. It returns no more than 128
+unpinned cached renditions in least-recently-used order. The request supplies a
+recency ceiling and continuation uses the same four-part source fence as
+hydration. Every cache-pressure eviction must repeat the candidate's exact
+`lastAccessedAt`. A newer read makes the eviction stale before physical bytes
+can be removed. Explicit exclusion and explicit user eviction remain separate
+closed reasons and do not masquerade as cache pressure.
 
 Every runtime reconciles physical objects before declaring the vault ready.
 The scan keeps at most 128 SQLite proofs in memory. It deletes unfinished and

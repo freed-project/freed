@@ -222,6 +222,8 @@ scope.onmessage = (event) => {
           const eviction = await contentVault.evict({
             contentDigest: request.mutation.contentDigest,
             evictedAt: request.mutation.updatedAt,
+            expectedLastAccessedAt: null,
+            reason: "excluded",
             schemaVersion: 1,
           });
           contentRevision = eviction.contentRevision;
@@ -265,6 +267,22 @@ scope.onmessage = (event) => {
           ok: true,
           requestId,
           result: await contentVault.evict(request.request),
+        });
+        return;
+      }
+      if (request.kind === "page_hydration_candidates") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.pageHydrationCandidates(request.request),
+        });
+        return;
+      }
+      if (request.kind === "page_eviction_candidates") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.pageEvictionCandidates(request.request),
         });
         return;
       }

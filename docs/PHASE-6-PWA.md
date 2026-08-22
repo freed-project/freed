@@ -42,6 +42,11 @@
 - [x] Purge excluded OPFS content through the worker in bounded 128-proof
       pages, cancel matching staged publications, and refuse eviction while
       the rendition remains pinned offline.
+- [x] Page automatic hydration and least-recently-used eviction work through
+      the same generated SQL as native Rust. Worker responses are capped at
+      128 rows and source-fenced. Cached reads coalesce local recency writes,
+      and cache pressure must present the exact candidate recency before OPFS
+      bytes can be removed.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,
@@ -506,6 +511,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.55 | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained OPFS SQLite facets                                                                                                                                                                                                                                                                                                                        | High       | ✓ Complete                                                                                       |
 | 6.56 | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed OPFS SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary                                                                                                                                                                                | High       | ✓ Complete                                                                                       |
 | 6.57 | Expose one closed SQLite follower transport frontier and direct actor-counter page, then coordinate immutable enrollment, one bounded normalized intent page, exact response-loss repair, and verified result-segment reconciliation through a provider-neutral transport contract. The coordinator never lists from React, reconstructs transactions, or owns Drive request behavior                                                                        | High       | ✓ Complete                                                                                       |
+| 6.58 | Page hydration and least-recently-used eviction candidates through one generated source-fenced SQLite contract shared with native Rust, coalesce device-local access recency, and reject stale cache-pressure deletion before OPFS bytes are removed                                                                            | High       | ✓ Complete                                                                                       |
 
 ---
 

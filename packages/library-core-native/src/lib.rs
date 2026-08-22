@@ -156,11 +156,15 @@ pub use normalized_sqlite::{
 pub use normalized_writer_reassignment::reassign_normalized_writer_epoch_v2;
 pub use product_projection::upsert_item;
 pub use selective_content::{
-    get_content_state_v1, publish_content_range_from_reader_v1, register_verified_content_range_v1,
+    get_content_state_v1, page_eviction_candidates_v1, page_hydration_candidates_v1,
+    publish_content_range_from_reader_v1, register_verified_content_range_v1,
     set_content_policy_v1, ContentAvailabilityV1, ContentCompletionReceiptV1,
     ContentCompletionRequestV1, ContentEvictionReceiptV1, ContentEvictionRequestV1,
     ContentHydrationPolicyV1, ContentHydrationStateV1, ContentPolicyMutationReceiptV1,
     ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
-    ContentRangeReadResponseV1, ContentStateRequestV1, ContentStateV1, DurableContentRangeObjectV1,
+    ContentRangeReadResponseV1, ContentStateRequestV1, ContentStateV1, ContentWorkSourceV1,
+    DurableContentRangeObjectV1, EvictionCandidateCursorV1, EvictionCandidatePageRequestV1,
+    EvictionCandidatePageV1, EvictionCandidateV1, HydrationCandidateCursorV1,
+    HydrationCandidatePageRequestV1, HydrationCandidatePageV1, HydrationCandidateV1,
     SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };

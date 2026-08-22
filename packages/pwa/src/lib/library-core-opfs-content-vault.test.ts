@@ -167,6 +167,7 @@ describe("PWA Library Core OPFS content vault", () => {
     );
     expect(storage.objects.get(storageKey)).toEqual(bytes);
     const read = await vault.read({
+      accessedAt: 103,
       contentDigest,
       maximumBytes: 19,
       rangeIndex: 0,
@@ -177,6 +178,7 @@ describe("PWA Library Core OPFS content vault", () => {
     expect(read.rangeComplete).toBe(true);
     await expect(
       vault.read({
+        accessedAt: 103,
         contentDigest,
         maximumBytes: 1,
         rangeIndex: 0,
@@ -247,8 +249,30 @@ describe("PWA Library Core OPFS content vault", () => {
       contentRevision: 5,
     });
     await expect(
-      vault.evict({ contentDigest, evictedAt: 105, schemaVersion: 1 }),
+      vault.evict({
+        contentDigest,
+        evictedAt: 105,
+        expectedLastAccessedAt: null,
+        reason: "explicit",
+        schemaVersion: 1,
+      }),
     ).rejects.toThrow(/must be unpinned/);
+    expect(storage.objects.get(storageKey)).toEqual(bytes);
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "complete_cache",
+      schemaVersion: 1,
+      updatedAt: 105,
+    });
+    await expect(
+      vault.evict({
+        contentDigest,
+        evictedAt: 105,
+        expectedLastAccessedAt: 99,
+        reason: "cache_pressure",
+        schemaVersion: 1,
+      }),
+    ).rejects.toThrow(/candidate is stale/);
     expect(storage.objects.get(storageKey)).toEqual(bytes);
     engine.mutateContentPolicy({
       contentDigest,
@@ -257,10 +281,16 @@ describe("PWA Library Core OPFS content vault", () => {
       updatedAt: 106,
     });
     await expect(
-      vault.evict({ contentDigest, evictedAt: 106, schemaVersion: 1 }),
+      vault.evict({
+        contentDigest,
+        evictedAt: 106,
+        expectedLastAccessedAt: null,
+        reason: "excluded",
+        schemaVersion: 1,
+      }),
     ).resolves.toMatchObject({
       changed: true,
-      contentRevision: 7,
+      contentRevision: 8,
       evictedRanges: 1,
       releasedBytes: bytes.byteLength,
     });
@@ -269,7 +299,7 @@ describe("PWA Library Core OPFS content vault", () => {
       engine.readContentState({ contentDigest, schemaVersion: 1 }),
     ).toMatchObject({
       availability: null,
-      contentRevision: 7,
+      contentRevision: 8,
       policy: "excluded",
     });
   });

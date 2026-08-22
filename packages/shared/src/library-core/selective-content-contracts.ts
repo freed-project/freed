@@ -58,6 +58,7 @@ export interface LibraryCoreContentStateRequestV1 {
 export interface LibraryCoreContentAvailabilityV1 {
   readonly completeDigestVerifiedAt: number | null;
   readonly hydrationState: LibraryCoreContentHydrationStateV1;
+  readonly lastAccessedAt: number;
   readonly storageKind: "content_vault" | "none" | "opfs";
   readonly updatedAt: number;
   readonly verifiedBytes: number;
@@ -139,6 +140,7 @@ export interface LibraryCoreContentRangePublicationAbortReceiptV1 {
 }
 
 export interface LibraryCoreContentRangeReadRequestV1 {
+  readonly accessedAt: number;
   readonly contentDigest: string;
   readonly maximumBytes: number;
   readonly rangeIndex: number;
@@ -174,6 +176,8 @@ export interface LibraryCoreContentCompletionReceiptV1 {
 export interface LibraryCoreContentEvictionRequestV1 {
   readonly contentDigest: string;
   readonly evictedAt: number;
+  readonly expectedLastAccessedAt: number | null;
+  readonly reason: "cache_pressure" | "excluded" | "explicit";
   readonly schemaVersion: 1;
 }
 
@@ -184,6 +188,78 @@ export interface LibraryCoreContentEvictionReceiptV1 {
   readonly evictedRanges: number;
   readonly releasedBytes: number;
   readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentWorkSourceV1 {
+  readonly contentRevision: number;
+  readonly generationId: string;
+  readonly sourceRevision: number;
+  readonly transitionSequence: number;
+}
+
+export interface LibraryCoreHydrationCandidateCursorV1 {
+  readonly contentDigest: string;
+  readonly policyPriority: 0 | 1;
+  readonly policyUpdatedAt: number;
+  readonly rangeIndex: number;
+}
+
+export interface LibraryCoreHydrationCandidatePageRequestV1 {
+  readonly after: LibraryCoreHydrationCandidateCursorV1 | null;
+  readonly limit: number;
+  readonly schemaVersion: 1;
+  readonly source: LibraryCoreContentWorkSourceV1 | null;
+}
+
+export interface LibraryCoreHydrationCandidateV1 {
+  readonly byteLength: number;
+  readonly byteOffset: number;
+  readonly cloudAvailabilityCommitment: string;
+  readonly contentDigest: string;
+  readonly mediaType: string;
+  readonly policy: "complete_cache" | "pinned_offline";
+  readonly policyPriority: 0 | 1;
+  readonly policyUpdatedAt: number;
+  readonly rangeContentDigest: string;
+  readonly rangeIndex: number;
+}
+
+export interface LibraryCoreHydrationCandidatePageV1 {
+  readonly next: LibraryCoreHydrationCandidateCursorV1 | null;
+  readonly rows: readonly LibraryCoreHydrationCandidateV1[];
+  readonly schemaVersion: 1;
+  readonly source: LibraryCoreContentWorkSourceV1;
+}
+
+export interface LibraryCoreEvictionCandidateCursorV1 {
+  readonly contentDigest: string;
+  readonly lastAccessedAt: number;
+  readonly policyPriority: 0 | 1 | 2 | 3;
+}
+
+export interface LibraryCoreEvictionCandidatePageRequestV1 {
+  readonly after: LibraryCoreEvictionCandidateCursorV1 | null;
+  readonly limit: number;
+  readonly notAccessedAfter: number;
+  readonly schemaVersion: 1;
+  readonly source: LibraryCoreContentWorkSourceV1 | null;
+}
+
+export interface LibraryCoreEvictionCandidateV1 {
+  readonly contentDigest: string;
+  readonly hydrationState: LibraryCoreContentHydrationStateV1;
+  readonly lastAccessedAt: number;
+  readonly policy:
+    "complete_cache" | "metadata_only" | "partial_cache" | "stream_on_demand";
+  readonly policyPriority: 0 | 1 | 2 | 3;
+  readonly verifiedBytes: number;
+}
+
+export interface LibraryCoreEvictionCandidatePageV1 {
+  readonly next: LibraryCoreEvictionCandidateCursorV1 | null;
+  readonly rows: readonly LibraryCoreEvictionCandidateV1[];
+  readonly schemaVersion: 1;
+  readonly source: LibraryCoreContentWorkSourceV1;
 }
 
 type ParseResult<T> =
@@ -364,6 +440,7 @@ export function parseLibraryCoreContentStateV1(
       exactKeys(availability, [
         "completeDigestVerifiedAt",
         "hydrationState",
+        "lastAccessedAt",
         "storageKind",
         "updatedAt",
         "verifiedBytes",
@@ -373,6 +450,7 @@ export function parseLibraryCoreContentStateV1(
           availability.completeDigestVerifiedAt,
         )) &&
       validState(availability.hydrationState) &&
+      isLibraryCoreNonnegativeSafeInteger(availability.lastAccessedAt) &&
       ["content_vault", "none", "opfs"].includes(
         String(availability.storageKind),
       ) &&
@@ -530,12 +608,14 @@ export function parseLibraryCoreContentRangeReadRequestV1(
   if (
     !candidate ||
     !exactKeys(candidate, [
+      "accessedAt",
       "contentDigest",
       "maximumBytes",
       "rangeIndex",
       "rangeOffset",
       "schemaVersion",
     ]) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.accessedAt) ||
     !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
     !isLibraryCoreNonnegativeSafeInteger(candidate.maximumBytes) ||
     candidate.maximumBytes < 1 ||
@@ -665,9 +745,22 @@ export function parseLibraryCoreContentEvictionRequestV1(
   const candidate = record(value);
   if (
     !candidate ||
-    !exactKeys(candidate, ["contentDigest", "evictedAt", "schemaVersion"]) ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "evictedAt",
+      "expectedLastAccessedAt",
+      "reason",
+      "schemaVersion",
+    ]) ||
     !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
     !isLibraryCoreNonnegativeSafeInteger(candidate.evictedAt) ||
+    (candidate.expectedLastAccessedAt !== null &&
+      !isLibraryCoreNonnegativeSafeInteger(candidate.expectedLastAccessedAt)) ||
+    !["cache_pressure", "excluded", "explicit"].includes(
+      String(candidate.reason),
+    ) ||
+    (candidate.reason === "cache_pressure") !==
+      (candidate.expectedLastAccessedAt !== null) ||
     candidate.schemaVersion !== 1
   ) {
     return Object.freeze({
@@ -716,6 +809,321 @@ export function parseLibraryCoreContentEvictionReceiptV1(
       candidate,
     ) as unknown as LibraryCoreContentEvictionReceiptV1,
   });
+}
+
+function parseContentWorkSource(
+  value: unknown,
+): LibraryCoreContentWorkSourceV1 | null {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentRevision",
+      "generationId",
+      "sourceRevision",
+      "transitionSequence",
+    ]) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.contentRevision) ||
+    !isLibraryCoreLowercaseHex64(candidate.generationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.sourceRevision) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.transitionSequence)
+  ) {
+    return null;
+  }
+  return Object.freeze(candidate) as unknown as LibraryCoreContentWorkSourceV1;
+}
+
+function parseHydrationCursor(
+  value: unknown,
+): LibraryCoreHydrationCandidateCursorV1 | null {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "policyPriority",
+      "policyUpdatedAt",
+      "rangeIndex",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    ![0, 1].includes(Number(candidate.policyPriority)) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.policyUpdatedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex)
+  ) {
+    return null;
+  }
+  return Object.freeze(
+    candidate,
+  ) as unknown as LibraryCoreHydrationCandidateCursorV1;
+}
+
+function parseEvictionCursor(
+  value: unknown,
+): LibraryCoreEvictionCandidateCursorV1 | null {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "lastAccessedAt",
+      "policyPriority",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.lastAccessedAt) ||
+    ![0, 1, 2, 3].includes(Number(candidate.policyPriority))
+  ) {
+    return null;
+  }
+  return Object.freeze(
+    candidate,
+  ) as unknown as LibraryCoreEvictionCandidateCursorV1;
+}
+
+export function parseLibraryCoreHydrationCandidatePageRequestV1(
+  value: unknown,
+): ParseResult<LibraryCoreHydrationCandidatePageRequestV1> {
+  const candidate = record(value);
+  const after =
+    candidate?.after === null ? null : parseHydrationCursor(candidate?.after);
+  const source =
+    candidate?.source === null
+      ? null
+      : parseContentWorkSource(candidate?.source);
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["after", "limit", "schemaVersion", "source"]) ||
+    (candidate.after !== null && after === null) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.limit) ||
+    candidate.limit < 1 ||
+    candidate.limit > 128 ||
+    candidate.schemaVersion !== 1 ||
+    (candidate.source !== null && source === null) ||
+    (after !== null && source === null)
+  ) {
+    return Object.freeze({
+      error: "hydration candidate page request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      after,
+      limit: candidate.limit,
+      schemaVersion: 1,
+      source,
+    }),
+  }) as ParseResult<LibraryCoreHydrationCandidatePageRequestV1>;
+}
+
+export function parseLibraryCoreEvictionCandidatePageRequestV1(
+  value: unknown,
+): ParseResult<LibraryCoreEvictionCandidatePageRequestV1> {
+  const candidate = record(value);
+  const after =
+    candidate?.after === null ? null : parseEvictionCursor(candidate?.after);
+  const source =
+    candidate?.source === null
+      ? null
+      : parseContentWorkSource(candidate?.source);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "after",
+      "limit",
+      "notAccessedAfter",
+      "schemaVersion",
+      "source",
+    ]) ||
+    (candidate.after !== null && after === null) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.limit) ||
+    candidate.limit < 1 ||
+    candidate.limit > 128 ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.notAccessedAfter) ||
+    candidate.schemaVersion !== 1 ||
+    (candidate.source !== null && source === null) ||
+    (after !== null && source === null)
+  ) {
+    return Object.freeze({
+      error: "eviction candidate page request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      after,
+      limit: candidate.limit,
+      notAccessedAfter: candidate.notAccessedAfter,
+      schemaVersion: 1,
+      source,
+    }),
+  }) as ParseResult<LibraryCoreEvictionCandidatePageRequestV1>;
+}
+
+function sameHydrationCursor(
+  cursor: LibraryCoreHydrationCandidateCursorV1,
+  row: LibraryCoreHydrationCandidateV1,
+): boolean {
+  return (
+    cursor.contentDigest === row.contentDigest &&
+    cursor.policyPriority === row.policyPriority &&
+    cursor.policyUpdatedAt === row.policyUpdatedAt &&
+    cursor.rangeIndex === row.rangeIndex
+  );
+}
+
+function sameEvictionCursor(
+  cursor: LibraryCoreEvictionCandidateCursorV1,
+  row: LibraryCoreEvictionCandidateV1,
+): boolean {
+  return (
+    cursor.contentDigest === row.contentDigest &&
+    cursor.lastAccessedAt === row.lastAccessedAt &&
+    cursor.policyPriority === row.policyPriority
+  );
+}
+
+export function parseLibraryCoreHydrationCandidatePageV1(
+  value: unknown,
+): ParseResult<LibraryCoreHydrationCandidatePageV1> {
+  const candidate = record(value);
+  const source = parseContentWorkSource(candidate?.source);
+  const next =
+    candidate?.next === null ? null : parseHydrationCursor(candidate?.next);
+  const rows = Array.isArray(candidate?.rows)
+    ? candidate.rows.map(record)
+    : null;
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["next", "rows", "schemaVersion", "source"]) ||
+    source === null ||
+    (candidate.next !== null && next === null) ||
+    rows === null ||
+    rows.length > 128 ||
+    candidate.schemaVersion !== 1 ||
+    rows.some(
+      (row) =>
+        !row ||
+        !exactKeys(row, [
+          "byteLength",
+          "byteOffset",
+          "cloudAvailabilityCommitment",
+          "contentDigest",
+          "mediaType",
+          "policy",
+          "policyPriority",
+          "policyUpdatedAt",
+          "rangeContentDigest",
+          "rangeIndex",
+        ]) ||
+        !isLibraryCoreNonnegativeSafeInteger(row.byteLength) ||
+        row.byteLength < 1 ||
+        !isLibraryCoreNonnegativeSafeInteger(row.byteOffset) ||
+        row.byteOffset + row.byteLength > Number.MAX_SAFE_INTEGER ||
+        !isLibraryCoreLowercaseHex64(row.cloudAvailabilityCommitment) ||
+        !isLibraryCoreLowercaseHex64(row.contentDigest) ||
+        typeof row.mediaType !== "string" ||
+        row.mediaType.length === 0 ||
+        new TextEncoder().encode(row.mediaType).length > 255 ||
+        !["complete_cache", "pinned_offline"].includes(String(row.policy)) ||
+        ![0, 1].includes(Number(row.policyPriority)) ||
+        (row.policy === "pinned_offline" ? 0 : 1) !== row.policyPriority ||
+        !isLibraryCoreNonnegativeSafeInteger(row.policyUpdatedAt) ||
+        !isLibraryCoreLowercaseHex64(row.rangeContentDigest) ||
+        !isLibraryCoreNonnegativeSafeInteger(row.rangeIndex),
+    ) ||
+    (next !== null &&
+      (rows.length === 0 ||
+        !sameHydrationCursor(
+          next,
+          rows.at(-1)! as unknown as LibraryCoreHydrationCandidateV1,
+        )))
+  ) {
+    return Object.freeze({
+      error: "hydration candidate page is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      next,
+      rows: Object.freeze(
+        rows.map((row) => Object.freeze(row!)),
+      ) as unknown as readonly LibraryCoreHydrationCandidateV1[],
+      schemaVersion: 1,
+      source,
+    }),
+  }) as ParseResult<LibraryCoreHydrationCandidatePageV1>;
+}
+
+export function parseLibraryCoreEvictionCandidatePageV1(
+  value: unknown,
+): ParseResult<LibraryCoreEvictionCandidatePageV1> {
+  const candidate = record(value);
+  const source = parseContentWorkSource(candidate?.source);
+  const next =
+    candidate?.next === null ? null : parseEvictionCursor(candidate?.next);
+  const rows = Array.isArray(candidate?.rows)
+    ? candidate.rows.map(record)
+    : null;
+  const policies = [
+    "metadata_only",
+    "stream_on_demand",
+    "partial_cache",
+    "complete_cache",
+  ];
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["next", "rows", "schemaVersion", "source"]) ||
+    source === null ||
+    (candidate.next !== null && next === null) ||
+    rows === null ||
+    rows.length > 128 ||
+    candidate.schemaVersion !== 1 ||
+    rows.some(
+      (row) =>
+        !row ||
+        !exactKeys(row, [
+          "contentDigest",
+          "hydrationState",
+          "lastAccessedAt",
+          "policy",
+          "policyPriority",
+          "verifiedBytes",
+        ]) ||
+        !isLibraryCoreLowercaseHex64(row.contentDigest) ||
+        !validState(row.hydrationState) ||
+        !isLibraryCoreNonnegativeSafeInteger(row.lastAccessedAt) ||
+        !policies.includes(String(row.policy)) ||
+        policies.indexOf(String(row.policy)) !== row.policyPriority ||
+        !isLibraryCoreNonnegativeSafeInteger(row.verifiedBytes) ||
+        row.verifiedBytes < 1,
+    ) ||
+    (next !== null &&
+      (rows.length === 0 ||
+        !sameEvictionCursor(
+          next,
+          rows.at(-1)! as unknown as LibraryCoreEvictionCandidateV1,
+        )))
+  ) {
+    return Object.freeze({
+      error: "eviction candidate page is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      next,
+      rows: Object.freeze(
+        rows.map((row) => Object.freeze(row!)),
+      ) as unknown as readonly LibraryCoreEvictionCandidateV1[],
+      schemaVersion: 1,
+      source,
+    }),
+  }) as ParseResult<LibraryCoreEvictionCandidatePageV1>;
 }
 
 export function parseLibraryCoreContentRangePublicationAppendV1(

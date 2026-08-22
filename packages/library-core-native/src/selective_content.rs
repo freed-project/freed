@@ -1,5 +1,6 @@
 use crate::sqlite_contract_generated::{
-    CONTENT_RANGE_MAXIMUM_APPEND_BYTES, SQLITE_LOCAL_MUTATION_PROGRAMS,
+    CONTENT_RANGE_MAXIMUM_APPEND_BYTES, SQLITE_CONTENT_WORK_PROGRAMS,
+    SQLITE_LOCAL_MUTATION_PROGRAMS,
 };
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -73,6 +74,8 @@ pub struct ContentPolicyMutationReceiptV1 {
 pub struct ContentEvictionRequestV1 {
     pub content_digest: String,
     pub evicted_at: i64,
+    pub expected_last_accessed_at: Option<i64>,
+    pub reason: String,
     pub schema_version: u32,
 }
 
@@ -85,6 +88,95 @@ pub struct ContentEvictionReceiptV1 {
     pub evicted_ranges: i64,
     pub released_bytes: i64,
     pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentWorkSourceV1 {
+    pub content_revision: i64,
+    pub generation_id: String,
+    pub source_revision: i64,
+    pub transition_sequence: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HydrationCandidateCursorV1 {
+    pub content_digest: String,
+    pub policy_priority: i64,
+    pub policy_updated_at: i64,
+    pub range_index: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HydrationCandidatePageRequestV1 {
+    pub after: Option<HydrationCandidateCursorV1>,
+    pub limit: i64,
+    pub schema_version: u32,
+    pub source: Option<ContentWorkSourceV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HydrationCandidateV1 {
+    pub byte_length: i64,
+    pub byte_offset: i64,
+    pub cloud_availability_commitment: String,
+    pub content_digest: String,
+    pub media_type: String,
+    pub policy: ContentHydrationPolicyV1,
+    pub policy_priority: i64,
+    pub policy_updated_at: i64,
+    pub range_content_digest: String,
+    pub range_index: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HydrationCandidatePageV1 {
+    pub next: Option<HydrationCandidateCursorV1>,
+    pub rows: Vec<HydrationCandidateV1>,
+    pub schema_version: u32,
+    pub source: ContentWorkSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvictionCandidateCursorV1 {
+    pub content_digest: String,
+    pub last_accessed_at: i64,
+    pub policy_priority: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvictionCandidatePageRequestV1 {
+    pub after: Option<EvictionCandidateCursorV1>,
+    pub limit: i64,
+    pub not_accessed_after: i64,
+    pub schema_version: u32,
+    pub source: Option<ContentWorkSourceV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvictionCandidateV1 {
+    pub content_digest: String,
+    pub hydration_state: ContentHydrationStateV1,
+    pub last_accessed_at: i64,
+    pub policy: ContentHydrationPolicyV1,
+    pub policy_priority: i64,
+    pub verified_bytes: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvictionCandidatePageV1 {
+    pub next: Option<EvictionCandidateCursorV1>,
+    pub rows: Vec<EvictionCandidateV1>,
+    pub schema_version: u32,
+    pub source: ContentWorkSourceV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +220,7 @@ impl FromSql for ContentHydrationStateV1 {
 pub struct ContentAvailabilityV1 {
     pub complete_digest_verified_at: Option<i64>,
     pub hydration_state: ContentHydrationStateV1,
+    pub last_accessed_at: i64,
     pub storage_kind: String,
     pub updated_at: i64,
     pub verified_bytes: i64,
@@ -183,6 +276,7 @@ pub struct ContentRangePublicationRequestV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContentRangeReadRequestV1 {
+    pub accessed_at: i64,
     pub content_digest: String,
     pub maximum_bytes: i64,
     pub range_index: i64,
@@ -265,6 +359,185 @@ fn valid_digest(value: &str) -> bool {
             .as_bytes()
             .iter()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn content_work_source_v1(
+    connection: &Connection,
+    expected: Option<&ContentWorkSourceV1>,
+) -> Result<ContentWorkSourceV1, SelectiveContentError> {
+    let (generation_id, source_revision, change_revision, content_revision): (
+        String,
+        i64,
+        i64,
+        i64,
+    ) = connection.query_row(
+        "SELECT generation.generation_id, meta.source_revision, change.revision, content.revision
+             FROM library_meta AS meta
+             JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+             JOIN library_change_state AS change ON change.singleton_id = 1
+             JOIN library_device_content_state AS content ON content.singleton_id = 1
+             WHERE meta.singleton_id = 1;",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if source_revision != change_revision {
+        return Err(SelectiveContentError::Invalid(
+            "content work source is inconsistent",
+        ));
+    }
+    let source = ContentWorkSourceV1 {
+        content_revision,
+        generation_id,
+        source_revision,
+        transition_sequence: source_revision,
+    };
+    if expected.is_some_and(|expected| expected != &source) {
+        return Err(SelectiveContentError::Invalid(
+            "content work source is stale",
+        ));
+    }
+    Ok(source)
+}
+
+pub fn page_hydration_candidates_v1(
+    connection: &Connection,
+    request: &HydrationCandidatePageRequestV1,
+) -> Result<HydrationCandidatePageV1, SelectiveContentError> {
+    if request.schema_version != 1
+        || !(1..=128).contains(&request.limit)
+        || (request.after.is_some() && request.source.is_none())
+        || request.after.as_ref().is_some_and(|cursor| {
+            !valid_digest(&cursor.content_digest)
+                || !(0..=1).contains(&cursor.policy_priority)
+                || !(0..=MAXIMUM_SAFE_INTEGER).contains(&cursor.policy_updated_at)
+                || !(0..=MAXIMUM_SAFE_INTEGER).contains(&cursor.range_index)
+        })
+    {
+        return Err(SelectiveContentError::Invalid(
+            "hydration candidate page request is invalid",
+        ));
+    }
+    let source = content_work_source_v1(connection, request.source.as_ref())?;
+    let after = request.after.as_ref();
+    let sql = SQLITE_CONTENT_WORK_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "hydration_candidates_page_v1")
+        .ok_or(SelectiveContentError::Invalid(
+            "hydration candidate program is missing",
+        ))?
+        .1;
+    let mut statement = connection.prepare(sql)?;
+    let mut rows = statement
+        .query_map(
+            params![
+                after.map(|cursor| cursor.policy_priority),
+                after.map(|cursor| cursor.policy_updated_at),
+                after.map(|cursor| cursor.content_digest.as_str()),
+                after.map(|cursor| cursor.range_index),
+                request.limit + 1,
+            ],
+            |row| {
+                Ok(HydrationCandidateV1 {
+                    policy_priority: row.get(0)?,
+                    policy_updated_at: row.get(1)?,
+                    content_digest: row.get(2)?,
+                    range_index: row.get(3)?,
+                    byte_offset: row.get(4)?,
+                    byte_length: row.get(5)?,
+                    range_content_digest: row.get(6)?,
+                    media_type: row.get(7)?,
+                    policy: row.get(8)?,
+                    cloud_availability_commitment: row.get(9)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    let has_more = rows.len() > request.limit as usize;
+    rows.truncate(request.limit as usize);
+    let next = if has_more {
+        rows.last().map(|row| HydrationCandidateCursorV1 {
+            content_digest: row.content_digest.clone(),
+            policy_priority: row.policy_priority,
+            policy_updated_at: row.policy_updated_at,
+            range_index: row.range_index,
+        })
+    } else {
+        None
+    };
+    Ok(HydrationCandidatePageV1 {
+        next,
+        rows,
+        schema_version: 1,
+        source,
+    })
+}
+
+pub fn page_eviction_candidates_v1(
+    connection: &Connection,
+    request: &EvictionCandidatePageRequestV1,
+) -> Result<EvictionCandidatePageV1, SelectiveContentError> {
+    if request.schema_version != 1
+        || !(1..=128).contains(&request.limit)
+        || !(0..=MAXIMUM_SAFE_INTEGER).contains(&request.not_accessed_after)
+        || (request.after.is_some() && request.source.is_none())
+        || request.after.as_ref().is_some_and(|cursor| {
+            !valid_digest(&cursor.content_digest)
+                || !(0..=3).contains(&cursor.policy_priority)
+                || !(0..=MAXIMUM_SAFE_INTEGER).contains(&cursor.last_accessed_at)
+        })
+    {
+        return Err(SelectiveContentError::Invalid(
+            "eviction candidate page request is invalid",
+        ));
+    }
+    let source = content_work_source_v1(connection, request.source.as_ref())?;
+    let after = request.after.as_ref();
+    let sql = SQLITE_CONTENT_WORK_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "eviction_candidates_page_v1")
+        .ok_or(SelectiveContentError::Invalid(
+            "eviction candidate program is missing",
+        ))?
+        .1;
+    let mut statement = connection.prepare(sql)?;
+    let mut rows = statement
+        .query_map(
+            params![
+                request.not_accessed_after,
+                after.map(|cursor| cursor.policy_priority),
+                after.map(|cursor| cursor.last_accessed_at),
+                after.map(|cursor| cursor.content_digest.as_str()),
+                request.limit + 1,
+            ],
+            |row| {
+                Ok(EvictionCandidateV1 {
+                    policy_priority: row.get(0)?,
+                    last_accessed_at: row.get(1)?,
+                    content_digest: row.get(2)?,
+                    policy: row.get(3)?,
+                    hydration_state: row.get(4)?,
+                    verified_bytes: row.get(5)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    let has_more = rows.len() > request.limit as usize;
+    rows.truncate(request.limit as usize);
+    let next = if has_more {
+        rows.last().map(|row| EvictionCandidateCursorV1 {
+            content_digest: row.content_digest.clone(),
+            last_accessed_at: row.last_accessed_at,
+            policy_priority: row.policy_priority,
+        })
+    } else {
+        None
+    };
+    Ok(EvictionCandidatePageV1 {
+        next,
+        rows,
+        schema_version: 1,
+        source,
+    })
 }
 
 pub fn set_content_policy_v1(
@@ -385,7 +658,7 @@ pub fn get_content_state_v1(
                     COALESCE(policy.policy, 'metadata_only'), policy.updated_at,
                     availability.hydration_state, availability.verified_bytes,
                     availability.storage_kind, availability.complete_digest_verified_at,
-                    availability.updated_at,
+                    availability.last_accessed_at, availability.updated_at,
                     state.revision
              FROM library_blobs AS blob
              CROSS JOIN library_device_content_state AS state
@@ -403,8 +676,9 @@ pub fn get_content_state_v1(
                         Ok::<ContentAvailabilityV1, rusqlite::Error>(ContentAvailabilityV1 {
                             complete_digest_verified_at: row.get(7)?,
                             hydration_state,
+                            last_accessed_at: row.get(8)?,
                             storage_kind: row.get(6)?,
-                            updated_at: row.get(8)?,
+                            updated_at: row.get(9)?,
                             verified_bytes: row.get(5)?,
                         })
                     })
@@ -413,7 +687,7 @@ pub fn get_content_state_v1(
                     availability,
                     byte_length: row.get(0)?,
                     content_digest: request.content_digest.clone(),
-                    content_revision: row.get(9)?,
+                    content_revision: row.get(10)?,
                     media_type: row.get(1)?,
                     policy: row.get(2)?,
                     policy_updated_at: row.get(3)?,
@@ -535,8 +809,8 @@ pub fn register_verified_content_range_v1(
         transaction.execute(
             "INSERT INTO library_device_content_availability
                (content_digest, hydration_state, verified_bytes, storage_kind,
-                complete_digest_verified_at, updated_at)
-             VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4)
+                complete_digest_verified_at, last_accessed_at, updated_at)
+             VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4, ?4)
              ON CONFLICT(content_digest) DO UPDATE SET
                hydration_state = 'partially_cached',
                verified_bytes = excluded.verified_bytes,
@@ -678,8 +952,8 @@ pub(crate) fn register_verified_content_completion_v1(
         transaction.execute(
             "INSERT INTO library_device_content_availability
                (content_digest, hydration_state, verified_bytes, storage_kind,
-                complete_digest_verified_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                complete_digest_verified_at, last_accessed_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5)
              ON CONFLICT(content_digest) DO UPDATE SET
                hydration_state = excluded.hydration_state,
                verified_bytes = excluded.verified_bytes,
@@ -1197,5 +1471,109 @@ mod tests {
                 .expect("local ranges"),
             0
         );
+    }
+
+    #[test]
+    fn content_work_pages_are_bounded_and_source_fenced() {
+        let (mut connection, digest) = ranged_fixture();
+        connection
+            .execute(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                 VALUES (1, 'library', 1, 'epoch', 7, 7);",
+                [],
+            )
+            .expect("meta");
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation
+                   (singleton_id, generation_id)
+                 VALUES (1, ?1);",
+                params!["9".repeat(64)],
+            )
+            .expect("generation");
+        connection
+            .execute(
+                "UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("change revision");
+        set_content_policy_v1(
+            &mut connection,
+            &ContentPolicyMutationV1 {
+                content_digest: digest.clone(),
+                policy: ContentHydrationPolicyV1::CompleteCache,
+                schema_version: 1,
+                updated_at: 25,
+            },
+        )
+        .expect("policy");
+        register_verified_content_range_v1(
+            &mut connection,
+            &VerifiedContentRangePublicationV1 {
+                byte_length: 5,
+                content_digest: digest.clone(),
+                range_content_digest: "b".repeat(64),
+                range_index: 0,
+                schema_version: 1,
+                storage_key: "range-object-one".into(),
+                storage_kind: "content_vault".into(),
+                verified_at: 50,
+            },
+        )
+        .expect("local range");
+
+        let hydration = page_hydration_candidates_v1(
+            &connection,
+            &HydrationCandidatePageRequestV1 {
+                after: None,
+                limit: 1,
+                schema_version: 1,
+                source: None,
+            },
+        )
+        .expect("hydration page");
+        assert_eq!(hydration.rows.len(), 1);
+        assert_eq!(hydration.rows[0].range_index, 1);
+        assert_eq!(hydration.rows[0].content_digest, digest);
+        assert_eq!(hydration.next, None);
+
+        let eviction = page_eviction_candidates_v1(
+            &connection,
+            &EvictionCandidatePageRequestV1 {
+                after: None,
+                limit: 1,
+                not_accessed_after: 50,
+                schema_version: 1,
+                source: None,
+            },
+        )
+        .expect("eviction page");
+        assert_eq!(eviction.rows.len(), 1);
+        assert_eq!(eviction.rows[0].last_accessed_at, 50);
+        connection
+            .execute(
+                "UPDATE library_device_content_state SET revision = revision + 1
+                 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("advance local state");
+        let stale = page_eviction_candidates_v1(
+            &connection,
+            &EvictionCandidatePageRequestV1 {
+                after: Some(EvictionCandidateCursorV1 {
+                    content_digest: eviction.rows[0].content_digest.clone(),
+                    last_accessed_at: eviction.rows[0].last_accessed_at,
+                    policy_priority: eviction.rows[0].policy_priority,
+                }),
+                limit: 1,
+                not_accessed_after: 50,
+                schema_version: 1,
+                source: Some(eviction.source),
+            },
+        )
+        .expect_err("stale source");
+        assert!(stale.to_string().contains("source is stale"));
     }
 }

@@ -2189,6 +2189,119 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([1]);
   });
 
+  it("pages source-fenced hydration and least-recently-used eviction work", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "a".repeat(64);
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"f".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation
+        (singleton_id, generation_id)
+      VALUES (1, '${"e".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+    `);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, storage_layout, chunk_bytes,
+               chunk_count, range_count, range_granularity,
+               range_index_root_digest, rendition_id,
+               cloud_availability_commitment, media_type)
+            VALUES (?1, 10, 'authenticated_ranges', 0, 0, 2, 5, ?2,
+                    'video', ?3, 'video/mp4');`,
+      bind: [digest, "b".repeat(64), "c".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_content_ranges
+              (content_digest, range_index, byte_offset, byte_length, range_digest)
+            VALUES (?1, 0, 0, 5, ?2), (?1, 1, 5, 5, ?3);`,
+      bind: [digest, "d".repeat(64), "9".repeat(64)],
+    });
+    engine.mutateContentPolicy({
+      contentDigest: digest,
+      policy: "complete_cache",
+      schemaVersion: 1,
+      updatedAt: 100,
+    });
+    engine.registerVerifiedContentRange({
+      byteLength: 5,
+      contentDigest: digest,
+      rangeContentDigest: "d".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1,
+      storageKey: "range-zero",
+      storageKind: "opfs",
+      verifiedAt: 50,
+    });
+    const hydration = engine.pageHydrationCandidates({
+      after: null,
+      limit: 1,
+      schemaVersion: 1,
+      source: null,
+    });
+    expect(hydration).toMatchObject({
+      next: null,
+      rows: [
+        {
+          byteLength: 5,
+          byteOffset: 5,
+          contentDigest: digest,
+          policy: "complete_cache",
+          rangeContentDigest: "9".repeat(64),
+          rangeIndex: 1,
+        },
+      ],
+      source: { contentRevision: 2, sourceRevision: 7 },
+    });
+    const eviction = engine.pageEvictionCandidates({
+      after: null,
+      limit: 1,
+      notAccessedAfter: 50,
+      schemaVersion: 1,
+      source: null,
+    });
+    expect(eviction).toMatchObject({
+      next: null,
+      rows: [
+        {
+          contentDigest: digest,
+          lastAccessedAt: 50,
+          policy: "complete_cache",
+          verifiedBytes: 5,
+        },
+      ],
+      source: { contentRevision: 2, sourceRevision: 7 },
+    });
+    engine.markContentAccessed(digest, 110_000);
+    expect(
+      engine.pageEvictionCandidates({
+        after: null,
+        limit: 1,
+        notAccessedAfter: 50,
+        schemaVersion: 1,
+        source: eviction.source,
+      }).rows,
+    ).toEqual([]);
+    engine.mutateContentPolicy({
+      contentDigest: digest,
+      policy: "partial_cache",
+      schemaVersion: 1,
+      updatedAt: 120_000,
+    });
+    expect(() =>
+      engine.pageHydrationCandidates({
+        after: hydration.next,
+        limit: 1,
+        schemaVersion: 1,
+        source: hydration.source,
+      }),
+    ).toThrow(/source is stale/);
+  });
+
   it("pages normalized feed rows through the bounded named query", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,

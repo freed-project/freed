@@ -29,6 +29,11 @@
       defines the 18-mutation Primary writer capability and the
       capture-only scraper capability. Rust and TypeScript consume generated
       constants, and no parallel actor-operation registry remains.
+- [x] Expose source-fenced native hydration and cache-pressure candidate pages
+      from the shared Rust core. Both pages use generated SQL, cap results at
+      128 rows, and bind canonical generation plus device content revision.
+      Cached reads coalesce local recency writes, and stale least-recently-used
+      candidates cannot delete newly accessed bytes.
 - [x] Check in the final normalized SQL schema, bind it to a generated SHA-256,
       define closed root and child checkpoint payload fields, and expose a
       bounded native SQLite checkpoint exporter with stable keyset cursors.
@@ -580,6 +585,7 @@ export async function captureDomFeed(
 | 5.95 | Require production renderer startup to obtain verified normalized SQLite authority from native startup, fail closed before loading Library state when migration or fresh genesis is unavailable, and keep portable shell setup confined to the isolated browser test projection                                                                                                                 | High       | ✓ Complete |
 | 5.96 | Delete portable shell creation and historical authority bootstrap from the Desktop client. The browser harness now reports normalized authority before exposing its isolated in-memory view fixture and cannot create or select product storage                                                                                                                                                 | High       | ✓ Complete |
 | 5.97 | Fence historical generic item queries, whole-item upserts, shell replacement, and ordinary generic mutations from production. Refresh follower aggregates through the normalized SQLite facet query. The existing provider delivery-state mutations remain on their unchanged path until their separately reviewed normalized cutover                                                           | High       | ✓ Complete |
+| 5.98 | Page hydration and least-recently-used eviction candidates through one generated source-fenced SQLite contract shared with the PWA, coalesce device-local access recency, and reject stale cache-pressure deletion before physical bytes are removed                                                                             | High       | ✓ Complete |
 
 ---
 

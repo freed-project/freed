@@ -838,10 +838,19 @@ CREATE TABLE IF NOT EXISTS library_device_content_availability (
   verified_bytes INTEGER NOT NULL CHECK (verified_bytes >= 0),
   storage_kind TEXT NOT NULL CHECK (storage_kind IN ('none', 'content_vault', 'opfs')),
   complete_digest_verified_at INTEGER CHECK (complete_digest_verified_at IS NULL OR complete_digest_verified_at >= 0),
+  last_accessed_at INTEGER NOT NULL DEFAULT 0 CHECK (last_accessed_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   CHECK (hydration_state NOT IN ('fully_cached', 'pinned_offline') OR storage_kind != 'none'),
   CHECK ((hydration_state IN ('fully_cached', 'pinned_offline')) = (complete_digest_verified_at IS NOT NULL))
 ) STRICT;
+
+CREATE INDEX IF NOT EXISTS library_device_content_availability_lru
+  ON library_device_content_availability(last_accessed_at, content_digest)
+  WHERE verified_bytes > 0;
+
+CREATE INDEX IF NOT EXISTS library_device_content_policies_hydration_queue
+  ON library_device_content_policies(policy DESC, updated_at, content_digest)
+  WHERE policy IN ('complete_cache', 'pinned_offline');
 
 CREATE TABLE IF NOT EXISTS library_device_content_ranges (
   content_digest TEXT NOT NULL CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),

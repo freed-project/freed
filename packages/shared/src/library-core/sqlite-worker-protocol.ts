@@ -147,6 +147,8 @@ import {
   parseLibraryCoreContentRangeReadRequestV1,
   parseLibraryCoreContentCompletionRequestV1,
   parseLibraryCoreContentEvictionRequestV1,
+  parseLibraryCoreEvictionCandidatePageRequestV1,
+  parseLibraryCoreHydrationCandidatePageRequestV1,
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
   type LibraryCoreContentRangePublicationAbortReceiptV1,
@@ -161,6 +163,10 @@ import {
   type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentEvictionReceiptV1,
   type LibraryCoreContentEvictionRequestV1,
+  type LibraryCoreEvictionCandidatePageRequestV1,
+  type LibraryCoreEvictionCandidatePageV1,
+  type LibraryCoreHydrationCandidatePageRequestV1,
+  type LibraryCoreHydrationCandidatePageV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
@@ -528,6 +534,18 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "page_hydration_candidates";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      request: LibraryCoreHydrationCandidatePageRequestV1;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "page_eviction_candidates";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      request: LibraryCoreEvictionCandidatePageRequestV1;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "follower_mutation_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -680,6 +698,8 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreContentRangeReadResponseV1
   | LibraryCoreContentCompletionReceiptV1
   | LibraryCoreContentEvictionReceiptV1
+  | LibraryCoreHydrationCandidatePageV1
+  | LibraryCoreEvictionCandidatePageV1
   | LibraryCoreVerifiedContentRangeReceiptV1
   | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
@@ -755,7 +775,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
         : value.kind === "read_content_state" ||
             value.kind === "read_content_range" ||
             value.kind === "verify_content_complete" ||
-            value.kind === "evict_content"
+            value.kind === "evict_content" ||
+            value.kind === "page_hydration_candidates" ||
+            value.kind === "page_eviction_candidates"
           ? ["kind", "protocolVersion", "request", "requestId"]
           : value.kind === "begin_content_range_publication" ||
               value.kind === "append_content_range_publication" ||
@@ -882,7 +904,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "mutate_content_policy",
       "open",
       "page_follower_intents",
+      "page_eviction_candidates",
       "page_follower_transport",
+      "page_hydration_candidates",
       "page_scope_action",
       "publish_follower_intent",
       "publish_normalized_follower_intent_transport",
@@ -1020,6 +1044,16 @@ export function parseLibraryCoreSqliteWorkerRequest(
     if (!request.ok) throw new TypeError(request.error);
   } else if (value.kind === "evict_content") {
     const request = parseLibraryCoreContentEvictionRequestV1(value.request);
+    if (!request.ok) throw new TypeError(request.error);
+  } else if (value.kind === "page_hydration_candidates") {
+    const request = parseLibraryCoreHydrationCandidatePageRequestV1(
+      value.request,
+    );
+    if (!request.ok) throw new TypeError(request.error);
+  } else if (value.kind === "page_eviction_candidates") {
+    const request = parseLibraryCoreEvictionCandidatePageRequestV1(
+      value.request,
+    );
     if (!request.ok) throw new TypeError(request.error);
   } else if (value.kind === "begin_content_range_publication") {
     const publication = parseLibraryCoreContentRangePublicationBeginV1(
@@ -1386,6 +1420,30 @@ export function createLibraryCoreSqliteContentEvictionWorkerRequest(
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind: "evict_content",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    request,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteHydrationCandidatePageWorkerRequest(
+  requestId: string,
+  request: LibraryCoreHydrationCandidatePageRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "page_hydration_candidates",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    request,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteEvictionCandidatePageWorkerRequest(
+  requestId: string,
+  request: LibraryCoreEvictionCandidatePageRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "page_eviction_candidates",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     request,
     requestId,

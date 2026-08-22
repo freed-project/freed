@@ -74,6 +74,7 @@ function assertContract(contract) {
     "checkpointRecords",
     "contentRangeMapDigestDomain",
     "contentRangeStorageKey",
+    "contentWorkPrograms",
     "contractVersion",
     "fractionalFields",
     "limits",
@@ -319,6 +320,15 @@ function assertContract(contract) {
       .length === 0
   ) {
     throw new TypeError("SQLite local reconciliation registry is invalid");
+  }
+  if (
+    Object.keys(contract.contentWorkPrograms).sort().join(",") !==
+      "eviction_candidates_page_v1,hydration_candidates_page_v1" ||
+    Object.values(contract.contentWorkPrograms).some(
+      (sql) => typeof sql !== "string" || sql.length === 0,
+    )
+  ) {
+    throw new TypeError("SQLite content work program registry is invalid");
   }
   for (const [mutationId, program] of Object.entries(
     contract.localMutationPrograms,
@@ -668,6 +678,7 @@ export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLIT
 
 export const LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS = ${JSON.stringify(contract.localMutationPrograms, null, 2)} as const;
 export const LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS = ${JSON.stringify(contract.localReconciliationPrograms, null, 2)} as const;
+export const LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS = ${JSON.stringify(contract.contentWorkPrograms, null, 2)} as const;
 
 export const LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS = ${JSON.stringify(contract.scopeActionPrograms, null, 2)} as const;
 export type LibraryCoreSqliteLocalMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS;
@@ -757,6 +768,12 @@ function rustSource(contract, schemaDigest) {
   const localReconciliationPrograms = Object.entries(
     contract.localReconciliationPrograms,
   )
+    .map(
+      ([programId, sql]) =>
+        `    (${JSON.stringify(programId)}, ${JSON.stringify(sql)}),`,
+    )
+    .join("\n");
+  const contentWorkPrograms = Object.entries(contract.contentWorkPrograms)
     .map(
       ([programId, sql]) =>
         `    (${JSON.stringify(programId)}, ${JSON.stringify(sql)}),`,
@@ -892,6 +909,10 @@ ${localMutationPrograms}
 
 pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
 ${localReconciliationPrograms}
+];
+
+pub const SQLITE_CONTENT_WORK_PROGRAMS: &[(&str, &str)] = &[
+${contentWorkPrograms}
 ];
 
 pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[

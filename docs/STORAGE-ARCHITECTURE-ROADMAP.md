@@ -36,6 +36,13 @@ then page the frozen set through explicit assignment transactions of at most
 1,000 members. Staging rows never enter checkpoints or replication. React never
 receives the complete selected set.
 
+Selective content scheduling now crosses one closed local SQLite boundary.
+Native Rust and browser SQLite execute the same generated hydration and
+least-recently-used eviction programs. Each page returns at most 128 rows and
+binds the canonical generation plus device content revision. Cached reads
+coalesce recency writes, and cache pressure cannot remove bytes after a newer
+read. Download execution and user-owned storage transport binding remain open.
+
 ## Destination
 
 Freed uses SQLite everywhere:

@@ -16,12 +16,15 @@ use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
 use crate::{
+    page_eviction_candidates_v1, page_hydration_candidates_v1,
     publish_content_range_from_reader_v1, set_content_policy_v1, ContentCompletionReceiptV1,
     ContentCompletionRequestV1, ContentEvictionReceiptV1, ContentEvictionRequestV1,
     ContentHydrationPolicyV1, ContentPolicyMutationReceiptV1, ContentPolicyMutationV1,
     ContentRangePublicationRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
-    LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
-    NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
+    EvictionCandidatePageRequestV1, EvictionCandidatePageV1, HydrationCandidatePageRequestV1,
+    HydrationCandidatePageV1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
+    LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity,
+    VerifiedContentRangeReceiptV1,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
@@ -221,6 +224,24 @@ impl LibraryCoreDesktopBinding {
         self.content_vault.evict_v1(&mut connection, request)
     }
 
+    pub fn page_hydration_candidates_v1(
+        &self,
+        request: &HydrationCandidatePageRequestV1,
+    ) -> Result<HydrationCandidatePageV1, LibraryCoreStoreError> {
+        let connection = self.connect_selected_normalized()?;
+        page_hydration_candidates_v1(&connection, request)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    pub fn page_eviction_candidates_v1(
+        &self,
+        request: &EvictionCandidatePageRequestV1,
+    ) -> Result<EvictionCandidatePageV1, LibraryCoreStoreError> {
+        let connection = self.connect_selected_normalized()?;
+        page_eviction_candidates_v1(&connection, request)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
     pub fn mutate_content_policy_v1(
         &self,
         mutation: &ContentPolicyMutationV1,
@@ -236,6 +257,8 @@ impl LibraryCoreDesktopBinding {
                     &ContentEvictionRequestV1 {
                         content_digest: mutation.content_digest.clone(),
                         evicted_at: mutation.updated_at,
+                        expected_last_accessed_at: None,
+                        reason: "excluded".to_string(),
                         schema_version: 1,
                     },
                 )?
@@ -615,6 +638,7 @@ mod tests {
         );
         let range_read = binding
             .read_content_range_v1(&ContentRangeReadRequestV1 {
+                accessed_at: 600,
                 content_digest: content_digest.clone(),
                 maximum_bytes: 3,
                 range_index: 0,
@@ -688,6 +712,8 @@ mod tests {
             .evict_content_v1(&ContentEvictionRequestV1 {
                 content_digest: content_digest.clone(),
                 evicted_at: 604,
+                expected_last_accessed_at: None,
+                reason: "explicit".to_string(),
                 schema_version: 1,
             })
             .expect_err("pinned content must resist eviction");

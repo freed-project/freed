@@ -15,6 +15,8 @@ import {
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteContentCompletionWorkerRequest,
   createLibraryCoreSqliteContentEvictionWorkerRequest,
+  createLibraryCoreSqliteEvictionCandidatePageWorkerRequest,
+  createLibraryCoreSqliteHydrationCandidatePageWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -39,6 +41,8 @@ import {
   parseLibraryCoreContentRangeReadResponseV1,
   parseLibraryCoreContentCompletionReceiptV1,
   parseLibraryCoreContentEvictionReceiptV1,
+  parseLibraryCoreEvictionCandidatePageV1,
+  parseLibraryCoreHydrationCandidatePageV1,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -63,6 +67,10 @@ import {
   type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentEvictionReceiptV1,
   type LibraryCoreContentEvictionRequestV1,
+  type LibraryCoreEvictionCandidatePageRequestV1,
+  type LibraryCoreEvictionCandidatePageV1,
+  type LibraryCoreHydrationCandidatePageRequestV1,
+  type LibraryCoreHydrationCandidatePageV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
@@ -203,6 +211,36 @@ export class PwaLibraryCoreSqliteClient {
       createLibraryCoreSqliteContentEvictionWorkerRequest(requestId, request),
     ).then((value) => {
       const parsed = parseLibraryCoreContentEvictionReceiptV1(value);
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
+  }
+
+  pageHydrationCandidates(
+    request: LibraryCoreHydrationCandidatePageRequestV1,
+  ): Promise<LibraryCoreHydrationCandidatePageV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteHydrationCandidatePageWorkerRequest(
+        requestId,
+        request,
+      ),
+    ).then((value) => {
+      const parsed = parseLibraryCoreHydrationCandidatePageV1(value);
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
+  }
+
+  pageEvictionCandidates(
+    request: LibraryCoreEvictionCandidatePageRequestV1,
+  ): Promise<LibraryCoreEvictionCandidatePageV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteEvictionCandidatePageWorkerRequest(
+        requestId,
+        request,
+      ),
+    ).then((value) => {
+      const parsed = parseLibraryCoreEvictionCandidatePageV1(value);
       if (!parsed.ok) throw new TypeError(parsed.error);
       return parsed.value;
     });

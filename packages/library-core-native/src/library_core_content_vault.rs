@@ -188,6 +188,8 @@ impl LibraryCoreContentVault {
     ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
         if request.schema_version != 1
             || !valid_digest(&request.content_digest)
+            || request.accessed_at < 0
+            || request.accessed_at > 9_007_199_254_740_991
             || request.range_index < 0
             || request.range_offset < 0
             || !(1..=i64::try_from(CONTENT_RANGE_MAXIMUM_APPEND_BYTES).expect("append bound"))
@@ -257,6 +259,16 @@ impl LibraryCoreContentVault {
             })?,
         ))?;
         file.read_exact(&mut bytes)?;
+        connection
+            .execute(
+                "UPDATE library_device_content_availability
+                 SET last_accessed_at = ?2
+                 WHERE content_digest = ?1 COLLATE BINARY
+                   AND last_accessed_at < ?2
+                   AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
+                rusqlite::params![request.content_digest, request.accessed_at],
+            )
+            .map_err(store_error)?;
         let next_range_offset =
             request.range_offset + i64::try_from(bytes.len()).expect("bounded read");
         Ok(ContentRangeReadResponseV1 {
@@ -303,6 +315,7 @@ impl LibraryCoreContentVault {
                 let response = self.read_range_v1(
                     connection,
                     &ContentRangeReadRequestV1 {
+                        accessed_at: request.verified_at,
                         content_digest: request.content_digest.clone(),
                         maximum_bytes: i64::try_from(CONTENT_RANGE_MAXIMUM_APPEND_BYTES)
                             .expect("append bound"),
@@ -346,6 +359,14 @@ impl LibraryCoreContentVault {
             || !valid_digest(&request.content_digest)
             || request.evicted_at < 0
             || request.evicted_at > 9_007_199_254_740_991
+            || request
+                .expected_last_accessed_at
+                .is_some_and(|value| !(0..=9_007_199_254_740_991).contains(&value))
+            || !matches!(
+                request.reason.as_str(),
+                "cache_pressure" | "excluded" | "explicit"
+            )
+            || (request.reason == "cache_pressure") != request.expected_last_accessed_at.is_some()
         {
             return Err(LibraryCoreStoreError::from(
                 "content eviction request is invalid".to_string(),
@@ -354,14 +375,16 @@ impl LibraryCoreContentVault {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(store_error)?;
-        let policy = transaction
+        let (policy, last_accessed_at) = transaction
             .query_row(
                 "SELECT COALESCE((SELECT policy FROM library_device_content_policies
-                                  WHERE content_digest = blob.content_digest), 'metadata_only')
+                                  WHERE content_digest = blob.content_digest), 'metadata_only'),
+                        (SELECT last_accessed_at FROM library_device_content_availability
+                         WHERE content_digest = blob.content_digest)
                  FROM library_blobs AS blob
                  WHERE blob.content_digest = ?1 COLLATE BINARY;",
                 [&request.content_digest],
-                |row| row.get::<_, String>(0),
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
             )
             .optional()
             .map_err(store_error)?
@@ -373,6 +396,13 @@ impl LibraryCoreContentVault {
         if policy == "pinned_offline" {
             return Err(LibraryCoreStoreError::from(
                 "pinned offline content must be unpinned before eviction".to_string(),
+            ));
+        }
+        if request.reason == "cache_pressure"
+            && last_accessed_at != request.expected_last_accessed_at
+        {
+            return Err(LibraryCoreStoreError::from(
+                "content eviction candidate is stale".to_string(),
             ));
         }
 

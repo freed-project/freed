@@ -21,8 +21,10 @@
 > range windows without exposing physical paths. Both close complete and pinned
 > availability through the full-content digest without a monolithic cache
 > object. Both now purge excluded local content and refuse eviction until a
-> pinned rendition is explicitly unpinned. Transport scheduling and automatic
-> garbage collection remain in progress.
+> pinned rendition is explicitly unpinned. Both runtimes now discover missing
+> ranges and least-recently-used eviction candidates through one generated,
+> bounded, source-fenced SQLite contract. Transport execution remains in
+> progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
@@ -45,6 +47,9 @@
       the rendition entirely.
 - [x] Keep hydration and eviction state device-local. Synchronize only content
       identity, availability descriptors, and canonical metadata.
+- [x] Discover hydration and eviction work through identical native and browser
+      SQLite queries, with 128-row keyset pages, source fences, coalesced access
+      recency, and stale-candidate refusal before cache-pressure deletion.
 - [ ] Require separate provider-risk approval before any new resolver request,
       page load, click, timing pattern, header, cookie use, or background media
       acquisition is implemented.
@@ -489,6 +494,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.42 | Device-local provider RSS essay body preservation                                              | Medium     | ✓ Done         |
 | 12.43 | Origin-scoped native event bridge capabilities                                                 | High       | ✓ Done         |
 | 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High       | ✓ Done         |
+| 12.45 | Shared bounded hydration and least-recently-used eviction scheduler contract                    | High       | ✓ Done         |
 
 ---
 

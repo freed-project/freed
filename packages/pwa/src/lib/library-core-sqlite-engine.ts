@@ -8,6 +8,7 @@ import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
@@ -164,6 +165,10 @@ import {
   parseLibraryCoreContentCompletionRequestV1,
   parseLibraryCoreContentStateRequestV1,
   parseLibraryCoreContentStateV1,
+  parseLibraryCoreEvictionCandidatePageRequestV1,
+  parseLibraryCoreEvictionCandidatePageV1,
+  parseLibraryCoreHydrationCandidatePageRequestV1,
+  parseLibraryCoreHydrationCandidatePageV1,
   createLibraryCoreContentRangeStorageKeyV1,
   parseLibraryCoreVerifiedContentRangePublicationV1,
   parseLibraryCoreVerifiedContentRangeReceiptV1,
@@ -222,6 +227,11 @@ import {
   type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentStateRequestV1,
   type LibraryCoreContentStateV1,
+  type LibraryCoreContentWorkSourceV1,
+  type LibraryCoreEvictionCandidatePageRequestV1,
+  type LibraryCoreEvictionCandidatePageV1,
+  type LibraryCoreHydrationCandidatePageRequestV1,
+  type LibraryCoreHydrationCandidatePageV1,
   type LibraryCoreVerifiedContentRangePublicationV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCorePersonDetailRequestV1,
@@ -1487,7 +1497,7 @@ export class PwaLibraryCoreSqliteEngine {
                    COALESCE(policy.policy, 'metadata_only'), policy.updated_at,
                    availability.hydration_state, availability.verified_bytes,
                    availability.storage_kind, availability.complete_digest_verified_at,
-                   availability.updated_at,
+                   availability.last_accessed_at, availability.updated_at,
                    state.revision
             FROM library_blobs AS blob
             CROSS JOIN library_device_content_state AS state
@@ -1518,16 +1528,17 @@ export class PwaLibraryCoreSqliteEngine {
                       "complete content digest verification time",
                     ),
               hydrationState: text(row[4], "content hydration state"),
+              lastAccessedAt: safeInteger(row[8], "content last access time"),
               storageKind: text(row[6], "content storage kind"),
               updatedAt: safeInteger(
-                row[8],
+                row[9],
                 "content availability update time",
               ),
               verifiedBytes: safeInteger(row[5], "verified content bytes"),
             },
       byteLength: safeInteger(row[0], "content byte length"),
       contentDigest: request.contentDigest,
-      contentRevision: safeInteger(row[9], "selective content revision"),
+      contentRevision: safeInteger(row[10], "selective content revision"),
       mediaType: text(row[1], "content media type"),
       policy: text(row[2], "selective content policy"),
       policyUpdatedAt:
@@ -1538,6 +1549,135 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (!state.ok) throw new TypeError(state.error);
     return state.value;
+  }
+
+  pageHydrationCandidates(
+    input: LibraryCoreHydrationCandidatePageRequestV1,
+  ): LibraryCoreHydrationCandidatePageV1 {
+    const parsed = parseLibraryCoreHydrationCandidatePageRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const source = this.#contentWorkSource(request.source);
+    const after = request.after;
+    const rows = this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS.hydration_candidates_page_v1,
+      bind: [
+        after?.policyPriority ?? null,
+        after?.policyUpdatedAt ?? null,
+        after?.contentDigest ?? null,
+        after?.rangeIndex ?? null,
+        request.limit + 1,
+      ],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const hasMore = rows.length > request.limit;
+    const pageRows = rows.slice(0, request.limit).map((row) => ({
+      byteLength: safeInteger(row[5], "hydration candidate byte length"),
+      byteOffset: safeInteger(row[4], "hydration candidate byte offset"),
+      cloudAvailabilityCommitment: text(row[9], "hydration cloud commitment"),
+      contentDigest: text(row[2], "hydration content digest"),
+      mediaType: text(row[7], "hydration media type"),
+      policy: text(row[8], "hydration policy"),
+      policyPriority: safeInteger(row[0], "hydration policy priority"),
+      policyUpdatedAt: safeInteger(row[1], "hydration policy time"),
+      rangeContentDigest: text(row[6], "hydration range digest"),
+      rangeIndex: safeInteger(row[3], "hydration range index"),
+    }));
+    const last = pageRows.at(-1);
+    const response = parseLibraryCoreHydrationCandidatePageV1({
+      next:
+        hasMore && last
+          ? {
+              contentDigest: last.contentDigest,
+              policyPriority: last.policyPriority,
+              policyUpdatedAt: last.policyUpdatedAt,
+              rangeIndex: last.rangeIndex,
+            }
+          : null,
+      rows: pageRows,
+      schemaVersion: 1,
+      source,
+    });
+    if (!response.ok) throw new TypeError(response.error);
+    return response.value;
+  }
+
+  pageEvictionCandidates(
+    input: LibraryCoreEvictionCandidatePageRequestV1,
+  ): LibraryCoreEvictionCandidatePageV1 {
+    const parsed = parseLibraryCoreEvictionCandidatePageRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const source = this.#contentWorkSource(request.source);
+    const after = request.after;
+    const rows = this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS.eviction_candidates_page_v1,
+      bind: [
+        request.notAccessedAfter,
+        after?.policyPriority ?? null,
+        after?.lastAccessedAt ?? null,
+        after?.contentDigest ?? null,
+        request.limit + 1,
+      ],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const hasMore = rows.length > request.limit;
+    const pageRows = rows.slice(0, request.limit).map((row) => ({
+      contentDigest: text(row[2], "eviction content digest"),
+      hydrationState: text(row[4], "eviction hydration state"),
+      lastAccessedAt: safeInteger(row[1], "eviction access time"),
+      policy: text(row[3], "eviction policy"),
+      policyPriority: safeInteger(row[0], "eviction policy priority"),
+      verifiedBytes: safeInteger(row[5], "eviction verified bytes"),
+    }));
+    const last = pageRows.at(-1);
+    const response = parseLibraryCoreEvictionCandidatePageV1({
+      next:
+        hasMore && last
+          ? {
+              contentDigest: last.contentDigest,
+              lastAccessedAt: last.lastAccessedAt,
+              policyPriority: last.policyPriority,
+            }
+          : null,
+      rows: pageRows,
+      schemaVersion: 1,
+      source,
+    });
+    if (!response.ok) throw new TypeError(response.error);
+    return response.value;
+  }
+
+  #contentWorkSource(
+    expected: LibraryCoreContentWorkSourceV1 | null,
+  ): LibraryCoreContentWorkSourceV1 {
+    const canonical = this.#querySource();
+    const contentRevision = safeInteger(
+      this.#database.exec({
+        sql: "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "content work revision",
+    );
+    const source = Object.freeze({
+      contentRevision,
+      generationId: canonical.generationId,
+      sourceRevision: canonical.sourceRevision,
+      transitionSequence: canonical.sourceRevision,
+    });
+    if (
+      expected !== null &&
+      (expected.contentRevision !== source.contentRevision ||
+        expected.generationId !== source.generationId ||
+        expected.sourceRevision !== source.sourceRevision ||
+        expected.transitionSequence !== source.transitionSequence)
+    ) {
+      throw new Error("content work source is stale");
+    }
+    return source;
   }
 
   readCanonicalContentRange(
@@ -1572,6 +1712,24 @@ export class PwaLibraryCoreSqliteEngine {
     return Object.freeze({
       byteLength: safeInteger(rows[0]![0], "canonical content range length"),
       rangeContentDigest: text(rows[0]![1], "canonical content range digest"),
+    });
+  }
+
+  markContentAccessed(contentDigest: string, accessedAt: number): void {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      !Number.isSafeInteger(accessedAt) ||
+      accessedAt < 0
+    ) {
+      throw new TypeError("content access record is invalid");
+    }
+    this.#database.exec({
+      sql: `UPDATE library_device_content_availability
+            SET last_accessed_at = ?2
+            WHERE content_digest = ?1 COLLATE BINARY
+              AND last_accessed_at < ?2
+              AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);`,
+      bind: [contentDigest, accessedAt],
     });
   }
 
@@ -1756,8 +1914,8 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: `INSERT INTO library_device_content_availability
                   (content_digest, hydration_state, verified_bytes, storage_kind,
-                   complete_digest_verified_at, updated_at)
-                VALUES (?1, ?2, ?3, 'opfs', ?4, ?4)
+                   complete_digest_verified_at, last_accessed_at, updated_at)
+                VALUES (?1, ?2, ?3, 'opfs', ?4, ?4, ?4)
                 ON CONFLICT(content_digest) DO UPDATE SET
                   hydration_state = excluded.hydration_state,
                   verified_bytes = excluded.verified_bytes,
@@ -1962,8 +2120,8 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: `INSERT INTO library_device_content_availability
                   (content_digest, hydration_state, verified_bytes, storage_kind,
-                   complete_digest_verified_at, updated_at)
-                VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4)
+                   complete_digest_verified_at, last_accessed_at, updated_at)
+                VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4, ?4)
                 ON CONFLICT(content_digest) DO UPDATE SET
                   hydration_state = 'partially_cached',
                   verified_bytes = excluded.verified_bytes,
