@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, and IndexedDB Library deletion are implemented; Google Drive adapter binding, recovery UI, and physical iPhone proof remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, selective content range publication, and IndexedDB Library deletion are implemented; Google Drive adapter binding, recovery UI, startup vault reconciliation, and physical iPhone proof remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -24,6 +24,10 @@
       the high-performance `opfs-sahpool` VFS, with one bounded protocol, one
       connection generation, one cross-window Library lock, exact schema
       identity verification, and no arbitrary SQL method exposed to React.
+- [x] Publish one authenticated content range through sequential worker frames
+      no larger than 256 KiB. Hash bytes incrementally, flush and close the OPFS
+      object, then register its canonical range identity in SQLite. Changed or
+      incomplete bytes are deleted without creating availability.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,
@@ -518,7 +522,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status. Only the last successful refresh syncs. Retry timing and failures remain local to the polling device. Deprecated synchronized HTTP validators are ignored because the current Desktop transport does not persist them.
 - [x] First launch is blocked behind a local-only legal clickwrap gate
-- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, the OPFS SQLite pool, and the nonextractable actor key vault. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
+- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, the OPFS SQLite pool, the OPFS content vault, and the nonextractable actor key vault. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report

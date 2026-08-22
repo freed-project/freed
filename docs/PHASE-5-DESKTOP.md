@@ -268,6 +268,9 @@
   - [x] Authenticate ordered content ranges from canonical typed checkpoint
         records. Reject gaps, overlaps, changed roots, and mixed layouts while
         streaming metadata without allocating the logical media length.
+  - [x] Stream native range bytes through one 256 KiB bounded verifier, require
+        a host durability barrier, and register only proofs matching the
+        canonical SQLite range identity.
   - [ ] Publish digest-verified ranges into the descriptor-bound content vault
         without routing complete media through the renderer or native IPC.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge

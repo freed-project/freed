@@ -2,6 +2,7 @@ import {
   isLibraryCoreLowercaseHex64,
   isLibraryCoreNonnegativeSafeInteger,
 } from "./protocol-scalars.js";
+import { LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES } from "./sqlite-contract.generated.js";
 
 export const LIBRARY_CORE_SELECTIVE_CONTENT_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_CONTENT_HYDRATION_POLICIES = Object.freeze([
@@ -66,6 +67,70 @@ export interface LibraryCoreContentStateV1 {
   readonly mediaType: string;
   readonly policy: LibraryCoreContentHydrationPolicyV1;
   readonly policyUpdatedAt: number | null;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreVerifiedContentRangePublicationV1 {
+  readonly byteLength: number;
+  readonly contentDigest: string;
+  readonly rangeContentDigest: string;
+  readonly rangeIndex: number;
+  readonly schemaVersion: 1;
+  readonly storageKey: string;
+  readonly storageKind: "content_vault" | "opfs";
+  readonly verifiedAt: number;
+}
+
+export interface LibraryCoreVerifiedContentRangeReceiptV1 {
+  readonly changed: boolean;
+  readonly contentDigest: string;
+  readonly contentRevision: number;
+  readonly hydrationState: "partially_cached";
+  readonly rangeIndex: number;
+  readonly schemaVersion: 1;
+  readonly verifiedBytes: number;
+}
+
+export interface LibraryCoreContentRangePublicationBeginV1 {
+  readonly contentDigest: string;
+  readonly publicationId: string;
+  readonly rangeIndex: number;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentRangePublicationAppendV1 {
+  readonly bytes: Uint8Array;
+  readonly expectedOffset: number;
+  readonly publicationId: string;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentRangePublicationFinalizeV1 {
+  readonly publicationId: string;
+  readonly schemaVersion: 1;
+  readonly verifiedAt: number;
+}
+
+export interface LibraryCoreContentRangePublicationAbortV1 {
+  readonly publicationId: string;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentRangePublicationStatusV1 {
+  readonly contentDigest: string;
+  readonly expectedByteLength: number;
+  readonly expectedRangeContentDigest: string;
+  readonly maximumAppendBytes: typeof LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES;
+  readonly nextOffset: number;
+  readonly publicationId: string;
+  readonly rangeIndex: number;
+  readonly schemaVersion: 1;
+  readonly state: "staging";
+}
+
+export interface LibraryCoreContentRangePublicationAbortReceiptV1 {
+  readonly publicationId: string;
+  readonly removed: boolean;
   readonly schemaVersion: 1;
 }
 
@@ -278,5 +343,264 @@ export function parseLibraryCoreContentStateV1(
       ...candidate,
       availability: availability ? Object.freeze(availability) : null,
     }) as unknown as LibraryCoreContentStateV1,
+  });
+}
+
+export function parseLibraryCoreVerifiedContentRangePublicationV1(
+  value: unknown,
+): ParseResult<LibraryCoreVerifiedContentRangePublicationV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "byteLength",
+      "contentDigest",
+      "rangeContentDigest",
+      "rangeIndex",
+      "schemaVersion",
+      "storageKey",
+      "storageKind",
+      "verifiedAt",
+    ]) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.byteLength) ||
+    candidate.byteLength < 1 ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreLowercaseHex64(candidate.rangeContentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    candidate.schemaVersion !== 1 ||
+    typeof candidate.storageKey !== "string" ||
+    candidate.storageKey.length === 0 ||
+    new TextEncoder().encode(candidate.storageKey).length > 1_024 ||
+    !["content_vault", "opfs"].includes(String(candidate.storageKind)) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedAt)
+  ) {
+    return Object.freeze({
+      error: "verified content range publication is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreVerifiedContentRangePublicationV1,
+  });
+}
+
+export function parseLibraryCoreVerifiedContentRangeReceiptV1(
+  value: unknown,
+): ParseResult<LibraryCoreVerifiedContentRangeReceiptV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "changed",
+      "contentDigest",
+      "contentRevision",
+      "hydrationState",
+      "rangeIndex",
+      "schemaVersion",
+      "verifiedBytes",
+    ]) ||
+    typeof candidate.changed !== "boolean" ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.contentRevision) ||
+    candidate.hydrationState !== "partially_cached" ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    candidate.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedBytes)
+  ) {
+    return Object.freeze({
+      error: "verified content range receipt is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreVerifiedContentRangeReceiptV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationBeginV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationBeginV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "publicationId",
+      "rangeIndex",
+      "schemaVersion",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range publication begin request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangePublicationBeginV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationAppendV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationAppendV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "bytes",
+      "expectedOffset",
+      "publicationId",
+      "schemaVersion",
+    ]) ||
+    !(candidate.bytes instanceof Uint8Array) ||
+    candidate.bytes.byteLength < 1 ||
+    candidate.bytes.byteLength >
+      LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.expectedOffset) ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range publication append request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze({
+      ...candidate,
+      bytes: candidate.bytes.slice(),
+    }) as unknown as LibraryCoreContentRangePublicationAppendV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationFinalizeV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationFinalizeV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "publicationId",
+      "schemaVersion",
+      "verifiedAt",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    candidate.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedAt)
+  ) {
+    return Object.freeze({
+      error: "content range publication finalize request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangePublicationFinalizeV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationAbortV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationAbortV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["publicationId", "schemaVersion"]) ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range publication abort request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangePublicationAbortV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationStatusV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationStatusV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "contentDigest",
+      "expectedByteLength",
+      "expectedRangeContentDigest",
+      "maximumAppendBytes",
+      "nextOffset",
+      "publicationId",
+      "rangeIndex",
+      "schemaVersion",
+      "state",
+    ]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.expectedByteLength) ||
+    candidate.expectedByteLength < 1 ||
+    !isLibraryCoreLowercaseHex64(candidate.expectedRangeContentDigest) ||
+    candidate.maximumAppendBytes !==
+      LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.nextOffset) ||
+    candidate.nextOffset > candidate.expectedByteLength ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.rangeIndex) ||
+    candidate.schemaVersion !== 1 ||
+    candidate.state !== "staging"
+  ) {
+    return Object.freeze({
+      error: "content range publication status is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangePublicationStatusV1,
+  });
+}
+
+export function parseLibraryCoreContentRangePublicationAbortReceiptV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentRangePublicationAbortReceiptV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["publicationId", "removed", "schemaVersion"]) ||
+    !isLibraryCoreLowercaseHex64(candidate.publicationId) ||
+    typeof candidate.removed !== "boolean" ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content range publication abort receipt is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentRangePublicationAbortReceiptV1,
   });
 }

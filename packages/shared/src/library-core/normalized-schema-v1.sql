@@ -840,23 +840,24 @@ CREATE TABLE IF NOT EXISTS library_device_content_availability (
   storage_key TEXT CHECK (storage_key IS NULL OR length(CAST(storage_key AS BLOB)) BETWEEN 1 AND 1024),
   complete_digest_verified_at INTEGER CHECK (complete_digest_verified_at IS NULL OR complete_digest_verified_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
-  CHECK ((storage_kind = 'none') = (storage_key IS NULL)),
+  CHECK (storage_kind != 'none' OR storage_key IS NULL),
+  CHECK (hydration_state NOT IN ('fully_cached', 'pinned_offline') OR storage_key IS NOT NULL),
   CHECK ((hydration_state IN ('fully_cached', 'pinned_offline')) = (complete_digest_verified_at IS NOT NULL))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS library_device_content_ranges (
   content_digest TEXT NOT NULL CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
-  byte_offset INTEGER NOT NULL CHECK (byte_offset >= 0),
-  byte_length INTEGER NOT NULL CHECK (byte_length >= 1),
-  range_digest TEXT NOT NULL CHECK (length(range_digest) = 64 AND range_digest NOT GLOB '*[^0-9a-f]*'),
+  range_index INTEGER NOT NULL CHECK (range_index BETWEEN 0 AND 9007199254740991),
+  verified_byte_length INTEGER NOT NULL CHECK (verified_byte_length BETWEEN 1 AND 9007199254740991),
+  verified_range_digest TEXT NOT NULL CHECK (length(verified_range_digest) = 64 AND verified_range_digest NOT GLOB '*[^0-9a-f]*'),
+  storage_kind TEXT NOT NULL CHECK (storage_kind IN ('content_vault', 'opfs')),
   storage_key TEXT NOT NULL CHECK (length(CAST(storage_key AS BLOB)) BETWEEN 1 AND 1024),
   verified_at INTEGER NOT NULL CHECK (verified_at >= 0),
-  PRIMARY KEY (content_digest, byte_offset),
-  CHECK (byte_offset <= 9007199254740991 - byte_length)
+  PRIMARY KEY (content_digest, range_index)
 ) STRICT, WITHOUT ROWID;
 
-CREATE INDEX IF NOT EXISTS library_device_content_ranges_digest
-  ON library_device_content_ranges(content_digest, range_digest);
+CREATE UNIQUE INDEX IF NOT EXISTS library_device_content_ranges_storage_key
+  ON library_device_content_ranges(storage_kind, storage_key);
 
 CREATE TABLE IF NOT EXISTS library_device_scope_actions (
   action_id TEXT PRIMARY KEY CHECK (length(CAST(action_id AS BLOB)) BETWEEN 1 AND 255),

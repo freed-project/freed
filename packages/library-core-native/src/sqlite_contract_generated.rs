@@ -16,11 +16,12 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = 1048576;
 pub const NATIVE_COMMAND_MAXIMUM_FRAME_BYTES: usize = 4194304;
 pub const CONTENT_CHUNK_BYTES: usize = 65536;
+pub const CONTENT_RANGE_MAXIMUM_APPEND_BYTES: usize = 262144;
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "27e14276e2dcc91772dade87e0fa0634e31ea9c7f5ed747c6b43c64fb3fef35d";
+    "1d9dae4b334af6647dd31a542e1dd9c3e41bd2757de38912f1dcc34d6b268c86";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -622,6 +623,10 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
     ("content_policy_set_v1", 1, "Content", "SELECT EXISTS(SELECT 1 FROM library_blobs WHERE content_digest = ?1 COLLATE BINARY);", "INSERT INTO library_device_content_policies (content_digest, policy, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(content_digest) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at WHERE policy IS NOT excluded.policy OR updated_at IS NOT excluded.updated_at;"),
     ("person_graph_position_clear_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "DELETE FROM library_device_person_graph_layout WHERE person_id = ?1 COLLATE BINARY;"),
     ("person_graph_position_set_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_person_graph_layout (person_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(person_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
+];
+
+pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
+    ("content_checkpoint_reconcile_v1", "DELETE FROM library_device_content_policies WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_policies.content_digest); DELETE FROM library_device_content_ranges WHERE NOT EXISTS (SELECT 1 FROM library_content_ranges AS range WHERE range.content_digest = library_device_content_ranges.content_digest AND range.range_index = library_device_content_ranges.range_index AND range.byte_length = library_device_content_ranges.verified_byte_length AND range.range_digest = library_device_content_ranges.verified_range_digest); DELETE FROM library_device_content_availability WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_availability.content_digest); UPDATE library_device_content_availability SET verified_bytes = COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0) WHERE complete_digest_verified_at IS NULL AND verified_bytes IS NOT COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0); DELETE FROM library_device_content_availability WHERE complete_digest_verified_at IS NULL AND verified_bytes = 0;"),
 ];
 
 pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[

@@ -4,7 +4,9 @@ use crate::normalized_checkpoint::{
     checked_record, decode_fractional_payload, NormalizedCheckpointRecordV2,
 };
 use crate::normalized_sqlite::NormalizedSqliteError;
-use crate::sqlite_contract_generated::CONTENT_RANGE_MAP_DIGEST_DOMAIN;
+use crate::sqlite_contract_generated::{
+    CONTENT_RANGE_MAP_DIGEST_DOMAIN, SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
+};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
@@ -14,6 +16,34 @@ use sha2::{Digest, Sha256};
 
 const CHECKPOINT_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-records/normalized-checkpoint\0";
+
+fn reconcile_local_content_state(
+    transaction: &Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    let program = SQLITE_LOCAL_RECONCILIATION_PROGRAMS
+        .iter()
+        .find(|program| program.0 == "content_checkpoint_reconcile_v1")
+        .ok_or_else(|| invalid("content checkpoint reconciliation program is missing"))?;
+    let before = transaction.query_row("SELECT total_changes();", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    transaction.execute_batch(program.1)?;
+    let after = transaction.query_row("SELECT total_changes();", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    if after > before {
+        let advanced = transaction.execute(
+            "UPDATE library_device_content_state
+             SET revision = revision + 1
+             WHERE singleton_id = 1 AND revision < 9007199254740991;",
+            [],
+        )?;
+        if advanced != 1 {
+            return Err(invalid("selective content revision cannot advance"));
+        }
+    }
+    Ok(())
+}
 
 pub(crate) struct NormalizedCheckpointDigestAccumulatorV2 {
     digest: Sha256,
@@ -742,6 +772,7 @@ fn activate_normalized_checkpoint_stage_v2(
         )?;
     }
     verify_blob_rows(&transaction)?;
+    reconcile_local_content_state(&transaction)?;
     let foreign_key_failure: Option<String> = transaction
         .query_row(
             "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1;",
@@ -908,6 +939,103 @@ mod tests {
         let transaction = connection.transaction().expect("transaction");
         let error = verify_blob_rows(&transaction).expect_err("reject gap");
         assert!(error.to_string().contains("not contiguous"));
+        transaction.rollback().expect("rollback proof transaction");
+    }
+
+    #[test]
+    fn checkpoint_reconciliation_preserves_exact_proofs_and_prunes_stale_ranges() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let content_digest = "a".repeat(64);
+        let range_digest = "b".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, storage_layout, chunk_bytes, chunk_count,
+                    range_count, range_granularity, range_index_root_digest, rendition_id,
+                    cloud_availability_commitment, media_type)
+                 VALUES (?1, 5, 'authenticated_ranges', 0, 0, 1, 5, ?2,
+                         'video', ?3, 'video/mp4');",
+                params![content_digest, "c".repeat(64), "d".repeat(64)],
+            )
+            .expect("descriptor");
+        connection
+            .execute(
+                "INSERT INTO library_content_ranges
+                   (content_digest, range_index, byte_offset, byte_length, range_digest)
+                 VALUES (?1, 0, 0, 5, ?2);",
+                params![content_digest, range_digest],
+            )
+            .expect("canonical range");
+        connection
+            .execute(
+                "INSERT INTO library_device_content_ranges
+                   (content_digest, range_index, verified_byte_length,
+                    verified_range_digest, storage_kind, storage_key, verified_at)
+                 VALUES (?1, 0, 5, ?2, 'content_vault', 'range-one', 10);",
+                params![content_digest, range_digest],
+            )
+            .expect("local range proof");
+        connection
+            .execute(
+                "INSERT INTO library_device_content_availability
+                   (content_digest, hydration_state, verified_bytes, storage_kind,
+                    storage_key, complete_digest_verified_at, updated_at)
+                 VALUES (?1, 'partially_cached', 5, 'content_vault', NULL, NULL, 10);",
+                params![content_digest],
+            )
+            .expect("local availability");
+
+        let transaction = connection.transaction().expect("transaction");
+        reconcile_local_content_state(&transaction).expect("exact reconciliation");
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("content revision"),
+            0
+        );
+        transaction
+            .execute(
+                "UPDATE library_content_ranges SET range_digest = ?1
+                 WHERE content_digest = ?2 AND range_index = 0;",
+                params!["e".repeat(64), content_digest],
+            )
+            .expect("changed canonical range");
+        reconcile_local_content_state(&transaction).expect("stale reconciliation");
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT count(*) FROM library_device_content_ranges;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("local ranges"),
+            0
+        );
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT count(*) FROM library_device_content_availability;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("local availability"),
+            0
+        );
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("advanced content revision"),
+            1
+        );
         transaction.rollback().expect("rollback proof transaction");
     }
 }

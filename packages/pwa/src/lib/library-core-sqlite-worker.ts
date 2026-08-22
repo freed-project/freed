@@ -4,6 +4,7 @@ import {
   type LibraryCoreSqliteWorkerResponse,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
+import { PwaLibraryCoreOpfsContentVault } from "./library-core-opfs-content-vault";
 import {
   PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
   PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
@@ -18,6 +19,7 @@ interface WorkerScope {
 
 const scope = globalThis as unknown as WorkerScope;
 let engine: PwaLibraryCoreSqliteEngine | null = null;
+let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
 
@@ -67,6 +69,7 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     );
     next.initialize();
     engine = next;
+    contentVault = new PwaLibraryCoreOpfsContentVault(next);
     return next;
   } catch (error) {
     releaseOwnership?.();
@@ -221,6 +224,46 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "begin_content_range_publication") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await contentVault.begin(request.publication),
+        });
+        return;
+      }
+      if (request.kind === "append_content_range_publication") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await contentVault.append(request.publication),
+        });
+        return;
+      }
+      if (request.kind === "finalize_content_range_publication") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await contentVault.finalize(request.publication),
+        });
+        return;
+      }
+      if (request.kind === "abort_content_range_publication") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: {
+            publicationId: request.publication.publicationId,
+            removed: await contentVault.abort(request.publication),
+            schemaVersion: 1,
+          },
+        });
+        return;
+      }
       if (request.kind === "commit_follower_intent") {
         scope.postMessage({
           ok: true,
@@ -323,6 +366,8 @@ scope.onmessage = (event) => {
       }
       const status = active.status();
       if (request.kind === "close") {
+        await contentVault?.close();
+        contentVault = null;
         active.close();
         engine = null;
         releaseOwnership?.();

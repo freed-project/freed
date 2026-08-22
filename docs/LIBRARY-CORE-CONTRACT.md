@@ -969,6 +969,16 @@ file or OPFS object, verify exact length and digest, cross a durability barrier,
 and atomically publish the local availability row. Multi-gigabyte media never
 becomes one JavaScript, Rust, renderer, or IPC allocation.
 
+The generated contract limits one publication append to 262,144 bytes. The PWA
+worker owns the OPFS access handle, accepts only sequential offsets, hashes each
+bounded append, flushes and closes the object, then commits its storage key to
+SQLite. The native core applies the same canonical lookup, append ceiling,
+incremental digest, durability callback, and SQLite registration to a host
+supplied content-vault object. Caller-supplied lengths and digests never become
+authority. A failed or changed stream is discarded before availability can be
+published. A crash before the SQLite commit can leave an unreachable object,
+but never a false cached-range claim.
+
 Garbage collection preserves canonical references, active checkpoint roots,
 backups, pinned local renditions, in-flight transfers, and retained receipts.
 

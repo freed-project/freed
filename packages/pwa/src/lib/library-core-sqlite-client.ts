@@ -8,6 +8,10 @@ import {
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
   createLibraryCoreSqliteContentStateWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -41,6 +45,13 @@ import {
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
   type LibraryCoreContentStateV1,
+  type LibraryCoreContentRangePublicationAbortReceiptV1,
+  type LibraryCoreContentRangePublicationAbortV1,
+  type LibraryCoreContentRangePublicationAppendV1,
+  type LibraryCoreContentRangePublicationBeginV1,
+  type LibraryCoreContentRangePublicationFinalizeV1,
+  type LibraryCoreContentRangePublicationStatusV1,
+  type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
   type LibraryCoreFollowerMutationContextV1,
@@ -146,6 +157,50 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreContentStateV1> {
     return this.#send((requestId) =>
       createLibraryCoreSqliteContentStateWorkerRequest(requestId, request),
+    );
+  }
+
+  beginContentRangePublication(
+    publication: LibraryCoreContentRangePublicationBeginV1,
+  ): Promise<LibraryCoreContentRangePublicationStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest(
+        requestId,
+        publication,
+      ),
+    );
+  }
+
+  appendContentRangePublication(
+    publication: LibraryCoreContentRangePublicationAppendV1,
+  ): Promise<LibraryCoreContentRangePublicationStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest(
+        requestId,
+        publication,
+      ),
+    );
+  }
+
+  finalizeContentRangePublication(
+    publication: LibraryCoreContentRangePublicationFinalizeV1,
+  ): Promise<LibraryCoreVerifiedContentRangeReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest(
+        requestId,
+        publication,
+      ),
+    );
+  }
+
+  abortContentRangePublication(
+    publication: LibraryCoreContentRangePublicationAbortV1,
+  ): Promise<LibraryCoreContentRangePublicationAbortReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest(
+        requestId,
+        publication,
+      ),
     );
   }
 

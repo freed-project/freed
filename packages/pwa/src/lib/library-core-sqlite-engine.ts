@@ -9,6 +9,7 @@ import {
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
+  LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
@@ -161,6 +162,8 @@ import {
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
   parseLibraryCoreContentStateV1,
+  parseLibraryCoreVerifiedContentRangePublicationV1,
+  parseLibraryCoreVerifiedContentRangeReceiptV1,
   digestLibraryCoreAnyScopeActionRequestV1,
   parseLibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreAnyScopeActionRequestV1,
@@ -214,6 +217,8 @@ import {
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
   type LibraryCoreContentStateV1,
+  type LibraryCoreVerifiedContentRangePublicationV1,
+  type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonTimelineRequestV1,
@@ -1061,6 +1066,7 @@ export class PwaLibraryCoreSqliteEngine {
         });
       }
       this.#verifyCheckpointContent();
+      this.#reconcileLocalContentState();
       const foreignKeys = this.#database.exec({
         sql: "PRAGMA foreign_key_check;",
         rowMode: "array",
@@ -1179,6 +1185,44 @@ export class PwaLibraryCoreSqliteEngine {
     } catch (error) {
       this.#database.exec("ROLLBACK;");
       throw error;
+    }
+  }
+
+  #reconcileLocalContentState(): void {
+    const before = safeInteger(
+      this.#database.exec({
+        sql: "SELECT total_changes();",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "content reconciliation starting change count",
+    );
+    this.#database.exec(
+      LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS.content_checkpoint_reconcile_v1,
+    );
+    const after = safeInteger(
+      this.#database.exec({
+        sql: "SELECT total_changes();",
+        rowMode: 0,
+        returnValue: "resultRows",
+      })[0],
+      "content reconciliation ending change count",
+    );
+    if (after > before) {
+      this.#database.exec(`UPDATE library_device_content_state
+        SET revision = revision + 1
+        WHERE singleton_id = 1 AND revision < 9007199254740991;`);
+      const advanced = safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "content reconciliation revision row count",
+      );
+      if (advanced !== 1) {
+        throw new Error("selective content revision cannot advance");
+      }
     }
   }
 
@@ -1480,6 +1524,198 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (!state.ok) throw new TypeError(state.error);
     return state.value;
+  }
+
+  readCanonicalContentRange(
+    contentDigest: string,
+    rangeIndex: number,
+  ): Readonly<{
+    byteLength: number;
+    rangeContentDigest: string;
+  }> {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      !Number.isSafeInteger(rangeIndex) ||
+      rangeIndex < 0
+    ) {
+      throw new TypeError("canonical content range request is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT range.byte_length, range.range_digest
+            FROM library_content_ranges AS range
+            JOIN library_blobs AS blob ON blob.content_digest = range.content_digest
+            WHERE range.content_digest = ?1 COLLATE BINARY
+              AND range.range_index = ?2
+              AND blob.storage_layout = 'authenticated_ranges'
+            LIMIT 1;`,
+      bind: [contentDigest, rangeIndex],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("canonical content range is unavailable");
+    }
+    return Object.freeze({
+      byteLength: safeInteger(rows[0]![0], "canonical content range length"),
+      rangeContentDigest: text(
+        rows[0]![1],
+        "canonical content range digest",
+      ),
+    });
+  }
+
+  registerVerifiedContentRange(
+    input: LibraryCoreVerifiedContentRangePublicationV1,
+  ): LibraryCoreVerifiedContentRangeReceiptV1 {
+    const parsed = parseLibraryCoreVerifiedContentRangePublicationV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const publication = parsed.value;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const canonicalRows = this.#database.exec({
+        sql: `SELECT range.byte_length, range.range_digest, blob.byte_length
+              FROM library_content_ranges AS range
+              JOIN library_blobs AS blob ON blob.content_digest = range.content_digest
+              WHERE range.content_digest = ?1 COLLATE BINARY
+                AND range.range_index = ?2
+                AND blob.storage_layout = 'authenticated_ranges'
+              LIMIT 1;`,
+        bind: [publication.contentDigest, publication.rangeIndex],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (canonicalRows.length !== 1) {
+        throw new Error("canonical content range is unavailable");
+      }
+      const canonicalRangeBytes = safeInteger(
+        canonicalRows[0]![0],
+        "canonical content range length",
+      );
+      const canonicalRangeDigest = text(
+        canonicalRows[0]![1],
+        "canonical content range digest",
+      );
+      const canonicalContentBytes = safeInteger(
+        canonicalRows[0]![2],
+        "canonical content length",
+      );
+      if (
+        canonicalRangeBytes !== publication.byteLength ||
+        canonicalRangeDigest !== publication.rangeContentDigest
+      ) {
+        throw new Error(
+          "verified content range does not match canonical metadata",
+        );
+      }
+      const current = this.#database.exec({
+        sql: `SELECT storage_kind, storage_key, verified_at
+              FROM library_device_content_ranges
+              WHERE content_digest = ?1 COLLATE BINARY AND range_index = ?2;`,
+        bind: [publication.contentDigest, publication.rangeIndex],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const changed =
+        current.length === 0 ||
+        current[0]![0] !== publication.storageKind ||
+        current[0]![1] !== publication.storageKey ||
+        current[0]![2] !== publication.verifiedAt;
+      if (changed) {
+        this.#database.exec({
+          sql: `INSERT INTO library_device_content_ranges
+                  (content_digest, range_index, verified_byte_length,
+                   verified_range_digest, storage_kind, storage_key, verified_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ON CONFLICT(content_digest, range_index) DO UPDATE SET
+                  verified_byte_length = excluded.verified_byte_length,
+                  verified_range_digest = excluded.verified_range_digest,
+                  storage_kind = excluded.storage_kind,
+                  storage_key = excluded.storage_key,
+                  verified_at = excluded.verified_at;`,
+          bind: [
+            publication.contentDigest,
+            publication.rangeIndex,
+            canonicalRangeBytes,
+            canonicalRangeDigest,
+            publication.storageKind,
+            publication.storageKey,
+            publication.verifiedAt,
+          ],
+        });
+      }
+      const verifiedBytes = safeInteger(
+        this.#database.exec({
+          sql: `SELECT COALESCE(sum(verified_byte_length), 0)
+                FROM library_device_content_ranges
+                WHERE content_digest = ?1 COLLATE BINARY;`,
+          bind: [publication.contentDigest],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "verified content byte count",
+      );
+      if (verifiedBytes > canonicalContentBytes) {
+        throw new Error("verified content byte count exceeds its descriptor");
+      }
+      if (changed) {
+        this.#database.exec({
+          sql: `INSERT INTO library_device_content_availability
+                  (content_digest, hydration_state, verified_bytes, storage_kind,
+                   storage_key, complete_digest_verified_at, updated_at)
+                VALUES (?1, 'partially_cached', ?2, ?3, NULL, NULL, ?4)
+                ON CONFLICT(content_digest) DO UPDATE SET
+                  hydration_state = 'partially_cached',
+                  verified_bytes = excluded.verified_bytes,
+                  storage_kind = excluded.storage_kind,
+                  storage_key = NULL,
+                  complete_digest_verified_at = NULL,
+                  updated_at = excluded.updated_at;`,
+          bind: [
+            publication.contentDigest,
+            verifiedBytes,
+            publication.storageKind,
+            publication.verifiedAt,
+          ],
+        });
+        this.#database.exec(`UPDATE library_device_content_state
+          SET revision = revision + 1
+          WHERE singleton_id = 1 AND revision < 9007199254740991;`);
+        const advanced = safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "selective content revision row count",
+        );
+        if (advanced !== 1) {
+          throw new Error("selective content revision cannot advance");
+        }
+      }
+      const contentRevision = safeInteger(
+        this.#database.exec({
+          sql: "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "selective content revision",
+      );
+      const receipt = parseLibraryCoreVerifiedContentRangeReceiptV1({
+        changed,
+        contentDigest: publication.contentDigest,
+        contentRevision,
+        hydrationState: "partially_cached",
+        rangeIndex: publication.rangeIndex,
+        schemaVersion: 1,
+        verifiedBytes,
+      });
+      if (!receipt.ok) throw new TypeError(receipt.error);
+      this.#database.exec("COMMIT;");
+      return receipt.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   followerActorEnrollmentContext(): LibraryCoreFollowerActorEnrollmentContextV2 {

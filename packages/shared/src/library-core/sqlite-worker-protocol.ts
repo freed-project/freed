@@ -140,12 +140,23 @@ import {
   type LibraryCoreDeviceGraphLayoutMutationV1,
 } from "./device-graph-layout-mutation-contracts.js";
 import {
+  parseLibraryCoreContentRangePublicationAbortV1,
+  parseLibraryCoreContentRangePublicationAppendV1,
+  parseLibraryCoreContentRangePublicationBeginV1,
+  parseLibraryCoreContentRangePublicationFinalizeV1,
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
+  type LibraryCoreContentRangePublicationAbortReceiptV1,
+  type LibraryCoreContentRangePublicationAbortV1,
+  type LibraryCoreContentRangePublicationAppendV1,
+  type LibraryCoreContentRangePublicationBeginV1,
+  type LibraryCoreContentRangePublicationFinalizeV1,
+  type LibraryCoreContentRangePublicationStatusV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
   type LibraryCoreContentStateV1,
+  type LibraryCoreVerifiedContentRangeReceiptV1,
 } from "./selective-content-contracts.js";
 import {
   parseLibraryCoreFollowerIntentCommitV1,
@@ -466,6 +477,30 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "begin_content_range_publication";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreContentRangePublicationBeginV1;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "append_content_range_publication";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreContentRangePublicationAppendV1;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "finalize_content_range_publication";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreContentRangePublicationFinalizeV1;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "abort_content_range_publication";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreContentRangePublicationAbortV1;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "follower_mutation_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -613,6 +648,9 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreDeviceGraphLayoutMutationResultV1
   | LibraryCoreContentPolicyMutationReceiptV1
   | LibraryCoreContentStateV1
+  | LibraryCoreContentRangePublicationStatusV1
+  | LibraryCoreContentRangePublicationAbortReceiptV1
+  | LibraryCoreVerifiedContentRangeReceiptV1
   | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
   | LibraryCoreFollowerIntentPageResponseV1
@@ -686,6 +724,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
         ? ["kind", "mutation", "protocolVersion", "requestId"]
         : value.kind === "read_content_state"
           ? ["kind", "protocolVersion", "request", "requestId"]
+          : value.kind === "begin_content_range_publication" ||
+              value.kind === "append_content_range_publication" ||
+              value.kind === "finalize_content_range_publication" ||
+              value.kind === "abort_content_range_publication"
+            ? ["kind", "protocolVersion", "publication", "requestId"]
           : value.kind === "commit_follower_intent"
             ? ["commit", "kind", "protocolVersion", "requestId"]
             : value.kind === "page_follower_intents" ||
@@ -769,8 +812,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
     keys.some((key, index) => key !== expectedKeys[index]) ||
     ![
       "activate_normalized_checkpoint_stage",
+      "abort_content_range_publication",
       "apply_follower_result",
+      "append_content_range_publication",
       "append_normalized_checkpoint_stage_page",
+      "begin_content_range_publication",
       "begin_normalized_checkpoint_stage",
       "begin_scope_action",
       "close",
@@ -778,6 +824,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "commit_follower_intent",
       "append_scope_action",
       "finalize_scope_action",
+      "finalize_content_range_publication",
       "follower_mutation_context",
       "follower_transport_context",
       "import_normalized_follower_result_transport",
@@ -914,6 +961,26 @@ export function parseLibraryCoreSqliteWorkerRequest(
   } else if (value.kind === "read_content_state") {
     const request = parseLibraryCoreContentStateRequestV1(value.request);
     if (!request.ok) throw new TypeError(request.error);
+  } else if (value.kind === "begin_content_range_publication") {
+    const publication = parseLibraryCoreContentRangePublicationBeginV1(
+      value.publication,
+    );
+    if (!publication.ok) throw new TypeError(publication.error);
+  } else if (value.kind === "append_content_range_publication") {
+    const publication = parseLibraryCoreContentRangePublicationAppendV1(
+      value.publication,
+    );
+    if (!publication.ok) throw new TypeError(publication.error);
+  } else if (value.kind === "finalize_content_range_publication") {
+    const publication = parseLibraryCoreContentRangePublicationFinalizeV1(
+      value.publication,
+    );
+    if (!publication.ok) throw new TypeError(publication.error);
+  } else if (value.kind === "abort_content_range_publication") {
+    const publication = parseLibraryCoreContentRangePublicationAbortV1(
+      value.publication,
+    );
+    if (!publication.ok) throw new TypeError(publication.error);
   } else if (value.kind === "begin_scope_action") {
     const request = parseLibraryCoreAnyScopeActionRequestV1(value.request);
     if (
@@ -1225,6 +1292,54 @@ export function createLibraryCoreSqliteContentStateWorkerRequest(
     kind: "read_content_state",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     request,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreContentRangePublicationBeginV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "begin_content_range_publication",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreContentRangePublicationAppendV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "append_content_range_publication",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreContentRangePublicationFinalizeV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "finalize_content_range_publication",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreContentRangePublicationAbortV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "abort_content_range_publication",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
     requestId,
   });
 }

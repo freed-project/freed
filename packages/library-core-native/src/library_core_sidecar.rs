@@ -498,7 +498,7 @@ fn normalized_command_error(error: NormalizedSqliteError) -> &'static str {
 fn selective_content_error(error: SelectiveContentError) -> &'static str {
     match error {
         SelectiveContentError::Invalid(_) => "request_invalid",
-        SelectiveContentError::Sqlite(_) => "command_failed",
+        SelectiveContentError::Io(_) | SelectiveContentError::Sqlite(_) => "command_failed",
     }
 }
 

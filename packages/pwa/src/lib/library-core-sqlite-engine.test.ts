@@ -2116,6 +2116,80 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([0]);
   });
 
+  it("publishes only range proofs that match canonical SQLite metadata", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "a".repeat(64);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, storage_layout, chunk_bytes,
+               chunk_count, range_count, range_granularity,
+               range_index_root_digest, rendition_id,
+               cloud_availability_commitment, media_type)
+            VALUES (?1, 10, 'authenticated_ranges', 0, 0, 2, 5, ?2,
+                    'video', ?3, 'video/mp4');`,
+      bind: [digest, "d".repeat(64), "e".repeat(64)],
+    });
+    database.exec({
+      sql: `INSERT INTO library_content_ranges
+              (content_digest, range_index, byte_offset, byte_length, range_digest)
+            VALUES (?1, 0, 0, 5, ?2), (?1, 1, 5, 5, ?3);`,
+      bind: [digest, "b".repeat(64), "c".repeat(64)],
+    });
+    expect(engine.readCanonicalContentRange(digest, 0)).toEqual({
+      byteLength: 5,
+      rangeContentDigest: "b".repeat(64),
+    });
+    const publication = {
+      byteLength: 5,
+      contentDigest: digest,
+      rangeContentDigest: "b".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1 as const,
+      storageKey: "range-object-one",
+      storageKind: "opfs" as const,
+      verifiedAt: 50,
+    };
+    expect(engine.registerVerifiedContentRange(publication)).toMatchObject({
+      changed: true,
+      contentRevision: 1,
+      hydrationState: "partially_cached",
+      verifiedBytes: 5,
+    });
+    expect(engine.registerVerifiedContentRange(publication).changed).toBe(
+      false,
+    );
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: {
+        completeDigestVerifiedAt: null,
+        hydrationState: "partially_cached",
+        storageKey: null,
+        storageKind: "opfs",
+        verifiedBytes: 5,
+      },
+      contentRevision: 1,
+    });
+    expect(() =>
+      engine.registerVerifiedContentRange({
+        ...publication,
+        rangeContentDigest: "f".repeat(64),
+        storageKey: "untrusted-object",
+      }),
+    ).toThrow(/canonical metadata/);
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_device_content_ranges;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([1]);
+  });
+
   it("pages normalized feed rows through the bounded named query", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
@@ -3796,5 +3870,55 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([[0, 2, 5_000_000_000]]);
+
+    const publication = {
+      byteLength: 2_500_000_000,
+      contentDigest,
+      rangeContentDigest: "b".repeat(64),
+      rangeIndex: 0,
+      schemaVersion: 1 as const,
+      storageKey: "large-range-one",
+      storageKind: "opfs" as const,
+      verifiedAt: 2_000,
+    };
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt: 2_000,
+    });
+    engine.registerVerifiedContentRange(publication);
+    stageRecords(engine, records, "ranged-content-exact-replacement");
+    engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: true,
+      stageId: "ranged-content-exact-replacement",
+    });
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: { verifiedBytes: 2_500_000_000 },
+      contentRevision: 2,
+      policy: "pinned_offline",
+    });
+
+    const withoutContent = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, withoutContent, "ranged-content-removed-replacement");
+    engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: true,
+      stageId: "ranged-content-removed-replacement",
+    });
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_device_content_policies),
+                (SELECT count(*) FROM library_device_content_ranges),
+                (SELECT count(*) FROM library_device_content_availability),
+                (SELECT revision FROM library_device_content_state);`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 0, 0, 3]]);
   });
 });

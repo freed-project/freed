@@ -878,6 +878,15 @@ The state response can describe a multi-gigabyte object without reading or
 allocating its bytes. Local policy, availability, and verified range tables are
 absent from normalized checkpoint export.
 
+Range publication uses the same 256 KiB maximum append in native Rust and the
+PWA worker. Each writer first resolves the canonical range identity from
+SQLite, accepts sequential bytes only, hashes incrementally, crosses the host
+durability barrier, and then registers only the storage key and verification
+time. Local range rows are keyed by the canonical content digest and range
+index. They retain the verified length and digest as local proof, then reconcile
+against every activated canonical generation. Exact matches survive checkpoint
+replacement. Removed or changed ranges lose their local availability proof.
+
 ### 13.3 Device policy
 
 A device may choose:

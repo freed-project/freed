@@ -77,6 +77,7 @@ function assertContract(contract) {
     "fractionalFields",
     "limits",
     "localMutationPrograms",
+    "localReconciliationPrograms",
     "mutationPrograms",
     "mutations",
     "nativeCommandProtocolVersion",
@@ -121,6 +122,7 @@ function assertContract(contract) {
     checkpointPageRecords: 128,
     checkpointRecordCanonicalBytes: 131_072,
     contentChunkBytes: 65_536,
+    contentRangeAppendBytes: 262_144,
     nativeExportResponseBytes: 1_048_576,
     nativeCommandFrameBytes: 4_194_304,
     followerIntentPageRecords: 128,
@@ -297,6 +299,16 @@ function assertContract(contract) {
     ) {
       throw new TypeError("SQLite mutation program registry is invalid");
     }
+  }
+  if (
+    Object.keys(contract.localReconciliationPrograms).join(",") !==
+      "content_checkpoint_reconcile_v1" ||
+    typeof contract.localReconciliationPrograms
+      .content_checkpoint_reconcile_v1 !== "string" ||
+    contract.localReconciliationPrograms.content_checkpoint_reconcile_v1
+      .length === 0
+  ) {
+    throw new TypeError("SQLite local reconciliation registry is invalid");
   }
   for (const [mutationId, program] of Object.entries(
     contract.localMutationPrograms,
@@ -596,6 +608,7 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.ch
 export const LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES = ${contract.limits.nativeExportResponseBytes} as const;
 export const LIBRARY_CORE_NATIVE_COMMAND_MAXIMUM_FRAME_BYTES = ${contract.limits.nativeCommandFrameBytes} as const;
 export const LIBRARY_CORE_CONTENT_CHUNK_BYTES = ${contract.limits.contentChunkBytes} as const;
+export const LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES = ${contract.limits.contentRangeAppendBytes} as const;
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.operationTransactionMembers} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.operationTransactionBytes} as const;
@@ -641,6 +654,7 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.m
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
 
 export const LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS = ${JSON.stringify(contract.localMutationPrograms, null, 2)} as const;
+export const LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS = ${JSON.stringify(contract.localReconciliationPrograms, null, 2)} as const;
 
 export const LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS = ${JSON.stringify(contract.scopeActionPrograms, null, 2)} as const;
 export type LibraryCoreSqliteLocalMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS;
@@ -727,6 +741,14 @@ function rustSource(contract, schemaDigest) {
         `    (${JSON.stringify(mutationId)}, ${program.maximumRows}, ${JSON.stringify(program.entityType)}, ${JSON.stringify(program.targetExistsSql)}, ${JSON.stringify(program.sql)}),`,
     )
     .join("\n");
+  const localReconciliationPrograms = Object.entries(
+    contract.localReconciliationPrograms,
+  )
+    .map(
+      ([programId, sql]) =>
+        `    (${JSON.stringify(programId)}, ${JSON.stringify(sql)}),`,
+    )
+    .join("\n");
   const importPrograms = Object.entries(checkpointImportPrograms(contract))
     .map(
       ([registryKey, program]) =>
@@ -757,6 +779,7 @@ pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointP
 pub const NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES: usize = ${contract.limits.nativeExportResponseBytes};
 pub const NATIVE_COMMAND_MAXIMUM_FRAME_BYTES: usize = ${contract.limits.nativeCommandFrameBytes};
 pub const CONTENT_CHUNK_BYTES: usize = ${contract.limits.contentChunkBytes};
+pub const CONTENT_RANGE_MAXIMUM_APPEND_BYTES: usize = ${contract.limits.contentRangeAppendBytes};
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.followerIntentPageRecords};
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.operationTransactionMembers};
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = ${contract.limits.operationTransactionBytes};
@@ -849,6 +872,10 @@ ${mutationPrograms}
 
 pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &[
 ${localMutationPrograms}
+];
+
+pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
+${localReconciliationPrograms}
 ];
 
 pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[

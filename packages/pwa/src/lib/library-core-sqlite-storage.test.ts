@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe("PWA Library Core SQLite storage", () => {
-  it("removes the complete private OPFS pool during factory reset", async () => {
+  it("removes the SQLite pool and content vault during factory reset", async () => {
     const removeEntry = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", {
       storage: { getDirectory: vi.fn().mockResolvedValue({ removeEntry }) },
@@ -16,6 +16,10 @@ describe("PWA Library Core SQLite storage", () => {
 
     expect(removeEntry).toHaveBeenCalledWith(
       "freed-library-core-sqlite-opfs-v1",
+      { recursive: true },
+    );
+    expect(removeEntry).toHaveBeenCalledWith(
+      "freed-library-content-vault-v1",
       { recursive: true },
     );
   });

@@ -20,6 +20,10 @@ import {
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
   createLibraryCoreSqliteContentStateWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
+  createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -458,6 +462,51 @@ describe("Library Core SQLite worker protocol", () => {
         },
       }),
     ).toThrow(/selective content policy mutation is invalid/);
+  });
+
+  it("carries only bounded sequential content range publication frames", () => {
+    const contentDigest = "a".repeat(64);
+    const publicationId = "b".repeat(64);
+    expect(
+      createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest(
+        "range-begin",
+        { contentDigest, publicationId, rangeIndex: 2, schemaVersion: 1 },
+      ).kind,
+    ).toBe("begin_content_range_publication");
+    const append =
+      createLibraryCoreSqliteContentRangePublicationAppendWorkerRequest(
+        "range-append",
+        {
+          bytes: Uint8Array.of(1, 2, 3),
+          expectedOffset: 0,
+          publicationId,
+          schemaVersion: 1,
+        },
+      );
+    expect(append.kind).toBe("append_content_range_publication");
+    expect(
+      createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest(
+        "range-finalize",
+        { publicationId, schemaVersion: 1, verifiedAt: 50 },
+      ).kind,
+    ).toBe("finalize_content_range_publication");
+    expect(
+      createLibraryCoreSqliteContentRangePublicationAbortWorkerRequest(
+        "range-abort",
+        { publicationId, schemaVersion: 1 },
+      ).kind,
+    ).toBe("abort_content_range_publication");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...append,
+        publication: {
+          ...(append.kind === "append_content_range_publication"
+            ? append.publication
+            : {}),
+          bytes: new Uint8Array(262_145),
+        },
+      }),
+    ).toThrow(/append request is invalid/);
   });
 
   it("snapshots bounded signed follower intent bytes", () => {
