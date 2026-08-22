@@ -23,6 +23,17 @@ CREATE TABLE IF NOT EXISTS library_materialization_generation (
   generation_id TEXT NOT NULL CHECK (length(generation_id) = 64 AND generation_id NOT GLOB '*[^0-9a-f]*')
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_storage_transition_plan (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  candidate_json TEXT NOT NULL CHECK (length(CAST(candidate_json AS BLOB)) BETWEEN 1 AND 65536),
+  candidate_digest TEXT NOT NULL CHECK (length(candidate_digest) = 64 AND candidate_digest NOT GLOB '*[^0-9a-f]*'),
+  installation_witness TEXT CHECK (installation_witness IS NULL OR (length(installation_witness) = 64 AND installation_witness NOT GLOB '*[^0-9a-f]*')),
+  accepted_at INTEGER CHECK (accepted_at IS NULL OR accepted_at >= 0),
+  state TEXT NOT NULL CHECK (state IN ('candidate', 'authority_installed', 'actor_installed')),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
+  CHECK ((installation_witness IS NULL) = (accepted_at IS NULL))
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_authority_epochs (
   epoch_id TEXT PRIMARY KEY CHECK (length(CAST(epoch_id AS BLOB)) BETWEEN 1 AND 255),
   library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),

@@ -80,6 +80,45 @@ struct NormalizedMigrationCandidateReceiptV1 {
     normalized_product_digest: String,
 }
 
+fn canonical_migration_candidate_v1(
+    candidate: &NormalizedMigrationCandidateReceiptV1,
+) -> Result<(String, String), NormalizedSqliteError> {
+    let value = serde_json::to_value(candidate)
+        .map_err(|_| invalid("normalized migration candidate receipt is invalid"))?;
+    let canonical = encode_canonical_value(&value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized migration candidate receipt is invalid"))?;
+    let mut digest = Sha256::new();
+    digest.update(b"freed.library-core.v1/digest/migration-candidate-receipt\0");
+    digest.update(&canonical);
+    let digest = lower_hex(&digest.finalize());
+    let canonical = String::from_utf8(canonical)
+        .map_err(|_| invalid("normalized migration candidate receipt is not UTF-8"))?;
+    Ok((canonical, digest))
+}
+
+fn load_normalized_migration_candidate_v1(
+    target: &Connection,
+) -> Result<Option<NormalizedMigrationCandidateReceiptV1>, NormalizedSqliteError> {
+    let stored: Option<(String, String)> = target
+        .query_row(
+            "SELECT candidate_json, candidate_digest
+             FROM library_storage_transition_plan WHERE singleton_id = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((canonical, digest)) = stored else {
+        return Ok(None);
+    };
+    let candidate: NormalizedMigrationCandidateReceiptV1 = serde_json::from_str(&canonical)
+        .map_err(|_| invalid("normalized migration candidate receipt is invalid JSON"))?;
+    let (expected_canonical, expected_digest) = canonical_migration_candidate_v1(&candidate)?;
+    if canonical != expected_canonical || digest != expected_digest {
+        return Err(invalid("normalized migration candidate receipt changed"));
+    }
+    Ok(Some(candidate))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NormalizedStorageTransitionBodyV1 {
@@ -1142,6 +1181,19 @@ fn migrate_legacy_snapshot_v1(
         normalized_canonical_bytes,
         normalized_product_digest,
     };
+    let (candidate_json, candidate_digest) = canonical_migration_candidate_v1(&receipt)?;
+    target_transaction.execute(
+        "INSERT INTO library_storage_transition_plan
+         (singleton_id, candidate_json, candidate_digest,
+          installation_witness, accepted_at, state, updated_at)
+         VALUES (1, ?1, ?2, NULL, NULL, 'candidate', ?3);",
+        params![
+            candidate_json,
+            candidate_digest,
+            i64::try_from(receipt.source_sqlite_revision)
+                .map_err(|_| invalid("legacy source SQLite revision is invalid"))?,
+        ],
+    )?;
     target_transaction.commit()?;
     source.commit()?;
     Ok(receipt)
@@ -1984,6 +2036,10 @@ mod tests {
         assert_eq!(receipt.reach_outs, 1);
         assert_eq!(receipt.normalized_product_digest.len(), 64);
         assert!(receipt.normalized_record_count > 5);
+        assert_eq!(
+            load_normalized_migration_candidate_v1(&target).unwrap(),
+            Some(receipt.clone())
+        );
 
         let mut request = NormalizedCheckpointExportRequestV2::default();
         let mut records = Vec::new();
@@ -2119,6 +2175,26 @@ mod tests {
             1
         );
         assert!(migrate_legacy_snapshot_v1(&mut source, &mut target).is_err());
+    }
+
+    #[test]
+    fn migration_candidate_receipt_survives_response_loss_and_rejects_tamper() {
+        let (mut source, _) = legacy_source_fixture();
+        let mut target = Connection::open_in_memory().unwrap();
+        let receipt = migrate_legacy_snapshot_v1(&mut source, &mut target).unwrap();
+
+        assert_eq!(
+            load_normalized_migration_candidate_v1(&target).unwrap(),
+            Some(receipt)
+        );
+        target
+            .execute(
+                "UPDATE library_storage_transition_plan
+                 SET candidate_digest = ?1 WHERE singleton_id = 1;",
+                ["0".repeat(64)],
+            )
+            .unwrap();
+        assert!(load_normalized_migration_candidate_v1(&target).is_err());
     }
 
     #[test]

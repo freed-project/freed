@@ -1008,6 +1008,13 @@ bound directory. The final name is never overwritten with different bytes.
 An exact response-loss retry succeeds only when the stored bytes match. The
 selector is read back and reverified before cutover reports success.
 
+Candidate construction commits one local transition plan in the same SQLite
+transaction as the normalized product rows. The plan contains the canonical
+migration receipt, a domain-separated receipt digest, and no shell or whole
+item. It is excluded from checkpoint export because it is local cutover state,
+not synchronized Library data. Restart resumes only from those exact bytes. A
+changed, malformed, or noncanonical plan fails before authority installation.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner
