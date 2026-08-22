@@ -81,6 +81,23 @@ export interface LibraryCoreNormalizedIntentHeadV2 {
   readonly storage_epoch_id: LibraryCoreLowercaseHex64;
 }
 
+export interface LibraryCoreNormalizedIntentTransportPublicationV2 {
+  readonly header: LibraryCoreNormalizedIntentSegmentHeaderV2;
+  readonly publishedAt: number;
+  readonly reference: LibraryCoreImmutableObjectReferenceV1;
+}
+
+export interface LibraryCoreNormalizedIntentTransportPublicationReceiptV2 {
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly firstActorCounter: number;
+  readonly lastActorCounter: number;
+  readonly newlyPublishedTransactionCount: number;
+  readonly nextActorCounter: number;
+  readonly publishedAt: number;
+  readonly semanticSegmentDigest: LibraryCoreLowercaseHex64;
+  readonly storedSegmentDigest: LibraryCoreLowercaseHex64;
+}
+
 export type LibraryCoreNormalizedIntentSegmentRecordV2 =
   | LibraryCoreNormalizedIntentSegmentHeaderV2
   | LibraryCoreNormalizedIntentEnvelopeRecordV2;
@@ -446,6 +463,38 @@ export function normalizedIntentSegmentHeaderFromBodyV2(
     record_count: body.record_count,
     segment_digest: segmentDigest,
     storage_epoch_id: body.storage_epoch_id,
+  });
+}
+
+export function parseLibraryCoreNormalizedIntentTransportPublicationV2(
+  value: unknown,
+): LibraryCoreNormalizedIntentTransportPublicationV2 {
+  const input = closedRecord(
+    value,
+    ["header", "publishedAt", "reference"],
+    "normalized intent transport publication",
+  );
+  const header = parseLibraryCoreNormalizedIntentSegmentHeaderV2(input.header);
+  const reference = parseLibraryCoreImmutableObjectReferenceV1(input.reference);
+  if (
+    !isLibraryCoreNonnegativeSafeInteger(input.publishedAt) ||
+    reference.descriptor.objectKey !==
+      createLibraryCoreImmutableObjectKey({
+        actorId: header.actor_id,
+        digest: reference.descriptor.contentDigest,
+        epochId: header.storage_epoch_id,
+        firstSequence: header.first_actor_counter,
+        kind: "intent_segment",
+        lastSequence: header.last_actor_counter,
+        libraryId: header.library_id,
+      })
+  ) {
+    throw new TypeError("normalized intent transport publication is invalid");
+  }
+  return Object.freeze({
+    header,
+    publishedAt: input.publishedAt,
+    reference,
   });
 }
 

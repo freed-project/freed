@@ -24,6 +24,8 @@ import {
   type LibraryCoreFollowerIntentPageResponseV1,
   type LibraryCoreFollowerIntentPublicationReceiptV1,
   type LibraryCoreFollowerIntentPublicationV1,
+  type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
+  type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreAcceptedActorStateV1,
@@ -32,6 +34,7 @@ import {
   parseLibraryCoreFollowerIntentPageRequestV1,
   parseLibraryCoreFollowerIntentPageResponseV1,
   parseLibraryCoreFollowerIntentPublicationV1,
+  parseLibraryCoreNormalizedIntentTransportPublicationV2,
   parseLibraryCoreFollowerResultApplyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
@@ -1639,6 +1642,252 @@ export class PwaLibraryCoreSqliteEngine {
         publishedAt: publication.publishedAt,
         state: "published",
         transactionId: publication.transactionId,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  publishNormalizedFollowerIntentTransport(
+    input: LibraryCoreNormalizedIntentTransportPublicationV2,
+  ): LibraryCoreNormalizedIntentTransportPublicationReceiptV2 {
+    const publication =
+      parseLibraryCoreNormalizedIntentTransportPublicationV2(input);
+    const { header, reference } = publication;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const authorityRows = this.#database.exec({
+        sql: `SELECT meta.library_id, meta.authority_epoch, intent.actor_id
+              FROM library_meta AS meta
+              JOIN library_active_authority AS active
+                ON active.library_id = meta.library_id
+               AND active.epoch_id = meta.authority_epoch
+              JOIN library_intent_actors AS intent ON intent.actor_id = ?1
+              WHERE meta.singleton_id = 1;`,
+        bind: [header.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        authorityRows.length !== 1 ||
+        text(authorityRows[0]![0], "intent transport Library") !==
+          header.library_id ||
+        text(authorityRows[0]![1], "intent transport epoch") !==
+          header.storage_epoch_id ||
+        text(authorityRows[0]![2], "intent transport actor") !==
+          header.actor_id
+      ) {
+        throw new Error("normalized intent transport authority changed");
+      }
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_intent_transport_heads
+                (actor_id, library_id, storage_epoch_id, next_actor_counter,
+                 latest_segment_digest)
+              VALUES (?1, ?2, ?3, 1, NULL);`,
+        bind: [header.actor_id, header.library_id, header.storage_epoch_id],
+      });
+      const headRows = this.#database.exec({
+        sql: `SELECT library_id, storage_epoch_id, next_actor_counter,
+                     latest_segment_digest
+              FROM library_intent_transport_heads WHERE actor_id = ?1;`,
+        bind: [header.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (headRows.length !== 1) {
+        throw new Error("normalized intent transport head is unavailable");
+      }
+      const head = headRows[0]!;
+      if (
+        text(head[0], "intent transport head Library") !== header.library_id ||
+        text(head[1], "intent transport head epoch") !==
+          header.storage_epoch_id
+      ) {
+        throw new Error("normalized intent transport head identity changed");
+      }
+      const existingRows = this.#database.exec({
+        sql: `SELECT last_actor_counter, previous_segment_digest,
+                     semantic_segment_digest, stored_segment_digest, object_key,
+                     transport_object_id, published_at,
+                     published_transaction_count
+              FROM library_intent_transport_segments
+              WHERE actor_id = ?1 AND first_actor_counter = ?2;`,
+        bind: [header.actor_id, header.first_actor_counter],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (existingRows.length > 1) {
+        throw new Error("normalized intent transport receipt is ambiguous");
+      }
+      if (existingRows.length === 1) {
+        const existing = existingRows[0]!;
+        if (
+          safeInteger(existing[0], "intent transport last counter") !==
+            header.last_actor_counter ||
+          nullableText(existing[1], "intent transport previous digest") !==
+            header.previous_segment_digest ||
+          text(existing[2], "intent transport semantic digest") !==
+            header.segment_digest ||
+          text(existing[3], "intent transport stored digest") !==
+            reference.descriptor.contentDigest ||
+          text(existing[4], "intent transport object key") !==
+            reference.descriptor.objectKey ||
+          text(existing[5], "intent transport object ID") !==
+            reference.transportObjectId ||
+          safeInteger(existing[6], "intent transport publication time") !==
+            publication.publishedAt
+        ) {
+          throw new Error("normalized intent transport replay changed");
+        }
+        const publishedCount = safeInteger(
+          existing[7],
+          "intent transport published transaction count",
+        );
+        this.#database.exec("COMMIT;");
+        return Object.freeze({
+          actorId: header.actor_id,
+          firstActorCounter: header.first_actor_counter,
+          lastActorCounter: header.last_actor_counter,
+          newlyPublishedTransactionCount: publishedCount,
+          nextActorCounter: header.last_actor_counter + 1,
+          publishedAt: publication.publishedAt,
+          semanticSegmentDigest: header.segment_digest,
+          storedSegmentDigest: reference.descriptor.contentDigest,
+        });
+      }
+      if (
+        safeInteger(head[2], "intent transport next counter") !==
+          header.first_actor_counter ||
+        nullableText(head[3], "intent transport latest digest") !==
+          header.previous_segment_digest
+      ) {
+        throw new Error("normalized intent transport page does not extend its head");
+      }
+      const storedCount = safeInteger(
+        this.#database.exec({
+          sql: `SELECT count(*)
+                FROM library_intent_members AS member
+                JOIN library_intent_transactions AS intent
+                  ON intent.transaction_id = member.transaction_id
+                 AND intent.actor_id = member.actor_id
+                WHERE member.actor_id = ?1
+                  AND member.actor_counter BETWEEN ?2 AND ?3
+                  AND intent.state IN ('pending', 'published');`,
+          bind: [
+            header.actor_id,
+            header.first_actor_counter,
+            header.last_actor_counter,
+          ],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "intent transport stored record count",
+      );
+      if (storedCount !== header.record_count) {
+        throw new Error("normalized intent transport range is not fully durable");
+      }
+      const publishableRows = this.#database.exec({
+        sql: `SELECT count(*), max(created_at)
+              FROM library_intent_transactions
+              WHERE actor_id = ?1 AND state = 'pending'
+                AND last_counter <= ?2;`,
+        bind: [header.actor_id, header.last_actor_counter],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const publishedCount = safeInteger(
+        publishableRows[0]![0],
+        "intent transport publishable count",
+      );
+      const latestCreatedAt = nullableInteger(
+        publishableRows[0]![1],
+        "intent transport latest creation time",
+      );
+      if (
+        latestCreatedAt !== null &&
+        publication.publishedAt < latestCreatedAt
+      ) {
+        throw new Error("normalized intent transport publication predates its transaction");
+      }
+      this.#database.exec({
+        sql: `INSERT INTO library_intent_transport_segments
+                (actor_id, first_actor_counter, last_actor_counter,
+                 previous_segment_digest, semantic_segment_digest,
+                 stored_segment_digest, object_key, transport_object_id,
+                 published_at, published_transaction_count)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
+        bind: [
+          header.actor_id,
+          header.first_actor_counter,
+          header.last_actor_counter,
+          header.previous_segment_digest,
+          header.segment_digest,
+          reference.descriptor.contentDigest,
+          reference.descriptor.objectKey,
+          reference.transportObjectId,
+          publication.publishedAt,
+          publishedCount,
+        ],
+      });
+      this.#database.exec({
+        sql: `UPDATE library_intent_transactions
+              SET state = 'published', published_at = ?3
+              WHERE actor_id = ?1 AND state = 'pending'
+                AND last_counter <= ?2;`,
+        bind: [
+          header.actor_id,
+          header.last_actor_counter,
+          publication.publishedAt,
+        ],
+      });
+      const changed = safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "intent transport published transaction count",
+      );
+      if (changed !== publishedCount) {
+        throw new Error("normalized intent transport publication count changed");
+      }
+      const nextActorCounter = header.last_actor_counter + 1;
+      this.#database.exec({
+        sql: `UPDATE library_intent_transport_heads
+              SET next_actor_counter = ?2, latest_segment_digest = ?3
+              WHERE actor_id = ?1 AND next_actor_counter = ?4
+                AND latest_segment_digest IS ?5;`,
+        bind: [
+          header.actor_id,
+          nextActorCounter,
+          reference.descriptor.contentDigest,
+          header.first_actor_counter,
+          header.previous_segment_digest,
+        ],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "intent transport head update",
+        ) !== 1
+      ) {
+        throw new Error("normalized intent transport head changed concurrently");
+      }
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        actorId: header.actor_id,
+        firstActorCounter: header.first_actor_counter,
+        lastActorCounter: header.last_actor_counter,
+        newlyPublishedTransactionCount: publishedCount,
+        nextActorCounter,
+        publishedAt: publication.publishedAt,
+        semanticSegmentDigest: header.segment_digest,
+        storedSegmentDigest: reference.descriptor.contentDigest,
       });
     } catch (error) {
       this.#database.exec("ROLLBACK;");

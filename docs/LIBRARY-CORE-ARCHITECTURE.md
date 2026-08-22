@@ -665,6 +665,15 @@ transaction advances transport progress but leaves that transaction pending.
 Exact response-loss replay returns the stored receipt. Any changed range,
 digest, object identity, or time fails closed.
 
+The PWA OPFS SQLite engine executes the same intent publication transaction
+from the shared closed v2 header and immutable-object reference. It verifies
+the active Library, storage epoch, actor, durable member range, semantic
+digest, stored-byte digest, object key, transport object ID, and publication
+time before advancing the actor transport head. A segment that ends inside a
+transaction advances transport progress without marking that transaction
+published. Exact retry returns the original receipt. The browser engine does
+not persist this fact in IndexedDB.
+
 Followers persist result transport progress by the same rule. Before SQLite
 changes product state, the native boundary reconstructs the closed v2 segment
 body from the canonical signed result records and verifies its semantic digest.

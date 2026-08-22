@@ -15,6 +15,7 @@ import {
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
+  createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalBase64,
   decodeLibraryCoreCanonicalValue,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
@@ -38,6 +39,7 @@ import {
   type LibraryCoreDigestDomain,
   libraryCoreFollowerResultBodyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
+  parseLibraryCoreNormalizedIntentTransportPublicationV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -509,25 +511,65 @@ describe("PWA Library Core SQLite engine", () => {
       ],
       schemaVersion: 1,
     });
-    const publication = {
-      actorId,
+    const storedSegmentDigest = "13".repeat(32);
+    const publication = parseLibraryCoreNormalizedIntentTransportPublicationV2({
+      header: {
+        actor_id: actorId,
+        canonical_envelope_bytes: envelopeBytes[0]!.byteLength,
+        first_actor_counter: 1,
+        format: "freed_normalized_intent_segment_v2" as const,
+        kind: "normalized_intent_segment_header" as const,
+        last_actor_counter: 1,
+        library_id: libraryId,
+        previous_segment_digest: null,
+        protocol: "normalized_intent_segments_v2" as const,
+        protocol_version: 2 as const,
+        record_count: 1,
+        segment_digest: "12".repeat(32),
+        storage_epoch_id: epochId,
+      },
       publishedAt: 2_000,
-      transactionDigest: finalized.transaction_digest,
-      transactionId: "intent-transaction-1",
-    };
-    const publicationReceipt = engine.publishFollowerIntent(publication);
+      reference: {
+        descriptor: {
+          byteLength: 1_024,
+          contentDigest: storedSegmentDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            actorId,
+            digest: storedSegmentDigest,
+            epochId,
+            firstSequence: 1,
+            kind: "intent_segment",
+            lastSequence: 1,
+            libraryId,
+          }),
+        },
+        transportObjectId: "drive-intent-object-1",
+      },
+    });
+    const publicationReceipt =
+      engine.publishNormalizedFollowerIntentTransport(publication);
     expect(publicationReceipt).toEqual({
       actorId,
+      firstActorCounter: 1,
+      lastActorCounter: 1,
+      newlyPublishedTransactionCount: 1,
+      nextActorCounter: 2,
       publishedAt: 2_000,
-      state: "published",
-      transactionId: "intent-transaction-1",
+      semanticSegmentDigest: "12".repeat(32),
+      storedSegmentDigest,
     });
-    expect(engine.publishFollowerIntent(publication)).toEqual(
-      publicationReceipt,
-    );
+    expect(
+      engine.publishNormalizedFollowerIntentTransport(publication),
+    ).toEqual(publicationReceipt);
     expect(() =>
-      engine.publishFollowerIntent({ ...publication, publishedAt: 2_001 }),
-    ).toThrow(/identity was reused/);
+      engine.publishNormalizedFollowerIntentTransport({
+        ...publication,
+        reference: {
+          ...publication.reference,
+          transportObjectId: "changed-object",
+        },
+      }),
+    ).toThrow(/replay changed/);
     expect(
       engine.pageFollowerIntents({
         actorId,
