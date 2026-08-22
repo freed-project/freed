@@ -16,6 +16,8 @@ import {
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
+  createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
+  createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreSqliteCheckpointSelectionResponse,
@@ -37,6 +39,10 @@ import {
   type LibraryCoreFollowerIntentPublicationV1,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
+  type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
+  type LibraryCoreNormalizedIntentTransportPublicationV2,
+  type LibraryCoreNormalizedResultTransportImportReceiptV2,
+  type LibraryCoreNormalizedResultTransportImportV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
@@ -210,6 +216,28 @@ export class PwaLibraryCoreSqliteClient {
   ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
     return this.#send((requestId) =>
       createLibraryCoreSqliteFollowerResultApplyWorkerRequest(requestId, apply),
+    );
+  }
+
+  publishNormalizedFollowerIntentTransport(
+    publication: LibraryCoreNormalizedIntentTransportPublicationV2,
+  ): Promise<LibraryCoreNormalizedIntentTransportPublicationReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest(
+        requestId,
+        publication,
+      ),
+    );
+  }
+
+  importNormalizedFollowerResultTransport(
+    imported: LibraryCoreNormalizedResultTransportImportV2,
+  ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest(
+        requestId,
+        imported,
+      ),
     );
   }
 

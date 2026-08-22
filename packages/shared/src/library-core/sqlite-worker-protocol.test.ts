@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createLibraryCoreNormalizedCheckpointRecordV2 } from "./normalized-checkpoint-contracts.js";
+import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
+import { createLibraryCoreImmutableObjectKey } from "./immutable-transport-contracts.js";
+import {
+  normalizedResultSegmentHeaderFromBodyV2,
+  parseLibraryCoreNormalizedResultSegmentBodyV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
+} from "./normalized-result-segment-contracts.js";
+import { parseLibraryCoreNormalizedIntentTransportPublicationV2 } from "./normalized-intent-segment-contracts.js";
 import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
@@ -14,6 +22,8 @@ import {
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
+  createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest,
+  createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
   createLibraryCoreSqliteFollowerMutationContextWorkerRequest,
   createLibraryCoreSqlitePageScopeActionWorkerRequest,
@@ -442,6 +452,125 @@ describe("Library Core SQLite worker protocol", () => {
     ).toThrow(/identity is invalid/);
   });
 
+  it("carries closed normalized intent and result transport receipts", () => {
+    const actorId = "a".repeat(64);
+    const libraryId = "b".repeat(64);
+    const epochId = "c".repeat(64);
+    const storedIntentDigest = "d".repeat(64);
+    const intent =
+      createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest(
+        "request-normalized-intent",
+        parseLibraryCoreNormalizedIntentTransportPublicationV2({
+          header: {
+            actor_id: actorId,
+            canonical_envelope_bytes: 1,
+            first_actor_counter: 1,
+            format: "freed_normalized_intent_segment_v2",
+            kind: "normalized_intent_segment_header",
+            last_actor_counter: 1,
+            library_id: libraryId,
+            previous_segment_digest: null,
+            protocol: "normalized_intent_segments_v2",
+            protocol_version: 2,
+            record_count: 1,
+            segment_digest: "e".repeat(64),
+            storage_epoch_id: epochId,
+          },
+          publishedAt: 100,
+          reference: {
+            descriptor: {
+              byteLength: 1,
+              contentDigest: storedIntentDigest,
+              objectKey: createLibraryCoreImmutableObjectKey({
+                actorId,
+                digest: storedIntentDigest,
+                epochId,
+                firstSequence: 1,
+                kind: "intent_segment",
+                lastSequence: 1,
+                libraryId,
+              }),
+            },
+            transportObjectId: "intent-object-1",
+          },
+        }),
+      );
+    expect(intent.kind).toBe("publish_normalized_follower_intent_transport");
+
+    const result = {
+      actor_id: actorId,
+      authoritative_source_revision: 1,
+      authority_key_id: "f".repeat(64),
+      canonical_operation_ids: ["operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1" as const,
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: ["receipt-1"],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 100,
+      result_body_digest: "1".repeat(64),
+      result_sequence: 1,
+      schema_version: 1 as const,
+      signature: "2".repeat(128),
+      signature_algorithm: "ed25519" as const,
+      status: "accepted" as const,
+      transaction_digest: "3".repeat(64),
+      transaction_id: "transaction-1",
+    };
+    const canonicalBytes = encodeLibraryCoreCanonicalValue(result).byteLength;
+    const body = parseLibraryCoreNormalizedResultSegmentBodyV2({
+      actor_id: actorId,
+      canonical_result_bytes: canonicalBytes,
+      first_result_sequence: 1,
+      format: "freed_normalized_result_segment_v2",
+      kind: "normalized_result_segment_body",
+      last_result_sequence: 1,
+      library_id: libraryId,
+      previous_segment_digest: null,
+      protocol: "normalized_result_segments_v2",
+      protocol_version: 2,
+      result_count: 1,
+      results: [result],
+      storage_epoch_id: epochId,
+    });
+    const storedResultDigest = "4".repeat(64);
+    const imported =
+      createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest(
+        "request-normalized-result",
+        parseLibraryCoreNormalizedResultTransportImportV2({
+          header: normalizedResultSegmentHeaderFromBodyV2(body, "5".repeat(64)),
+          receivedAt: 101,
+          reference: {
+            descriptor: {
+              byteLength: canonicalBytes,
+              contentDigest: storedResultDigest,
+              objectKey: createLibraryCoreImmutableObjectKey({
+                actorId,
+                digest: storedResultDigest,
+                epochId,
+                firstSequence: 1,
+                kind: "result_segment",
+                lastSequence: 1,
+                libraryId,
+              }),
+            },
+            transportObjectId: "result-object-1",
+          },
+          results: [result],
+        }),
+      );
+    expect(imported.kind).toBe("import_normalized_follower_result_transport");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...imported, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+  });
+
   it("carries closed bounded normalized checkpoint stage requests", () => {
     const begin = createLibraryCoreSqliteBeginCheckpointWorkerRequest(
       "request-3",
@@ -473,14 +602,11 @@ describe("Library Core SQLite worker protocol", () => {
     );
     expect(append.kind).toBe("append_normalized_checkpoint_stage_page");
     expect(
-      createLibraryCoreSqliteActivateCheckpointWorkerRequest(
-        "request-5",
-        {
-          followerReceipt: null,
-          replaceExisting: false,
-          stageId: "stage-1",
-        },
-      ).kind,
+      createLibraryCoreSqliteActivateCheckpointWorkerRequest("request-5", {
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "stage-1",
+      }).kind,
     ).toBe("activate_normalized_checkpoint_stage");
     expect(
       createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest("request-6")

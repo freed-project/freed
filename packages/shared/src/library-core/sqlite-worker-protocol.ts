@@ -154,6 +154,16 @@ import {
   type LibraryCoreFollowerMutationContextV1,
 } from "./follower-mutation-context-contracts.js";
 import {
+  parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
+  type LibraryCoreNormalizedIntentTransportPublicationV2,
+} from "./normalized-intent-segment-contracts.js";
+import {
+  parseLibraryCoreNormalizedResultTransportImportV2,
+  type LibraryCoreNormalizedResultTransportImportReceiptV2,
+  type LibraryCoreNormalizedResultTransportImportV2,
+} from "./normalized-result-segment-contracts.js";
+import {
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
@@ -241,32 +251,32 @@ export type LibraryCoreSqliteQueryResponseFor<
                     : T extends LibraryCoreContentFetchPageRequestV1
                       ? LibraryCoreContentFetchPageResponseV1
                       : T extends LibraryCoreMapMarkersRequestV1
-                      ? LibraryCoreMapMarkersResponseV1
-                      : T extends LibraryCorePersonDetailRequestV1
-                        ? LibraryCorePersonDetailResponseV1
-                        : T extends LibraryCorePersonGraphPageRequestV1
-                          ? LibraryCorePersonGraphPageResponseV1
-                          : T extends LibraryCorePersonTimelineRequestV1
-                            ? LibraryCorePersonTimelineResponseV1
-                            : T extends LibraryCorePersonsGraphRequestV1
-                              ? LibraryCorePersonsGraphResponseV1
-                              : T extends LibraryCoreProviderMediaPageRequestV1
-                                ? LibraryCoreProviderMediaPageResponseV1
-                                : T extends LibraryCoreRssFeedDetailRequestV1
-                                  ? LibraryCoreRssFeedDetailResponseV1
-                                  : T extends LibraryCoreRssFeedGraphPageRequestV1
-                                    ? LibraryCoreRssFeedGraphPageResponseV1
-                                  : T extends LibraryCoreSavedAnalyticsRequestV2
-                                    ? LibraryCoreSavedAnalyticsResponseV2
-                                    : T extends LibraryCoreSavedFeedPageRequestV2
-                                      ? LibraryCoreSavedFeedPageResponseV2
-                                      : T extends LibraryCoreSearchPageRequestV1
-                                        ? LibraryCoreSearchPageResponseV1
-                                        : T extends LibraryCoreStoryWallCandidatesRequestV1
-                                          ? LibraryCoreStoryWallCandidatesResponseV1
-                                          : T extends LibraryCorePreferencesSnapshotRequestV1
-                                            ? LibraryCorePreferencesSnapshotResponseV1
-                                            : never;
+                        ? LibraryCoreMapMarkersResponseV1
+                        : T extends LibraryCorePersonDetailRequestV1
+                          ? LibraryCorePersonDetailResponseV1
+                          : T extends LibraryCorePersonGraphPageRequestV1
+                            ? LibraryCorePersonGraphPageResponseV1
+                            : T extends LibraryCorePersonTimelineRequestV1
+                              ? LibraryCorePersonTimelineResponseV1
+                              : T extends LibraryCorePersonsGraphRequestV1
+                                ? LibraryCorePersonsGraphResponseV1
+                                : T extends LibraryCoreProviderMediaPageRequestV1
+                                  ? LibraryCoreProviderMediaPageResponseV1
+                                  : T extends LibraryCoreRssFeedDetailRequestV1
+                                    ? LibraryCoreRssFeedDetailResponseV1
+                                    : T extends LibraryCoreRssFeedGraphPageRequestV1
+                                      ? LibraryCoreRssFeedGraphPageResponseV1
+                                      : T extends LibraryCoreSavedAnalyticsRequestV2
+                                        ? LibraryCoreSavedAnalyticsResponseV2
+                                        : T extends LibraryCoreSavedFeedPageRequestV2
+                                          ? LibraryCoreSavedFeedPageResponseV2
+                                          : T extends LibraryCoreSearchPageRequestV1
+                                            ? LibraryCoreSearchPageResponseV1
+                                            : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                              ? LibraryCoreStoryWallCandidatesResponseV1
+                                              : T extends LibraryCorePreferencesSnapshotRequestV1
+                                                ? LibraryCorePreferencesSnapshotResponseV1
+                                                : never;
 
 export type LibraryCoreSqliteQueryResponse =
   LibraryCoreSqliteQueryResponseFor<LibraryCoreSqliteQueryRequest>;
@@ -302,73 +312,73 @@ export function parseLibraryCoreSqliteQueryResponse<
                               request,
                             )
                           : request.queryId === "provider_media_page_v1"
-                          ? parseLibraryCoreProviderMediaPageResponseV1(
-                              value,
-                              request,
-                            )
-                          : request.queryId === "map_markers_v1"
-                            ? parseLibraryCoreMapMarkersResponseV1(
+                            ? parseLibraryCoreProviderMediaPageResponseV1(
                                 value,
                                 request,
                               )
-                            : request.queryId === "person_detail_v1"
-                              ? parseLibraryCorePersonDetailResponseV1(
+                            : request.queryId === "map_markers_v1"
+                              ? parseLibraryCoreMapMarkersResponseV1(
                                   value,
                                   request,
                                 )
-                              : request.queryId === "person_graph_page_v1"
-                                ? parseLibraryCorePersonGraphPageResponseV1(
+                              : request.queryId === "person_detail_v1"
+                                ? parseLibraryCorePersonDetailResponseV1(
                                     value,
                                     request,
                                   )
-                                : request.queryId === "person_timeline_v1"
-                                  ? parseLibraryCorePersonTimelineResponseV1(
+                                : request.queryId === "person_graph_page_v1"
+                                  ? parseLibraryCorePersonGraphPageResponseV1(
                                       value,
                                       request,
                                     )
-                                  : request.queryId === "persons_graph_v1"
-                                    ? parseLibraryCorePersonsGraphResponseV1(
+                                  : request.queryId === "person_timeline_v1"
+                                    ? parseLibraryCorePersonTimelineResponseV1(
                                         value,
                                         request,
                                       )
-                                    : request.queryId ===
-                                        "preferences_snapshot_v1"
-                                      ? parseLibraryCorePreferencesSnapshotResponseV1(
+                                    : request.queryId === "persons_graph_v1"
+                                      ? parseLibraryCorePersonsGraphResponseV1(
                                           value,
+                                          request,
                                         )
                                       : request.queryId ===
-                                          "rss_feed_detail_v1"
-                                        ? parseLibraryCoreRssFeedDetailResponseV1(
+                                          "preferences_snapshot_v1"
+                                        ? parseLibraryCorePreferencesSnapshotResponseV1(
                                             value,
-                                            request,
                                           )
                                         : request.queryId ===
-                                          "rss_feed_graph_page_v1"
-                                        ? parseLibraryCoreRssFeedGraphPageResponseV1(
-                                            value,
-                                            request,
-                                          )
-                                        : request.queryId ===
-                                            "saved_analytics_v2"
-                                          ? parseLibraryCoreSavedAnalyticsResponseV2(
+                                            "rss_feed_detail_v1"
+                                          ? parseLibraryCoreRssFeedDetailResponseV1(
                                               value,
+                                              request,
                                             )
                                           : request.queryId ===
-                                              "saved_feed_page_v2"
-                                            ? parseLibraryCoreSavedFeedPageResponseV2(
+                                              "rss_feed_graph_page_v1"
+                                            ? parseLibraryCoreRssFeedGraphPageResponseV1(
                                                 value,
                                                 request,
                                               )
                                             : request.queryId ===
-                                                "search_page_v1"
-                                              ? parseLibraryCoreSearchPageResponseV1(
+                                                "saved_analytics_v2"
+                                              ? parseLibraryCoreSavedAnalyticsResponseV2(
                                                   value,
-                                                  request,
                                                 )
-                                              : parseLibraryCoreStoryWallCandidatesResponseV1(
-                                                  value,
-                                                  request,
-                                                );
+                                              : request.queryId ===
+                                                  "saved_feed_page_v2"
+                                                ? parseLibraryCoreSavedFeedPageResponseV2(
+                                                    value,
+                                                    request,
+                                                  )
+                                                : request.queryId ===
+                                                    "search_page_v1"
+                                                  ? parseLibraryCoreSearchPageResponseV1(
+                                                      value,
+                                                      request,
+                                                    )
+                                                  : parseLibraryCoreStoryWallCandidatesResponseV1(
+                                                      value,
+                                                      request,
+                                                    );
   if (!parsed.ok) {
     throw new TypeError(parsed.error);
   }
@@ -429,6 +439,18 @@ export type LibraryCoreSqliteWorkerRequest =
   | Readonly<{
       apply: LibraryCoreFollowerResultApplyV1;
       kind: "apply_follower_result";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "publish_normalized_follower_intent_transport";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      publication: LibraryCoreNormalizedIntentTransportPublicationV2;
+      requestId: string;
+    }>
+  | Readonly<{
+      import: LibraryCoreNormalizedResultTransportImportV2;
+      kind: "import_normalized_follower_result_transport";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
     }>
@@ -514,6 +536,8 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFollowerIntentPageResponseV1
   | LibraryCoreFollowerIntentPublicationReceiptV1
   | LibraryCoreFollowerResultApplyReceiptV1
+  | LibraryCoreNormalizedIntentTransportPublicationReceiptV2
+  | LibraryCoreNormalizedResultTransportImportReceiptV2
   | LibraryCoreScopeActionStagePageV1
   | LibraryCoreScopeActionStageStatusV1;
 
@@ -580,54 +604,63 @@ export function parseLibraryCoreSqliteWorkerRequest(
               ? ["kind", "protocolVersion", "publication", "requestId"]
               : value.kind === "apply_follower_result"
                 ? ["apply", "kind", "protocolVersion", "requestId"]
-                : value.kind === "begin_normalized_checkpoint_stage"
-                  ? ["kind", "protocolVersion", "requestId", "stage"]
-                  : value.kind === "append_normalized_checkpoint_stage_page"
-                    ? ["kind", "page", "protocolVersion", "requestId"]
-                    : value.kind === "activate_normalized_checkpoint_stage"
-                      ? ["activation", "kind", "protocolVersion", "requestId"]
-                      : value.kind === "begin_scope_action"
-                        ? [
-                            "createdAt",
-                            "kind",
-                            "protocolVersion",
-                            "request",
-                            "requestId",
-                            "stageId",
-                          ]
-                        : value.kind === "append_scope_action"
+                : value.kind === "publish_normalized_follower_intent_transport"
+                  ? ["kind", "protocolVersion", "publication", "requestId"]
+                  : value.kind === "import_normalized_follower_result_transport"
+                    ? ["import", "kind", "protocolVersion", "requestId"]
+                    : value.kind === "begin_normalized_checkpoint_stage"
+                      ? ["kind", "protocolVersion", "requestId", "stage"]
+                      : value.kind === "append_normalized_checkpoint_stage_page"
+                        ? ["kind", "page", "protocolVersion", "requestId"]
+                        : value.kind === "activate_normalized_checkpoint_stage"
                           ? [
-                              "entityIds",
-                              "expectedOrdinal",
+                              "activation",
                               "kind",
                               "protocolVersion",
                               "requestId",
-                              "stageId",
                             ]
-                          : value.kind === "finalize_scope_action"
+                          : value.kind === "begin_scope_action"
                             ? [
-                                "expectedMemberCount",
+                                "createdAt",
                                 "kind",
                                 "protocolVersion",
+                                "request",
                                 "requestId",
                                 "stageId",
                               ]
-                            : value.kind === "page_scope_action"
+                            : value.kind === "append_scope_action"
                               ? [
-                                  "afterOrdinal",
+                                  "entityIds",
+                                  "expectedOrdinal",
                                   "kind",
                                   "protocolVersion",
                                   "requestId",
                                   "stageId",
                                 ]
-                              : value.kind === "close_scope_action"
+                              : value.kind === "finalize_scope_action"
                                 ? [
+                                    "expectedMemberCount",
                                     "kind",
                                     "protocolVersion",
                                     "requestId",
                                     "stageId",
                                   ]
-                                : ["kind", "protocolVersion", "requestId"];
+                                : value.kind === "page_scope_action"
+                                  ? [
+                                      "afterOrdinal",
+                                      "kind",
+                                      "protocolVersion",
+                                      "requestId",
+                                      "stageId",
+                                    ]
+                                  : value.kind === "close_scope_action"
+                                    ? [
+                                        "kind",
+                                        "protocolVersion",
+                                        "requestId",
+                                        "stageId",
+                                      ]
+                                    : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -643,11 +676,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "append_scope_action",
       "finalize_scope_action",
       "follower_mutation_context",
+      "import_normalized_follower_result_transport",
       "mutate_device_graph_layout",
       "open",
       "page_follower_intents",
       "page_scope_action",
       "publish_follower_intent",
+      "publish_normalized_follower_intent_transport",
       "query",
       "read_normalized_checkpoint_receipt",
       "status",
@@ -690,65 +725,65 @@ export function parseLibraryCoreSqliteWorkerRequest(
                               value.query,
                             )
                           : value.query.queryId === "provider_media_page_v1"
-                          ? parseLibraryCoreProviderMediaPageRequestV1(
-                              value.query,
-                            )
-                          : value.query.queryId === "map_markers_v1"
-                            ? parseLibraryCoreMapMarkersRequestV1(value.query)
-                            : value.query.queryId === "person_detail_v1"
-                              ? parseLibraryCorePersonDetailRequestV1(
-                                  value.query,
-                                )
-                              : value.query.queryId === "person_graph_page_v1"
-                                ? parseLibraryCorePersonGraphPageRequestV1(
+                            ? parseLibraryCoreProviderMediaPageRequestV1(
+                                value.query,
+                              )
+                            : value.query.queryId === "map_markers_v1"
+                              ? parseLibraryCoreMapMarkersRequestV1(value.query)
+                              : value.query.queryId === "person_detail_v1"
+                                ? parseLibraryCorePersonDetailRequestV1(
                                     value.query,
                                   )
-                                : value.query.queryId === "person_timeline_v1"
-                                  ? parseLibraryCorePersonTimelineRequestV1(
+                                : value.query.queryId === "person_graph_page_v1"
+                                  ? parseLibraryCorePersonGraphPageRequestV1(
                                       value.query,
                                     )
-                                  : value.query.queryId === "persons_graph_v1"
-                                    ? parseLibraryCorePersonsGraphRequestV1(
+                                  : value.query.queryId === "person_timeline_v1"
+                                    ? parseLibraryCorePersonTimelineRequestV1(
                                         value.query,
                                       )
+                                    : value.query.queryId === "persons_graph_v1"
+                                      ? parseLibraryCorePersonsGraphRequestV1(
+                                          value.query,
+                                        )
                                       : value.query.queryId ===
                                           "rss_feed_detail_v1"
                                         ? parseLibraryCoreRssFeedDetailRequestV1(
                                             value.query,
                                           )
                                         : value.query.queryId ===
-                                          "rss_feed_graph_page_v1"
-                                      ? parseLibraryCoreRssFeedGraphPageRequestV1(
-                                          value.query,
-                                        )
-                                      : value.query.queryId ===
-                                          "saved_analytics_v2"
-                                        ? parseLibraryCoreSavedAnalyticsRequestV2(
-                                            value.query,
-                                          )
-                                        : value.query.queryId ===
-                                            "saved_feed_page_v2"
-                                          ? parseLibraryCoreSavedFeedPageRequestV2(
+                                            "rss_feed_graph_page_v1"
+                                          ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                               value.query,
                                             )
                                           : value.query.queryId ===
-                                              "story_wall_candidates_v1"
-                                            ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                              "saved_analytics_v2"
+                                            ? parseLibraryCoreSavedAnalyticsRequestV2(
                                                 value.query,
                                               )
                                             : value.query.queryId ===
-                                                "search_page_v1"
-                                              ? parseLibraryCoreSearchPageRequestV1(
+                                                "saved_feed_page_v2"
+                                              ? parseLibraryCoreSavedFeedPageRequestV2(
                                                   value.query,
                                                 )
                                               : value.query.queryId ===
-                                                  "preferences_snapshot_v1"
-                                                ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                                  "story_wall_candidates_v1"
+                                                ? parseLibraryCoreStoryWallCandidatesRequestV1(
                                                     value.query,
                                                   )
-                                                : parseLibraryCoreFeedPageRequestV1(
-                                                    value.query,
-                                                  )
+                                                : value.query.queryId ===
+                                                    "search_page_v1"
+                                                  ? parseLibraryCoreSearchPageRequestV1(
+                                                      value.query,
+                                                    )
+                                                  : value.query.queryId ===
+                                                      "preferences_snapshot_v1"
+                                                    ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                                        value.query,
+                                                      )
+                                                    : parseLibraryCoreFeedPageRequestV1(
+                                                        value.query,
+                                                      )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {
@@ -828,6 +863,22 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "publish_normalized_follower_intent_transport") {
+    return Object.freeze({
+      kind: "publish_normalized_follower_intent_transport",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      publication: parseLibraryCoreNormalizedIntentTransportPublicationV2(
+        value.publication,
+      ),
+      requestId: value.requestId,
+    });
+  } else if (value.kind === "import_normalized_follower_result_transport") {
+    return Object.freeze({
+      import: parseLibraryCoreNormalizedResultTransportImportV2(value.import),
+      kind: "import_normalized_follower_result_transport",
+      protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId,
+    });
   }
   return value as unknown as LibraryCoreSqliteWorkerRequest;
 }
@@ -839,6 +890,30 @@ export function createLibraryCoreSqliteFollowerResultApplyWorkerRequest(
   return parseLibraryCoreSqliteWorkerRequest({
     apply,
     kind: "apply_follower_result",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteNormalizedIntentTransportPublicationWorkerRequest(
+  requestId: string,
+  publication: LibraryCoreNormalizedIntentTransportPublicationV2,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "publish_normalized_follower_intent_transport",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    publication,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteNormalizedResultTransportImportWorkerRequest(
+  requestId: string,
+  imported: LibraryCoreNormalizedResultTransportImportV2,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    import: imported,
+    kind: "import_normalized_follower_result_transport",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });

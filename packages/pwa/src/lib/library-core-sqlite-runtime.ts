@@ -13,6 +13,10 @@ import type {
   LibraryCoreNormalizedCheckpointSelectionV2,
   LibraryCoreNormalizedCheckpointStagePageV2,
   LibraryCoreNormalizedCheckpointStageStatusV2,
+  LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
+  LibraryCoreNormalizedIntentTransportPublicationV2,
+  LibraryCoreNormalizedResultTransportImportReceiptV2,
+  LibraryCoreNormalizedResultTransportImportV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -123,6 +127,20 @@ export async function activatePwaNormalizedCheckpointStage(
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
   const active = await openClient();
   return active.activateNormalizedCheckpointStage(activation);
+}
+
+export async function publishPwaNormalizedFollowerIntentTransport(
+  publication: LibraryCoreNormalizedIntentTransportPublicationV2,
+): Promise<LibraryCoreNormalizedIntentTransportPublicationReceiptV2> {
+  const active = await openClient();
+  return active.publishNormalizedFollowerIntentTransport(publication);
+}
+
+export async function importPwaNormalizedFollowerResultTransport(
+  imported: LibraryCoreNormalizedResultTransportImportV2,
+): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+  const active = await openClient();
+  return active.importNormalizedFollowerResultTransport(imported);
 }
 
 export async function closePwaNormalizedLibrary(): Promise<void> {

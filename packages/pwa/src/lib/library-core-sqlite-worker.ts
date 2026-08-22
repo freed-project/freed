@@ -245,6 +245,26 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "publish_normalized_follower_intent_transport") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.publishNormalizedFollowerIntentTransport(
+            request.publication,
+          ),
+        });
+        return;
+      }
+      if (request.kind === "import_normalized_follower_result_transport") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await active.importNormalizedFollowerResultTransport(
+            request.import,
+          ),
+        });
+        return;
+      }
       const status = active.status();
       if (request.kind === "close") {
         active.close();
