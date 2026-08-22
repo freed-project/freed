@@ -74,6 +74,7 @@ export * from "./scope-action-contracts.js";
 export * from "./surface-items-contracts.js";
 export * from "./secondary-surface-contracts.js";
 export * from "./facet-summary-contracts.js";
+export * from "./filter-scope-summary-contracts.js";
 export * from "./preferences-snapshot-contracts.js";
 export * from "./sha256.js";
 export * from "./wire-frame.js";

@@ -12,7 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, FilterOptions } from "@freed/shared";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreAccountGraphPageResponseV1,
@@ -52,6 +52,10 @@ import {
   useLibrarySocialChannelPage,
   type LibrarySocialChannelPageState,
 } from "./useLibrarySocialChannelPage.js";
+import {
+  useLibraryFilterScopeSummary,
+  type LibraryFilterScopeSummaryState,
+} from "./useLibraryFilterScopeSummary.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -118,6 +122,19 @@ function FacetHarness({
   const first = useLibraryFacetSummary(8);
   const second = useLibraryFacetSummary(8);
   onSummaries([first, second]);
+  return null;
+}
+
+function FilterScopeHarness({
+  filter,
+  onState,
+  sourceVersion = 8,
+}: {
+  filter: FilterOptions;
+  onState: (state: LibraryFilterScopeSummaryState) => void;
+  sourceVersion?: number;
+}) {
+  onState(useLibraryFilterScopeSummary(filter, sourceVersion));
   return null;
 }
 
@@ -1397,5 +1414,65 @@ describe("Library row query hooks", () => {
         personName: "Ada Lovelace",
       }),
     ]);
+  });
+
+  it("queries only exact Feed and provider-author filter identities", async () => {
+    const queryLibraryCore = vi.fn(async (request: { feedUrl: string | null }) => ({
+      itemCount: request.feedUrl ? 4 : 7,
+      label: request.feedUrl ? "Example Feed" : "Ada",
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 8,
+        transitionSequence: 0,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const config = platformConfig({ queryLibraryCore });
+    let current: LibraryFilterScopeSummaryState | null = null;
+    const renderScope = (filter: FilterOptions) => (
+      <PlatformProvider value={config}>
+        <FilterScopeHarness
+          filter={filter}
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>
+    );
+
+    renderHarness(renderScope({ savedOnly: true }));
+    await flush();
+    expect(queryLibraryCore).not.toHaveBeenCalled();
+
+    act(() => root?.render(renderScope({ feedUrl: "https://example.com/feed" })));
+    await flush();
+    await flush();
+    expect(queryLibraryCore).toHaveBeenCalledWith({
+      authorId: null,
+      feedUrl: "https://example.com/feed",
+      platform: null,
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+    });
+    expect((current as LibraryFilterScopeSummaryState | null)?.summary).toMatchObject({
+      itemCount: 4,
+      label: "Example Feed",
+    });
+
+    act(() => root?.render(renderScope({ authorId: "ada", platform: "x" })));
+    await flush();
+    await flush();
+    expect(queryLibraryCore).toHaveBeenLastCalledWith({
+      authorId: "ada",
+      feedUrl: null,
+      platform: "x",
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+    });
+    expect((current as LibraryFilterScopeSummaryState | null)?.summary).toMatchObject({
+      itemCount: 7,
+      label: "Ada",
+    });
   });
 });

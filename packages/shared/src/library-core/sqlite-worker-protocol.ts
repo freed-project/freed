@@ -57,6 +57,12 @@ import {
   type LibraryCoreFacetSummaryResponseV1,
 } from "./facet-summary-contracts.js";
 import {
+  parseLibraryCoreFilterScopeSummaryRequestV1,
+  parseLibraryCoreFilterScopeSummaryResponseV1,
+  type LibraryCoreFilterScopeSummaryRequestV1,
+  type LibraryCoreFilterScopeSummaryResponseV1,
+} from "./filter-scope-summary-contracts.js";
+import {
   parseLibraryCoreSavedAnalyticsRequestV2,
   parseLibraryCoreSavedAnalyticsResponseV2,
   type LibraryCoreSavedAnalyticsRequestV2,
@@ -217,6 +223,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreFacetSummaryRequestV1
   | LibraryCoreFeedBrowsePageRequestV3
   | LibraryCoreFeedPageRequestV1
+  | LibraryCoreFilterScopeSummaryRequestV1
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
@@ -251,8 +258,10 @@ export type LibraryCoreSqliteQueryResponseFor<
             ? LibraryCoreFeedBrowsePageResponseV3
             : T extends LibraryCoreFeedPageRequestV1
               ? LibraryCoreFeedPageResponseV1
-              : T extends LibraryCoreItemDetailRequestV1
-                ? LibraryCoreItemDetailResponseV1
+              : T extends LibraryCoreFilterScopeSummaryRequestV1
+                ? LibraryCoreFilterScopeSummaryResponseV1
+                : T extends LibraryCoreItemDetailRequestV1
+                  ? LibraryCoreItemDetailResponseV1
                 : T extends LibraryCoreItemReaderBodyRequestV1
                   ? LibraryCoreItemReaderBodyResponseV1
                   : T extends LibraryCoreItemScanRequestV1
@@ -309,8 +318,10 @@ export function parseLibraryCoreSqliteQueryResponse<
                 ? parseLibraryCoreFeedBrowsePageResponseV3(value, request)
                 : request.queryId === "feed_page_v1"
                   ? parseLibraryCoreFeedPageResponseV1(value, request)
-                  : request.queryId === "item_detail_v1"
-                    ? parseLibraryCoreItemDetailResponseV1(value, request)
+                  : request.queryId === "filter_scope_summary_v1"
+                    ? parseLibraryCoreFilterScopeSummaryResponseV1(value, request)
+                    : request.queryId === "item_detail_v1"
+                      ? parseLibraryCoreItemDetailResponseV1(value, request)
                     : request.queryId === "item_reader_body_v1"
                       ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
                       : request.queryId === "background_item_page_v1"
@@ -756,8 +767,10 @@ export function parseLibraryCoreSqliteWorkerRequest(
                 ? parseLibraryCoreChangeFeedRequestV1(value.query)
                 : value.query.queryId === "feed_browse_page_v3"
                   ? parseLibraryCoreFeedBrowsePageRequestV3(value.query)
-                  : value.query.queryId === "item_detail_v1"
-                    ? parseLibraryCoreItemDetailRequestV1(value.query)
+                  : value.query.queryId === "filter_scope_summary_v1"
+                    ? parseLibraryCoreFilterScopeSummaryRequestV1(value.query)
+                    : value.query.queryId === "item_detail_v1"
+                      ? parseLibraryCoreItemDetailRequestV1(value.query)
                     : value.query.queryId === "item_reader_body_v1"
                       ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
                       : value.query.queryId === "background_item_page_v1"

@@ -486,6 +486,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.53 | Replace the shared Settings feed manager with 50-row OPFS SQLite windows and the existing atomically frozen complete-removal scope, then delete the uncalled PWA RSS capture and renderer-feed export module instead of preserving another compatibility path | High | ✓ Complete |
 | 6.54 | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open OPFS SQLite pages that retain at most 25 matching feeds and 25 matching social channels | High | ✓ Complete |
 | 6.55 | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained OPFS SQLite facets | High | ✓ Complete |
+| 6.56 | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed OPFS SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary | High | ✓ Complete |
 
 ---
 

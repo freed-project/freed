@@ -39,6 +39,7 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
@@ -54,7 +55,7 @@ import {
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
-import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import { getStaticFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { useFeedCardDensity } from "../../lib/feed-card-density.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import {
@@ -352,11 +353,6 @@ export function Header({
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
 
   const items = useAppStore((s) => s.items);
-  const feeds = useAppStore((s) => s.feeds);
-  const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
-  const totalItemCount = useAppStore((s) => s.totalItemCount);
-  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
-  const accounts = useAppStore((s) => s.accounts);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
@@ -366,6 +362,7 @@ export function Header({
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
   );
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
@@ -404,7 +401,14 @@ export function Header({
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
   const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
 
-  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
+  const scopeLabel = useMemo(() => {
+    const staticLabel = getStaticFilterLabel(activeFilter);
+    if (staticLabel) return staticLabel;
+    if (filterScope.summary?.label) return filterScope.summary.label;
+    if (activeFilter.feedUrl) return "this feed";
+    if (activeFilter.authorId) return `...${activeFilter.authorId.slice(-8)}`;
+    return "All Sources";
+  }, [activeFilter, filterScope.summary?.label]);
   const friendCount = libraryFacets.friendPersonCount;
   const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
@@ -512,7 +516,6 @@ export function Header({
 
   const fullScopeItemCount = useMemo(() => {
     if (
-      activeFilter.authorId ||
       activeFilter.savedOnly ||
       activeFilter.archivedOnly ||
       activeFilter.socialContentFilter ||
@@ -521,19 +524,15 @@ export function Header({
     ) {
       return null;
     }
-    if (activeFilter.feedUrl) {
-      return feedTotalCounts[activeFilter.feedUrl] ?? null;
+    if (activeFilter.feedUrl || activeFilter.authorId) {
+      return filterScope.summary?.itemCount ?? null;
     }
     if (activeFilter.platform) {
-      if (activeFilter.platform === "rss") {
-        return Object.values(feedTotalCounts).reduce(
-          (total, count) => total + count,
-          0,
-        );
-      }
-      return itemCountByPlatform[activeFilter.platform] ?? null;
+      return libraryFacets.platformCounts.find(
+        (entry) => entry.platform === activeFilter.platform,
+      )?.totalCount ?? 0;
     }
-    return totalItemCount;
+    return libraryFacets.totalCount;
   }, [
     activeFilter.archivedOnly,
     activeFilter.authorId,
@@ -543,9 +542,9 @@ export function Header({
     activeFilter.signals,
     activeFilter.socialContentFilter,
     activeFilter.tags,
-    feedTotalCounts,
-    itemCountByPlatform,
-    totalItemCount,
+    filterScope.summary?.itemCount,
+    libraryFacets.platformCounts,
+    libraryFacets.totalCount,
   ]);
 
   const currentListSubtitle = useMemo(() => {

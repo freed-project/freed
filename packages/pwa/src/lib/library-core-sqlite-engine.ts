@@ -120,6 +120,8 @@ import {
   parseLibraryCoreStoryWallCandidatesResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
+  parseLibraryCoreFilterScopeSummaryRequestV1,
+  parseLibraryCoreFilterScopeSummaryResponseV1,
   parseLibraryCoreRssFeedDetailRequestV1,
   parseLibraryCoreRssFeedDetailResponseV1,
   decodeLibraryCoreAccountTimelineCursorV1,
@@ -208,6 +210,8 @@ import {
   type LibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
+  type LibraryCoreFilterScopeSummaryRequestV1,
+  type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreRssFeedDetailRequestV1,
   type LibraryCoreRssFeedDetailResponseV1,
   type LibraryCoreAccountTimelineRequestV1,
@@ -3919,6 +3923,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryFeedBrowsePage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "filter_scope_summary_v1":
+        return this.#queryFilterScopeSummary(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "item_detail_v1":
         return this.#queryItemDetail(
           input,
@@ -4628,7 +4636,9 @@ export class PwaLibraryCoreSqliteEngine {
         return parsed.value;
       }
       if (rows.length <= 1) {
-        throw new Error("PWA Library SQLite Account graph page contains an oversized row");
+        throw new Error(
+          "PWA Library SQLite Account graph page contains an oversized row",
+        );
       }
       rows.pop();
       hasMore = true;
@@ -4673,10 +4683,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
     let hasMore = rawRows.length > request.value.limit;
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
-      activityCount: safeInteger(
-        row.activityCount,
-        "RSS Feed activity count",
-      ),
+      activityCount: safeInteger(row.activityCount, "RSS Feed activity count"),
       enabled: requiredBoolean(row.enabled, "RSS Feed enabled"),
       folder: nullableText(row.folder, "RSS Feed folder"),
       imageUrl: nullableText(row.imageUrl, "RSS Feed image URL"),
@@ -4737,7 +4744,9 @@ export class PwaLibraryCoreSqliteEngine {
         return parsed.value;
       }
       if (rows.length <= 1) {
-        throw new Error("PWA Library SQLite RSS Feed page contains an oversized row");
+        throw new Error(
+          "PWA Library SQLite RSS Feed page contains an oversized row",
+        );
       }
       rows.pop();
       hasMore = true;
@@ -4917,6 +4926,48 @@ export class PwaLibraryCoreSqliteEngine {
     return parsed.value;
   }
 
+  #queryFilterScopeSummary(
+    input: LibraryCoreFilterScopeSummaryRequestV1,
+  ): LibraryCoreFilterScopeSummaryResponseV1 {
+    const request = parseLibraryCoreFilterScopeSummaryRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.filter_scope_summary_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        request.value.feedUrl,
+        request.value.platform,
+        request.value.authorId,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite filter scope summary returned an invalid row count",
+      );
+    }
+    const row = rows[0]!;
+    const response = {
+      itemCount: safeInteger(row.itemCount, "filter scope item count"),
+      label: nullableText(row.label, "filter scope label"),
+      queryId: "filter_scope_summary_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreFilterScopeSummaryResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
   #queryFacetSummary(
     input: LibraryCoreFacetSummaryRequestV1,
   ): LibraryCoreFacetSummaryResponseV1 {
@@ -4945,10 +4996,7 @@ export class PwaLibraryCoreSqliteEngine {
       },
       summary: {
         archivedCount: safeInteger(row.archivedCount, "archived count"),
-        archivableCount: safeInteger(
-          row.archivableCount,
-          "archivable count",
-        ),
+        archivableCount: safeInteger(row.archivableCount, "archivable count"),
         enabledRssFeedCount: safeInteger(
           row.enabledRssFeedCount,
           "enabled RSS Feed count",
@@ -4964,10 +5012,7 @@ export class PwaLibraryCoreSqliteEngine {
           row.sampleAccountCount,
           "sample account count",
         ),
-        sampleFeedCount: safeInteger(
-          row.sampleFeedCount,
-          "sample feed count",
-        ),
+        sampleFeedCount: safeInteger(row.sampleFeedCount, "sample feed count"),
         sampleItemCount: safeInteger(row.sampleItemCount, "sample item count"),
         samplePersonCount: safeInteger(
           row.samplePersonCount,

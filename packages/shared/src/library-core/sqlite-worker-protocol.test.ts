@@ -121,6 +121,15 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }).kind,
     ).toBe("query");
+    expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-filter-scope", {
+        authorId: "author-1",
+        feedUrl: null,
+        platform: "x",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
     const analyticsWindows = (count: number) =>
       Array.from({ length: count }, (_, index) => ({
         endMs: (index + 1) * 100,
@@ -371,6 +380,27 @@ describe("Library Core SQLite worker protocol", () => {
         request,
       ),
     ).toThrow(/facet summary response is invalid/);
+
+    const filterScopeRequest = {
+      authorId: null,
+      feedUrl: "https://example.com/feed",
+      platform: null,
+      queryId: "filter_scope_summary_v1" as const,
+      schemaVersion: 1 as const,
+    };
+    const filterScopeResponse = {
+      itemCount: 4,
+      label: "Example",
+      queryId: "filter_scope_summary_v1",
+      schemaVersion: 1,
+      source: response.source,
+    };
+    expect(
+      parseLibraryCoreSqliteQueryResponse(
+        filterScopeResponse,
+        filterScopeRequest,
+      ),
+    ).toEqual(filterScopeResponse);
   });
 
   it("carries only closed device-local graph mutations", () => {

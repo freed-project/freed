@@ -2594,7 +2594,8 @@ describe("PWA Library Core SQLite engine", () => {
     expect(maximumAccountFirstPage.nextCursor).not.toBeNull();
     expect(maximumAccountFirstPage.rows.length).toBeLessThan(128);
     expect(
-      new TextEncoder().encode(JSON.stringify(maximumAccountFirstPage)).byteLength,
+      new TextEncoder().encode(JSON.stringify(maximumAccountFirstPage))
+        .byteLength,
     ).toBeLessThanOrEqual(
       LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
     );
@@ -2834,6 +2835,52 @@ describe("PWA Library Core SQLite engine", () => {
         unreadCount: 3,
       },
     });
+    expect(
+      engine.query({
+        authorId: null,
+        feedUrl: "https://alpha.example/feed",
+        platform: null,
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      itemCount: 1,
+      label: "Alpha",
+      queryId: "filter_scope_summary_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        authorId: "ada-remote",
+        feedUrl: null,
+        platform: "x",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({
+      itemCount: 1,
+      label: "Ada",
+      queryId: "filter_scope_summary_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        authorId: null,
+        feedUrl: "https://missing.example/feed",
+        platform: null,
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toMatchObject({ itemCount: 0, label: null });
+    expect(() =>
+      engine.query({
+        authorId: "ada-remote",
+        feedUrl: "https://alpha.example/feed",
+        platform: "x",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+      }),
+    ).toThrow(/filter scope summary request is invalid/);
     const analyticsWindows = (count: number) =>
       Array.from({ length: count }, (_, index) => ({
         endMs: (index + 1) * 100,

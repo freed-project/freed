@@ -552,6 +552,7 @@ export async function captureDomFeed(
 | 5.91 | Replace Settings feed management and export previews with 50-row native SQLite windows, route complete unsubscribe through the atomically frozen SQLite scope, resolve OPML import duplicates through exact feed queries, and generate OPML through bounded background feed pages outside React | High | ✓ Complete |
 | 5.92 | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open native SQLite pages that retain at most 25 matching feeds and 25 matching social channels | High | ✓ Complete |
 | 5.93 | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained native SQLite facets | High | ✓ Complete |
+| 5.94 | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed native SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary | High | ✓ Complete |
 
 ---
 

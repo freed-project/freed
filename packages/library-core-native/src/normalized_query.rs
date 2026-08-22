@@ -308,6 +308,15 @@ pub struct NormalizedRssFeedDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFilterScopeSummaryRequestV1 {
+    pub author_id: Option<String>,
+    pub feed_url: Option<String>,
+    pub platform: Option<String>,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -355,6 +364,7 @@ pub enum NormalizedQueryRequestV1 {
     FacetSummary(NormalizedFacetSummaryRequestV1),
     FeedBrowsePage(NormalizedFeedBrowsePageRequestV3),
     FeedPage(NormalizedFeedPageRequestV1),
+    FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
@@ -1069,6 +1079,16 @@ pub struct NormalizedItemReaderBodyResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFilterScopeSummaryResponseV1 {
+    pub item_count: i64,
+    pub label: Option<String>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
@@ -1078,6 +1098,7 @@ pub enum NormalizedQueryResponseV1 {
     FacetSummary(NormalizedFacetSummaryResponseV1),
     FeedBrowsePage(Box<NormalizedFeedBrowsePageResponseV3>),
     FeedPage(NormalizedFeedPageResponseV1),
+    FilterScopeSummary(NormalizedFilterScopeSummaryResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
@@ -3436,6 +3457,81 @@ fn query_change_feed(
     Ok(response)
 }
 
+fn query_filter_scope_summary(
+    connection: &mut Connection,
+    request: NormalizedFilterScopeSummaryRequestV1,
+) -> Result<NormalizedFilterScopeSummaryResponseV1, NormalizedSqliteError> {
+    let feed_mode = request
+        .feed_url
+        .as_ref()
+        .is_some_and(|value| !value.is_empty() && value.len() <= 4_096)
+        && request.author_id.is_none()
+        && request.platform.is_none();
+    let author_mode = request.feed_url.is_none()
+        && request
+            .author_id
+            .as_ref()
+            .is_some_and(|value| !value.is_empty() && value.len() <= 2_048)
+        && request
+            .platform
+            .as_ref()
+            .is_some_and(|value| !value.is_empty() && value.len() <= 256);
+    if request.schema_version != 1 || (!feed_mode && !author_mode) {
+        return Err(invalid(
+            "normalized filter scope summary identity is invalid",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "filter_scope_summary_v1")
+        .ok_or(invalid(
+            "normalized filter scope summary program is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let (label, item_count) = transaction.query_row(
+        program.sql,
+        params![request.feed_url, request.platform, request.author_id],
+        |row| {
+            Ok((
+                row.get::<_, Option<String>>("label")?,
+                row.get::<_, i64>("itemCount")?,
+            ))
+        },
+    )?;
+    if !valid_safe_integer(item_count)
+        || label
+            .as_ref()
+            .is_some_and(|value| value.is_empty() || value.len() > 4_096)
+    {
+        return Err(invalid(
+            "normalized filter scope summary response is invalid",
+        ));
+    }
+    let response = NormalizedFilterScopeSummaryResponseV1 {
+        item_count,
+        label,
+        query_id: "filter_scope_summary_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized filter scope summary response is invalid"))?
+        .len()
+        > 16 * 1_024
+    {
+        return Err(invalid(
+            "normalized filter scope summary response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_facet_summary(
     connection: &mut Connection,
     request: NormalizedFacetSummaryRequestV1,
@@ -5097,6 +5193,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::FeedPage(request) => Ok(NormalizedQueryResponseV1::FeedPage(
             query_feed_page(connection, request)?,
         )),
+        NormalizedQueryRequestV1::FilterScopeSummary(request) => {
+            Ok(NormalizedQueryResponseV1::FilterScopeSummary(
+                query_filter_scope_summary(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
@@ -5211,6 +5312,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedFeedBrowsePageRequestV3, FeedBrowsePage)
         }
         "feed_page_v1" => decode_request!(NormalizedFeedPageRequestV1, FeedPage),
+        "filter_scope_summary_v1" => {
+            decode_request!(NormalizedFilterScopeSummaryRequestV1, FilterScopeSummary)
+        }
         "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
         "item_reader_body_v1" => {
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
@@ -5280,6 +5384,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedBrowsePage(response) => encode_response!(response),
         NormalizedQueryResponseV1::FeedPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::FilterScopeSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
@@ -6139,6 +6244,104 @@ mod tests {
         assert_eq!(updated.summary.friend_person_count, 0);
         assert_eq!(updated.summary.social_account_count, 0);
         assert_eq!(updated.summary.tags, ["\u{e000}"]);
+    }
+
+    #[test]
+    fn native_filter_scope_summary_resolves_one_indexed_identity() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 9, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 9 WHERE singleton_id = 1;
+                 INSERT INTO library_rss_feeds
+                   (url, title, enabled, track_unread, updated_at)
+                   VALUES ('https://alpha.example/feed', 'Alpha', 1, 0, 100);
+                 INSERT INTO library_accounts
+                   (id, kind, provider, external_id, handle, display_name,
+                    first_seen_at, last_seen_at, discovered_from, created_at, updated_at)
+                   VALUES ('account-1', 'social', 'x', 'ada-remote', 'ada',
+                           'Countess Ada', 100, 100, 'capture', 100, 100);
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, rss_feed_url,
+                    hidden, saved, archived, updated_at)
+                   VALUES
+                     ('rss-1', 'rss', 'article', 100, 100, 'alpha', 'alpha',
+                      'Alpha', 'https://alpha.example/feed', 0, 0, 0, 100),
+                     ('rss-hidden', 'rss', 'article', 101, 101, 'alpha', 'alpha',
+                      'Alpha', 'https://alpha.example/feed', 1, 0, 0, 101),
+                     ('x-1', 'x', 'post', 200, 200, 'ada-remote', 'ada',
+                      'Countess Ada', NULL, 0, 0, 0, 200);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+
+        let NormalizedQueryResponseV1::FilterScopeSummary(feed) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1 {
+                author_id: None,
+                feed_url: Some("https://alpha.example/feed".to_owned()),
+                platform: None,
+                schema_version: 1,
+            }),
+        )
+        .expect("feed scope") else {
+            panic!("filter scope response");
+        };
+        assert_eq!(feed.label.as_deref(), Some("Alpha"));
+        assert_eq!(feed.item_count, 1);
+        assert_eq!(feed.source.projection_revision, 9);
+
+        let NormalizedQueryResponseV1::FilterScopeSummary(author) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1 {
+                author_id: Some("ada-remote".to_owned()),
+                feed_url: None,
+                platform: Some("x".to_owned()),
+                schema_version: 1,
+            }),
+        )
+        .expect("author scope") else {
+            panic!("filter scope response");
+        };
+        assert_eq!(author.label.as_deref(), Some("Countess Ada"));
+        assert_eq!(author.item_count, 1);
+
+        let NormalizedQueryResponseV1::FilterScopeSummary(missing) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1 {
+                author_id: None,
+                feed_url: Some("https://missing.example/feed".to_owned()),
+                platform: None,
+                schema_version: 1,
+            }),
+        )
+        .expect("missing scope") else {
+            panic!("filter scope response");
+        };
+        assert_eq!(missing.label, None);
+        assert_eq!(missing.item_count, 0);
+
+        let invalid = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::FilterScopeSummary(NormalizedFilterScopeSummaryRequestV1 {
+                author_id: Some("ada-remote".to_owned()),
+                feed_url: Some("https://alpha.example/feed".to_owned()),
+                platform: Some("x".to_owned()),
+                schema_version: 1,
+            }),
+        )
+        .expect_err("mixed scope must fail");
+        assert_eq!(
+            invalid.to_string(),
+            "normalized filter scope summary identity is invalid"
+        );
     }
 
     #[test]
