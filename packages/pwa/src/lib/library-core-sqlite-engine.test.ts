@@ -2168,7 +2168,6 @@ describe("PWA Library Core SQLite engine", () => {
       availability: {
         completeDigestVerifiedAt: null,
         hydrationState: "partially_cached",
-        storageKey: null,
         storageKind: "opfs",
         verifiedBytes: 5,
       },

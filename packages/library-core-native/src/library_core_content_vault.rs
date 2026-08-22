@@ -11,10 +11,11 @@ use crate::sqlite_contract_generated::{
     SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
 };
 use crate::{
-    ContentRangeReadRequestV1, ContentRangeReadResponseV1, DurableContentRangeObjectV1,
-    LibraryCoreStoreError,
+    ContentCompletionReceiptV1, ContentCompletionRequestV1, ContentRangeReadRequestV1,
+    ContentRangeReadResponseV1, DurableContentRangeObjectV1, LibraryCoreStoreError,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
+use sha2::{Digest, Sha256};
 
 const RECONCILIATION_PAGE_ROWS: i64 = 128;
 
@@ -266,6 +267,73 @@ impl LibraryCoreContentVault {
             range_offset: request.range_offset,
             schema_version: 1,
         })
+    }
+
+    pub(crate) fn verify_complete_v1(
+        &self,
+        connection: &mut Connection,
+        request: &ContentCompletionRequestV1,
+    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStoreError> {
+        if request.schema_version != 1 || !valid_digest(&request.content_digest) {
+            return Err(LibraryCoreStoreError::from(
+                "content completion request is invalid".to_string(),
+            ));
+        }
+        let range_count = connection
+            .query_row(
+                "SELECT range_count FROM library_blobs
+                 WHERE content_digest = ?1 COLLATE BINARY
+                   AND storage_layout = 'authenticated_ranges';",
+                [&request.content_digest],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(store_error)?
+            .ok_or_else(|| {
+                LibraryCoreStoreError::from(
+                    "content completion descriptor is unavailable".to_string(),
+                )
+            })?;
+        let mut digest = Sha256::new();
+        digest.update(b"freed.library-core.v1/digest-bytes/blob-content\0");
+        for range_index in 0..range_count {
+            let mut range_offset = 0;
+            loop {
+                let response = self.read_range_v1(
+                    connection,
+                    &ContentRangeReadRequestV1 {
+                        content_digest: request.content_digest.clone(),
+                        maximum_bytes: i64::try_from(CONTENT_RANGE_MAXIMUM_APPEND_BYTES)
+                            .expect("append bound"),
+                        range_index,
+                        range_offset,
+                        schema_version: 1,
+                    },
+                )?;
+                digest.update(&response.bytes);
+                range_offset = response.next_range_offset;
+                if response.range_complete {
+                    break;
+                }
+            }
+        }
+        if crate::lower_hex(&digest.finalize()) != request.content_digest {
+            crate::selective_content::mark_content_corrupt_v1(
+                connection,
+                &request.content_digest,
+                request.verified_at,
+            )
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+            return Err(LibraryCoreStoreError::from(
+                "complete content digest is invalid".to_string(),
+            ));
+        }
+        crate::selective_content::register_verified_content_completion_v1(
+            connection,
+            request,
+            "content_vault",
+        )
+        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
     }
 
     fn reconcile_directory_entries(
@@ -613,8 +681,8 @@ mod tests {
             .execute(
                 "INSERT INTO library_device_content_availability
                    (content_digest, hydration_state, verified_bytes, storage_kind,
-                    storage_key, complete_digest_verified_at, updated_at)
-                 VALUES (?1, 'partially_cached', 5, 'content_vault', NULL, NULL, 10);",
+                    complete_digest_verified_at, updated_at)
+                 VALUES (?1, 'partially_cached', 5, 'content_vault', NULL, 10);",
                 [content_digest],
             )
             .expect("local availability");

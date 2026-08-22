@@ -145,6 +145,7 @@ import {
   parseLibraryCoreContentRangePublicationBeginV1,
   parseLibraryCoreContentRangePublicationFinalizeV1,
   parseLibraryCoreContentRangeReadRequestV1,
+  parseLibraryCoreContentCompletionRequestV1,
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
   type LibraryCoreContentRangePublicationAbortReceiptV1,
@@ -155,6 +156,8 @@ import {
   type LibraryCoreContentRangePublicationStatusV1,
   type LibraryCoreContentRangeReadRequestV1,
   type LibraryCoreContentRangeReadResponseV1,
+  type LibraryCoreContentCompletionReceiptV1,
+  type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
   type LibraryCoreContentStateRequestV1,
@@ -510,6 +513,12 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "verify_content_complete";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      request: LibraryCoreContentCompletionRequestV1;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "follower_mutation_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -660,6 +669,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreContentRangePublicationStatusV1
   | LibraryCoreContentRangePublicationAbortReceiptV1
   | LibraryCoreContentRangeReadResponseV1
+  | LibraryCoreContentCompletionReceiptV1
   | LibraryCoreVerifiedContentRangeReceiptV1
   | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
@@ -733,7 +743,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
           value.kind === "mutate_content_policy"
         ? ["kind", "mutation", "protocolVersion", "requestId"]
         : value.kind === "read_content_state" ||
-            value.kind === "read_content_range"
+            value.kind === "read_content_range" ||
+            value.kind === "verify_content_complete"
           ? ["kind", "protocolVersion", "request", "requestId"]
           : value.kind === "begin_content_range_publication" ||
               value.kind === "append_content_range_publication" ||
@@ -870,6 +881,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "read_follower_actor_enrollment_context",
       "store_follower_actor_request",
       "status",
+      "verify_content_complete",
     ].includes(String(value.kind)) ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
     typeof value.requestId !== "string" ||
@@ -990,6 +1002,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
     if (!request.ok) throw new TypeError(request.error);
   } else if (value.kind === "read_content_range") {
     const request = parseLibraryCoreContentRangeReadRequestV1(value.request);
+    if (!request.ok) throw new TypeError(request.error);
+  } else if (value.kind === "verify_content_complete") {
+    const request = parseLibraryCoreContentCompletionRequestV1(value.request);
     if (!request.ok) throw new TypeError(request.error);
   } else if (value.kind === "begin_content_range_publication") {
     const publication = parseLibraryCoreContentRangePublicationBeginV1(
@@ -1332,6 +1347,18 @@ export function createLibraryCoreSqliteContentRangeReadWorkerRequest(
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
     kind: "read_content_range",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    request,
+    requestId,
+  });
+}
+
+export function createLibraryCoreSqliteContentCompletionWorkerRequest(
+  requestId: string,
+  request: LibraryCoreContentCompletionRequestV1,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "verify_content_complete",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     request,
     requestId,

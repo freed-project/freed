@@ -279,6 +279,9 @@
         Every call rechecks canonical SQLite proof, file ownership, private
         mode, link count, and exact length, and returns at most 256 KiB without
         trusting a renderer path.
+  - [x] Close complete-cache and pinned-offline availability by streaming every
+        descriptor-bound range through the canonical content digest. Keep one
+        256 KiB window and no synthetic whole-file storage key.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.

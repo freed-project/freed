@@ -190,16 +190,62 @@ describe("PWA Library Core OPFS content vault", () => {
       availability: {
         completeDigestVerifiedAt: null,
         hydrationState: "partially_cached",
-        storageKey: null,
         storageKind: "opfs",
         verifiedBytes: bytes.byteLength,
       },
+    });
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt: 101,
+    });
+    const completion = await vault.verifyComplete({
+      contentDigest,
+      schemaVersion: 1,
+      verifiedAt: 102,
+    });
+    expect(completion).toMatchObject({
+      changed: true,
+      hydrationState: "pinned_offline",
+      verifiedBytes: bytes.byteLength,
+    });
+    await expect(
+      vault.verifyComplete({
+        contentDigest,
+        schemaVersion: 1,
+        verifiedAt: 102,
+      }),
+    ).resolves.toMatchObject({ changed: false, contentRevision: 3 });
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "complete_cache",
+      schemaVersion: 1,
+      updatedAt: 103,
+    });
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: { hydrationState: "fully_cached" },
+      contentRevision: 4,
+    });
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "pinned_offline",
+      schemaVersion: 1,
+      updatedAt: 104,
     });
     await vault.reconcile();
     expect(storage.objects.get(storageKey)).toEqual(bytes);
     expect(
       engine.readContentState({ contentDigest, schemaVersion: 1 }),
-    ).toMatchObject({ contentRevision: 1 });
+    ).toMatchObject({
+      availability: {
+        completeDigestVerifiedAt: 102,
+        hydrationState: "pinned_offline",
+      },
+      contentRevision: 5,
+    });
   });
 
   it("deletes changed bytes without publishing a SQLite range", async () => {
@@ -237,6 +283,49 @@ describe("PWA Library Core OPFS content vault", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([0]);
+  });
+
+  it("refuses complete availability when a cached range changes after publication", async () => {
+    const bytes = Uint8Array.from([7, 8, 9, 10]);
+    const contentDigest = installRange(bytes);
+    const storage = new MemoryRangeStorage();
+    const vault = new PwaLibraryCoreOpfsContentVault(engine, storage);
+    const publicationId = "6".repeat(64);
+    await vault.begin({
+      contentDigest,
+      publicationId,
+      rangeIndex: 0,
+      schemaVersion: 1,
+    });
+    await vault.append({
+      bytes,
+      expectedOffset: 0,
+      publicationId,
+      schemaVersion: 1,
+    });
+    await vault.finalize({ publicationId, schemaVersion: 1, verifiedAt: 20 });
+    const storageKey = createLibraryCoreContentRangeStorageKeyV1(
+      contentDigest,
+      0,
+      contentDigest,
+    );
+    storage.objects.set(storageKey, Uint8Array.from([7, 8, 9, 11]));
+    await expect(
+      vault.verifyComplete({
+        contentDigest,
+        schemaVersion: 1,
+        verifiedAt: 21,
+      }),
+    ).rejects.toThrow(/complete content digest is invalid/);
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: {
+        completeDigestVerifiedAt: null,
+        hydrationState: "corrupt",
+      },
+      contentRevision: 2,
+    });
   });
 
   it("prunes missing proofs and orphan objects during bounded startup reconciliation", async () => {

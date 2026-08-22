@@ -937,6 +937,12 @@ No range size becomes protocol law before that measurement.
 Streaming verifies each fetched range against the authenticated range map.
 Complete-file digest verification closes full offline hydration.
 
+Completion never invents a monolithic local object. It streams the ordered
+verified range set into the canonical content digest with a 262,144-byte
+working window. SQLite records the complete or pinned state only after exact
+range count, byte length, and digest close. Range rows remain the only physical
+locators.
+
 Playback reads one verified local range window at a time. Each read is capped
 at 262,144 bytes and resolves the physical object only after SQLite proves the
 canonical range identity. Views never receive a reconstructed media shell or

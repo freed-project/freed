@@ -58,7 +58,6 @@ export interface LibraryCoreContentStateRequestV1 {
 export interface LibraryCoreContentAvailabilityV1 {
   readonly completeDigestVerifiedAt: number | null;
   readonly hydrationState: LibraryCoreContentHydrationStateV1;
-  readonly storageKey: string | null;
   readonly storageKind: "content_vault" | "none" | "opfs";
   readonly updatedAt: number;
   readonly verifiedBytes: number;
@@ -155,6 +154,21 @@ export interface LibraryCoreContentRangeReadResponseV1 {
   readonly rangeIndex: number;
   readonly rangeOffset: number;
   readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentCompletionRequestV1 {
+  readonly contentDigest: string;
+  readonly schemaVersion: 1;
+  readonly verifiedAt: number;
+}
+
+export interface LibraryCoreContentCompletionReceiptV1 {
+  readonly changed: boolean;
+  readonly contentDigest: string;
+  readonly contentRevision: number;
+  readonly hydrationState: "fully_cached" | "pinned_offline";
+  readonly schemaVersion: 1;
+  readonly verifiedBytes: number;
 }
 
 type ParseResult<T> =
@@ -335,7 +349,6 @@ export function parseLibraryCoreContentStateV1(
       exactKeys(availability, [
         "completeDigestVerifiedAt",
         "hydrationState",
-        "storageKey",
         "storageKind",
         "updatedAt",
         "verifiedBytes",
@@ -345,9 +358,6 @@ export function parseLibraryCoreContentStateV1(
           availability.completeDigestVerifiedAt,
         )) &&
       validState(availability.hydrationState) &&
-      (availability.storageKey === null ||
-        (typeof availability.storageKey === "string" &&
-          new TextEncoder().encode(availability.storageKey).length <= 1_024)) &&
       ["content_vault", "none", "opfs"].includes(
         String(availability.storageKind),
       ) &&
@@ -571,6 +581,66 @@ export function parseLibraryCoreContentRangeReadResponseV1(
       ...candidate,
       bytes: candidate.bytes.slice(),
     }) as unknown as LibraryCoreContentRangeReadResponseV1,
+  });
+}
+
+export function parseLibraryCoreContentCompletionRequestV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentCompletionRequestV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["contentDigest", "schemaVersion", "verifiedAt"]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    candidate.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedAt)
+  ) {
+    return Object.freeze({
+      error: "content completion request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentCompletionRequestV1,
+  });
+}
+
+export function parseLibraryCoreContentCompletionReceiptV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentCompletionReceiptV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "changed",
+      "contentDigest",
+      "contentRevision",
+      "hydrationState",
+      "schemaVersion",
+      "verifiedBytes",
+    ]) ||
+    typeof candidate.changed !== "boolean" ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.contentRevision) ||
+    !["fully_cached", "pinned_offline"].includes(
+      String(candidate.hydrationState),
+    ) ||
+    candidate.schemaVersion !== 1 ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.verifiedBytes)
+  ) {
+    return Object.freeze({
+      error: "content completion receipt is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentCompletionReceiptV1,
   });
 }
 

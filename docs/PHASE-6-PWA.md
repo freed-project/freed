@@ -35,6 +35,10 @@
 - [x] Read verified OPFS media through the SQLite worker in windows capped at
       256 KiB. SQLite resolves the canonical range proof and storage key;
       callers supply no OPFS path and receive no unbounded rendition.
+- [x] Promote OPFS content to fully cached or pinned offline only after the
+      worker streams every canonical range through the full-content digest.
+      Exact replay is revision-stable and aggregate availability carries no
+      fake monolithic storage key.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,

@@ -16,9 +16,9 @@ use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
 use crate::{
-    publish_content_range_from_reader_v1, ContentRangePublicationRequestV1,
-    ContentRangeReadRequestV1, ContentRangeReadResponseV1, LibraryCoreJournal,
-    LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
+    publish_content_range_from_reader_v1, ContentCompletionReceiptV1, ContentCompletionRequestV1,
+    ContentRangePublicationRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
+    LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
     NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
 
@@ -200,6 +200,15 @@ impl LibraryCoreDesktopBinding {
     ) -> Result<ContentRangeReadResponseV1, LibraryCoreStoreError> {
         let connection = self.connect_selected_normalized()?;
         self.content_vault.read_range_v1(&connection, request)
+    }
+
+    pub fn verify_complete_content_v1(
+        &self,
+        request: &ContentCompletionRequestV1,
+    ) -> Result<ContentCompletionReceiptV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        self.content_vault
+            .verify_complete_v1(&mut connection, request)
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
@@ -583,9 +592,51 @@ mod tests {
         assert_eq!(range_read.bytes, bytes[1..4]);
         assert_eq!(range_read.next_range_offset, 4);
         assert!(!range_read.range_complete);
+        let completion = binding
+            .verify_complete_content_v1(&ContentCompletionRequestV1 {
+                content_digest: content_digest.clone(),
+                schema_version: 1,
+                verified_at: 601,
+            })
+            .expect("verify complete descriptor-bound content");
+        assert_eq!(
+            completion.hydration_state,
+            crate::ContentHydrationStateV1::FullyCached
+        );
+        assert_eq!(
+            completion.verified_bytes,
+            i64::try_from(bytes.len()).expect("content bytes")
+        );
         assert_eq!(
             fs::read(moved_vault.join(&storage_key)).expect("bound range bytes"),
             bytes
+        );
+        let mut changed_bytes = bytes.clone();
+        changed_bytes[0] ^= 1;
+        fs::write(moved_vault.join(&storage_key), changed_bytes)
+            .expect("change cached range after completion");
+        let error = binding
+            .verify_complete_content_v1(&ContentCompletionRequestV1 {
+                content_digest: content_digest.clone(),
+                schema_version: 1,
+                verified_at: 602,
+            })
+            .expect_err("changed complete content must fail");
+        assert!(error
+            .to_string()
+            .contains("complete content digest is invalid"));
+        assert_eq!(
+            binding
+                .connect_selected_normalized()
+                .expect("open corrupt content state")
+                .query_row(
+                    "SELECT hydration_state FROM library_device_content_availability
+                     WHERE content_digest = ?1;",
+                    [&content_digest],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("corrupt content state"),
+            "corrupt"
         );
         assert!(!visible_vault.join(&storage_key).exists());
         assert_eq!(

@@ -13,6 +13,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
+  createLibraryCoreSqliteContentCompletionWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -35,6 +36,7 @@ import {
   parseLibraryCoreSqliteCheckpointSelectionResponse,
   parseLibraryCoreSqliteFollowerMutationContextResponse,
   parseLibraryCoreContentRangeReadResponseV1,
+  parseLibraryCoreContentCompletionReceiptV1,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -55,6 +57,8 @@ import {
   type LibraryCoreContentRangePublicationStatusV1,
   type LibraryCoreContentRangeReadRequestV1,
   type LibraryCoreContentRangeReadResponseV1,
+  type LibraryCoreContentCompletionReceiptV1,
+  type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
@@ -171,6 +175,18 @@ export class PwaLibraryCoreSqliteClient {
       createLibraryCoreSqliteContentRangeReadWorkerRequest(requestId, request),
     ).then((value) => {
       const parsed = parseLibraryCoreContentRangeReadResponseV1(value);
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
+  }
+
+  verifyContentComplete(
+    request: LibraryCoreContentCompletionRequestV1,
+  ): Promise<LibraryCoreContentCompletionReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentCompletionWorkerRequest(requestId, request),
+    ).then((value) => {
+      const parsed = parseLibraryCoreContentCompletionReceiptV1(value);
       if (!parsed.ok) throw new TypeError(parsed.error);
       return parsed.value;
     });

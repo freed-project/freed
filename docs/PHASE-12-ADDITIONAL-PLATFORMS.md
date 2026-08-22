@@ -18,8 +18,9 @@
 > through bounded frames. Freed Desktop streams the same verified ranges into
 > its private descriptor-bound content vault. Both runtimes reconcile physical
 > objects against local SQLite proofs at startup and serve bounded verified
-> range windows without exposing physical paths. Complete cache closure,
-> pinning, transport scheduling, and eviction remain in progress.
+> range windows without exposing physical paths. Both close complete and pinned
+> availability through the full-content digest without a monolithic cache
+> object. Transport scheduling, exclusion, and eviction remain in progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
@@ -33,6 +34,8 @@
       range map so multi-gigabyte media never becomes one logical wire record.
 - [x] Read locally cached playback bytes through bounded, proof-checked range
       windows on Freed Desktop and the PWA without allocating a full rendition.
+- [x] Prove complete local hydration by hashing every authenticated range in
+      order, then record fully cached or pinned-offline state in local SQLite.
 - [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
       follower hydration.
 - [ ] Let a client stream selected ranges through the approved user-owned

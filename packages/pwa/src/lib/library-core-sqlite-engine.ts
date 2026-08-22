@@ -160,6 +160,8 @@ import {
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
   parseLibraryCoreContentPolicyMutationReceiptV1,
   parseLibraryCoreContentPolicyMutationV1,
+  parseLibraryCoreContentCompletionReceiptV1,
+  parseLibraryCoreContentCompletionRequestV1,
   parseLibraryCoreContentStateRequestV1,
   parseLibraryCoreContentStateV1,
   createLibraryCoreContentRangeStorageKeyV1,
@@ -216,6 +218,8 @@ import {
   type LibraryCoreProviderMediaRowV1,
   type LibraryCoreContentPolicyMutationReceiptV1,
   type LibraryCoreContentPolicyMutationV1,
+  type LibraryCoreContentCompletionReceiptV1,
+  type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentStateRequestV1,
   type LibraryCoreContentStateV1,
   type LibraryCoreVerifiedContentRangePublicationV1,
@@ -1421,6 +1425,17 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error("selective content policy exceeded its row bound");
       }
       if (changed === 1) {
+        this.#database.exec({
+          sql: `UPDATE library_device_content_availability
+                SET hydration_state = CASE ?2
+                      WHEN 'pinned_offline' THEN 'pinned_offline'
+                      ELSE 'fully_cached'
+                    END,
+                    updated_at = ?3
+                WHERE content_digest = ?1 COLLATE BINARY
+                  AND complete_digest_verified_at IS NOT NULL;`,
+          bind: [mutation.contentDigest, mutation.policy, mutation.updatedAt],
+        });
         this.#database.exec(`UPDATE library_device_content_state
           SET revision = revision + 1
           WHERE singleton_id = 1 AND revision < 9007199254740991;`);
@@ -1471,8 +1486,8 @@ export class PwaLibraryCoreSqliteEngine {
       sql: `SELECT blob.byte_length, blob.media_type,
                    COALESCE(policy.policy, 'metadata_only'), policy.updated_at,
                    availability.hydration_state, availability.verified_bytes,
-                   availability.storage_kind, availability.storage_key,
-                   availability.complete_digest_verified_at, availability.updated_at,
+                   availability.storage_kind, availability.complete_digest_verified_at,
+                   availability.updated_at,
                    state.revision
             FROM library_blobs AS blob
             CROSS JOIN library_device_content_state AS state
@@ -1496,25 +1511,23 @@ export class PwaLibraryCoreSqliteEngine {
           ? null
           : {
               completeDigestVerifiedAt:
-                row[8] === null
+                row[7] === null
                   ? null
                   : safeInteger(
-                      row[8],
+                      row[7],
                       "complete content digest verification time",
                     ),
               hydrationState: text(row[4], "content hydration state"),
-              storageKey:
-                row[7] === null ? null : text(row[7], "content storage key"),
               storageKind: text(row[6], "content storage kind"),
               updatedAt: safeInteger(
-                row[9],
+                row[8],
                 "content availability update time",
               ),
               verifiedBytes: safeInteger(row[5], "verified content bytes"),
             },
       byteLength: safeInteger(row[0], "content byte length"),
       contentDigest: request.contentDigest,
-      contentRevision: safeInteger(row[10], "selective content revision"),
+      contentRevision: safeInteger(row[9], "selective content revision"),
       mediaType: text(row[1], "content media type"),
       policy: text(row[2], "selective content policy"),
       policyUpdatedAt:
@@ -1596,6 +1609,260 @@ export class PwaLibraryCoreSqliteEngine {
       byteLength: safeInteger(rows[0]![0], "verified content range length"),
       storageKey: text(rows[0]![1], "verified content range storage key"),
     });
+  }
+
+  readContentCompletionPlan(contentDigest: string): Readonly<{
+    byteLength: number;
+    rangeCount: number;
+  }> {
+    if (!isLibraryCoreLowercaseHex64(contentDigest)) {
+      throw new TypeError("content completion identity is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT byte_length, range_count FROM library_blobs
+            WHERE content_digest = ?1 COLLATE BINARY
+              AND storage_layout = 'authenticated_ranges';`,
+      bind: [contentDigest],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("content completion descriptor is unavailable");
+    }
+    return Object.freeze({
+      byteLength: safeInteger(rows[0]![0], "content completion byte length"),
+      rangeCount: safeInteger(rows[0]![1], "content completion range count"),
+    });
+  }
+
+  pageVerifiedContentRangesForCompletion(
+    contentDigest: string,
+    afterRangeIndex: number | null,
+  ): readonly Readonly<{
+    byteLength: number;
+    rangeIndex: number;
+    storageKey: string;
+  }>[] {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      (afterRangeIndex !== null &&
+        (!Number.isSafeInteger(afterRangeIndex) || afterRangeIndex < 0))
+    ) {
+      throw new TypeError("content completion page request is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT local.range_index, local.verified_byte_length, local.storage_key
+            FROM library_device_content_ranges AS local
+            JOIN library_content_ranges AS canonical
+              ON canonical.content_digest = local.content_digest
+             AND canonical.range_index = local.range_index
+             AND canonical.byte_length = local.verified_byte_length
+             AND canonical.range_digest = local.verified_range_digest
+            WHERE local.content_digest = ?1 COLLATE BINARY
+              AND local.storage_kind = 'opfs'
+              AND (?2 IS NULL OR local.range_index > ?2)
+            ORDER BY local.range_index ASC LIMIT 128;`,
+      bind: [contentDigest, afterRangeIndex],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          byteLength: safeInteger(row[1], "content completion range length"),
+          rangeIndex: safeInteger(row[0], "content completion range index"),
+          storageKey: text(row[2], "content completion storage key"),
+        }),
+      ),
+    );
+  }
+
+  registerVerifiedContentCompletion(
+    input: LibraryCoreContentCompletionRequestV1,
+  ): LibraryCoreContentCompletionReceiptV1 {
+    const parsed = parseLibraryCoreContentCompletionRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const rows = this.#database.exec({
+        sql: `SELECT blob.byte_length, blob.range_count,
+                     count(local.range_index),
+                     (SELECT count(*) FROM library_device_content_ranges AS all_local
+                      WHERE all_local.content_digest = blob.content_digest
+                        AND all_local.storage_kind = 'opfs'),
+                     (SELECT COALESCE(sum(all_local.verified_byte_length), 0)
+                      FROM library_device_content_ranges AS all_local
+                      WHERE all_local.content_digest = blob.content_digest
+                        AND all_local.storage_kind = 'opfs'),
+                     COALESCE(policy.policy, 'metadata_only')
+              FROM library_blobs AS blob
+              LEFT JOIN library_content_ranges AS canonical
+                ON canonical.content_digest = blob.content_digest
+              LEFT JOIN library_device_content_ranges AS local
+                ON local.content_digest = canonical.content_digest
+               AND local.range_index = canonical.range_index
+               AND local.verified_byte_length = canonical.byte_length
+               AND local.verified_range_digest = canonical.range_digest
+               AND local.storage_kind = 'opfs'
+              LEFT JOIN library_device_content_policies AS policy
+                ON policy.content_digest = blob.content_digest
+              WHERE blob.content_digest = ?1 COLLATE BINARY
+                AND blob.storage_layout = 'authenticated_ranges'
+              GROUP BY blob.content_digest;`,
+        bind: [request.contentDigest],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (rows.length !== 1) {
+        throw new Error("content completion descriptor is unavailable");
+      }
+      const byteLength = safeInteger(rows[0]![0], "content completion length");
+      const rangeCount = safeInteger(
+        rows[0]![1],
+        "content completion range count",
+      );
+      const verifiedRangeCount = safeInteger(
+        rows[0]![2],
+        "verified range count",
+      );
+      const localRangeCount = safeInteger(rows[0]![3], "local range count");
+      const verifiedBytes = safeInteger(rows[0]![4], "verified content bytes");
+      if (
+        verifiedRangeCount !== rangeCount ||
+        localRangeCount !== rangeCount ||
+        verifiedBytes !== byteLength
+      ) {
+        throw new Error("content completion requires every canonical range");
+      }
+      const hydrationState =
+        rows[0]![5] === "pinned_offline" ? "pinned_offline" : "fully_cached";
+      const current = this.#database.exec({
+        sql: `SELECT hydration_state, verified_bytes, storage_kind,
+                     complete_digest_verified_at
+              FROM library_device_content_availability
+              WHERE content_digest = ?1 COLLATE BINARY;`,
+        bind: [request.contentDigest],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      const changed =
+        current.length !== 1 ||
+        current[0]![0] !== hydrationState ||
+        current[0]![1] !== verifiedBytes ||
+        current[0]![2] !== "opfs" ||
+        current[0]![3] !== request.verifiedAt;
+      if (changed) {
+        this.#database.exec({
+          sql: `INSERT INTO library_device_content_availability
+                  (content_digest, hydration_state, verified_bytes, storage_kind,
+                   complete_digest_verified_at, updated_at)
+                VALUES (?1, ?2, ?3, 'opfs', ?4, ?4)
+                ON CONFLICT(content_digest) DO UPDATE SET
+                  hydration_state = excluded.hydration_state,
+                  verified_bytes = excluded.verified_bytes,
+                  storage_kind = excluded.storage_kind,
+                  complete_digest_verified_at = excluded.complete_digest_verified_at,
+                  updated_at = excluded.updated_at;`,
+          bind: [
+            request.contentDigest,
+            hydrationState,
+            verifiedBytes,
+            request.verifiedAt,
+          ],
+        });
+        this.#database.exec(`UPDATE library_device_content_state
+          SET revision = revision + 1
+          WHERE singleton_id = 1 AND revision < 9007199254740991;`);
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "content completion revision row count",
+          ) !== 1
+        ) {
+          throw new Error("selective content revision cannot advance");
+        }
+      }
+      const contentRevision = safeInteger(
+        this.#database.exec({
+          sql: "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "selective content revision",
+      );
+      const receipt = parseLibraryCoreContentCompletionReceiptV1({
+        changed,
+        contentDigest: request.contentDigest,
+        contentRevision,
+        hydrationState,
+        schemaVersion: 1,
+        verifiedBytes,
+      });
+      if (!receipt.ok) throw new TypeError(receipt.error);
+      this.#database.exec("COMMIT;");
+      return receipt.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  markContentCorrupt(contentDigest: string, detectedAt: number): void {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      !Number.isSafeInteger(detectedAt) ||
+      detectedAt < 0
+    ) {
+      throw new TypeError("content corruption report is invalid");
+    }
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec({
+        sql: `UPDATE library_device_content_availability
+              SET hydration_state = 'corrupt',
+                  complete_digest_verified_at = NULL,
+                  updated_at = ?2
+              WHERE content_digest = ?1 COLLATE BINARY
+                AND (hydration_state IS NOT 'corrupt'
+                     OR complete_digest_verified_at IS NOT NULL
+                     OR updated_at IS NOT ?2);`,
+        bind: [contentDigest, detectedAt],
+      });
+      const changed = safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "content corruption row count",
+      );
+      if (changed === 1) {
+        this.#database.exec(`UPDATE library_device_content_state
+          SET revision = revision + 1
+          WHERE singleton_id = 1 AND revision < 9007199254740991;`);
+        if (
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "content corruption revision row count",
+          ) !== 1
+        ) {
+          throw new Error("selective content revision cannot advance");
+        }
+      }
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   registerVerifiedContentRange(
@@ -1695,13 +1962,12 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database.exec({
           sql: `INSERT INTO library_device_content_availability
                   (content_digest, hydration_state, verified_bytes, storage_kind,
-                   storage_key, complete_digest_verified_at, updated_at)
-                VALUES (?1, 'partially_cached', ?2, ?3, NULL, NULL, ?4)
+                   complete_digest_verified_at, updated_at)
+                VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4)
                 ON CONFLICT(content_digest) DO UPDATE SET
                   hydration_state = 'partially_cached',
                   verified_bytes = excluded.verified_bytes,
                   storage_kind = excluded.storage_kind,
-                  storage_key = NULL,
                   complete_digest_verified_at = NULL,
                   updated_at = excluded.updated_at;`,
           bind: [

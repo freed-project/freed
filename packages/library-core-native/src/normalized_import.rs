@@ -977,8 +977,8 @@ mod tests {
             .execute(
                 "INSERT INTO library_device_content_availability
                    (content_digest, hydration_state, verified_bytes, storage_kind,
-                    storage_key, complete_digest_verified_at, updated_at)
-                 VALUES (?1, 'partially_cached', 5, 'content_vault', NULL, NULL, 10);",
+                    complete_digest_verified_at, updated_at)
+                 VALUES (?1, 'partially_cached', 5, 'content_vault', NULL, 10);",
                 params![content_digest],
             )
             .expect("local availability");

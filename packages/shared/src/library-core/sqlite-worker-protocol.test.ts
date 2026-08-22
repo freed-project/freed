@@ -26,6 +26,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationBeginWorkerRequest,
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
+  createLibraryCoreSqliteContentCompletionWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -519,6 +520,13 @@ describe("Library Core SQLite worker protocol", () => {
         schemaVersion: 1,
       }),
     ).toThrow(/read request is invalid/);
+    expect(
+      createLibraryCoreSqliteContentCompletionWorkerRequest("complete", {
+        contentDigest,
+        schemaVersion: 1,
+        verifiedAt: 51,
+      }).kind,
+    ).toBe("verify_content_complete");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({
         ...append,

@@ -994,6 +994,20 @@ and exact length on the opened descriptor. The PWA worker reads the equivalent
 bounded OPFS slice. Neither runtime returns an unbounded rendition or trusts a
 renderer-supplied storage key.
 
+Full-cache promotion streams every verified range in canonical index order
+through the blob-content digest domain. The verifier retains one 262,144-byte
+window, one page of at most 128 range proofs, and incremental hash state. It
+requires exact range count, exact total byte length, and the canonical content
+digest before one SQLite transaction records `fully_cached` or
+`pinned_offline`. Exact replay does not advance the device content revision.
+Changing policy after completion switches only between those two local states.
+Aggregate availability stores no synthetic whole-object key. Physical
+locations exist only on the verified range rows.
+
+If full verification later observes changed bytes, the same operation revokes
+any complete claim, records local `corrupt` availability, and advances the
+device content revision. It never changes canonical Library authority.
+
 Every runtime reconciles physical objects before declaring the vault ready.
 The scan keeps at most 128 SQLite proofs in memory. It deletes unfinished and
 unreferenced objects, prunes proofs for missing or length-mismatched files,

@@ -10,6 +10,7 @@ import {
   parseLibraryCoreContentRangePublicationStatusV1,
   parseLibraryCoreContentRangeReadRequestV1,
   parseLibraryCoreContentRangeReadResponseV1,
+  parseLibraryCoreContentCompletionRequestV1,
   type LibraryCoreContentRangePublicationAbortV1,
   type LibraryCoreContentRangePublicationAppendV1,
   type LibraryCoreContentRangePublicationBeginV1,
@@ -17,6 +18,8 @@ import {
   type LibraryCoreContentRangePublicationStatusV1,
   type LibraryCoreContentRangeReadRequestV1,
   type LibraryCoreContentRangeReadResponseV1,
+  type LibraryCoreContentCompletionReceiptV1,
+  type LibraryCoreContentCompletionRequestV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
 } from "@freed/shared/library-core";
 
@@ -251,6 +254,64 @@ export class PwaLibraryCoreOpfsContentVault {
     });
     if (!response.ok) throw new TypeError(response.error);
     return response.value;
+  }
+
+  async verifyComplete(
+    input: LibraryCoreContentCompletionRequestV1,
+  ): Promise<LibraryCoreContentCompletionReceiptV1> {
+    const parsed = parseLibraryCoreContentCompletionRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const plan = this.#engine.readContentCompletionPlan(request.contentDigest);
+    const hash = createLibraryCoreMediaBlobDigestStateV1();
+    let afterRangeIndex: number | null = null;
+    let expectedRangeIndex = 0;
+    let verifiedBytes = 0;
+    while (true) {
+      const page = this.#engine.pageVerifiedContentRangesForCompletion(
+        request.contentDigest,
+        afterRangeIndex,
+      );
+      if (page.length === 0) break;
+      for (const proof of page) {
+        if (proof.rangeIndex !== expectedRangeIndex) {
+          throw new Error("content completion requires every canonical range");
+        }
+        for (let offset = 0; offset < proof.byteLength;) {
+          const expectedBytes = Math.min(
+            LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
+            proof.byteLength - offset,
+          );
+          const bytes = await this.#storage.read(
+            proof.storageKey,
+            offset,
+            expectedBytes,
+          );
+          if (bytes.byteLength !== expectedBytes) {
+            throw new Error("verified content range object is truncated");
+          }
+          hash.update(bytes);
+          offset += bytes.byteLength;
+          verifiedBytes += bytes.byteLength;
+        }
+        expectedRangeIndex += 1;
+      }
+      afterRangeIndex = page.at(-1)!.rangeIndex;
+    }
+    if (
+      expectedRangeIndex !== plan.rangeCount ||
+      verifiedBytes !== plan.byteLength
+    ) {
+      throw new Error("content completion requires every canonical range");
+    }
+    if (hash.digestLowerHex() !== request.contentDigest) {
+      this.#engine.markContentCorrupt(
+        request.contentDigest,
+        request.verifiedAt,
+      );
+      throw new Error("complete content digest is invalid");
+    }
+    return this.#engine.registerVerifiedContentCompletion(request);
   }
 
   async close(): Promise<void> {

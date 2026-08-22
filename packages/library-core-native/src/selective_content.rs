@@ -109,7 +109,6 @@ impl FromSql for ContentHydrationStateV1 {
 pub struct ContentAvailabilityV1 {
     pub complete_digest_verified_at: Option<i64>,
     pub hydration_state: ContentHydrationStateV1,
-    pub storage_key: Option<String>,
     pub storage_kind: String,
     pub updated_at: i64,
     pub verified_bytes: i64,
@@ -182,6 +181,25 @@ pub struct ContentRangeReadResponseV1 {
     pub range_index: i64,
     pub range_offset: i64,
     pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentCompletionRequestV1 {
+    pub content_digest: String,
+    pub schema_version: u32,
+    pub verified_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentCompletionReceiptV1 {
+    pub changed: bool,
+    pub content_digest: String,
+    pub content_revision: i64,
+    pub hydration_state: ContentHydrationStateV1,
+    pub schema_version: u32,
+    pub verified_bytes: i64,
 }
 
 pub trait DurableContentRangeObjectV1: Write {
@@ -290,6 +308,21 @@ pub fn set_content_policy_v1(
         ));
     }
     if changed == 1 {
+        transaction.execute(
+            "UPDATE library_device_content_availability
+             SET hydration_state = CASE ?2
+                   WHEN 'pinned_offline' THEN 'pinned_offline'
+                   ELSE 'fully_cached'
+                 END,
+                 updated_at = ?3
+             WHERE content_digest = ?1 COLLATE BINARY
+               AND complete_digest_verified_at IS NOT NULL;",
+            params![
+                mutation.content_digest,
+                mutation.policy.as_str(),
+                mutation.updated_at
+            ],
+        )?;
         let advanced = transaction.execute(
             "UPDATE library_device_content_state
              SET revision = revision + 1
@@ -332,8 +365,8 @@ pub fn get_content_state_v1(
             "SELECT blob.byte_length, blob.media_type,
                     COALESCE(policy.policy, 'metadata_only'), policy.updated_at,
                     availability.hydration_state, availability.verified_bytes,
-                    availability.storage_kind, availability.storage_key,
-                    availability.complete_digest_verified_at, availability.updated_at,
+                    availability.storage_kind, availability.complete_digest_verified_at,
+                    availability.updated_at,
                     state.revision
              FROM library_blobs AS blob
              CROSS JOIN library_device_content_state AS state
@@ -349,11 +382,10 @@ pub fn get_content_state_v1(
                 let availability = hydration_state
                     .map(|hydration_state| {
                         Ok::<ContentAvailabilityV1, rusqlite::Error>(ContentAvailabilityV1 {
-                            complete_digest_verified_at: row.get(8)?,
+                            complete_digest_verified_at: row.get(7)?,
                             hydration_state,
-                            storage_key: row.get(7)?,
                             storage_kind: row.get(6)?,
-                            updated_at: row.get(9)?,
+                            updated_at: row.get(8)?,
                             verified_bytes: row.get(5)?,
                         })
                     })
@@ -362,7 +394,7 @@ pub fn get_content_state_v1(
                     availability,
                     byte_length: row.get(0)?,
                     content_digest: request.content_digest.clone(),
-                    content_revision: row.get(10)?,
+                    content_revision: row.get(9)?,
                     media_type: row.get(1)?,
                     policy: row.get(2)?,
                     policy_updated_at: row.get(3)?,
@@ -484,13 +516,12 @@ pub fn register_verified_content_range_v1(
         transaction.execute(
             "INSERT INTO library_device_content_availability
                (content_digest, hydration_state, verified_bytes, storage_kind,
-                storage_key, complete_digest_verified_at, updated_at)
-             VALUES (?1, 'partially_cached', ?2, ?3, NULL, NULL, ?4)
+                complete_digest_verified_at, updated_at)
+             VALUES (?1, 'partially_cached', ?2, ?3, NULL, ?4)
              ON CONFLICT(content_digest) DO UPDATE SET
                hydration_state = 'partially_cached',
                verified_bytes = excluded.verified_bytes,
                storage_kind = excluded.storage_kind,
-               storage_key = NULL,
                complete_digest_verified_at = NULL,
                updated_at = excluded.updated_at;",
             params![
@@ -527,6 +558,185 @@ pub fn register_verified_content_range_v1(
         schema_version: 1,
         verified_bytes,
     })
+}
+
+pub(crate) fn register_verified_content_completion_v1(
+    connection: &mut Connection,
+    request: &ContentCompletionRequestV1,
+    storage_kind: &str,
+) -> Result<ContentCompletionReceiptV1, SelectiveContentError> {
+    if request.schema_version != 1
+        || !valid_digest(&request.content_digest)
+        || !(0..=MAXIMUM_SAFE_INTEGER).contains(&request.verified_at)
+        || !matches!(storage_kind, "content_vault" | "opfs")
+    {
+        return Err(SelectiveContentError::Invalid(
+            "content completion request is invalid",
+        ));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let (byte_length, range_count, verified_range_count, verified_bytes) = transaction
+        .query_row(
+            "SELECT blob.byte_length, blob.range_count,
+                    (SELECT count(*) FROM library_content_ranges AS canonical
+                     JOIN library_device_content_ranges AS local
+                       ON local.content_digest = canonical.content_digest
+                      AND local.range_index = canonical.range_index
+                      AND local.verified_byte_length = canonical.byte_length
+                      AND local.verified_range_digest = canonical.range_digest
+                      AND local.storage_kind = ?2
+                     WHERE canonical.content_digest = blob.content_digest),
+                    (SELECT COALESCE(sum(local.verified_byte_length), 0)
+                     FROM library_device_content_ranges AS local
+                     WHERE local.content_digest = blob.content_digest
+                       AND local.storage_kind = ?2)
+             FROM library_blobs AS blob
+             WHERE blob.content_digest = ?1 COLLATE BINARY
+               AND blob.storage_layout = 'authenticated_ranges';",
+            params![request.content_digest, storage_kind],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or(SelectiveContentError::Invalid(
+            "content completion descriptor is unavailable",
+        ))?;
+    if verified_range_count != range_count || verified_bytes != byte_length {
+        return Err(SelectiveContentError::Invalid(
+            "content completion requires every canonical range",
+        ));
+    }
+    let pinned = transaction
+        .query_row(
+            "SELECT policy = 'pinned_offline' FROM library_device_content_policies
+             WHERE content_digest = ?1 COLLATE BINARY;",
+            [&request.content_digest],
+            |row| row.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    let hydration_state = if pinned {
+        ContentHydrationStateV1::PinnedOffline
+    } else {
+        ContentHydrationStateV1::FullyCached
+    };
+    let state_text = if pinned {
+        "pinned_offline"
+    } else {
+        "fully_cached"
+    };
+    let current = transaction
+        .query_row(
+            "SELECT hydration_state, verified_bytes, storage_kind,
+                    complete_digest_verified_at
+             FROM library_device_content_availability
+             WHERE content_digest = ?1 COLLATE BINARY;",
+            [&request.content_digest],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    let desired = (
+        state_text.to_string(),
+        verified_bytes,
+        storage_kind.to_string(),
+        Some(request.verified_at),
+    );
+    let changed = current.as_ref() != Some(&desired);
+    if changed {
+        transaction.execute(
+            "INSERT INTO library_device_content_availability
+               (content_digest, hydration_state, verified_bytes, storage_kind,
+                complete_digest_verified_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             ON CONFLICT(content_digest) DO UPDATE SET
+               hydration_state = excluded.hydration_state,
+               verified_bytes = excluded.verified_bytes,
+               storage_kind = excluded.storage_kind,
+               complete_digest_verified_at = excluded.complete_digest_verified_at,
+               updated_at = excluded.updated_at;",
+            params![
+                request.content_digest,
+                state_text,
+                verified_bytes,
+                storage_kind,
+                request.verified_at
+            ],
+        )?;
+        if transaction.execute(
+            "UPDATE library_device_content_state SET revision = revision + 1
+             WHERE singleton_id = 1 AND revision < 9007199254740991;",
+            [],
+        )? != 1
+        {
+            return Err(SelectiveContentError::Invalid(
+                "selective content revision cannot advance",
+            ));
+        }
+    }
+    let content_revision = transaction.query_row(
+        "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    transaction.commit()?;
+    Ok(ContentCompletionReceiptV1 {
+        changed,
+        content_digest: request.content_digest.clone(),
+        content_revision,
+        hydration_state,
+        schema_version: 1,
+        verified_bytes,
+    })
+}
+
+pub(crate) fn mark_content_corrupt_v1(
+    connection: &mut Connection,
+    content_digest: &str,
+    detected_at: i64,
+) -> Result<(), SelectiveContentError> {
+    if !valid_digest(content_digest) || !(0..=MAXIMUM_SAFE_INTEGER).contains(&detected_at) {
+        return Err(SelectiveContentError::Invalid(
+            "content corruption report is invalid",
+        ));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let changed = transaction.execute(
+        "UPDATE library_device_content_availability
+         SET hydration_state = 'corrupt',
+             complete_digest_verified_at = NULL,
+             updated_at = ?2
+         WHERE content_digest = ?1 COLLATE BINARY
+           AND (hydration_state IS NOT 'corrupt'
+                OR complete_digest_verified_at IS NOT NULL
+                OR updated_at IS NOT ?2);",
+        params![content_digest, detected_at],
+    )?;
+    if changed == 1
+        && transaction.execute(
+            "UPDATE library_device_content_state SET revision = revision + 1
+             WHERE singleton_id = 1 AND revision < 9007199254740991;",
+            [],
+        )? != 1
+    {
+        return Err(SelectiveContentError::Invalid(
+            "selective content revision cannot advance",
+        ));
+    }
+    transaction.commit()?;
+    Ok(())
 }
 
 pub fn publish_content_range_from_reader_v1<R, D>(

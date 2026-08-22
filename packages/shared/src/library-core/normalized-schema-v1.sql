@@ -837,11 +837,9 @@ CREATE TABLE IF NOT EXISTS library_device_content_availability (
   )),
   verified_bytes INTEGER NOT NULL CHECK (verified_bytes >= 0),
   storage_kind TEXT NOT NULL CHECK (storage_kind IN ('none', 'content_vault', 'opfs')),
-  storage_key TEXT CHECK (storage_key IS NULL OR length(CAST(storage_key AS BLOB)) BETWEEN 1 AND 1024),
   complete_digest_verified_at INTEGER CHECK (complete_digest_verified_at IS NULL OR complete_digest_verified_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
-  CHECK (storage_kind != 'none' OR storage_key IS NULL),
-  CHECK (hydration_state NOT IN ('fully_cached', 'pinned_offline') OR storage_key IS NOT NULL),
+  CHECK (hydration_state NOT IN ('fully_cached', 'pinned_offline') OR storage_kind != 'none'),
   CHECK ((hydration_state IN ('fully_cached', 'pinned_offline')) = (complete_digest_verified_at IS NOT NULL))
 ) STRICT;
 
