@@ -778,6 +778,16 @@ One native export response contains at most 1,048,576 source bytes. This is an
 IPC bound, not a field or content limit. A page may consume several native
 responses.
 
+Desktop begins one export by reading a closed
+`freed_normalized_checkpoint_export_v2` descriptor. It binds the Library,
+authority epoch, Primary writer actor, source revision, current causal frontier
+digest, total registry record count, and feed-item count. Every native page
+request carries that exact descriptor. Native SQLite opens a read transaction,
+recomputes the descriptor, and refuses the page if any bound value changed.
+The cloud publisher stores the typed records directly under dataset schema
+`library_core_normalized_checkpoint_v2`. It does not wrap them in logical rows,
+whole FeedItem values, or a Library shell.
+
 Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which
 leaves deterministic room for base64 and record metadata below the canonical

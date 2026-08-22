@@ -117,9 +117,11 @@ pub use normalized_query::{
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
-    export_normalized_checkpoint_page_v2, install_normalized_schema_v1,
+    describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
+    export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
-    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
+    NormalizedCheckpointExportRequestV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use product_projection::upsert_item;

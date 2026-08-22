@@ -55,6 +55,12 @@ export {
   type ReassignLibraryCorePortableCheckpointRequestV1,
 } from "./library-core-portable-checkpoint.js";
 export {
+  prepareLibraryCoreNormalizedCheckpointPagesV2,
+  publishLibraryCoreNormalizedCheckpointV2,
+  type PrepareLibraryCoreNormalizedCheckpointPagesRequestV2,
+  type PublishLibraryCoreNormalizedCheckpointRequestV2,
+} from "./library-core-normalized-checkpoint.js";
+export {
   importLibraryCoreIntentSegmentV1,
   prepareLibraryCoreIntentSegmentV1,
   type ImportLibraryCoreIntentSegmentRequestV1,

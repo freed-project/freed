@@ -13,9 +13,12 @@ import {
 } from "./media-blob-transport-contracts.js";
 import {
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_CHECKPOINT_RECORD_REGISTRY,
   LIBRARY_CORE_CHECKPOINT_FRACTIONAL_FIELDS,
   LIBRARY_CORE_CONTENT_CHUNK_BYTES,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
   LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   type LibraryCoreCheckpointRegistryKey,
@@ -41,6 +44,30 @@ export interface LibraryCoreNormalizedCheckpointRecordV2 {
   readonly registryKey: LibraryCoreCheckpointRegistryKey;
   readonly primaryKey: LibraryCoreNormalizedCheckpointPrimaryKeyV2;
   readonly payload: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+export interface LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+  readonly format: typeof LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT;
+  readonly protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+  readonly libraryId: LibraryCoreLowercaseHex64;
+  readonly authorityEpoch: LibraryCoreLowercaseHex64;
+  readonly writerId: LibraryCoreLowercaseHex64;
+  readonly sourceRevision: number;
+  readonly causalFrontierDigest: LibraryCoreLowercaseHex64;
+  readonly recordCount: number;
+  readonly itemCount: number;
+}
+
+export interface LibraryCoreNormalizedCheckpointCursorV2 {
+  readonly registryKey: string;
+  readonly primaryKeyJson: string;
+}
+
+export interface LibraryCoreNormalizedCheckpointExportPageV2 {
+  readonly records: readonly LibraryCoreNormalizedCheckpointRecordV2[];
+  readonly nextCursor: LibraryCoreNormalizedCheckpointCursorV2 | null;
+  readonly done: boolean;
+  readonly canonicalRecordBytes: number;
 }
 
 export interface LibraryCoreContentDescriptorPayloadV1 {
@@ -281,6 +308,117 @@ export function parseLibraryCoreNormalizedCheckpointRecordV2(
     payload: record.payload as Readonly<
       Record<string, LibraryCoreCanonicalValue>
     >,
+  });
+}
+
+export function parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+  const record = ownClosedRecord(
+    value,
+    [
+      "authorityEpoch",
+      "causalFrontierDigest",
+      "format",
+      "libraryId",
+      "itemCount",
+      "protocolVersion",
+      "recordCount",
+      "sourceRevision",
+      "writerId",
+    ],
+    "normalized checkpoint export descriptor",
+  );
+  if (
+    record.format !== LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT ||
+    record.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
+    !isLibraryCoreLowercaseHex64(record.libraryId) ||
+    !isLibraryCoreLowercaseHex64(record.authorityEpoch) ||
+    !isLibraryCoreLowercaseHex64(record.writerId) ||
+    !isLibraryCoreLowercaseHex64(record.causalFrontierDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.sourceRevision) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.recordCount) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.itemCount)
+  ) {
+    throw new TypeError("normalized checkpoint export descriptor is invalid");
+  }
+  return Object.freeze({
+    authorityEpoch: record.authorityEpoch,
+    causalFrontierDigest: record.causalFrontierDigest,
+    format: record.format,
+    libraryId: record.libraryId,
+    itemCount: record.itemCount,
+    protocolVersion: record.protocolVersion,
+    recordCount: record.recordCount,
+    sourceRevision: record.sourceRevision,
+    writerId: record.writerId,
+  });
+}
+
+function parseCheckpointCursor(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointCursorV2 | null {
+  if (value === null) return null;
+  const record = ownClosedRecord(
+    value,
+    ["primaryKeyJson", "registryKey"],
+    "normalized checkpoint cursor",
+  );
+  if (
+    typeof record.registryKey !== "string" ||
+    record.registryKey.length === 0 ||
+    record.registryKey.length > 64 ||
+    record.registryKey.includes("shell") ||
+    typeof record.primaryKeyJson !== "string" ||
+    textEncoder.encode(record.primaryKeyJson).byteLength > 4_096
+  ) {
+    throw new TypeError("normalized checkpoint cursor is invalid");
+  }
+  return Object.freeze({
+    primaryKeyJson: record.primaryKeyJson,
+    registryKey: record.registryKey,
+  });
+}
+
+export function parseLibraryCoreNormalizedCheckpointExportPageV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointExportPageV2 {
+  const record = ownClosedRecord(
+    value,
+    ["canonicalRecordBytes", "done", "nextCursor", "records"],
+    "normalized checkpoint export page",
+  );
+  if (
+    !Array.isArray(record.records) ||
+    record.records.length > LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS ||
+    typeof record.done !== "boolean" ||
+    !isLibraryCoreNonnegativeSafeInteger(record.canonicalRecordBytes)
+  ) {
+    throw new TypeError("normalized checkpoint export page is invalid");
+  }
+  const records = Object.freeze(
+    record.records.map(parseLibraryCoreNormalizedCheckpointRecordV2),
+  );
+  const canonicalRecordBytes = records.reduce(
+    (total, item) =>
+      total + encodeLibraryCoreNormalizedCheckpointRecordV2(item).byteLength,
+    0,
+  );
+  const nextCursor = parseCheckpointCursor(record.nextCursor);
+  if (
+    canonicalRecordBytes !== record.canonicalRecordBytes ||
+    (record.done && records.length === 0 && nextCursor === null) ||
+    (!record.done && (records.length === 0 || nextCursor === null)) ||
+    textEncoder.encode(JSON.stringify(value)).byteLength >
+      LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES
+  ) {
+    throw new TypeError("normalized checkpoint export page proof is invalid");
+  }
+  return Object.freeze({
+    canonicalRecordBytes,
+    done: record.done,
+    nextCursor,
+    records,
   });
 }
 

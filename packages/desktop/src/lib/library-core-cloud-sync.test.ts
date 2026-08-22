@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLibraryCoreImmutableObjectKey,
+  createLibraryCoreNormalizedCheckpointRecordV2,
   encodeLibraryCoreCanonicalValue,
   type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
@@ -12,10 +13,13 @@ const mocks = vi.hoisted(() => ({
     bytes: new TextEncoder().encode("{}"),
   },
   publishRequest: null as Record<string, unknown> | null,
+  publishedRecords: [] as unknown[],
   publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
   readDescriptor: vi.fn(),
   readPage: vi.fn(),
+  describeNormalizedCheckpoint: vi.fn(),
+  readNormalizedCheckpointPage: vi.fn(),
   beginPortableImport: vi.fn(async () => {}),
   appendPortableItems: vi.fn(async () => {}),
   finalizePortableImport: vi.fn(async () => ({ active: true })),
@@ -134,6 +138,7 @@ vi.mock("./sqlite-library", () => ({
   ),
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   createSqliteLibraryBackup: mocks.createBackup,
+  describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
   finalizePortableSqliteLibraryImport: mocks.finalizePortableImport,
   installSqliteLibraryFollowerActorEnrollment:
     mocks.installFollowerActorEnrollment,
@@ -152,6 +157,7 @@ vi.mock("./sqlite-library", () => ({
   ]),
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readSqliteLibrarySyncPage: mocks.readPage,
+  readNormalizedLibraryCheckpointPage: mocks.readNormalizedCheckpointPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
   prepareSqliteLibraryFollowerActorRequest: mocks.prepareFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate:
@@ -251,6 +257,50 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
     publishLibraryCorePortableCheckpointV1: mocks.publish.mockImplementation(
       async (request: Record<string, unknown>) => {
         mocks.publishRequest = request;
+        if ("records" in request) {
+          const records: unknown[] = [];
+          for await (const record of request.records as AsyncIterable<unknown>) {
+            records.push(record);
+          }
+          mocks.publishedRecords = records;
+          const descriptor = request.descriptor as Record<string, unknown>;
+          const generation = Number(request.generation);
+          const digest = "67".repeat(32) as LibraryCoreLowercaseHex64;
+          const libraryId = String(descriptor.libraryId);
+          const storageEpoch = String(descriptor.authorityEpoch);
+          const manifest = {
+            descriptor: {
+              byteLength: 123,
+              contentDigest: digest,
+              objectKey: createLibraryCoreImmutableObjectKey({
+                digest,
+                epochId: storageEpoch,
+                generation,
+                kind: "checkpoint_manifest",
+                libraryId,
+              }),
+            },
+            transportObjectId: `manifest-${generation.toLocaleString("en-US")}`,
+          };
+          return {
+            status: mocks.publishStatus,
+            revision: '"etag-2"',
+            dependencies: [],
+            manifest,
+            controlPointer: {
+              activeTransport: "google_drive_app_data_v1",
+              causalFrontierDigest: descriptor.causalFrontierDigest,
+              generation,
+              libraryId,
+              manifest,
+              protocolVersion: 1,
+              schemaVersion: 1,
+              storageEpoch,
+              writerId: descriptor.writerId,
+            },
+            records,
+          };
+        }
         const entries: unknown[] = [];
         for await (const entry of request.entries as AsyncIterable<unknown>) {
           entries.push(entry);
@@ -258,6 +308,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
         return publicationResult(request, entries);
       },
     ),
+    publishLibraryCoreNormalizedCheckpointV2: mocks.publish,
     importLibraryCorePortableCheckpointV1:
       mocks.importCheckpoint.mockImplementation(
         async (request: Record<string, unknown>) => {
@@ -398,9 +449,43 @@ describe("SQLite Library Google Drive production wiring", () => {
       bytes: new TextEncoder().encode("{}"),
     };
     mocks.publishRequest = null;
+    mocks.publishedRecords = [];
     mocks.publishStatus = "committed";
     mocks.reassignRequest = null;
     mocks.publish.mockClear();
+    mocks.describeNormalizedCheckpoint.mockReset().mockResolvedValue({
+      format: "freed_normalized_checkpoint_export_v2",
+      protocolVersion: 2,
+      libraryId: "ab".repeat(32),
+      authorityEpoch: "cd".repeat(32),
+      writerId: "12".repeat(32),
+      sourceRevision: 7,
+      causalFrontierDigest: "66".repeat(32),
+      recordCount: 1,
+      itemCount: 2,
+    });
+    mocks.readNormalizedCheckpointPage.mockReset().mockResolvedValue({
+      records: [
+        createLibraryCoreNormalizedCheckpointRecordV2({
+          registryKey: "00_checkpoint_header",
+          primaryKey: "checkpoint",
+          payload: {
+            authorityEpoch: "cd".repeat(32),
+            checkpointId: `${"ab".repeat(32)}:${"cd".repeat(32)}:7`,
+            createdAtMs: 1_000,
+            libraryId: "ab".repeat(32),
+            schemaVersion: 1,
+            sourceRevision: 7,
+          },
+        }),
+      ],
+      nextCursor: {
+        registryKey: "00_checkpoint_header",
+        primaryKeyJson: '"checkpoint"',
+      },
+      done: true,
+      canonicalRecordBytes: 1,
+    });
     mocks.reassign.mockClear();
     mocks.reassignNative.mockClear();
     mocks.bootstrapNative
@@ -864,10 +949,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 7 });
 
-    expect(mocks.readPage).toHaveBeenCalledWith({
-      revision: 7,
-      offset: 0,
-    });
+    expect(mocks.readPage).not.toHaveBeenCalled();
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     expect(mocks.bootstrapNative).toHaveBeenCalledWith({
       descriptor: expect.objectContaining({
@@ -882,20 +964,19 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
     const request = mocks.publishRequest;
     expect(request?.generation).toBe(0);
-    expect(request?.writerId).toBe(mocks.bootstrapAuthority.actor.actor_id);
-    expect(request?.header).toMatchObject({
-      collection_counts: { materialized_rows: 3 },
-      epoch: 1,
-      materializer_position: {
-        ingest_sequence: 7,
-        materialized_digest: "cd".repeat(32),
-      },
-      schema_version: 2,
-      source_transition_digest:
-        mocks.bootstrapAuthority.protocol.transition_certificate_digest,
-      source_manifest_digest:
-        mocks.bootstrapAuthority.protocol.source_manifest_digest,
+    expect(request?.descriptor).toMatchObject({
+      libraryId: mocks.bootstrapAuthority.authority.library_id,
+      authorityEpoch: mocks.bootstrapAuthority.authority.epoch_id,
+      writerId: mocks.bootstrapAuthority.actor.actor_id,
+      sourceRevision: 7,
+      recordCount: 1,
     });
+    expect(mocks.publishedRecords).toEqual([
+      expect.objectContaining({
+        format: "freed_normalized_checkpoint_v2",
+        registryKey: "00_checkpoint_header",
+      }),
+    ]);
     expect(mocks.nativeState).toMatchObject({
       controlFileId: "control-1",
       lastPublishedRevision: 7,
@@ -970,6 +1051,39 @@ describe("SQLite Library Google Drive production wiring", () => {
       ],
       nextOffset: null,
     });
+    mocks.describeNormalizedCheckpoint.mockResolvedValue({
+      format: "freed_normalized_checkpoint_export_v2",
+      protocolVersion: 2,
+      libraryId: "ab".repeat(32),
+      authorityEpoch: "cd".repeat(32),
+      writerId: "12".repeat(32),
+      sourceRevision: 8,
+      causalFrontierDigest: "68".repeat(32),
+      recordCount: 1,
+      itemCount: 2,
+    });
+    mocks.readNormalizedCheckpointPage.mockResolvedValue({
+      records: [
+        createLibraryCoreNormalizedCheckpointRecordV2({
+          registryKey: "00_checkpoint_header",
+          primaryKey: "checkpoint",
+          payload: {
+            authorityEpoch: "cd".repeat(32),
+            checkpointId: `${"ab".repeat(32)}:${"cd".repeat(32)}:8`,
+            createdAtMs: 1_001,
+            libraryId: "ab".repeat(32),
+            schemaVersion: 1,
+            sourceRevision: 8,
+          },
+        }),
+      ],
+      nextCursor: {
+        registryKey: "00_checkpoint_header",
+        primaryKeyJson: '"checkpoint"',
+      },
+      done: true,
+      canonicalRecordBytes: 1,
+    });
 
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
@@ -984,10 +1098,9 @@ describe("SQLite Library Google Drive production wiring", () => {
         sourceDigest: "ab".repeat(32),
       },
     });
-    expect(mocks.publishRequest?.header).toMatchObject({
-      source_transition_digest:
-        mocks.bootstrapAuthority.protocol.transition_certificate_digest,
-      source_manifest_digest: "67".repeat(32),
+    expect(mocks.publishRequest?.descriptor).toMatchObject({
+      sourceRevision: 8,
+      causalFrontierDigest: "68".repeat(32),
     });
   });
 

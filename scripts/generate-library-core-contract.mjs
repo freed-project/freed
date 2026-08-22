@@ -63,6 +63,8 @@ function assertContract(contract) {
   const expectedKeys = [
     "applicationId",
     "capabilityProfiles",
+    "checkpointDatasetSchemaId",
+    "checkpointExportFormat",
     "checkpointFormat",
     "checkpointImports",
     "checkpointRecords",
@@ -91,7 +93,11 @@ function assertContract(contract) {
     contract.contractVersion !== 1 ||
     contract.schemaVersion !== 1 ||
     contract.protocolVersion !== 2 ||
-    contract.checkpointFormat !== "freed_normalized_checkpoint_v2"
+    contract.checkpointFormat !== "freed_normalized_checkpoint_v2" ||
+    contract.checkpointExportFormat !==
+      "freed_normalized_checkpoint_export_v2" ||
+    contract.checkpointDatasetSchemaId !==
+      "library_core_normalized_checkpoint_v2"
   ) {
     throw new TypeError("SQLite contract version identity is invalid");
   }
@@ -559,6 +565,8 @@ export const LIBRARY_CORE_SQLITE_APPLICATION_ID = ${contract.applicationId} as c
 export const LIBRARY_CORE_SQLITE_SCHEMA_VERSION = ${contract.schemaVersion} as const;
 export const LIBRARY_CORE_SQLITE_PROTOCOL_VERSION = ${contract.protocolVersion} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT = ${JSON.stringify(contract.checkpointFormat)} as const;
+export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT = ${JSON.stringify(contract.checkpointExportFormat)} as const;
+export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID = ${JSON.stringify(contract.checkpointDatasetSchemaId)} as const;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract.limits.checkpointRecordCanonicalBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.limits.checkpointPageDecodedBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
@@ -705,6 +713,8 @@ pub const SQLITE_APPLICATION_ID: u32 = ${contract.applicationId};
 pub const SQLITE_SCHEMA_VERSION: u32 = ${contract.schemaVersion};
 pub const SQLITE_PROTOCOL_VERSION: u32 = ${contract.protocolVersion};
 pub const NORMALIZED_CHECKPOINT_FORMAT: &str = ${JSON.stringify(contract.checkpointFormat)};
+pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = ${JSON.stringify(contract.checkpointExportFormat)};
+pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = ${JSON.stringify(contract.checkpointDatasetSchemaId)};
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = ${contract.limits.checkpointRecordCanonicalBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.checkpointPageDecodedBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};

@@ -4,6 +4,8 @@
   "schemaVersion": 1,
   "protocolVersion": 2,
   "checkpointFormat": "freed_normalized_checkpoint_v2",
+  "checkpointExportFormat": "freed_normalized_checkpoint_export_v2",
+  "checkpointDatasetSchemaId": "library_core_normalized_checkpoint_v2",
   "preferenceWritePolicies": {
     "ai": {
       "provider": "device-local",

@@ -13,6 +13,8 @@ import {
   type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreResultHeadV1,
 } from "@freed/shared/library-core";
 import {
@@ -35,7 +37,7 @@ import {
   provisionGoogleDriveLibraryCoreResultHeadV1,
   prepareLibraryCoreIntentSegmentV1,
   publishLibraryCoreIntentCandidateV1,
-  publishLibraryCorePortableCheckpointV1,
+  publishLibraryCoreNormalizedCheckpointV2,
   publishLibraryCoreResultEntriesV1,
   reassignLibraryCorePortableCheckpointV1,
   type LibraryCoreControlReadV1,
@@ -56,11 +58,13 @@ import {
   beginPortableSqliteLibraryImport,
   bootstrapSqliteLibraryAuthority,
   createSqliteLibraryBackup,
+  describeNormalizedLibraryCheckpoint,
   finalizePortableSqliteLibraryImport,
   installSqliteLibraryFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments,
   readSqliteLibrarySyncDescriptor,
   readSqliteLibrarySyncPage,
+  readNormalizedLibraryCheckpointPage,
   readPwaIntentResultOutbox,
   prepareSqliteLibraryFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate,
@@ -530,6 +534,34 @@ async function* checkpointEntries(
         retirement_certificate_digest: actor.retirement_certificate_digest,
       },
     };
+  }
+}
+
+async function* normalizedCheckpointRecords(
+  snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
+): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
+  let after: Parameters<typeof readNormalizedLibraryCheckpointPage>[0]["after"] =
+    null;
+  let recordCount = 0;
+  for (;;) {
+    const page = await readNormalizedLibraryCheckpointPage({ snapshot, after });
+    for (const record of page.records) {
+      yield record;
+      recordCount += 1;
+    }
+    if (page.done) break;
+    if (
+      page.nextCursor === null ||
+      (after !== null &&
+        page.nextCursor.registryKey === after.registryKey &&
+        page.nextCursor.primaryKeyJson === after.primaryKeyJson)
+    ) {
+      throw new Error("Normalized checkpoint export cursor did not advance");
+    }
+    after = page.nextCursor;
+  }
+  if (recordCount !== snapshot.recordCount) {
+    throw new Error("Normalized checkpoint changed during export");
   }
 }
 
@@ -1533,13 +1565,22 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     epochId: loaded.bootstrap.authority.epoch_id,
     libraryId: loaded.bootstrap.authority.library_id,
   });
-  const updatedDescriptor = await readSqliteLibrarySyncDescriptor();
+  const normalizedCheckpoint = await describeNormalizedLibraryCheckpoint();
+  if (
+    normalizedCheckpoint.libraryId !== state.libraryId ||
+    normalizedCheckpoint.authorityEpoch !== state.storageEpoch ||
+    normalizedCheckpoint.writerId !== state.writerId
+  ) {
+    throw new Error(
+      "Normalized SQLite checkpoint authority conflicts with cloud state",
+    );
+  }
   const publishedActorDigest = await actorStateDigest(updatedActors);
   if (
-    state.lastPublishedRevision === updatedDescriptor.revision &&
+    state.lastPublishedRevision === normalizedCheckpoint.sourceRevision &&
     state.lastPublishedActorDigest === publishedActorDigest
   ) {
-    return { status: "current", revision: updatedDescriptor.revision };
+    return { status: "current", revision: normalizedCheckpoint.sourceRevision };
   }
   await publishActorEnrollmentCertificates({
     actors: updatedActors,
@@ -1548,20 +1589,14 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     libraryId: state.libraryId,
   });
   const generation = pointer === null ? 0 : pointer.generation + 1;
-  const result = await publishLibraryCorePortableCheckpointV1({
+  const result = await publishLibraryCoreNormalizedCheckpointV2({
     activeTransport: "google_drive_app_data_v1",
     adapter,
-    entries: checkpointEntries(updatedDescriptor, updatedActors),
+    descriptor: normalizedCheckpoint,
     expectedControl: { revision: controlRead.revision, pointer },
     generation,
-    header: await checkpointHeader(
-      state,
-      updatedDescriptor,
-      loaded.bootstrap,
-      updatedActors.length,
-    ),
+    records: normalizedCheckpointRecords(normalizedCheckpoint),
     subtle: crypto.subtle,
-    writerId: state.writerId,
   });
   if (result.status === "conflict") {
     throw new Error("Library Core cloud authority changed during publication");
@@ -1576,16 +1611,16 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     ...state,
     lastPublishedActorDigest: publishedActorDigest,
     lastPublishedCheckpoint: checkpointPublicationReceipt({
-      localRevision: updatedDescriptor.revision,
-      itemCount: updatedDescriptor.itemCount,
+      localRevision: normalizedCheckpoint.sourceRevision,
+      itemCount: normalizedCheckpoint.itemCount,
       checkpointStoredByteLength: checkpointStoredByteLength(result),
       controlRevision: result.revision,
       controlPointer: result.controlPointer,
     }),
-    lastPublishedRevision: updatedDescriptor.revision,
+    lastPublishedRevision: normalizedCheckpoint.sourceRevision,
   });
   await persistCloudState(state);
-  return { status: "published", revision: updatedDescriptor.revision };
+  return { status: "published", revision: normalizedCheckpoint.sourceRevision };
 }
 
 function publicationAbortError(message: string): Error {

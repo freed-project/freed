@@ -1174,6 +1174,25 @@ pub(super) fn query_normalized_library(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub(super) fn describe_normalized_library_checkpoint(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn read_normalized_library_checkpoint_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::PinnedNormalizedCheckpointExportRequestV2,
+) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::export_pinned_normalized_checkpoint_page_v2(&mut connection, &request)
+        .map_err(|error| error.to_string())
+}
+
 /// Read the exact admitted Primary actor tip for one normalized transaction.
 #[tauri::command]
 pub(super) fn normalized_library_primary_mutation_context(

@@ -35,6 +35,8 @@ import {
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
@@ -45,6 +47,8 @@ import {
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
+  parseLibraryCoreNormalizedCheckpointExportPageV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -64,6 +68,9 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreLowercaseHex64,
+  type LibraryCoreNormalizedCheckpointCursorV2,
+  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
+  type LibraryCoreNormalizedCheckpointExportPageV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionStagePageV1,
@@ -1546,6 +1553,33 @@ export async function ensureFreshNormalizedDesktopLibrary(
   return invoke<boolean>("ensure_fresh_normalized_desktop_library", {
     legacyDataAbsent,
   });
+}
+
+export async function describeNormalizedLibraryCheckpoint(): Promise<
+  LibraryCoreNormalizedCheckpointExportDescriptorV2
+> {
+  return parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
+    await invoke<unknown>("describe_normalized_library_checkpoint"),
+  );
+}
+
+export async function readNormalizedLibraryCheckpointPage(input: {
+  readonly snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+  readonly after: LibraryCoreNormalizedCheckpointCursorV2 | null;
+}): Promise<LibraryCoreNormalizedCheckpointExportPageV2> {
+  return parseLibraryCoreNormalizedCheckpointExportPageV2(
+    await invoke<unknown>("read_normalized_library_checkpoint_page", {
+      request: {
+        snapshot: input.snapshot,
+        page: {
+          after: input.after,
+          maximumRecords: LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+          maximumResponseBytes:
+            LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        },
+      },
+    }),
+  );
 }
 
 export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {

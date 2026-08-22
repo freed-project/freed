@@ -3,8 +3,11 @@ import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
+  encodeLibraryCoreNormalizedCheckpointRecordV2,
   libraryCoreNormalizedCheckpointRecordIdentityV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
+  parseLibraryCoreNormalizedCheckpointExportPageV2,
   reassembleLibraryCoreContentV1,
   splitLibraryCoreContentV1,
 } from "./normalized-checkpoint-contracts.js";
@@ -14,6 +17,48 @@ import {
 } from "./sqlite-contract.generated.js";
 
 describe("normalized SQLite checkpoint contract", () => {
+  it("closes and verifies the native pinned export boundary", () => {
+    const libraryId = "ab".repeat(32);
+    const authorityEpoch = "cd".repeat(32);
+    const record = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint",
+      payload: {
+        authorityEpoch,
+        checkpointId: `${libraryId}:${authorityEpoch}:7`,
+        createdAtMs: 1_000,
+        libraryId,
+        schemaVersion: 1,
+        sourceRevision: 7,
+      },
+    });
+    expect(
+      parseLibraryCoreNormalizedCheckpointExportDescriptorV2({
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch,
+        writerId: "ef".repeat(32),
+        sourceRevision: 7,
+        causalFrontierDigest: "12".repeat(32),
+        recordCount: 1,
+        itemCount: 0,
+      }),
+    ).toMatchObject({ sourceRevision: 7, recordCount: 1 });
+    expect(
+      parseLibraryCoreNormalizedCheckpointExportPageV2({
+        records: [record],
+        nextCursor: {
+          registryKey: "00_checkpoint_header",
+          primaryKeyJson: '"checkpoint"',
+        },
+        done: true,
+        canonicalRecordBytes:
+          encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
+      }),
+    ).toMatchObject({ done: true, records: [record] });
+  });
+
   it("matches the native normalized checkpoint digest vector", () => {
     const header = createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "00_checkpoint_header",

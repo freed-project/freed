@@ -539,6 +539,7 @@ export async function captureDomFeed(
 | 5.78 | Resolve partial RSS Feed edits and batch refreshes through the exact bounded normalized feed detail query when the feed is not in the current visible renderer window, preserving every synchronized feed field without repopulating the renderer feed map or reading the shell                                                                                 | High       | ✓ Complete |
 | 5.79 | Freeze complete RSS Feed removal and untitled-title repair scopes atomically in native SQLite, then submit bounded typed transactions from paged stable identities without depending on the renderer feed map                                                                                                                                            | High       | ✓ Complete |
 | 5.80 | Select normalized SQLite on the first launch of a fresh Freed Desktop installation after proving that retired IndexedDB and every historical Library table contain no data, without creating an empty shell, historical authority, or second-launch migration                                                                                           | High       | ✓ Complete |
+| 5.81 | Expose a typed native normalized checkpoint descriptor and pinned page command that rechecks Library, epoch, writer, revision, frontier, and record count inside each SQLite read transaction                                                                                                                                            | High       | ✓ Complete |
 
 ---
 

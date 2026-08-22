@@ -5,8 +5,9 @@ use crate::normalized_checkpoint::{
 };
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
-    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL,
-    SQLITE_APPLICATION_ID, SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
+    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
+    NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL, SQLITE_APPLICATION_ID,
+    SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -91,6 +92,27 @@ pub struct NormalizedCheckpointExportPageV2 {
     pub next_cursor: Option<NormalizedCheckpointCursorV2>,
     pub done: bool,
     pub canonical_record_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedCheckpointExportDescriptorV2 {
+    pub format: String,
+    pub protocol_version: u32,
+    pub library_id: String,
+    pub authority_epoch: String,
+    pub writer_id: String,
+    pub source_revision: u64,
+    pub causal_frontier_digest: String,
+    pub record_count: usize,
+    pub item_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PinnedNormalizedCheckpointExportRequestV2 {
+    pub snapshot: NormalizedCheckpointExportDescriptorV2,
+    pub page: NormalizedCheckpointExportRequestV2,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -402,6 +424,141 @@ fn serialized_page_bytes(
         .map_err(|error| {
             NormalizedSqliteError::Transport(format!("checkpoint page encoding failed: {error}"))
         })
+}
+
+fn checkpoint_frontier_digest_v2(
+    connection: &Connection,
+    authority_epoch: &str,
+) -> Result<String, NormalizedSqliteError> {
+    let mut digest = Sha256::new();
+    digest.update(b"freed.library-core.v2/digest-records/checkpoint-frontier\0");
+    let mut statement = connection.prepare(
+        "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
+         FROM library_actors
+         WHERE authority_epoch_id = ?1 AND retired_at IS NULL
+         ORDER BY actor_id;",
+    )?;
+    let mut rows = statement.query([authority_epoch])?;
+    while let Some(row) = rows.next()? {
+        let actor_id: String = row.get(0)?;
+        let accepted_counter: i64 = row.get(1)?;
+        let accepted_operation_id: Option<String> = row.get(2)?;
+        let accepted_chain_digest: String = row.get(3)?;
+        if accepted_counter < 0 {
+            return Err(NormalizedSqliteError::Transport(
+                "normalized checkpoint actor counter is invalid".into(),
+            ));
+        }
+        for value in [&actor_id, &accepted_chain_digest] {
+            let length = u64::try_from(value.len()).map_err(|_| {
+                NormalizedSqliteError::Transport(
+                    "normalized checkpoint actor identity is too large".into(),
+                )
+            })?;
+            digest.update(length.to_be_bytes());
+            digest.update(value.as_bytes());
+        }
+        digest.update(accepted_counter.to_be_bytes());
+        match accepted_operation_id {
+            Some(operation_id) => {
+                digest.update([1]);
+                let length = u64::try_from(operation_id.len()).map_err(|_| {
+                    NormalizedSqliteError::Transport(
+                        "normalized checkpoint operation identity is too large".into(),
+                    )
+                })?;
+                digest.update(length.to_be_bytes());
+                digest.update(operation_id.as_bytes());
+            }
+            None => digest.update([0]),
+        }
+    }
+    Ok(lower_hex(&digest.finalize()))
+}
+
+fn checkpoint_hex_identity(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+pub fn describe_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    let (library_id, authority_epoch, writer_id, source_revision): (String, String, String, i64) =
+        connection.query_row(
+            "SELECT meta.library_id, meta.authority_epoch, actor.actor_id,
+                    meta.source_revision
+             FROM library_meta AS meta
+             JOIN library_active_authority AS active
+               ON active.active_key = 'active'
+              AND active.library_id = meta.library_id
+              AND active.epoch_id = meta.authority_epoch
+             JOIN library_actors AS actor
+               ON actor.authority_epoch_id = active.epoch_id
+              AND actor.actor_kind = 'desktop'
+              AND actor.retired_at IS NULL
+             WHERE meta.singleton_id = 1
+               AND (SELECT count(*) FROM library_actors AS candidate
+                    WHERE candidate.authority_epoch_id = active.epoch_id
+                      AND candidate.actor_kind = 'desktop'
+                      AND candidate.retired_at IS NULL) = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+    if !checkpoint_hex_identity(&library_id)
+        || !checkpoint_hex_identity(&authority_epoch)
+        || !checkpoint_hex_identity(&writer_id)
+    {
+        return Err(NormalizedSqliteError::Transport(
+            "normalized checkpoint authority identity is invalid".into(),
+        ));
+    }
+    let record_count: i64 = connection.query_row(
+        "SELECT count(*) FROM library_checkpoint_export;",
+        [],
+        |row| row.get(0),
+    )?;
+    let item_count: i64 =
+        connection.query_row("SELECT count(*) FROM library_feed_items;", [], |row| {
+            row.get(0)
+        })?;
+    Ok(NormalizedCheckpointExportDescriptorV2 {
+        format: NORMALIZED_CHECKPOINT_EXPORT_FORMAT.into(),
+        protocol_version: SQLITE_PROTOCOL_VERSION,
+        library_id,
+        authority_epoch: authority_epoch.clone(),
+        writer_id,
+        source_revision: u64::try_from(source_revision).map_err(|_| {
+            NormalizedSqliteError::Transport(
+                "normalized checkpoint source revision is invalid".into(),
+            )
+        })?,
+        causal_frontier_digest: checkpoint_frontier_digest_v2(connection, &authority_epoch)?,
+        record_count: usize::try_from(record_count).map_err(|_| {
+            NormalizedSqliteError::Transport("normalized checkpoint record count is invalid".into())
+        })?,
+        item_count: usize::try_from(item_count).map_err(|_| {
+            NormalizedSqliteError::Transport("normalized checkpoint item count is invalid".into())
+        })?,
+    })
+}
+
+pub fn export_pinned_normalized_checkpoint_page_v2(
+    connection: &mut Connection,
+    request: &PinnedNormalizedCheckpointExportRequestV2,
+) -> Result<NormalizedCheckpointExportPageV2, NormalizedSqliteError> {
+    let transaction = connection.transaction()?;
+    let current = describe_normalized_checkpoint_export_v2(&transaction)?;
+    if current != request.snapshot {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint changed during export",
+        ));
+    }
+    let page = export_normalized_checkpoint_page_v2(&transaction, &request.page)?;
+    transaction.commit()?;
+    Ok(page)
 }
 
 pub fn export_normalized_checkpoint_page_v2(
@@ -886,6 +1043,110 @@ mod tests {
             )
             .expect("table count");
         assert_eq!(tables, 0);
+    }
+
+    #[test]
+    fn pinned_checkpoint_export_refuses_a_revision_change_between_pages() {
+        let mut connection = fixture();
+        let library_id = "a".repeat(64);
+        let epoch_id = "b".repeat(64);
+        let actor_id = "c".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_meta
+                 (singleton_id, library_id, schema_version, authority_epoch,
+                  source_revision, updated_at)
+                 VALUES (1, ?1, 1, ?2, 0, 100);",
+                params![library_id, epoch_id],
+            )
+            .expect("meta");
+        connection
+            .execute(
+                "INSERT INTO library_authority_epochs
+                 (epoch_id, library_id, epoch_number, authority_key_id,
+                  authority_public_key, transition_certificate_digest,
+                  canonical_transition_certificate, accepted_manifest_generation,
+                  checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5, '{}', 0, ?6, ?7, 100);",
+                params![
+                    epoch_id,
+                    library_id,
+                    "d".repeat(64),
+                    "e".repeat(64),
+                    "f".repeat(64),
+                    "1".repeat(64),
+                    "2".repeat(64),
+                ],
+            )
+            .expect("epoch");
+        connection
+            .execute(
+                "INSERT INTO library_active_authority
+                 (active_key, library_id, epoch_id, writer_id,
+                  accepted_manifest_generation, activated_at)
+                 VALUES ('active', ?1, ?2, 'primary:desktop', 0, 100);",
+                params![library_id, epoch_id],
+            )
+            .expect("active authority");
+        connection
+            .execute(
+                "INSERT INTO library_actors
+                 (actor_id, authority_epoch_id, actor_kind, public_key,
+                  enrollment_operation_id, enrollment_certificate_digest,
+                  canonical_enrollment_certificate, chain_genesis_digest,
+                  accepted_counter, accepted_operation_id, accepted_chain_digest,
+                  created_at, updated_at)
+                 VALUES (?1, ?2, 'desktop', ?3, 'enrollment', ?4, '{}', ?5,
+                         0, NULL, ?5, 100, 100);",
+                params![
+                    actor_id,
+                    epoch_id,
+                    "3".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                ],
+            )
+            .expect("actor");
+        let snapshot =
+            describe_normalized_checkpoint_export_v2(&connection).expect("checkpoint descriptor");
+        assert_eq!(snapshot.library_id, library_id);
+        assert_eq!(snapshot.authority_epoch, epoch_id);
+        assert_eq!(snapshot.writer_id, actor_id);
+        assert_eq!(snapshot.record_count, 4);
+        let first = export_pinned_normalized_checkpoint_page_v2(
+            &mut connection,
+            &PinnedNormalizedCheckpointExportRequestV2 {
+                snapshot: snapshot.clone(),
+                page: NormalizedCheckpointExportRequestV2 {
+                    after: None,
+                    maximum_records: 2,
+                    maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+                },
+            },
+        )
+        .expect("first page");
+        assert!(!first.done);
+        assert_eq!(first.records.len(), 2);
+        connection
+            .execute(
+                "UPDATE library_meta SET source_revision = 1, updated_at = 101
+                 WHERE singleton_id = 1;",
+                [],
+            )
+            .expect("advance revision");
+        let error = export_pinned_normalized_checkpoint_page_v2(
+            &mut connection,
+            &PinnedNormalizedCheckpointExportRequestV2 {
+                snapshot,
+                page: NormalizedCheckpointExportRequestV2 {
+                    after: first.next_cursor,
+                    maximum_records: 2,
+                    maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+                },
+            },
+        )
+        .expect_err("stale checkpoint");
+        assert!(error.to_string().contains("changed during export"));
     }
 
     #[test]
