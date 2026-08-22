@@ -72,7 +72,7 @@ pub use library_core_process_lease::{
     LibraryCoreProcessLease, LibraryCoreProcessLeaseError, ProcessLeaseClock, ProcessLeaseIdentity,
 };
 #[cfg(unix)]
-pub use library_core_sidecar::{run_library_authority_sidecar, LibraryCoreSidecarAuthority};
+pub use library_core_sidecar::run_library_authority_sidecar;
 pub use library_core_store::{
     BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupChunk,
     LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,

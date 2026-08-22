@@ -19,7 +19,7 @@ use std::sync::Arc;
 #[cfg(unix)]
 use std::time::Duration;
 
-#[cfg(unix)]
+#[cfg(all(unix, test))]
 use crate::library_core_bound_root::LibraryCoreBoundRoot;
 #[cfg(unix)]
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
@@ -210,6 +210,7 @@ impl LibraryCoreStore {
     }
 
     #[cfg(unix)]
+    #[cfg(test)]
     pub(crate) fn open_bound(root: &LibraryCoreBoundRoot) -> LibraryCoreStoreResult<Self> {
         let library_directory = root.open_or_create_private_directory(LIBRARY_DIRECTORY)?;
         let backup_directory = root.open_or_create_private_directory(BACKUP_DIRECTORY)?;

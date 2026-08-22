@@ -8,11 +8,11 @@ use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::library_core_bound_root::{file_from_duplicated_descriptor, LibraryCoreBoundRoot};
-use crate::{
-    lower_hex, BeginLibraryCoreImport, FinalizeLibraryCoreImportReceipt, LibraryCoreBackupReceipt,
-    LibraryCoreImportItem, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreStatus,
-    ProcessLeaseIdentity, VerifiedFollowerAnchor,
+use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
+use crate::normalized_sqlite::{
+    configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
+use crate::{lower_hex, LibraryCoreProcessLease, ProcessLeaseIdentity};
 
 const PROTOCOL_VERSION: u8 = 1;
 const EXECUTABLE_FD: RawFd = 3;
@@ -27,6 +27,7 @@ const MAX_CREDENTIAL_DESCRIPTOR_BYTES: usize = 4 * 1_024;
 const MAX_MOUNTED_CREDENTIAL_BYTES: usize = 64 * 1_024;
 const MOUNTED_CREDENTIAL_READ_BUFFER_BYTES: usize = 8 * 1_024;
 const MOUNTED_CREDENTIAL_DIRECTORY: &str = "mounted-credentials";
+const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const SIDECAR_IDENTITY: ProcessLeaseIdentity<'static> =
     ProcessLeaseIdentity::new("library-authority-sidecar", env!("CARGO_PKG_VERSION"));
 
@@ -108,20 +109,16 @@ struct ReadyRecord<'a> {
     credential_descriptor_digest: String,
 }
 
-/// Native Library authority owned by one inherited data-root descriptor.
-///
-/// The process lease is acquired before the SQLite store is opened. Every
-/// checkpoint, status, and backup operation delegates to the shared store.
-pub struct LibraryCoreSidecarAuthority {
-    store: LibraryCoreStore,
+/// Native normalized Library authority owned by one inherited data-root descriptor.
+struct LibraryCoreSidecarAuthority {
+    database: BoundSqliteDatabase,
     _lease: LibraryCoreProcessLease,
     _root: LibraryCoreBoundRoot,
+    _normalized_root: LibraryCoreBoundRoot,
 }
 
 impl LibraryCoreSidecarAuthority {
-    pub fn open_from_inherited_descriptor(
-        descriptor: RawFd,
-    ) -> Result<Self, LibraryCoreSidecarError> {
+    fn open_from_inherited_descriptor(descriptor: RawFd) -> Result<Self, LibraryCoreSidecarError> {
         let root = LibraryCoreBoundRoot::from_inherited_descriptor(descriptor)
             .map_err(|_| failure("data_root_invalid"))?;
         if !root.is_private_for(unsafe { libc::geteuid() }) {
@@ -132,57 +129,40 @@ impl LibraryCoreSidecarAuthority {
         if !lease.owns_lock() {
             return Err(failure("lease_unavailable"));
         }
-        let store =
-            LibraryCoreStore::open_bound(&root).map_err(|_| failure("authority_open_failed"))?;
+        let normalized_directory = root
+            .open_or_create_private_directory(NORMALIZED_LIBRARY_DIRECTORY)
+            .map_err(|_| failure("authority_open_failed"))?;
+        let normalized_root =
+            LibraryCoreBoundRoot::from_inherited_descriptor(normalized_directory.as_raw_fd())
+                .map_err(|_| failure("authority_open_failed"))?;
+        let database = BoundSqliteDatabase::from_directory(
+            normalized_directory
+                .try_clone()
+                .map_err(|_| failure("authority_open_failed"))?,
+        )
+        .map_err(|_| failure("authority_open_failed"))?;
+        let connection = database
+            .open(normalized_sqlite_open_flags(true))
+            .map_err(|_| failure("authority_open_failed"))?;
+        configure_normalized_sqlite_connection(&connection)
+            .map_err(|_| failure("authority_open_failed"))?;
+        drop(connection);
         Ok(Self {
-            store,
+            database,
             _lease: lease,
             _root: root,
+            _normalized_root: normalized_root,
         })
     }
 
-    pub fn status(&self) -> Result<Option<LibraryCoreStoreStatus>, LibraryCoreSidecarError> {
-        self.store
-            .status()
-            .map_err(|_| failure("authority_status_failed"))
-    }
-
-    pub fn begin_import(
-        &self,
-        request: BeginLibraryCoreImport,
-    ) -> Result<(), LibraryCoreSidecarError> {
-        self.store
-            .begin_import(request)
-            .map_err(|_| failure("checkpoint_import_failed"))
-    }
-
-    pub fn append_import_page(
-        &self,
-        items: &[LibraryCoreImportItem],
-    ) -> Result<i64, LibraryCoreSidecarError> {
-        self.store
-            .append_import_page(items)
-            .map_err(|_| failure("checkpoint_import_failed"))
-    }
-
-    pub fn finalize_import(
-        &self,
-        activated_at_ms: i64,
-        follower_anchor: Option<&VerifiedFollowerAnchor>,
-    ) -> Result<FinalizeLibraryCoreImportReceipt, LibraryCoreSidecarError> {
-        self.store
-            .finalize_import(activated_at_ms, follower_anchor)
-            .map_err(|_| failure("checkpoint_import_failed"))
-    }
-
-    pub fn create_backup(
-        &self,
-        created_at_ms: i64,
-        reason: &str,
-    ) -> Result<LibraryCoreBackupReceipt, LibraryCoreSidecarError> {
-        self.store
-            .create_backup(created_at_ms, reason)
-            .map_err(|_| failure("backup_failed"))
+    fn connect(&self) -> Result<rusqlite::Connection, LibraryCoreSidecarError> {
+        let connection = self
+            .database
+            .open(normalized_sqlite_open_flags(false))
+            .map_err(|_| failure("authority_open_failed"))?;
+        configure_normalized_sqlite_connection(&connection)
+            .map_err(|_| failure("authority_open_failed"))?;
+        Ok(connection)
     }
 }
 
@@ -233,7 +213,7 @@ pub fn run_library_authority_sidecar() -> Result<(), LibraryCoreSidecarError> {
     validate_lifetime_descriptor(LIFETIME_FD)?;
 
     let authority = LibraryCoreSidecarAuthority::open_from_inherited_descriptor(DATA_ROOT_FD)?;
-    authority.status()?;
+    drop(authority.connect()?);
 
     let ready = ReadyRecord {
         r#type: "ready",
@@ -654,37 +634,41 @@ mod tests {
     const BOUND_AUTHORITY_HELPER_ROOT: &str = "FREED_BOUND_AUTHORITY_HELPER_ROOT";
 
     fn exercise_authority(authority: &LibraryCoreSidecarAuthority) {
-        assert_eq!(authority.status().expect("initial status"), None);
-        authority
-            .begin_import(BeginLibraryCoreImport {
-                source_generation: 7,
-                source_revision: 11,
-                source_digest: "a".repeat(64),
-                source_checkpoint: None,
-                expected_item_count: 1,
-                shell_json: r#"{"schemaVersion":1}"#.to_string(),
-                started_at_ms: 100,
-            })
-            .expect("begin staged import");
+        let connection = authority.connect().expect("connect normalized authority");
+        let user_version: u32 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read normalized schema version");
+        let application_id: u32 = connection
+            .pragma_query_value(None, "application_id", |row| row.get(0))
+            .expect("read normalized application identity");
+        let protocol_version: u32 = connection
+            .query_row(
+                "SELECT protocol_version FROM library_storage_meta WHERE singleton_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read normalized protocol version");
+        let legacy_tables: u32 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type = 'table' AND name = 'library_core_desktop_state'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check historical table absence");
         assert_eq!(
-            authority
-                .append_import_page(&[LibraryCoreImportItem {
-                    item_json: r#"{"globalId":"item-1","title":"Bound"}"#.to_string(),
-                    updated_at_ms: 101,
-                }])
-                .expect("append staged page"),
-            1
+            user_version,
+            crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION
         );
-        let activated = authority
-            .finalize_import(102, None)
-            .expect("activate staged checkpoint");
-        assert!(activated.status.active);
-        let backup = authority
-            .store
-            .create_backup(103, "manual")
-            .expect("create closed backup");
-        assert_eq!(backup.item_count, 1);
-        assert_eq!(backup.sha256.len(), 64);
+        assert_eq!(
+            application_id,
+            crate::sqlite_contract_generated::SQLITE_APPLICATION_ID
+        );
+        assert_eq!(
+            protocol_version,
+            crate::sqlite_contract_generated::SQLITE_PROTOCOL_VERSION
+        );
+        assert_eq!(legacy_tables, 0);
     }
 
     #[test]
@@ -728,21 +712,49 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_bound_authority_consumes_checkpoint_status_and_backup_primitives() {
+    fn descriptor_bound_authority_opens_only_the_normalized_catalog() {
         let root = tempdir().expect("temporary root");
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
             .expect("set root permissions");
         run_bound_authority_helper(root.path(), "staged");
-        let backup_path = root
+        assert!(root
             .path()
-            .join("library-backups")
-            .join("sqlite-103.sqlite");
-        assert!(backup_path.is_file());
-        let backup = rusqlite::Connection::open(&backup_path).expect("open standalone backup");
-        let integrity: String = backup
-            .pragma_query_value(None, "integrity_check", |row| row.get(0))
-            .expect("check standalone backup integrity");
-        assert_eq!(integrity, "ok");
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
+            .join("library-core.sqlite")
+            .is_file());
+        assert!(!root.path().join("library-core").exists());
+        assert!(!root.path().join("library-backups").exists());
+    }
+
+    #[test]
+    fn descriptor_bound_authority_refuses_a_foreign_catalog_without_legacy_fallback() {
+        let root = tempdir().expect("temporary root");
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
+            .expect("set root permissions");
+        let normalized = root.path().join(NORMALIZED_LIBRARY_DIRECTORY);
+        std::fs::create_dir(&normalized).expect("create normalized directory");
+        std::fs::set_permissions(&normalized, std::fs::Permissions::from_mode(0o700))
+            .expect("set normalized directory permissions");
+        let foreign_path = normalized.join("library-core.sqlite");
+        let foreign = rusqlite::Connection::open(&foreign_path).expect("create foreign database");
+        foreign
+            .pragma_update(None, "application_id", 7)
+            .expect("set foreign application identity");
+        drop(foreign);
+
+        let descriptor = File::open(root.path()).expect("open root descriptor");
+        assert_eq!(
+            LibraryCoreSidecarAuthority::open_from_inherited_descriptor(descriptor.as_raw_fd())
+                .map(|_| ()),
+            Err(failure("authority_open_failed"))
+        );
+        let foreign = rusqlite::Connection::open(&foreign_path).expect("reopen foreign database");
+        let application_id: u32 = foreign
+            .pragma_query_value(None, "application_id", |row| row.get(0))
+            .expect("read foreign application identity");
+        assert_eq!(application_id, 7);
+        assert!(!root.path().join("library-core").exists());
+        assert!(!root.path().join("library-backups").exists());
     }
 
     #[test]
@@ -755,10 +767,10 @@ mod tests {
             .expect("set data root permissions");
         run_bound_authority_helper(&root, "rename-after-open");
         assert!(moved
-            .join("library-core")
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
             .join("library-core.sqlite")
             .is_file());
-        assert!(!root.join("library-core").exists());
+        assert!(!root.join(NORMALIZED_LIBRARY_DIRECTORY).exists());
         assert!(!root.join("process.lock").exists());
     }
 
@@ -774,15 +786,11 @@ mod tests {
         run_bound_authority_helper(&root, "rename-before-open");
         assert!(moved.join("process.lock").is_file());
         assert!(moved
-            .join("library-core")
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
             .join("library-core.sqlite")
             .is_file());
-        assert!(moved
-            .join("library-backups")
-            .join("sqlite-103.sqlite")
-            .is_file());
         assert!(!root.join("process.lock").exists());
-        assert!(!root.join("library-core").exists());
+        assert!(!root.join(NORMALIZED_LIBRARY_DIRECTORY).exists());
         assert!(!root.join("library-backups").exists());
     }
 

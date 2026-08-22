@@ -11,13 +11,38 @@ use crate::sqlite_contract_generated::{
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const STAGED_RECORD_DIGEST_PREFIX: &[u8] =
     b"freed.library-core.v2/digest-bytes/staged-checkpoint-record\0";
+
+pub(crate) fn normalized_sqlite_open_flags(create: bool) -> OpenFlags {
+    let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+        | OpenFlags::SQLITE_OPEN_NO_MUTEX
+        | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+        | OpenFlags::SQLITE_OPEN_NOFOLLOW
+        | OpenFlags::SQLITE_OPEN_EXRESCODE;
+    if create {
+        flags |= OpenFlags::SQLITE_OPEN_CREATE;
+    }
+    flags
+}
+
+pub(crate) fn configure_normalized_sqlite_connection(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
+    connection.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA trusted_schema = OFF;
+         PRAGMA busy_timeout = 5000;",
+    )?;
+    install_normalized_schema_v1(connection)?;
+    connection.pragma_update(None, "journal_mode", "WAL")?;
+    Ok(())
+}
 
 #[derive(Debug)]
 pub enum NormalizedSqliteError {

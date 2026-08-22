@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared Primary coordinator, reusable native SQLite authority and checkpoint store, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound native sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
+> **Status:** 🚧 In Progress (the shared Primary coordinator, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement, fail-closed service supervisor, and descriptor-bound normalized sidecar startup have landed; installed headless checkpoint ingress, production v2 issuance and retirement, and capture workers remain open)
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -66,9 +66,9 @@ The complete product has four roles:
 The current product already provides the protocol foundation:
 
 - Freed Desktop stores the active Library in bounded SQLite.
-- The current PWA transition candidate imports authenticated immutable
-  checkpoints into IndexedDB. The final architecture replaces that store with
-  SQLite WebAssembly over OPFS and deletes the IndexedDB Library paths.
+- The PWA stores its Library in official SQLite WebAssembly over OPFS. It
+  imports authenticated immutable normalized checkpoints without an IndexedDB
+  Library store.
 - Editable Freed Desktop followers exchange signed intents and canonical
   results without becoming the writer.
 - The Primary publishes immutable checkpoints and a durable exact revision
@@ -82,11 +82,10 @@ The current product already provides the protocol foundation:
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
   seconds.
-- `freed-library-core` now owns the native signed journal, SQLite authority
-  schema and migrations, actor enrollment, authority epochs, exact product
-  projection, staged logical checkpoint activation, exact local status,
-  closed backup receipts, process lease, and fixed-fd authority sidecar without
-  importing Tauri or contacting a provider.
+- `freed-library-core` now owns the normalized SQLite schema, signed journal,
+  actor enrollment, authority epochs, exact product projection, bounded typed
+  queries and mutations, normalized checkpoint activation, process lease, and
+  fixed-fd authority sidecar without importing Tauri or contacting a provider.
 - Native schema v12 binds every actor to an explicit operation capability.
   Existing v1 actors receive one fixed 14-operation legacy editor policy. New
   v2 editor, scraper, and agent certificates bind an exact operation subset,
@@ -101,9 +100,12 @@ The current product already provides the protocol foundation:
   commands never open SQLite or start social provider work.
 
 These pieces do not yet create a complete headless authority. Drive credentials
-remain owned by the Freed Desktop renderer. The native sidecar now consumes
-the reusable core through descriptor-bound authority and lease entry points,
-but it exposes no checkpoint command ingress or cloud coordinator yet. Its
+remain owned by the Freed Desktop renderer. The native sidecar acquires the
+data-root lease before opening only the final normalized SQLite catalog in the
+private `library-sqlite` directory. It verifies the exact schema, application,
+contract, and protocol identity before it reports ready. It creates no
+historical checkpoint store or backup tree, but it exposes no checkpoint
+command ingress or cloud coordinator yet. Its
 mounted credential proof establishes only that bounded private local material
 is exactly readable through a fixed zeroizing buffer. Growth beyond the bound,
 partial read failure, or post-read identity or metadata drift fails closed. The
@@ -112,17 +114,11 @@ credential validity, Drive authentication, or cloud readiness. Generic and
 Drive-specific secret parsing remain unavailable until task 11.5 defines and
 approves that contract.
 
-The checkpoint store extraction is consumed by Freed Desktop through its
-existing Tauri command DTOs. It stages bounded pages beside the active Library,
-refuses count or preverified-anchor mismatches before activation, and replays
-the follower overlay only after the atomic generation swap. If replay cannot
-finish, the reusable native receipt reports pending recovery instead of
-falsely reporting that the committed activation failed. Closed
-integrity-checked backups bind exact bytes, revision, item count, and retention
-state in the native receipt. Freed Desktop preserves its existing command DTOs
-and logs either pending condition for its existing recovery commands. This is
-reusable native substrate for task 11.6. The descriptor-bound sidecar now
-constructs that substrate after acquiring the process lease, but installed
+Freed Desktop retains the historical checkpoint store only as fenced migration
+input while the one-epoch normalized cutover is completed. The headless
+sidecar never opens that store. Task 11.6 adds a bounded typed command channel
+directly to normalized checkpoint staging, queries, and mutations. It does not
+translate the old import, status, backup, or whole-item DTOs. Installed
 headless checkpoint import remains unshipped.
 
 The macOS and Linux native authorities never reopen a verified root through a
@@ -430,7 +426,7 @@ review before implementation.
 | 11.3 | Complete | Extract the reusable native SQLite authority package without changing Tauri behavior |
 | 11.4 | Complete | Add the headless service supervisor, explicit role config, and fail-closed startup |
 | 11.5 | Open | Add Drive PKCE setup and platform-safe secret stores |
-| 11.6 | In Progress | Share exact staged checkpoint import, local status, closed backup, and structured receipt primitives; construct them behind the descriptor-bound native sidecar, then add installed headless checkpoint ingress |
+| 11.6 | In Progress | Open the final normalized SQLite catalog behind the descriptor-bound native sidecar, then add bounded typed checkpoint, query, and mutation command ingress |
 | 11.7 | Open | Add exact writer promotion and 60-second Primary actor processing |
 | 11.8 | Complete | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation. |
 | 11.9 | Open | Add signed retirement application and checkpoint propagation |
