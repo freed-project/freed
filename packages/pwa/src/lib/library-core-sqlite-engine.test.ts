@@ -38,8 +38,11 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
   libraryCoreFollowerResultBodyV1,
+  normalizedResultSegmentHeaderFromBodyV2,
   parseLibraryCoreFollowerResultEnvelopeV1,
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  parseLibraryCoreNormalizedResultSegmentBodyV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 
@@ -665,19 +668,105 @@ describe("PWA Library Core SQLite engine", () => {
         authorityKeys.privateKey,
       ).toString("hex"),
     } as unknown as LibraryCoreCanonicalValue);
-    const resultReceipt = await engine.applyFollowerResult({
-      canonicalResultBytes,
+    const resultEnvelope = parseLibraryCoreFollowerResultEnvelopeV1(
+      decodeLibraryCoreCanonicalValue(canonicalResultBytes),
+    );
+    const resultBody = parseLibraryCoreNormalizedResultSegmentBodyV2({
+      actor_id: actorId,
+      canonical_result_bytes: canonicalResultBytes.byteLength,
+      first_result_sequence: 1,
+      format: "freed_normalized_result_segment_v2",
+      kind: "normalized_result_segment_body",
+      last_result_sequence: 1,
+      library_id: libraryId,
+      previous_segment_digest: null,
+      protocol: "normalized_result_segments_v2",
+      protocol_version: 2,
+      result_count: 1,
+      results: [resultEnvelope],
+      storage_epoch_id: epochId,
     });
-    expect(resultReceipt).toEqual({
+    const semanticResultDigest = coreDigest(
+      "normalized-result-segment-body-v2",
+      resultBody,
+    );
+    const storedResultDigest = "14".repeat(32);
+    const resultPublication = parseLibraryCoreNormalizedResultTransportImportV2({
+      header: normalizedResultSegmentHeaderFromBodyV2(
+        resultBody,
+        semanticResultDigest,
+      ),
+      receivedAt: 2_100,
+      reference: {
+        descriptor: {
+          byteLength: canonicalResultBytes.byteLength,
+          contentDigest: storedResultDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            actorId,
+            digest: storedResultDigest,
+            epochId,
+            firstSequence: 1,
+            kind: "result_segment",
+            lastSequence: 1,
+            libraryId,
+          }),
+        },
+        transportObjectId: "drive-result-object-1",
+      },
+      results: [resultEnvelope],
+    });
+    database.exec(`CREATE TEMP TRIGGER fail_result_transport_receipt
+      BEFORE INSERT ON library_result_transport_segments
+      BEGIN SELECT RAISE(ABORT, 'injected result transport fault'); END;`);
+    await expect(
+      engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).rejects.toThrow(/injected result transport fault/);
+    expect(
+      database.exec({
+        sql: `SELECT source_revision,
+                     (SELECT count(*) FROM library_intent_results),
+                     (SELECT count(*) FROM library_optimistic_fields)
+              FROM library_meta WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[7, 0, 1]]);
+    database.exec("DROP TRIGGER fail_result_transport_receipt;");
+    const transportReceipt =
+      await engine.importNormalizedFollowerResultTransport(resultPublication);
+    expect(transportReceipt).toEqual({
+      acceptedTransactionCount: 1,
       actorId,
-      resultDigest,
-      resultSequence: 1,
-      sourceRevision: 8,
-      status: "accepted",
-      transactionId: "intent-transaction-1",
+      firstResultSequence: 1,
+      lastResultSequence: 1,
+      nextResultSequence: 2,
+      receivedAt: 2_100,
+      rejectedTransactionCount: 0,
+      resultCount: 1,
+      semanticSegmentDigest: semanticResultDigest,
+      storedSegmentDigest: storedResultDigest,
     });
+    expect(
+      await engine.importNormalizedFollowerResultTransport(resultPublication),
+    ).toEqual(transportReceipt);
+    await expect(
+      engine.importNormalizedFollowerResultTransport({
+        ...resultPublication,
+        reference: {
+          ...resultPublication.reference,
+          transportObjectId: "changed-result-object",
+        },
+      }),
+    ).rejects.toThrow(/replay changed/);
     expect(await engine.applyFollowerResult({ canonicalResultBytes })).toEqual(
-      resultReceipt,
+      {
+        actorId,
+        resultDigest,
+        resultSequence: 1,
+        sourceRevision: 8,
+        status: "accepted",
+        transactionId: "intent-transaction-1",
+      },
     );
     expect(
       database.exec({

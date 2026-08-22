@@ -6,6 +6,7 @@ import {
   normalizedResultSegmentHeaderFromBodyV2,
   parseLibraryCoreNormalizedResultHeadV2,
   parseLibraryCoreNormalizedResultSegmentBodyV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
 } from "./normalized-result-segment-contracts.js";
 
 const DIGEST_A = "a".repeat(64);
@@ -71,6 +72,46 @@ describe("normalized result segment v2 contracts", () => {
     );
     expect(header).not.toHaveProperty("results");
     expect(results[0]).not.toHaveProperty("canonical_result_json");
+
+    const storedDigest = "e".repeat(64);
+    const reference = {
+      descriptor: {
+        byteLength: canonicalResultBytes,
+        contentDigest: storedDigest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          actorId: "actor-1",
+          digest: storedDigest,
+          epochId: "epoch-1",
+          firstSequence: 1,
+          kind: "result_segment" as const,
+          lastSequence: 2,
+          libraryId: "library-1",
+        }),
+      },
+      transportObjectId: "transport-1",
+    };
+    expect(
+      parseLibraryCoreNormalizedResultTransportImportV2({
+        header,
+        receivedAt: 100,
+        reference,
+        results,
+      }),
+    ).toMatchObject({ header, receivedAt: 100, reference, results });
+    expect(() =>
+      parseLibraryCoreNormalizedResultTransportImportV2({
+        header,
+        receivedAt: 100,
+        reference: {
+          ...reference,
+          descriptor: {
+            ...reference.descriptor,
+            objectKey: "changed",
+          },
+        },
+        results,
+      }),
+    ).toThrow(/invalid/);
   });
 
   it("binds a head to the exact Library, epoch, actor, range, and digest", () => {

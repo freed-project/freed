@@ -55,6 +55,14 @@
         Exact retries return the durable receipt. Changed bytes, result-chain
         gaps, incomplete projections, stale authority, and a late cursor fault
         cannot partially settle the result.
+  - [x] Import one closed normalized v2 result transport segment through OPFS
+        SQLite. The browser reconstructs and verifies the semantic segment
+        digest from its direct canonical signed result records before opening
+        one immediate transaction. Result materialization, optimistic overlay
+        cleanup, logical cursor advancement, immutable-object receipt, and
+        transport-head advancement commit or roll back together. Exact retries
+        return the stored receipt, while changed bytes or object identity fail
+        closed.
   - [x] Page pending and published signed intent members directly from browser
         SQLite through one closed actor-bound worker request. Each page returns
         at most 128 exact canonical members and 1,048,576 serialized bytes in
@@ -439,6 +447,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.38 | Move SearchJump bulk resolution outside React, cover the complete OPFS SQLite feed or search scope, emit one explicit signed transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required | High       | ✓ Complete                                                                                       |
 | 6.39 | Freeze complete SearchJump scope actions in installation-local OPFS SQLite before the first intent, then emit the stable set through bounded 1,000-member signed transactions without returning selected IDs to React                          | High       | ✓ Complete                                                                                       |
 | 6.40 | Implement the normalized v2 intent transport publication transaction inside the PWA OPFS SQLite engine, using the shared closed header and immutable-reference contract, exact response-loss receipts, actor-head advancement, and transaction-completeness behavior matching native Rust                 | High       | ✓ Complete                                                                                       |
+| 6.41 | Import normalized v2 result transport segments inside one PWA OPFS SQLite transaction, including semantic digest and signature verification, result materialization, sparse-overlay cleanup, logical and transport cursor advancement, exact retry receipts, and full rollback on late receipt failure      | High       | ✓ Complete                                                                                       |
 
 ---
 

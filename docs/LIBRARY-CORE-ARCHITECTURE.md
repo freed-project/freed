@@ -686,6 +686,14 @@ returns that stored segment receipt. A changed record, digest, range, object
 identity, or receipt time fails closed. No Drive listing and no React state is
 used to infer whether a result was already applied.
 
+The PWA OPFS SQLite engine performs the same v2 result import. It reconstructs
+the closed semantic body from direct canonical signed result records, verifies
+the body digest and every authority signature before writing, then commits
+result materialization, optimistic overlay cleanup, logical cursor progress,
+the immutable-object receipt, and transport-head progress in one immediate
+transaction. A late receipt failure rolls back the product rows and both
+cursors. IndexedDB is not part of this result authority path.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 

@@ -26,8 +26,12 @@ import {
   type LibraryCoreFollowerIntentPublicationV1,
   type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
   type LibraryCoreNormalizedIntentTransportPublicationV2,
+  type LibraryCoreNormalizedResultTransportImportReceiptV2,
+  type LibraryCoreNormalizedResultTransportImportV2,
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
+  type LibraryCoreFollowerResultVerificationAuthorityV1,
+  type LibraryCoreVerifiedFollowerResultV1,
   type LibraryCoreAcceptedActorStateV1,
   encodeLibraryCoreDigestInput,
   parseLibraryCoreFollowerIntentCommitV1,
@@ -35,6 +39,8 @@ import {
   parseLibraryCoreFollowerIntentPageResponseV1,
   parseLibraryCoreFollowerIntentPublicationV1,
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
+  normalizedResultSegmentBodyFromRecordsV2,
+  parseLibraryCoreNormalizedResultTransportImportV2,
   parseLibraryCoreFollowerResultApplyV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
@@ -2192,6 +2198,238 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  async importNormalizedFollowerResultTransport(
+    input: LibraryCoreNormalizedResultTransportImportV2,
+  ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    const publication = parseLibraryCoreNormalizedResultTransportImportV2(input);
+    const body = normalizedResultSegmentBodyFromRecordsV2(
+      publication.header,
+      publication.results,
+    );
+    const semanticSegmentDigest = sha256LowerHex(
+      encodeLibraryCoreDigestInput(
+        "normalized-result-segment-body-v2",
+        body as unknown as LibraryCoreCanonicalValue,
+      ),
+    );
+    if (semanticSegmentDigest !== publication.header.segment_digest) {
+      throw new Error("normalized result transport semantic digest changed");
+    }
+
+    const authorityRows = this.#database.exec({
+      sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                   e.authority_key_id, e.authority_public_key
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (authorityRows.length !== 1) {
+      throw new Error("normalized result transport authority is unavailable");
+    }
+    const authorityRow = authorityRows[0]!;
+    const authority = Object.freeze({
+      authorityKeyId: text(authorityRow[3], "normalized result authority key ID"),
+      authorityPublicKey: text(
+        authorityRow[4],
+        "normalized result authority public key",
+      ),
+      epoch: safeInteger(authorityRow[1], "normalized result authority epoch"),
+      epochId: text(authorityRow[2], "normalized result authority epoch ID"),
+      libraryId: text(authorityRow[0], "normalized result authority Library ID"),
+    });
+    if (
+      authority.libraryId !== publication.header.library_id ||
+      authority.epochId !== publication.header.storage_epoch_id
+    ) {
+      throw new Error("normalized result transport authority changed");
+    }
+    const verifiedResults = await Promise.all(
+      publication.results.map((result) => {
+        const canonicalBytes = encodeLibraryCoreCanonicalValue(
+          result as unknown as LibraryCoreCanonicalValue,
+          { maximumBytes: 131_072 },
+        );
+        return verifyLibraryCoreFollowerResultV1(canonicalBytes, authority, {
+          verifySignature: (verification) =>
+            verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle),
+        });
+      }),
+    );
+    const storedSegmentDigest = publication.reference.descriptor.contentDigest;
+    const firstResultSequence = publication.header.first_result_sequence;
+    const lastResultSequence = publication.header.last_result_sequence;
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec({
+        sql: `INSERT OR IGNORE INTO library_result_transport_heads
+                (actor_id, library_id, storage_epoch_id, next_result_sequence,
+                 latest_segment_digest)
+              VALUES (?1, ?2, ?3, 1, NULL);`,
+        bind: [
+          publication.header.actor_id,
+          publication.header.library_id,
+          publication.header.storage_epoch_id,
+        ],
+      });
+      const headRows = this.#database.exec({
+        sql: `SELECT library_id, storage_epoch_id, next_result_sequence,
+                     latest_segment_digest
+              FROM library_result_transport_heads WHERE actor_id = ?1;`,
+        bind: [publication.header.actor_id],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        headRows.length !== 1 ||
+        text(headRows[0]![0], "normalized result head Library ID") !==
+          publication.header.library_id ||
+        text(headRows[0]![1], "normalized result head storage epoch") !==
+          publication.header.storage_epoch_id
+      ) {
+        throw new Error("normalized result transport head identity changed");
+      }
+      const existingRows = this.#database.exec({
+        sql: `SELECT last_result_sequence, previous_segment_digest,
+                     semantic_segment_digest, stored_segment_digest, object_key,
+                     transport_object_id, received_at, result_count,
+                     accepted_transaction_count, rejected_transaction_count
+              FROM library_result_transport_segments
+              WHERE actor_id = ?1 AND first_result_sequence = ?2;`,
+        bind: [publication.header.actor_id, firstResultSequence],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (existingRows.length === 1) {
+        const row = existingRows[0]!;
+        if (
+          safeInteger(row[0], "stored result last sequence") !== lastResultSequence ||
+          nullableText(row[1], "stored result previous digest") !==
+            publication.header.previous_segment_digest ||
+          text(row[2], "stored result semantic digest") !== semanticSegmentDigest ||
+          text(row[3], "stored result content digest") !== storedSegmentDigest ||
+          text(row[4], "stored result object key") !==
+            publication.reference.descriptor.objectKey ||
+          text(row[5], "stored result transport object ID") !==
+            publication.reference.transportObjectId ||
+          safeInteger(row[6], "stored result received time") !== publication.receivedAt ||
+          safeInteger(row[7], "stored result count") !== publication.results.length
+        ) {
+          throw new Error("normalized result transport replay changed");
+        }
+        this.#database.exec("COMMIT;");
+        return Object.freeze({
+          acceptedTransactionCount: safeInteger(
+            row[8],
+            "stored accepted result count",
+          ),
+          actorId: publication.header.actor_id,
+          firstResultSequence,
+          lastResultSequence,
+          nextResultSequence: lastResultSequence + 1,
+          receivedAt: publication.receivedAt,
+          rejectedTransactionCount: safeInteger(
+            row[9],
+            "stored rejected result count",
+          ),
+          resultCount: publication.results.length,
+          semanticSegmentDigest,
+          storedSegmentDigest,
+        });
+      }
+      if (
+        safeInteger(headRows[0]![2], "normalized result next sequence") !==
+          firstResultSequence ||
+        nullableText(headRows[0]![3], "normalized result latest digest") !==
+          publication.header.previous_segment_digest
+      ) {
+        throw new Error("normalized result transport does not extend its head");
+      }
+
+      for (const verified of verifiedResults) {
+        this.#applyVerifiedFollowerResult(
+          verified,
+          authority,
+          publication.receivedAt,
+          false,
+        );
+      }
+      const rejectedTransactionCount = publication.results.filter(
+        (result) => result.status === "rejected",
+      ).length;
+      const acceptedTransactionCount =
+        publication.results.length - rejectedTransactionCount;
+      this.#database.exec({
+        sql: `INSERT INTO library_result_transport_segments
+                (actor_id, first_result_sequence, last_result_sequence,
+                 previous_segment_digest, semantic_segment_digest,
+                 stored_segment_digest, object_key, transport_object_id,
+                 received_at, result_count, accepted_transaction_count,
+                 rejected_transaction_count)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);`,
+        bind: [
+          publication.header.actor_id,
+          firstResultSequence,
+          lastResultSequence,
+          publication.header.previous_segment_digest,
+          semanticSegmentDigest,
+          storedSegmentDigest,
+          publication.reference.descriptor.objectKey,
+          publication.reference.transportObjectId,
+          publication.receivedAt,
+          publication.results.length,
+          acceptedTransactionCount,
+          rejectedTransactionCount,
+        ],
+      });
+      this.#database.exec({
+        sql: `UPDATE library_result_transport_heads
+              SET next_result_sequence = ?2, latest_segment_digest = ?3
+              WHERE actor_id = ?1 AND next_result_sequence = ?4
+                AND latest_segment_digest IS ?5;`,
+        bind: [
+          publication.header.actor_id,
+          lastResultSequence + 1,
+          storedSegmentDigest,
+          firstResultSequence,
+          publication.header.previous_segment_digest,
+        ],
+      });
+      if (
+        safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "normalized result head update",
+        ) !== 1
+      ) {
+        throw new Error("normalized result transport head changed concurrently");
+      }
+      this.#database.exec("COMMIT;");
+      return Object.freeze({
+        acceptedTransactionCount,
+        actorId: publication.header.actor_id,
+        firstResultSequence,
+        lastResultSequence,
+        nextResultSequence: lastResultSequence + 1,
+        receivedAt: publication.receivedAt,
+        rejectedTransactionCount,
+        resultCount: publication.results.length,
+        semanticSegmentDigest,
+        storedSegmentDigest,
+      });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
   async applyFollowerResult(
     input: LibraryCoreFollowerResultApplyV1,
   ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
@@ -2245,14 +2483,28 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("follower result clock is invalid");
     }
 
-    this.#database.exec("BEGIN IMMEDIATE;");
+    return this.#applyVerifiedFollowerResult(
+      verified,
+      authority,
+      receivedAt,
+      true,
+    );
+  }
+
+  #applyVerifiedFollowerResult(
+    verified: LibraryCoreVerifiedFollowerResultV1,
+    authority: LibraryCoreFollowerResultVerificationAuthorityV1,
+    receivedAt: number,
+    manageTransaction: boolean,
+  ): LibraryCoreFollowerResultApplyReceiptV1 {
+    if (manageTransaction) this.#database.exec("BEGIN IMMEDIATE;");
     try {
       const retryInsideTransaction = this.#followerResultRetry(
         verified.envelope.transaction_id,
         verified.canonicalBytes,
       );
       if (retryInsideTransaction !== null) {
-        this.#database.exec("COMMIT;");
+        if (manageTransaction) this.#database.exec("COMMIT;");
         return retryInsideTransaction;
       }
       const currentAuthority = this.#database.exec({
@@ -2572,7 +2824,7 @@ export class PwaLibraryCoreSqliteEngine {
       ) {
         throw new Error("follower result cursor compare-and-swap failed");
       }
-      this.#database.exec("COMMIT;");
+      if (manageTransaction) this.#database.exec("COMMIT;");
       return Object.freeze({
         actorId: envelope.actor_id,
         resultDigest: verified.resultDigest,
@@ -2585,7 +2837,7 @@ export class PwaLibraryCoreSqliteEngine {
         transactionId: envelope.transaction_id,
       });
     } catch (error) {
-      this.#database.exec("ROLLBACK;");
+      if (manageTransaction) this.#database.exec("ROLLBACK;");
       throw error;
     }
   }

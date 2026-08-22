@@ -63,6 +63,26 @@ export interface LibraryCoreNormalizedResultHeadV2 {
   readonly storage_epoch_id: LibraryCoreOperationInstanceId;
 }
 
+export interface LibraryCoreNormalizedResultTransportImportV2 {
+  readonly header: LibraryCoreNormalizedResultSegmentHeaderV2;
+  readonly receivedAt: number;
+  readonly reference: LibraryCoreImmutableObjectReferenceV1;
+  readonly results: readonly LibraryCoreFollowerResultEnvelopeV1[];
+}
+
+export interface LibraryCoreNormalizedResultTransportImportReceiptV2 {
+  readonly acceptedTransactionCount: number;
+  readonly actorId: LibraryCoreOperationInstanceId;
+  readonly firstResultSequence: number;
+  readonly lastResultSequence: number;
+  readonly nextResultSequence: number;
+  readonly receivedAt: number;
+  readonly rejectedTransactionCount: number;
+  readonly resultCount: number;
+  readonly semanticSegmentDigest: LibraryCoreLowercaseHex64;
+  readonly storedSegmentDigest: LibraryCoreLowercaseHex64;
+}
+
 export type LibraryCoreNormalizedResultSegmentRecordV2 =
   | LibraryCoreNormalizedResultSegmentHeaderV2
   | LibraryCoreFollowerResultEnvelopeV1;
@@ -311,6 +331,46 @@ export function normalizedResultSegmentHeaderFromBodyV2(
     result_count: body.result_count,
     segment_digest: segmentDigest,
     storage_epoch_id: body.storage_epoch_id,
+  });
+}
+
+export function parseLibraryCoreNormalizedResultTransportImportV2(
+  value: unknown,
+): LibraryCoreNormalizedResultTransportImportV2 {
+  const input = closedRecord(
+    value,
+    ["header", "receivedAt", "reference", "results"],
+    "normalized result transport import",
+  );
+  const header = parseLibraryCoreNormalizedResultSegmentHeaderV2(input.header);
+  if (!Array.isArray(input.results)) {
+    throw new TypeError("normalized result transport results are invalid");
+  }
+  const body = normalizedResultSegmentBodyFromRecordsV2(
+    header,
+    input.results.map(parseLibraryCoreFollowerResultEnvelopeV1),
+  );
+  const reference = parseLibraryCoreImmutableObjectReferenceV1(input.reference);
+  if (
+    !isLibraryCoreNonnegativeSafeInteger(input.receivedAt) ||
+    reference.descriptor.objectKey !==
+      createLibraryCoreImmutableObjectKey({
+        actorId: header.actor_id,
+        digest: reference.descriptor.contentDigest,
+        epochId: header.storage_epoch_id,
+        firstSequence: header.first_result_sequence,
+        kind: "result_segment",
+        lastSequence: header.last_result_sequence,
+        libraryId: header.library_id,
+      })
+  ) {
+    throw new TypeError("normalized result transport import is invalid");
+  }
+  return Object.freeze({
+    header,
+    receivedAt: input.receivedAt,
+    reference,
+    results: body.results,
   });
 }
 
