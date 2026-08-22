@@ -20,7 +20,9 @@
 > objects against local SQLite proofs at startup and serve bounded verified
 > range windows without exposing physical paths. Both close complete and pinned
 > availability through the full-content digest without a monolithic cache
-> object. Transport scheduling, exclusion, and eviction remain in progress.
+> object. Both now purge excluded local content and refuse eviction until a
+> pinned rendition is explicitly unpinned. Transport scheduling and automatic
+> garbage collection remain in progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
@@ -41,7 +43,7 @@
 - [ ] Let a client stream selected ranges through the approved user-owned
       storage transport, keep a partial cache, complete the cache, or exclude
       the rendition entirely.
-- [ ] Keep hydration and eviction state device-local. Synchronize only content
+- [x] Keep hydration and eviction state device-local. Synchronize only content
       identity, availability descriptors, and canonical metadata.
 - [ ] Require separate provider-risk approval before any new resolver request,
       page load, click, timing pattern, header, cookie use, or background media
@@ -308,7 +310,7 @@ import { BskyAgent } from "@atproto/api";
 
 export async function getTimeline(
   agent: BskyAgent,
-  cursor?: string
+  cursor?: string,
 ): Promise<TimelineResponse> {
   return agent.getTimeline({ cursor, limit: 50 });
 }
@@ -441,52 +443,52 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 
 ## Tasks
 
-| Task  | Description                                | Complexity | Status |
-| ----- | ------------------------------------------ | ---------- | ------ |
-| 12.1  | `@freed/capture-linkedin` package scaffold | Low        | ✓ Done |
-| 12.2  | LinkedIn DOM selectors                     | High       | ✓ Done |
-| 12.3  | LinkedIn session management                | High       | ✓ Done |
-| 12.4  | LinkedIn desktop source integration        | Medium     | ✓ Done |
-| 12.5  | LinkedIn regression test coverage          | Medium     | ✓ Done |
-| 12.6  | `@freed/capture-mozi` package scaffold     | Low        |        |
-| 12.7  | Mozi auth and session flow research        | High       |        |
-| 12.8  | Mozi extraction strategy: payload first    | High       |        |
-| 12.9  | Mozi desktop source integration            | Medium     |        |
-| 12.10 | Mozi regression test coverage              | Medium     |        |
-| 12.11 | `@freed/capture-tiktok` package scaffold   | Low        |        |
-| 12.12 | TikTok capture strategy research           | High       |        |
-| 12.13 | `@freed/capture-threads` package scaffold  | Low        |        |
-| 12.14 | Threads capture (similar to Instagram)     | Medium     |        |
-| 12.15 | `@freed/capture-bluesky` package scaffold  | Low        |        |
-| 12.16 | Bluesky AT Protocol client                 | Medium     |        |
-| 12.17 | Bluesky authentication flow                | Medium     |        |
-| 12.18 | `@freed/capture-reddit` package scaffold   | Low        |        |
-| 12.19 | Reddit OAuth setup                         | Medium     |        |
-| 12.20 | Reddit home feed capture                   | Medium     |        |
-| 12.21 | `@freed/capture-youtube` package scaffold  | Low        | ✓ Done |
-| 12.22 | YouTube authenticated website-session capture | High    | ✓ Done |
-| 12.23 | YouTube roster and Subscriptions page capture | High    | ✓ Done |
-| 12.24 | Focus player and exact-video handoff       | Medium     | ✓ Done |
-| 12.25 | Private `Freed Offline` playlist through website controls | High | ✓ Done |
-| 12.26 | Persistent YouTube WebView session and recovery | Medium | ✓ Done |
-| 12.27 | Desktop audio resolver and package laboratory | High   |        |
-| 12.28 | Authenticated LAN media transfer to PWA    | High       |        |
-| 12.29 | PWA offline audio storage and locked-screen validation | High |        |
-| 12.30 | Encrypted user-cloud media transfer        | High       |        |
-| 12.31 | Optional offline video rendition           | High       |        |
-| 12.32 | Hosted relay measurement and owner decision | High      |        |
-| 12.33 | YouTube installed-build terminal sync trigger | Low      | ✓ Done |
-| 12.34 | Substack and Medium browser-safe capture packages | Medium | ✓ Done |
-| 12.35 | Isolated authenticated WebView login and disconnect flows | High | ✓ Done |
-| 12.36 | Bounded visible roster traversal plus activity and essay extraction | High | ✓ Done |
-| 12.37 | Atomic follow-roster and activity reconciliation | High | ✓ Done |
-| 12.38 | Beta source UI, consent, health, filtering, and diagnostics | Medium | ✓ Done |
-| 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage | Medium | ✓ Done |
-| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state | High | ✓ Done |
-| 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
-| 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
-| 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
-| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High | ✓ Done |
+| Task  | Description                                                                                    | Complexity | Status         |
+| ----- | ---------------------------------------------------------------------------------------------- | ---------- | -------------- |
+| 12.1  | `@freed/capture-linkedin` package scaffold                                                     | Low        | ✓ Done         |
+| 12.2  | LinkedIn DOM selectors                                                                         | High       | ✓ Done         |
+| 12.3  | LinkedIn session management                                                                    | High       | ✓ Done         |
+| 12.4  | LinkedIn desktop source integration                                                            | Medium     | ✓ Done         |
+| 12.5  | LinkedIn regression test coverage                                                              | Medium     | ✓ Done         |
+| 12.6  | `@freed/capture-mozi` package scaffold                                                         | Low        |                |
+| 12.7  | Mozi auth and session flow research                                                            | High       |                |
+| 12.8  | Mozi extraction strategy: payload first                                                        | High       |                |
+| 12.9  | Mozi desktop source integration                                                                | Medium     |                |
+| 12.10 | Mozi regression test coverage                                                                  | Medium     |                |
+| 12.11 | `@freed/capture-tiktok` package scaffold                                                       | Low        |                |
+| 12.12 | TikTok capture strategy research                                                               | High       |                |
+| 12.13 | `@freed/capture-threads` package scaffold                                                      | Low        |                |
+| 12.14 | Threads capture (similar to Instagram)                                                         | Medium     |                |
+| 12.15 | `@freed/capture-bluesky` package scaffold                                                      | Low        |                |
+| 12.16 | Bluesky AT Protocol client                                                                     | Medium     |                |
+| 12.17 | Bluesky authentication flow                                                                    | Medium     |                |
+| 12.18 | `@freed/capture-reddit` package scaffold                                                       | Low        |                |
+| 12.19 | Reddit OAuth setup                                                                             | Medium     |                |
+| 12.20 | Reddit home feed capture                                                                       | Medium     |                |
+| 12.21 | `@freed/capture-youtube` package scaffold                                                      | Low        | ✓ Done         |
+| 12.22 | YouTube authenticated website-session capture                                                  | High       | ✓ Done         |
+| 12.23 | YouTube roster and Subscriptions page capture                                                  | High       | ✓ Done         |
+| 12.24 | Focus player and exact-video handoff                                                           | Medium     | ✓ Done         |
+| 12.25 | Private `Freed Offline` playlist through website controls                                      | High       | ✓ Done         |
+| 12.26 | Persistent YouTube WebView session and recovery                                                | Medium     | ✓ Done         |
+| 12.27 | Desktop audio resolver and package laboratory                                                  | High       |                |
+| 12.28 | Authenticated LAN media transfer to PWA                                                        | High       |                |
+| 12.29 | PWA offline audio storage and locked-screen validation                                         | High       |                |
+| 12.30 | Encrypted user-cloud media transfer                                                            | High       |                |
+| 12.31 | Optional offline video rendition                                                               | High       |                |
+| 12.32 | Hosted relay measurement and owner decision                                                    | High       |                |
+| 12.33 | YouTube installed-build terminal sync trigger                                                  | Low        | ✓ Done         |
+| 12.34 | Substack and Medium browser-safe capture packages                                              | Medium     | ✓ Done         |
+| 12.35 | Isolated authenticated WebView login and disconnect flows                                      | High       | ✓ Done         |
+| 12.36 | Bounded visible roster traversal plus activity and essay extraction                            | High       | ✓ Done         |
+| 12.37 | Atomic follow-roster and activity reconciliation                                               | High       | ✓ Done         |
+| 12.38 | Beta source UI, consent, health, filtering, and diagnostics                                    | Medium     | ✓ Done         |
+| 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage                         | Medium     | ✓ Done         |
+| 12.40 | Shared provider scheduler with isolated cadence, deadline, and cooldown state                  | High       | ✓ Done         |
+| 12.41 | Installed Substack and Medium selector soak                                                    | High       | 🚧 In Progress |
+| 12.42 | Device-local provider RSS essay body preservation                                              | Medium     | ✓ Done         |
+| 12.43 | Origin-scoped native event bridge capabilities                                                 | High       | ✓ Done         |
+| 12.44 | Provider-neutral content-addressed media blob wire and dormant bounded Drive resumable adapter | High       | ✓ Done         |
 
 ---
 
@@ -582,17 +584,17 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 
 ## Platform Comparison
 
-| Platform | Method                | Auth Required | API Quality           | Difficulty | Primary Value |
-| -------- | --------------------- | ------------- | --------------------- | ---------- | ------------- |
-| LinkedIn | DOM scrape            | Cookies       | N/A                   | Very High  | Professional posts |
-| Substack | Authenticated WebView plus user-added RSS | Website session | Public RSS only | High | Essays, notes, follows, subscriptions |
-| Medium   | Authenticated WebView plus user-added RSS | Website session | No new general integration tokens | High | Stories, responses, follows |
-| Mozi     | WebView payload + DOM | Phone session | Unknown / likely none | High       | Social planning, trips, overlaps |
-| TikTok   | TBD                   | TBD           | Limited               | Very High  | Short-form video feed |
-| Threads  | DOM scrape            | Cookies       | N/A                   | High       | Social posts |
-| Bluesky  | AT Protocol           | App password  | Excellent             | Low        | Timeline capture |
-| Reddit   | OAuth API             | OAuth         | Good                  | Medium     | Home feed beyond RSS |
-| YouTube  | Authenticated website session, optional manual RSS | Website session | N/A | High | Subscriptions, focused viewing, Premium handoff, future offline media |
+| Platform | Method                                             | Auth Required   | API Quality                       | Difficulty | Primary Value                                                         |
+| -------- | -------------------------------------------------- | --------------- | --------------------------------- | ---------- | --------------------------------------------------------------------- |
+| LinkedIn | DOM scrape                                         | Cookies         | N/A                               | Very High  | Professional posts                                                    |
+| Substack | Authenticated WebView plus user-added RSS          | Website session | Public RSS only                   | High       | Essays, notes, follows, subscriptions                                 |
+| Medium   | Authenticated WebView plus user-added RSS          | Website session | No new general integration tokens | High       | Stories, responses, follows                                           |
+| Mozi     | WebView payload + DOM                              | Phone session   | Unknown / likely none             | High       | Social planning, trips, overlaps                                      |
+| TikTok   | TBD                                                | TBD             | Limited                           | Very High  | Short-form video feed                                                 |
+| Threads  | DOM scrape                                         | Cookies         | N/A                               | High       | Social posts                                                          |
+| Bluesky  | AT Protocol                                        | App password    | Excellent                         | Low        | Timeline capture                                                      |
+| Reddit   | OAuth API                                          | OAuth           | Good                              | Medium     | Home feed beyond RSS                                                  |
+| YouTube  | Authenticated website session, optional manual RSS | Website session | N/A                               | High       | Subscriptions, focused viewing, Premium handoff, future offline media |
 
 ---
 

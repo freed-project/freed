@@ -158,9 +158,9 @@ pub use product_projection::upsert_item;
 pub use selective_content::{
     get_content_state_v1, publish_content_range_from_reader_v1, register_verified_content_range_v1,
     set_content_policy_v1, ContentAvailabilityV1, ContentCompletionReceiptV1,
-    ContentCompletionRequestV1, ContentHydrationPolicyV1, ContentHydrationStateV1,
-    ContentPolicyMutationReceiptV1, ContentPolicyMutationV1, ContentRangePublicationRequestV1,
-    ContentRangeReadRequestV1, ContentRangeReadResponseV1, ContentStateRequestV1, ContentStateV1,
-    DurableContentRangeObjectV1, SelectiveContentError, VerifiedContentRangePublicationV1,
-    VerifiedContentRangeReceiptV1,
+    ContentCompletionRequestV1, ContentEvictionReceiptV1, ContentEvictionRequestV1,
+    ContentHydrationPolicyV1, ContentHydrationStateV1, ContentPolicyMutationReceiptV1,
+    ContentPolicyMutationV1, ContentRangePublicationRequestV1, ContentRangeReadRequestV1,
+    ContentRangeReadResponseV1, ContentStateRequestV1, ContentStateV1, DurableContentRangeObjectV1,
+    SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };

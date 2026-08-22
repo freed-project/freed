@@ -2099,6 +2099,43 @@ export class PwaLibraryCoreSqliteEngine {
     );
   }
 
+  pageVerifiedContentRangeStorageProofsForContent(
+    contentDigest: string,
+    afterRangeIndex: number | null,
+  ): readonly Readonly<{
+    byteLength: number;
+    rangeIndex: number;
+    storageKey: string;
+  }>[] {
+    if (
+      !isLibraryCoreLowercaseHex64(contentDigest) ||
+      (afterRangeIndex !== null &&
+        (!Number.isSafeInteger(afterRangeIndex) || afterRangeIndex < 0))
+    ) {
+      throw new TypeError("content eviction cursor is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT range_index, verified_byte_length, storage_key
+            FROM library_device_content_ranges
+            WHERE content_digest = ?1 COLLATE BINARY
+              AND storage_kind = 'opfs'
+              AND (?2 IS NULL OR range_index > ?2)
+            ORDER BY range_index ASC LIMIT 128;`,
+      bind: [contentDigest, afterRangeIndex],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          rangeIndex: safeInteger(row[0], "content eviction range index"),
+          byteLength: safeInteger(row[1], "content eviction byte length"),
+          storageKey: text(row[2], "content eviction storage key"),
+        }),
+      ),
+    );
+  }
+
   pruneVerifiedContentRangeStorageProofs(storageKeys: readonly string[]): void {
     if (
       storageKeys.length > 128 ||

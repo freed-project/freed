@@ -14,6 +14,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteContentCompletionWorkerRequest,
+  createLibraryCoreSqliteContentEvictionWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -37,6 +38,7 @@ import {
   parseLibraryCoreSqliteFollowerMutationContextResponse,
   parseLibraryCoreContentRangeReadResponseV1,
   parseLibraryCoreContentCompletionReceiptV1,
+  parseLibraryCoreContentEvictionReceiptV1,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -59,6 +61,8 @@ import {
   type LibraryCoreContentRangeReadResponseV1,
   type LibraryCoreContentCompletionReceiptV1,
   type LibraryCoreContentCompletionRequestV1,
+  type LibraryCoreContentEvictionReceiptV1,
+  type LibraryCoreContentEvictionRequestV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
@@ -187,6 +191,18 @@ export class PwaLibraryCoreSqliteClient {
       createLibraryCoreSqliteContentCompletionWorkerRequest(requestId, request),
     ).then((value) => {
       const parsed = parseLibraryCoreContentCompletionReceiptV1(value);
+      if (!parsed.ok) throw new TypeError(parsed.error);
+      return parsed.value;
+    });
+  }
+
+  evictContent(
+    request: LibraryCoreContentEvictionRequestV1,
+  ): Promise<LibraryCoreContentEvictionReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentEvictionWorkerRequest(requestId, request),
+    ).then((value) => {
+      const parsed = parseLibraryCoreContentEvictionReceiptV1(value);
       if (!parsed.ok) throw new TypeError(parsed.error);
       return parsed.value;
     });

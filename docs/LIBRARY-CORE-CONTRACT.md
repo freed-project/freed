@@ -805,9 +805,9 @@ The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version 2
 | `80_tombstone`              | entity tuple                      | one entity tombstone                                             |
 | `90_actor_state`            | actor ID                          | enrolled actor and accepted tip                                  |
 | `a0_receipt`                | receipt kind and ID               | retained authoritative receipt                                   |
-| `b0_blob_descriptor`        | content digest                    | content metadata and inline-chunk or authenticated-range layout   |
+| `b0_blob_descriptor`        | content digest                    | content metadata and inline-chunk or authenticated-range layout  |
 | `b1_content_chunk`          | content digest and chunk index    | bounded content bytes when included                              |
-| `b2_content_range`          | content digest and range index    | one authenticated byte offset, length, and range digest           |
+| `b2_content_range`          | content digest and range index    | one authenticated byte offset, length, and range digest          |
 
 The executable registry is authoritative. This table is explanatory. No
 registry key or payload kind may contain `shell`. Identity is registry key plus
@@ -1007,6 +1007,15 @@ locations exist only on the verified range rows.
 If full verification later observes changed bytes, the same operation revokes
 any complete claim, records local `corrupt` availability, and advances the
 device content revision. It never changes canonical Library authority.
+
+Eviction is a closed device-local operation over one content digest. It pages
+at most 128 physical range proofs at a time, removes each object before
+removing its SQLite proof, and returns exact released byte and range counts.
+`pinned_offline` fails closed. The caller must first commit an explicit policy
+transition away from the pin. Setting `excluded` at the runtime storage
+boundary cancels local staging for that digest and completes the same eviction
+before returning. A crash between physical deletion and SQLite cleanup leaves
+only a stale proof for startup reconciliation to remove.
 
 Every runtime reconciles physical objects before declaring the vault ready.
 The scan keeps at most 128 SQLite proofs in memory. It deletes unfinished and

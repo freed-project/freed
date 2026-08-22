@@ -11,6 +11,8 @@ import {
   parseLibraryCoreContentRangeReadRequestV1,
   parseLibraryCoreContentRangeReadResponseV1,
   parseLibraryCoreContentCompletionRequestV1,
+  parseLibraryCoreContentEvictionReceiptV1,
+  parseLibraryCoreContentEvictionRequestV1,
   type LibraryCoreContentRangePublicationAbortV1,
   type LibraryCoreContentRangePublicationAppendV1,
   type LibraryCoreContentRangePublicationBeginV1,
@@ -20,6 +22,8 @@ import {
   type LibraryCoreContentRangeReadResponseV1,
   type LibraryCoreContentCompletionReceiptV1,
   type LibraryCoreContentCompletionRequestV1,
+  type LibraryCoreContentEvictionReceiptV1,
+  type LibraryCoreContentEvictionRequestV1,
   type LibraryCoreVerifiedContentRangeReceiptV1,
 } from "@freed/shared/library-core";
 
@@ -314,6 +318,61 @@ export class PwaLibraryCoreOpfsContentVault {
     return this.#engine.registerVerifiedContentCompletion(request);
   }
 
+  async evict(
+    input: LibraryCoreContentEvictionRequestV1,
+  ): Promise<LibraryCoreContentEvictionReceiptV1> {
+    const parsed = parseLibraryCoreContentEvictionRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const state = this.#engine.readContentState({
+      contentDigest: request.contentDigest,
+      schemaVersion: 1,
+    });
+    if (state.policy === "pinned_offline") {
+      throw new Error(
+        "pinned offline content must be unpinned before eviction",
+      );
+    }
+    const active = [...this.#sessions.values()].filter(
+      (session) => session.contentDigest === request.contentDigest,
+    );
+    for (const session of active) await this.#discard(session);
+
+    let afterRangeIndex: number | null = null;
+    let evictedRanges = 0;
+    let releasedBytes = 0;
+    while (true) {
+      const page = this.#engine.pageVerifiedContentRangeStorageProofsForContent(
+        request.contentDigest,
+        afterRangeIndex,
+      );
+      if (page.length === 0) break;
+      for (const proof of page) {
+        await this.#storage.remove(proof.storageKey);
+        evictedRanges += 1;
+        releasedBytes += proof.byteLength;
+      }
+      this.#engine.pruneVerifiedContentRangeStorageProofs(
+        page.map((proof) => proof.storageKey),
+      );
+      afterRangeIndex = page.at(-1)!.rangeIndex;
+    }
+    const contentRevision = this.#engine.readContentState({
+      contentDigest: request.contentDigest,
+      schemaVersion: 1,
+    }).contentRevision;
+    const receipt = parseLibraryCoreContentEvictionReceiptV1({
+      changed: evictedRanges > 0,
+      contentDigest: request.contentDigest,
+      contentRevision,
+      evictedRanges,
+      releasedBytes,
+      schemaVersion: 1,
+    });
+    if (!receipt.ok) throw new TypeError(receipt.error);
+    return receipt.value;
+  }
+
   async close(): Promise<void> {
     const sessions = [...this.#sessions.values()];
     await Promise.all(sessions.map((session) => this.#discard(session)));
@@ -438,7 +497,13 @@ class BrowserOpfsContentRangeStorageV1 implements PwaContentRangeStorageV1 {
       PWA_LIBRARY_CORE_CONTENT_VAULT_DIRECTORY,
       { create: true },
     );
-    await directory.removeEntry(storageKey);
+    try {
+      await directory.removeEntry(storageKey);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== "NotFoundError") {
+        throw error;
+      }
+    }
   }
 
   async read(

@@ -11,8 +11,9 @@ use crate::sqlite_contract_generated::{
     SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
 };
 use crate::{
-    ContentCompletionReceiptV1, ContentCompletionRequestV1, ContentRangeReadRequestV1,
-    ContentRangeReadResponseV1, DurableContentRangeObjectV1, LibraryCoreStoreError,
+    ContentCompletionReceiptV1, ContentCompletionRequestV1, ContentEvictionReceiptV1,
+    ContentEvictionRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
+    DurableContentRangeObjectV1, LibraryCoreStoreError,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
@@ -334,6 +335,148 @@ impl LibraryCoreContentVault {
             "content_vault",
         )
         .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
+    }
+
+    pub(crate) fn evict_v1(
+        &self,
+        connection: &mut Connection,
+        request: &ContentEvictionRequestV1,
+    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStoreError> {
+        if request.schema_version != 1
+            || !valid_digest(&request.content_digest)
+            || request.evicted_at < 0
+            || request.evicted_at > 9_007_199_254_740_991
+        {
+            return Err(LibraryCoreStoreError::from(
+                "content eviction request is invalid".to_string(),
+            ));
+        }
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(store_error)?;
+        let policy = transaction
+            .query_row(
+                "SELECT COALESCE((SELECT policy FROM library_device_content_policies
+                                  WHERE content_digest = blob.content_digest), 'metadata_only')
+                 FROM library_blobs AS blob
+                 WHERE blob.content_digest = ?1 COLLATE BINARY;",
+                [&request.content_digest],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(store_error)?
+            .ok_or_else(|| {
+                LibraryCoreStoreError::from(
+                    "content eviction descriptor is unavailable".to_string(),
+                )
+            })?;
+        if policy == "pinned_offline" {
+            return Err(LibraryCoreStoreError::from(
+                "pinned offline content must be unpinned before eviction".to_string(),
+            ));
+        }
+
+        let mut after_range_index = -1i64;
+        let mut evicted_ranges = 0i64;
+        let mut released_bytes = 0i64;
+        loop {
+            let mut statement = transaction
+                .prepare(
+                    "SELECT range_index, verified_byte_length, storage_key
+                     FROM library_device_content_ranges
+                     WHERE content_digest = ?1 COLLATE BINARY
+                       AND storage_kind = 'content_vault'
+                       AND range_index > ?2
+                     ORDER BY range_index ASC LIMIT ?3;",
+                )
+                .map_err(store_error)?;
+            let page = statement
+                .query_map(
+                    rusqlite::params![
+                        request.content_digest,
+                        after_range_index,
+                        RECONCILIATION_PAGE_ROWS
+                    ],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .map_err(store_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(store_error)?;
+            drop(statement);
+            if page.is_empty() {
+                break;
+            }
+            for (range_index, byte_length, storage_key) in &page {
+                self.unlink_if_present(&c_name(storage_key)?)?;
+                let deleted = transaction
+                    .execute(
+                        "DELETE FROM library_device_content_ranges
+                         WHERE content_digest = ?1 COLLATE BINARY
+                           AND range_index = ?2
+                           AND storage_kind = 'content_vault'
+                           AND storage_key = ?3;",
+                        rusqlite::params![request.content_digest, range_index, storage_key],
+                    )
+                    .map_err(store_error)?;
+                if deleted != 1 {
+                    return Err(LibraryCoreStoreError::from(
+                        "content eviction proof changed during deletion".to_string(),
+                    ));
+                }
+                evicted_ranges = evicted_ranges.checked_add(1).ok_or_else(|| {
+                    LibraryCoreStoreError::from("content eviction count overflow".to_string())
+                })?;
+                released_bytes = released_bytes.checked_add(*byte_length).ok_or_else(|| {
+                    LibraryCoreStoreError::from("content eviction byte count overflow".to_string())
+                })?;
+            }
+            after_range_index = page.last().expect("nonempty eviction page").0;
+        }
+        if evicted_ranges > 0 {
+            sync_directory(self.directory.as_raw_fd())?;
+            transaction
+                .execute(
+                    "DELETE FROM library_device_content_availability
+                     WHERE content_digest = ?1 COLLATE BINARY;",
+                    [&request.content_digest],
+                )
+                .map_err(store_error)?;
+            if transaction
+                .execute(
+                    "UPDATE library_device_content_state SET revision = revision + 1
+                     WHERE singleton_id = 1 AND revision < 9007199254740991;",
+                    [],
+                )
+                .map_err(store_error)?
+                != 1
+            {
+                return Err(LibraryCoreStoreError::from(
+                    "selective content revision cannot advance".to_string(),
+                ));
+            }
+        }
+        let content_revision = transaction
+            .query_row(
+                "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(store_error)?;
+        transaction.commit().map_err(store_error)?;
+        Ok(ContentEvictionReceiptV1 {
+            changed: evicted_ranges > 0,
+            content_digest: request.content_digest.clone(),
+            content_revision,
+            evicted_ranges,
+            released_bytes,
+            schema_version: 1,
+        })
     }
 
     fn reconcile_directory_entries(

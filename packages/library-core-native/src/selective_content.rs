@@ -70,6 +70,25 @@ pub struct ContentPolicyMutationReceiptV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentEvictionRequestV1 {
+    pub content_digest: String,
+    pub evicted_at: i64,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContentEvictionReceiptV1 {
+    pub changed: bool,
+    pub content_digest: String,
+    pub content_revision: i64,
+    pub evicted_ranges: i64,
+    pub released_bytes: i64,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContentStateRequestV1 {
     pub content_digest: String,
     pub schema_version: u32,

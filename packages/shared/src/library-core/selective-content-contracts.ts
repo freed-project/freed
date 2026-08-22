@@ -171,6 +171,21 @@ export interface LibraryCoreContentCompletionReceiptV1 {
   readonly verifiedBytes: number;
 }
 
+export interface LibraryCoreContentEvictionRequestV1 {
+  readonly contentDigest: string;
+  readonly evictedAt: number;
+  readonly schemaVersion: 1;
+}
+
+export interface LibraryCoreContentEvictionReceiptV1 {
+  readonly changed: boolean;
+  readonly contentDigest: string;
+  readonly contentRevision: number;
+  readonly evictedRanges: number;
+  readonly releasedBytes: number;
+  readonly schemaVersion: 1;
+}
+
 type ParseResult<T> =
   Readonly<{ ok: true; value: T }> | Readonly<{ error: string; ok: false }>;
 
@@ -641,6 +656,65 @@ export function parseLibraryCoreContentCompletionReceiptV1(
     value: Object.freeze(
       candidate,
     ) as unknown as LibraryCoreContentCompletionReceiptV1,
+  });
+}
+
+export function parseLibraryCoreContentEvictionRequestV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentEvictionRequestV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, ["contentDigest", "evictedAt", "schemaVersion"]) ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.evictedAt) ||
+    candidate.schemaVersion !== 1
+  ) {
+    return Object.freeze({
+      error: "content eviction request is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentEvictionRequestV1,
+  });
+}
+
+export function parseLibraryCoreContentEvictionReceiptV1(
+  value: unknown,
+): ParseResult<LibraryCoreContentEvictionReceiptV1> {
+  const candidate = record(value);
+  if (
+    !candidate ||
+    !exactKeys(candidate, [
+      "changed",
+      "contentDigest",
+      "contentRevision",
+      "evictedRanges",
+      "releasedBytes",
+      "schemaVersion",
+    ]) ||
+    typeof candidate.changed !== "boolean" ||
+    !isLibraryCoreLowercaseHex64(candidate.contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.contentRevision) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.evictedRanges) ||
+    !isLibraryCoreNonnegativeSafeInteger(candidate.releasedBytes) ||
+    candidate.schemaVersion !== 1 ||
+    candidate.changed !== candidate.evictedRanges > 0
+  ) {
+    return Object.freeze({
+      error: "content eviction receipt is invalid",
+      ok: false,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    value: Object.freeze(
+      candidate,
+    ) as unknown as LibraryCoreContentEvictionReceiptV1,
   });
 }
 

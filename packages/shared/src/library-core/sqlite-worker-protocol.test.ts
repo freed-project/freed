@@ -27,6 +27,7 @@ import {
   createLibraryCoreSqliteContentRangePublicationFinalizeWorkerRequest,
   createLibraryCoreSqliteContentRangeReadWorkerRequest,
   createLibraryCoreSqliteContentCompletionWorkerRequest,
+  createLibraryCoreSqliteContentEvictionWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -527,6 +528,13 @@ describe("Library Core SQLite worker protocol", () => {
         verifiedAt: 51,
       }).kind,
     ).toBe("verify_content_complete");
+    expect(
+      createLibraryCoreSqliteContentEvictionWorkerRequest("evict", {
+        contentDigest,
+        evictedAt: 52,
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("evict_content");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({
         ...append,

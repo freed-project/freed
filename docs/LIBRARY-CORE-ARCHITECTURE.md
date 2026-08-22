@@ -959,6 +959,12 @@ quarantine, and compaction receipts. Local retention follows device policy.
 - Cloud deletion is never inferred from connected-client cache state.
 - Pinned offline bytes are not automatically evicted without an explicit
   local policy transition.
+- Excluding a rendition cancels its local staging and purges its verified
+  ranges. Cache-pressure eviction refuses a pinned rendition until the device
+  explicitly changes its policy.
+- Physical deletion precedes SQLite proof deletion. A crash can therefore
+  leave a stale proof, but cannot leave SQLite claiming a successful purge
+  while the runtime knowingly retained the object.
 
 A follower can fully authenticate a checkpoint while holding zero media bytes.
 It must know that every required authoritative content object exists remotely,

@@ -215,10 +215,21 @@ scope.onmessage = (event) => {
         return;
       }
       if (request.kind === "mutate_content_policy") {
+        const receipt = active.mutateContentPolicy(request.mutation);
+        let contentRevision = receipt.contentRevision;
+        if (request.mutation.policy === "excluded") {
+          if (!contentVault) throw new Error("PWA content vault is not open");
+          const eviction = await contentVault.evict({
+            contentDigest: request.mutation.contentDigest,
+            evictedAt: request.mutation.updatedAt,
+            schemaVersion: 1,
+          });
+          contentRevision = eviction.contentRevision;
+        }
         scope.postMessage({
           ok: true,
           requestId,
-          result: active.mutateContentPolicy(request.mutation),
+          result: { ...receipt, contentRevision },
         });
         return;
       }
@@ -245,6 +256,15 @@ scope.onmessage = (event) => {
           ok: true,
           requestId,
           result: await contentVault.verifyComplete(request.request),
+        });
+        return;
+      }
+      if (request.kind === "evict_content") {
+        if (!contentVault) throw new Error("PWA content vault is not open");
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: await contentVault.evict(request.request),
         });
         return;
       }

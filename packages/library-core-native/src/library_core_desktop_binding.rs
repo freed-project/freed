@@ -16,7 +16,9 @@ use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
 use crate::{
-    publish_content_range_from_reader_v1, ContentCompletionReceiptV1, ContentCompletionRequestV1,
+    publish_content_range_from_reader_v1, set_content_policy_v1, ContentCompletionReceiptV1,
+    ContentCompletionRequestV1, ContentEvictionReceiptV1, ContentEvictionRequestV1,
+    ContentHydrationPolicyV1, ContentPolicyMutationReceiptV1, ContentPolicyMutationV1,
     ContentRangePublicationRequestV1, ContentRangeReadRequestV1, ContentRangeReadResponseV1,
     LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
     NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
@@ -209,6 +211,37 @@ impl LibraryCoreDesktopBinding {
         let mut connection = self.connect_selected_normalized()?;
         self.content_vault
             .verify_complete_v1(&mut connection, request)
+    }
+
+    pub fn evict_content_v1(
+        &self,
+        request: &ContentEvictionRequestV1,
+    ) -> Result<ContentEvictionReceiptV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        self.content_vault.evict_v1(&mut connection, request)
+    }
+
+    pub fn mutate_content_policy_v1(
+        &self,
+        mutation: &ContentPolicyMutationV1,
+    ) -> Result<ContentPolicyMutationReceiptV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        let mut receipt = set_content_policy_v1(&mut connection, mutation)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        if mutation.policy == ContentHydrationPolicyV1::Excluded {
+            receipt.content_revision = self
+                .content_vault
+                .evict_v1(
+                    &mut connection,
+                    &ContentEvictionRequestV1 {
+                        content_digest: mutation.content_digest.clone(),
+                        evicted_at: mutation.updated_at,
+                        schema_version: 1,
+                    },
+                )?
+                .content_revision;
+        }
+        Ok(receipt)
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
@@ -642,6 +675,46 @@ mod tests {
         assert_eq!(
             fs::read(visible_vault.join("sentinel")).expect("replacement vault sentinel"),
             b"replacement"
+        );
+        binding
+            .mutate_content_policy_v1(&ContentPolicyMutationV1 {
+                content_digest: content_digest.clone(),
+                policy: ContentHydrationPolicyV1::PinnedOffline,
+                schema_version: 1,
+                updated_at: 603,
+            })
+            .expect("pin corrupt local bytes");
+        let pinned_error = binding
+            .evict_content_v1(&ContentEvictionRequestV1 {
+                content_digest: content_digest.clone(),
+                evicted_at: 604,
+                schema_version: 1,
+            })
+            .expect_err("pinned content must resist eviction");
+        assert!(pinned_error.to_string().contains("must be unpinned"));
+        assert!(moved_vault.join(&storage_key).exists());
+        let excluded = binding
+            .mutate_content_policy_v1(&ContentPolicyMutationV1 {
+                content_digest: content_digest.clone(),
+                policy: ContentHydrationPolicyV1::Excluded,
+                schema_version: 1,
+                updated_at: 605,
+            })
+            .expect("exclude and evict local content");
+        assert_eq!(excluded.policy, ContentHydrationPolicyV1::Excluded);
+        assert!(!moved_vault.join(&storage_key).exists());
+        assert_eq!(
+            binding
+                .connect_selected_normalized()
+                .expect("open excluded content state")
+                .query_row(
+                    "SELECT count(*) FROM library_device_content_ranges
+                     WHERE content_digest = ?1;",
+                    [&content_digest],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("excluded content range count"),
+            0
         );
         let normalized = binding
             .connect_selected_normalized()

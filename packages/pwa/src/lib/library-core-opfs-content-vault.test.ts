@@ -246,6 +246,32 @@ describe("PWA Library Core OPFS content vault", () => {
       },
       contentRevision: 5,
     });
+    await expect(
+      vault.evict({ contentDigest, evictedAt: 105, schemaVersion: 1 }),
+    ).rejects.toThrow(/must be unpinned/);
+    expect(storage.objects.get(storageKey)).toEqual(bytes);
+    engine.mutateContentPolicy({
+      contentDigest,
+      policy: "excluded",
+      schemaVersion: 1,
+      updatedAt: 106,
+    });
+    await expect(
+      vault.evict({ contentDigest, evictedAt: 106, schemaVersion: 1 }),
+    ).resolves.toMatchObject({
+      changed: true,
+      contentRevision: 7,
+      evictedRanges: 1,
+      releasedBytes: bytes.byteLength,
+    });
+    expect(storage.objects.has(storageKey)).toBe(false);
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: null,
+      contentRevision: 7,
+      policy: "excluded",
+    });
   });
 
   it("deletes changed bytes without publishing a SQLite range", async () => {
