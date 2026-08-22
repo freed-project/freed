@@ -53,6 +53,7 @@ export * from "./device-graph-layout-mutation-contracts.js";
 export * from "./item-detail-contracts.js";
 export * from "./item-reader-body-contracts.js";
 export * from "./item-scan-contracts.js";
+export * from "./provider-media-page-contracts.js";
 export * from "./search-contracts.js";
 export * from "./search-page-contracts.js";
 export * from "./scope-action-contracts.js";

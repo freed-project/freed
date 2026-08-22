@@ -632,6 +632,19 @@ from the FeedItem primary key. The query has no offset, no total count, and no
 reader-body bytes. A job that needs content follows an explicit locator through
 the ranged reader or selective content plane.
 
+`provider_media_page_v1` is the query-specific source for provider settings,
+Facebook group-name repair, media backup, and saved YouTube discovery. The
+request names Facebook, Instagram, or YouTube and may require saved rows.
+Facebook and Instagram select their own source rows. Saved YouTube discovery
+selects visible saved candidates across sources because a manually saved URL
+is a `saved` item, then the shared URL parser accepts only YouTube identities.
+SQLite applies those visibility and saved predicates before paging.
+Each page returns at most 64 compact media cards after reading at most 65 rows.
+Its cursor binds the provider, saved mode, Library generation, source revision,
+and final binary `globalId`. Desktop and PWA execute the same generated SQL and
+closed TypeScript contract. No generic corpus scan, rollback key, legacy lease,
+reader body, or provider network behavior participates in this query.
+
 `map_markers_v1` is the Map candidate query. It returns at most 1,000 visible,
 nonarchived location rows ordered by publication time and binary item ID. Each
 row contains only the author identity, compact popup text, explicit location,

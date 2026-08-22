@@ -328,16 +328,41 @@ export function tauriInitScript(): string {
     }
     function sqliteNormalizedQuery(args) {
       var request = args && args.request || {};
-      if (request.queryId !== 'feed_browse_page_v3' && request.queryId !== 'saved_feed_page_v2') {
-        return null;
-      }
-      var candidates = sqliteQueryItems(request);
-      var rows = candidates.slice(0, request.limit || 128).map(sqliteFeedCard);
       var source = {
         generationId: 'd'.repeat(64),
         projectionRevision: Math.max(0, sqliteState().revision || 0),
         transitionSequence: Math.max(0, sqliteState().sourceGeneration || 0),
       };
+      if (request.queryId === 'provider_media_page_v1') {
+        var providerRows = Object.values(sqliteState().items).filter(function(item) {
+          if (!item || item.__deleted) return false;
+          var user = sqliteItemState(item);
+          if (user.hidden || request.savedOnly && !user.saved) return false;
+          return request.provider === 'youtube' && request.savedOnly
+            ? [item.sourceUrl, item.content && item.content.linkPreview && item.content.linkPreview.url]
+                .some(function(value) { return typeof value === 'string' && /(?:youtube(?:-nocookie)?\.com|youtu\.be)\//i.test(value); })
+            : item.platform === request.provider;
+        }).sort(function(left, right) {
+          return left.globalId.localeCompare(right.globalId);
+        }).slice(0, request.limit || 64).map(function(item) {
+          return Object.assign({}, sqliteFeedCard(item), {
+            fbGroup: item.fbGroup || null,
+            linkUrl: item.content && item.content.linkPreview && item.content.linkPreview.url || null,
+          });
+        });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: providerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId !== 'feed_browse_page_v3' && request.queryId !== 'saved_feed_page_v2') {
+        return null;
+      }
+      var candidates = sqliteQueryItems(request);
+      var rows = candidates.slice(0, request.limit || 128).map(sqliteFeedCard);
       if (request.queryId === 'saved_feed_page_v2') {
         return {
           filter: request.filter,

@@ -456,59 +456,52 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
       userState: { hidden: false, saved: true, archived: false, tags: [] },
     });
   });
-  await ipc.setHandler("read_library_core_item_scan_page", async () => {
-    const globals = window as unknown as Record<string, unknown>;
-    const automerge = globals.__FREED_LIBRARY_CORE__ as {
-      getLibraryCoreProjectionSource: () => Promise<{
-        documentId: string;
-        headCount: number;
-        headsDigest: string;
-        storageRevision: { generation: number; saveRevision: number };
-      }>;
-    };
-    const source = await automerge.getLibraryCoreProjectionSource();
+  await ipc.setHandler("query_normalized_library", (args) => {
+    const request = (args as { request?: { queryId?: string } }).request;
+    if (request?.queryId !== "provider_media_page_v1") {
+      throw new Error("unexpected normalized query in saved YouTube fixture");
+    }
     return {
       nextCursor: null,
-      queryId: "background_item_page_v1",
+      queryId: "provider_media_page_v1",
       rows: [
         {
-          globalId: "saved:youtube:dQw4w9WgXcQ",
-          platform: "saved",
-          contentType: "article",
-          publishedAt: 1_000,
-          capturedAt: 1_000,
-          authorId: "channel",
+          archived: false,
+          authorAvatarUrl: null,
           authorDisplayName: "Learning Channel",
           authorHandle: "channel",
-          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-          hidden: 0,
-          saved: 1,
-          archived: 0,
-          readAt: null,
-          archivedAt: null,
+          authorId: "channel",
+          capturedAt: 1_000,
+          contentSignalTags: [],
+          contentText: null,
+          contentType: "article",
+          engagementComments: null,
+          engagementLikes: null,
+          eventConfidenceBasisPoints: null,
+          eventStartsAt: null,
+          fbGroup: null,
+          globalId: "saved:youtube:dQw4w9WgXcQ",
+          liked: false,
           likedAt: null,
-          tags: "[]",
-          contentBlob: JSON.stringify({
-            mediaUrls: [],
-            mediaTypes: [],
-            linkPreview: {
-              url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-              title: "Focused Study",
-            },
-          }),
-          preservedBlob: null,
-          rest: JSON.stringify({ topics: [] }),
+          likedSyncedAt: null,
+          linkPreviewTitle: "Focused Study",
+          linkUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          locationName: null,
+          mediaTypes: [],
+          mediaUrls: [],
+          platform: "saved",
+          publishedAt: 1_000,
+          readAt: null,
+          readingTimeMinutes: null,
+          saved: true,
+          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          tags: [],
         },
       ],
       schemaVersion: 1,
       source: {
-        documentId: source.documentId,
-        generationId: "2".repeat(64),
-        headCount: source.headCount,
-        headsDigest: source.headsDigest,
+        generationId: "d".repeat(64),
         projectionRevision: 1,
-        storageGeneration: source.storageRevision.generation,
-        storageSaveRevision: source.storageRevision.saveRevision,
         transitionSequence: 1,
       },
     };
@@ -551,17 +544,18 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
     timeout: 10_000,
   });
   const calls = await ipc.invocations();
-  const itemScanCalls = calls.filter(
-    (call) => call.cmd === "query_sqlite_library_items",
+  const providerQueryCalls = calls.filter(
+    (call) => call.cmd === "query_normalized_library",
   );
-  expect(itemScanCalls.length).toBeGreaterThan(0);
-  expect(itemScanCalls).toEqual(
+  expect(providerQueryCalls.length).toBeGreaterThan(0);
+  expect(providerQueryCalls).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         args: {
           request: expect.objectContaining({
-            offset: 0,
-            limit: expect.any(Number),
+            provider: "youtube",
+            queryId: "provider_media_page_v1",
+            savedOnly: true,
           }),
         },
       }),

@@ -72,6 +72,11 @@ import {
   encodeLibraryCoreItemScanCursorV1,
   parseLibraryCoreItemScanRequestV1,
   parseLibraryCoreItemScanResponseV1,
+  decodeLibraryCoreProviderMediaPageCursorV1,
+  encodeLibraryCoreProviderMediaPageCursorV1,
+  libraryCoreProviderMediaBindingDigestV1,
+  parseLibraryCoreProviderMediaPageRequestV1,
+  parseLibraryCoreProviderMediaPageResponseV1,
   parseLibraryCorePersonDetailRequestV1,
   parseLibraryCorePersonDetailResponseV1,
   decodeLibraryCorePersonTimelineCursorV1,
@@ -152,6 +157,9 @@ import {
   type LibraryCoreItemReaderBodyResponseV1,
   type LibraryCoreItemScanRequestV1,
   type LibraryCoreItemScanResponseV1,
+  type LibraryCoreProviderMediaPageRequestV1,
+  type LibraryCoreProviderMediaPageResponseV1,
+  type LibraryCoreProviderMediaRowV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonTimelineRequestV1,
@@ -2612,6 +2620,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemScan(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "provider_media_page_v1":
+        return this.#queryProviderMediaPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "map_markers_v1":
         return this.#queryMapMarkers(
           input,
@@ -3789,6 +3801,103 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreItemScanResponseV1(response, request.value);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryProviderMediaPage(
+    input: LibraryCoreProviderMediaPageRequestV1,
+  ): LibraryCoreProviderMediaPageResponseV1 {
+    const request = parseLibraryCoreProviderMediaPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const filterDigest = libraryCoreProviderMediaBindingDigestV1(
+      request.value.provider,
+      request.value.savedOnly,
+    );
+    let afterGlobalId: string | null = null;
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreProviderMediaPageCursorV1(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.filterDigest !== filterDigest ||
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite provider media cursor is stale");
+      }
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.provider_media_page_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [
+        request.value.provider,
+        request.value.savedOnly ? 1 : 0,
+        afterGlobalId,
+        request.value.limit + 1,
+      ],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite provider media query exceeded its row bound",
+      );
+    }
+    const hasMore = rawRows.length > request.value.limit;
+    const rows: LibraryCoreProviderMediaRowV1[] = rawRows
+      .slice(0, request.value.limit)
+      .map((row) => {
+        const card = feedCardFromSqliteRow(row);
+        const groupId = nullableText(row.fbGroupId, "provider media group ID");
+        return {
+          ...card,
+          fbGroup:
+            groupId === null
+              ? null
+              : {
+                  id: groupId,
+                  name:
+                    nullableText(
+                      row.fbGroupName,
+                      "provider media group name",
+                    ) ?? "",
+                  url:
+                    nullableText(row.fbGroupUrl, "provider media group URL") ??
+                    "",
+                },
+          linkUrl: nullableText(row.linkUrl, "provider media link URL"),
+        };
+      });
+    const last = rows.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreProviderMediaPageCursorV1({
+              filterDigest,
+              generationId: generationId as never,
+              globalId: last.globalId,
+              projectionRevision: sourceRevision,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "provider_media_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreProviderMediaPageResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

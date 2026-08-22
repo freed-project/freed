@@ -963,6 +963,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.person_graph_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.preferences_snapshot_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.provider_media_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.rss_feed_graph_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v2 ||

@@ -2372,6 +2372,81 @@ describe("PWA Library Core SQLite engine", () => {
     ).toThrow(/cursor is stale/);
   });
 
+  it("pages compact provider media rows with request-bound cursors", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta
+        (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation (singleton_id, generation_id)
+      VALUES (1, '${"a".repeat(64)}');
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items
+        (global_id, platform, content_type, captured_at, published_at,
+         author_id, author_handle, author_display_name, source_url, link_url,
+         fb_group_id, fb_group_name, fb_group_url, hidden, saved, archived, updated_at)
+      VALUES
+        ('facebook-1', 'facebook', 'video', 10, 10, 'author-1', 'one', 'One',
+         'https://facebook.test/1', 'https://example.test/1', 'group-1', 'Group',
+         'https://facebook.test/groups/1', 0, 1, 0, 10),
+        ('facebook-2', 'facebook', 'video', 20, 20, 'author-2', 'two', 'Two',
+         'https://facebook.test/2', 'https://example.test/2', NULL, NULL,
+         NULL, 0, 0, 0, 20),
+        ('facebook-hidden', 'facebook', 'video', 30, 30, 'author-3', 'three', 'Three',
+         'https://facebook.test/3', NULL, NULL, NULL, NULL, 1, 1, 0, 30),
+        ('saved-youtube', 'saved', 'article', 40, 40, 'author-4', 'four', 'Four',
+         'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+         'https://www.youtube.com/watch?v=dQw4w9WgXcQ', NULL, NULL, NULL, 0, 1, 0, 40);
+      INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
+      VALUES ('facebook-1', 0, 'https://example.test/1.mp4', 'video');
+    `);
+    const request = {
+      cancellationId: operationId("cancel-provider-media-1"),
+      cursor: null,
+      limit: 1,
+      provider: "facebook" as const,
+      queryId: "provider_media_page_v1" as const,
+      readerSessionId: operationId("reader-provider-media-1"),
+      savedOnly: false,
+      schemaVersion: 1 as const,
+    };
+    const first = engine.query(request);
+    expect(first.rows).toMatchObject([
+      {
+        fbGroup: { id: "group-1", name: "Group" },
+        globalId: "facebook-1",
+        linkUrl: "https://example.test/1",
+        mediaUrls: ["https://example.test/1.mp4"],
+      },
+    ]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = engine.query({ ...request, cursor: first.nextCursor });
+    expect(second.rows.map((row) => row.globalId)).toEqual(["facebook-2"]);
+    expect(second.nextCursor).toBeNull();
+    expect(
+      engine
+        .query({ ...request, limit: 2, savedOnly: true })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["facebook-1"]);
+    expect(() =>
+      engine.query({ ...request, cursor: first.nextCursor, savedOnly: true }),
+    ).toThrow(/cursor is stale/);
+    expect(
+      engine
+        .query({
+          ...request,
+          limit: 2,
+          provider: "youtube",
+          savedOnly: true,
+        })
+        .rows.map((row) => row.globalId),
+    ).toEqual(["saved-youtube"]);
+  });
+
   it("pages the ranked feed forward and backward through one indexed contract", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,

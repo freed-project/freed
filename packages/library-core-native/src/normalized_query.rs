@@ -22,6 +22,8 @@ const STORY_WALL_CANDIDATES_MAXIMUM_LIMIT: usize = 250;
 const SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
 const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const PROVIDER_MEDIA_MAXIMUM_LIMIT: usize = 64;
+const PROVIDER_MEDIA_MAXIMUM_RESPONSE_BYTES: usize = 4 * 1_048_576;
 const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
 const CHANGE_FEED_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PREFERENCES_SNAPSHOT_MAXIMUM_ROWS: usize = 512;
@@ -192,6 +194,18 @@ pub struct NormalizedItemScanRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedProviderMediaPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub provider: String,
+    pub reader_session_id: String,
+    pub saved_only: bool,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedChangeFeedRequestV1 {
     pub after_revision: i64,
     pub cancellation_id: String,
@@ -324,6 +338,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    ProviderMediaPage(NormalizedProviderMediaPageRequestV1),
     MapMarkers(NormalizedMapMarkersRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
@@ -544,6 +559,33 @@ pub struct NormalizedItemScanResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedFeedCardV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedProviderMediaGroupV1 {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedProviderMediaRowV1 {
+    #[serde(flatten)]
+    pub card: NormalizedFeedCardV1,
+    pub fb_group: Option<NormalizedProviderMediaGroupV1>,
+    pub link_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedProviderMediaPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedProviderMediaRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -915,6 +957,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
+    ProviderMediaPage(NormalizedProviderMediaPageResponseV1),
     MapMarkers(NormalizedMapMarkersResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
@@ -2816,6 +2859,150 @@ fn query_item_scan(
     Ok(response)
 }
 
+fn provider_media_binding_digest(provider: &str, saved_only: bool) -> String {
+    let input =
+        format!(r#"{{"provider":"{provider}","savedOnly":{saved_only},"schemaVersion":1}}"#);
+    lower_hex(&Sha256::digest(input.as_bytes()))
+}
+
+fn query_provider_media_page(
+    connection: &mut Connection,
+    request: NormalizedProviderMediaPageRequestV1,
+) -> Result<NormalizedProviderMediaPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=PROVIDER_MEDIA_MAXIMUM_LIMIT).contains(&request.limit)
+        || !matches!(
+            request.provider.as_str(),
+            "facebook" | "instagram" | "youtube"
+        )
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid(
+            "normalized provider media query identity is invalid",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "provider_media_page_v1")
+        .ok_or(invalid(
+            "normalized provider media query program is missing",
+        ))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let filter_digest = provider_media_binding_digest(&request.provider, request.saved_only);
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_feed_browse_cursor)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.filter_digest != filter_digest
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+            || cursor.priority != 0
+            || cursor.published_at != 0
+    }) {
+        return Err(invalid("normalized provider media cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut query_rows = statement.query_map(
+        params![
+            request.provider,
+            i64::from(request.saved_only),
+            cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
+            i64::try_from(request.limit + 1).expect("bounded provider media limit"),
+        ],
+        |row| {
+            let card = feed_card(row)?;
+            let group_id: Option<String> = row.get("fbGroupId")?;
+            let group_name: Option<String> = row.get("fbGroupName")?;
+            let group_url: Option<String> = row.get("fbGroupUrl")?;
+            let fb_group = group_id.map(|id| NormalizedProviderMediaGroupV1 {
+                id,
+                name: group_name.unwrap_or_default(),
+                url: group_url.unwrap_or_default(),
+            });
+            Ok(NormalizedProviderMediaRowV1 {
+                card,
+                fb_group,
+                link_url: row.get("linkUrl")?,
+            })
+        },
+    )?;
+    let mut rows = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        if (row.card.platform.as_deref() != Some(request.provider.as_str())
+            && !(request.provider == "youtube"
+                && request.saved_only
+                && row.card.saved == Some(true)))
+            || request.saved_only && row.card.saved != Some(true)
+            || row
+                .link_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 8_192)
+            || row.fb_group.as_ref().is_some_and(|group| {
+                group.id.is_empty()
+                    || group.id.len() > 4_096
+                    || group.name.len() > 2_048
+                    || group.url.len() > 8_192
+            })
+        {
+            return Err(invalid("normalized provider media row is invalid"));
+        }
+        rows.push(row);
+        if rows.len() > program.maximum_scan_rows {
+            return Err(invalid(
+                "normalized provider media query exceeded its row bound",
+            ));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let next_cursor = if has_more {
+        let last = rows
+            .last()
+            .ok_or(invalid("normalized provider media cursor row is missing"))?;
+        Some(encode_feed_browse_cursor(&FeedBrowseCursorV2 {
+            filter_digest,
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            priority: 0,
+            published_at: 0,
+            global_id: last.card.global_id.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedProviderMediaPageResponseV1 {
+        next_cursor,
+        query_id: "provider_media_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized provider media response is invalid"))?
+        .len()
+        > PROVIDER_MEDIA_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized provider media response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn change_feed_row(row: &Row<'_>) -> rusqlite::Result<NormalizedChangeFeedRowV1> {
     let revision: i64 = row.get("revision")?;
     let ordinal: i64 = row.get("ordinal")?;
@@ -4434,6 +4621,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
             query_item_scan(connection, request)?,
         )),
+        NormalizedQueryRequestV1::ProviderMediaPage(request) => {
+            Ok(NormalizedQueryResponseV1::ProviderMediaPage(
+                query_provider_media_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::MapMarkers(request) => Ok(NormalizedQueryResponseV1::MapMarkers(
             query_map_markers(connection, request)?,
         )),
@@ -4533,6 +4725,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
         "background_item_page_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "provider_media_page_v1" => {
+            decode_request!(NormalizedProviderMediaPageRequestV1, ProviderMediaPage)
+        }
         "map_markers_v1" => decode_request!(NormalizedMapMarkersRequestV1, MapMarkers),
         "person_detail_v1" => decode_request!(NormalizedPersonDetailRequestV1, PersonDetail),
         "person_graph_page_v1" => {
@@ -4591,6 +4786,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ProviderMediaPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::MapMarkers(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonGraphPage(response) => encode_response!(response),
@@ -5836,6 +6032,110 @@ mod tests {
         )
         .expect_err("stale item scan cursor");
         assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_provider_media_pages_bind_provider_and_saved_mode() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, source_url,
+                    link_url, fb_group_id, fb_group_name, fb_group_url, hidden,
+                    saved, archived, updated_at)
+                   VALUES
+                     ('facebook-1', 'facebook', 'video', 1, 1, 'author-1', 'one',
+                      'One', 'https://facebook.test/1', 'https://example.test/1',
+                      'group-1', 'Group', 'https://facebook.test/groups/1', 0, 1, 0, 1),
+                     ('facebook-2', 'facebook', 'video', 2, 2, 'author-2', 'two',
+                      'Two', 'https://facebook.test/2', NULL, NULL, NULL, NULL, 0, 0, 0, 2),
+                     ('instagram-1', 'instagram', 'video', 3, 3, 'author-3', 'three',
+                      'Three', 'https://instagram.test/1', NULL, NULL, NULL, NULL, 0, 1, 0, 3),
+                     ('saved-youtube', 'saved', 'article', 4, 4, 'author-4', 'four',
+                      'Four', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                      'https://www.youtube.com/watch?v=dQw4w9WgXcQ', NULL, NULL, NULL, 0, 1, 0, 4);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedProviderMediaPageRequestV1 {
+            cancellation_id: "cancel-provider-media-1".to_owned(),
+            cursor: None,
+            limit: 1,
+            provider: "facebook".to_owned(),
+            reader_session_id: "reader-provider-media-1".to_owned(),
+            saved_only: false,
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::ProviderMediaPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ProviderMediaPage(request.clone()),
+        )
+        .expect("first provider page") else {
+            panic!("provider media response");
+        };
+        assert_eq!(first.rows[0].card.global_id, "facebook-1");
+        assert_eq!(
+            first.rows[0]
+                .fb_group
+                .as_ref()
+                .map(|group| group.id.as_str()),
+            Some("group-1")
+        );
+        let cursor = first.next_cursor.expect("provider cursor");
+        let NormalizedQueryResponseV1::ProviderMediaPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ProviderMediaPage(NormalizedProviderMediaPageRequestV1 {
+                cursor: Some(cursor.clone()),
+                ..request.clone()
+            }),
+        )
+        .expect("second provider page") else {
+            panic!("provider media response");
+        };
+        assert_eq!(second.rows[0].card.global_id, "facebook-2");
+        assert!(second.next_cursor.is_none());
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ProviderMediaPage(NormalizedProviderMediaPageRequestV1 {
+                cursor: Some(cursor),
+                saved_only: true,
+                ..request
+            }),
+        )
+        .expect_err("cursor reused across saved mode");
+        assert!(error.to_string().contains("cursor is stale"));
+        let NormalizedQueryResponseV1::ProviderMediaPage(saved_youtube) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ProviderMediaPage(NormalizedProviderMediaPageRequestV1 {
+                cancellation_id: "cancel-provider-youtube-1".to_owned(),
+                cursor: None,
+                limit: 2,
+                provider: "youtube".to_owned(),
+                reader_session_id: "reader-provider-youtube-1".to_owned(),
+                saved_only: true,
+                schema_version: 1,
+            }),
+        )
+        .expect("saved YouTube candidates") else {
+            panic!("provider media response");
+        };
+        assert_eq!(
+            saved_youtube
+                .rows
+                .iter()
+                .map(|row| row.card.global_id.as_str())
+                .collect::<Vec<_>>(),
+            ["saved-youtube"]
+        );
     }
 
     #[test]

@@ -162,6 +162,12 @@ import {
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
 } from "./scope-action-contracts.js";
+import {
+  parseLibraryCoreProviderMediaPageRequestV1,
+  parseLibraryCoreProviderMediaPageResponseV1,
+  type LibraryCoreProviderMediaPageRequestV1,
+  type LibraryCoreProviderMediaPageResponseV1,
+} from "./provider-media-page-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -180,6 +186,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePersonTimelineRequestV1
+  | LibraryCoreProviderMediaPageRequestV1
   | LibraryCorePersonsGraphRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
@@ -220,19 +227,21 @@ export type LibraryCoreSqliteQueryResponseFor<
                             ? LibraryCorePersonTimelineResponseV1
                             : T extends LibraryCorePersonsGraphRequestV1
                               ? LibraryCorePersonsGraphResponseV1
-                              : T extends LibraryCoreRssFeedGraphPageRequestV1
-                                ? LibraryCoreRssFeedGraphPageResponseV1
-                                : T extends LibraryCoreSavedAnalyticsRequestV2
-                                  ? LibraryCoreSavedAnalyticsResponseV2
-                                  : T extends LibraryCoreSavedFeedPageRequestV2
-                                    ? LibraryCoreSavedFeedPageResponseV2
-                                    : T extends LibraryCoreSearchPageRequestV1
-                                      ? LibraryCoreSearchPageResponseV1
-                                      : T extends LibraryCoreStoryWallCandidatesRequestV1
-                                        ? LibraryCoreStoryWallCandidatesResponseV1
-                                        : T extends LibraryCorePreferencesSnapshotRequestV1
-                                          ? LibraryCorePreferencesSnapshotResponseV1
-                                          : never;
+                              : T extends LibraryCoreProviderMediaPageRequestV1
+                                ? LibraryCoreProviderMediaPageResponseV1
+                                : T extends LibraryCoreRssFeedGraphPageRequestV1
+                                  ? LibraryCoreRssFeedGraphPageResponseV1
+                                  : T extends LibraryCoreSavedAnalyticsRequestV2
+                                    ? LibraryCoreSavedAnalyticsResponseV2
+                                    : T extends LibraryCoreSavedFeedPageRequestV2
+                                      ? LibraryCoreSavedFeedPageResponseV2
+                                      : T extends LibraryCoreSearchPageRequestV1
+                                        ? LibraryCoreSearchPageResponseV1
+                                        : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                          ? LibraryCoreStoryWallCandidatesResponseV1
+                                          : T extends LibraryCorePreferencesSnapshotRequestV1
+                                            ? LibraryCorePreferencesSnapshotResponseV1
+                                            : never;
 
 /** Validates one native or browser query response against its exact request. */
 export function parseLibraryCoreSqliteQueryResponse<
@@ -259,58 +268,68 @@ export function parseLibraryCoreSqliteQueryResponse<
                       ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
                       : request.queryId === "background_item_page_v1"
                         ? parseLibraryCoreItemScanResponseV1(value, request)
-                        : request.queryId === "map_markers_v1"
-                          ? parseLibraryCoreMapMarkersResponseV1(value, request)
-                          : request.queryId === "person_detail_v1"
-                            ? parseLibraryCorePersonDetailResponseV1(
+                        : request.queryId === "provider_media_page_v1"
+                          ? parseLibraryCoreProviderMediaPageResponseV1(
+                              value,
+                              request,
+                            )
+                          : request.queryId === "map_markers_v1"
+                            ? parseLibraryCoreMapMarkersResponseV1(
                                 value,
                                 request,
                               )
-                            : request.queryId === "person_graph_page_v1"
-                              ? parseLibraryCorePersonGraphPageResponseV1(
+                            : request.queryId === "person_detail_v1"
+                              ? parseLibraryCorePersonDetailResponseV1(
                                   value,
                                   request,
                                 )
-                              : request.queryId === "person_timeline_v1"
-                                ? parseLibraryCorePersonTimelineResponseV1(
+                              : request.queryId === "person_graph_page_v1"
+                                ? parseLibraryCorePersonGraphPageResponseV1(
                                     value,
                                     request,
                                   )
-                                : request.queryId === "persons_graph_v1"
-                                  ? parseLibraryCorePersonsGraphResponseV1(
+                                : request.queryId === "person_timeline_v1"
+                                  ? parseLibraryCorePersonTimelineResponseV1(
                                       value,
                                       request,
                                     )
-                                  : request.queryId ===
-                                      "preferences_snapshot_v1"
-                                    ? parseLibraryCorePreferencesSnapshotResponseV1(
+                                  : request.queryId === "persons_graph_v1"
+                                    ? parseLibraryCorePersonsGraphResponseV1(
                                         value,
+                                        request,
                                       )
                                     : request.queryId ===
-                                        "rss_feed_graph_page_v1"
-                                      ? parseLibraryCoreRssFeedGraphPageResponseV1(
+                                        "preferences_snapshot_v1"
+                                      ? parseLibraryCorePreferencesSnapshotResponseV1(
                                           value,
-                                          request,
                                         )
-                                      : request.queryId === "saved_analytics_v2"
-                                        ? parseLibraryCoreSavedAnalyticsResponseV2(
+                                      : request.queryId ===
+                                          "rss_feed_graph_page_v1"
+                                        ? parseLibraryCoreRssFeedGraphPageResponseV1(
                                             value,
+                                            request,
                                           )
                                         : request.queryId ===
-                                            "saved_feed_page_v2"
-                                          ? parseLibraryCoreSavedFeedPageResponseV2(
+                                            "saved_analytics_v2"
+                                          ? parseLibraryCoreSavedAnalyticsResponseV2(
                                               value,
-                                              request,
                                             )
-                                          : request.queryId === "search_page_v1"
-                                            ? parseLibraryCoreSearchPageResponseV1(
+                                          : request.queryId ===
+                                              "saved_feed_page_v2"
+                                            ? parseLibraryCoreSavedFeedPageResponseV2(
                                                 value,
                                                 request,
                                               )
-                                            : parseLibraryCoreStoryWallCandidatesResponseV1(
-                                                value,
-                                                request,
-                                              );
+                                            : request.queryId ===
+                                                "search_page_v1"
+                                              ? parseLibraryCoreSearchPageResponseV1(
+                                                  value,
+                                                  request,
+                                                )
+                                              : parseLibraryCoreStoryWallCandidatesResponseV1(
+                                                  value,
+                                                  request,
+                                                );
   if (!parsed.ok) {
     throw new TypeError(parsed.error);
   }
@@ -451,6 +470,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCorePersonTimelineResponseV1
   | LibraryCorePersonsGraphResponseV1
+  | LibraryCoreProviderMediaPageResponseV1
   | LibraryCoreRssFeedGraphPageResponseV1
   | LibraryCoreSavedAnalyticsResponseV2
   | LibraryCoreSavedFeedPageResponseV2
@@ -633,55 +653,61 @@ export function parseLibraryCoreSqliteWorkerRequest(
                       ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
                       : value.query.queryId === "background_item_page_v1"
                         ? parseLibraryCoreItemScanRequestV1(value.query)
-                        : value.query.queryId === "map_markers_v1"
-                          ? parseLibraryCoreMapMarkersRequestV1(value.query)
-                          : value.query.queryId === "person_detail_v1"
-                            ? parseLibraryCorePersonDetailRequestV1(value.query)
-                            : value.query.queryId === "person_graph_page_v1"
-                              ? parseLibraryCorePersonGraphPageRequestV1(
+                        : value.query.queryId === "provider_media_page_v1"
+                          ? parseLibraryCoreProviderMediaPageRequestV1(
+                              value.query,
+                            )
+                          : value.query.queryId === "map_markers_v1"
+                            ? parseLibraryCoreMapMarkersRequestV1(value.query)
+                            : value.query.queryId === "person_detail_v1"
+                              ? parseLibraryCorePersonDetailRequestV1(
                                   value.query,
                                 )
-                              : value.query.queryId === "person_timeline_v1"
-                                ? parseLibraryCorePersonTimelineRequestV1(
+                              : value.query.queryId === "person_graph_page_v1"
+                                ? parseLibraryCorePersonGraphPageRequestV1(
                                     value.query,
                                   )
-                                : value.query.queryId === "persons_graph_v1"
-                                  ? parseLibraryCorePersonsGraphRequestV1(
+                                : value.query.queryId === "person_timeline_v1"
+                                  ? parseLibraryCorePersonTimelineRequestV1(
                                       value.query,
                                     )
-                                  : value.query.queryId ===
-                                      "rss_feed_graph_page_v1"
-                                    ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                                  : value.query.queryId === "persons_graph_v1"
+                                    ? parseLibraryCorePersonsGraphRequestV1(
                                         value.query,
                                       )
                                     : value.query.queryId ===
-                                        "saved_analytics_v2"
-                                      ? parseLibraryCoreSavedAnalyticsRequestV2(
+                                        "rss_feed_graph_page_v1"
+                                      ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                           value.query,
                                         )
                                       : value.query.queryId ===
-                                          "saved_feed_page_v2"
-                                        ? parseLibraryCoreSavedFeedPageRequestV2(
+                                          "saved_analytics_v2"
+                                        ? parseLibraryCoreSavedAnalyticsRequestV2(
                                             value.query,
                                           )
                                         : value.query.queryId ===
-                                            "story_wall_candidates_v1"
-                                          ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                            "saved_feed_page_v2"
+                                          ? parseLibraryCoreSavedFeedPageRequestV2(
                                               value.query,
                                             )
                                           : value.query.queryId ===
-                                              "search_page_v1"
-                                            ? parseLibraryCoreSearchPageRequestV1(
+                                              "story_wall_candidates_v1"
+                                            ? parseLibraryCoreStoryWallCandidatesRequestV1(
                                                 value.query,
                                               )
                                             : value.query.queryId ===
-                                                "preferences_snapshot_v1"
-                                              ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                                "search_page_v1"
+                                              ? parseLibraryCoreSearchPageRequestV1(
                                                   value.query,
                                                 )
-                                              : parseLibraryCoreFeedPageRequestV1(
-                                                  value.query,
-                                                )
+                                              : value.query.queryId ===
+                                                  "preferences_snapshot_v1"
+                                                ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                                    value.query,
+                                                  )
+                                                : parseLibraryCoreFeedPageRequestV1(
+                                                    value.query,
+                                                  )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {

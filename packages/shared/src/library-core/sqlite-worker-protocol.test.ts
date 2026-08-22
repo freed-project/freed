@@ -190,6 +190,18 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-provider-media", {
+        cancellationId: "cancel-provider-media-1",
+        cursor: null,
+        limit: 64,
+        provider: "facebook",
+        queryId: "provider_media_page_v1",
+        readerSessionId: "reader-provider-media-1",
+        savedOnly: false,
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-map", {
         cancellationId: "cancel-map-1",
         limit: 500,
