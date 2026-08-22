@@ -931,6 +931,37 @@ CREATE TABLE IF NOT EXISTS library_intent_members (
 CREATE INDEX IF NOT EXISTS library_intent_members_actor_page
   ON library_intent_members(actor_id, actor_counter, operation_id, transaction_id);
 
+CREATE TABLE IF NOT EXISTS library_intent_transport_heads (
+  actor_id TEXT PRIMARY KEY REFERENCES library_intent_actors(actor_id) ON DELETE CASCADE,
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  storage_epoch_id TEXT NOT NULL CHECK (length(CAST(storage_epoch_id AS BLOB)) BETWEEN 1 AND 255),
+  next_actor_counter INTEGER NOT NULL CHECK (next_actor_counter >= 1),
+  latest_segment_digest TEXT CHECK (latest_segment_digest IS NULL OR (length(latest_segment_digest) = 64 AND latest_segment_digest NOT GLOB '*[^0-9a-f]*')),
+  CHECK (
+    (next_actor_counter = 1 AND latest_segment_digest IS NULL)
+    OR (next_actor_counter > 1 AND latest_segment_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_intent_transport_segments (
+  actor_id TEXT NOT NULL REFERENCES library_intent_transport_heads(actor_id) ON DELETE CASCADE,
+  first_actor_counter INTEGER NOT NULL CHECK (first_actor_counter >= 1),
+  last_actor_counter INTEGER NOT NULL CHECK (last_actor_counter >= first_actor_counter),
+  previous_segment_digest TEXT CHECK (previous_segment_digest IS NULL OR (length(previous_segment_digest) = 64 AND previous_segment_digest NOT GLOB '*[^0-9a-f]*')),
+  semantic_segment_digest TEXT NOT NULL CHECK (length(semantic_segment_digest) = 64 AND semantic_segment_digest NOT GLOB '*[^0-9a-f]*'),
+  stored_segment_digest TEXT NOT NULL CHECK (length(stored_segment_digest) = 64 AND stored_segment_digest NOT GLOB '*[^0-9a-f]*'),
+  object_key TEXT NOT NULL CHECK (length(CAST(object_key AS BLOB)) BETWEEN 1 AND 1024),
+  transport_object_id TEXT NOT NULL CHECK (length(CAST(transport_object_id AS BLOB)) BETWEEN 1 AND 1024),
+  published_at INTEGER NOT NULL CHECK (published_at >= 0),
+  published_transaction_count INTEGER NOT NULL CHECK (published_transaction_count >= 0),
+  PRIMARY KEY (actor_id, first_actor_counter),
+  UNIQUE (stored_segment_digest),
+  CHECK (
+    (first_actor_counter = 1 AND previous_segment_digest IS NULL)
+    OR (first_actor_counter > 1 AND previous_segment_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_primary_intent_stage_transactions (
   transaction_id TEXT PRIMARY KEY CHECK (length(CAST(transaction_id AS BLOB)) BETWEEN 1 AND 255),
   transaction_digest TEXT NOT NULL CHECK (length(transaction_digest) = 64 AND transaction_digest NOT GLOB '*[^0-9a-f]*'),

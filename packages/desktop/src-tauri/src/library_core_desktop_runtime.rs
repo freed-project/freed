@@ -1405,6 +1405,19 @@ pub(super) fn record_normalized_library_follower_intent_publication(
 }
 
 #[tauri::command]
+pub(super) fn record_normalized_library_follower_intent_transport_publication(
+    app: tauri::AppHandle,
+    publication: freed_library_core::NormalizedFollowerIntentTransportPublicationV2,
+) -> Result<freed_library_core::NormalizedFollowerIntentTransportPublicationReceiptV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::record_normalized_follower_intent_transport_publication_v2(
+        &mut connection,
+        &publication,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn ingest_normalized_library_follower_intent_page(
     app: tauri::AppHandle,
     page: freed_library_core::NormalizedFollowerIntentStagePageV1,

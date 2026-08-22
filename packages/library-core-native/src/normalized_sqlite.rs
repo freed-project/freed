@@ -907,6 +907,8 @@ mod tests {
             "library_invalidations",
             "library_intent_transactions",
             "library_intent_members",
+            "library_intent_transport_heads",
+            "library_intent_transport_segments",
             "library_intent_results",
             "library_intent_result_cursors",
             "library_optimistic_fields",

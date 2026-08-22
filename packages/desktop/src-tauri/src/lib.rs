@@ -14202,6 +14202,7 @@ pub fn run() {
             library_core_desktop_runtime::enqueue_normalized_library_follower_intent,
             library_core_desktop_runtime::read_normalized_library_follower_intent_page,
             library_core_desktop_runtime::record_normalized_library_follower_intent_publication,
+            library_core_desktop_runtime::record_normalized_library_follower_intent_transport_publication,
             library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
             library_core_desktop_runtime::read_normalized_library_follower_result_page,
             library_core_desktop_runtime::import_normalized_library_follower_result_page,

@@ -139,6 +139,35 @@ pub struct NormalizedFollowerIntentPublicationReceiptV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerIntentTransportPublicationV2 {
+    pub actor_id: String,
+    pub first_actor_counter: i64,
+    pub last_actor_counter: i64,
+    pub library_id: String,
+    pub object_key: String,
+    pub previous_segment_digest: Option<String>,
+    pub published_at: i64,
+    pub semantic_segment_digest: String,
+    pub stored_segment_digest: String,
+    pub storage_epoch_id: String,
+    pub transport_object_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerIntentTransportPublicationReceiptV2 {
+    pub actor_id: String,
+    pub first_actor_counter: i64,
+    pub last_actor_counter: i64,
+    pub newly_published_transaction_count: usize,
+    pub next_actor_counter: i64,
+    pub published_at: i64,
+    pub semantic_segment_digest: String,
+    pub stored_segment_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFollowerResultImportReceiptV1 {
     pub actor_id: String,
     pub first_result_sequence: i64,
@@ -966,6 +995,250 @@ pub fn record_normalized_follower_intent_publication_v1(
     })
 }
 
+fn is_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+pub fn record_normalized_follower_intent_transport_publication_v2(
+    connection: &mut Connection,
+    publication: &NormalizedFollowerIntentTransportPublicationV2,
+) -> Result<NormalizedFollowerIntentTransportPublicationReceiptV2, NormalizedSqliteError> {
+    let bounded_text = |value: &str, maximum: usize| !value.is_empty() && value.len() <= maximum;
+    if !bounded_text(&publication.actor_id, 255)
+        || !bounded_text(&publication.library_id, 255)
+        || !bounded_text(&publication.storage_epoch_id, 255)
+        || !bounded_text(&publication.object_key, 1_024)
+        || !bounded_text(&publication.transport_object_id, 1_024)
+        || !is_lower_sha256(&publication.semantic_segment_digest)
+        || !is_lower_sha256(&publication.stored_segment_digest)
+        || publication
+            .previous_segment_digest
+            .as_deref()
+            .is_some_and(|value| !is_lower_sha256(value))
+        || !(1..=MAX_SAFE_INTEGER).contains(&publication.first_actor_counter)
+        || publication.last_actor_counter < publication.first_actor_counter
+        || publication.last_actor_counter > MAX_SAFE_INTEGER
+        || !(0..=MAX_SAFE_INTEGER).contains(&publication.published_at)
+        || (publication.first_actor_counter == 1) != publication.previous_segment_digest.is_none()
+    {
+        return Err(invalid(
+            "normalized follower intent transport publication is invalid",
+        ));
+    }
+    let (authority, _, _, _) = current_authority(connection)?;
+    let (active_actor_id, _, active_epoch_id) = active_follower_actor(connection)?;
+    if authority.library_id != publication.library_id
+        || authority.epoch_id != publication.storage_epoch_id
+        || active_epoch_id != publication.storage_epoch_id
+        || active_actor_id != publication.actor_id
+    {
+        return Err(invalid(
+            "normalized follower intent transport authority changed",
+        ));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute(
+        "INSERT OR IGNORE INTO library_intent_transport_heads
+         (actor_id, library_id, storage_epoch_id, next_actor_counter,
+          latest_segment_digest)
+         VALUES (?1, ?2, ?3, 1, NULL);",
+        params![
+            publication.actor_id,
+            publication.library_id,
+            publication.storage_epoch_id,
+        ],
+    )?;
+    let head: (String, String, i64, Option<String>) = transaction.query_row(
+        "SELECT library_id, storage_epoch_id, next_actor_counter,
+                latest_segment_digest
+         FROM library_intent_transport_heads WHERE actor_id = ?1;",
+        [&publication.actor_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if head.0 != publication.library_id || head.1 != publication.storage_epoch_id {
+        return Err(invalid(
+            "normalized follower intent transport head identity changed",
+        ));
+    }
+    type StoredSegment = (
+        i64,
+        Option<String>,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        i64,
+    );
+    let existing: Option<StoredSegment> = transaction
+        .query_row(
+            "SELECT last_actor_counter, previous_segment_digest,
+                    semantic_segment_digest, stored_segment_digest, object_key,
+                    transport_object_id, published_at,
+                    published_transaction_count
+             FROM library_intent_transport_segments
+             WHERE actor_id = ?1 AND first_actor_counter = ?2;",
+            params![publication.actor_id, publication.first_actor_counter],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )
+        .optional()?;
+    if let Some(existing) = existing {
+        if existing.0 != publication.last_actor_counter
+            || existing.1 != publication.previous_segment_digest
+            || existing.2 != publication.semantic_segment_digest
+            || existing.3 != publication.stored_segment_digest
+            || existing.4 != publication.object_key
+            || existing.5 != publication.transport_object_id
+            || existing.6 != publication.published_at
+        {
+            return Err(invalid(
+                "normalized follower intent transport publication replay changed",
+            ));
+        }
+        transaction.commit()?;
+        return Ok(NormalizedFollowerIntentTransportPublicationReceiptV2 {
+            actor_id: publication.actor_id.clone(),
+            first_actor_counter: publication.first_actor_counter,
+            last_actor_counter: publication.last_actor_counter,
+            newly_published_transaction_count: usize::try_from(existing.7)
+                .map_err(|_| invalid("normalized follower intent transport receipt is invalid"))?,
+            next_actor_counter: publication.last_actor_counter + 1,
+            published_at: publication.published_at,
+            semantic_segment_digest: publication.semantic_segment_digest.clone(),
+            stored_segment_digest: publication.stored_segment_digest.clone(),
+        });
+    }
+    if head.2 != publication.first_actor_counter || head.3 != publication.previous_segment_digest {
+        return Err(invalid(
+            "normalized follower intent transport publication does not extend its head",
+        ));
+    }
+    let expected_records = publication
+        .last_actor_counter
+        .checked_sub(publication.first_actor_counter)
+        .and_then(|value| value.checked_add(1))
+        .ok_or(invalid(
+            "normalized follower intent transport range is invalid",
+        ))?;
+    let stored_records: i64 = transaction.query_row(
+        "SELECT count(*)
+         FROM library_intent_members AS member
+         JOIN library_intent_transactions AS intent
+           ON intent.transaction_id = member.transaction_id
+          AND intent.actor_id = member.actor_id
+         WHERE member.actor_id = ?1
+           AND member.actor_counter BETWEEN ?2 AND ?3
+           AND intent.state IN ('pending', 'published');",
+        params![
+            publication.actor_id,
+            publication.first_actor_counter,
+            publication.last_actor_counter,
+        ],
+        |row| row.get(0),
+    )?;
+    if stored_records != expected_records {
+        return Err(invalid(
+            "normalized follower intent transport range is not fully durable",
+        ));
+    }
+    let publishable: (i64, Option<i64>) = transaction.query_row(
+        "SELECT count(*), max(created_at)
+         FROM library_intent_transactions
+         WHERE actor_id = ?1 AND state = 'pending'
+           AND last_counter <= ?2;",
+        params![publication.actor_id, publication.last_actor_counter],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if publishable
+        .1
+        .is_some_and(|created_at| publication.published_at < created_at)
+    {
+        return Err(invalid(
+            "normalized follower intent transport publication predates its transaction",
+        ));
+    }
+    transaction.execute(
+        "INSERT INTO library_intent_transport_segments
+         (actor_id, first_actor_counter, last_actor_counter,
+          previous_segment_digest, semantic_segment_digest,
+          stored_segment_digest, object_key, transport_object_id, published_at,
+          published_transaction_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
+        params![
+            publication.actor_id,
+            publication.first_actor_counter,
+            publication.last_actor_counter,
+            publication.previous_segment_digest,
+            publication.semantic_segment_digest,
+            publication.stored_segment_digest,
+            publication.object_key,
+            publication.transport_object_id,
+            publication.published_at,
+            publishable.0,
+        ],
+    )?;
+    let published_transactions = transaction.execute(
+        "UPDATE library_intent_transactions
+         SET state = 'published', published_at = ?3
+         WHERE actor_id = ?1 AND state = 'pending' AND last_counter <= ?2;",
+        params![
+            publication.actor_id,
+            publication.last_actor_counter,
+            publication.published_at,
+        ],
+    )?;
+    if i64::try_from(published_transactions).ok() != Some(publishable.0) {
+        return Err(invalid(
+            "normalized follower intent transport publication count changed",
+        ));
+    }
+    let next_actor_counter = publication.last_actor_counter + 1;
+    let head_updated = transaction.execute(
+        "UPDATE library_intent_transport_heads
+         SET next_actor_counter = ?2, latest_segment_digest = ?3
+         WHERE actor_id = ?1 AND next_actor_counter = ?4
+           AND latest_segment_digest IS ?5;",
+        params![
+            publication.actor_id,
+            next_actor_counter,
+            publication.stored_segment_digest,
+            publication.first_actor_counter,
+            publication.previous_segment_digest,
+        ],
+    )?;
+    if head_updated != 1 {
+        return Err(invalid(
+            "normalized follower intent transport head changed concurrently",
+        ));
+    }
+    transaction.commit()?;
+    Ok(NormalizedFollowerIntentTransportPublicationReceiptV2 {
+        actor_id: publication.actor_id.clone(),
+        first_actor_counter: publication.first_actor_counter,
+        last_actor_counter: publication.last_actor_counter,
+        newly_published_transaction_count: published_transactions,
+        next_actor_counter,
+        published_at: publication.published_at,
+        semantic_segment_digest: publication.semantic_segment_digest.clone(),
+        stored_segment_digest: publication.stored_segment_digest.clone(),
+    })
+}
+
 pub fn import_normalized_follower_result_page_v1(
     connection: &mut Connection,
     records: &[NormalizedFollowerResultRecordV1],
@@ -1447,15 +1720,72 @@ mod tests {
         .expect("export follower intent page");
         assert_eq!(page.records.len(), 2);
         assert!(page.done);
-        let publication = record_normalized_follower_intent_publication_v1(
+        let first_publication = record_normalized_follower_intent_transport_publication_v2(
             &mut connection,
-            &intent.transaction_id,
-            &page.records[0].transaction_digest,
-            &accepted.actor_id,
-            2_300,
+            &NormalizedFollowerIntentTransportPublicationV2 {
+                actor_id: accepted.actor_id.clone(),
+                first_actor_counter: 1,
+                last_actor_counter: 1,
+                library_id: accepted.library_id.clone(),
+                object_key: "intent-segment-1".into(),
+                previous_segment_digest: None,
+                published_at: 2_300,
+                semantic_segment_digest: "4".repeat(64),
+                stored_segment_digest: "5".repeat(64),
+                storage_epoch_id: accepted.authority_epoch_id.clone(),
+                transport_object_id: "transport-1".into(),
+            },
         )
-        .expect("publish follower intent");
-        assert_eq!(publication.state, "published");
+        .expect("publish first follower intent page");
+        assert_eq!(first_publication.newly_published_transaction_count, 0);
+        assert_eq!(first_publication.next_actor_counter, 2);
+        let still_pending: String = connection
+            .query_row(
+                "SELECT state FROM library_intent_transactions WHERE transaction_id = ?1;",
+                [&intent.transaction_id],
+                |row| row.get(0),
+            )
+            .expect("split transaction state");
+        assert_eq!(still_pending, "pending");
+        let second_publication = record_normalized_follower_intent_transport_publication_v2(
+            &mut connection,
+            &NormalizedFollowerIntentTransportPublicationV2 {
+                actor_id: accepted.actor_id.clone(),
+                first_actor_counter: 2,
+                last_actor_counter: 2,
+                library_id: accepted.library_id.clone(),
+                object_key: "intent-segment-2".into(),
+                previous_segment_digest: Some("5".repeat(64)),
+                published_at: 2_301,
+                semantic_segment_digest: "6".repeat(64),
+                stored_segment_digest: "7".repeat(64),
+                storage_epoch_id: accepted.authority_epoch_id.clone(),
+                transport_object_id: "transport-2".into(),
+            },
+        )
+        .expect("publish final follower intent page");
+        assert_eq!(second_publication.newly_published_transaction_count, 1);
+        assert_eq!(second_publication.next_actor_counter, 3);
+        assert_eq!(
+            record_normalized_follower_intent_transport_publication_v2(
+                &mut connection,
+                &NormalizedFollowerIntentTransportPublicationV2 {
+                    actor_id: accepted.actor_id.clone(),
+                    first_actor_counter: 2,
+                    last_actor_counter: 2,
+                    library_id: accepted.library_id.clone(),
+                    object_key: "intent-segment-2".into(),
+                    previous_segment_digest: Some("5".repeat(64)),
+                    published_at: 2_301,
+                    semantic_segment_digest: "6".repeat(64),
+                    stored_segment_digest: "7".repeat(64),
+                    storage_epoch_id: accepted.authority_epoch_id.clone(),
+                    transport_object_id: "transport-2".into(),
+                },
+            )
+            .expect("exact publication replay"),
+            second_publication
+        );
         let staged = crate::NormalizedFollowerIntentStagePageV1 {
             records: page
                 .records

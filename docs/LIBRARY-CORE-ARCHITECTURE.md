@@ -653,6 +653,18 @@ advances the precise actor range through compare-and-swap, and treats response
 loss as success only when the complete canonical head bytes read back exactly.
 The two protocols retain distinct closed head types and sequence meanings.
 
+Followers persist the same intent publication fact inside normalized SQLite.
+One actor-scoped transport head records the next actor counter and latest stored
+segment digest. Each immutable page receipt separately records its counter
+range, previous stored digest, semantic body digest, stored-object digest,
+object key, transport object ID, publication time, and count of transactions
+that became fully visible at that boundary. Recording a page, advancing the
+head, and changing only fully covered transactions from pending to published
+happens in one immediate SQLite transaction. A page that ends inside a
+transaction advances transport progress but leaves that transaction pending.
+Exact response-loss replay returns the stored receipt. Any changed range,
+digest, object identity, or time fails closed.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 
