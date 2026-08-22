@@ -76,6 +76,10 @@ import {
   queryPwaNormalizedLibrary,
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
+import {
+  commitPwaLibraryCoreReadAssignments,
+  commitPwaLibraryCoreUserStateAssignments,
+} from "./library-core-pwa-follower-mutations";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const READ_MODEL_DATABASE_NAME = "freed-library-core-read-model-v1";
@@ -92,7 +96,6 @@ let lastState: LibraryState | null = null;
 let portableStore: ReturnType<
   typeof createPwaLibraryCorePortableCheckpointStore
 > | null = null;
-let libraryReadModelRevision = 0;
 const READY_INTENT_OVERLAY_RECOVERY = Object.freeze({
   canonicalEnvelopeBytes: 0,
   countsAreLowerBounds: false,
@@ -265,7 +268,6 @@ async function readSelectedState(): Promise<LibraryState | null> {
 }
 
 function publishState(state: LibraryState): void {
-  libraryReadModelRevision += 1;
   lastState = state;
   for (const listener of listeners) listener(state);
 }
@@ -297,7 +299,7 @@ export async function ensurePwaLibraryCoreLocalSampleState(): Promise<void> {
   if (state) publishState(state);
 }
 
-/** Queue a signed, durable PWA read-state intent without touching Automerge. */
+/** Commit a signed, durable PWA read-state intent to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreReadAssignments(
   globalIds: readonly string[],
 ): Promise<void> {
@@ -313,14 +315,11 @@ export async function enqueuePwaLibraryCoreReadAssignments(
       start,
       start + LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
     );
-    await getPortableStore().enqueueReadAssignments({
-      entityIds: batch,
-      readAtMs,
-    });
+    await commitPwaLibraryCoreReadAssignments(batch, readAtMs);
   }
 }
 
-/** Queue complete-library read intents through bounded IndexedDB scans. */
+/** Queue complete-library read intents through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreMarkAllAsRead(
   platform?: string,
 ): Promise<void> {
@@ -382,7 +381,7 @@ export async function enqueuePwaLibraryCoreArchiveItems(
   );
 }
 
-/** Archive every eligible item through bounded IndexedDB scans and intents. */
+/** Archive every eligible item through bounded SQLite scans and intents. */
 export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
   platform?: string,
   feedUrl?: string,
@@ -416,7 +415,7 @@ export async function enqueuePwaLibraryCoreArchiveAllReadUnsaved(
   await enqueuePwaLibraryCoreUserStateAssignments(pending, "archived", true);
 }
 
-/** Repair every saved and archived item through bounded IndexedDB scans. */
+/** Repair every saved and archived item through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> {
   let pending: string[] = [];
   await scanPwaLibraryCoreItems(async (items) => {
@@ -440,7 +439,7 @@ export async function enqueuePwaLibraryCoreUnarchiveSavedItems(): Promise<void> 
   if (state) publishState(state);
 }
 
-/** Delete every archived, unsaved item through bounded IndexedDB scans. */
+/** Delete every archived, unsaved item through bounded SQLite scans. */
 export async function enqueuePwaLibraryCoreDeleteAllArchived(): Promise<void> {
   await scanPwaLibraryCoreItems(async (items) => {
     for (const item of items) {
@@ -708,13 +707,11 @@ async function enqueuePwaLibraryCoreUserStateAssignments(
 ): Promise<void> {
   if (globalIds.length === 0) return;
   const assignedAtMs = Date.now();
-  await getPortableStore().enqueueUserStateAssignments(
-    globalIds.map((entityId) => ({
-      assigned,
-      assignedAtMs,
-      entityId,
-      field,
-    })),
+  await commitPwaLibraryCoreUserStateAssignments(
+    globalIds,
+    field,
+    assigned,
+    assignedAtMs,
   );
 }
 
@@ -854,8 +851,11 @@ export async function openPwaLibraryCoreSavedFeedReader(
   sortMode: Parameters<
     NonNullable<PlatformConfig["openBoundedSavedFeedReader"]>
   >[1],
-  _rankingClockMs: number,
+  rankingClockMs: number,
 ): Promise<BoundedFeedReader> {
+  if (!Number.isSafeInteger(rankingClockMs) || rankingClockMs < 0) {
+    throw new RangeError("saved feed ranking clock is invalid");
+  }
   return openLibraryCoreNormalizedSavedFeedReaderV1(
     NORMALIZED_READER_RUNTIME,
     filter,
@@ -1125,7 +1125,6 @@ registerPwaFactoryResetQuiesceHandler(
     await portableStore?.quiesce();
     portableStore = null;
     lastState = null;
-    libraryReadModelRevision = 0;
     intentOverlayRecoveryState = READY_INTENT_OVERLAY_RECOVERY;
     const deleteDatabase = (databaseName: string) =>
       new Promise<void>((resolve, reject) => {

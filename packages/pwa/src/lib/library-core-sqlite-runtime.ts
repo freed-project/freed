@@ -4,6 +4,9 @@ import type {
   LibraryCoreSqliteQueryResponseFor,
   LibraryCoreScopeActionRequestV1,
   LibraryCoreScopeActionStagePageV1,
+  LibraryCoreFollowerIntentCommitResultV1,
+  LibraryCoreFollowerIntentCommitV1,
+  LibraryCoreFollowerMutationContextV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -76,6 +79,18 @@ export async function pagePwaScopeActionStage(
 export async function closePwaScopeActionStage(stageId: string): Promise<void> {
   const active = await openClient();
   await active.closeScopeAction(stageId);
+}
+
+export async function readPwaFollowerMutationContext(): Promise<LibraryCoreFollowerMutationContextV1> {
+  const active = await openClient();
+  return active.followerMutationContext();
+}
+
+export async function commitPwaFollowerIntent(
+  commit: LibraryCoreFollowerIntentCommitV1,
+): Promise<LibraryCoreFollowerIntentCommitResultV1> {
+  const active = await openClient();
+  return active.commitFollowerIntent(commit);
 }
 
 export async function closePwaNormalizedLibrary(): Promise<void> {

@@ -43,6 +43,14 @@
         the local intent tip atomically. Exact byte retries return the durable
         result, changed identity reuse fails, and late write faults roll back
         the transaction.
+  - [x] Route PWA read, saved, archived, and liked product actions through the
+        OPFS SQLite mutation context and commit boundary. SQLite supplies the
+        active Library, epoch, enrolled actor, actor tip, capability presence,
+        and bounded accepted frontier. IndexedDB is consulted only to sign the
+        exact operation digest with the matching nonextractable actor key. It
+        does not assign sequence numbers, retain an optimistic overlay, or
+        receive a second copy of the mutation. A lost worker response retries
+        the exact canonical transaction bytes once.
   - [x] Apply one closed authority-signed Primary result through the same
         worker boundary. Browser SQLite verifies exact canonical bytes and the
         active authority key, requires a contiguous actor-scoped result chain,
@@ -448,6 +456,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.39 | Freeze complete SearchJump scope actions in installation-local OPFS SQLite before the first intent, then emit the stable set through bounded 1,000-member signed transactions without returning selected IDs to React                          | High       | ✓ Complete                                                                                       |
 | 6.40 | Implement the normalized v2 intent transport publication transaction inside the PWA OPFS SQLite engine, using the shared closed header and immutable-reference contract, exact response-loss receipts, actor-head advancement, and transaction-completeness behavior matching native Rust                 | High       | ✓ Complete                                                                                       |
 | 6.41 | Import normalized v2 result transport segments inside one PWA OPFS SQLite transaction, including semantic digest and signature verification, result materialization, sparse-overlay cleanup, logical and transport cursor advancement, exact retry receipts, and full rollback on late receipt failure      | High       | ✓ Complete                                                                                       |
+| 6.42 | Route PWA read, saved, archived, and liked product actions directly through the OPFS SQLite follower mutation context and atomic intent transaction, with IndexedDB limited to the matching nonextractable signing key and no dual write                                          | High       | ✓ Complete                                                                                       |
 
 ---
 

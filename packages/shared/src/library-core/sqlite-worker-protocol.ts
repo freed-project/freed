@@ -147,6 +147,10 @@ import {
   type LibraryCoreFollowerResultApplyV1,
 } from "./follower-result-contracts.js";
 import {
+  parseLibraryCoreFollowerMutationContextV1,
+  type LibraryCoreFollowerMutationContextV1,
+} from "./follower-mutation-context-contracts.js";
+import {
   parseLibraryCoreMapMarkersRequestV1,
   parseLibraryCoreMapMarkersResponseV1,
   parseLibraryCoreStoryWallCandidatesRequestV1,
@@ -397,6 +401,11 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "follower_mutation_context";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       commit: LibraryCoreFollowerIntentCommitV1;
       kind: "commit_follower_intent";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
@@ -491,6 +500,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1
+  | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
   | LibraryCoreFollowerIntentPageResponseV1
   | LibraryCoreFollowerIntentPublicationReceiptV1
@@ -623,6 +633,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "commit_follower_intent",
       "append_scope_action",
       "finalize_scope_action",
+      "follower_mutation_context",
       "mutate_device_graph_layout",
       "open",
       "page_follower_intents",
@@ -821,6 +832,22 @@ export function createLibraryCoreSqliteFollowerResultApplyWorkerRequest(
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
+}
+
+export function createLibraryCoreSqliteFollowerMutationContextWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "follower_mutation_context",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function parseLibraryCoreSqliteFollowerMutationContextResponse(
+  value: unknown,
+): LibraryCoreFollowerMutationContextV1 {
+  return parseLibraryCoreFollowerMutationContextV1(value);
 }
 
 export function createLibraryCoreSqliteFollowerIntentCommitWorkerRequest(

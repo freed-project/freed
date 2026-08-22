@@ -3,6 +3,8 @@ import { createDefaultPreferences } from "@freed/shared";
 import { createLibraryCoreImmutableObjectKey } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
+  commitReadAssignments: vi.fn(),
+  commitUserStateAssignments: vi.fn(),
   enqueueReadAssignments: vi.fn(),
   enqueueFeedItemCaptures: vi.fn(),
   enqueueFeedItemRemove: vi.fn(),
@@ -30,6 +32,11 @@ const mocks = vi.hoisted(() => ({
   importCheckpoint: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
   resetNormalizedLibrary: vi.fn(),
+}));
+
+vi.mock("./library-core-pwa-follower-mutations", () => ({
+  commitPwaLibraryCoreReadAssignments: mocks.commitReadAssignments,
+  commitPwaLibraryCoreUserStateAssignments: mocks.commitUserStateAssignments,
 }));
 
 vi.mock("./library-core-portable-checkpoint-store", () => ({
@@ -258,6 +265,8 @@ describe("PWA Library Core bounded scanner", () => {
       rows: [],
     });
     mocks.resetNormalizedLibrary.mockReset();
+    mocks.commitReadAssignments.mockReset();
+    mocks.commitUserStateAssignments.mockReset();
     mocks.enqueueUserStateAssignments.mockReset();
     mocks.enqueueReadAssignments.mockReset();
     mocks.enqueueFeedItemCaptures.mockReset();
@@ -680,7 +689,7 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("reads toggle state from SQLite before queuing a signed intent", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({
+    mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:assignment",
     });
     mocks.queryNormalizedLibrary.mockResolvedValue(
@@ -689,15 +698,13 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCoreUserStateToggle("item-9", "liked");
 
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledOnce();
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
-      {
-        assigned: true,
-        assignedAtMs: expect.any(Number),
-        entityId: "item-9",
-        field: "liked",
-      },
-    ]);
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledOnce();
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledWith(
+      ["item-9"],
+      "liked",
+      true,
+      expect.any(Number),
+    );
     expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
@@ -756,7 +763,7 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("repairs saved archived items from bounded SQLite rows", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({
+    mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:unarchive",
     });
     mocks.queryNormalizedLibrary.mockResolvedValueOnce({
@@ -768,14 +775,12 @@ describe("PWA Library Core bounded scanner", () => {
     });
     await enqueuePwaLibraryCoreUnarchiveSavedItems();
 
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
-      {
-        assigned: false,
-        assignedAtMs: expect.any(Number),
-        entityId: "saved-archived",
-        field: "archived",
-      },
-    ]);
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledWith(
+      ["saved-archived"],
+      "archived",
+      false,
+      expect.any(Number),
+    );
   });
 
   it("deletes only archived unsaved items from bounded SQLite rows", async () => {
@@ -797,7 +802,7 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("marks the complete selected platform read in bounded intent batches", async () => {
-    mocks.enqueueReadAssignments.mockResolvedValue({ operationId: "op:read" });
+    mocks.commitReadAssignments.mockResolvedValue({ operationId: "op:read" });
     mocks.queryNormalizedLibrary.mockResolvedValueOnce({
       nextCursor: null,
       rows: [
@@ -810,15 +815,15 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCoreMarkAllAsRead("rss");
 
-    expect(mocks.enqueueReadAssignments).toHaveBeenCalledOnce();
-    expect(mocks.enqueueReadAssignments).toHaveBeenCalledWith({
-      entityIds: ["rss-unread"],
-      readAtMs: expect.any(Number),
-    });
+    expect(mocks.commitReadAssignments).toHaveBeenCalledOnce();
+    expect(mocks.commitReadAssignments).toHaveBeenCalledWith(
+      ["rss-unread"],
+      expect.any(Number),
+    );
   });
 
   it("archives only eligible selected items through explicit assignments", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({
+    mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:archive",
     });
     mocks.queryNormalizedLibrary
@@ -835,20 +840,18 @@ describe("PWA Library Core bounded scanner", () => {
       "eligible",
     ]);
 
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledOnce();
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
-      {
-        assigned: true,
-        assignedAtMs: expect.any(Number),
-        entityId: "eligible",
-        field: "archived",
-      },
-    ]);
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledOnce();
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledWith(
+      ["eligible"],
+      "archived",
+      true,
+      expect.any(Number),
+    );
     expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("archives the complete selected scope in one bounded assignment batch", async () => {
-    mocks.enqueueUserStateAssignments.mockResolvedValue({
+    mocks.commitUserStateAssignments.mockResolvedValue({
       operationId: "op:bulk",
     });
     mocks.queryNormalizedLibrary.mockResolvedValueOnce({
@@ -894,14 +897,12 @@ describe("PWA Library Core bounded scanner", () => {
       "https://example.test/feed",
     );
 
-    expect(mocks.enqueueUserStateAssignments).toHaveBeenCalledWith([
-      {
-        assigned: true,
-        assignedAtMs: expect.any(Number),
-        entityId: "rss-eligible",
-        field: "archived",
-      },
-    ]);
+    expect(mocks.commitUserStateAssignments).toHaveBeenCalledWith(
+      ["rss-eligible"],
+      "archived",
+      true,
+      expect.any(Number),
+    );
   });
 
   it("routes RSS configuration through signed Library Core intents", async () => {

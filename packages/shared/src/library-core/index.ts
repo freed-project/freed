@@ -30,6 +30,7 @@ export * from "./immutable-transport-contracts.js";
 export * from "./media-blob-transport-contracts.js";
 export * from "./intent-segment-contracts.js";
 export * from "./follower-intent-contracts.js";
+export * from "./follower-mutation-context-contracts.js";
 export * from "./follower-result-contracts.js";
 export * from "./result-segment-contracts.js";
 export * from "./operation-registry.js";

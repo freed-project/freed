@@ -24,6 +24,7 @@ import {
   type LibraryCoreFollowerIntentPageResponseV1,
   type LibraryCoreFollowerIntentPublicationReceiptV1,
   type LibraryCoreFollowerIntentPublicationV1,
+  type LibraryCoreFollowerMutationContextV1,
   type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
@@ -38,6 +39,7 @@ import {
   parseLibraryCoreFollowerIntentPageRequestV1,
   parseLibraryCoreFollowerIntentPageResponseV1,
   parseLibraryCoreFollowerIntentPublicationV1,
+  parseLibraryCoreFollowerMutationContextV1,
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   normalizedResultSegmentBodyFromRecordsV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
@@ -1026,6 +1028,78 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  followerMutationContext(): LibraryCoreFollowerMutationContextV1 {
+    const rows = this.#database.exec({
+      sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
+                   a.actor_id, a.public_key,
+                   COALESCE(i.next_counter, a.accepted_counter + 1),
+                   COALESCE(i.previous_operation_id, a.accepted_operation_id),
+                   COALESCE(i.previous_chain_digest, a.accepted_chain_digest)
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            JOIN library_follower_actor_request AS request
+              ON request.singleton_id = 1
+             AND request.library_id = m.library_id
+             AND request.authority_epoch_id = e.epoch_id
+             AND request.enrollment_certificate_digest IS NOT NULL
+            JOIN library_actors AS a
+              ON a.actor_id = request.actor_id
+             AND a.authority_epoch_id = e.epoch_id
+             AND a.retired_at IS NULL
+            LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
+            WHERE m.singleton_id = 1
+              AND EXISTS (
+                SELECT 1 FROM library_actor_capabilities AS capability
+                WHERE capability.actor_id = a.actor_id
+                  AND capability.retired_at IS NULL
+              );`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("PWA follower mutation context is unavailable");
+    }
+    const row = rows[0]!;
+    const epochId = text(row[2], "PWA follower mutation epoch ID");
+    const frontierRows = this.#database.exec({
+      sql: `SELECT actor_id, accepted_counter, accepted_operation_id,
+                   accepted_chain_digest
+            FROM library_authority_frontier
+            WHERE epoch_id = ?1 ORDER BY ordinal;`,
+      bind: [epochId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    return parseLibraryCoreFollowerMutationContextV1({
+      actor_id: text(row[3], "PWA follower mutation actor ID"),
+      actor_public_key: text(row[4], "PWA follower mutation actor key"),
+      epoch: safeInteger(row[1], "PWA follower mutation epoch"),
+      epoch_id: epochId,
+      library_id: text(row[0], "PWA follower mutation Library ID"),
+      next_actor_sequence: safeInteger(
+        row[5],
+        "PWA follower mutation next sequence",
+      ),
+      observed_frontier: frontierRows.map((tip) => ({
+        actor_id: text(tip[0], "PWA follower frontier actor ID"),
+        chain_digest: text(tip[3], "PWA follower frontier chain digest"),
+        operation_id: text(tip[2], "PWA follower frontier operation ID"),
+        sequence: safeInteger(tip[1], "PWA follower frontier sequence"),
+      })),
+      previous_actor_chain_digest: text(
+        row[7],
+        "PWA follower mutation previous chain digest",
+      ),
+      previous_actor_operation_id: nullableText(
+        row[6],
+        "PWA follower mutation previous operation ID",
+      ),
+      schema_version: 1,
+    });
   }
 
   async commitFollowerIntent(

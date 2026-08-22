@@ -405,6 +405,24 @@ describe("PWA Library Core SQLite engine", () => {
       bind: [actorId, "cc".repeat(32), "dd".repeat(32), "ee".repeat(32)],
     });
     database.exec({
+      sql: `INSERT INTO library_follower_actor_request
+              (singleton_id, library_id, authority_epoch_id, actor_id,
+               actor_public_key, enrollment_request_digest,
+               canonical_enrollment_request, created_at,
+               enrollment_certificate_digest, canonical_enrollment_certificate,
+               actor_chain_genesis, enrolled_at)
+            VALUES (1, ?1, ?2, ?3, ?4, ?5, '{}', 1, ?6, '{}', ?7, 1);`,
+      bind: [
+        libraryId,
+        epochId,
+        actorId,
+        publicKeyHex,
+        "ab".repeat(32),
+        "bb".repeat(32),
+        chainGenesis,
+      ],
+    });
+    database.exec({
       sql: `INSERT INTO library_actor_capability_mutations
               (capability_id, mutation_id)
             VALUES ('capability-1', 'feed_item_read_assignment');`,
@@ -454,6 +472,19 @@ describe("PWA Library Core SQLite engine", () => {
       ),
     );
 
+    expect(engine.followerMutationContext()).toStrictEqual({
+      actor_id: actorId,
+      actor_public_key: publicKeyHex,
+      epoch: 1,
+      epoch_id: epochId,
+      library_id: libraryId,
+      next_actor_sequence: 1,
+      observed_frontier: [],
+      previous_actor_chain_digest: chainGenesis,
+      previous_actor_operation_id: null,
+      schema_version: 1,
+    });
+
     const first = await engine.commitFollowerIntent({ envelopeBytes });
     expect(first).toEqual({
       actorId,
@@ -463,6 +494,11 @@ describe("PWA Library Core SQLite engine", () => {
       optimisticFieldCount: 1,
       state: "pending",
       transactionId: "intent-transaction-1",
+    });
+    expect(engine.followerMutationContext()).toMatchObject({
+      actor_id: actorId,
+      next_actor_sequence: 2,
+      previous_actor_operation_id: "intent-operation-1",
     });
     expect(await engine.commitFollowerIntent({ envelopeBytes })).toEqual(first);
     expect(

@@ -205,6 +205,14 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "follower_mutation_context") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.followerMutationContext(),
+        });
+        return;
+      }
       if (request.kind === "page_follower_intents") {
         scope.postMessage({
           ok: true,

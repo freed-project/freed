@@ -230,6 +230,15 @@ WebCrypto key objects when WebKit supplies no appropriate alternative. It may
 not contain Library rows, checkpoints, cursors, operations, content metadata,
 or compatibility state.
 
+For follower mutations, OPFS SQLite returns one closed context containing the
+active Library and epoch, the enrolled nonretired actor, its public key, the
+next actor sequence, the previous actor tip, and the bounded accepted frontier.
+The browser keystore may only verify that exact identity and sign the exact
+operation digest. Transaction assembly then commits the canonical envelopes,
+sparse optimistic fields, actor tip, and durable receipt to SQLite atomically.
+There is no IndexedDB mutation journal or dual write. Response loss retries the
+same canonical bytes and accepts only the receipt for that exact transaction.
+
 ### 5.3 React
 
 React owns:

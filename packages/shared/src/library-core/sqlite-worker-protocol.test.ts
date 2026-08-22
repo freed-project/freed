@@ -14,6 +14,7 @@ import {
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
+  createLibraryCoreSqliteFollowerMutationContextWorkerRequest,
   createLibraryCoreSqlitePageScopeActionWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
@@ -26,6 +27,18 @@ describe("Library Core SQLite worker protocol", () => {
       kind: "open",
       protocolVersion: 2,
       requestId: "request-1",
+    });
+  });
+
+  it("requests the active follower mutation context without carrying authority", () => {
+    expect(
+      createLibraryCoreSqliteFollowerMutationContextWorkerRequest(
+        "request-context",
+      ),
+    ).toStrictEqual({
+      kind: "follower_mutation_context",
+      protocolVersion: 2,
+      requestId: "request-context",
     });
   });
 
