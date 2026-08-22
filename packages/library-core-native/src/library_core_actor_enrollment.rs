@@ -233,13 +233,12 @@ fn build_certificate_body(
     Ok((certificate_body, certificate_digest))
 }
 
-pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
+pub fn prepare_normalized_follower_actor_enrollment_request_v2(
     authority: &AcceptedAuthorityState,
     installation_witness: &str,
     actor_store: &dyn ActorKeyStore,
-    authority_store: &dyn AuthorityKeyStore,
     created_at_ms: i64,
-) -> Result<VerifiedActorEnrollment, String> {
+) -> Result<PreparedActorEnrollmentRequest, String> {
     let enrollment_authority = EnrollmentAuthority {
         library_id: authority.library_id.clone(),
         epoch: authority.epoch,
@@ -249,11 +248,6 @@ pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
     };
     let actor_key_pair =
         load_or_create_actor_key_pair(actor_store, &enrollment_authority.library_id)?;
-    let authority_key_pair =
-        load_established_authority_key_pair(authority_store, &enrollment_authority.library_id)?;
-    if lower_hex(authority_key_pair.public_key().as_ref()) != authority.authority_public_key {
-        return Err("Library Core normalized authority key lineage is unavailable".to_owned());
-    }
     let identity = actor_identity(&enrollment_authority, &actor_key_pair)?;
     if created_at_ms < 0 {
         return Err("Library Core enrollment time is invalid".to_owned());
@@ -340,23 +334,40 @@ pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
         "actor_capability_body_digest": capability_body_digest,
     });
     let certificate_digest = digest_value("actor-capability-certificate", &certificate_body)?;
-    let authority_signature_input = encode_signature_input(
-        "actor-capability-authority",
-        &json!({ "certificate_digest": certificate_digest }),
-        MAX_CERTIFICATE_BYTES,
-    )
-    .map_err(|_| "Library Core normalized actor authority input is invalid".to_owned())?;
     let canonical = encode_canonical_value(
         &json!({
             "certificate_body": certificate_body,
             "certificate_digest": certificate_digest,
-            "authority_signature": lower_hex(
-                authority_key_pair.sign(&authority_signature_input).as_ref(),
-            ),
         }),
         MAX_CERTIFICATE_BYTES,
     )
-    .map_err(|_| "Library Core normalized actor certificate is invalid".to_owned())?;
+    .map_err(|_| "Library Core normalized actor request is invalid".to_owned())?;
+    Ok(PreparedActorEnrollmentRequest {
+        actor_id: identity.actor_id,
+        actor_public_key: identity.actor_public_key,
+        enrollment_request_digest: certificate_digest,
+        canonical_enrollment_request_json: String::from_utf8(canonical)
+            .map_err(|_| "Library Core normalized actor request is not UTF-8".to_owned())?,
+    })
+}
+
+pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
+    authority: &AcceptedAuthorityState,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    created_at_ms: i64,
+) -> Result<VerifiedActorEnrollment, String> {
+    let request = prepare_normalized_follower_actor_enrollment_request_v2(
+        authority,
+        installation_witness,
+        actor_store,
+        created_at_ms,
+    )?;
+    let canonical = countersign_actor_enrollment_request_bytes(
+        request.canonical_enrollment_request_json.as_bytes(),
+        authority_store,
+    )?;
     verify_actor_enrollment_certificate(&canonical, authority)
         .map_err(|error| format!("Library Core normalized actor certificate failed: {error}"))
 }
@@ -550,11 +561,10 @@ pub fn enroll_desktop_actor(
 /// loads its authority key, adds the authority signature, and asks the
 /// journal to reverify the complete certificate against the current epoch in
 /// the same transaction that enrolls the actor.
-pub fn countersign_actor_enrollment_request(
-    journal: &mut LibraryCoreJournal,
+pub fn countersign_actor_enrollment_request_bytes(
     canonical_request: &[u8],
     authority_store: &dyn AuthorityKeyStore,
-) -> Result<ActorState, String> {
+) -> Result<Vec<u8>, String> {
     if canonical_request.is_empty() || canonical_request.len() > MAX_CERTIFICATE_BYTES {
         return Err("Library Core actor enrollment request size is invalid".to_string());
     }
@@ -591,8 +601,17 @@ pub fn countersign_actor_enrollment_request(
         .filter(|digest| is_lower_sha256(digest))
         .ok_or_else(|| "Library Core actor enrollment request digest is invalid".to_string())?;
     let authority_key_pair = load_established_authority_key_pair(authority_store, library_id)?;
+    let signature_domain = if request
+        .get("certificate_body")
+        .and_then(Value::as_object)
+        .is_some_and(|body| body.contains_key("actor_capability_body"))
+    {
+        "actor-capability-authority"
+    } else {
+        "actor-enrollment-authority"
+    };
     let authority_signature_input = encode_signature_input(
-        "actor-enrollment-authority",
+        signature_domain,
         &json!({ "certificate_digest": certificate_digest }),
         MAX_CERTIFICATE_BYTES,
     )
@@ -606,9 +625,29 @@ pub fn countersign_actor_enrollment_request(
             authority_key_pair.sign(&authority_signature_input).as_ref(),
         ),
     });
-    let canonical_certificate = encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES)
-        .map_err(|_| {
-            "Library Core actor enrollment certificate is not canonically encodable".to_string()
+    encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES).map_err(|_| {
+        "Library Core actor enrollment certificate is not canonically encodable".to_string()
+    })
+}
+
+pub fn countersign_actor_enrollment_request(
+    journal: &mut LibraryCoreJournal,
+    canonical_request: &[u8],
+    authority_store: &dyn AuthorityKeyStore,
+) -> Result<ActorState, String> {
+    let canonical_certificate =
+        countersign_actor_enrollment_request_bytes(canonical_request, authority_store)?;
+    let request: Value = serde_json::from_slice(canonical_request)
+        .map_err(|_| "Library Core actor enrollment request is invalid JSON".to_string())?;
+    let library_id = request
+        .get("certificate_body")
+        .and_then(Value::as_object)
+        .and_then(|body| body.get("actor_enrollment_body"))
+        .and_then(Value::as_object)
+        .and_then(|body| body.get("library_id"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            "Library Core actor enrollment request has no Library identity".to_string()
         })?;
     journal
         .verify_and_enroll_actor(&canonical_certificate, library_id)

@@ -57,6 +57,12 @@
       Desktop actor, and publish generation zero from the pinned typed export.
       The transfer has no portable checkpoint producer or historical-journal
       writer path.
+- [x] Bind a follower checkpoint receipt and actor enrollment state inside the
+      selected normalized database. Editable followers now have one native v2
+      capability request, authority countersignature, exact replay check, and
+      local intent-chain initialization path. The old journal is still the
+      active Desktop follower caller until the remaining intent and result
+      commands move to these normalized tables.
 - [x] Generate equivalent native Rust and browser SQLite ranked-feed programs
       with complete filters, forward and reverse keyset paging, source-fenced
       cursors, a 129-row scan ceiling, and no historical source-enumeration
@@ -402,6 +408,7 @@ loads an alternate Library engine or compatibility path.
 | 4.214 | Reassign cloud writer authority inside normalized SQLite with an exact signed source-control certificate, carried causal frontier, target actor re-enrollment, response-loss replay, and generation-zero normalized checkpoint publication, while deleting the historical portable-checkpoint writer-transfer producer and command                                                                                                                                                                                    | ✓      | High       |
 | 4.215 | Keep the descriptor-bound Desktop selector as one stable choice of normalized SQLite for a Library, with the changing epoch, certificate chain, writer actor, and materialization generation owned only by SQLite, so a signed writer transition cannot invalidate the next native open                                                                                                                                                                                                                               | ✓      | High       |
 | 4.216 | Stream authenticated normalized checkpoint pages through one closed importer, derive the checkpoint digest independently from exact staged canonical records, and atomically replace existing canonical SQLite state only when no unresolved local operation could be lost                                                                                                                                                                                                                                   | ✓      | High       |
+| 4.217 | Store the device-local follower checkpoint receipt and enrollment request in normalized SQLite, issue editable followers an explicit v2 capability from the shared contract, countersign and replay it through the native core, and initialize the local normalized intent chain without granting writer admission                                                                                                                                    | ✓      | High       |
 
 ---
 

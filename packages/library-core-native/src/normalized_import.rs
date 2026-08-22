@@ -105,8 +105,32 @@ pub struct NormalizedCheckpointActivationReceiptV2 {
     pub checkpoint_digest: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerCheckpointReceiptV2 {
+    pub checkpoint_generation: u64,
+    pub writer_actor_id: String,
+    pub manifest_object_key: String,
+    pub manifest_transport_object_id: String,
+    pub manifest_content_digest: String,
+    pub control_revision: String,
+    pub installed_at: u64,
+}
+
 fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
+}
+
+fn bounded_text(value: &str, maximum_bytes: usize) -> bool {
+    !value.is_empty() && value.len() <= maximum_bytes
+}
+
+fn lowercase_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
 }
 
 fn record_from_canonical(
@@ -366,6 +390,7 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_operations;
          DELETE FROM library_transactions;
          DELETE FROM library_invalidations;
+         DELETE FROM library_follower_checkpoint_receipt;
          DELETE FROM library_device_scope_action_members;
          DELETE FROM library_device_scope_actions;
          DELETE FROM library_device_person_graph_layout;
@@ -406,10 +431,108 @@ fn clear_checkpoint_replacement_target(
     Ok(())
 }
 
+fn install_follower_checkpoint_receipt(
+    transaction: &Transaction<'_>,
+    stage: &(String, String, i64, i64, i64),
+    checkpoint_digest: &str,
+    receipt: &NormalizedFollowerCheckpointReceiptV2,
+) -> Result<(), NormalizedSqliteError> {
+    if !lowercase_digest(&receipt.manifest_content_digest)
+        || !bounded_text(&receipt.writer_actor_id, 255)
+        || !bounded_text(&receipt.manifest_object_key, 1_024)
+        || !bounded_text(&receipt.manifest_transport_object_id, 1_024)
+        || !bounded_text(&receipt.control_revision, 1_024)
+    {
+        return Err(invalid("normalized follower checkpoint receipt is invalid"));
+    }
+    let writer_matches: i64 = transaction.query_row(
+        "SELECT count(*)
+         FROM library_active_authority AS active
+         JOIN library_actors AS actor
+           ON actor.authority_epoch_id = active.epoch_id
+          AND actor.actor_kind = 'desktop' AND actor.retired_at IS NULL
+         WHERE active.active_key = 'active' AND active.library_id = ?1
+           AND active.epoch_id = ?2 AND actor.actor_id = ?3;",
+        params![stage.0, stage.1, receipt.writer_actor_id],
+        |row| row.get(0),
+    )?;
+    if writer_matches != 1 {
+        return Err(invalid(
+            "normalized follower checkpoint writer is not active",
+        ));
+    }
+    transaction.execute(
+        "INSERT INTO library_follower_checkpoint_receipt
+         (singleton_id, library_id, authority_epoch_id, writer_actor_id,
+          checkpoint_generation, source_revision, checkpoint_digest,
+          manifest_object_key, manifest_transport_object_id,
+          manifest_content_digest, control_revision, installed_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);",
+        params![
+            stage.0,
+            stage.1,
+            receipt.writer_actor_id,
+            receipt.checkpoint_generation,
+            stage.2,
+            checkpoint_digest,
+            receipt.manifest_object_key,
+            receipt.manifest_transport_object_id,
+            receipt.manifest_content_digest,
+            receipt.control_revision,
+            receipt.installed_at,
+        ],
+    )?;
+    let local_actor: Option<String> = transaction
+        .query_row(
+            "SELECT actor_id FROM library_follower_actor_request
+             WHERE singleton_id = 1 AND library_id = ?1
+               AND authority_epoch_id = ?2
+               AND enrollment_certificate_digest IS NOT NULL;",
+            params![stage.0, stage.1],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(actor_id) = local_actor {
+        let actor_tip: Option<(i64, Option<String>, String)> = transaction
+            .query_row(
+                "SELECT accepted_counter, accepted_operation_id,
+                        accepted_chain_digest
+                 FROM library_actors
+                 WHERE actor_id = ?1 AND authority_epoch_id = ?2
+                   AND retired_at IS NULL;",
+                params![actor_id, stage.1],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((accepted_counter, accepted_operation_id, accepted_chain_digest)) = actor_tip
+        else {
+            return Err(invalid(
+                "normalized checkpoint omits the enrolled local follower actor",
+            ));
+        };
+        let next_counter = accepted_counter
+            .checked_add(1)
+            .ok_or(invalid("normalized follower actor counter is invalid"))?;
+        transaction.execute(
+            "INSERT INTO library_intent_actors
+             (actor_id, next_counter, previous_operation_id,
+              previous_chain_digest) VALUES (?1, ?2, ?3, ?4);",
+            params![
+                actor_id,
+                next_counter,
+                accepted_operation_id,
+                accepted_chain_digest,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 fn activate_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
     replace_existing: bool,
+    follower_receipt: Option<&NormalizedFollowerCheckpointReceiptV2>,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
     let transaction = connection.transaction()?;
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
@@ -536,6 +659,9 @@ fn activate_normalized_checkpoint_stage_v2(
         ));
     }
     verify_authority_rows(&transaction, &stage.0, &stage.1)?;
+    if let Some(receipt) = follower_receipt {
+        install_follower_checkpoint_receipt(&transaction, &stage, &checkpoint_digest, receipt)?;
+    }
     transaction.execute(
         "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         [stage_id],
@@ -558,14 +684,22 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
-    activate_normalized_checkpoint_stage_v2(connection, stage_id, false)
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, false, None)
 }
 
 pub fn replace_with_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
-    activate_normalized_checkpoint_stage_v2(connection, stage_id, true)
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, None)
+}
+
+pub fn replace_with_normalized_follower_checkpoint_stage_v2(
+    connection: &mut Connection,
+    stage_id: &str,
+    receipt: &NormalizedFollowerCheckpointReceiptV2,
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true, Some(receipt))
 }
 
 pub fn normalized_checkpoint_digest_v2(

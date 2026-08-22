@@ -27,7 +27,7 @@ fn source_control_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.as_object()?.get(field)?.as_str()
 }
 
-fn current_authority(
+pub(crate) fn current_authority(
     connection: &Connection,
 ) -> Result<(AcceptedAuthorityState, String, String, i64), NormalizedSqliteError> {
     let (
@@ -267,17 +267,39 @@ pub fn reassign_normalized_writer_epoch_v2(
                 "normalized active authority changed during reassignment",
             ));
         }
-        let updated = transaction.execute(
-            "UPDATE library_writer_admission
-             SET local_writer_id = 'primary:desktop', active_writer_id = 'primary:desktop',
-                 observed_manifest_generation = 0, observed_at = ?1
-             WHERE singleton_id = 1 AND observed_manifest_generation = ?2;",
-            params![accepted_at, manifest_generation],
-        )?;
-        if updated != 1 {
-            return Err(invalid(
-                "normalized writer admission changed during reassignment",
-            ));
+        let admission_generation: Option<i64> = transaction
+            .query_row(
+                "SELECT observed_manifest_generation FROM library_writer_admission
+                 WHERE singleton_id = 1;",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match admission_generation {
+            Some(generation) if generation == manifest_generation => {
+                transaction.execute(
+                    "UPDATE library_writer_admission
+                     SET local_writer_id = 'primary:desktop',
+                         active_writer_id = 'primary:desktop',
+                         observed_manifest_generation = 0, observed_at = ?1
+                     WHERE singleton_id = 1;",
+                    [accepted_at],
+                )?;
+            }
+            None => {
+                transaction.execute(
+                    "INSERT INTO library_writer_admission
+                     (singleton_id, local_writer_id, active_writer_id,
+                      observed_manifest_generation, observed_at)
+                     VALUES (1, 'primary:desktop', 'primary:desktop', 0, ?1);",
+                    [accepted_at],
+                )?;
+            }
+            Some(_) => {
+                return Err(invalid(
+                    "normalized writer admission changed during reassignment",
+                ));
+            }
         }
         let updated = transaction.execute(
             "UPDATE library_meta SET authority_epoch = ?1, updated_at = ?2
@@ -484,6 +506,9 @@ mod tests {
             "writerId": source.writer_id,
         }))
         .expect("canonical source control");
+        connection
+            .execute("DELETE FROM library_writer_admission;", [])
+            .expect("model an imported checkpoint without device admission");
 
         let first = reassign_normalized_writer_epoch_v2(
             &mut connection,
@@ -500,6 +525,22 @@ mod tests {
         assert_eq!(selected.writer_id, local_enrollment.actor_id);
         assert_eq!(selected.authority_epoch, first.authority.epoch_id);
         assert_ne!(selected.authority_epoch, source.authority_epoch);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT local_writer_id, active_writer_id,
+                            observed_manifest_generation
+                     FROM library_writer_admission WHERE singleton_id = 1;",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    )),
+                )
+                .expect("imported writer admission"),
+            ("primary:desktop".into(), "primary:desktop".into(), 0)
+        );
         assert_ne!(
             selected.causal_frontier_digest,
             source.causal_frontier_digest

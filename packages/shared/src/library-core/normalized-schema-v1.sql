@@ -77,6 +77,41 @@ CREATE TABLE IF NOT EXISTS library_writer_admission (
   observed_at INTEGER NOT NULL CHECK (observed_at >= 0)
 ) STRICT;
 
+CREATE TABLE IF NOT EXISTS library_follower_checkpoint_receipt (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  authority_epoch_id TEXT NOT NULL REFERENCES library_authority_epochs(epoch_id),
+  writer_actor_id TEXT NOT NULL REFERENCES library_actors(actor_id),
+  checkpoint_generation INTEGER NOT NULL CHECK (checkpoint_generation >= 0),
+  source_revision INTEGER NOT NULL CHECK (source_revision >= 0),
+  checkpoint_digest TEXT NOT NULL CHECK (length(checkpoint_digest) = 64 AND checkpoint_digest NOT GLOB '*[^0-9a-f]*'),
+  manifest_object_key TEXT NOT NULL CHECK (length(CAST(manifest_object_key AS BLOB)) BETWEEN 1 AND 1024),
+  manifest_transport_object_id TEXT NOT NULL CHECK (length(CAST(manifest_transport_object_id AS BLOB)) BETWEEN 1 AND 1024),
+  manifest_content_digest TEXT NOT NULL CHECK (length(manifest_content_digest) = 64 AND manifest_content_digest NOT GLOB '*[^0-9a-f]*'),
+  control_revision TEXT NOT NULL CHECK (length(CAST(control_revision AS BLOB)) BETWEEN 1 AND 1024),
+  installed_at INTEGER NOT NULL CHECK (installed_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_follower_actor_request (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  authority_epoch_id TEXT NOT NULL CHECK (length(CAST(authority_epoch_id AS BLOB)) BETWEEN 1 AND 255),
+  actor_id TEXT NOT NULL CHECK (length(actor_id) = 64 AND actor_id NOT GLOB '*[^0-9a-f]*'),
+  actor_public_key TEXT NOT NULL CHECK (length(actor_public_key) = 64 AND actor_public_key NOT GLOB '*[^0-9a-f]*'),
+  enrollment_request_digest TEXT NOT NULL CHECK (length(enrollment_request_digest) = 64 AND enrollment_request_digest NOT GLOB '*[^0-9a-f]*'),
+  canonical_enrollment_request TEXT NOT NULL CHECK (length(CAST(canonical_enrollment_request AS BLOB)) BETWEEN 1 AND 65536),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0),
+  enrollment_certificate_digest TEXT CHECK (enrollment_certificate_digest IS NULL OR (length(enrollment_certificate_digest) = 64 AND enrollment_certificate_digest NOT GLOB '*[^0-9a-f]*')),
+  canonical_enrollment_certificate TEXT CHECK (canonical_enrollment_certificate IS NULL OR length(CAST(canonical_enrollment_certificate AS BLOB)) BETWEEN 1 AND 65536),
+  actor_chain_genesis TEXT CHECK (actor_chain_genesis IS NULL OR (length(actor_chain_genesis) = 64 AND actor_chain_genesis NOT GLOB '*[^0-9a-f]*')),
+  enrolled_at INTEGER CHECK (enrolled_at IS NULL OR enrolled_at >= created_at),
+  CHECK (
+    (enrollment_certificate_digest IS NULL AND canonical_enrollment_certificate IS NULL AND actor_chain_genesis IS NULL AND enrolled_at IS NULL)
+    OR
+    (enrollment_certificate_digest IS NOT NULL AND canonical_enrollment_certificate IS NOT NULL AND actor_chain_genesis IS NOT NULL AND enrolled_at IS NOT NULL)
+  )
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS library_blobs (
   content_digest TEXT PRIMARY KEY CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),

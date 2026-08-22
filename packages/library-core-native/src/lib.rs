@@ -26,6 +26,7 @@ mod library_core_process_lease;
 mod library_core_sidecar;
 mod library_core_store;
 mod normalized_checkpoint;
+mod normalized_follower;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_migration;
@@ -42,9 +43,10 @@ pub use device_graph_layout::{
     DeviceGraphLayoutMutationV1,
 };
 pub use library_core_actor_enrollment::{
-    countersign_actor_enrollment_request, enroll_desktop_actor,
-    prepare_follower_actor_enrollment_request, sign_library_core_operation_digest, ActorKeyStore,
-    EnrollmentAuthority, PreparedActorEnrollmentRequest,
+    countersign_actor_enrollment_request, countersign_actor_enrollment_request_bytes,
+    enroll_desktop_actor, prepare_follower_actor_enrollment_request,
+    prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
+    ActorKeyStore, EnrollmentAuthority, PreparedActorEnrollmentRequest,
 };
 pub use library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,
@@ -81,9 +83,17 @@ pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
     NormalizedCheckpointRecordV2,
 };
+pub use normalized_follower::{
+    countersign_normalized_follower_actor_request_v2,
+    install_normalized_follower_actor_enrollment_v2, normalized_follower_runtime_status_v2,
+    prepare_normalized_follower_actor_request_v2, NormalizedFollowerActorEnrollmentV2,
+    NormalizedFollowerActorRequestV2, NormalizedFollowerRuntimeStatusV2,
+};
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
-    replace_with_normalized_checkpoint_stage_v2, NormalizedCheckpointActivationReceiptV2,
+    replace_with_normalized_checkpoint_stage_v2,
+    replace_with_normalized_follower_checkpoint_stage_v2, NormalizedCheckpointActivationReceiptV2,
+    NormalizedFollowerCheckpointReceiptV2,
 };
 pub use normalized_migration::{
     prepare_fresh_normalized_desktop_library_v1, prepare_normalized_desktop_cutover_v1,

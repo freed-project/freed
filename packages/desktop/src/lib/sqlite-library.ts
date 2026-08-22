@@ -1616,11 +1616,22 @@ export async function appendNormalizedLibraryCheckpointImportPage(input: {
 }
 
 export async function activateNormalizedLibraryCheckpointImport(
-  stageId: string,
+  input: Readonly<{
+    stageId: string;
+    followerReceipt?: Readonly<{
+      checkpointGeneration: number;
+      writerActorId: string;
+      manifestObjectKey: string;
+      manifestTransportObjectId: string;
+      manifestContentDigest: string;
+      controlRevision: string;
+      installedAt: number;
+    }>;
+  }>,
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
   return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
     await invoke<unknown>("activate_normalized_library_checkpoint_import", {
-      stageId,
+      request: input,
     }),
   );
 }

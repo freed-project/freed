@@ -703,6 +703,8 @@ mod tests {
     use crate::normalized_import::{
         finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
         replace_with_normalized_checkpoint_stage_v2,
+        replace_with_normalized_follower_checkpoint_stage_v2,
+        NormalizedFollowerCheckpointReceiptV2,
     };
     use crate::sqlite_contract_generated::{
         CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
@@ -1532,8 +1534,20 @@ mod tests {
         begin_stage(&target, "stage-replacement", &page.records);
         append_normalized_checkpoint_stage_page_v2(&mut target, "stage-replacement", &page.records)
             .expect("stage replacement");
-        let receipt = replace_with_normalized_checkpoint_stage_v2(&mut target, "stage-replacement")
-            .expect("replace canonical rows");
+        let receipt = replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut target,
+            "stage-replacement",
+            &NormalizedFollowerCheckpointReceiptV2 {
+                checkpoint_generation: 9,
+                writer_actor_id: "actor-1".into(),
+                manifest_object_key: "manifest-key".into(),
+                manifest_transport_object_id: "drive-object-1".into(),
+                manifest_content_digest: "9".repeat(64),
+                control_revision: "control-revision-1".into(),
+                installed_at: 2_000,
+            },
+        )
+        .expect("replace canonical rows");
         assert_eq!(receipt.record_count, page.records.len());
         assert_eq!(
             target
@@ -1551,6 +1565,24 @@ mod tests {
             .expect("replacement export")
             .records,
             page.records
+        );
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT checkpoint_generation, source_revision,
+                            checkpoint_digest, writer_actor_id
+                     FROM library_follower_checkpoint_receipt
+                     WHERE singleton_id = 1;",
+                    [],
+                    |row| Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    )),
+                )
+                .expect("follower receipt"),
+            (9, 7, receipt.checkpoint_digest, "actor-1".into())
         );
     }
 

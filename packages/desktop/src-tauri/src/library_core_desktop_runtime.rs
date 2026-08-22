@@ -1224,14 +1224,82 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
 #[tauri::command]
 pub(super) fn activate_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
-    stage_id: String,
+    request: ActivateNormalizedLibraryCheckpointImportRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
     let mut connection = open_selected_normalized_database(&app)?;
-    freed_library_core::replace_with_normalized_checkpoint_stage_v2(
+    match request.follower_receipt {
+        Some(receipt) => freed_library_core::replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut connection,
+            &request.stage_id,
+            &receipt,
+        ),
+        None => freed_library_core::replace_with_normalized_checkpoint_stage_v2(
+            &mut connection,
+            &request.stage_id,
+        ),
+    }
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn normalized_library_follower_runtime_status(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::normalized_follower_runtime_status_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn prepare_normalized_library_follower_actor_request(
+    app: tauri::AppHandle,
+    created_at: i64,
+) -> Result<freed_library_core::NormalizedFollowerActorRequestV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    freed_library_core::prepare_normalized_follower_actor_request_v2(
         &mut connection,
-        &stage_id,
+        &installation_witness,
+        &PlatformActorKeyStore,
+        created_at,
     )
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn install_normalized_library_follower_actor_enrollment(
+    app: tauri::AppHandle,
+    canonical_enrollment_certificate_json: String,
+) -> Result<freed_library_core::NormalizedFollowerActorEnrollmentV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::install_normalized_follower_actor_enrollment_v2(
+        &mut connection,
+        canonical_enrollment_certificate_json.as_bytes(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn countersign_normalized_library_follower_actor_request(
+    app: tauri::AppHandle,
+    canonical_enrollment_request_json: String,
+    accepted_at: i64,
+) -> Result<freed_library_core::NormalizedFollowerActorEnrollmentV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::countersign_normalized_follower_actor_request_v2(
+        &mut connection,
+        canonical_enrollment_request_json.as_bytes(),
+        &PlatformAuthorityKeyStore,
+        accepted_at,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ActivateNormalizedLibraryCheckpointImportRequest {
+    stage_id: String,
+    follower_receipt: Option<freed_library_core::NormalizedFollowerCheckpointReceiptV2>,
 }
 
 #[tauri::command]

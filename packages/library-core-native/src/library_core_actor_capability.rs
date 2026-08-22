@@ -87,7 +87,7 @@ impl ActorCapabilityState {
             .expect("validated actor capability operations serialize")
     }
 
-    pub(super) fn stored_scope(&self) -> (&str, Option<&str>, Option<&str>) {
+    pub(crate) fn stored_scope(&self) -> (&str, Option<&str>, Option<&str>) {
         match &self.scope {
             ActorCapabilityScope::LegacyEditor => ("legacy_editor", None, None),
             ActorCapabilityScope::LibraryWide => ("library_wide", None, None),
