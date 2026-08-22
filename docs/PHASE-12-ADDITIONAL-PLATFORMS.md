@@ -9,6 +9,12 @@
 > fully cache, pin offline, or exclude a rendition. Provider acquisition and
 > Library replication remain separate authority and traffic decisions.
 
+> **Current Library Core checkpoint:** Rust, the headless native boundary, and
+> the PWA SQLite worker share one generated six-state local policy contract.
+> Policy and byte availability are separate facts. Device content rows do not
+> enter checkpoints, authority revisions, or replication. Verified range
+> publication, streaming, and eviction remain in progress.
+
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
 ## Selective long-form media work

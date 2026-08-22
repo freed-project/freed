@@ -18,6 +18,8 @@ import {
   createLibraryCoreSqliteCloseScopeActionWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
+  createLibraryCoreSqliteContentStateWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -428,6 +430,34 @@ describe("Library Core SQLite worker protocol", () => {
         mutation: { ...request.mutation, canonicalRevision: 8 },
       }),
     ).toThrow(/device graph layout mutation is invalid/);
+  });
+
+  it("carries closed device-local selective content requests", () => {
+    const digest = "a".repeat(64);
+    const mutation = createLibraryCoreSqliteContentPolicyMutationWorkerRequest(
+      "request-content-policy",
+      {
+        contentDigest: digest,
+        policy: "pinned_offline",
+        schemaVersion: 1,
+        updatedAt: 42,
+      },
+    );
+    expect(mutation.kind).toBe("mutate_content_policy");
+    const state = createLibraryCoreSqliteContentStateWorkerRequest(
+      "request-content-state",
+      { contentDigest: digest, schemaVersion: 1 },
+    );
+    expect(state.kind).toBe("read_content_state");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...mutation,
+        mutation: {
+          ...("mutation" in mutation ? mutation.mutation : {}),
+          remote: true,
+        },
+      }),
+    ).toThrow(/selective content policy mutation is invalid/);
   });
 
   it("snapshots bounded signed follower intent bytes", () => {

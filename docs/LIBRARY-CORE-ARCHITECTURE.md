@@ -871,6 +871,13 @@ The final device-local enum will distinguish at least:
 Hydration state never enters normalized checkpoints or canonical Library
 mutations.
 
+SQLite keeps local intent and physical proof separate. The generated contract
+defines the six policy values. Rust, the headless native command boundary, and
+the PWA SQLite worker execute the same bounded policy mutation and point read.
+The state response can describe a multi-gigabyte object without reading or
+allocating its bytes. Local policy, availability, and verified range tables are
+absent from normalized checkpoint export.
+
 ### 13.3 Device policy
 
 A device may choose:

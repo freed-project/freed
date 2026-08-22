@@ -205,6 +205,22 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "mutate_content_policy") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.mutateContentPolicy(request.mutation),
+        });
+        return;
+      }
+      if (request.kind === "read_content_state") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.readContentState(request.request),
+        });
+        return;
+      }
       if (request.kind === "commit_follower_intent") {
         scope.postMessage({
           ok: true,

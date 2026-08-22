@@ -293,10 +293,13 @@ function assertContract(contract) {
     contract.localMutationPrograms,
   )) {
     if (
-      !/^(account|person)_graph_position_(clear|set)_v1$/.test(mutationId) ||
+      !(
+        /^(account|person)_graph_position_(clear|set)_v1$/.test(mutationId) ||
+        mutationId === "content_policy_set_v1"
+      ) ||
       Object.keys(program).sort().join(",") !==
         "entityType,maximumRows,sql,targetExistsSql" ||
-      !["Account", "Person"].includes(program.entityType) ||
+      !["Account", "Content", "Person"].includes(program.entityType) ||
       program.maximumRows !== 1 ||
       typeof program.sql !== "string" ||
       program.sql.length === 0 ||

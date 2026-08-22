@@ -261,6 +261,12 @@
       feed and query reruns.
 - [ ] Keep large content in a content-addressed vault with per-device hydration
       policy and verified range reads.
+  - [x] Store metadata-only, stream-on-demand, partial-cache, complete-cache,
+        pinned-offline, and excluded policy in bounded device-local SQLite
+        rows. Keep policy separate from verified byte availability and exclude
+        both from normalized checkpoints and Library authority.
+  - [ ] Publish digest-verified ranges into the descriptor-bound content vault
+        without routing complete media through the renderer or native IPC.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.

@@ -36,6 +36,7 @@ mod normalized_query;
 mod normalized_sqlite;
 mod normalized_writer_reassignment;
 mod product_projection;
+mod selective_content;
 pub mod sqlite_contract_generated;
 
 pub use device_graph_layout::{
@@ -152,3 +153,8 @@ pub use normalized_sqlite::{
 };
 pub use normalized_writer_reassignment::reassign_normalized_writer_epoch_v2;
 pub use product_projection::upsert_item;
+pub use selective_content::{
+    get_content_state_v1, set_content_policy_v1, ContentAvailabilityV1, ContentHydrationPolicyV1,
+    ContentHydrationStateV1, ContentPolicyMutationReceiptV1, ContentPolicyMutationV1,
+    ContentStateRequestV1, ContentStateV1, SelectiveContentError,
+};

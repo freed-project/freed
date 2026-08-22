@@ -947,6 +947,13 @@ Each client independently selects one policy per rendition:
 Policy, transfer progress, cache location, and eviction time are device local.
 Descriptor and checkpoint completeness do not require content hydration.
 
+The executable schema stores policy, availability, and verified ranges in
+separate `library_device_content_*` tables. Policy has its own monotonic local
+revision and never advances Library authority, the canonical change feed, or
+the replication outbox. An absent policy means `metadata_only`. An offline pin
+request does not claim that bytes exist. Only the verified publication path may
+create availability or range rows.
+
 Content digest verification is incremental. Downloads write to a temporary
 file or OPFS object, verify exact length and digest, cross a durability barrier,
 and atomically publish the local availability row. Multi-gigabyte media never

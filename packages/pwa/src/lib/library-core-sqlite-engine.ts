@@ -156,6 +156,10 @@ import {
   parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
+  parseLibraryCoreContentPolicyMutationReceiptV1,
+  parseLibraryCoreContentPolicyMutationV1,
+  parseLibraryCoreContentStateRequestV1,
+  parseLibraryCoreContentStateV1,
   digestLibraryCoreAnyScopeActionRequestV1,
   parseLibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreAnyScopeActionRequestV1,
@@ -205,6 +209,10 @@ import {
   type LibraryCoreProviderMediaPageRequestV1,
   type LibraryCoreProviderMediaPageResponseV1,
   type LibraryCoreProviderMediaRowV1,
+  type LibraryCoreContentPolicyMutationReceiptV1,
+  type LibraryCoreContentPolicyMutationV1,
+  type LibraryCoreContentStateRequestV1,
+  type LibraryCoreContentStateV1,
   type LibraryCorePersonDetailRequestV1,
   type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonTimelineRequestV1,
@@ -1295,6 +1303,176 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  mutateContentPolicy(
+    input: LibraryCoreContentPolicyMutationV1,
+  ): LibraryCoreContentPolicyMutationReceiptV1 {
+    const parsed = parseLibraryCoreContentPolicyMutationV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const mutation = parsed.value;
+    const program =
+      LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS.content_policy_set_v1;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const targetExists = safeInteger(
+        this.#database.exec({
+          sql: program.targetExistsSql,
+          bind: [mutation.contentDigest],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "selective content descriptor existence",
+      );
+      if (targetExists !== 1) {
+        throw new Error("selective content descriptor is unavailable");
+      }
+      const current = this.#database.exec({
+        sql: `SELECT policy, updated_at FROM library_device_content_policies
+              WHERE content_digest = ?1 COLLATE BINARY;`,
+        bind: [mutation.contentDigest],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (current.length > 1) {
+        throw new Error("selective content policy is ambiguous");
+      }
+      if (current.length === 1) {
+        const currentPolicy = text(current[0]![0], "selective content policy");
+        const currentUpdatedAt = safeInteger(
+          current[0]![1],
+          "selective content policy clock",
+        );
+        if (
+          currentUpdatedAt > mutation.updatedAt ||
+          (currentUpdatedAt === mutation.updatedAt &&
+            currentPolicy !== mutation.policy)
+        ) {
+          throw new Error(
+            "selective content policy clock is stale or ambiguous",
+          );
+        }
+      }
+      this.#database.exec({
+        sql: program.sql,
+        bind: [mutation.contentDigest, mutation.policy, mutation.updatedAt],
+      });
+      const changed = safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "selective content policy row count",
+      );
+      if (changed > program.maximumRows) {
+        throw new Error("selective content policy exceeded its row bound");
+      }
+      if (changed === 1) {
+        this.#database.exec(`UPDATE library_device_content_state
+          SET revision = revision + 1
+          WHERE singleton_id = 1 AND revision < 9007199254740991;`);
+        const advanced = safeInteger(
+          this.#database.exec({
+            sql: "SELECT changes();",
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "selective content revision row count",
+        );
+        if (advanced !== 1) {
+          throw new Error("selective content revision cannot advance");
+        }
+      }
+      const contentRevision = safeInteger(
+        this.#database.exec({
+          sql: "SELECT revision FROM library_device_content_state WHERE singleton_id = 1;",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "selective content revision",
+      );
+      this.#database.exec("COMMIT;");
+      const receipt = parseLibraryCoreContentPolicyMutationReceiptV1({
+        changed: changed === 1,
+        contentDigest: mutation.contentDigest,
+        contentRevision,
+        policy: mutation.policy,
+        schemaVersion: 1,
+        updatedAt: mutation.updatedAt,
+      });
+      if (!receipt.ok) throw new TypeError(receipt.error);
+      return receipt.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  readContentState(
+    input: LibraryCoreContentStateRequestV1,
+  ): LibraryCoreContentStateV1 {
+    const parsed = parseLibraryCoreContentStateRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const rows = this.#database.exec({
+      sql: `SELECT blob.byte_length, blob.media_type,
+                   COALESCE(policy.policy, 'metadata_only'), policy.updated_at,
+                   availability.hydration_state, availability.verified_bytes,
+                   availability.storage_kind, availability.storage_key,
+                   availability.complete_digest_verified_at, availability.updated_at,
+                   state.revision
+            FROM library_blobs AS blob
+            CROSS JOIN library_device_content_state AS state
+            LEFT JOIN library_device_content_policies AS policy
+              ON policy.content_digest = blob.content_digest
+            LEFT JOIN library_device_content_availability AS availability
+              ON availability.content_digest = blob.content_digest
+            WHERE blob.content_digest = ?1 COLLATE BINARY AND state.singleton_id = 1
+            LIMIT 1;`,
+      bind: [request.contentDigest],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("selective content descriptor is unavailable");
+    }
+    const row = rows[0]!;
+    const state = parseLibraryCoreContentStateV1({
+      availability:
+        row[4] === null
+          ? null
+          : {
+              completeDigestVerifiedAt:
+                row[8] === null
+                  ? null
+                  : safeInteger(
+                      row[8],
+                      "complete content digest verification time",
+                    ),
+              hydrationState: text(row[4], "content hydration state"),
+              storageKey:
+                row[7] === null ? null : text(row[7], "content storage key"),
+              storageKind: text(row[6], "content storage kind"),
+              updatedAt: safeInteger(
+                row[9],
+                "content availability update time",
+              ),
+              verifiedBytes: safeInteger(row[5], "verified content bytes"),
+            },
+      byteLength: safeInteger(row[0], "content byte length"),
+      contentDigest: request.contentDigest,
+      contentRevision: safeInteger(row[10], "selective content revision"),
+      mediaType: text(row[1], "content media type"),
+      policy: text(row[2], "selective content policy"),
+      policyUpdatedAt:
+        row[3] === null
+          ? null
+          : safeInteger(row[3], "content policy update time"),
+      schemaVersion: 1,
+    });
+    if (!state.ok) throw new TypeError(state.error);
+    return state.value;
   }
 
   followerActorEnrollmentContext(): LibraryCoreFollowerActorEnrollmentContextV2 {

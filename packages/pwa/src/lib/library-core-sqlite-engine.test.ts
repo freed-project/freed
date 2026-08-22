@@ -2065,6 +2065,57 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([0]);
   });
 
+  it("keeps selective content policy local and distinct from verified bytes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const digest = "d".repeat(64);
+    database.exec({
+      sql: `INSERT INTO library_blobs
+              (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+            VALUES (?1, 5000000000, 65536, 0, 'video/mp4');`,
+      bind: [digest],
+    });
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: null,
+      byteLength: 5_000_000_000,
+      contentRevision: 0,
+      policy: "metadata_only",
+    });
+    const mutation = {
+      contentDigest: digest,
+      policy: "pinned_offline" as const,
+      schemaVersion: 1 as const,
+      updatedAt: 100,
+    };
+    expect(engine.mutateContentPolicy(mutation)).toMatchObject({
+      changed: true,
+      contentRevision: 1,
+      policy: "pinned_offline",
+    });
+    expect(engine.mutateContentPolicy(mutation).changed).toBe(false);
+    expect(
+      engine.readContentState({ contentDigest: digest, schemaVersion: 1 }),
+    ).toMatchObject({
+      availability: null,
+      contentRevision: 1,
+      policy: "pinned_offline",
+      policyUpdatedAt: 100,
+    });
+    expect(
+      database.exec({
+        sql: `SELECT count(*) FROM library_checkpoint_export
+              WHERE registry_key LIKE '%device_content%';`,
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
+
   it("pages normalized feed rows through the bounded named query", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,

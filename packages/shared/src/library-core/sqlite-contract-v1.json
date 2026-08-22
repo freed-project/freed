@@ -181,6 +181,8 @@
   "nativeCommands": [
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",
+    "content_policy_set_v1",
+    "content_state_get_v1",
     "describe_checkpoint_export_v2",
     "export_checkpoint_page_v2",
     "finalize_checkpoint_stage_v2",
@@ -870,6 +872,12 @@
       "maximumRows": 1,
       "sql": "INSERT INTO library_device_account_graph_layout (account_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(account_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;",
       "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);"
+    },
+    "content_policy_set_v1": {
+      "entityType": "Content",
+      "maximumRows": 1,
+      "sql": "INSERT INTO library_device_content_policies (content_digest, policy, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(content_digest) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at WHERE policy IS NOT excluded.policy OR updated_at IS NOT excluded.updated_at;",
+      "targetExistsSql": "SELECT EXISTS(SELECT 1 FROM library_blobs WHERE content_digest = ?1 COLLATE BINARY);"
     },
     "person_graph_position_clear_v1": {
       "entityType": "Person",

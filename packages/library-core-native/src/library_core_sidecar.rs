@@ -19,9 +19,11 @@ use crate::sqlite_contract_generated::{
 use crate::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_pinned_normalized_checkpoint_page_v2,
-    finalize_normalized_checkpoint_stage_v2, lower_hex, query_normalized_json_v1,
-    BeginNormalizedCheckpointStageV2, LibraryCoreProcessLease, NormalizedCheckpointRecordV2,
-    NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
+    finalize_normalized_checkpoint_stage_v2, get_content_state_v1, lower_hex,
+    query_normalized_json_v1, set_content_policy_v1, BeginNormalizedCheckpointStageV2,
+    ContentPolicyMutationV1, ContentStateRequestV1, LibraryCoreProcessLease,
+    NormalizedCheckpointRecordV2, NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2,
+    ProcessLeaseIdentity, SelectiveContentError,
 };
 
 const PROTOCOL_VERSION: u8 = 2;
@@ -382,6 +384,20 @@ fn execute_native_command_v1(
                     .map_err(normalized_command_error)?,
             )
         }
+        "content_policy_set_v1" => {
+            let command: ContentPolicyMutationV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                set_content_policy_v1(connection, &command).map_err(selective_content_error)?,
+            )
+        }
+        "content_state_get_v1" => {
+            let command: ContentStateRequestV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            encode_command_result(
+                get_content_state_v1(connection, &command).map_err(selective_content_error)?,
+            )
+        }
         "describe_checkpoint_export_v2" => {
             serde_json::from_value::<EmptyCommandPayload>(payload)
                 .map_err(|_| "request_invalid")?;
@@ -476,6 +492,13 @@ fn normalized_command_error(error: NormalizedSqliteError) -> &'static str {
         | NormalizedSqliteError::InvalidRequest(_)
         | NormalizedSqliteError::Transport(_) => "request_invalid",
         NormalizedSqliteError::Journal(_) | NormalizedSqliteError::Sqlite(_) => "command_failed",
+    }
+}
+
+fn selective_content_error(error: SelectiveContentError) -> &'static str {
+    match error {
+        SelectiveContentError::Invalid(_) => "request_invalid",
+        SelectiveContentError::Sqlite(_) => "command_failed",
     }
 }
 
@@ -958,6 +981,36 @@ mod tests {
             inspection["schemaSha256"],
             crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256
         );
+        let digest = "c".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, chunk_bytes, chunk_count, media_type)
+                 VALUES (?1, 5000000000, 65536, 0, 'video/mp4');",
+                rusqlite::params![digest],
+            )
+            .expect("insert large content descriptor");
+        let policy = execute_native_command_v1(
+            &mut connection,
+            "content_policy_set_v1",
+            json!({
+                "contentDigest": digest,
+                "policy": "pinned_offline",
+                "schemaVersion": 1,
+                "updatedAt": 1000
+            }),
+        )
+        .expect("set selective content policy");
+        assert_eq!(policy["changed"], true);
+        let state = execute_native_command_v1(
+            &mut connection,
+            "content_state_get_v1",
+            json!({"contentDigest": digest, "schemaVersion": 1}),
+        )
+        .expect("get selective content state");
+        assert_eq!(state["byteLength"], 5_000_000_000_u64);
+        assert_eq!(state["policy"], "pinned_offline");
+        assert_eq!(state["availability"], Value::Null);
     }
 
     #[test]

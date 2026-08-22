@@ -6,6 +6,8 @@ import {
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteContentPolicyMutationWorkerRequest,
+  createLibraryCoreSqliteContentStateWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
@@ -35,6 +37,10 @@ import {
   type LibraryCoreSqliteQueryResponseFor,
   type LibraryCoreDeviceGraphLayoutMutationV1,
   type LibraryCoreDeviceGraphLayoutMutationResultV1,
+  type LibraryCoreContentPolicyMutationReceiptV1,
+  type LibraryCoreContentPolicyMutationV1,
+  type LibraryCoreContentStateRequestV1,
+  type LibraryCoreContentStateV1,
   type LibraryCoreFollowerIntentCommitResultV1,
   type LibraryCoreFollowerIntentCommitV1,
   type LibraryCoreFollowerMutationContextV1,
@@ -121,6 +127,25 @@ export class PwaLibraryCoreSqliteClient {
         requestId,
         mutation,
       ),
+    );
+  }
+
+  mutateContentPolicy(
+    mutation: LibraryCoreContentPolicyMutationV1,
+  ): Promise<LibraryCoreContentPolicyMutationReceiptV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentPolicyMutationWorkerRequest(
+        requestId,
+        mutation,
+      ),
+    );
+  }
+
+  readContentState(
+    request: LibraryCoreContentStateRequestV1,
+  ): Promise<LibraryCoreContentStateV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteContentStateWorkerRequest(requestId, request),
     );
   }
 

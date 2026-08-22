@@ -18,7 +18,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "71a3a90a247c488bdd839ebbb7cd158efd3937647cf45bed58781ab46c315372";
+    "c965586a5bff79ec1cc48e00ab0921da4d12c8f659324d2b0c474cef8c811ed6";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -488,6 +488,8 @@ pub const OPERATION_IDS: &[&str] = &[
 pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "append_checkpoint_stage_v2",
     "begin_checkpoint_stage_v2",
+    "content_policy_set_v1",
+    "content_state_get_v1",
     "describe_checkpoint_export_v2",
     "export_checkpoint_page_v2",
     "finalize_checkpoint_stage_v2",
@@ -597,6 +599,7 @@ pub const SQLITE_MUTATION_PROGRAMS: &[SqliteMutationProgram] = &[
 pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &[
     ("account_graph_position_clear_v1", 1, "Account", "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);", "DELETE FROM library_device_account_graph_layout WHERE account_id = ?1 COLLATE BINARY;"),
     ("account_graph_position_set_v1", 1, "Account", "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_account_graph_layout (account_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(account_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
+    ("content_policy_set_v1", 1, "Content", "SELECT EXISTS(SELECT 1 FROM library_blobs WHERE content_digest = ?1 COLLATE BINARY);", "INSERT INTO library_device_content_policies (content_digest, policy, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(content_digest) DO UPDATE SET policy = excluded.policy, updated_at = excluded.updated_at WHERE policy IS NOT excluded.policy OR updated_at IS NOT excluded.updated_at;"),
     ("person_graph_position_clear_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "DELETE FROM library_device_person_graph_layout WHERE person_id = ?1 COLLATE BINARY;"),
     ("person_graph_position_set_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_person_graph_layout (person_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(person_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
 ];
