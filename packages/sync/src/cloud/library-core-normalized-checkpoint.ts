@@ -19,11 +19,13 @@ import {
 } from "@freed/shared/library-core";
 import {
   publishLibraryCoreCheckpointGenerationV1,
+  reassignLibraryCoreCheckpointGenerationV1,
   type LibraryCorePreparedCheckpointPageV1,
 } from "./library-core-checkpoint-publication.js";
 import type {
   LibraryCoreImmutablePublicationAdapterV1,
   LibraryCoreImmutablePublicationResultV1,
+  LibraryCorePreparedImmutableObjectV1,
 } from "./library-core-immutable-publication.js";
 import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
@@ -205,6 +207,15 @@ export interface PublishLibraryCoreNormalizedCheckpointRequestV2
   };
 }
 
+export interface ReassignLibraryCoreNormalizedCheckpointRequestV2
+  extends PublishLibraryCoreNormalizedCheckpointRequestV2 {
+  readonly expectedControl: {
+    readonly revision: string;
+    readonly pointer: LibraryCoreControlPointerV1;
+  };
+  readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
+}
+
 export function publishLibraryCoreNormalizedCheckpointV2(
   input: PublishLibraryCoreNormalizedCheckpointRequestV2,
 ): Promise<LibraryCoreImmutablePublicationResultV1> {
@@ -216,6 +227,30 @@ export function publishLibraryCoreNormalizedCheckpointV2(
     adapter: input.adapter,
     causalFrontierDigest: descriptor.causalFrontierDigest,
     datasetSchemaId: LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
+    expectedControl: input.expectedControl,
+    generation: input.generation,
+    libraryId: descriptor.libraryId,
+    pages: prepareLibraryCoreNormalizedCheckpointPagesV2(input),
+    parseRecord: parseLibraryCoreNormalizedCheckpointRecordV2,
+    recordIdentity: libraryCoreNormalizedCheckpointRecordIdentityV2,
+    storageEpoch: descriptor.authorityEpoch,
+    subtle: input.subtle,
+    writerId: descriptor.writerId,
+  });
+}
+
+export function reassignLibraryCoreNormalizedCheckpointV2(
+  input: ReassignLibraryCoreNormalizedCheckpointRequestV2,
+): Promise<LibraryCoreImmutablePublicationResultV1> {
+  const descriptor = parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
+    input.descriptor,
+  );
+  return reassignLibraryCoreCheckpointGenerationV1({
+    activeTransport: input.activeTransport,
+    adapter: input.adapter,
+    causalFrontierDigest: descriptor.causalFrontierDigest,
+    datasetSchemaId: LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
+    epochCertificate: input.epochCertificate,
     expectedControl: input.expectedControl,
     generation: input.generation,
     libraryId: descriptor.libraryId,

@@ -244,6 +244,7 @@ struct WriterEpochReassignmentCertificateV1 {
 pub struct WriterEpochReassignment {
     pub authority: AcceptedAuthorityState,
     pub canonical_certificate_json: String,
+    pub transition_certificate_digest: String,
 }
 
 fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
@@ -1301,61 +1302,58 @@ fn verify_writer_reassignment_certificate(
     Ok(())
 }
 
-/// Install or replay one explicit writer-ownership epoch bound to the exact
-/// cloud control tuple that the caller will replace with compare-and-swap.
-pub fn reassign_writer_epoch(
-    journal: &mut LibraryCoreJournal,
-    library_id: &str,
+pub fn prepare_writer_epoch_reassignment(
+    current: &AcceptedAuthorityState,
+    current_canonical_transition_certificate: &str,
     canonical_source_control_json: &str,
     target_writer_id: &str,
-    accepted_at_ms: i64,
     store: &dyn AuthorityKeyStore,
 ) -> Result<WriterEpochReassignment, String> {
-    if !is_lower_sha256(library_id)
+    if !is_lower_sha256(&current.library_id)
         || !is_lower_sha256(target_writer_id)
-        || accepted_at_ms < 0
         || canonical_source_control_json.len() > MAX_CERTIFICATE_BYTES
     {
         return Err("Library Core writer reassignment request is invalid".to_string());
     }
     let source_control: Value = serde_json::from_str(canonical_source_control_json)
         .map_err(|_| "Library Core source control JSON is invalid".to_string())?;
-    validate_source_control(&source_control, library_id)?;
+    validate_source_control(&source_control, &current.library_id)?;
     let canonical_source = encode_canonical_value(&source_control, MAX_CERTIFICATE_BYTES)
         .map_err(|_| "Library Core source control is not canonically encodable".to_string())?;
     if canonical_source.as_slice() != canonical_source_control_json.as_bytes() {
         return Err("Library Core source control JSON is not canonical".to_string());
     }
 
-    let current = journal
-        .active_authority_epoch(library_id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "Library Core has no active authority to reassign".to_string())?;
     if let Ok(existing) = serde_json::from_str::<WriterEpochReassignmentCertificateV1>(
-        &current.canonical_transition_certificate_json,
+        current_canonical_transition_certificate,
     ) {
         if existing.certificate_body.source_control == source_control
             && existing.certificate_body.target_writer_id == target_writer_id
         {
             verify_writer_reassignment_certificate(&existing)?;
             return Ok(WriterEpochReassignment {
-                authority: current.authority,
-                canonical_certificate_json: current.canonical_transition_certificate_json,
+                authority: current.clone(),
+                canonical_certificate_json: current_canonical_transition_certificate.to_owned(),
+                transition_certificate_digest: digest_value(
+                    "epoch-transition-certificate",
+                    &serde_json::to_value(&existing).map_err(|_| {
+                        "Library Core writer reassignment certificate is invalid".to_string()
+                    })?,
+                )?,
             });
         }
     }
 
     let target_epoch = current
-        .authority
         .epoch
         .checked_add(1)
         .ok_or_else(|| "Library Core authority epoch is exhausted".to_string())?;
-    let key_pair = load_or_create_authority_key_pair(store, library_id)?;
+    let key_pair = load_or_create_authority_key_pair(store, &current.library_id)?;
     let public_key = lower_hex(key_pair.public_key().as_ref());
     let key_id = authority_key_id(&public_key)?;
     let body = WriterEpochReassignmentBodyV1 {
         format: WRITER_REASSIGNMENT_FORMAT.to_string(),
-        library_id: library_id.to_string(),
+        library_id: current.library_id.clone(),
         source_control,
         target_epoch,
         target_writer_id: target_writer_id.to_string(),
@@ -1385,24 +1383,17 @@ pub fn reassign_writer_epoch(
         .map_err(|_| "Library Core writer reassignment certificate is not UTF-8".to_string())?;
     let transition_certificate_digest =
         digest_value("epoch-transition-certificate", &certificate_value)?;
-    let authority = journal
-        .install_authority_epoch(&VerifiedAuthorityEpoch {
-            authority: AcceptedAuthorityState {
-                library_id: library_id.to_string(),
-                epoch: target_epoch,
-                epoch_id,
-                authority_key_id: key_id,
-                authority_public_key: public_key,
-                observed_frontier: current.authority.observed_frontier,
-            },
-            transition_certificate_digest,
-            canonical_transition_certificate_json: canonical_certificate_json.clone(),
-            accepted_at_ms,
-        })
-        .map_err(|error| format!("Library Core could not install writer epoch: {error}"))?;
     Ok(WriterEpochReassignment {
-        authority,
+        authority: AcceptedAuthorityState {
+            library_id: current.library_id.clone(),
+            epoch: target_epoch,
+            epoch_id,
+            authority_key_id: key_id,
+            authority_public_key: public_key,
+            observed_frontier: current.observed_frontier.clone(),
+        },
         canonical_certificate_json,
+        transition_certificate_digest,
     })
 }
 

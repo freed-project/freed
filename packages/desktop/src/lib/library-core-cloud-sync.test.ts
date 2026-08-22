@@ -166,7 +166,7 @@ vi.mock("./sqlite-library", () => ({
   readSqliteLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
   recordSqliteLibraryFollowerIntentPublication:
     mocks.recordFollowerIntentPublication,
-  reassignSqliteLibraryWriterEpoch: mocks.reassignNative,
+  reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
   restoreSqliteLibraryBackup: mocks.restoreBackup,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
@@ -220,6 +220,48 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
       entries,
     };
   };
+  const normalizedPublicationResult = (
+    request: Record<string, unknown>,
+    records: readonly unknown[],
+  ) => {
+    const descriptor = request.descriptor as Record<string, unknown>;
+    const generation = Number(request.generation);
+    const digest = "67".repeat(32) as LibraryCoreLowercaseHex64;
+    const libraryId = String(descriptor.libraryId);
+    const storageEpoch = String(descriptor.authorityEpoch);
+    const manifest = {
+      descriptor: {
+        byteLength: 123,
+        contentDigest: digest,
+        objectKey: createLibraryCoreImmutableObjectKey({
+          digest,
+          epochId: storageEpoch,
+          generation,
+          kind: "checkpoint_manifest",
+          libraryId,
+        }),
+      },
+      transportObjectId: `manifest-${generation.toLocaleString("en-US")}`,
+    };
+    return {
+      status: mocks.publishStatus,
+      revision: '"etag-2"',
+      dependencies: [],
+      manifest,
+      controlPointer: {
+        activeTransport: "google_drive_app_data_v1",
+        causalFrontierDigest: descriptor.causalFrontierDigest,
+        generation,
+        libraryId,
+        manifest,
+        protocolVersion: 1,
+        schemaVersion: 1,
+        storageEpoch,
+        writerId: descriptor.writerId,
+      },
+      records,
+    };
+  };
   return {
     ...actual,
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1: vi.fn(
@@ -263,43 +305,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
             records.push(record);
           }
           mocks.publishedRecords = records;
-          const descriptor = request.descriptor as Record<string, unknown>;
-          const generation = Number(request.generation);
-          const digest = "67".repeat(32) as LibraryCoreLowercaseHex64;
-          const libraryId = String(descriptor.libraryId);
-          const storageEpoch = String(descriptor.authorityEpoch);
-          const manifest = {
-            descriptor: {
-              byteLength: 123,
-              contentDigest: digest,
-              objectKey: createLibraryCoreImmutableObjectKey({
-                digest,
-                epochId: storageEpoch,
-                generation,
-                kind: "checkpoint_manifest",
-                libraryId,
-              }),
-            },
-            transportObjectId: `manifest-${generation.toLocaleString("en-US")}`,
-          };
-          return {
-            status: mocks.publishStatus,
-            revision: '"etag-2"',
-            dependencies: [],
-            manifest,
-            controlPointer: {
-              activeTransport: "google_drive_app_data_v1",
-              causalFrontierDigest: descriptor.causalFrontierDigest,
-              generation,
-              libraryId,
-              manifest,
-              protocolVersion: 1,
-              schemaVersion: 1,
-              storageEpoch,
-              writerId: descriptor.writerId,
-            },
-            records,
-          };
+          return normalizedPublicationResult(request, records);
         }
         const entries: unknown[] = [];
         for await (const entry of request.entries as AsyncIterable<unknown>) {
@@ -416,14 +422,15 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
           };
         },
       ),
-    reassignLibraryCorePortableCheckpointV1: mocks.reassign.mockImplementation(
+    reassignLibraryCoreNormalizedCheckpointV2: mocks.reassign.mockImplementation(
       async (request: Record<string, unknown>) => {
         mocks.reassignRequest = request;
-        const entries: unknown[] = [];
-        for await (const entry of request.entries as AsyncIterable<unknown>) {
-          entries.push(entry);
+        const records: unknown[] = [];
+        for await (const record of request.records as AsyncIterable<unknown>) {
+          records.push(record);
         }
-        return publicationResult(request, entries);
+        mocks.publishedRecords = records;
+        return normalizedPublicationResult(request, records);
       },
     ),
   };
@@ -1238,6 +1245,30 @@ describe("SQLite Library Google Drive production wiring", () => {
 
   it("moves a current restored SQLite copy to a fresh writer epoch with one control CAS", async () => {
     const libraryId = "ab".repeat(32);
+    mocks.describeNormalizedCheckpoint
+      .mockReset()
+      .mockResolvedValueOnce({
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: "cd".repeat(32),
+        writerId: "34".repeat(32),
+        sourceRevision: 7,
+        causalFrontierDigest: "ef".repeat(32),
+        recordCount: 1,
+        itemCount: 2,
+      })
+      .mockResolvedValue({
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: "89".repeat(32),
+        writerId: mocks.bootstrapAuthority.actor.actor_id,
+        sourceRevision: 7,
+        causalFrontierDigest: "90".repeat(32),
+        recordCount: 1,
+        itemCount: 2,
+      });
     mocks.nativeState = {
       version: 1,
       libraryId,
@@ -1284,20 +1315,21 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.reassign).toHaveBeenCalledTimes(1);
     expect(mocks.reassignNative).toHaveBeenCalledWith(
       expect.objectContaining({
-        libraryId,
         targetWriterId: mocks.bootstrapAuthority.actor.actor_id,
       }),
     );
     expect(mocks.reassignRequest).toMatchObject({
+      descriptor: {
+        authorityEpoch: "89".repeat(32),
+        writerId: mocks.bootstrapAuthority.actor.actor_id,
+      },
       expectedControl: { revision: '"etag-current"' },
       generation: 0,
-      writerId: mocks.bootstrapAuthority.actor.actor_id,
-      header: {
-        epoch: 2,
-        epoch_id: "89".repeat(32),
-        materializer_position: { frontier_digest: "ef".repeat(32) },
-      },
     });
+    expect(mocks.publishedRecords).toHaveLength(1);
+    expect(JSON.stringify(mocks.publishedRecords)).not.toContain(
+      "00_library_shell",
+    );
     expect(mocks.nativeState).toMatchObject({
       lastPublishedRevision: 7,
       writerId: mocks.bootstrapAuthority.actor.actor_id,
@@ -1313,6 +1345,32 @@ describe("SQLite Library Google Drive production wiring", () => {
 
   it("backs up and imports the active cloud checkpoint before taking over from a newer epoch", async () => {
     const libraryId = "ab".repeat(32);
+    const cloudEpoch = "78".repeat(32);
+    const cloudWriter = "56".repeat(32);
+    mocks.describeNormalizedCheckpoint
+      .mockReset()
+      .mockResolvedValueOnce({
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: cloudEpoch,
+        writerId: cloudWriter,
+        sourceRevision: 1,
+        causalFrontierDigest: "ef".repeat(32),
+        recordCount: 1,
+        itemCount: 2,
+      })
+      .mockResolvedValue({
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: "89".repeat(32),
+        writerId: mocks.bootstrapAuthority.actor.actor_id,
+        sourceRevision: 1,
+        causalFrontierDigest: "90".repeat(32),
+        recordCount: 1,
+        itemCount: 2,
+      });
     mocks.nativeState = {
       version: 1,
       libraryId,
@@ -1352,7 +1410,7 @@ describe("SQLite Library Google Drive production wiring", () => {
               contentDigest: "56".repeat(32),
               objectKey: createLibraryCoreImmutableObjectKey({
                 digest: "56".repeat(32) as LibraryCoreLowercaseHex64,
-                epochId: "epoch-cloud-newer",
+                epochId: cloudEpoch,
                 generation: 9,
                 kind: "checkpoint_manifest",
                 libraryId,
@@ -1362,8 +1420,8 @@ describe("SQLite Library Google Drive production wiring", () => {
           },
           protocolVersion: 1,
           schemaVersion: 1,
-          storageEpoch: "epoch-cloud-newer",
-          writerId: "desktop-cloud-writer",
+          storageEpoch: cloudEpoch,
+          writerId: cloudWriter,
         }),
       ),
     };

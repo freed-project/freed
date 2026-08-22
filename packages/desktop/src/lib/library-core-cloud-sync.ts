@@ -10,7 +10,6 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreControlPointerV1,
   type LibraryCoreLowercaseHex64,
-  type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
@@ -39,14 +38,12 @@ import {
   publishLibraryCoreIntentCandidateV1,
   publishLibraryCoreNormalizedCheckpointV2,
   publishLibraryCoreResultEntriesV1,
-  reassignLibraryCorePortableCheckpointV1,
+  reassignLibraryCoreNormalizedCheckpointV2,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutableReadAdapterV1,
   type LibraryCorePreparedImmutableObjectV1,
 } from "@freed/sync/cloud/library-core";
 import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
-import { decodeJson } from "@freed/shared/projection";
-import type { FeedItem } from "@freed/shared";
 import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger";
 import {
@@ -63,14 +60,13 @@ import {
   installSqliteLibraryFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments,
   readSqliteLibrarySyncDescriptor,
-  readSqliteLibrarySyncPage,
   readNormalizedLibraryCheckpointPage,
   readPwaIntentResultOutbox,
   prepareSqliteLibraryFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate,
   readSqliteLibraryFollowerResultImportCursor,
   readSqliteLibraryFollowerRuntimeStatus,
-  reassignSqliteLibraryWriterEpoch,
+  reassignNormalizedLibraryWriterEpoch,
   restoreSqliteLibraryBackup,
   recordSqliteLibraryFollowerIntentPublication,
   setSqliteLibraryCloudWriterAdmission,
@@ -415,14 +411,6 @@ async function persistVerifiedWriterAdmission(input: {
   });
 }
 
-async function sha256Text(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
 async function sha256Bytes(bytes: Uint8Array): Promise<string> {
   const input = new Uint8Array(bytes.byteLength);
   input.set(bytes);
@@ -430,10 +418,6 @@ async function sha256Bytes(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-function canonicalValue(value: unknown): LibraryCoreCanonicalValue {
-  return value as LibraryCoreCanonicalValue;
 }
 
 async function tracedPublicationStage<T>(
@@ -475,68 +459,6 @@ async function tracedPublicationStage<T>(
   }
 }
 
-async function* checkpointEntries(
-  descriptor: SqliteLibrarySyncDescriptor,
-  actors: readonly SqliteLibraryActorCheckpointState[],
-): AsyncIterable<LibraryCorePortableCheckpointEntryV1> {
-  let ordinal = 0;
-  yield {
-    kind: "logical_checkpoint_entry",
-    collection: "materialized_rows",
-    ordinal,
-    value: {
-      primary_key: "shell",
-      registry_key: "00_library_shell",
-      row: canonicalValue(decodeJson(descriptor.shellJson)),
-    },
-  };
-  ordinal += 1;
-
-  let offset = 0;
-  for (;;) {
-    const page = await readSqliteLibrarySyncPage({
-      revision: descriptor.revision,
-      offset,
-    });
-    for (const encoded of page.itemsJson) {
-      const item = decodeJson(encoded) as FeedItem;
-      yield {
-        kind: "logical_checkpoint_entry",
-        collection: "materialized_rows",
-        ordinal,
-        value: {
-          primary_key: item.globalId,
-          registry_key: "10_feed_items",
-          row: canonicalValue(item),
-        },
-      };
-      ordinal += 1;
-    }
-    if (page.nextOffset === null) break;
-    offset = page.nextOffset;
-  }
-  if (ordinal !== descriptor.itemCount + 1) {
-    throw new Error("SQLite Library changed during checkpoint export");
-  }
-  for (let actorOrdinal = 0; actorOrdinal < actors.length; actorOrdinal += 1) {
-    const actor = actors[actorOrdinal]!;
-    yield {
-      kind: "logical_checkpoint_entry",
-      collection: "actor_states",
-      ordinal: actorOrdinal,
-      value: {
-        accepted_chain_digest: actor.accepted_chain_digest,
-        accepted_operation_id: actor.accepted_operation_id,
-        accepted_sequence: actor.accepted_sequence,
-        actor_id: actor.actor_id,
-        enrollment_certificate_digest: actor.enrollment_certificate_digest,
-        retired: actor.retired,
-        retirement_certificate_digest: actor.retirement_certificate_digest,
-      },
-    };
-  }
-}
-
 async function* normalizedCheckpointRecords(
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
@@ -563,68 +485,6 @@ async function* normalizedCheckpointRecords(
   if (recordCount !== snapshot.recordCount) {
     throw new Error("Normalized checkpoint changed during export");
   }
-}
-
-async function checkpointHeader(
-  state: LocalLibraryCoreCloudStateV1,
-  descriptor: SqliteLibrarySyncDescriptor,
-  bootstrap: SqliteLibraryAuthorityBootstrap,
-  actorCount: number,
-  preservedFrontierDigest?: string,
-): Promise<LibraryCorePortableCheckpointHeaderV1> {
-  const frontierDigest =
-    preservedFrontierDigest ??
-    (await sha256Text(
-      [
-        state.libraryId,
-        state.storageEpoch,
-        String(descriptor.revision),
-        descriptor.materializedDigest,
-      ].join("\n"),
-    ));
-  return {
-    kind: "logical_checkpoint_header",
-    format: "freed_logical_checkpoint_v1",
-    library_id:
-      state.libraryId as LibraryCorePortableCheckpointHeaderV1["library_id"],
-    epoch: bootstrap.authority.epoch,
-    epoch_id:
-      state.storageEpoch as LibraryCorePortableCheckpointHeaderV1["epoch_id"],
-    schema_version: 2,
-    field_registry_version: 1,
-    canonical_codec_version: 1,
-    anchor_kind: "accepted_authority",
-    accepted_authority: bootstrap.authority,
-    source_transition_digest:
-      bootstrap.protocol
-        .transition_certificate_digest as LibraryCorePortableCheckpointHeaderV1["source_transition_digest"],
-    source_manifest_digest:
-      (checkpointReceiptForState(state)?.controlPointer.manifest.descriptor
-        .contentDigest ??
-        bootstrap.protocol
-          .source_manifest_digest) as LibraryCorePortableCheckpointHeaderV1["source_manifest_digest"],
-    transition_candidate_anchor: null,
-    promoted_receipt_digests: [],
-    materializer_position: {
-      frontier_digest:
-        frontierDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["frontier_digest"],
-      ingest_sequence: descriptor.revision,
-      materialized_digest:
-        descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
-    },
-    collection_counts: {
-      accepted_frontier: 0,
-      quarantined_frontier: 0,
-      materialized_rows: descriptor.itemCount + 1,
-      field_clocks: 0,
-      relationships: 0,
-      tombstones: 0,
-      actor_states: actorCount,
-      receipt_records: 0,
-      blob_roots: 0,
-      excluded_registry_keys: 0,
-    },
-  };
 }
 
 async function prepareWriterEpochCertificate(input: {
@@ -1381,12 +1241,31 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
       pointer as unknown as LibraryCoreCanonicalValue,
     ),
   );
-  const reassigned = await reassignSqliteLibraryWriterEpoch({
+  const normalizedSource = await describeNormalizedLibraryCheckpoint();
+  if (
+    String(normalizedSource.libraryId) !== String(pointer.libraryId) ||
+    String(normalizedSource.authorityEpoch) !== String(pointer.storageEpoch) ||
+    String(normalizedSource.writerId) !== String(pointer.writerId) ||
+    normalizedSource.causalFrontierDigest !== pointer.causalFrontierDigest
+  ) {
+    throw new Error(
+      "Normalized SQLite authority does not match the cloud writer source",
+    );
+  }
+  const reassigned = await reassignNormalizedLibraryWriterEpoch({
     canonicalSourceControlJson,
-    libraryId: state.libraryId,
     targetWriterId: loaded.currentWriterId,
   });
   const targetStorageEpoch = reassigned.authority.epoch_id;
+  const normalizedTarget = await describeNormalizedLibraryCheckpoint();
+  if (
+    normalizedTarget.libraryId !== state.libraryId ||
+    normalizedTarget.authorityEpoch !== targetStorageEpoch ||
+    normalizedTarget.writerId !== loaded.currentWriterId ||
+    normalizedTarget.sourceRevision !== normalizedSource.sourceRevision
+  ) {
+    throw new Error("Normalized SQLite writer reassignment is incomplete");
+  }
   const targetState: LocalLibraryCoreCloudStateV1 = Object.freeze({
     ...state,
     lastPublishedCheckpoint: null,
@@ -1394,14 +1273,10 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     storageEpoch: targetStorageEpoch,
     writerId: loaded.currentWriterId,
   });
-  const actors = await listSqliteLibraryActorEnrollments({
-    epochId: reassigned.authority.epoch_id,
-    libraryId: reassigned.authority.library_id,
-  });
-  const result = await reassignLibraryCorePortableCheckpointV1({
+  const result = await reassignLibraryCoreNormalizedCheckpointV2({
     activeTransport: "google_drive_app_data_v1",
     adapter,
-    entries: checkpointEntries(descriptor, actors),
+    descriptor: normalizedTarget,
     epochCertificate: await prepareWriterEpochCertificate({
       canonicalCertificateJson: reassigned.canonicalEpochCertificateJson,
       libraryId: state.libraryId,
@@ -1409,15 +1284,8 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     }),
     expectedControl: { pointer, revision: controlRead.revision },
     generation: 0,
-    header: await checkpointHeader(
-      targetState,
-      descriptor,
-      reassigned,
-      actors.length,
-      pointer.causalFrontierDigest,
-    ),
+    records: normalizedCheckpointRecords(normalizedTarget),
     subtle: crypto.subtle,
-    writerId: loaded.currentWriterId,
   });
   if (result.status === "conflict") {
     const currentPointer = result.currentControlPointer ?? pointer;
@@ -1435,15 +1303,15 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
   await persistCloudState(
     Object.freeze({
       ...targetState,
-      lastPublishedActorDigest: await actorStateDigest(actors),
+      lastPublishedActorDigest: null,
       lastPublishedCheckpoint: checkpointPublicationReceipt({
-        localRevision: descriptor.revision,
-        itemCount: descriptor.itemCount,
+        localRevision: normalizedTarget.sourceRevision,
+        itemCount: normalizedTarget.itemCount,
         checkpointStoredByteLength: checkpointStoredByteLength(result),
         controlRevision: result.revision,
         controlPointer: result.controlPointer,
       }),
-      lastPublishedRevision: descriptor.revision,
+      lastPublishedRevision: normalizedTarget.sourceRevision,
     }),
   );
   await setSqliteLibraryCloudWriterAdmission({
@@ -1452,7 +1320,10 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     storageEpoch: targetStorageEpoch,
     controlRevision: result.revision,
   });
-  return { status: "writer_transferred", revision: descriptor.revision };
+  return {
+    status: "writer_transferred",
+    revision: normalizedTarget.sourceRevision,
+  };
 }
 
 async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {

@@ -57,8 +57,10 @@ export {
 export {
   prepareLibraryCoreNormalizedCheckpointPagesV2,
   publishLibraryCoreNormalizedCheckpointV2,
+  reassignLibraryCoreNormalizedCheckpointV2,
   type PrepareLibraryCoreNormalizedCheckpointPagesRequestV2,
   type PublishLibraryCoreNormalizedCheckpointRequestV2,
+  type ReassignLibraryCoreNormalizedCheckpointRequestV2,
 } from "./library-core-normalized-checkpoint.js";
 export {
   importLibraryCoreIntentSegmentV1,

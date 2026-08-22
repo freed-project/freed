@@ -45,20 +45,3 @@ pub(super) fn establish_or_transition_sqlite_authority(
         &PlatformAuthorityKeyStore,
     )
 }
-
-pub(super) fn reassign_writer_epoch(
-    journal: &mut LibraryCoreJournal,
-    library_id: &str,
-    canonical_source_control_json: &str,
-    target_writer_id: &str,
-    accepted_at_ms: i64,
-) -> Result<freed_library_core::WriterEpochReassignment, String> {
-    freed_library_core::reassign_writer_epoch(
-        journal,
-        library_id,
-        canonical_source_control_json,
-        target_writer_id,
-        accepted_at_ms,
-        &PlatformAuthorityKeyStore,
-    )
-}

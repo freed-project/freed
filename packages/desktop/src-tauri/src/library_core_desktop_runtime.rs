@@ -29,8 +29,7 @@ use super::library_core_actor_enrollment::{
 };
 use super::library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,
-    reassign_writer_epoch, NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint,
-    PlatformAuthorityKeyStore,
+    NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, PlatformAuthorityKeyStore,
 };
 use super::library_core_journal::{
     AcceptedAuthorityState, FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate,
@@ -181,9 +180,8 @@ pub(super) struct AcknowledgePwaIntentResultOutboxRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReassignWriterEpochRequest {
+pub(super) struct ReassignNormalizedWriterEpochRequest {
     canonical_source_control_json: String,
-    library_id: String,
     target_writer_id: String,
     installation_witness: String,
     accepted_at_ms: i64,
@@ -588,9 +586,8 @@ pub(super) struct DesktopLibraryFollowerResultImportReceipt {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryWriterEpochReassignment {
+pub(super) struct DesktopNormalizedWriterEpochReassignment {
     authority: DesktopLibraryAcceptedAuthority,
-    actor: DesktopLibraryActorEnrollment,
     canonical_epoch_certificate_json: String,
 }
 
@@ -1191,6 +1188,45 @@ pub(super) fn read_normalized_library_checkpoint_page(
     let mut connection = open_selected_normalized_database(&app)?;
     freed_library_core::export_pinned_normalized_checkpoint_page_v2(&mut connection, &request)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn reassign_normalized_library_writer_epoch(
+    app: tauri::AppHandle,
+    request: ReassignNormalizedWriterEpochRequest,
+) -> Result<DesktopNormalizedWriterEpochReassignment, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    let reassigned = freed_library_core::reassign_normalized_writer_epoch_v2(
+        &mut connection,
+        &request.canonical_source_control_json,
+        &request.target_writer_id,
+        &request.installation_witness,
+        &PlatformActorKeyStore,
+        &PlatformAuthorityKeyStore,
+        request.accepted_at_ms,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(DesktopNormalizedWriterEpochReassignment {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: reassigned.authority.library_id,
+            epoch: reassigned.authority.epoch,
+            epoch_id: reassigned.authority.epoch_id,
+            authority_key_id: reassigned.authority.authority_key_id,
+            authority_public_key: reassigned.authority.authority_public_key,
+            observed_frontier: reassigned
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
+    })
 }
 
 /// Read the exact admitted Primary actor tip for one normalized transaction.
@@ -2676,81 +2712,6 @@ pub(super) fn bootstrap_sqlite_library_authority(
                 .prior_transition_certificate_digest,
             source_manifest_digest: established.protocol.source_manifest_digest,
         },
-    })
-}
-
-/// Reassign cloud writer ownership to this Desktop under one signed epoch.
-/// The exact source control bytes are embedded in the certificate that the
-/// renderer publishes with an exact compare-and-swap.
-#[tauri::command]
-pub(super) fn reassign_sqlite_library_writer_epoch(
-    app: tauri::AppHandle,
-    request: ReassignWriterEpochRequest,
-) -> Result<DesktopLibraryWriterEpochReassignment, String> {
-    if !validate_hex_digest(&request.library_id)
-        || !validate_hex_digest(&request.target_writer_id)
-        || !validate_hex_digest(&request.installation_witness)
-        || request.accepted_at_ms < 0
-    {
-        return Err("SQLite Library writer reassignment request is invalid".into());
-    }
-    let root = app_root(&app)?;
-    let connection = open_database_at(&root)?;
-    require_active(&connection)?;
-    drop(connection);
-    let mut journal = open_journal_at(&root)?;
-    let reassigned = reassign_writer_epoch(
-        &mut journal,
-        &request.library_id,
-        &request.canonical_source_control_json,
-        &request.target_writer_id,
-        request.accepted_at_ms,
-    )?;
-    let authority_key_pair = load_established_authority_key_pair(&request.library_id)?;
-    let actor = enroll_desktop_actor(
-        &mut journal,
-        &EnrollmentAuthority {
-            library_id: reassigned.authority.library_id.clone(),
-            epoch: reassigned.authority.epoch,
-            epoch_id: reassigned.authority.epoch_id.clone(),
-            authority_key_id: reassigned.authority.authority_key_id.clone(),
-            installation_witness: request.installation_witness,
-        },
-        &PlatformActorKeyStore,
-        &authority_key_pair,
-        request.accepted_at_ms,
-    )?;
-    if actor.actor_id != request.target_writer_id {
-        return Err("SQLite Library target writer does not match this installation".into());
-    }
-    Ok(DesktopLibraryWriterEpochReassignment {
-        authority: DesktopLibraryAcceptedAuthority {
-            library_id: reassigned.authority.library_id,
-            epoch: reassigned.authority.epoch,
-            epoch_id: reassigned.authority.epoch_id,
-            authority_key_id: reassigned.authority.authority_key_id,
-            authority_public_key: reassigned.authority.authority_public_key,
-            observed_frontier: reassigned
-                .authority
-                .observed_frontier
-                .into_iter()
-                .map(|tip| DesktopLibraryCausalTip {
-                    actor_id: tip.actor_id,
-                    sequence: tip.sequence,
-                    operation_id: tip.operation_id,
-                    chain_digest: tip.chain_digest,
-                })
-                .collect(),
-        },
-        actor: DesktopLibraryActorEnrollment {
-            actor_id: actor.actor_id,
-            actor_public_key: actor.actor_public_key,
-            enrollment_operation_id: actor.enrollment_operation_id,
-            enrollment_certificate_digest: actor.enrollment_certificate_digest,
-            canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
-            actor_chain_genesis: actor.actor_chain_genesis,
-        },
-        canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
     })
 }
 

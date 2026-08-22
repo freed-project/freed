@@ -146,7 +146,8 @@ export interface SqliteLibraryPersistedCloudIdentity {
   readonly sourceDigest: string;
 }
 
-export interface SqliteLibraryWriterEpochReassignment extends SqliteLibraryAuthorityBootstrap {
+export interface NormalizedLibraryWriterEpochReassignment {
+  readonly authority: SqliteLibraryAcceptedAuthority;
   readonly canonicalEpochCertificateJson: string;
 }
 
@@ -1582,6 +1583,41 @@ export async function readNormalizedLibraryCheckpointPage(input: {
   );
 }
 
+export async function reassignNormalizedLibraryWriterEpoch(input: {
+  readonly canonicalSourceControlJson: string;
+  readonly targetWriterId: string;
+}): Promise<NormalizedLibraryWriterEpochReassignment> {
+  if (!HEX_64.test(input.targetWriterId)) {
+    throw new TypeError("normalized target writer ID is invalid");
+  }
+  const installationWitness = await invoke<string>(
+    "get_desktop_installation_witness",
+  );
+  if (!HEX_64.test(installationWitness)) {
+    throw new TypeError(
+      "Freed Desktop returned an invalid installation witness",
+    );
+  }
+  const reassignment = await invoke<NormalizedLibraryWriterEpochReassignment>(
+    "reassign_normalized_library_writer_epoch",
+    {
+      request: {
+        ...input,
+        installationWitness,
+        acceptedAtMs: Date.now(),
+      },
+    },
+  );
+  if (
+    reassignment.authority.library_id.length !== 64 ||
+    reassignment.authority.epoch_id.length !== 64 ||
+    reassignment.canonicalEpochCertificateJson.length === 0
+  ) {
+    throw new TypeError("normalized writer reassignment receipt is invalid");
+  }
+  return Object.freeze(reassignment);
+}
+
 export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {
   return invoke<SqliteLibrarySyncDescriptor>(
     "read_sqlite_library_sync_descriptor",
@@ -1676,32 +1712,6 @@ export async function bootstrapSqliteLibraryAuthority(input: {
     ...bootstrap,
     protocol: parseSqliteLibraryAuthorityProtocol(bootstrap.protocol),
   });
-}
-
-/** Create or replay the signed native epoch used by one exact writer CAS. */
-export async function reassignSqliteLibraryWriterEpoch(input: {
-  readonly canonicalSourceControlJson: string;
-  readonly libraryId: string;
-  readonly targetWriterId: string;
-}): Promise<SqliteLibraryWriterEpochReassignment> {
-  const installationWitness = await invoke<string>(
-    "get_desktop_installation_witness",
-  );
-  if (!/^[a-f0-9]{64}$/.test(installationWitness)) {
-    throw new TypeError(
-      "Freed Desktop returned an invalid installation witness",
-    );
-  }
-  return invoke<SqliteLibraryWriterEpochReassignment>(
-    "reassign_sqlite_library_writer_epoch",
-    {
-      request: {
-        ...input,
-        installationWitness,
-        acceptedAtMs: Date.now(),
-      },
-    },
-  );
 }
 
 /** Countersign and enroll one proof-only PWA actor request in native SQLite. */

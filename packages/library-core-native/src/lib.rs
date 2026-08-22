@@ -33,6 +33,7 @@ mod normalized_migration;
 mod normalized_mutation;
 mod normalized_query;
 mod normalized_sqlite;
+mod normalized_writer_reassignment;
 mod product_projection;
 pub mod sqlite_contract_generated;
 
@@ -47,7 +48,7 @@ pub use library_core_actor_enrollment::{
 };
 pub use library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,
-    reassign_writer_epoch, AuthorityKeyStore, EstablishedSqliteAuthority,
+    prepare_writer_epoch_reassignment, AuthorityKeyStore, EstablishedSqliteAuthority,
     NativeSqliteSourceSnapshot, PersistedCloudAuthorityHint, SqliteAuthorityProtocolReceipt,
     WriterEpochReassignment,
 };
@@ -124,4 +125,5 @@ pub use normalized_sqlite::{
     NormalizedCheckpointExportRequestV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
+pub use normalized_writer_reassignment::reassign_normalized_writer_epoch_v2;
 pub use product_projection::upsert_item;

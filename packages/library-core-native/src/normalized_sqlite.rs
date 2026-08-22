@@ -432,6 +432,19 @@ fn checkpoint_frontier_digest_v2(
 ) -> Result<String, NormalizedSqliteError> {
     let mut digest = Sha256::new();
     digest.update(b"freed.library-core.v2/digest-records/checkpoint-frontier\0");
+    let carried_frontier_digest: String = connection.query_row(
+        "SELECT checkpoint_frontier_digest FROM library_authority_epochs
+         WHERE epoch_id = ?1;",
+        [authority_epoch],
+        |row| row.get(0),
+    )?;
+    if !checkpoint_hex_identity(&carried_frontier_digest) {
+        return Err(NormalizedSqliteError::Transport(
+            "normalized checkpoint carried frontier is invalid".into(),
+        ));
+    }
+    digest.update((carried_frontier_digest.len() as u64).to_be_bytes());
+    digest.update(carried_frontier_digest.as_bytes());
     let mut statement = connection.prepare(
         "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
          FROM library_actors
