@@ -52,60 +52,6 @@ export function tauriInitScript(): string {
     function sqliteItemState(item) {
       return item && item.userState ? item.userState : {};
     }
-    function sqliteShellResult() {
-      var state = sqliteState();
-      var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
-      var countsByPlatform = {};
-      var unreadByPlatform = {};
-      items.forEach(function(item) {
-        countsByPlatform[item.platform] = (countsByPlatform[item.platform] || 0) + 1;
-        if (sqliteItemState(item).readAt == null) {
-          unreadByPlatform[item.platform] = (unreadByPlatform[item.platform] || 0) + 1;
-        }
-      });
-      return {
-        shellJson: JSON.stringify(state.shell || {}),
-        revision: state.revision,
-        itemCount: items.length,
-        unreadCount: items.filter(function(item) { return sqliteItemState(item).readAt == null; }).length,
-        archivableCount: items.filter(function(item) {
-          var user = sqliteItemState(item);
-          return user.readAt != null && !user.saved && !user.archived && !user.hidden;
-        }).length,
-        countsByPlatform: countsByPlatform,
-        unreadByPlatform: unreadByPlatform,
-      };
-    }
-    function sqliteCountsResult() {
-      var shell = sqliteShellResult();
-      var archivableByPlatform = {};
-      var feedCounts = {};
-      var unreadFeedCounts = {};
-      var archivableFeedCounts = {};
-      Object.values(sqliteState().items).filter(function(item) { return !item.__deleted; }).forEach(function(item) {
-        var user = sqliteItemState(item);
-        var platform = item.platform || 'unknown';
-        var archivable = user.readAt != null && !user.saved;
-        if (archivable) archivableByPlatform[platform] = (archivableByPlatform[platform] || 0) + 1;
-        var feedUrl = item.rssSource && item.rssSource.feedUrl;
-        if (!feedUrl) return;
-        feedCounts[feedUrl] = (feedCounts[feedUrl] || 0) + 1;
-        if (user.readAt == null) unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] || 0) + 1;
-        if (archivable) archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] || 0) + 1;
-      });
-      return {
-        revision: shell.revision,
-        itemCount: shell.itemCount,
-        unreadCount: shell.unreadCount,
-        archivableCount: shell.archivableCount,
-        countsByPlatform: shell.countsByPlatform,
-        unreadByPlatform: shell.unreadByPlatform,
-        archivableByPlatform: archivableByPlatform,
-        feedCounts: feedCounts,
-        unreadFeedCounts: unreadFeedCounts,
-        archivableFeedCounts: archivableFeedCounts,
-      };
-    }
     function sqliteSyncDescriptor() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -328,13 +274,84 @@ export function tauriInitScript(): string {
     }
     function sqliteNormalizedQuery(args) {
       var request = args && args.request || {};
+      var state = sqliteState();
       var source = {
         generationId: 'd'.repeat(64),
-        projectionRevision: Math.max(0, sqliteState().revision || 0),
-        transitionSequence: Math.max(0, sqliteState().sourceGeneration || 0),
+        projectionRevision: Math.max(0, state.revision || 0),
+        transitionSequence: Math.max(0, state.sourceGeneration || 0),
       };
+      if (request.queryId === 'library_facet_summary_v1') {
+        var liveItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted;
+        });
+        var platformCounts = {};
+        var tags = new Set();
+        liveItems.forEach(function(item) {
+          var user = sqliteItemState(item);
+          var platform = item.platform || 'unknown';
+          var counts = platformCounts[platform] || {
+            archivableCount: 0,
+            platform: platform,
+            totalCount: 0,
+            unreadCount: 0,
+          };
+          counts.totalCount += 1;
+          if (user.readAt == null) counts.unreadCount += 1;
+          if (user.readAt != null && !user.saved && !user.archived && !user.hidden) {
+            counts.archivableCount += 1;
+          }
+          platformCounts[platform] = counts;
+          (user.tags || []).forEach(function(tag) { tags.add(tag); });
+        });
+        var shell = state.shell || {};
+        var feeds = Object.values(shell.feeds || {});
+        var persons = Object.values(shell.persons || {});
+        var accounts = Object.values(shell.accounts || {});
+        return {
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+          summary: {
+            archivedCount: liveItems.filter(function(item) { return !!sqliteItemState(item).archived; }).length,
+            archivableCount: liveItems.filter(function(item) {
+              var user = sqliteItemState(item);
+              return user.readAt != null && !user.saved && !user.archived && !user.hidden;
+            }).length,
+            enabledRssFeedCount: feeds.filter(function(feed) { return feed.enabled !== false; }).length,
+            friendPersonCount: persons.filter(function(person) { return person.relationshipStatus === 'friend'; }).length,
+            platformCounts: Object.values(platformCounts).sort(function(left, right) {
+              return left.platform.localeCompare(right.platform);
+            }),
+            rssFeedCount: feeds.length,
+            sampleAccountCount: accounts.filter(function(account) { return !!account.sampleDataFingerprint; }).length,
+            sampleFeedCount: feeds.filter(function(feed) { return !!feed.sampleDataFingerprint; }).length,
+            sampleItemCount: liveItems.filter(function(item) { return !!item.sampleDataFingerprint; }).length,
+            samplePersonCount: persons.filter(function(person) { return !!person.sampleDataFingerprint; }).length,
+            savedArchivedCount: liveItems.filter(function(item) {
+              var user = sqliteItemState(item);
+              return !!user.saved && !!user.archived;
+            }).length,
+            savedCount: liveItems.filter(function(item) { return !!sqliteItemState(item).saved; }).length,
+            savedPlatformCount: new Set(liveItems.filter(function(item) {
+              return !!sqliteItemState(item).saved;
+            }).map(function(item) { return item.platform || 'unknown'; })).size,
+            socialAccountCount: accounts.filter(function(account) { return account.kind === 'social'; }).length,
+            tags: Array.from(tags).sort(),
+            totalCount: liveItems.length,
+            unreadCount: liveItems.filter(function(item) { return sqliteItemState(item).readAt == null; }).length,
+          },
+        };
+      }
+      if (request.queryId === 'preferences_snapshot_v1') {
+        return {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'account_detail_v1') {
-        var shell = sqliteState().shell || {};
+        var shell = state.shell || {};
         var account = shell.accounts && shell.accounts[request.accountId] || null;
         var fingerprint = account && account.sampleDataFingerprint || null;
         return {
@@ -463,7 +480,11 @@ export function tauriInitScript(): string {
       };
     }
     window.__TAURI_MOCK_HANDLERS__ = {
-      ensure_fresh_normalized_desktop_library: () => true,
+      ensure_fresh_normalized_desktop_library: () => {
+        sqliteState().active = true;
+        persistSqliteState();
+        return true;
+      },
       sqlite_library_status: () => {
         var state = sqliteState();
         return state.active ? {
@@ -517,24 +538,8 @@ export function tauriInitScript(): string {
       }),
       read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
       bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
-      read_sqlite_library_shell: () => {
-        // Scale benchmarks keep the corpus in mock SQLite while forcing the
-        // shell projection to match production's empty renderer item array.
-        // Direct bounded scans still read the complete mock corpus below.
-        if (window.__FREED_E2E_SQLITE_SHELL_ONLY__ === true) {
-          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = true;
-        }
-        return sqliteShellResult();
-      },
-      read_sqlite_library_counts: sqliteCountsResult,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
-      replace_sqlite_library_shell: (args) => {
-        sqliteState().shell = JSON.parse(args.request.shellJson);
-        sqliteState().revision += 1;
-        persistSqliteState();
-        return null;
-      },
       upsert_sqlite_library_items: sqliteUpsertItems,
       mutate_sqlite_library_items: sqliteMutateItems,
       set_sqlite_library_cloud_writer_admission: (args) => {

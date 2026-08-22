@@ -214,70 +214,6 @@ function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
   return item.userState;
 }
 
-function sqliteShellResult() {
-  const state = sqliteLibrary();
-  const items = Object.values(state.items).filter((item) => !item.__deleted);
-  const countsByPlatform: Record<string, number> = {};
-  const unreadByPlatform: Record<string, number> = {};
-  for (const item of items) {
-    const platform = item.platform ?? "unknown";
-    countsByPlatform[platform] = (countsByPlatform[platform] ?? 0) + 1;
-    if (sqliteItemUserState(item).readAt == null) {
-      unreadByPlatform[platform] = (unreadByPlatform[platform] ?? 0) + 1;
-    }
-  }
-  return {
-    shellJson: JSON.stringify(state.shell),
-    revision: state.revision,
-    itemCount: items.length,
-    unreadCount: items.filter((item) => sqliteItemUserState(item).readAt == null).length,
-    archivableCount: items.filter((item) => {
-      const user = sqliteItemUserState(item);
-      return user.readAt != null && !user.saved && !user.archived && !user.hidden;
-    }).length,
-    countsByPlatform,
-    unreadByPlatform,
-  };
-}
-
-function sqliteCountsResult() {
-  const state = sqliteLibrary();
-  const shell = sqliteShellResult();
-  const archivableByPlatform: Record<string, number> = {};
-  const feedCounts: Record<string, number> = {};
-  const unreadFeedCounts: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  for (const item of Object.values(state.items).filter((entry) => !entry.__deleted)) {
-    const user = sqliteItemUserState(item);
-    const platform = item.platform ?? "unknown";
-    const archivable = user.readAt != null && !user.saved;
-    if (archivable) {
-      archivableByPlatform[platform] = (archivableByPlatform[platform] ?? 0) + 1;
-    }
-    const feedUrl = item.rssSource?.feedUrl;
-    if (!feedUrl) continue;
-    feedCounts[feedUrl] = (feedCounts[feedUrl] ?? 0) + 1;
-    if (user.readAt == null) {
-      unreadFeedCounts[feedUrl] = (unreadFeedCounts[feedUrl] ?? 0) + 1;
-    }
-    if (archivable) {
-      archivableFeedCounts[feedUrl] = (archivableFeedCounts[feedUrl] ?? 0) + 1;
-    }
-  }
-  return {
-    revision: shell.revision,
-    itemCount: shell.itemCount,
-    unreadCount: shell.unreadCount,
-    archivableCount: shell.archivableCount,
-    countsByPlatform: shell.countsByPlatform,
-    unreadByPlatform: shell.unreadByPlatform,
-    archivableByPlatform,
-    feedCounts,
-    unreadFeedCounts,
-    archivableFeedCounts,
-  };
-}
-
 function sqliteFacetSummary() {
   const items = Object.values(sqliteLibrary().items).filter((item) => !item.__deleted);
   const tags = new Set<string>();
@@ -378,7 +314,10 @@ function sqliteAuthorityBootstrap(): Record<string, unknown> {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  ensure_fresh_normalized_desktop_library: () => true,
+  ensure_fresh_normalized_desktop_library: () => {
+    sqliteLibrary().active = true;
+    return true;
+  },
   sqlite_library_status: () => {
     const state = sqliteLibrary();
     return state.active ? {
@@ -445,16 +384,7 @@ const handlers: Record<string, Handler> = {
   }),
   read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
   bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
-  read_sqlite_library_shell: sqliteShellResult,
-  read_sqlite_library_counts: sqliteCountsResult,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
-  replace_sqlite_library_shell: (args: Record<string, unknown>) => {
-    const state = sqliteLibrary();
-    const request = args.request as { shellJson: string };
-    state.shell = JSON.parse(request.shellJson) as Record<string, unknown>;
-    state.revision += 1;
-    return null;
-  },
   upsert_sqlite_library_items: sqliteUpsertItems,
   read_sqlite_library_items: (args: Record<string, unknown>) => {
     const request = args.request as { ids?: string[] };

@@ -159,20 +159,6 @@ describe("SQLite editable follower mutations", () => {
           state: "pending",
         };
       }
-      if (command === "read_sqlite_library_counts") {
-        return {
-          revision: 2,
-          itemCount: 1,
-          unreadCount: 0,
-          archivableCount: 1,
-          countsByPlatform: { rss: 1 },
-          unreadByPlatform: {},
-          archivableByPlatform: { rss: 1 },
-          feedCounts: {},
-          unreadFeedCounts: {},
-          archivableFeedCounts: {},
-        };
-      }
       if (command === "read_sqlite_library_items") {
         return [JSON.stringify(item(1_000))];
       }
@@ -324,10 +310,6 @@ describe("SQLite editable follower mutations", () => {
       entity_id: feed.url,
       payload: { feed },
     });
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "replace_sqlite_library_shell",
-      expect.anything(),
-    );
     expect(result.state.feeds[feed.url]).toEqual(feed);
   });
 
@@ -584,20 +566,6 @@ describe("SQLite Primary mutations", () => {
           };
         }
       }
-      if (command === "read_sqlite_library_counts") {
-        return {
-          revision: 2,
-          itemCount: 1,
-          unreadCount: 0,
-          archivableCount: 1,
-          countsByPlatform: { rss: 1 },
-          unreadByPlatform: {},
-          archivableByPlatform: { rss: 1 },
-          feedCounts: {},
-          unreadFeedCounts: {},
-          archivableFeedCounts: {},
-        };
-      }
       if (command === "read_sqlite_library_items") {
         return [JSON.stringify(item(1_000))];
       }
@@ -639,9 +607,7 @@ describe("SQLite Primary mutations", () => {
     );
     expect(
       mocks.invoke.mock.calls.some(
-        ([command]) =>
-          command === "read_sqlite_library_counts" ||
-          command === "read_sqlite_library_items",
+        ([command]) => command === "read_sqlite_library_items",
       ),
     ).toBe(false);
   });
@@ -680,10 +646,6 @@ describe("SQLite Primary mutations", () => {
           queryId: "person_detail_v1",
         }),
       }),
-    );
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "replace_sqlite_library_shell",
-      expect.anything(),
     );
   });
 
@@ -732,10 +694,6 @@ describe("SQLite Primary mutations", () => {
           url: "https://example.com/feed.xml",
         }),
       }),
-    );
-    expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "replace_sqlite_library_shell",
-      expect.anything(),
     );
   });
 

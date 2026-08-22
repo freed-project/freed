@@ -46,7 +46,6 @@ const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
 const MAX_IMPORT_BATCH: usize = 1_000;
 const MAX_IMPORT_PAGE_ENCODED_BYTES: usize = 3 * 1024 * 1024;
 const MAX_ITEM_BYTES: usize = 4 * 1024 * 1024;
-const MAX_SHELL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_IDS: usize = 10_000;
 const MAX_BACKUP_CHUNK_BYTES: usize = 1_048_576;
 
@@ -74,33 +73,6 @@ impl From<LibraryCoreStoreStatus> for DesktopLibraryStatus {
             source_digest: status.source_digest,
         }
     }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryShell {
-    shell_json: String,
-    revision: i64,
-    item_count: i64,
-    unread_count: i64,
-    archivable_count: i64,
-    counts_by_platform: std::collections::BTreeMap<String, i64>,
-    unread_by_platform: std::collections::BTreeMap<String, i64>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopLibraryCounts {
-    revision: i64,
-    item_count: i64,
-    unread_count: i64,
-    archivable_count: i64,
-    counts_by_platform: std::collections::BTreeMap<String, i64>,
-    unread_by_platform: std::collections::BTreeMap<String, i64>,
-    archivable_by_platform: std::collections::BTreeMap<String, i64>,
-    feed_counts: std::collections::BTreeMap<String, i64>,
-    unread_feed_counts: std::collections::BTreeMap<String, i64>,
-    archivable_feed_counts: std::collections::BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -626,12 +598,6 @@ pub(super) struct AppendImportRequest {
 pub(super) struct UpsertItemsRequest {
     items_base64: Vec<String>,
     updated_at_ms: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReplaceShellRequest {
-    shell_json: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1886,6 +1852,7 @@ fn validate_hex_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+#[cfg(test)]
 fn validate_json_object(value: &str, maximum_bytes: usize) -> Result<Value, String> {
     if value.len() < 2 || value.len() > maximum_bytes {
         return Err("JSON payload exceeds its storage bound".into());
@@ -2139,169 +2106,6 @@ fn finalize_sqlite_library_import_receipt_at(
     open_store_at(root)?
         .finalize_import(activated_at_ms, follower_anchor)
         .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-pub(super) fn read_sqlite_library_shell(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibraryShell, String> {
-    let connection = open_database(&app)?;
-    require_active(&connection)?;
-    let (shell_json, revision): (String, i64) = connection
-        .query_row(
-            "SELECT shellJson, revision FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let mut shell = validate_json_object(&shell_json, MAX_SHELL_BYTES)?;
-    if let Some(object) = shell.as_object_mut() {
-        object.remove("feedSourceOrderIds");
-        object.remove("friends");
-    }
-    let shell_json = serde_json::to_string(&shell).map_err(|error| error.to_string())?;
-    let (item_count, unread_count, archivable_count): (i64, i64, i64) = connection
-        .query_row(
-            "SELECT COUNT(*),
-                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
-             FROM library_core_feed_items WHERE deletedAt IS NULL;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let mut counts_by_platform = std::collections::BTreeMap::new();
-    let mut unread_by_platform = std::collections::BTreeMap::new();
-    let mut statement = connection
-        .prepare(
-            "SELECT COALESCE(platform, ''), COUNT(*),
-                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0)
-             FROM library_core_feed_items WHERE deletedAt IS NULL
-             GROUP BY platform ORDER BY platform;",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?;
-    for row in rows {
-        let (platform, total, unread) = row.map_err(|error| error.to_string())?;
-        if !platform.is_empty() {
-            counts_by_platform.insert(platform.clone(), total);
-            unread_by_platform.insert(platform, unread);
-        }
-    }
-    Ok(DesktopLibraryShell {
-        shell_json,
-        revision,
-        item_count,
-        unread_count,
-        archivable_count,
-        counts_by_platform,
-        unread_by_platform,
-    })
-}
-
-#[tauri::command]
-pub(super) fn read_sqlite_library_counts(
-    app: tauri::AppHandle,
-) -> Result<DesktopLibraryCounts, String> {
-    let connection = open_database(&app)?;
-    require_active(&connection)?;
-    let revision = connection
-        .query_row(
-            "SELECT revision FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let (item_count, unread_count, archivable_count): (i64, i64, i64) = connection
-        .query_row(
-            "SELECT COUNT(*),
-                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
-             FROM library_core_feed_items WHERE deletedAt IS NULL;",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(|error| error.to_string())?;
-    let mut counts_by_platform = std::collections::BTreeMap::new();
-    let mut unread_by_platform = std::collections::BTreeMap::new();
-    let mut archivable_by_platform = std::collections::BTreeMap::new();
-    let mut statement = connection
-        .prepare(
-            "SELECT COALESCE(platform, ''), COUNT(*),
-                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
-             FROM library_core_feed_items WHERE deletedAt IS NULL
-             GROUP BY platform ORDER BY platform;",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?;
-    for row in rows {
-        let (platform, total, unread, archivable) = row.map_err(|error| error.to_string())?;
-        if !platform.is_empty() {
-            counts_by_platform.insert(platform.clone(), total);
-            unread_by_platform.insert(platform.clone(), unread);
-            archivable_by_platform.insert(platform, archivable);
-        }
-    }
-    drop(statement);
-    let mut feed_counts = std::collections::BTreeMap::new();
-    let mut unread_feed_counts = std::collections::BTreeMap::new();
-    let mut archivable_feed_counts = std::collections::BTreeMap::new();
-    let mut statement = connection
-        .prepare(
-            "SELECT feedUrl, COUNT(*),
-                    COALESCE(SUM(CASE WHEN readAt IS NULL THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN readAt IS NOT NULL AND saved IS NOT 1 THEN 1 ELSE 0 END), 0)
-             FROM library_core_feed_items
-             WHERE deletedAt IS NULL AND feedUrl IS NOT NULL
-             GROUP BY feedUrl ORDER BY feedUrl;",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?;
-    for row in rows {
-        let (feed_url, total, unread, archivable) = row.map_err(|error| error.to_string())?;
-        feed_counts.insert(feed_url.clone(), total);
-        unread_feed_counts.insert(feed_url.clone(), unread);
-        archivable_feed_counts.insert(feed_url, archivable);
-    }
-    Ok(DesktopLibraryCounts {
-        revision,
-        item_count,
-        unread_count,
-        archivable_count,
-        counts_by_platform,
-        unread_by_platform,
-        archivable_by_platform,
-        feed_counts,
-        unread_feed_counts,
-        archivable_feed_counts,
-    })
 }
 
 /// Describe one exact SQLite revision without retaining the corpus in memory.
@@ -3387,28 +3191,6 @@ pub(super) fn read_sqlite_library_sync_page(
         items_json,
         next_offset,
     })
-}
-
-#[tauri::command]
-pub(super) fn replace_sqlite_library_shell(
-    app: tauri::AppHandle,
-    request: ReplaceShellRequest,
-) -> Result<(), String> {
-    validate_json_object(&request.shell_json, MAX_SHELL_BYTES)?;
-    let mut connection = open_database(&app)?;
-    require_active(&connection)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    require_writer_admission(&transaction)?;
-    transaction
-        .execute(
-            "UPDATE library_core_desktop_state
-             SET shellJson = ?1, revision = revision + 1 WHERE singletonId = 1;",
-            [request.shell_json],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction.commit().map_err(|error| error.to_string())
 }
 
 #[tauri::command]

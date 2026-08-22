@@ -6,7 +6,6 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
   createDefaultPreferences,
-  friendFromPerson,
   hasSampleDataFingerprint,
   sanitizeAccountWrite,
   sanitizePersonWrite,
@@ -1476,23 +1475,6 @@ export interface PortableSqliteLibraryImportRequest {
   sourceRevision: number;
 }
 
-interface SqliteShell {
-  shellJson: string;
-  revision: number;
-  itemCount: number;
-  unreadCount: number;
-  archivableCount: number;
-  countsByPlatform: Record<string, number>;
-  unreadByPlatform: Record<string, number>;
-}
-
-interface SqliteCounts extends Omit<SqliteShell, "shellJson"> {
-  archivableByPlatform: Record<string, number>;
-  feedCounts: Record<string, number>;
-  unreadFeedCounts: Record<string, number>;
-  archivableFeedCounts: Record<string, number>;
-}
-
 interface SqliteQueryResult {
   itemsJson: string[];
   nextOffset: number | null;
@@ -1575,47 +1557,6 @@ function emptyShell(): Omit<DocState, "items"> {
     mapFriendLocationCount: 0,
     mapAllContentLocationCount: 0,
     docItemCount: 0,
-  };
-}
-
-function shellFromState(state: DocState): Omit<DocState, "items" | "friends"> {
-  const {
-    items: _items,
-    feedSourceOrderIds: _retiredSourceOrder,
-    friends: _derivedFriends,
-    ...shell
-  } = state as DocState & { feedSourceOrderIds?: string[] };
-  return shell;
-}
-
-function stateFromShell(result: SqliteShell, items: FeedItem[] = []): DocState {
-  const {
-    feedSourceOrderIds: _retiredSourceOrder,
-    friends: _derivedFriends,
-    ...decoded
-  } = decodeJson(result.shellJson) as Partial<DocState> & {
-    feedSourceOrderIds?: string[];
-  };
-  const base = { ...emptyShell(), ...decoded };
-  const friends = Object.fromEntries(
-    Object.values(base.persons).map((person) => [
-      person.id,
-      friendFromPerson(person, base.accounts),
-    ]),
-  );
-  return {
-    ...base,
-    items,
-    friends,
-    searchCorpusVersion: result.revision,
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: result.unreadCount,
-    unreadCountByPlatform: result.unreadByPlatform,
-    totalItemCount: result.itemCount,
-    itemCountByPlatform: result.countsByPlatform,
-    totalArchivableCount: result.archivableCount,
-    docItemCount: result.itemCount,
   };
 }
 
@@ -1983,26 +1924,6 @@ export async function finalizePortableSqliteLibraryImport(
 }
 
 export async function loadSqliteLibraryState(): Promise<DocState> {
-  // Browser E2E tests deliberately keep the legacy renderer projection so
-  // their UI assertions can exercise cards, maps, and mutations without a
-  // native process. Production Freed Desktop never takes this branch and
-  // continues to hold only bounded SQLite pages in renderer memory.
-  if (import.meta.env.VITE_TEST_TAURI === "1") {
-    const result = await invoke<SqliteShell>("read_sqlite_library_shell");
-    sqliteActive = true;
-    const items: FeedItem[] = [];
-    let offset: number | null = 0;
-    while (offset !== null) {
-      const page = await querySqliteItems({
-        offset,
-        limit: 128,
-        showHidden: true,
-      });
-      items.push(...page.items);
-      offset = page.nextOffset;
-    }
-    return stateFromShell(result, items);
-  }
   const [facets, preferences] = await Promise.all([
     queryNormalizedLibrary({
       queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
@@ -2035,13 +1956,6 @@ const HISTORICAL_PROVIDER_STATE_MUTATIONS = new Set([
   "confirm_seen",
   "toggle_liked",
 ]);
-
-async function replaceShell(state: DocState): Promise<void> {
-  requireBrowserTestProjection("shell replacement");
-  await invoke("replace_sqlite_library_shell", {
-    request: { shellJson: encodeJson(shellFromState(state)) },
-  });
-}
 
 async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
   if (items.length === 0) return;
@@ -2298,55 +2212,38 @@ function deepMerge<T>(current: T, update: Partial<T>): T {
 }
 
 async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
-  if (import.meta.env.VITE_TEST_TAURI !== "1") {
-    const facets = await queryNormalizedLibrary({
-      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-    });
-    return {
-      ...state,
-      searchCorpusVersion: facets.source.transitionSequence,
-      feedUnreadCounts: {},
-      feedTotalCounts: {},
-      totalUnreadCount: facets.summary.unreadCount,
-      unreadCountByPlatform: Object.fromEntries(
-        facets.summary.platformCounts.map((count) => [
-          count.platform,
-          count.unreadCount,
-        ]),
-      ),
-      totalItemCount: facets.summary.totalCount,
-      itemCountByPlatform: Object.fromEntries(
-        facets.summary.platformCounts.map((count) => [
-          count.platform,
-          count.totalCount,
-        ]),
-      ),
-      totalArchivableCount: facets.summary.archivableCount,
-      archivableCountByPlatform: Object.fromEntries(
-        facets.summary.platformCounts.map((count) => [
-          count.platform,
-          count.archivableCount,
-        ]),
-      ),
-      archivableFeedCounts: {},
-      docItemCount: facets.summary.totalCount,
-    };
-  }
-  const result = await invoke<SqliteCounts>("read_sqlite_library_counts");
+  const facets = await queryNormalizedLibrary({
+    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  });
   return {
     ...state,
-    searchCorpusVersion: result.revision,
-    feedUnreadCounts: result.unreadFeedCounts,
-    feedTotalCounts: result.feedCounts,
-    totalUnreadCount: result.unreadCount,
-    unreadCountByPlatform: result.unreadByPlatform,
-    totalItemCount: result.itemCount,
-    itemCountByPlatform: result.countsByPlatform,
-    totalArchivableCount: result.archivableCount,
-    archivableCountByPlatform: result.archivableByPlatform,
-    archivableFeedCounts: result.archivableFeedCounts,
-    docItemCount: result.itemCount,
+    searchCorpusVersion: facets.source.transitionSequence,
+    feedUnreadCounts: {},
+    feedTotalCounts: {},
+    totalUnreadCount: facets.summary.unreadCount,
+    unreadCountByPlatform: Object.fromEntries(
+      facets.summary.platformCounts.map((count) => [
+        count.platform,
+        count.unreadCount,
+      ]),
+    ),
+    totalItemCount: facets.summary.totalCount,
+    itemCountByPlatform: Object.fromEntries(
+      facets.summary.platformCounts.map((count) => [
+        count.platform,
+        count.totalCount,
+      ]),
+    ),
+    totalArchivableCount: facets.summary.archivableCount,
+    archivableCountByPlatform: Object.fromEntries(
+      facets.summary.platformCounts.map((count) => [
+        count.platform,
+        count.archivableCount,
+      ]),
+    ),
+    archivableFeedCounts: {},
+    docItemCount: facets.summary.totalCount,
   };
 }
 
@@ -2532,7 +2429,11 @@ async function saveMetadataMutation(
     preferences: { ...current.preferences },
   };
   update(next);
-  await replaceShell(next);
+  if (import.meta.env.VITE_TEST_TAURI !== "1") {
+    throw new Error(
+      "Normalized SQLite mutation context is required for durable Library metadata",
+    );
+  }
   return next;
 }
 
@@ -3273,13 +3174,10 @@ export async function dispatchSqliteMutation(
     state = normalized.state;
     changedItems = normalized.changedItems;
   } else {
-    // Browser E2E deliberately retains the complete mock projection so existing
-    // workflow tests can inspect injected rows. Production never reloads it.
-    state = await refreshSqliteLibraryCounts(
-      import.meta.env.VITE_TEST_TAURI === "1"
-        ? await loadSqliteLibraryState()
-        : nextState,
-    );
+    // The browser harness keeps only the current visible test projection.
+    // Durable test rows remain behind its bounded query command, just as
+    // production rows remain behind native SQLite.
+    state = await refreshSqliteLibraryCounts(nextState);
     changedItems =
       changedIds.length > 0 ? await readSqliteItems(changedIds) : [];
   }
