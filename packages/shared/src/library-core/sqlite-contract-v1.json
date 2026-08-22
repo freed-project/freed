@@ -7,6 +7,7 @@
   "checkpointFormat": "freed_normalized_checkpoint_v2",
   "checkpointExportFormat": "freed_normalized_checkpoint_export_v2",
   "checkpointDatasetSchemaId": "library_core_normalized_checkpoint_v2",
+  "contentRangeMapDigestDomain": "freed.library-core.v1/digest-records/content-range-map\u0000",
   "preferenceWritePolicies": {
     "ai": {
       "provider": "device-local",
@@ -441,6 +442,21 @@
         "blobContentDigest": 0,
         "chunkIndex": 1
       }
+    },
+    "b2_content_range": {
+      "table": "library_content_ranges",
+      "primaryKeyColumns": [
+        "content_digest",
+        "range_index"
+      ],
+      "fieldColumns": {
+        "blobContentDigest": null,
+        "rangeContentDigest": "range_digest"
+      },
+      "identityPayloadFields": {
+        "blobContentDigest": 0,
+        "rangeIndex": 1
+      }
     }
   },
   "checkpointRecords": [
@@ -844,7 +860,14 @@
         "byteLength",
         "chunkBytes",
         "chunkCount",
-        "mediaType"
+        "cloudAvailabilityCommitment",
+        "encoding",
+        "mediaType",
+        "rangeCount",
+        "rangeGranularity",
+        "rangeIndexRootDigest",
+        "renditionId",
+        "storageLayout"
       ]
     },
     {
@@ -857,6 +880,18 @@
         "bytesBase64",
         "chunkContentDigest",
         "chunkIndex"
+      ]
+    },
+    {
+      "registryKey": "b2_content_range",
+      "primaryKey": "ordinal",
+      "payload": "content_range",
+      "fields": [
+        "blobContentDigest",
+        "byteLength",
+        "byteOffset",
+        "rangeContentDigest",
+        "rangeIndex"
       ]
     }
   ],

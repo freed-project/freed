@@ -12,16 +12,20 @@
 > **Current Library Core checkpoint:** Rust, the headless native boundary, and
 > the PWA SQLite worker share one generated six-state local policy contract.
 > Policy and byte availability are separate facts. Device content rows do not
-> enter checkpoints, authority revisions, or replication. Verified range
-> publication, streaming, and eviction remain in progress.
+> enter checkpoints, authority revisions, or replication. Canonical typed range
+> records now authenticate multi-gigabyte logical content without allocating
+> media bytes. Verified byte publication, streaming, and eviction remain in
+> progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
 ## Selective long-form media work
 
-- [ ] Represent each rendition as a content-addressed logical blob with typed
-      codec, duration, byte length, digest, and range-index descriptors.
-- [ ] Verify independently retrievable ranges through a paged authenticated
+- [x] Represent each rendition as a content-addressed logical blob with typed
+      encoding, rendition identity, byte length, digest, and range-index
+      descriptors. Playback duration remains item metadata rather than range
+      integrity metadata.
+- [x] Verify independently retrievable ranges through a paged authenticated
       range map so multi-gigabyte media never becomes one logical wire record.
 - [ ] Let Freed Desktop pre-download or pin large video without forcing PWA or
       follower hydration.

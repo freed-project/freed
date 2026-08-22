@@ -114,10 +114,22 @@ CREATE TABLE IF NOT EXISTS library_follower_actor_request (
 
 CREATE TABLE IF NOT EXISTS library_blobs (
   content_digest TEXT PRIMARY KEY CHECK (length(content_digest) = 64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
-  byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
-  chunk_bytes INTEGER NOT NULL CHECK (chunk_bytes = 65536),
-  chunk_count INTEGER NOT NULL CHECK (chunk_count >= 0),
-  media_type TEXT NOT NULL CHECK (length(CAST(media_type AS BLOB)) BETWEEN 1 AND 255)
+  byte_length INTEGER NOT NULL CHECK (byte_length BETWEEN 0 AND 9007199254740991),
+  storage_layout TEXT NOT NULL DEFAULT 'inline_chunks' CHECK (storage_layout IN ('inline_chunks', 'authenticated_ranges')),
+  chunk_bytes INTEGER NOT NULL CHECK (chunk_bytes IN (0, 65536)),
+  chunk_count INTEGER NOT NULL CHECK (chunk_count BETWEEN 0 AND 9007199254740991),
+  range_count INTEGER NOT NULL DEFAULT 0 CHECK (range_count BETWEEN 0 AND 9007199254740991),
+  range_granularity INTEGER CHECK (range_granularity IS NULL OR range_granularity BETWEEN 1 AND 9007199254740991),
+  range_index_root_digest TEXT CHECK (range_index_root_digest IS NULL OR (length(range_index_root_digest) = 64 AND range_index_root_digest NOT GLOB '*[^0-9a-f]*')),
+  rendition_id TEXT CHECK (rendition_id IS NULL OR length(CAST(rendition_id AS BLOB)) BETWEEN 1 AND 255),
+  encoding TEXT CHECK (encoding IS NULL OR length(CAST(encoding AS BLOB)) BETWEEN 1 AND 255),
+  cloud_availability_commitment TEXT CHECK (cloud_availability_commitment IS NULL OR (length(cloud_availability_commitment) = 64 AND cloud_availability_commitment NOT GLOB '*[^0-9a-f]*')),
+  media_type TEXT NOT NULL CHECK (length(CAST(media_type AS BLOB)) BETWEEN 1 AND 255),
+  CHECK (
+    (storage_layout = 'inline_chunks' AND chunk_bytes = 65536 AND range_count = 0 AND range_granularity IS NULL AND range_index_root_digest IS NULL AND rendition_id IS NULL AND cloud_availability_commitment IS NULL)
+    OR
+    (storage_layout = 'authenticated_ranges' AND chunk_bytes = 0 AND chunk_count = 0 AND range_count >= 1 AND range_granularity IS NOT NULL AND range_index_root_digest IS NOT NULL AND rendition_id IS NOT NULL AND cloud_availability_commitment IS NOT NULL)
+  )
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS library_blob_chunks (
@@ -126,6 +138,17 @@ CREATE TABLE IF NOT EXISTS library_blob_chunks (
   chunk_digest TEXT NOT NULL CHECK (length(chunk_digest) = 64 AND chunk_digest NOT GLOB '*[^0-9a-f]*'),
   bytes BLOB NOT NULL CHECK (length(bytes) BETWEEN 0 AND 65536),
   PRIMARY KEY (content_digest, chunk_index)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_content_ranges (
+  content_digest TEXT NOT NULL REFERENCES library_blobs(content_digest) ON DELETE CASCADE,
+  range_index INTEGER NOT NULL CHECK (range_index BETWEEN 0 AND 9007199254740991),
+  byte_offset INTEGER NOT NULL CHECK (byte_offset >= 0),
+  byte_length INTEGER NOT NULL CHECK (byte_length >= 1),
+  range_digest TEXT NOT NULL CHECK (length(range_digest) = 64 AND range_digest NOT GLOB '*[^0-9a-f]*'),
+  PRIMARY KEY (content_digest, range_index),
+  UNIQUE (content_digest, byte_offset),
+  CHECK (byte_offset <= 9007199254740991 - byte_length)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS library_feed_items (
@@ -1657,9 +1680,26 @@ SELECT 'a0_receipt', json_array(actor_id, operation_id),
 FROM library_receipts
 UNION ALL
 SELECT 'b0_blob_descriptor', json_quote(content_digest),
-  json_object('blobContentDigest', content_digest, 'byteLength', byte_length, 'chunkBytes', chunk_bytes, 'chunkCount', chunk_count, 'mediaType', media_type), NULL
+  json_object(
+    'blobContentDigest', content_digest,
+    'byteLength', byte_length,
+    'chunkBytes', chunk_bytes,
+    'chunkCount', chunk_count,
+    'cloudAvailabilityCommitment', cloud_availability_commitment,
+    'encoding', encoding,
+    'mediaType', media_type,
+    'rangeCount', range_count,
+    'rangeGranularity', range_granularity,
+    'rangeIndexRootDigest', range_index_root_digest,
+    'renditionId', rendition_id,
+    'storageLayout', storage_layout
+  ), NULL
 FROM library_blobs
 UNION ALL
 SELECT 'b1_content_chunk', json_array(content_digest, chunk_index),
   json_object('blobContentDigest', content_digest, 'byteLength', length(bytes), 'bytesBase64', NULL, 'chunkContentDigest', chunk_digest, 'chunkIndex', chunk_index), bytes
-FROM library_blob_chunks;
+FROM library_blob_chunks
+UNION ALL
+SELECT 'b2_content_range', json_array(content_digest, range_index),
+  json_object('blobContentDigest', content_digest, 'byteLength', byte_length, 'byteOffset', byte_offset, 'rangeContentDigest', range_digest, 'rangeIndex', range_index), NULL
+FROM library_content_ranges;

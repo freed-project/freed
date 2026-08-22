@@ -3725,4 +3725,76 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([[64, original.byteLength, 65_536]]);
   });
+
+  it("authenticates a multi-gigabyte range map without hydrating media bytes", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const contentDigest = "a".repeat(64);
+    const content = [
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b0_blob_descriptor",
+        primaryKey: contentDigest,
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 5_000_000_000,
+          chunkBytes: 0,
+          chunkCount: 0,
+          cloudAvailabilityCommitment: "d".repeat(64),
+          encoding: "identity",
+          mediaType: "video/mp4",
+          rangeCount: 2,
+          rangeGranularity: 2_500_000_000,
+          rangeIndexRootDigest:
+            "add3359c5ff23df62183d1fd6e086763c2de356b292357cdf43cbb6967240b95",
+          renditionId: "video-1080p",
+          storageLayout: "authenticated_ranges",
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b2_content_range",
+        primaryKey: [contentDigest, 0],
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 2_500_000_000,
+          byteOffset: 0,
+          rangeContentDigest: "b".repeat(64),
+          rangeIndex: 0,
+        },
+      }),
+      createLibraryCoreNormalizedCheckpointRecordV2({
+        registryKey: "b2_content_range",
+        primaryKey: [contentDigest, 1],
+        payload: {
+          blobContentDigest: contentDigest,
+          byteLength: 2_500_000_000,
+          byteOffset: 2_500_000_000,
+          rangeContentDigest: "c".repeat(64),
+          rangeIndex: 1,
+        },
+      }),
+    ];
+    const records = [checkpointHeader(), ...authorityRecords(), ...content];
+    stageRecords(engine, records, "ranged-content");
+    expect(
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "ranged-content",
+      }).recordCount,
+    ).toBe(records.length);
+    expect(
+      database.exec({
+        sql: `SELECT
+                (SELECT count(*) FROM library_blob_chunks),
+                (SELECT count(*) FROM library_content_ranges),
+                (SELECT byte_length FROM library_blobs WHERE content_digest = ?1);`,
+        bind: [contentDigest],
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([[0, 2, 5_000_000_000]]);
+  });
 });

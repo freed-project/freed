@@ -635,7 +635,14 @@ export function splitLibraryCoreContentV1(input: {
         byteLength: input.bytes.byteLength,
         chunkBytes: LIBRARY_CORE_CONTENT_CHUNK_BYTES,
         chunkCount,
+        cloudAvailabilityCommitment: null,
+        encoding: null,
         mediaType: input.mediaType,
+        rangeCount: 0,
+        rangeGranularity: null,
+        rangeIndexRootDigest: null,
+        renditionId: null,
+        storageLayout: "inline_chunks",
       },
     }),
   ];
@@ -678,7 +685,14 @@ export function reassembleLibraryCoreContentV1(
       "byteLength",
       "chunkBytes",
       "chunkCount",
+      "cloudAvailabilityCommitment",
+      "encoding",
       "mediaType",
+      "rangeCount",
+      "rangeGranularity",
+      "rangeIndexRootDigest",
+      "renditionId",
+      "storageLayout",
     ],
     "content descriptor",
   );
@@ -686,7 +700,14 @@ export function reassembleLibraryCoreContentV1(
     !isLibraryCoreLowercaseHex64(descriptor.blobContentDigest) ||
     !isLibraryCoreNonnegativeSafeInteger(descriptor.byteLength) ||
     descriptor.chunkBytes !== LIBRARY_CORE_CONTENT_CHUNK_BYTES ||
-    !isLibraryCoreNonnegativeSafeInteger(descriptor.chunkCount)
+    !isLibraryCoreNonnegativeSafeInteger(descriptor.chunkCount) ||
+    descriptor.cloudAvailabilityCommitment !== null ||
+    descriptor.encoding !== null ||
+    descriptor.rangeCount !== 0 ||
+    descriptor.rangeGranularity !== null ||
+    descriptor.rangeIndexRootDigest !== null ||
+    descriptor.renditionId !== null ||
+    descriptor.storageLayout !== "inline_chunks"
   ) {
     throw new TypeError("content descriptor is invalid");
   }

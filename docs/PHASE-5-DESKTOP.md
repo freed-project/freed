@@ -265,6 +265,9 @@
         pinned-offline, and excluded policy in bounded device-local SQLite
         rows. Keep policy separate from verified byte availability and exclude
         both from normalized checkpoints and Library authority.
+  - [x] Authenticate ordered content ranges from canonical typed checkpoint
+        records. Reject gaps, overlaps, changed roots, and mixed layouts while
+        streaming metadata without allocating the logical media length.
   - [ ] Publish digest-verified ranges into the descriptor-bound content vault
         without routing complete media through the renderer or native IPC.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge

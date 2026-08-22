@@ -4,6 +4,7 @@ use crate::normalized_checkpoint::{
     checked_record, decode_fractional_payload, NormalizedCheckpointRecordV2,
 };
 use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::sqlite_contract_generated::CONTENT_RANGE_MAP_DIGEST_DOMAIN;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
@@ -242,25 +243,115 @@ fn apply_record(
 
 fn verify_blob_rows(transaction: &Transaction<'_>) -> Result<(), NormalizedSqliteError> {
     let mut descriptor_statement = transaction.prepare(
-        "SELECT content_digest, byte_length, chunk_count FROM library_blobs ORDER BY content_digest;",
+        "SELECT content_digest, byte_length, storage_layout, chunk_count, range_count,
+                range_index_root_digest
+         FROM library_blobs ORDER BY content_digest;",
     )?;
     let descriptors = descriptor_statement.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, i64>(1)?,
-            row.get::<_, i64>(2)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, Option<String>>(5)?,
         ))
     })?;
     for descriptor in descriptors {
-        let (content_digest, byte_length, chunk_count) = descriptor?;
+        let (
+            content_digest,
+            byte_length,
+            storage_layout,
+            chunk_count,
+            range_count,
+            range_index_root_digest,
+        ) = descriptor?;
+        if storage_layout == "authenticated_ranges" {
+            let unexpected_chunks: i64 = transaction.query_row(
+                "SELECT count(*) FROM library_blob_chunks WHERE content_digest = ?1;",
+                [&content_digest],
+                |row| row.get(0),
+            )?;
+            if unexpected_chunks != 0 {
+                return Err(invalid("ranged content contains inline chunks"));
+            }
+            let mut range_statement = transaction.prepare(
+                "SELECT range_index, byte_offset, byte_length, range_digest
+                 FROM library_content_ranges
+                 WHERE content_digest = ?1 ORDER BY range_index;",
+            )?;
+            let mut ranges = range_statement.query([&content_digest])?;
+            let mut root = Sha256::new();
+            root.update(CONTENT_RANGE_MAP_DIGEST_DOMAIN.as_bytes());
+            root.update(content_digest.as_bytes());
+            root.update(
+                u64::try_from(byte_length)
+                    .map_err(|_| invalid("ranged content byte length is invalid"))?
+                    .to_be_bytes(),
+            );
+            root.update(
+                u64::try_from(range_count)
+                    .map_err(|_| invalid("content range count is invalid"))?
+                    .to_be_bytes(),
+            );
+            let mut index = 0i64;
+            let mut offset = 0i64;
+            while let Some(row) = ranges.next()? {
+                let row_index = row.get::<_, i64>(0)?;
+                let row_offset = row.get::<_, i64>(1)?;
+                let row_length = row.get::<_, i64>(2)?;
+                let range_digest = row.get::<_, String>(3)?;
+                if row_index != index || row_offset != offset || row_length < 1 {
+                    return Err(invalid("checkpoint content ranges are not contiguous"));
+                }
+                root.update(
+                    u64::try_from(row_index)
+                        .map_err(|_| invalid("content range index is invalid"))?
+                        .to_be_bytes(),
+                );
+                root.update(
+                    u64::try_from(row_offset)
+                        .map_err(|_| invalid("content range offset is invalid"))?
+                        .to_be_bytes(),
+                );
+                root.update(
+                    u64::try_from(row_length)
+                        .map_err(|_| invalid("content range length is invalid"))?
+                        .to_be_bytes(),
+                );
+                root.update(range_digest.as_bytes());
+                offset = offset
+                    .checked_add(row_length)
+                    .ok_or(invalid("content range length overflowed"))?;
+                index += 1;
+            }
+            if index != range_count
+                || offset != byte_length
+                || range_index_root_digest.as_deref() != Some(&lower_hex(&root.finalize()))
+            {
+                return Err(invalid("checkpoint content range map is incomplete"));
+            }
+            continue;
+        }
+        if storage_layout != "inline_chunks" || range_count != 0 {
+            return Err(invalid("checkpoint content layout is invalid"));
+        }
+        let unexpected_ranges: i64 = transaction.query_row(
+            "SELECT count(*) FROM library_content_ranges WHERE content_digest = ?1;",
+            [&content_digest],
+            |row| row.get(0),
+        )?;
+        if unexpected_ranges != 0 {
+            return Err(invalid("inline content contains range records"));
+        }
         let mut chunk_statement = transaction.prepare(
             "SELECT chunk_index, chunk_digest, bytes FROM library_blob_chunks
              WHERE content_digest = ?1 ORDER BY chunk_index;",
         )?;
         let mut chunks = chunk_statement.query([&content_digest])?;
-        let mut bytes = Vec::with_capacity(
-            usize::try_from(byte_length).map_err(|_| invalid("blob byte length is invalid"))?,
-        );
+        let mut content_hash = Sha256::new();
+        content_hash.update(b"freed.library-core.v1/digest-bytes/blob-content\0");
+        let mut byte_count = 0i64;
         let mut index = 0i64;
         while let Some(row) = chunks.next()? {
             if row.get::<_, i64>(0)? != index {
@@ -273,15 +364,18 @@ fn verify_blob_rows(transaction: &Transaction<'_>) -> Result<(), NormalizedSqlit
             if lower_hex(&chunk_hash.finalize()) != row.get::<_, String>(1)? {
                 return Err(invalid("checkpoint content chunk digest is invalid"));
             }
-            bytes.extend_from_slice(&chunk);
+            byte_count = byte_count
+                .checked_add(
+                    i64::try_from(chunk.len())
+                        .map_err(|_| invalid("blob byte length is invalid"))?,
+                )
+                .ok_or(invalid("blob byte length overflowed"))?;
+            content_hash.update(&chunk);
             index += 1;
         }
-        if index != chunk_count || i64::try_from(bytes.len()).ok() != Some(byte_length) {
+        if index != chunk_count || byte_count != byte_length {
             return Err(invalid("checkpoint content descriptor is incomplete"));
         }
-        let mut content_hash = Sha256::new();
-        content_hash.update(b"freed.library-core.v1/digest-bytes/blob-content\0");
-        content_hash.update(&bytes);
         if lower_hex(&content_hash.finalize()) != content_digest {
             return Err(invalid("checkpoint content digest is invalid"));
         }
@@ -415,6 +509,7 @@ fn clear_checkpoint_replacement_target(
          DELETE FROM library_authority_frontier;
          DELETE FROM library_authority_epochs;
          DELETE FROM library_blob_chunks;
+         DELETE FROM library_content_ranges;
          DELETE FROM library_blobs;
          DELETE FROM library_materialization_generation;
          DELETE FROM library_meta;
@@ -579,6 +674,7 @@ fn activate_normalized_checkpoint_stage_v2(
            (SELECT count(*) FROM library_actor_capability_mutations) +
            (SELECT count(*) FROM library_receipts) +
            (SELECT count(*) FROM library_blobs) +
+           (SELECT count(*) FROM library_content_ranges) +
            (SELECT count(*) FROM library_transactions) +
            (SELECT count(*) FROM library_invalidations) +
            (SELECT count(*) FROM library_intent_transactions);",
@@ -745,4 +841,73 @@ pub fn normalized_checkpoint_digest_v2(
             .map_err(|_| invalid("checkpoint canonical byte count is invalid"))?;
     }
     Ok(accumulator.finish().0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::install_normalized_schema_v1;
+
+    #[test]
+    fn authenticated_range_map_closes_without_content_byte_allocation() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let content_digest = "a".repeat(64);
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, storage_layout, chunk_bytes, chunk_count,
+                    range_count, range_granularity, range_index_root_digest, rendition_id,
+                    encoding, cloud_availability_commitment, media_type)
+                 VALUES (?1, 5000000000, 'authenticated_ranges', 0, 0, 2, 2500000000,
+                         ?2, 'video-1080p', 'identity', ?3, 'video/mp4');",
+                params![
+                    content_digest,
+                    "add3359c5ff23df62183d1fd6e086763c2de356b292357cdf43cbb6967240b95",
+                    "d".repeat(64)
+                ],
+            )
+            .expect("descriptor");
+        connection
+            .execute(
+                "INSERT INTO library_content_ranges
+                   (content_digest, range_index, byte_offset, byte_length, range_digest)
+                 VALUES (?1, 0, 0, 2500000000, ?2),
+                        (?1, 1, 2500000000, 2500000000, ?3);",
+                params![content_digest, "b".repeat(64), "c".repeat(64)],
+            )
+            .expect("ranges");
+        let transaction = connection.transaction().expect("transaction");
+        verify_blob_rows(&transaction).expect("authenticated range map");
+        transaction.rollback().expect("rollback proof transaction");
+    }
+
+    #[test]
+    fn authenticated_range_map_rejects_gaps_and_changed_roots() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, storage_layout, chunk_bytes, chunk_count,
+                    range_count, range_granularity, range_index_root_digest, rendition_id,
+                    cloud_availability_commitment, media_type)
+                 VALUES (?1, 10, 'authenticated_ranges', 0, 0, 1, 10,
+                         ?2, 'video', ?3, 'video/mp4');",
+                params!["a".repeat(64), "e".repeat(64), "d".repeat(64)],
+            )
+            .expect("descriptor");
+        connection
+            .execute(
+                "INSERT INTO library_content_ranges
+                   (content_digest, range_index, byte_offset, byte_length, range_digest)
+                 VALUES (?1, 0, 1, 9, ?2);",
+                params!["a".repeat(64), "b".repeat(64)],
+            )
+            .expect("gapped range");
+        let transaction = connection.transaction().expect("transaction");
+        let error = verify_blob_rows(&transaction).expect_err("reject gap");
+        assert!(error.to_string().contains("not contiguous"));
+        transaction.rollback().expect("rollback proof transaction");
+    }
 }

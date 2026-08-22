@@ -906,10 +906,14 @@ The client does not need to download the complete video before playback. A
 paged authenticated range map contains byte offsets, lengths, and range
 digests. Optional container and time metadata can improve seeking.
 
-The range map uses a Merkle or authenticated radix structure. Each index node
-obeys the logical-record ceiling. Media ranges do not. Their size is selected
-by physical measurement across Drive overhead, seeking, Desktop disk, OPFS,
-iPhone memory, and resumable recovery.
+The canonical descriptor commits to the ordered typed range records with one
+SHA-256 root. The digest domain, content identity, total byte length, range
+count, and every ordered index, offset, length, and range digest enter that
+root. Each range record independently obeys the logical-record ceiling.
+Checkpoint activation streams the metadata, rejects gaps or overlaps, and does
+not allocate the logical media length. Media bytes do not enter these records.
+Their physical range size is selected by measurement across Drive overhead,
+seeking, Desktop disk, OPFS, iPhone memory, and resumable recovery.
 
 The initial benchmark compares 1 MiB, 4 MiB, 8 MiB, and 16 MiB media ranges.
 No range size becomes protocol law before that measurement.

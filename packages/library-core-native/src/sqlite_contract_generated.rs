@@ -8,6 +8,8 @@ pub const NATIVE_COMMAND_PROTOCOL_VERSION: u32 = 1;
 pub const NORMALIZED_CHECKPOINT_FORMAT: &str = "freed_normalized_checkpoint_v2";
 pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = "freed_normalized_checkpoint_export_v2";
 pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = "library_core_normalized_checkpoint_v2";
+pub const CONTENT_RANGE_MAP_DIGEST_DOMAIN: &str =
+    "freed.library-core.v1/digest-records/content-range-map\0";
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = 131072;
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = 2097152;
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;
@@ -18,7 +20,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "c965586a5bff79ec1cc48e00ab0921da4d12c8f659324d2b0c474cef8c811ed6";
+    "27e14276e2dcc91772dade87e0fa0634e31ea9c7f5ed747c6b43c64fb3fef35d";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -55,6 +57,7 @@ pub enum CheckpointRecordKind {
     Receipt,
     BlobDescriptor,
     ContentChunk,
+    ContentRange,
 }
 
 #[rustfmt::skip]
@@ -89,6 +92,7 @@ impl CheckpointRecordKind {
             "a0_receipt" => Some(Self::Receipt),
             "b0_blob_descriptor" => Some(Self::BlobDescriptor),
             "b1_content_chunk" => Some(Self::ContentChunk),
+            "b2_content_range" => Some(Self::ContentRange),
             _ => None,
         }
     }
@@ -124,6 +128,7 @@ impl CheckpointRecordKind {
             Receipt => "a0_receipt",
             BlobDescriptor => "b0_blob_descriptor",
             ContentChunk => "b1_content_chunk",
+            ContentRange => "b2_content_range",
         }
     }
 
@@ -396,7 +401,14 @@ impl CheckpointRecordKind {
                 "byteLength",
                 "chunkBytes",
                 "chunkCount",
+                "cloudAvailabilityCommitment",
+                "encoding",
                 "mediaType",
+                "rangeCount",
+                "rangeGranularity",
+                "rangeIndexRootDigest",
+                "renditionId",
+                "storageLayout",
             ],
             ContentChunk => &[
                 "blobContentDigest",
@@ -404,6 +416,13 @@ impl CheckpointRecordKind {
                 "bytesBase64",
                 "chunkContentDigest",
                 "chunkIndex",
+            ],
+            ContentRange => &[
+                "blobContentDigest",
+                "byteLength",
+                "byteOffset",
+                "rangeContentDigest",
+                "rangeIndex",
             ],
         }
     }
@@ -439,6 +458,7 @@ impl CheckpointRecordKind {
             Receipt => &[],
             BlobDescriptor => &[],
             ContentChunk => &[],
+            ContentRange => &[],
         }
     }
 }
@@ -778,6 +798,7 @@ pub const SQLITE_CHECKPOINT_IMPORT_PROGRAMS: &[(&str, usize, bool, &str)] = &[
     ("91_actor_capability", 1, false, "INSERT INTO library_actor_capabilities (capability_id, actor_class, actor_id, canonical_certificate, certificate_digest, certificate_version, issuance_identity, issued_at, retired_at, retirement_certificate_digest, retirement_identity, scope_id, scope_kind, scope_mode) SELECT json_extract(?1, '$'), json_extract(?2, '$.actorClass'), json_extract(?2, '$.actorId'), json_extract(?2, '$.canonicalCertificate'), json_extract(?2, '$.certificateDigest'), json_extract(?2, '$.certificateVersion'), json_extract(?2, '$.issuanceIdentity'), json_extract(?2, '$.issuedAt'), json_extract(?2, '$.retiredAt'), json_extract(?2, '$.retirementCertificateDigest'), json_extract(?2, '$.retirementIdentity'), json_extract(?2, '$.scopeId'), json_extract(?2, '$.scopeKind'), json_extract(?2, '$.scopeMode');"),
     ("92_actor_capability_mutation", 2, false, "INSERT INTO library_actor_capability_mutations (capability_id, mutation_id) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]') WHERE json_extract(?2, '$.mutationId') = json_extract(?1, '$[1]');"),
     ("a0_receipt", 2, false, "INSERT INTO library_receipts (actor_id, operation_id, accepted_at, digest, result_blob_digest, result_text, status) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.acceptedAt'), json_extract(?2, '$.digest'), json_extract(?2, '$.resultBlobDigest'), json_extract(?2, '$.resultText'), json_extract(?2, '$.status');"),
-    ("b0_blob_descriptor", 1, false, "INSERT INTO library_blobs (content_digest, byte_length, chunk_bytes, chunk_count, media_type) SELECT json_extract(?1, '$'), json_extract(?2, '$.byteLength'), json_extract(?2, '$.chunkBytes'), json_extract(?2, '$.chunkCount'), json_extract(?2, '$.mediaType') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$');"),
+    ("b0_blob_descriptor", 1, false, "INSERT INTO library_blobs (content_digest, byte_length, chunk_bytes, chunk_count, cloud_availability_commitment, encoding, media_type, range_count, range_granularity, range_index_root_digest, rendition_id, storage_layout) SELECT json_extract(?1, '$'), json_extract(?2, '$.byteLength'), json_extract(?2, '$.chunkBytes'), json_extract(?2, '$.chunkCount'), json_extract(?2, '$.cloudAvailabilityCommitment'), json_extract(?2, '$.encoding'), json_extract(?2, '$.mediaType'), json_extract(?2, '$.rangeCount'), json_extract(?2, '$.rangeGranularity'), json_extract(?2, '$.rangeIndexRootDigest'), json_extract(?2, '$.renditionId'), json_extract(?2, '$.storageLayout') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$');"),
     ("b1_content_chunk", 2, true, "INSERT INTO library_blob_chunks (content_digest, chunk_index, bytes, chunk_digest) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), ?3, json_extract(?2, '$.chunkContentDigest') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$[0]') AND json_extract(?2, '$.chunkIndex') = json_extract(?1, '$[1]');"),
+    ("b2_content_range", 2, false, "INSERT INTO library_content_ranges (content_digest, range_index, byte_length, byte_offset, range_digest) SELECT json_extract(?1, '$[0]'), json_extract(?1, '$[1]'), json_extract(?2, '$.byteLength'), json_extract(?2, '$.byteOffset'), json_extract(?2, '$.rangeContentDigest') WHERE json_extract(?2, '$.blobContentDigest') = json_extract(?1, '$[0]') AND json_extract(?2, '$.rangeIndex') = json_extract(?1, '$[1]');"),
 ];

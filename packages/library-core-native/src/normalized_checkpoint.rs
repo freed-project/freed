@@ -192,7 +192,14 @@ pub fn split_content_records_v1(
             "byteLength": bytes.len(),
             "chunkBytes": CONTENT_CHUNK_BYTES,
             "chunkCount": chunk_count,
+            "cloudAvailabilityCommitment": null,
+            "encoding": null,
             "mediaType": media_type,
+            "rangeCount": 0,
+            "rangeGranularity": null,
+            "rangeIndexRootDigest": null,
+            "renditionId": null,
+            "storageLayout": "inline_chunks",
         }),
     )?);
     for (chunk_index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {

@@ -805,8 +805,9 @@ The checkpoint format is `freed_normalized_checkpoint_v2` and protocol version 2
 | `80_tombstone`              | entity tuple                      | one entity tombstone                                             |
 | `90_actor_state`            | actor ID                          | enrolled actor and accepted tip                                  |
 | `a0_receipt`                | receipt kind and ID               | retained authoritative receipt                                   |
-| `b0_blob_descriptor`        | content digest                    | content metadata and chunk plan                                  |
+| `b0_blob_descriptor`        | content digest                    | content metadata and inline-chunk or authenticated-range layout   |
 | `b1_content_chunk`          | content digest and chunk index    | bounded content bytes when included                              |
+| `b2_content_range`          | content digest and range index    | one authenticated byte offset, length, and range digest           |
 
 The executable registry is authoritative. This table is explanatory. No
 registry key or payload kind may contain `shell`. Identity is registry key plus
@@ -934,6 +935,15 @@ OAuth behavior, retries, and cadence are outside this contract.
 Canonical Library rows carry descriptors, never large inline media. A
 descriptor binds content digest, rendition identity, media type, byte length,
 chunk or range layout, and available sources.
+
+An `authenticated_ranges` descriptor binds an ordered range map by its exact
+range count and canonical root digest. Each `b2_content_range` record carries
+one contiguous byte offset, byte length, and lowercase SHA-256 range digest.
+The root digest covers the content identity, logical byte length, range count,
+and every ordered range tuple. Checkpoint activation rejects gaps, overlaps,
+count mismatches, changed roots, and mixed inline-chunk and range layouts before
+canonical rows become visible. The verifier streams range metadata and does not
+allocate the logical content length.
 
 Each client independently selects one policy per rendition:
 

@@ -2,6 +2,7 @@ import type { Database, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SQL,
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
@@ -263,6 +264,10 @@ const stagedRecordDigestPrefix = Uint8Array.from(
 );
 const checkpointDigestPrefix = Uint8Array.from(
   "freed.library-core.v2/digest-records/normalized-checkpoint\u0000",
+  (character) => character.charCodeAt(0),
+);
+const contentRangeMapDigestPrefix = Uint8Array.from(
+  LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN,
   (character) => character.charCodeAt(0),
 );
 const strictUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -901,6 +906,7 @@ export class PwaLibraryCoreSqliteEngine {
           DELETE FROM library_authority_frontier;
           DELETE FROM library_authority_epochs;
           DELETE FROM library_blob_chunks;
+          DELETE FROM library_content_ranges;
           DELETE FROM library_blobs;
           DELETE FROM library_materialization_generation;
           DELETE FROM library_meta;
@@ -935,6 +941,7 @@ export class PwaLibraryCoreSqliteEngine {
                   UNION ALL SELECT count(*) FROM library_actor_capability_mutations
                   UNION ALL SELECT count(*) FROM library_receipts
                   UNION ALL SELECT count(*) FROM library_blobs
+                  UNION ALL SELECT count(*) FROM library_content_ranges
                   UNION ALL SELECT count(*) FROM library_transactions
                   UNION ALL SELECT count(*) FROM library_invalidations
                   UNION ALL SELECT count(*) FROM library_intent_transactions
@@ -6602,7 +6609,9 @@ export class PwaLibraryCoreSqliteEngine {
 
   #verifyCheckpointContent(): void {
     const descriptors = this.#database.prepare(
-      "SELECT content_digest, byte_length, chunk_count FROM library_blobs ORDER BY content_digest;",
+      `SELECT content_digest, byte_length, storage_layout, chunk_count,
+              range_count, range_index_root_digest
+       FROM library_blobs ORDER BY content_digest;`,
     );
     try {
       while (descriptors.step()) {
@@ -6614,10 +6623,110 @@ export class PwaLibraryCoreSqliteEngine {
           descriptors.get(1),
           "checkpoint content byte length",
         );
-        const expectedChunks = safeInteger(
+        const storageLayout = text(
           descriptors.get(2),
+          "checkpoint content storage layout",
+        );
+        const expectedChunks = safeInteger(
+          descriptors.get(3),
           "checkpoint content chunk count",
         );
+        const expectedRanges = safeInteger(
+          descriptors.get(4),
+          "checkpoint content range count",
+        );
+        const rangeIndexRoot = nullableText(
+          descriptors.get(5),
+          "checkpoint content range root",
+        );
+        if (storageLayout === "authenticated_ranges") {
+          const unexpectedChunks = safeInteger(
+            this.#database.exec({
+              sql: "SELECT count(*) FROM library_blob_chunks WHERE content_digest = ?1;",
+              bind: [contentDigest],
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "ranged content inline chunk count",
+          );
+          if (unexpectedChunks !== 0) {
+            throw new Error("ranged content contains inline chunks");
+          }
+          const root = new LibraryCoreSha256();
+          root.update(contentRangeMapDigestPrefix);
+          root.update(textEncoder.encode(contentDigest));
+          root.update(lengthBytes(expectedBytes));
+          root.update(lengthBytes(expectedRanges));
+          const ranges = this.#database.prepare(
+            `SELECT range_index, byte_offset, byte_length, range_digest
+             FROM library_content_ranges
+             WHERE content_digest = ?1 ORDER BY range_index;`,
+          );
+          let rangeIndex = 0;
+          let byteOffset = 0;
+          try {
+            ranges.bind([contentDigest]);
+            while (ranges.step()) {
+              const rowIndex = safeInteger(
+                ranges.get(0),
+                "checkpoint content range index",
+              );
+              const rowOffset = safeInteger(
+                ranges.get(1),
+                "checkpoint content range offset",
+              );
+              const rowLength = safeInteger(
+                ranges.get(2),
+                "checkpoint content range length",
+              );
+              const rangeDigest = text(
+                ranges.get(3),
+                "checkpoint content range digest",
+              );
+              if (
+                rowIndex !== rangeIndex ||
+                rowOffset !== byteOffset ||
+                rowLength < 1
+              ) {
+                throw new Error("checkpoint content ranges are not contiguous");
+              }
+              root.update(lengthBytes(rowIndex));
+              root.update(lengthBytes(rowOffset));
+              root.update(lengthBytes(rowLength));
+              root.update(textEncoder.encode(rangeDigest));
+              byteOffset += rowLength;
+              if (!Number.isSafeInteger(byteOffset)) {
+                throw new Error("checkpoint content range length overflowed");
+              }
+              rangeIndex += 1;
+            }
+          } finally {
+            ranges.finalize();
+          }
+          if (
+            rangeIndex !== expectedRanges ||
+            byteOffset !== expectedBytes ||
+            root.digestLowerHex() !== rangeIndexRoot
+          ) {
+            throw new Error("checkpoint content range map is incomplete");
+          }
+          continue;
+        }
+        if (storageLayout !== "inline_chunks" || expectedRanges !== 0) {
+          throw new Error("checkpoint content layout is invalid");
+        }
+        const unexpectedRanges = safeInteger(
+          this.#database.exec({
+            sql: "SELECT count(*) FROM library_content_ranges WHERE content_digest = ?1;",
+            bind: [contentDigest],
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "inline content range count",
+        );
+        if (unexpectedRanges !== 0) {
+          throw new Error("inline content contains range records");
+        }
         const contentHash = createLibraryCoreMediaBlobDigestStateV1();
         const chunks = this.#database.prepare(
           `SELECT chunk_index, chunk_digest, bytes FROM library_blob_chunks
