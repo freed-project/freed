@@ -40,7 +40,10 @@ export const LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA = Object.freeze({
   summaryKeys: Object.freeze([
     "archivedCount",
     "archivableCount",
+    "enabledRssFeedCount",
+    "friendPersonCount",
     "platformCounts",
+    "rssFeedCount",
     "sampleAccountCount",
     "sampleFeedCount",
     "sampleItemCount",
@@ -48,6 +51,7 @@ export const LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA = Object.freeze({
     "savedArchivedCount",
     "savedCount",
     "savedPlatformCount",
+    "socialAccountCount",
     "tags",
     "totalCount",
     "unreadCount",
@@ -103,7 +107,10 @@ export interface LibraryCoreFacetSummaryRequestV1 {
 export interface LibraryCoreFacetSummaryV1 {
   readonly archivedCount: number;
   readonly archivableCount: number;
+  readonly enabledRssFeedCount: number;
+  readonly friendPersonCount: number;
   readonly platformCounts: readonly LibraryCoreFacetPlatformCountV1[];
+  readonly rssFeedCount: number;
   readonly sampleAccountCount: number;
   readonly sampleFeedCount: number;
   readonly sampleItemCount: number;
@@ -111,6 +118,7 @@ export interface LibraryCoreFacetSummaryV1 {
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
+  readonly socialAccountCount: number;
   readonly tags: readonly string[];
   readonly totalCount: number;
   readonly unreadCount: number;
@@ -317,6 +325,8 @@ export function parseLibraryCoreFacetSummaryResponseV1(
   if (
     (summary.archivedCount as number) > (summary.totalCount as number) ||
     (summary.archivableCount as number) > (summary.totalCount as number) ||
+    (summary.enabledRssFeedCount as number) >
+      (summary.rssFeedCount as number) ||
     (summary.sampleItemCount as number) > (summary.totalCount as number) ||
     (summary.savedCount as number) > (summary.totalCount as number) ||
     (summary.savedArchivedCount as number) >
@@ -338,7 +348,10 @@ export function parseLibraryCoreFacetSummaryResponseV1(
     summary: Object.freeze({
       archivedCount: summary.archivedCount as number,
       archivableCount: summary.archivableCount as number,
+      enabledRssFeedCount: summary.enabledRssFeedCount as number,
+      friendPersonCount: summary.friendPersonCount as number,
       platformCounts: Object.freeze(platformCounts),
+      rssFeedCount: summary.rssFeedCount as number,
       sampleAccountCount: summary.sampleAccountCount as number,
       sampleFeedCount: summary.sampleFeedCount as number,
       sampleItemCount: summary.sampleItemCount as number,
@@ -346,6 +359,7 @@ export function parseLibraryCoreFacetSummaryResponseV1(
       savedArchivedCount: summary.savedArchivedCount as number,
       savedCount: summary.savedCount as number,
       savedPlatformCount: summary.savedPlatformCount as number,
+      socialAccountCount: summary.socialAccountCount as number,
       tags: Object.freeze(tags),
       totalCount: summary.totalCount as number,
       unreadCount: summary.unreadCount as number,

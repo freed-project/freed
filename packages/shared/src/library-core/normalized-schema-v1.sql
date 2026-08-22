@@ -281,6 +281,10 @@ CREATE TABLE IF NOT EXISTS library_facet_summary (
   sample_feed_count INTEGER NOT NULL CHECK (sample_feed_count >= 0),
   sample_person_count INTEGER NOT NULL CHECK (sample_person_count >= 0),
   sample_account_count INTEGER NOT NULL CHECK (sample_account_count >= 0),
+  rss_feed_count INTEGER NOT NULL DEFAULT 0 CHECK (rss_feed_count >= 0),
+  enabled_rss_feed_count INTEGER NOT NULL DEFAULT 0 CHECK (enabled_rss_feed_count >= 0),
+  friend_person_count INTEGER NOT NULL DEFAULT 0 CHECK (friend_person_count >= 0),
+  social_account_count INTEGER NOT NULL DEFAULT 0 CHECK (social_account_count >= 0),
   saved_count INTEGER NOT NULL CHECK (saved_count >= 0),
   saved_archived_count INTEGER NOT NULL CHECK (saved_archived_count >= 0)
 ) STRICT;
@@ -542,6 +546,33 @@ BEGIN
   WHERE singleton_id = 1;
 END;
 
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_count_insert
+AFTER INSERT ON library_rss_feeds
+BEGIN
+  UPDATE library_facet_summary SET
+    rss_feed_count = rss_feed_count + 1,
+    enabled_rss_feed_count = enabled_rss_feed_count + (NEW.enabled = 1)
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_count_delete
+AFTER DELETE ON library_rss_feeds
+BEGIN
+  UPDATE library_facet_summary SET
+    rss_feed_count = rss_feed_count - 1,
+    enabled_rss_feed_count = enabled_rss_feed_count - (OLD.enabled = 1)
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_count_update
+AFTER UPDATE OF enabled ON library_rss_feeds
+WHEN NEW.enabled <> OLD.enabled
+BEGIN
+  UPDATE library_facet_summary SET
+    enabled_rss_feed_count = enabled_rss_feed_count + (NEW.enabled = 1) - (OLD.enabled = 1)
+  WHERE singleton_id = 1;
+END;
+
 CREATE TRIGGER IF NOT EXISTS library_rss_feed_sample_delete
 AFTER DELETE ON library_rss_feeds
 WHEN OLD.sample_batch_id IS NOT NULL
@@ -567,6 +598,31 @@ BEGIN
   WHERE singleton_id = 1;
 END;
 
+CREATE TRIGGER IF NOT EXISTS library_person_friend_count_insert
+AFTER INSERT ON library_persons
+WHEN NEW.relationship_status = 'friend'
+BEGIN
+  UPDATE library_facet_summary SET friend_person_count = friend_person_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_friend_count_delete
+AFTER DELETE ON library_persons
+WHEN OLD.relationship_status = 'friend'
+BEGIN
+  UPDATE library_facet_summary SET friend_person_count = friend_person_count - 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_friend_count_update
+AFTER UPDATE OF relationship_status ON library_persons
+WHEN (NEW.relationship_status = 'friend') <> (OLD.relationship_status = 'friend')
+BEGIN
+  UPDATE library_facet_summary SET
+    friend_person_count = friend_person_count + (NEW.relationship_status = 'friend') - (OLD.relationship_status = 'friend')
+  WHERE singleton_id = 1;
+END;
+
 CREATE TRIGGER IF NOT EXISTS library_person_sample_delete
 AFTER DELETE ON library_persons
 WHEN OLD.sample_batch_id IS NOT NULL
@@ -589,6 +645,31 @@ AFTER INSERT ON library_accounts
 WHEN NEW.sample_batch_id IS NOT NULL
 BEGIN
   UPDATE library_facet_summary SET sample_account_count = sample_account_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_social_count_insert
+AFTER INSERT ON library_accounts
+WHEN NEW.kind = 'social'
+BEGIN
+  UPDATE library_facet_summary SET social_account_count = social_account_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_social_count_delete
+AFTER DELETE ON library_accounts
+WHEN OLD.kind = 'social'
+BEGIN
+  UPDATE library_facet_summary SET social_account_count = social_account_count - 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_social_count_update
+AFTER UPDATE OF kind ON library_accounts
+WHEN (NEW.kind = 'social') <> (OLD.kind = 'social')
+BEGIN
+  UPDATE library_facet_summary SET
+    social_account_count = social_account_count + (NEW.kind = 'social') - (OLD.kind = 'social')
   WHERE singleton_id = 1;
 END;
 

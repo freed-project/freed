@@ -416,6 +416,7 @@ loads an alternate Library engine or compatibility path.
 | 4.222 | Import each verified normalized result segment through one immediate SQLite transaction that verifies its semantic digest and signed result chain, reconciles intent state and sparse optimistic overlays, records exact immutable transport identity, advances both logical and transport cursors, and replays response loss only from the stored receipt                                                                                          | ✓      | High       |
 | 4.223 | Shared exact RSS Feed lookup and bounded source-fenced RSS Feed scan orchestration for mutation resolution, duplicate detection, and OPML export. The same synchronized Feed transform serves detail and page rows across native and browser SQLite | ✓      | High       |
 | 4.224 | Extend the shared Account page with its linked Person name through the normalized foreign-key join, shorten legal maximum-sized Account pages by exact response bytes, then compose Account and RSS Feed pages into a query-on-open command identity reader with 25-row result bounds per catalog | ✓      | High       |
+| 4.225 | Extend the constant-time SQLite facet row with trigger-maintained RSS Feed, enabled RSS Feed, Friend Person, and social Account counts, including insert, delete, and classification transition invariants | ✓      | High       |
 
 ---
 

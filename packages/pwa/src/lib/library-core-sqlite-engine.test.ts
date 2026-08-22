@@ -2798,6 +2798,8 @@ describe("PWA Library Core SQLite engine", () => {
       summary: {
         archivedCount: 0,
         archivableCount: 0,
+        enabledRssFeedCount: 131,
+        friendPersonCount: 3,
         platformCounts: [
           {
             archivableCount: 0,
@@ -2818,6 +2820,7 @@ describe("PWA Library Core SQLite engine", () => {
             unreadCount: 1,
           },
         ],
+        rssFeedCount: 132,
         sampleAccountCount: 0,
         sampleFeedCount: 1,
         sampleItemCount: 0,
@@ -2825,6 +2828,7 @@ describe("PWA Library Core SQLite engine", () => {
         savedArchivedCount: 0,
         savedCount: 1,
         savedPlatformCount: 1,
+        socialAccountCount: 132,
         tags: ["favorite"],
         totalCount: 3,
         unreadCount: 3,

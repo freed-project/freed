@@ -1089,6 +1089,8 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 3,
         archivableCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
         platformCounts: [
           {
             archivableCount: 0,
@@ -1097,6 +1099,7 @@ describe("command palette", () => {
             unreadCount: 0,
           },
         ],
+        rssFeedCount: 0,
         sampleAccountCount: 0,
         sampleFeedCount: 0,
         sampleItemCount: 0,
@@ -1104,6 +1107,7 @@ describe("command palette", () => {
         savedArchivedCount: 2,
         savedCount: 2,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: ["Architecture", "Research", "Secret"],
         totalCount: 3,
         unreadCount: 0,
@@ -1247,7 +1251,10 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
         platformCounts: [],
+        rssFeedCount: 0,
         sampleAccountCount: 0,
         sampleFeedCount: 0,
         sampleItemCount: 0,
@@ -1255,6 +1262,7 @@ describe("command palette", () => {
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: ["Research"],
         totalCount: 0,
         unreadCount: 0,
@@ -1317,6 +1325,8 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
         platformCounts: [
           {
             archivableCount: 0,
@@ -1325,6 +1335,7 @@ describe("command palette", () => {
             unreadCount: 0,
           },
         ],
+        rssFeedCount: 0,
         sampleAccountCount: 0,
         sampleFeedCount: 0,
         sampleItemCount: 0,
@@ -1332,6 +1343,7 @@ describe("command palette", () => {
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: ["Research"],
         totalCount: 17_000,
         unreadCount: 0,
@@ -1484,6 +1496,8 @@ describe("command palette", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 1,
         archivableCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
         platformCounts: [
           {
             archivableCount: 0,
@@ -1492,6 +1506,7 @@ describe("command palette", () => {
             unreadCount: 0,
           },
         ],
+        rssFeedCount: 0,
         sampleAccountCount: 0,
         sampleFeedCount: 0,
         sampleItemCount: 0,
@@ -1499,6 +1514,7 @@ describe("command palette", () => {
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: [],
         totalCount: 1,
         unreadCount: 0,

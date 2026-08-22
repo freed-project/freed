@@ -471,6 +471,8 @@ describe("SQLite Primary mutations", () => {
             summary: {
               archivedCount: 0,
               archivableCount: 0,
+              enabledRssFeedCount: 0,
+              friendPersonCount: 0,
               platformCounts: [
                 {
                   archivableCount: 0,
@@ -479,6 +481,7 @@ describe("SQLite Primary mutations", () => {
                   unreadCount: 0,
                 },
               ],
+              rssFeedCount: 0,
               sampleAccountCount: 0,
               sampleFeedCount: 0,
               sampleItemCount: 0,
@@ -486,6 +489,7 @@ describe("SQLite Primary mutations", () => {
               savedArchivedCount: 0,
               savedCount: 0,
               savedPlatformCount: 0,
+              socialAccountCount: 0,
               tags: [],
               totalCount: 1,
               unreadCount: 0,

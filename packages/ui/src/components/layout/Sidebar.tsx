@@ -676,7 +676,6 @@ export function Sidebar({
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const [sidebarSearchInput, setSidebarSearchInput] = useState(searchQuery);
-  const friends = useAppStore((s) => s.persons);
   const renameFeed = useAppStore((s) => s.renameFeed);
   const removeFeed = useAppStore((s) => s.removeFeed);
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
@@ -715,7 +714,7 @@ export function Sidebar({
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
-  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const friendCount = libraryFacets.friendPersonCount;
   const requestCopyFriendsDiagnostics = useCommandSurfaceStore(
     (state) => state.requestCopyFriendsDiagnostics,
   );

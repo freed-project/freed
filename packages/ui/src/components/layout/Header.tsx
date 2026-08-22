@@ -356,7 +356,6 @@ export function Header({
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const totalItemCount = useAppStore((s) => s.totalItemCount);
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
-  const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -406,16 +405,10 @@ export function Header({
   const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
-  const friendCount = useMemo(
-    () => Object.values(persons).filter((person) => person.relationshipStatus === "friend").length,
-    [persons],
-  );
+  const friendCount = libraryFacets.friendPersonCount;
   const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
-  const socialAccountCount = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "social").length,
-    [accounts],
-  );
+  const socialAccountCount = libraryFacets.socialAccountCount;
   const savedArchivedCount = libraryFacets.savedArchivedCount;
   const effectiveMapMode = resolveMapMode(
     deviceDisplay.mapMode,

@@ -60,6 +60,8 @@ describe("useLibraryCommandPaletteReader", () => {
     const readLibraryFacetSummary = vi.fn(async () => ({
       archivedCount: 8,
       archivableCount: 0,
+      enabledRssFeedCount: 0,
+      friendPersonCount: 0,
       platformCounts: [
         {
           archivableCount: 0,
@@ -68,6 +70,7 @@ describe("useLibraryCommandPaletteReader", () => {
           unreadCount: 0,
         },
       ],
+      rssFeedCount: 0,
       sampleAccountCount: 0,
       sampleFeedCount: 0,
       sampleItemCount: 0,
@@ -75,6 +78,7 @@ describe("useLibraryCommandPaletteReader", () => {
       savedArchivedCount: 3,
       savedCount: 4,
       savedPlatformCount: 1,
+      socialAccountCount: 0,
       tags: ["favorite"],
       totalCount: 20_000,
       unreadCount: 0,
@@ -156,7 +160,10 @@ describe("useLibraryCommandPaletteReader", () => {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
         archivableCount: 0,
+        enabledRssFeedCount: 0,
+        friendPersonCount: 0,
         platformCounts: [],
+        rssFeedCount: 0,
         sampleAccountCount: 0,
         sampleFeedCount: 0,
         sampleItemCount: 0,
@@ -164,6 +171,7 @@ describe("useLibraryCommandPaletteReader", () => {
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
+        socialAccountCount: 0,
         tags: [],
         totalCount: 0,
         unreadCount: 0,

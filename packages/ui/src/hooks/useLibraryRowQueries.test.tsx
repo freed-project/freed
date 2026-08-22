@@ -467,6 +467,8 @@ describe("Library row query hooks", () => {
     const summary: LibraryFacetSummary = {
       archivedCount: 2,
       archivableCount: 1,
+      enabledRssFeedCount: 1,
+      friendPersonCount: 2,
       platformCounts: [
         {
           archivableCount: 1,
@@ -475,6 +477,7 @@ describe("Library row query hooks", () => {
           unreadCount: 4,
         },
       ],
+      rssFeedCount: 1,
       sampleAccountCount: 1,
       sampleFeedCount: 1,
       sampleItemCount: 5,
@@ -482,6 +485,7 @@ describe("Library row query hooks", () => {
       savedArchivedCount: 1,
       savedCount: 3,
       savedPlatformCount: 4,
+      socialAccountCount: 3,
       tags: ["alpha", "beta"],
       totalCount: 10,
       unreadCount: 4,

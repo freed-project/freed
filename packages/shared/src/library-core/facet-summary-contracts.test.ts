@@ -14,6 +14,8 @@ const source = {
 const summary = {
   archivedCount: 2,
   archivableCount: 1,
+  enabledRssFeedCount: 2,
+  friendPersonCount: 3,
   platformCounts: [
     {
       archivableCount: 1,
@@ -22,6 +24,7 @@ const summary = {
       unreadCount: 2,
     },
   ],
+  rssFeedCount: 4,
   sampleAccountCount: 1,
   sampleFeedCount: 1,
   sampleItemCount: 1,
@@ -29,6 +32,7 @@ const summary = {
   savedArchivedCount: 1,
   savedCount: 3,
   savedPlatformCount: 2,
+  socialAccountCount: 5,
   tags: ["alpha"],
   totalCount: 5,
   unreadCount: 2,

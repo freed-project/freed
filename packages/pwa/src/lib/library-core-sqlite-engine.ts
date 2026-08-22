@@ -4949,6 +4949,14 @@ export class PwaLibraryCoreSqliteEngine {
           row.archivableCount,
           "archivable count",
         ),
+        enabledRssFeedCount: safeInteger(
+          row.enabledRssFeedCount,
+          "enabled RSS Feed count",
+        ),
+        friendPersonCount: safeInteger(
+          row.friendPersonCount,
+          "friend Person count",
+        ),
         platformCounts: JSON.parse(
           text(row.platformCountsJson, "platform counts"),
         ) as unknown,
@@ -4965,6 +4973,7 @@ export class PwaLibraryCoreSqliteEngine {
           row.samplePersonCount,
           "sample person count",
         ),
+        rssFeedCount: safeInteger(row.rssFeedCount, "RSS Feed count"),
         savedArchivedCount: safeInteger(
           row.savedArchivedCount,
           "saved archived count",
@@ -4973,6 +4982,10 @@ export class PwaLibraryCoreSqliteEngine {
         savedPlatformCount: safeInteger(
           row.savedPlatformCount,
           "saved platform count",
+        ),
+        socialAccountCount: safeInteger(
+          row.socialAccountCount,
+          "social Account count",
         ),
         tags: stringArray(row.tagsJson, "facet tags"),
         totalCount: safeInteger(row.totalCount, "total count"),

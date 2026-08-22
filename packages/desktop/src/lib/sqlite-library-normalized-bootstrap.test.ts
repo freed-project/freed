@@ -38,6 +38,8 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           summary: {
             archivedCount: 3,
             archivableCount: 0,
+            enabledRssFeedCount: 0,
+            friendPersonCount: 0,
             platformCounts: [
               {
                 archivableCount: 0,
@@ -46,6 +48,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
                 unreadCount: 0,
               },
             ],
+            rssFeedCount: 0,
             sampleAccountCount: 0,
             sampleFeedCount: 0,
             sampleItemCount: 0,
@@ -53,6 +56,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
             savedArchivedCount: 0,
             savedCount: 2,
             savedPlatformCount: 1,
+            socialAccountCount: 0,
             tags: [],
             totalCount: 19,
             unreadCount: 0,

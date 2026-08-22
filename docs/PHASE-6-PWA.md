@@ -485,6 +485,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.52 | Replace the shared PWA sidebar's complete RSS Feed dictionary, derived count dictionaries, whole-catalog search, and renderer slicing with `rss_feed_page_v1` over OPFS SQLite. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High | ✓ Complete |
 | 6.53 | Replace the shared Settings feed manager with 50-row OPFS SQLite windows and the existing atomically frozen complete-removal scope, then delete the uncalled PWA RSS capture and renderer-feed export module instead of preserving another compatibility path | High | ✓ Complete |
 | 6.54 | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open OPFS SQLite pages that retain at most 25 matching feeds and 25 matching social channels | High | ✓ Complete |
+| 6.55 | Replace always-mounted Header and Sidebar Friend and social Account counting with constant-time trigger-maintained OPFS SQLite facets | High | ✓ Complete |
 
 ---
 

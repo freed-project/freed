@@ -683,7 +683,10 @@ pub struct NormalizedChangeFeedResponseV1 {
 pub struct NormalizedFacetSummaryV1 {
     pub archived_count: i64,
     pub archivable_count: i64,
+    pub enabled_rss_feed_count: i64,
+    pub friend_person_count: i64,
     pub platform_counts: Vec<NormalizedFacetPlatformCountV1>,
+    pub rss_feed_count: i64,
     pub sample_account_count: i64,
     pub sample_feed_count: i64,
     pub sample_item_count: i64,
@@ -691,6 +694,7 @@ pub struct NormalizedFacetSummaryV1 {
     pub saved_archived_count: i64,
     pub saved_count: i64,
     pub saved_platform_count: i64,
+    pub social_account_count: i64,
     pub tags: Vec<String>,
     pub total_count: i64,
     pub unread_count: i64,
@@ -3449,7 +3453,10 @@ fn query_facet_summary(
         Ok(NormalizedFacetSummaryV1 {
             archived_count: row.get("archivedCount")?,
             archivable_count: row.get("archivableCount")?,
+            enabled_rss_feed_count: row.get("enabledRssFeedCount")?,
+            friend_person_count: row.get("friendPersonCount")?,
             platform_counts: decode_sqlite_json(&row.get::<_, String>("platformCountsJson")?)?,
+            rss_feed_count: row.get("rssFeedCount")?,
             sample_account_count: row.get("sampleAccountCount")?,
             sample_feed_count: row.get("sampleFeedCount")?,
             sample_item_count: row.get("sampleItemCount")?,
@@ -3457,6 +3464,7 @@ fn query_facet_summary(
             saved_archived_count: row.get("savedArchivedCount")?,
             saved_count: row.get("savedCount")?,
             saved_platform_count: row.get("savedPlatformCount")?,
+            social_account_count: row.get("socialAccountCount")?,
             tags: string_array(row, "tagsJson", 4_096, 1_024)?,
             total_count: row.get("totalCount")?,
             unread_count: row.get("unreadCount")?,
@@ -3475,6 +3483,9 @@ fn query_facet_summary(
     if [
         summary.archived_count,
         summary.archivable_count,
+        summary.enabled_rss_feed_count,
+        summary.friend_person_count,
+        summary.rss_feed_count,
         summary.sample_account_count,
         summary.sample_feed_count,
         summary.sample_item_count,
@@ -3482,6 +3493,7 @@ fn query_facet_summary(
         summary.saved_archived_count,
         summary.saved_count,
         summary.saved_platform_count,
+        summary.social_account_count,
         summary.total_count,
         summary.unread_count,
     ]
@@ -3489,6 +3501,7 @@ fn query_facet_summary(
     .any(|value| !valid_safe_integer(value))
         || summary.archived_count > summary.total_count
         || summary.archivable_count > summary.total_count
+        || summary.enabled_rss_feed_count > summary.rss_feed_count
         || summary.sample_item_count > summary.total_count
         || summary.saved_count > summary.total_count
         || summary.saved_archived_count > summary.saved_count.min(summary.archived_count)
@@ -6077,6 +6090,10 @@ mod tests {
         assert_eq!(response.summary.sample_feed_count, 1);
         assert_eq!(response.summary.sample_person_count, 1);
         assert_eq!(response.summary.sample_account_count, 1);
+        assert_eq!(response.summary.rss_feed_count, 1);
+        assert_eq!(response.summary.enabled_rss_feed_count, 1);
+        assert_eq!(response.summary.friend_person_count, 1);
+        assert_eq!(response.summary.social_account_count, 1);
         assert_eq!(response.summary.platform_counts.len(), 2);
         assert_eq!(response.summary.platform_counts[0].platform, "rss");
         assert_eq!(response.summary.platform_counts[0].total_count, 1);
@@ -6091,7 +6108,13 @@ mod tests {
                    WHERE global_id = 'item-2';
                  UPDATE library_feed_items SET hidden = 0, read_at = 500
                    WHERE global_id = 'item-3';
-                 DELETE FROM library_feed_items WHERE global_id = 'item-1';",
+                 DELETE FROM library_feed_items WHERE global_id = 'item-1';
+                 UPDATE library_rss_feeds SET enabled = 0
+                   WHERE url = 'https://sample.test/feed';
+                 UPDATE library_persons SET relationship_status = 'connection'
+                   WHERE id = 'person-1';
+                 UPDATE library_accounts SET kind = 'contact'
+                   WHERE id = 'account-1';",
             )
             .expect("update fixture");
         let NormalizedQueryResponseV1::FacetSummary(updated) = query_normalized_v1(
@@ -6111,6 +6134,10 @@ mod tests {
         assert_eq!(updated.summary.saved_archived_count, 0);
         assert_eq!(updated.summary.saved_platform_count, 0);
         assert_eq!(updated.summary.sample_item_count, 1);
+        assert_eq!(updated.summary.rss_feed_count, 1);
+        assert_eq!(updated.summary.enabled_rss_feed_count, 0);
+        assert_eq!(updated.summary.friend_person_count, 0);
+        assert_eq!(updated.summary.social_account_count, 0);
         assert_eq!(updated.summary.tags, ["\u{e000}"]);
     }
 

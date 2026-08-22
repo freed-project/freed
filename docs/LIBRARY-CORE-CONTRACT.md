@@ -633,6 +633,11 @@ Person name through the normalized foreign-key join, so the palette never
 hydrates Person, Account, or RSS Feed dictionaries to label search results.
 Native and browser Account executors shorten a page by exact serialized bytes
 when legal maximum-sized identity rows approach the 2 MiB response ceiling.
+The constant-time facet row also owns exact RSS Feed, enabled RSS Feed, Friend
+Person, and social Account counts. SQLite triggers maintain those counters in
+the same transaction as each row insert, delete, or classification change.
+Always-mounted navigation reads the counters only. It never subscribes to a
+Person or Account dictionary to count identities in React.
 Person and Account rows left-join their installation-local graph position from
 `library_device_person_graph_layout` and
 `library_device_account_graph_layout`. A missing local row is an explicit

@@ -115,6 +115,8 @@ function facetSummary(totalCount = 0) {
   return {
     archivedCount: 0,
     archivableCount: 0,
+    enabledRssFeedCount: 0,
+    friendPersonCount: 0,
     platformCounts:
       totalCount === 0
         ? []
@@ -126,6 +128,7 @@ function facetSummary(totalCount = 0) {
               unreadCount: 0,
             },
           ],
+    rssFeedCount: 0,
     sampleAccountCount: 0,
     sampleFeedCount: 0,
     sampleItemCount: 0,
@@ -133,6 +136,7 @@ function facetSummary(totalCount = 0) {
     savedArchivedCount: 0,
     savedCount: 0,
     savedPlatformCount: 0,
+    socialAccountCount: 0,
     tags: [],
     totalCount,
     unreadCount: 0,
