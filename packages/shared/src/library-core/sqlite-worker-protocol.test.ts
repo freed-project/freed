@@ -4,6 +4,7 @@ import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
+  createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteCloseScopeActionWorkerRequest,
@@ -474,9 +475,17 @@ describe("Library Core SQLite worker protocol", () => {
     expect(
       createLibraryCoreSqliteActivateCheckpointWorkerRequest(
         "request-5",
-        "stage-1",
+        {
+          followerReceipt: null,
+          replaceExisting: false,
+          stageId: "stage-1",
+        },
       ).kind,
     ).toBe("activate_normalized_checkpoint_stage");
+    expect(
+      createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest("request-6")
+        .kind,
+    ).toBe("read_normalized_checkpoint_receipt");
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

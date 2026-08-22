@@ -4,6 +4,7 @@ import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
+  createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteBeginScopeActionWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
@@ -17,6 +18,7 @@ import {
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
+  parseLibraryCoreSqliteCheckpointSelectionResponse,
   parseLibraryCoreSqliteFollowerMutationContextResponse,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
@@ -36,9 +38,11 @@ import {
   type LibraryCoreFollowerResultApplyReceiptV1,
   type LibraryCoreFollowerResultApplyV1,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
+  type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreNormalizedCheckpointSelectionV2,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
@@ -226,14 +230,20 @@ export class PwaLibraryCoreSqliteClient {
   }
 
   activateNormalizedCheckpointStage(
-    stageId: string,
+    activation: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
     return this.#send((requestId) =>
       createLibraryCoreSqliteActivateCheckpointWorkerRequest(
         requestId,
-        stageId,
+        activation,
       ),
     );
+  }
+
+  readNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(requestId),
+    ).then(parseLibraryCoreSqliteCheckpointSelectionResponse);
   }
 
   async close(): Promise<LibraryCoreSqliteWorkerStatus> {

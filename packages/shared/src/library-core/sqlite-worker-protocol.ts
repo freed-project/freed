@@ -117,11 +117,14 @@ import {
   type LibraryCorePersonTimelineResponseV1,
 } from "./person-timeline-contracts.js";
 import {
+  parseLibraryCoreActivateNormalizedCheckpointStageV2,
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
-  parseLibraryCoreNormalizedCheckpointStageIdV2,
+  parseLibraryCoreNormalizedCheckpointSelectionV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
+  type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreNormalizedCheckpointSelectionV2,
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "./normalized-checkpoint-stage-contracts.js";
@@ -442,10 +445,15 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      activation: LibraryCoreActivateNormalizedCheckpointStageV2;
       kind: "activate_normalized_checkpoint_stage";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
-      stageId: string;
+    }>
+  | Readonly<{
+      kind: "read_normalized_checkpoint_receipt";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
     }>
   | Readonly<{
       createdAt: number;
@@ -499,6 +507,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreSqliteQueryResponse
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
+  | LibraryCoreNormalizedCheckpointSelectionV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1
   | LibraryCoreFollowerMutationContextV1
   | LibraryCoreFollowerIntentCommitResultV1
@@ -576,7 +585,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
                   : value.kind === "append_normalized_checkpoint_stage_page"
                     ? ["kind", "page", "protocolVersion", "requestId"]
                     : value.kind === "activate_normalized_checkpoint_stage"
-                      ? ["kind", "protocolVersion", "requestId", "stageId"]
+                      ? ["activation", "kind", "protocolVersion", "requestId"]
                       : value.kind === "begin_scope_action"
                         ? [
                             "createdAt",
@@ -640,6 +649,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "page_scope_action",
       "publish_follower_intent",
       "query",
+      "read_normalized_checkpoint_receipt",
       "status",
     ].includes(String(value.kind)) ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
@@ -654,7 +664,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
   } else if (value.kind === "append_normalized_checkpoint_stage_page") {
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
-    parseLibraryCoreNormalizedCheckpointStageIdV2(value.stageId);
+    parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
       ? value.query.queryId === "account_detail_v1"
@@ -1018,12 +1028,28 @@ export function createLibraryCoreSqliteAppendCheckpointPageWorkerRequest(
 
 export function createLibraryCoreSqliteActivateCheckpointWorkerRequest(
   requestId: string,
-  stageId: string,
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2,
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({
+    activation,
     kind: "activate_normalized_checkpoint_stage",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
-    stageId,
   });
+}
+
+export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "read_normalized_checkpoint_receipt",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+  });
+}
+
+export function parseLibraryCoreSqliteCheckpointSelectionResponse(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointSelectionV2 {
+  return parseLibraryCoreNormalizedCheckpointSelectionV2(value);
 }

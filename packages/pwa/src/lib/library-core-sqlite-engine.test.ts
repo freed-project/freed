@@ -21,9 +21,11 @@ import {
   digestLibraryCoreNormalizedCheckpointRecordsV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   isLibraryCoreOperationInstanceId,
+  isLibraryCoreLowercaseHex64,
   splitLibraryCoreContentV1,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreOperationInstanceId,
+  type LibraryCoreLowercaseHex64,
   type LibraryCoreFeedBrowseFilterV1,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
@@ -61,6 +63,13 @@ describe("PWA Library Core SQLite engine", () => {
   function operationId(value: string): LibraryCoreOperationInstanceId {
     if (!isLibraryCoreOperationInstanceId(value)) {
       throw new TypeError("invalid test operation instance ID");
+    }
+    return value;
+  }
+
+  function lowercaseHex64(value: string): LibraryCoreLowercaseHex64 {
+    if (!isLibraryCoreLowercaseHex64(value)) {
+      throw new TypeError("invalid test lowercase hexadecimal digest");
     }
     return value;
   }
@@ -3002,7 +3011,11 @@ describe("PWA Library Core SQLite engine", () => {
       engine.beginNormalizedCheckpointStage({ ...stage, sourceRevision: 8 }),
     ).toThrow(/replay changed its identity/);
     expect(
-      engine.activateNormalizedCheckpointStage(stage.stageId),
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: stage.stageId,
+      }),
     ).toMatchObject({
       checkpointDigest:
         digestLibraryCoreNormalizedCheckpointRecordsV2(records),
@@ -3062,9 +3075,13 @@ describe("PWA Library Core SQLite engine", () => {
       payload: { tag: "favorite" },
     });
     stageRecords(engine, [header, ...authorityRecords(), orphan], "orphan");
-    expect(() => engine.activateNormalizedCheckpointStage("orphan")).toThrow(
-      /unresolved foreign reference/,
-    );
+    expect(() =>
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "orphan",
+      }),
+    ).toThrow(/unresolved foreign reference/);
     expect(
       database.exec({
         sql: "SELECT count(*) FROM library_feed_item_tags;",
@@ -3072,6 +3089,120 @@ describe("PWA Library Core SQLite engine", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([0]);
+  });
+
+  it("atomically replaces canonical rows and installs the exact follower receipt", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(
+      `INSERT INTO library_preferences (path, value_type, updated_at)
+       VALUES ('v:$.old', 'null', 1);`,
+    );
+    const records = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, records, "replacement");
+    const receipt = engine.activateNormalizedCheckpointStage({
+      followerReceipt: {
+        checkpointGeneration: 9,
+        controlRevision: "control-revision-1",
+        installedAt: 2_000,
+        manifestContentDigest: lowercaseHex64("9".repeat(64)),
+        manifestObjectKey: "manifest-key",
+        manifestTransportObjectId: "drive-object-1",
+        writerActorId: "actor-1",
+      },
+      replaceExisting: true,
+      stageId: "replacement",
+    });
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_preferences;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+    expect(
+      database.exec({
+        sql: `SELECT checkpoint_generation, source_revision,
+                     checkpoint_digest, writer_actor_id,
+                     manifest_transport_object_id, control_revision
+              FROM library_follower_checkpoint_receipt
+              WHERE singleton_id = 1;`,
+        rowMode: "array",
+        returnValue: "resultRows",
+      }),
+    ).toEqual([
+      [
+        9,
+        7,
+        receipt.checkpointDigest,
+        "actor-1",
+        "drive-object-1",
+        "control-revision-1",
+      ],
+    ]);
+    expect(engine.readNormalizedCheckpointReceipt()).toEqual({
+      receipt: {
+        authorityEpoch: "epoch-1",
+        checkpointDigest: receipt.checkpointDigest,
+        checkpointGeneration: 9,
+        controlRevision: "control-revision-1",
+        installedAt: 2_000,
+        libraryId: "library-1",
+        manifestContentDigest: "9".repeat(64),
+        manifestObjectKey: "manifest-key",
+        manifestTransportObjectId: "drive-object-1",
+        sourceRevision: 7,
+        writerActorId: "actor-1",
+      },
+    });
+  });
+
+  it("preserves the accepted database when replacement has unresolved local work", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(
+      `INSERT INTO library_preferences (path, value_type, updated_at)
+         VALUES ('v:$.old', 'null', 1);
+       INSERT INTO library_primary_intent_stage_transactions
+         (transaction_id, transaction_digest, actor_id, intent_epoch,
+          intent_epoch_id, member_count, first_counter, last_counter,
+          received_count, canonical_member_bytes, created_at, updated_at)
+         VALUES ('pending-1',
+           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+           'actor-local', 1, 'epoch-local', 1, 1, 1, 0, 0, 1, 1);`,
+    );
+    const records = [checkpointHeader(), ...authorityRecords()];
+    stageRecords(engine, records, "pending-replacement");
+    expect(() =>
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: true,
+        stageId: "pending-replacement",
+      }),
+    ).toThrow(/unresolved local operations/);
+    expect(
+      database.exec({
+        sql: "SELECT path FROM library_preferences;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual(["v:$.old"]);
+    expect(
+      engine.beginNormalizedCheckpointStage({
+        authorityEpoch: "epoch-1",
+        createdAt: 1_000,
+        expectedRecordCount: records.length,
+        libraryId: "library-1",
+        sourceRevision: 7,
+        stageId: "pending-replacement",
+      }).complete,
+    ).toBe(true);
   });
 
   it("refuses browser activation without accepted authority", () => {
@@ -3083,7 +3214,11 @@ describe("PWA Library Core SQLite engine", () => {
     const records = [checkpointHeader()];
     stageRecords(engine, records, "missing-authority");
     expect(() =>
-      engine.activateNormalizedCheckpointStage("missing-authority"),
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "missing-authority",
+      }),
     ).toThrow(/active authority/);
     expect(
       database.exec({
@@ -3110,7 +3245,11 @@ describe("PWA Library Core SQLite engine", () => {
     });
     const records = [checkpointHeader(), ...authorityRecords(), ...content];
     stageRecords(engine, records, "large-content");
-    const receipt = engine.activateNormalizedCheckpointStage("large-content");
+    const receipt = engine.activateNormalizedCheckpointStage({
+      followerReceipt: null,
+      replaceExisting: false,
+      stageId: "large-content",
+    });
     expect(receipt.recordCount).toBe(records.length);
     expect(
       database.exec({

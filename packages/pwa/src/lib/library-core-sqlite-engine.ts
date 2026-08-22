@@ -146,11 +146,13 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreBeginNormalizedCheckpointStageV2,
+  parseLibraryCoreActivateNormalizedCheckpointStageV2,
+  parseLibraryCoreNormalizedCheckpointSelectionV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreNormalizedCheckpointStagePageV2,
   LibraryCoreSha256,
   libraryCoreNormalizedCheckpointSqlitePayloadV2,
-  parseLibraryCoreNormalizedCheckpointStageIdV2,
+  type LibraryCoreActivateNormalizedCheckpointStageV2,
   type LibraryCoreBeginNormalizedCheckpointStageV2,
   type LibraryCoreFeedCardV1,
   type LibraryCoreChangeFeedRequestV1,
@@ -213,6 +215,7 @@ import {
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreNormalizedCheckpointSelectionV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreSqliteMutationProgramId,
 } from "@freed/shared/library-core";
@@ -739,9 +742,10 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   activateNormalizedCheckpointStage(
-    input: string,
+    input: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
-    const stageId = parseLibraryCoreNormalizedCheckpointStageIdV2(input);
+    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
+    const { followerReceipt, replaceExisting, stageId } = activation;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
       this.#database.exec("PRAGMA defer_foreign_keys = ON;");
@@ -772,6 +776,81 @@ export class PwaLibraryCoreSqliteEngine {
         stage[4],
         "checkpoint canonical bytes",
       );
+      if (replaceExisting) {
+        const unresolvedLocalOperations = safeInteger(
+          this.#database.exec({
+            sql: `SELECT
+                    (SELECT count(*) FROM library_intent_transactions
+                       WHERE state IN ('pending', 'published')) +
+                    (SELECT count(*) FROM library_optimistic_fields) +
+                    (SELECT count(*) FROM library_replication_outbox
+                       WHERE acknowledged_at IS NULL) +
+                    (SELECT count(*) FROM library_follower_result_outbox
+                       WHERE acknowledged_at IS NULL) +
+                    (SELECT count(*) FROM library_primary_intent_stage_transactions);`,
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "checkpoint replacement unresolved operation count",
+        );
+        if (unresolvedLocalOperations !== 0) {
+          throw new Error(
+            "normalized checkpoint replacement has unresolved local operations",
+          );
+        }
+        this.#database.exec(`DELETE FROM library_optimistic_fields;
+          DELETE FROM library_intent_results;
+          DELETE FROM library_intent_result_cursors;
+          DELETE FROM library_intent_members;
+          DELETE FROM library_intent_transactions;
+          DELETE FROM library_intent_actors;
+          DELETE FROM library_primary_intent_stage_members;
+          DELETE FROM library_primary_intent_stage_transactions;
+          DELETE FROM library_follower_result_outbox;
+          DELETE FROM library_follower_result_cursors;
+          DELETE FROM library_replication_outbox;
+          DELETE FROM library_operation_causal_tips;
+          DELETE FROM library_operations;
+          DELETE FROM library_transactions;
+          DELETE FROM library_invalidations;
+          DELETE FROM library_follower_checkpoint_receipt;
+          DELETE FROM library_device_scope_action_members;
+          DELETE FROM library_device_scope_actions;
+          DELETE FROM library_device_person_graph_layout;
+          DELETE FROM library_device_account_graph_layout;
+          DELETE FROM library_person_feed_items;
+          DELETE FROM library_relationships;
+          DELETE FROM library_field_clocks;
+          DELETE FROM library_tombstones;
+          DELETE FROM library_receipts;
+          DELETE FROM library_feed_items;
+          DELETE FROM library_rss_feeds;
+          DELETE FROM library_account_follow_roles;
+          DELETE FROM library_accounts;
+          DELETE FROM library_person_reach_outs;
+          DELETE FROM library_person_tags;
+          DELETE FROM library_persons;
+          DELETE FROM library_preferences;
+          DELETE FROM library_actor_capability_mutations;
+          DELETE FROM library_actor_capabilities;
+          DELETE FROM library_actors;
+          DELETE FROM library_active_authority;
+          DELETE FROM library_authority_frontier;
+          DELETE FROM library_authority_epochs;
+          DELETE FROM library_blob_chunks;
+          DELETE FROM library_blobs;
+          DELETE FROM library_materialization_generation;
+          DELETE FROM library_meta;
+          DELETE FROM library_storage_transition_plan;
+          DELETE FROM library_saved_platform_counts;
+          DELETE FROM library_tag_counts;
+          UPDATE library_facet_summary SET total_count = 0, archived_count = 0,
+            sample_item_count = 0, saved_count = 0, saved_archived_count = 0
+            WHERE singleton_id = 1;
+          UPDATE library_device_graph_layout_state SET revision = 0
+            WHERE singleton_id = 1;
+          UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;`);
+      }
       const existingRows = safeInteger(
         this.#database.exec({
           sql: `SELECT sum(row_count) FROM (
@@ -923,6 +1002,94 @@ export class PwaLibraryCoreSqliteEngine {
         );
       }
       this.#verifyCheckpointAuthority(libraryId, authorityEpoch);
+      if (followerReceipt !== null) {
+        const writerMatches = safeInteger(
+          this.#database.exec({
+            sql: `SELECT count(*)
+                  FROM library_active_authority AS active
+                  JOIN library_actors AS actor
+                    ON actor.authority_epoch_id = active.epoch_id
+                   AND actor.actor_kind = 'desktop' AND actor.retired_at IS NULL
+                  WHERE active.active_key = 'active' AND active.library_id = ?1
+                    AND active.epoch_id = ?2 AND actor.actor_id = ?3;`,
+            bind: [libraryId, authorityEpoch, followerReceipt.writerActorId],
+            rowMode: 0,
+            returnValue: "resultRows",
+          })[0],
+          "checkpoint active writer match count",
+        );
+        if (writerMatches !== 1) {
+          throw new Error("normalized follower checkpoint writer is not active");
+        }
+        this.#database.exec({
+          sql: `INSERT INTO library_follower_checkpoint_receipt
+                  (singleton_id, library_id, authority_epoch_id, writer_actor_id,
+                   checkpoint_generation, source_revision, checkpoint_digest,
+                   manifest_object_key, manifest_transport_object_id,
+                   manifest_content_digest, control_revision, installed_at)
+                VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);`,
+          bind: [
+            libraryId,
+            authorityEpoch,
+            followerReceipt.writerActorId,
+            followerReceipt.checkpointGeneration,
+            sourceRevision,
+            checkpointDigest,
+            followerReceipt.manifestObjectKey,
+            followerReceipt.manifestTransportObjectId,
+            followerReceipt.manifestContentDigest,
+            followerReceipt.controlRevision,
+            followerReceipt.installedAt,
+          ],
+        });
+        const localActors = this.#database.exec({
+          sql: `SELECT actor_id FROM library_follower_actor_request
+                WHERE singleton_id = 1 AND library_id = ?1
+                  AND authority_epoch_id = ?2
+                  AND enrollment_certificate_digest IS NOT NULL;`,
+          bind: [libraryId, authorityEpoch],
+          rowMode: 0,
+          returnValue: "resultRows",
+        });
+        if (localActors.length === 1) {
+          const actorId = text(localActors[0], "local follower actor identity");
+          const actorTips = this.#database.exec({
+            sql: `SELECT accepted_counter, accepted_operation_id,
+                         accepted_chain_digest
+                  FROM library_actors
+                  WHERE actor_id = ?1 AND authority_epoch_id = ?2
+                    AND retired_at IS NULL;`,
+            bind: [actorId, authorityEpoch],
+            rowMode: "array",
+            returnValue: "resultRows",
+          });
+          if (actorTips.length !== 1) {
+            throw new Error(
+              "normalized checkpoint omits the enrolled local follower actor",
+            );
+          }
+          const acceptedCounter = safeInteger(
+            actorTips[0]![0],
+            "local follower actor accepted counter",
+          );
+          if (acceptedCounter >= Number.MAX_SAFE_INTEGER) {
+            throw new Error("normalized follower actor counter is invalid");
+          }
+          this.#database.exec({
+            sql: `INSERT INTO library_intent_actors
+                    (actor_id, next_counter, previous_operation_id,
+                     previous_chain_digest) VALUES (?1, ?2, ?3, ?4);`,
+            bind: [
+              actorId,
+              acceptedCounter + 1,
+              actorTips[0]![1],
+              actorTips[0]![2],
+            ],
+          });
+        } else if (localActors.length > 1) {
+          throw new Error("normalized follower actor request is ambiguous");
+        }
+      }
       this.#database.exec({
         sql: "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         bind: [stageId],
@@ -941,6 +1108,52 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("ROLLBACK;");
       throw error;
     }
+  }
+
+  readNormalizedCheckpointReceipt(): LibraryCoreNormalizedCheckpointSelectionV2 {
+    const rows = this.#database.exec({
+      sql: `SELECT authority_epoch_id, checkpoint_digest,
+                   checkpoint_generation, control_revision, installed_at,
+                   library_id, manifest_content_digest, manifest_object_key,
+                   manifest_transport_object_id, source_revision,
+                   writer_actor_id
+            FROM library_follower_checkpoint_receipt
+            WHERE singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length === 0) return Object.freeze({ receipt: null });
+    if (rows.length !== 1) {
+      throw new Error("normalized checkpoint receipt is ambiguous");
+    }
+    const row = rows[0]!;
+    return parseLibraryCoreNormalizedCheckpointSelectionV2({
+      receipt: Object.freeze({
+        authorityEpoch: text(row[0], "checkpoint receipt authority epoch"),
+        checkpointDigest: text(
+          row[1],
+          "checkpoint receipt digest",
+        ),
+        checkpointGeneration: safeInteger(
+          row[2],
+          "checkpoint receipt generation",
+        ),
+        controlRevision: text(row[3], "checkpoint control revision"),
+        installedAt: safeInteger(row[4], "checkpoint installation time"),
+        libraryId: text(row[5], "checkpoint receipt Library identity"),
+        manifestContentDigest: text(
+          row[6],
+          "checkpoint manifest content digest",
+        ),
+        manifestObjectKey: text(row[7], "checkpoint manifest object key"),
+        manifestTransportObjectId: text(
+          row[8],
+          "checkpoint manifest transport object identity",
+        ),
+        sourceRevision: safeInteger(row[9], "checkpoint source revision"),
+        writerActorId: text(row[10], "checkpoint writer actor identity"),
+      }),
+    });
   }
 
   mutateDeviceGraphLayout(

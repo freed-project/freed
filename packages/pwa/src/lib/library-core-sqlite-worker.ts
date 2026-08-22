@@ -109,7 +109,7 @@ scope.onmessage = (event) => {
         scope.postMessage({
           ok: true,
           requestId,
-          result: active.activateNormalizedCheckpointStage(request.stageId),
+          result: active.activateNormalizedCheckpointStage(request.activation),
         });
         return;
       }
@@ -118,6 +118,14 @@ scope.onmessage = (event) => {
           ok: true,
           requestId,
           result: active.beginNormalizedCheckpointStage(request.stage),
+        });
+        return;
+      }
+      if (request.kind === "read_normalized_checkpoint_receipt") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.readNormalizedCheckpointReceipt(),
         });
         return;
       }

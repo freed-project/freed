@@ -112,6 +112,155 @@ export interface LibraryCoreNormalizedCheckpointActivationReceiptV2 {
   readonly stageId: string;
 }
 
+export interface LibraryCoreNormalizedFollowerCheckpointReceiptV2 {
+  readonly checkpointGeneration: number;
+  readonly controlRevision: string;
+  readonly installedAt: number;
+  readonly manifestContentDigest: LibraryCoreLowercaseHex64;
+  readonly manifestObjectKey: string;
+  readonly manifestTransportObjectId: string;
+  readonly writerActorId: string;
+}
+
+export interface LibraryCoreSelectedNormalizedCheckpointReceiptV2
+  extends LibraryCoreNormalizedFollowerCheckpointReceiptV2 {
+  readonly authorityEpoch: string;
+  readonly checkpointDigest: LibraryCoreLowercaseHex64;
+  readonly libraryId: string;
+  readonly sourceRevision: number;
+}
+
+export interface LibraryCoreNormalizedCheckpointSelectionV2 {
+  readonly receipt: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
+}
+
+export interface LibraryCoreActivateNormalizedCheckpointStageV2 {
+  readonly followerReceipt: LibraryCoreNormalizedFollowerCheckpointReceiptV2 | null;
+  readonly replaceExisting: boolean;
+  readonly stageId: string;
+}
+
+export function parseLibraryCoreActivateNormalizedCheckpointStageV2(
+  value: unknown,
+): LibraryCoreActivateNormalizedCheckpointStageV2 {
+  const record = closedRecord(
+    value,
+    ["followerReceipt", "replaceExisting", "stageId"],
+    "normalized checkpoint activation",
+  );
+  if (typeof record.replaceExisting !== "boolean") {
+    throw new TypeError("normalized checkpoint replacement flag is invalid");
+  }
+  return Object.freeze({
+    followerReceipt:
+      record.followerReceipt === null
+        ? null
+        : parseLibraryCoreNormalizedFollowerCheckpointReceiptV2(
+            record.followerReceipt,
+          ),
+    replaceExisting: record.replaceExisting,
+    stageId: parseLibraryCoreNormalizedCheckpointStageIdV2(record.stageId),
+  });
+}
+
+export function parseLibraryCoreNormalizedFollowerCheckpointReceiptV2(
+  value: unknown,
+): LibraryCoreNormalizedFollowerCheckpointReceiptV2 {
+  const record = closedRecord(
+    value,
+    [
+      "checkpointGeneration",
+      "controlRevision",
+      "installedAt",
+      "manifestContentDigest",
+      "manifestObjectKey",
+      "manifestTransportObjectId",
+      "writerActorId",
+    ],
+    "normalized follower checkpoint receipt",
+  );
+  if (
+    !isLibraryCoreNonnegativeSafeInteger(record.checkpointGeneration) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.installedAt) ||
+    !isLibraryCoreLowercaseHex64(record.manifestContentDigest)
+  ) {
+    throw new TypeError("normalized follower checkpoint receipt is invalid");
+  }
+  return Object.freeze({
+    checkpointGeneration: record.checkpointGeneration,
+    controlRevision: boundedText(
+      record.controlRevision,
+      "controlRevision",
+      1_024,
+    ),
+    installedAt: record.installedAt,
+    manifestContentDigest: record.manifestContentDigest,
+    manifestObjectKey: boundedText(
+      record.manifestObjectKey,
+      "manifestObjectKey",
+      1_024,
+    ),
+    manifestTransportObjectId: boundedText(
+      record.manifestTransportObjectId,
+      "manifestTransportObjectId",
+      1_024,
+    ),
+    writerActorId: boundedText(record.writerActorId, "writerActorId"),
+  });
+}
+
+export function parseLibraryCoreNormalizedCheckpointSelectionV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointSelectionV2 {
+  const record = closedRecord(
+    value,
+    ["receipt"],
+    "normalized checkpoint selection",
+  );
+  if (record.receipt === null) return Object.freeze({ receipt: null });
+  const receipt = closedRecord(
+    record.receipt,
+    [
+      "authorityEpoch",
+      "checkpointDigest",
+      "checkpointGeneration",
+      "controlRevision",
+      "installedAt",
+      "libraryId",
+      "manifestContentDigest",
+      "manifestObjectKey",
+      "manifestTransportObjectId",
+      "sourceRevision",
+      "writerActorId",
+    ],
+    "selected normalized checkpoint receipt",
+  );
+  const follower = parseLibraryCoreNormalizedFollowerCheckpointReceiptV2({
+    checkpointGeneration: receipt.checkpointGeneration,
+    controlRevision: receipt.controlRevision,
+    installedAt: receipt.installedAt,
+    manifestContentDigest: receipt.manifestContentDigest,
+    manifestObjectKey: receipt.manifestObjectKey,
+    manifestTransportObjectId: receipt.manifestTransportObjectId,
+    writerActorId: receipt.writerActorId,
+  });
+  if (
+    !isLibraryCoreLowercaseHex64(receipt.checkpointDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(receipt.sourceRevision)
+  ) {
+    throw new TypeError("selected normalized checkpoint receipt is invalid");
+  }
+  return Object.freeze({
+    receipt: Object.freeze({
+      ...follower,
+      authorityEpoch: boundedText(receipt.authorityEpoch, "authorityEpoch"),
+      checkpointDigest: receipt.checkpointDigest,
+      libraryId: boundedText(receipt.libraryId, "libraryId"),
+      sourceRevision: receipt.sourceRevision,
+    }),
+  });
+}
+
 export interface LibraryCoreNormalizedCheckpointStagePageV2 {
   readonly records: readonly LibraryCoreNormalizedCheckpointRecordV2[];
   readonly stageId: string;
@@ -139,11 +288,15 @@ function closedRecord(value: unknown, keys: readonly string[], label: string) {
   return record;
 }
 
-function boundedText(value: unknown, label: string): string {
+function boundedText(
+  value: unknown,
+  label: string,
+  maximumBytes = 255,
+): string {
   if (
     typeof value !== "string" ||
     value.length === 0 ||
-    textEncoder.encode(value).byteLength > 255
+    textEncoder.encode(value).byteLength > maximumBytes
   ) {
     throw new TypeError(`${label} must be bounded nonempty text`);
   }

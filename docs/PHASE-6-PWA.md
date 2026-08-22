@@ -127,6 +127,13 @@
         accepted authority, actor chain tip, and normalized capability, and
         activate only an empty SQLite target. Failure preserves the staged
         records and leaves the active Library empty.
+  - [x] Replace an existing browser materialization inside one immediate SQLite
+        transaction, matching native replacement semantics. Replacement fails
+        before deleting canonical rows when any intent, optimistic field,
+        replication result, or Primary staging transaction remains unresolved.
+        Successful follower activation installs the exact checkpoint,
+        manifest, writer, control, source revision, and installation receipt,
+        which is readable through one closed worker response.
 - [ ] Serve every product surface through bounded named SQLite queries without
       holding or scanning a corpus in React.
   - [x] `feed_page_v1` executes the generated normalized SQL in SQLite
@@ -466,6 +473,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.41 | Import normalized v2 result transport segments inside one PWA OPFS SQLite transaction, including semantic digest and signature verification, result materialization, sparse-overlay cleanup, logical and transport cursor advancement, exact retry receipts, and full rollback on late receipt failure      | High       | ✓ Complete                                                                                       |
 | 6.42 | Route PWA read, saved, archived, and liked product actions directly through the OPFS SQLite follower mutation context and atomic intent transaction, with IndexedDB limited to the matching nonextractable signing key and no dual write                                          | High       | ✓ Complete                                                                                       |
 | 6.43 | Route every remaining PWA product write through registered signed OPFS SQLite follower transactions, including FeedItem, RSS, preferences, Person, and Account families, with generated bounds and no IndexedDB mutation calls                                                   | High       | ✓ Complete                                                                                       |
+| 6.44 | Match native atomic checkpoint replacement in PWA OPFS SQLite, refuse replacement around unresolved local work, install the exact follower receipt, and expose that receipt through one closed worker request                                                         | High       | ✓ Complete                                                                                       |
 
 ---
 
