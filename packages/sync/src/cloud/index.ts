@@ -77,6 +77,18 @@ export {
   type PrepareLibraryCoreIntentSegmentRequestV1,
 } from "./library-core-intent-segments.js";
 export {
+  importLibraryCoreNormalizedIntentSegmentV2,
+  prepareLibraryCoreNormalizedIntentSegmentV2,
+  type LibraryCoreNormalizedIntentSegmentImportWriterV2,
+  type PreparedLibraryCoreNormalizedIntentSegmentV2,
+} from "./library-core-normalized-intent-segments.js";
+export {
+  publishLibraryCoreNormalizedIntentSegmentV2,
+  publishLibraryCoreNormalizedResultSegmentV2,
+  type LibraryCoreNormalizedHeadPublicationAdapterV2,
+  type LibraryCoreNormalizedHeadReadV2,
+} from "./library-core-normalized-segment-publication.js";
+export {
   publishLibraryCoreIntentCandidateV1,
   type LibraryCoreIntentHeadCompareAndSwapResultV1,
   type LibraryCoreIntentHeadReadV1,

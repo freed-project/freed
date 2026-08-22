@@ -4,6 +4,7 @@ export * from "./change-feed-contracts.js";
 export * from "./content-fetch-page-contracts.js";
 export * from "./sqlite-contract.generated.js";
 export * from "./normalized-checkpoint-contracts.js";
+export * from "./normalized-intent-segment-contracts.js";
 export * from "./normalized-result-segment-contracts.js";
 export * from "./normalized-checkpoint-stage-contracts.js";
 export * from "./normalized-feed-readers.js";

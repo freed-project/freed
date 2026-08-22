@@ -634,6 +634,25 @@ and exact object key. Followers verify both layers plus the logical
 `previous_result_digest` chain before passing canonical result bytes to SQLite
 for authority-signature verification and atomic reconciliation.
 
+Normalized intent segments also use protocol v2. Each immutable object contains
+one closed header followed by the canonical actor-signed operation envelopes
+themselves. A page contains at most 128 envelopes and at most 1,048,576
+canonical envelope bytes. It may begin or end inside a larger transaction. The
+actor counter, previous operation ID, and previous actor-chain digest remain
+contiguous inside every page, while the immutable head chains page ranges and
+stored-byte digests. The Primary stages each bounded page in SQLite. It does not
+verify, materialize, reject, or publish a result until all declared transaction
+members are present and the complete transaction passes actor, capability,
+epoch, signature, digest, precondition, and materialization checks in one
+SQLite transaction. A legal 1,000-member or 4,194,304-byte transaction never
+becomes one renderer response or one JavaScript authority object.
+
+Intent and result heads use the same exact publication algorithm. It verifies
+canonical starting head bytes, uploads and reads back the immutable object,
+advances the precise actor range through compare-and-swap, and treats response
+loss as success only when the complete canonical head bytes read back exactly.
+The two protocols retain distinct closed head types and sequence meanings.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 
