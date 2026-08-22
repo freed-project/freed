@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultPreferences, type FeedItem } from "@freed/shared";
+import type { DocState } from "./library-types";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -14,9 +16,51 @@ vi.mock("./library-core-normalized-query-client", () => ({
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 
-const { loadSqliteLibraryState, readSqliteItems } = await import(
-  "./sqlite-library"
-);
+const {
+  dispatchSqliteMutation,
+  loadSqliteLibraryState,
+  querySqliteItems,
+  readSqliteItems,
+} = await import("./sqlite-library");
+
+function emptyState(): DocState {
+  return {
+    items: [],
+    searchCorpusVersion: 0,
+    feeds: {},
+    persons: {},
+    accounts: {},
+    friends: {},
+    preferences: createDefaultPreferences(),
+    desktopClientIds: [],
+    feedUnreadCounts: {},
+    feedTotalCounts: {},
+    totalUnreadCount: 0,
+    unreadCountByPlatform: {},
+    totalItemCount: 0,
+    itemCountByPlatform: {},
+    totalArchivableCount: 0,
+    archivableCountByPlatform: {},
+    archivableFeedCounts: {},
+    mapFriendLocationCount: 0,
+    mapAllContentLocationCount: 0,
+    docItemCount: 0,
+  };
+}
+
+function item(): FeedItem {
+  return {
+    globalId: "rss:new-item",
+    platform: "rss",
+    contentType: "article",
+    capturedAt: 2,
+    publishedAt: 1,
+    author: { id: "author", handle: "author", displayName: "Author" },
+    content: { text: "Bounded", mediaUrls: [], mediaTypes: [] },
+    topics: [],
+    userState: { hidden: false, saved: false, archived: false, tags: [] },
+  };
+}
 
 describe("Freed Desktop normalized bootstrap projection", () => {
   beforeEach(() => {
@@ -37,7 +81,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           },
           summary: {
             archivedCount: 3,
-            archivableCount: 0,
+            archivableCount: 16,
             enabledRssFeedCount: 0,
             friendPersonCount: 0,
             platformCounts: [
@@ -144,5 +188,37 @@ describe("Freed Desktop normalized bootstrap projection", () => {
       }),
     );
     expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("refuses the historical generic item query in production", async () => {
+    await expect(querySqliteItems()).rejects.toThrow(
+      /generic item query is unavailable/,
+    );
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("fails closed instead of falling back to a whole-item write", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({ item: null });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "normalized_library_primary_mutation_context") {
+        return null;
+      }
+      if (command === "normalized_library_follower_mutation_context") {
+        throw new Error("normalized follower actor is not active");
+      }
+      throw new Error(`Unexpected native command: ${command}`);
+    });
+
+    await expect(
+      dispatchSqliteMutation(
+        { reqId: 1, type: "ADD_FEED_ITEM", item: item() },
+        emptyState(),
+      ),
+    ).rejects.toThrow(/whole-item upsert is unavailable/);
+    expect(
+      mocks.invoke.mock.calls.some(
+        ([command]) => command === "upsert_sqlite_library_items",
+      ),
+    ).toBe(false);
   });
 });

@@ -555,6 +555,7 @@ export async function captureDomFeed(
 | 5.94 | Replace Header Feed and provider-author labels plus Feed, platform, and Library totals with one exact indexed native SQLite scope query and the maintained facet row. The mounted Header retains no Feed, Account, per-Feed count, per-platform count, or total-item dictionary | High | ✓ Complete |
 | 5.95 | Require production renderer startup to obtain verified normalized SQLite authority from native startup, fail closed before loading Library state when migration or fresh genesis is unavailable, and keep portable shell setup confined to the isolated browser test projection | High | ✓ Complete |
 | 5.96 | Delete portable shell creation and historical authority bootstrap from the Desktop client. The browser harness now reports normalized authority before exposing its isolated in-memory view fixture and cannot create or select product storage | High | ✓ Complete |
+| 5.97 | Fence historical generic item queries, whole-item upserts, shell replacement, and ordinary generic mutations from production. Refresh follower aggregates through the normalized SQLite facet query. The existing provider delivery-state mutations remain on their unchanged path until their separately reviewed normalized cutover | High | ✓ Complete |
 
 ---
 

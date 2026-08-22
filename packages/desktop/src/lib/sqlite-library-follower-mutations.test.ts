@@ -185,6 +185,39 @@ describe("SQLite editable follower mutations", () => {
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "library_facet_summary_v1") {
+          return {
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+            summary: {
+              archivedCount: 0,
+              archivableCount: 1,
+              enabledRssFeedCount: 0,
+              friendPersonCount: 0,
+              platformCounts: [
+                {
+                  archivableCount: 1,
+                  platform: "rss",
+                  totalCount: 1,
+                  unreadCount: 0,
+                },
+              ],
+              rssFeedCount: 0,
+              sampleAccountCount: 0,
+              sampleFeedCount: 0,
+              sampleItemCount: 0,
+              samplePersonCount: 0,
+              savedArchivedCount: 0,
+              savedCount: 0,
+              savedPlatformCount: 0,
+              socialAccountCount: 0,
+              tags: [],
+              totalCount: 1,
+              unreadCount: 0,
+            },
+          };
+        }
         if (request.queryId === "item_detail_v1") {
           return {
             item: {

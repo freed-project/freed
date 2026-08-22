@@ -308,6 +308,13 @@ Delete:
 - dead migrations, repair routes, exports, tests, and vocabulary with no final
   product requirement
 
+Freed Desktop now rejects historical generic item queries, whole-item upserts,
+shell replacement, and ordinary generic mutations outside its browser test
+projection. Follower aggregate refreshes use the normalized SQLite facet query.
+The remaining provider delivery-state mutations retain their current behavior
+until that provider-visible path receives its separate review and normalized
+device-local storage cutover.
+
 Exit proof:
 
 - production bundles contain no retired runtime engine or payload

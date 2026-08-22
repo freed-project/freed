@@ -2017,15 +2017,27 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
     preferences,
     searchCorpusVersion: facets.source.transitionSequence,
     totalItemCount: facets.summary.totalCount,
-    totalArchivableCount: Math.max(
-      0,
-      facets.summary.totalCount - facets.summary.archivedCount,
-    ),
+    totalArchivableCount: facets.summary.archivableCount,
     docItemCount: facets.summary.totalCount,
   };
 }
 
+function requireBrowserTestProjection(operation: string): void {
+  if (import.meta.env.VITE_TEST_TAURI !== "1") {
+    throw new Error(
+      `Historical SQLite ${operation} is unavailable outside the browser test projection`,
+    );
+  }
+}
+
+const HISTORICAL_PROVIDER_STATE_MUTATIONS = new Set([
+  "confirm_liked",
+  "confirm_seen",
+  "toggle_liked",
+]);
+
 async function replaceShell(state: DocState): Promise<void> {
+  requireBrowserTestProjection("shell replacement");
   await invoke("replace_sqlite_library_shell", {
     request: { shellJson: encodeJson(shellFromState(state)) },
   });
@@ -2033,6 +2045,7 @@ async function replaceShell(state: DocState): Promise<void> {
 
 async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
   if (items.length === 0) return;
+  requireBrowserTestProjection("whole-item upsert");
   for (let start = 0; start < items.length; start += 1_000) {
     await invoke("upsert_sqlite_library_items", {
       request: {
@@ -2131,6 +2144,7 @@ export async function querySqliteItems(
   nextOffset: number | null;
   totalCount: number;
 }> {
+  requireBrowserTestProjection("generic item query");
   const result = await invoke<SqliteQueryResult>("query_sqlite_library_items", {
     request: {
       query: options.query ?? null,
@@ -2232,6 +2246,9 @@ async function mutateItems(
     maxAgeMs?: number;
   } = {},
 ): Promise<number> {
+  if (!HISTORICAL_PROVIDER_STATE_MUTATIONS.has(mutation)) {
+    requireBrowserTestProjection("generic item mutation");
+  }
   const ids = options.ids ?? [];
   const timestampMs = options.timestampMs ?? Date.now();
   const invokeBatch = (batch: readonly string[]) =>
@@ -2281,6 +2298,41 @@ function deepMerge<T>(current: T, update: Partial<T>): T {
 }
 
 async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
+  if (import.meta.env.VITE_TEST_TAURI !== "1") {
+    const facets = await queryNormalizedLibrary({
+      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    });
+    return {
+      ...state,
+      searchCorpusVersion: facets.source.transitionSequence,
+      feedUnreadCounts: {},
+      feedTotalCounts: {},
+      totalUnreadCount: facets.summary.unreadCount,
+      unreadCountByPlatform: Object.fromEntries(
+        facets.summary.platformCounts.map((count) => [
+          count.platform,
+          count.unreadCount,
+        ]),
+      ),
+      totalItemCount: facets.summary.totalCount,
+      itemCountByPlatform: Object.fromEntries(
+        facets.summary.platformCounts.map((count) => [
+          count.platform,
+          count.totalCount,
+        ]),
+      ),
+      totalArchivableCount: facets.summary.archivableCount,
+      archivableCountByPlatform: Object.fromEntries(
+        facets.summary.platformCounts.map((count) => [
+          count.platform,
+          count.archivableCount,
+        ]),
+      ),
+      archivableFeedCounts: {},
+      docItemCount: facets.summary.totalCount,
+    };
+  }
   const result = await invoke<SqliteCounts>("read_sqlite_library_counts");
   return {
     ...state,
