@@ -88,7 +88,7 @@ import {
   type RssFeedTitleAssignmentTransactionMemberInputV1,
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
-import { decodeJson, encodeJson } from "@freed/shared/projection";
+import { encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
@@ -1475,12 +1475,6 @@ export interface PortableSqliteLibraryImportRequest {
   sourceRevision: number;
 }
 
-interface SqliteQueryResult {
-  itemsJson: string[];
-  nextOffset: number | null;
-  totalCount: number;
-}
-
 export interface SqliteLibraryFacetSummary {
   archivedCount: number;
   sampleItemCount: number;
@@ -1960,37 +1954,32 @@ const HISTORICAL_PROVIDER_STATE_MUTATIONS = new Set([
 async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
   if (items.length === 0) return;
   requireBrowserTestProjection("whole-item upsert");
-  for (let start = 0; start < items.length; start += 1_000) {
-    await invoke("upsert_sqlite_library_items", {
-      request: {
-        itemsBase64: items
-          .slice(start, start + 1_000)
-          .map((item) => encodeUtf8Base64(encodeJson(item))),
-        updatedAtMs: Date.now(),
-      },
-    });
+  const captureItems = (
+    window as unknown as {
+      __FREED_E2E_NORMALIZED_CAPTURE_ITEMS__?: (
+        items: readonly FeedItem[],
+      ) => void;
+    }
+  ).__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__;
+  if (!captureItems) {
+    throw new Error("Browser SQLite test capture bridge is unavailable");
   }
+  captureItems(items);
 }
 
 export async function readSqliteItems(
   ids: readonly string[],
 ): Promise<FeedItem[]> {
   if (ids.length === 0) return [];
-  if (import.meta.env.VITE_TEST_TAURI !== "1") {
-    const items = await Promise.all(
-      ids.map((globalId) =>
-        readLibraryCoreNormalizedItemDetailV1(
-          NORMALIZED_MUTATION_READER_RUNTIME,
-          globalId,
-        ),
+  const items = await Promise.all(
+    ids.map((globalId) =>
+      readLibraryCoreNormalizedItemDetailV1(
+        NORMALIZED_MUTATION_READER_RUNTIME,
+        globalId,
       ),
-    );
-    return items.filter((item): item is FeedItem => item !== null);
-  }
-  const encoded = await invoke<string[]>("read_sqlite_library_items", {
-    request: { ids: [...ids] },
-  });
-  return encoded.map((item) => decodeJson(item) as FeedItem);
+    ),
+  );
+  return items.filter((item): item is FeedItem => item !== null);
 }
 
 async function insertMissingSqliteItems(
@@ -2029,124 +2018,50 @@ async function mergeIncomingSqliteItems(
   return merged;
 }
 
-export async function querySqliteItems(
-  options: {
-    query?: string;
+async function collectSqliteItemIds(
+  options: Readonly<{
     platform?: string;
-    authorId?: string;
     feedUrl?: string;
-    contentType?: string;
-    excludeContentType?: string;
-    tags?: readonly string[];
-    signals?: readonly string[];
-    authorKeys?: readonly Readonly<{ platform: string; authorId: string }>[];
-    hasLinkPreview?: boolean;
-    missingPreservedText?: boolean;
-    hasMedia?: boolean;
-    locationCandidate?: boolean;
-    includeTotalCount?: boolean;
     saved?: boolean;
     archived?: boolean;
-    showHidden?: boolean;
-    sortMode?:
-      "date_saved" | "date_published" | "recommended" | "shortest_read";
-    offset?: number;
-    limit?: number;
-  } = {},
-): Promise<{
-  items: FeedItem[];
-  nextOffset: number | null;
-  totalCount: number;
-}> {
-  requireBrowserTestProjection("generic item query");
-  const result = await invoke<SqliteQueryResult>("query_sqlite_library_items", {
-    request: {
-      query: options.query ?? null,
-      platform: options.platform ?? null,
-      authorId: options.authorId ?? null,
-      feedUrl: options.feedUrl ?? null,
-      contentType: options.contentType ?? null,
-      excludeContentType: options.excludeContentType ?? null,
-      tags: options.tags?.length ? [...options.tags] : null,
-      signals: options.signals?.length ? [...options.signals] : null,
-      authorKeys: options.authorKeys?.length ? [...options.authorKeys] : null,
-      hasLinkPreview: options.hasLinkPreview ?? null,
-      missingPreservedText: options.missingPreservedText ?? null,
-      hasMedia: options.hasMedia ?? null,
-      locationCandidate: options.locationCandidate ?? null,
-      includeTotalCount: options.includeTotalCount ?? true,
-      saved: options.saved ?? null,
-      archived: options.archived ?? null,
-      showHidden: options.showHidden ?? false,
-      sortMode: options.sortMode ?? null,
-      offset: options.offset ?? 0,
-      limit: options.limit ?? 64,
-    },
-  });
-  return {
-    items: result.itemsJson.map((item) => decodeJson(item) as FeedItem),
-    nextOffset: result.nextOffset,
-    totalCount: result.totalCount,
-  };
-}
-
-async function collectSqliteItemIds(
-  options: Parameters<typeof querySqliteItems>[0],
+  }>,
   include: (item: FeedItem) => boolean,
 ): Promise<string[]> {
   const filters = options ?? {};
-  if (import.meta.env.VITE_TEST_TAURI !== "1") {
-    const ids: string[] = [];
-    await scanLibraryCoreNormalizedBackgroundItemsV1(
-      NORMALIZED_MUTATION_READER_RUNTIME,
-      (items) => {
-        for (const item of items) {
-          if (
-            filters.platform !== undefined &&
-            item.platform !== filters.platform
-          ) {
-            continue;
-          }
-          if (
-            filters.feedUrl !== undefined &&
-            item.rssSource?.feedUrl !== filters.feedUrl
-          ) {
-            continue;
-          }
-          if (
-            filters.saved !== undefined &&
-            item.userState.saved !== filters.saved
-          ) {
-            continue;
-          }
-          if (
-            filters.archived !== undefined &&
-            item.userState.archived !== filters.archived
-          ) {
-            continue;
-          }
-          if (include(item)) ids.push(item.globalId);
-        }
-        return "continue";
-      },
-    );
-    return ids;
-  }
   const ids: string[] = [];
-  let offset: number | null = 0;
-  while (offset !== null) {
-    const page = await querySqliteItems({
-      ...filters,
-      includeTotalCount: false,
-      limit: 1_000,
-      offset,
-      showHidden: true,
-    });
-    for (const item of page.items) {
-      if (include(item)) ids.push(item.globalId);
-    }
-    offset = page.nextOffset;
-  }
+  await scanLibraryCoreNormalizedBackgroundItemsV1(
+    NORMALIZED_MUTATION_READER_RUNTIME,
+    (items) => {
+      for (const item of items) {
+        if (
+          filters.platform !== undefined &&
+          item.platform !== filters.platform
+        ) {
+          continue;
+        }
+        if (
+          filters.feedUrl !== undefined &&
+          item.rssSource?.feedUrl !== filters.feedUrl
+        ) {
+          continue;
+        }
+        if (
+          filters.saved !== undefined &&
+          item.userState.saved !== filters.saved
+        ) {
+          continue;
+        }
+        if (
+          filters.archived !== undefined &&
+          item.userState.archived !== filters.archived
+        ) {
+          continue;
+        }
+        if (include(item)) ids.push(item.globalId);
+      }
+      return "continue";
+    },
+  );
   return ids;
 }
 

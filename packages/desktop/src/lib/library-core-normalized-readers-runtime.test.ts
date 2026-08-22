@@ -3,19 +3,12 @@ import type { FeedItem } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
-  querySqliteItems: vi.fn(),
-  readSqliteItems: vi.fn(),
 }));
 
 vi.mock("./library-core-normalized-query-client", () => ({
   createDesktopLibraryCoreOperationId: (prefix: string) => `${prefix}:test`,
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
-vi.mock("./sqlite-library", () => ({
-  querySqliteItems: mocks.querySqliteItems,
-  readSqliteItems: mocks.readSqliteItems,
-}));
-
 const {
   readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
@@ -59,8 +52,6 @@ const feedCard = {
 describe("Freed Desktop normalized surface readers", () => {
   beforeEach(() => {
     mocks.queryNormalizedLibrary.mockReset();
-    mocks.querySqliteItems.mockReset();
-    mocks.readSqliteItems.mockReset();
   });
 
   it("reads detail, facets, and Saved analytics from typed SQLite queries", async () => {
@@ -139,8 +130,6 @@ describe("Freed Desktop normalized surface readers", () => {
       "library_facet_summary_v1",
       "saved_analytics_v2",
     ]);
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
-    expect(mocks.readSqliteItems).not.toHaveBeenCalled();
   });
 
   it("reads Map and Story Wall from their compact normalized projections", async () => {
@@ -201,7 +190,6 @@ describe("Freed Desktop normalized surface readers", () => {
         ([request]) => request.queryId,
       ),
     ).toEqual(["map_markers_v1", "story_wall_candidates_v1"]);
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 
   it("reads one Person timeline through the closed normalized query", async () => {
@@ -229,7 +217,6 @@ describe("Freed Desktop normalized surface readers", () => {
         queryId: "person_timeline_v1",
       }),
     );
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 
   it("reads one unlinked Account timeline through the closed normalized query", async () => {
@@ -257,7 +244,6 @@ describe("Freed Desktop normalized surface readers", () => {
         queryId: "account_timeline_v1",
       }),
     );
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 
   it("scans filtered background windows without the historical item reader", async () => {
@@ -289,6 +275,5 @@ describe("Freed Desktop normalized surface readers", () => {
     expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
       expect.objectContaining({ queryId: "background_item_page_v1" }),
     );
-    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });
 });

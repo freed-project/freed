@@ -238,20 +238,18 @@ function sqliteFacetSummary() {
   };
 }
 
-function sqliteUpsertItems(args: Record<string, unknown>): null {
+const browserTestWindow = window as unknown as {
+  __FREED_E2E_NORMALIZED_CAPTURE_ITEMS__?: (
+    items: readonly MockSqliteItem[],
+  ) => void;
+};
+browserTestWindow.__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__ ??= (items) => {
   const state = sqliteLibrary();
-  const request = (args.request ?? {}) as { itemsBase64?: string[] };
-  for (const encoded of request.itemsBase64 ?? []) {
-    const binary = atob(encoded);
-    const json = new TextDecoder().decode(
-      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
-    );
-    const item = JSON.parse(json) as MockSqliteItem;
-    state.items[item.globalId] = item;
+  for (const item of items) {
+    state.items[item.globalId] = structuredClone(item);
   }
   state.revision += 1;
-  return null;
-}
+};
 
 function sqliteAppendImportItems(args: Record<string, unknown>): null {
   const stage = sqliteImportStage();
@@ -385,72 +383,6 @@ const handlers: Record<string, Handler> = {
   read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
   bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
   read_sqlite_library_facet_summary: sqliteFacetSummary,
-  upsert_sqlite_library_items: sqliteUpsertItems,
-  read_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = args.request as { ids?: string[] };
-    return (request.ids ?? []).flatMap((id) => {
-      const item = sqliteLibrary().items[id];
-      return item && !item.__deleted ? [JSON.stringify(item)] : [];
-    });
-  },
-  query_sqlite_library_items: (args: Record<string, unknown>) => {
-    const request = (args.request ?? {}) as {
-      query?: string | null;
-      platform?: string | null;
-      authorId?: string | null;
-      authorKeys?: Array<{ platform: string; authorId: string }> | null;
-      feedUrl?: string | null;
-      contentType?: string | null;
-      excludeContentType?: string | null;
-      tags?: string[] | null;
-      signals?: string[] | null;
-      saved?: boolean | null;
-      archived?: boolean | null;
-      showHidden?: boolean;
-      offset?: number;
-      limit?: number;
-    };
-    const query = request.query?.toLowerCase() ?? "";
-    const items = Object.values(sqliteLibrary().items)
-      .filter((item) => {
-        const user = sqliteItemUserState(item);
-        const itemSignals = ((item.contentSignals as { tags?: string[] } | undefined)?.tags ?? []);
-        const authorKeys = request.authorKeys ?? [];
-        return !item.__deleted
-          && (!request.platform || item.platform === request.platform)
-          && (!request.contentType || item.contentType === request.contentType)
-          && (!request.excludeContentType || item.contentType !== request.excludeContentType)
-          && (request.saved == null || Boolean(user.saved) === request.saved)
-          && (request.archived == null || Boolean(user.archived) === request.archived)
-          && (request.showHidden || !user.hidden)
-          && (!request.authorId || item.author?.id === request.authorId)
-          && (!request.feedUrl || item.rssSource?.feedUrl === request.feedUrl)
-          && (authorKeys.length === 0 || authorKeys.some((key) =>
-            key.platform === item.platform && key.authorId === item.author?.id
-          ))
-          && (!request.tags?.length || request.tags.some((tag) =>
-            ((user.tags as string[] | undefined) ?? []).includes(tag)
-          ))
-          && (!request.signals?.length || request.signals.some((signal) =>
-            itemSignals.includes(signal)
-          ))
-          && (!query || JSON.stringify(item).toLowerCase().includes(query));
-      })
-      .sort((left, right) => {
-        const published = Number(right.publishedAt ?? 0) - Number(left.publishedAt ?? 0);
-        if (published !== 0) return published;
-        const captured = Number(right.capturedAt ?? 0) - Number(left.capturedAt ?? 0);
-        return captured !== 0 ? captured : left.globalId.localeCompare(right.globalId);
-      });
-    const offset = request.offset ?? 0;
-    const limit = Math.max(1, Math.min(request.limit ?? 64, 128));
-    const page = items.slice(offset, offset + limit);
-    return {
-      itemsJson: page.map((item) => JSON.stringify(item)),
-      nextOffset: offset + page.length < items.length ? offset + page.length : null,
-      totalCount: items.length,
-    };
-  },
   mutate_sqlite_library_items: (args: Record<string, unknown>) => {
     const request = (args.request ?? {}) as {
       mutation?: string;

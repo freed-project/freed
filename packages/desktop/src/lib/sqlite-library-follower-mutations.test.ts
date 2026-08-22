@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences, type FeedItem } from "@freed/shared";
+import { createDefaultPreferences } from "@freed/shared";
 import type { DocState } from "./library-types";
 
 const mocks = vi.hoisted(() => ({
@@ -16,26 +16,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 import { dispatchSqliteMutation } from "./sqlite-library";
 
 const ITEM_ID = "rss:follower-item";
-
-function item(readAt?: number): FeedItem {
-  return {
-    globalId: ITEM_ID,
-    platform: "rss",
-    contentType: "article",
-    capturedAt: 1,
-    publishedAt: 1,
-    author: { id: "author", handle: "author", displayName: "Author" },
-    content: { text: ITEM_ID, mediaUrls: [], mediaTypes: [] },
-    topics: [],
-    userState: {
-      hidden: false,
-      saved: false,
-      archived: false,
-      tags: [],
-      ...(readAt === undefined ? {} : { readAt }),
-    },
-  };
-}
 
 function normalizedRow(globalId = ITEM_ID) {
   return {
@@ -159,9 +139,6 @@ describe("SQLite editable follower mutations", () => {
           state: "pending",
         };
       }
-      if (command === "read_sqlite_library_items") {
-        return [JSON.stringify(item(1_000))];
-      }
       if (command === "query_normalized_library") {
         const request = (
           args as { request: { queryId: string; schemaVersion: number } }
@@ -225,16 +202,6 @@ describe("SQLite editable follower mutations", () => {
             source,
           };
         }
-      }
-      if (command === "query_sqlite_library_items") {
-        return {
-          itemsJson: [
-            JSON.stringify(item()),
-            JSON.stringify({ ...item(), globalId: "rss:follower-item-2" }),
-          ],
-          nextOffset: null,
-          totalCount: 2,
-        };
       }
       throw new Error(`Unexpected native command: ${command}`);
     });
@@ -566,9 +533,6 @@ describe("SQLite Primary mutations", () => {
           };
         }
       }
-      if (command === "read_sqlite_library_items") {
-        return [JSON.stringify(item(1_000))];
-      }
       throw new Error(`Unexpected native command: ${command}`);
     });
   });
@@ -605,11 +569,6 @@ describe("SQLite Primary mutations", () => {
       "mutate_sqlite_library_items",
       expect.anything(),
     );
-    expect(
-      mocks.invoke.mock.calls.some(
-        ([command]) => command === "read_sqlite_library_items",
-      ),
-    ).toBe(false);
   });
 
   it("reads an exact Person before applying a partial normalized update", async () => {

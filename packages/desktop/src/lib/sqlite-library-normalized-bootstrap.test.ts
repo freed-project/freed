@@ -19,7 +19,6 @@ vi.mock("./library-core-normalized-query-client", () => ({
 const {
   dispatchSqliteMutation,
   loadSqliteLibraryState,
-  querySqliteItems,
   readSqliteItems,
 } = await import("./sqlite-library");
 
@@ -190,13 +189,6 @@ describe("Freed Desktop normalized bootstrap projection", () => {
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
-  it("refuses the historical generic item query in production", async () => {
-    await expect(querySqliteItems()).rejects.toThrow(
-      /generic item query is unavailable/,
-    );
-    expect(mocks.invoke).not.toHaveBeenCalled();
-  });
-
   it("fails closed instead of falling back to a whole-item write", async () => {
     mocks.queryNormalizedLibrary.mockResolvedValue({ item: null });
     mocks.invoke.mockImplementation(async (command: string) => {
@@ -215,10 +207,5 @@ describe("Freed Desktop normalized bootstrap projection", () => {
         emptyState(),
       ),
     ).rejects.toThrow(/whole-item upsert is unavailable/);
-    expect(
-      mocks.invoke.mock.calls.some(
-        ([command]) => command === "upsert_sqlite_library_items",
-      ),
-    ).toBe(false);
   });
 });

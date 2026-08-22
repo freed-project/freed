@@ -115,21 +115,14 @@ export function tauriInitScript(): string {
         totalCount: items.length,
       };
     }
-    function sqliteUpsertItems(args) {
+    window.__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__ = function(items) {
       var state = sqliteState();
-      var request = args && args.request ? args.request : {};
-      (request.itemsBase64 || []).forEach(function(encoded) {
-        var binary = atob(encoded);
-        var bytes = Uint8Array.from(binary, function(character) {
-          return character.charCodeAt(0);
-        });
-        var item = JSON.parse(new TextDecoder().decode(bytes));
-        state.items[item.globalId] = item;
+      (items || []).forEach(function(item) {
+        state.items[item.globalId] = JSON.parse(JSON.stringify(item));
       });
       state.revision += 1;
       persistSqliteState();
-      return null;
-    }
+    };
     function sqliteAppendImportItems(args) {
       var stage = window.__TAURI_MOCK_SQLITE_IMPORT_STAGE__;
       if (!stage) throw new Error('SQLite Library has no active staged import');
@@ -386,6 +379,25 @@ export function tauriInitScript(): string {
           source: source,
         };
       }
+      if (request.queryId === 'item_detail_v1') {
+        var item = state.items[request.globalId];
+        return {
+          item: item && !item.__deleted ? {
+            card: sqliteFeedCard(item),
+            contentBody: {
+              blobDigest: null,
+              storage: item.content && item.content.text ? 'inline' : 'none',
+            },
+            preservedBody: {
+              blobDigest: null,
+              storage: 'none',
+            },
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'background_item_page_v1') {
         var backgroundRows = Object.values(sqliteState().items)
           .filter(function(item) { return item && !item.__deleted; })
@@ -540,7 +552,6 @@ export function tauriInitScript(): string {
       bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
-      upsert_sqlite_library_items: sqliteUpsertItems,
       mutate_sqlite_library_items: sqliteMutateItems,
       set_sqlite_library_cloud_writer_admission: (args) => {
         var request = args.request;
@@ -598,58 +609,6 @@ export function tauriInitScript(): string {
           resultCount: (request.entries || []).length,
           segmentDigest: request.segmentDigest,
           status: 'imported',
-        };
-      },
-      read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
-        var item = sqliteState().items[id];
-        return item && !item.__deleted ? JSON.stringify(item) : null;
-      }).filter(Boolean),
-      query_sqlite_library_items: (args) => {
-        if (window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ === true) {
-          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = false;
-          return {
-            itemsJson: [],
-            nextOffset: null,
-            totalCount: 0,
-          };
-        }
-        var request = args.request || {};
-        var query = (request.query || '').toLowerCase();
-        var items = Object.values(sqliteState().items).filter(function(item) {
-          var user = sqliteItemState(item);
-          var authorKeys = request.authorKeys || [];
-          var itemSignals = item.contentSignals && item.contentSignals.tags || [];
-          return !item.__deleted
-            && (!request.platform || item.platform === request.platform)
-            && (!request.contentType || item.contentType === request.contentType)
-            && (!request.excludeContentType || item.contentType !== request.excludeContentType)
-            && (request.saved == null || !!user.saved === request.saved)
-            && (request.archived == null || !!user.archived === request.archived)
-            && (request.showHidden || !user.hidden)
-            && (!request.authorId || (item.author && item.author.id === request.authorId))
-            && (!request.feedUrl || (item.rssSource && item.rssSource.feedUrl === request.feedUrl))
-            && (!authorKeys.length || authorKeys.some(function(key) {
-              return key.platform === item.platform && key.authorId === (item.author && item.author.id);
-            }))
-            && (!request.tags || !request.tags.length || request.tags.some(function(tag) {
-              return (user.tags || []).includes(tag);
-            }))
-            && (!request.signals || !request.signals.length || request.signals.some(function(signal) {
-              return itemSignals.includes(signal);
-            }))
-            && (!query || JSON.stringify(item).toLowerCase().includes(query));
-        }).sort(function(left, right) {
-          return (right.publishedAt || 0) - (left.publishedAt || 0)
-            || (right.capturedAt || 0) - (left.capturedAt || 0)
-            || String(left.globalId).localeCompare(String(right.globalId));
-        });
-        var offset = request.offset || 0;
-        var limit = Math.max(1, Math.min(request.limit || 64, 128));
-        var page = items.slice(offset, offset + limit);
-        return {
-          itemsJson: page.map(JSON.stringify),
-          nextOffset: offset + page.length < items.length ? offset + page.length : null,
-          totalCount: items.length,
         };
       },
       fetch_url: () => '',
