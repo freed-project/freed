@@ -14,7 +14,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "b82ac2c1131531e0ff7c6a5bd30ad14bd925e04924231c5ea90780bb009db507";
+    "1a96a7f9441207ab6d7d4aec2025bbe6089693cf03b4d7a974e0ed5b44786ced";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -585,6 +585,15 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
     ("account_graph_position_set_v1", 1, "Account", "SELECT EXISTS(SELECT 1 FROM library_accounts WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_account_graph_layout (account_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(account_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
     ("person_graph_position_clear_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "DELETE FROM library_device_person_graph_layout WHERE person_id = ?1 COLLATE BINARY;"),
     ("person_graph_position_set_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_person_graph_layout (person_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(person_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
+];
+
+pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[
+    ("append", "INSERT INTO library_device_scope_action_members (action_id, ordinal, global_id) SELECT ?1, ?2 + CAST(key AS INTEGER), value FROM json_each(?3);"),
+    ("create", "INSERT INTO library_device_scope_actions (action_id, action_kind, request_digest, state, member_count, created_at) VALUES (?1, ?2, ?3, 'staging', 0, ?4);"),
+    ("delete", "DELETE FROM library_device_scope_actions WHERE action_id = ?1;"),
+    ("finalize", "UPDATE library_device_scope_actions SET state = 'ready' WHERE action_id = ?1 AND state = 'staging' AND member_count = ?2;"),
+    ("page", "SELECT member.ordinal, member.global_id FROM library_device_scope_action_members AS member JOIN library_device_scope_actions AS action ON action.action_id = member.action_id WHERE member.action_id = ?1 AND action.state = 'ready' AND member.ordinal > ?2 ORDER BY member.ordinal LIMIT ?3;"),
+    ("status", "SELECT action_kind, request_digest, state, member_count FROM library_device_scope_actions WHERE action_id = ?1;"),
 ];
 
 pub const QUERY_IDS: &[&str] = &[

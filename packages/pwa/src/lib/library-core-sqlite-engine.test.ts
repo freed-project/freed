@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
+import {
+  CONTENT_SIGNAL_KEYS,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+} from "@freed/shared";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import sqlite3InitModule, {
   type Database,
@@ -67,6 +70,52 @@ describe("PWA Library Core SQLite engine", () => {
       )
       .digest("hex");
   }
+
+  it("freezes and pages a device-local scope action outside checkpoints", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    const request = {
+      action: "read" as const,
+      filter: normalizeLibraryCoreFeedBrowseFilterV1({ platform: "rss" }),
+      identityMode: "all_content" as const,
+      query: null,
+      schemaVersion: 1 as const,
+    };
+    expect(engine.beginScopeAction("stage:1", request, 10)).toEqual({
+      memberCount: 0,
+      stageId: "stage:1",
+      state: "staging",
+    });
+    engine.appendScopeAction("stage:1", 0, ["item:1", "item:2"]);
+    expect(engine.pageScopeAction("stage:1", -1)).toEqual({
+      entityIds: [],
+      nextOrdinal: -1,
+      stageId: "stage:1",
+    });
+    expect(() => engine.appendScopeAction("stage:1", 0, ["item:3"])).toThrow(
+      "append fence is stale",
+    );
+    expect(engine.finalizeScopeAction("stage:1", 2)).toMatchObject({
+      memberCount: 2,
+      state: "ready",
+    });
+    expect(engine.pageScopeAction("stage:1", -1)).toEqual({
+      entityIds: ["item:1", "item:2"],
+      nextOrdinal: 1,
+      stageId: "stage:1",
+    });
+    engine.closeScopeAction("stage:1");
+    expect(
+      database.exec({
+        sql: "SELECT count(*) FROM library_device_scope_actions;",
+        rowMode: 0,
+        returnValue: "resultRows",
+      }),
+    ).toEqual([0]);
+  });
 
   function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
     return createLibraryCoreNormalizedCheckpointRecordV2({

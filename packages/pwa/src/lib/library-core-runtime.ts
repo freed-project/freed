@@ -67,6 +67,11 @@ import {
   type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
 import {
+  appendPwaScopeActionStage,
+  beginPwaScopeActionStage,
+  closePwaScopeActionStage,
+  finalizePwaScopeActionStage,
+  pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
@@ -793,6 +798,7 @@ export async function executePwaLibraryCoreScopeAction(
   request: LibraryCoreScopeActionRequestV1,
 ): Promise<LibraryCoreScopeActionReceiptV1> {
   const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  let stagedCount = 0;
   return executeLibraryCoreScopeActionV1(request, {
     scan: async (visit) => {
       if (request.query !== null) {
@@ -826,6 +832,26 @@ export async function executePwaLibraryCoreScopeAction(
         await reader.close();
       }
     },
+    beginStage: async (stageRequest) => {
+      const stageId = `scope-action:${crypto.randomUUID()}`;
+      stagedCount = 0;
+      await beginPwaScopeActionStage(stageId, stageRequest);
+      return stageId;
+    },
+    appendStage: async (stageId, entityIds) => {
+      await appendPwaScopeActionStage(stageId, stagedCount, entityIds);
+      stagedCount += entityIds.length;
+    },
+    finalizeStage: (stageId) =>
+      finalizePwaScopeActionStage(stageId, stagedCount),
+    readStage: async (stageId, afterOrdinal) => {
+      const page = await pagePwaScopeActionStage(stageId, afterOrdinal);
+      return {
+        entityIds: page.entityIds,
+        nextOrdinal: page.nextOrdinal,
+      };
+    },
+    closeStage: closePwaScopeActionStage,
     commitBatch: async (action, entityIds) => {
       if (action === "read") {
         await enqueuePwaLibraryCoreReadAssignments(entityIds);
@@ -915,10 +941,7 @@ export const readPwaLibraryCoreSavedAnalytics: NonNullable<
 export const readPwaLibraryCoreFriendsGraph: NonNullable<
   PlatformConfig["readLibraryFriendsGraph"]
 > = (request) =>
-  readLibraryCoreNormalizedPersonsGraphV1(
-    NORMALIZED_READER_RUNTIME,
-    request,
-  );
+  readLibraryCoreNormalizedPersonsGraphV1(NORMALIZED_READER_RUNTIME, request);
 
 /** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<

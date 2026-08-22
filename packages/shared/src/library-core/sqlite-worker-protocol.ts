@@ -156,6 +156,12 @@ import {
   type LibraryCorePersonsGraphRequestV1,
   type LibraryCorePersonsGraphResponseV1,
 } from "./persons-graph-contracts.js";
+import {
+  parseLibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionStagePageV1,
+  type LibraryCoreScopeActionStageStatusV1,
+} from "./scope-action-contracts.js";
 
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
@@ -214,19 +220,19 @@ export type LibraryCoreSqliteQueryResponseFor<
                             ? LibraryCorePersonTimelineResponseV1
                             : T extends LibraryCorePersonsGraphRequestV1
                               ? LibraryCorePersonsGraphResponseV1
-                            : T extends LibraryCoreRssFeedGraphPageRequestV1
-                              ? LibraryCoreRssFeedGraphPageResponseV1
-                              : T extends LibraryCoreSavedAnalyticsRequestV2
-                                ? LibraryCoreSavedAnalyticsResponseV2
-                                : T extends LibraryCoreSavedFeedPageRequestV2
-                                  ? LibraryCoreSavedFeedPageResponseV2
-                                  : T extends LibraryCoreSearchPageRequestV1
-                                    ? LibraryCoreSearchPageResponseV1
-                                  : T extends LibraryCoreStoryWallCandidatesRequestV1
-                                    ? LibraryCoreStoryWallCandidatesResponseV1
-                                    : T extends LibraryCorePreferencesSnapshotRequestV1
-                                      ? LibraryCorePreferencesSnapshotResponseV1
-                                      : never;
+                              : T extends LibraryCoreRssFeedGraphPageRequestV1
+                                ? LibraryCoreRssFeedGraphPageResponseV1
+                                : T extends LibraryCoreSavedAnalyticsRequestV2
+                                  ? LibraryCoreSavedAnalyticsResponseV2
+                                  : T extends LibraryCoreSavedFeedPageRequestV2
+                                    ? LibraryCoreSavedFeedPageResponseV2
+                                    : T extends LibraryCoreSearchPageRequestV1
+                                      ? LibraryCoreSearchPageResponseV1
+                                      : T extends LibraryCoreStoryWallCandidatesRequestV1
+                                        ? LibraryCoreStoryWallCandidatesResponseV1
+                                        : T extends LibraryCorePreferencesSnapshotRequestV1
+                                          ? LibraryCorePreferencesSnapshotResponseV1
+                                          : never;
 
 /** Validates one native or browser query response against its exact request. */
 export function parseLibraryCoreSqliteQueryResponse<
@@ -275,33 +281,36 @@ export function parseLibraryCoreSqliteQueryResponse<
                                       value,
                                       request,
                                     )
-                                : request.queryId === "preferences_snapshot_v1"
-                                  ? parseLibraryCorePreferencesSnapshotResponseV1(
-                                      value,
-                                    )
-                                  : request.queryId === "rss_feed_graph_page_v1"
-                                    ? parseLibraryCoreRssFeedGraphPageResponseV1(
+                                  : request.queryId ===
+                                      "preferences_snapshot_v1"
+                                    ? parseLibraryCorePreferencesSnapshotResponseV1(
                                         value,
-                                        request,
                                       )
-                                    : request.queryId === "saved_analytics_v2"
-                                      ? parseLibraryCoreSavedAnalyticsResponseV2(
+                                    : request.queryId ===
+                                        "rss_feed_graph_page_v1"
+                                      ? parseLibraryCoreRssFeedGraphPageResponseV1(
                                           value,
+                                          request,
                                         )
-                                      : request.queryId === "saved_feed_page_v2"
-                                        ? parseLibraryCoreSavedFeedPageResponseV2(
+                                      : request.queryId === "saved_analytics_v2"
+                                        ? parseLibraryCoreSavedAnalyticsResponseV2(
                                             value,
-                                            request,
                                           )
-                                        : request.queryId === "search_page_v1"
-                                          ? parseLibraryCoreSearchPageResponseV1(
+                                        : request.queryId ===
+                                            "saved_feed_page_v2"
+                                          ? parseLibraryCoreSavedFeedPageResponseV2(
                                               value,
                                               request,
                                             )
-                                        : parseLibraryCoreStoryWallCandidatesResponseV1(
-                                            value,
-                                            request,
-                                          );
+                                          : request.queryId === "search_page_v1"
+                                            ? parseLibraryCoreSearchPageResponseV1(
+                                                value,
+                                                request,
+                                              )
+                                            : parseLibraryCoreStoryWallCandidatesResponseV1(
+                                                value,
+                                                request,
+                                              );
   if (!parsed.ok) {
     throw new TypeError(parsed.error);
   }
@@ -377,6 +386,42 @@ export type LibraryCoreSqliteWorkerRequest =
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
       stageId: string;
+    }>
+  | Readonly<{
+      createdAt: number;
+      kind: "begin_scope_action";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      request: LibraryCoreScopeActionRequestV1;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
+      entityIds: readonly string[];
+      expectedOrdinal: number;
+      kind: "append_scope_action";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
+      expectedMemberCount: number;
+      kind: "finalize_scope_action";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
+      afterOrdinal: number;
+      kind: "page_scope_action";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
+      kind: "close_scope_action";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
     }>;
 
 export interface LibraryCoreSqliteWorkerStatus {
@@ -418,7 +463,9 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreFollowerIntentCommitResultV1
   | LibraryCoreFollowerIntentPageResponseV1
   | LibraryCoreFollowerIntentPublicationReceiptV1
-  | LibraryCoreFollowerResultApplyReceiptV1;
+  | LibraryCoreFollowerResultApplyReceiptV1
+  | LibraryCoreScopeActionStagePageV1
+  | LibraryCoreScopeActionStageStatusV1;
 
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
@@ -451,6 +498,18 @@ function isClosedRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function isBoundedWorkerIdentity(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 255;
+}
+
+function isBoundedScopeEntityId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    new TextEncoder().encode(value).length <= 4_096
+  );
+}
+
 export function parseLibraryCoreSqliteWorkerRequest(
   value: unknown,
 ): LibraryCoreSqliteWorkerRequest {
@@ -477,7 +536,48 @@ export function parseLibraryCoreSqliteWorkerRequest(
                     ? ["kind", "page", "protocolVersion", "requestId"]
                     : value.kind === "activate_normalized_checkpoint_stage"
                       ? ["kind", "protocolVersion", "requestId", "stageId"]
-                      : ["kind", "protocolVersion", "requestId"];
+                      : value.kind === "begin_scope_action"
+                        ? [
+                            "createdAt",
+                            "kind",
+                            "protocolVersion",
+                            "request",
+                            "requestId",
+                            "stageId",
+                          ]
+                        : value.kind === "append_scope_action"
+                          ? [
+                              "entityIds",
+                              "expectedOrdinal",
+                              "kind",
+                              "protocolVersion",
+                              "requestId",
+                              "stageId",
+                            ]
+                          : value.kind === "finalize_scope_action"
+                            ? [
+                                "expectedMemberCount",
+                                "kind",
+                                "protocolVersion",
+                                "requestId",
+                                "stageId",
+                              ]
+                            : value.kind === "page_scope_action"
+                              ? [
+                                  "afterOrdinal",
+                                  "kind",
+                                  "protocolVersion",
+                                  "requestId",
+                                  "stageId",
+                                ]
+                              : value.kind === "close_scope_action"
+                                ? [
+                                    "kind",
+                                    "protocolVersion",
+                                    "requestId",
+                                    "stageId",
+                                  ]
+                                : ["kind", "protocolVersion", "requestId"];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
@@ -486,11 +586,16 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "apply_follower_result",
       "append_normalized_checkpoint_stage_page",
       "begin_normalized_checkpoint_stage",
+      "begin_scope_action",
       "close",
+      "close_scope_action",
       "commit_follower_intent",
+      "append_scope_action",
+      "finalize_scope_action",
       "mutate_device_graph_layout",
       "open",
       "page_follower_intents",
+      "page_scope_action",
       "publish_follower_intent",
       "query",
       "status",
@@ -536,46 +641,47 @@ export function parseLibraryCoreSqliteWorkerRequest(
                               ? parseLibraryCorePersonGraphPageRequestV1(
                                   value.query,
                                 )
-                            : value.query.queryId === "person_timeline_v1"
-                              ? parseLibraryCorePersonTimelineRequestV1(
-                                  value.query,
-                                )
-                              : value.query.queryId === "persons_graph_v1"
-                                ? parseLibraryCorePersonsGraphRequestV1(
+                              : value.query.queryId === "person_timeline_v1"
+                                ? parseLibraryCorePersonTimelineRequestV1(
                                     value.query,
                                   )
-                                : value.query.queryId ===
-                                    "rss_feed_graph_page_v1"
-                                  ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                                : value.query.queryId === "persons_graph_v1"
+                                  ? parseLibraryCorePersonsGraphRequestV1(
                                       value.query,
                                     )
-                                  : value.query.queryId === "saved_analytics_v2"
-                                    ? parseLibraryCoreSavedAnalyticsRequestV2(
+                                  : value.query.queryId ===
+                                      "rss_feed_graph_page_v1"
+                                    ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                         value.query,
                                       )
                                     : value.query.queryId ===
-                                        "saved_feed_page_v2"
-                                      ? parseLibraryCoreSavedFeedPageRequestV2(
+                                        "saved_analytics_v2"
+                                      ? parseLibraryCoreSavedAnalyticsRequestV2(
                                           value.query,
                                         )
                                       : value.query.queryId ===
-                                          "story_wall_candidates_v1"
-                                        ? parseLibraryCoreStoryWallCandidatesRequestV1(
+                                          "saved_feed_page_v2"
+                                        ? parseLibraryCoreSavedFeedPageRequestV2(
                                             value.query,
                                           )
                                         : value.query.queryId ===
-                                            "search_page_v1"
-                                          ? parseLibraryCoreSearchPageRequestV1(
+                                            "story_wall_candidates_v1"
+                                          ? parseLibraryCoreStoryWallCandidatesRequestV1(
                                               value.query,
                                             )
-                                        : value.query.queryId ===
-                                            "preferences_snapshot_v1"
-                                          ? parseLibraryCorePreferencesSnapshotRequestV1(
-                                              value.query,
-                                            )
-                                          : parseLibraryCoreFeedPageRequestV1(
-                                              value.query,
-                                            )
+                                          : value.query.queryId ===
+                                              "search_page_v1"
+                                            ? parseLibraryCoreSearchPageRequestV1(
+                                                value.query,
+                                              )
+                                            : value.query.queryId ===
+                                                "preferences_snapshot_v1"
+                                              ? parseLibraryCorePreferencesSnapshotRequestV1(
+                                                  value.query,
+                                                )
+                                              : parseLibraryCoreFeedPageRequestV1(
+                                                  value.query,
+                                                )
       : parseLibraryCoreFeedPageRequestV1(value.query);
     if (!query.ok) throw new TypeError(query.error);
   } else if (value.kind === "mutate_device_graph_layout") {
@@ -583,6 +689,47 @@ export function parseLibraryCoreSqliteWorkerRequest(
       value.mutation,
     );
     if (!mutation.ok) throw new TypeError(mutation.error);
+  } else if (value.kind === "begin_scope_action") {
+    const request = parseLibraryCoreScopeActionRequestV1(value.request);
+    if (
+      !isBoundedWorkerIdentity(value.stageId) ||
+      !Number.isSafeInteger(value.createdAt) ||
+      Number(value.createdAt) < 0
+    )
+      throw new TypeError("SQLite scope action begin request is invalid");
+    return Object.freeze({
+      ...value,
+      request,
+    }) as LibraryCoreSqliteWorkerRequest;
+  } else if (value.kind === "append_scope_action") {
+    if (
+      !isBoundedWorkerIdentity(value.stageId) ||
+      !Number.isSafeInteger(value.expectedOrdinal) ||
+      Number(value.expectedOrdinal) < 0 ||
+      !Array.isArray(value.entityIds) ||
+      value.entityIds.length < 1 ||
+      value.entityIds.length > 256 ||
+      value.entityIds.some((id) => !isBoundedScopeEntityId(id))
+    )
+      throw new TypeError("SQLite scope action append request is invalid");
+  } else if (value.kind === "finalize_scope_action") {
+    if (
+      !isBoundedWorkerIdentity(value.stageId) ||
+      !Number.isSafeInteger(value.expectedMemberCount) ||
+      Number(value.expectedMemberCount) < 0
+    )
+      throw new TypeError("SQLite scope action finalize request is invalid");
+  } else if (value.kind === "page_scope_action") {
+    if (
+      !isBoundedWorkerIdentity(value.stageId) ||
+      !Number.isSafeInteger(value.afterOrdinal) ||
+      Number(value.afterOrdinal) < -1
+    )
+      throw new TypeError("SQLite scope action page request is invalid");
+  } else if (value.kind === "close_scope_action") {
+    if (!isBoundedWorkerIdentity(value.stageId)) {
+      throw new TypeError("SQLite scope action close request is invalid");
+    }
   } else if (value.kind === "commit_follower_intent") {
     const commit = parseLibraryCoreFollowerIntentCommitV1(value.commit);
     return Object.freeze({
@@ -697,6 +844,78 @@ export function createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
     mutation,
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
+  });
+}
+
+export function createLibraryCoreSqliteBeginScopeActionWorkerRequest(
+  requestId: string,
+  stageId: string,
+  request: LibraryCoreScopeActionRequestV1,
+  createdAt: number,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    createdAt,
+    kind: "begin_scope_action",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    request,
+    requestId,
+    stageId,
+  });
+}
+
+export function createLibraryCoreSqliteAppendScopeActionWorkerRequest(
+  requestId: string,
+  stageId: string,
+  expectedOrdinal: number,
+  entityIds: readonly string[],
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    entityIds: [...entityIds],
+    expectedOrdinal,
+    kind: "append_scope_action",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    stageId,
+  });
+}
+
+export function createLibraryCoreSqliteFinalizeScopeActionWorkerRequest(
+  requestId: string,
+  stageId: string,
+  expectedMemberCount: number,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    expectedMemberCount,
+    kind: "finalize_scope_action",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    stageId,
+  });
+}
+
+export function createLibraryCoreSqlitePageScopeActionWorkerRequest(
+  requestId: string,
+  stageId: string,
+  afterOrdinal: number,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    afterOrdinal,
+    kind: "page_scope_action",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    stageId,
+  });
+}
+
+export function createLibraryCoreSqliteCloseScopeActionWorkerRequest(
+  requestId: string,
+  stageId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({
+    kind: "close_scope_action",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+    requestId,
+    stageId,
   });
 }
 

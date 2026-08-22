@@ -5,6 +5,11 @@ import {
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
+  createLibraryCoreSqliteBeginScopeActionWorkerRequest,
+  createLibraryCoreSqliteAppendScopeActionWorkerRequest,
+  createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
+  createLibraryCoreSqlitePageScopeActionWorkerRequest,
+  createLibraryCoreSqliteCloseScopeActionWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
@@ -31,6 +36,9 @@ import {
   type LibraryCoreNormalizedCheckpointStagePageV2,
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionStagePageV1,
+  type LibraryCoreScopeActionStageStatusV1,
 } from "@freed/shared/library-core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -87,6 +95,70 @@ export class PwaLibraryCoreSqliteClient {
         requestId,
         mutation,
       ),
+    );
+  }
+
+  beginScopeAction(
+    stageId: string,
+    request: LibraryCoreScopeActionRequestV1,
+    createdAt: number,
+  ): Promise<LibraryCoreScopeActionStageStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteBeginScopeActionWorkerRequest(
+        requestId,
+        stageId,
+        request,
+        createdAt,
+      ),
+    );
+  }
+
+  appendScopeAction(
+    stageId: string,
+    expectedOrdinal: number,
+    entityIds: readonly string[],
+  ): Promise<LibraryCoreScopeActionStageStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteAppendScopeActionWorkerRequest(
+        requestId,
+        stageId,
+        expectedOrdinal,
+        entityIds,
+      ),
+    );
+  }
+
+  finalizeScopeAction(
+    stageId: string,
+    expectedMemberCount: number,
+  ): Promise<LibraryCoreScopeActionStageStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteFinalizeScopeActionWorkerRequest(
+        requestId,
+        stageId,
+        expectedMemberCount,
+      ),
+    );
+  }
+
+  pageScopeAction(
+    stageId: string,
+    afterOrdinal: number,
+  ): Promise<LibraryCoreScopeActionStagePageV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqlitePageScopeActionWorkerRequest(
+        requestId,
+        stageId,
+        afterOrdinal,
+      ),
+    );
+  }
+
+  closeScopeAction(
+    stageId: string,
+  ): Promise<LibraryCoreScopeActionStageStatusV1> {
+    return this.#send((requestId) =>
+      createLibraryCoreSqliteCloseScopeActionWorkerRequest(requestId, stageId),
     );
   }
 

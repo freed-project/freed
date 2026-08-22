@@ -7,6 +7,7 @@ import {
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
+  LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_CHECKPOINT_IMPORT_PROGRAMS,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
@@ -109,6 +110,11 @@ import {
   parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
+  digestLibraryCoreScopeActionRequestV1,
+  parseLibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreScopeActionStagePageV1,
+  type LibraryCoreScopeActionStageStatusV1,
   encodeLibraryCoreCanonicalBase64,
   assertLibraryCoreNormalizedCheckpointPageBytesV2,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -421,9 +427,13 @@ function searchScoreFromSqliteRow(
   };
   const nullableSearchText = (key: string) =>
     row[key] === null ? "" : text(row[key], `search ${key}`);
-  const joined = (key: string) => stringArray(row[key], `search ${key}`).join(" ");
+  const joined = (key: string) =>
+    stringArray(row[key], `search ${key}`).join(" ");
   collect(nullableSearchText("linkPreviewTitle"), 4);
-  collect(`${joined("searchTopicsJson")} ${joined("contentSignalTagsJson")}`, 3);
+  collect(
+    `${joined("searchTopicsJson")} ${joined("contentSignalTagsJson")}`,
+    3,
+  );
   collect(
     [
       nullableSearchText("searchEventTitle"),
@@ -443,11 +453,8 @@ function searchScoreFromSqliteRow(
   collect(joined("searchHighlightsJson"), 2);
   collect(nullableSearchText("searchPreservedText"), 1);
   collect(nullableSearchText("searchAccountAliases"), 3, 384);
-  return scoreLibraryCoreSearchFieldsWithBudgetV1(
-    fields,
-    queryTerms,
-    65_536,
-  ).score;
+  return scoreLibraryCoreSearchFieldsWithBudgetV1(fields, queryTerms, 65_536)
+    .score;
 }
 
 export class PwaLibraryCoreSqliteEngine {
@@ -2429,6 +2436,138 @@ export class PwaLibraryCoreSqliteEngine {
     });
   }
 
+  beginScopeAction(
+    stageId: string,
+    input: LibraryCoreScopeActionRequestV1,
+    createdAt: number,
+  ): LibraryCoreScopeActionStageStatusV1 {
+    const request = parseLibraryCoreScopeActionRequestV1(input);
+    if (
+      stageId.length < 1 ||
+      stageId.length > 255 ||
+      !Number.isSafeInteger(createdAt) ||
+      createdAt < 0
+    ) {
+      throw new Error("Library scope action stage identity is invalid");
+    }
+    const digest = digestLibraryCoreScopeActionRequestV1(request);
+    this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.create,
+      bind: [stageId, request.action, digest, createdAt],
+    });
+    return Object.freeze({ memberCount: 0, stageId, state: "staging" });
+  }
+
+  appendScopeAction(
+    stageId: string,
+    expectedOrdinal: number,
+    entityIds: readonly string[],
+  ): LibraryCoreScopeActionStageStatusV1 {
+    if (
+      !Number.isSafeInteger(expectedOrdinal) ||
+      expectedOrdinal < 0 ||
+      entityIds.length < 1 ||
+      entityIds.length > 256 ||
+      entityIds.some((id) => !id || new TextEncoder().encode(id).length > 4_096)
+    ) {
+      throw new Error("Library scope action append is invalid");
+    }
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const status = this.#database.exec({
+        sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.status,
+        bind: [stageId],
+        rowMode: "array",
+        returnValue: "resultRows",
+      });
+      if (
+        status.length !== 1 ||
+        text(status[0]?.[2], "scope action state") !== "staging" ||
+        safeInteger(status[0]?.[3], "scope action member count") !==
+          expectedOrdinal
+      ) {
+        throw new Error("Library scope action append fence is stale");
+      }
+      this.#database.exec({
+        sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.append,
+        bind: [stageId, expectedOrdinal, JSON.stringify(entityIds)],
+      });
+      const memberCount = expectedOrdinal + entityIds.length;
+      this.#database.exec({
+        sql: "UPDATE library_device_scope_actions SET member_count = ?2 WHERE action_id = ?1;",
+        bind: [stageId, memberCount],
+      });
+      this.#database.exec("COMMIT;");
+      return Object.freeze({ memberCount, stageId, state: "staging" });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  finalizeScopeAction(
+    stageId: string,
+    expectedMemberCount: number,
+  ): LibraryCoreScopeActionStageStatusV1 {
+    if (!Number.isSafeInteger(expectedMemberCount) || expectedMemberCount < 0) {
+      throw new Error("Library scope action final count is invalid");
+    }
+    this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.finalize,
+      bind: [stageId, expectedMemberCount],
+    });
+    const status = this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.status,
+      bind: [stageId],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (
+      status.length !== 1 ||
+      text(status[0]?.[2], "scope action state") !== "ready" ||
+      safeInteger(status[0]?.[3], "scope action member count") !==
+        expectedMemberCount
+    ) {
+      throw new Error("Library scope action could not finalize");
+    }
+    return Object.freeze({
+      memberCount: expectedMemberCount,
+      stageId,
+      state: "ready",
+    });
+  }
+
+  pageScopeAction(
+    stageId: string,
+    afterOrdinal: number,
+  ): LibraryCoreScopeActionStagePageV1 {
+    if (!Number.isSafeInteger(afterOrdinal) || afterOrdinal < -1) {
+      throw new Error("Library scope action page cursor is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.page,
+      bind: [stageId, afterOrdinal, 1_000],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const entityIds = rows.map((row) => text(row[1], "scope action entity ID"));
+    return Object.freeze({
+      entityIds: Object.freeze(entityIds),
+      nextOrdinal:
+        rows.length === 0
+          ? afterOrdinal
+          : safeInteger(rows.at(-1)?.[0], "scope action ordinal"),
+      stageId,
+    });
+  }
+
+  closeScopeAction(stageId: string): void {
+    this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.delete,
+      bind: [stageId],
+    });
+  }
+
   query<T extends LibraryCoreSqliteQueryRequest>(
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
@@ -3181,10 +3320,16 @@ export class PwaLibraryCoreSqliteEngine {
     });
     const expectedRows =
       request.value.sources.length + request.value.rssFeedUrls.length;
-    if (rawRows.length !== expectedRows || rawRows.length > program.maximumScanRows) {
+    if (
+      rawRows.length !== expectedRows ||
+      rawRows.length > program.maximumScanRows
+    ) {
       throw new Error("PWA Library SQLite persons graph row count is invalid");
     }
-    const parseArray = (value: SqlValue | undefined, label: string): unknown[] => {
+    const parseArray = (
+      value: SqlValue | undefined,
+      label: string,
+    ): unknown[] => {
       const parsed = JSON.parse(text(value, label)) as unknown;
       if (!Array.isArray(parsed)) throw new Error(`${label} is not an array`);
       return parsed;
@@ -3197,7 +3342,9 @@ export class PwaLibraryCoreSqliteEngine {
         row.authorId !== source.authorId ||
         row.feedUrl !== null
       ) {
-        throw new Error("PWA Library SQLite persons graph social order is invalid");
+        throw new Error(
+          "PWA Library SQLite persons graph social order is invalid",
+        );
       }
       const samples = parseArray(row.sampleItemsJson, "persons graph samples");
       const locations = parseArray(
@@ -3217,19 +3364,26 @@ export class PwaLibraryCoreSqliteEngine {
             (value as Record<string, unknown>).label === label,
         );
         if (matches.length > 1) {
-          throw new Error("PWA Library SQLite persons graph signal is duplicated");
+          throw new Error(
+            "PWA Library SQLite persons graph signal is duplicated",
+          );
         }
         const count = matches.length
           ? (matches[0] as Record<string, unknown>).count
           : 0;
         if (typeof count !== "number") {
-          throw new Error("PWA Library SQLite persons graph signal count is invalid");
+          throw new Error(
+            "PWA Library SQLite persons graph signal count is invalid",
+          );
         }
         return { count, label };
       });
       return {
         authorId: source.authorId,
-        avatarGlobalId: nullableText(row.avatarGlobalId, "persons graph avatar item"),
+        avatarGlobalId: nullableText(
+          row.avatarGlobalId,
+          "persons graph avatar item",
+        ),
         avatarPublishedAt: nullableInteger(
           row.avatarPublishedAt,
           "persons graph avatar time",
@@ -3257,15 +3411,23 @@ export class PwaLibraryCoreSqliteEngine {
         row.platform !== null ||
         row.authorId !== null
       ) {
-        throw new Error("PWA Library SQLite persons graph RSS order is invalid");
+        throw new Error(
+          "PWA Library SQLite persons graph RSS order is invalid",
+        );
       }
-      const samples = parseArray(row.sampleItemsJson, "persons graph RSS samples");
+      const samples = parseArray(
+        row.sampleItemsJson,
+        "persons graph RSS samples",
+      );
       const locations = parseArray(
         row.locationCandidatesJson,
         "persons graph RSS locations",
       );
       return {
-        avatarGlobalId: nullableText(row.avatarGlobalId, "persons graph RSS avatar item"),
+        avatarGlobalId: nullableText(
+          row.avatarGlobalId,
+          "persons graph RSS avatar item",
+        ),
         avatarPublishedAt: nullableInteger(
           row.avatarPublishedAt,
           "persons graph RSS avatar time",
@@ -3298,7 +3460,10 @@ export class PwaLibraryCoreSqliteEngine {
         projectionRevision: sourceRevision,
         transitionSequence: sourceRevision,
       },
-      totalItemCount: safeInteger(totalRows[0], "persons graph total item count"),
+      totalItemCount: safeInteger(
+        totalRows[0],
+        "persons graph total item count",
+      ),
     };
     const parsed = parseLibraryCorePersonsGraphResponseV1(
       response,

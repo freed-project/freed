@@ -137,6 +137,58 @@ scope.onmessage = (event) => {
         });
         return;
       }
+      if (request.kind === "begin_scope_action") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.beginScopeAction(
+            request.stageId,
+            request.request,
+            request.createdAt,
+          ),
+        });
+        return;
+      }
+      if (request.kind === "append_scope_action") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.appendScopeAction(
+            request.stageId,
+            request.expectedOrdinal,
+            request.entityIds,
+          ),
+        });
+        return;
+      }
+      if (request.kind === "finalize_scope_action") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.finalizeScopeAction(
+            request.stageId,
+            request.expectedMemberCount,
+          ),
+        });
+        return;
+      }
+      if (request.kind === "page_scope_action") {
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: active.pageScopeAction(request.stageId, request.afterOrdinal),
+        });
+        return;
+      }
+      if (request.kind === "close_scope_action") {
+        active.closeScopeAction(request.stageId);
+        scope.postMessage({
+          ok: true,
+          requestId,
+          result: { memberCount: 0, stageId: request.stageId, state: "ready" },
+        });
+        return;
+      }
       if (request.kind === "mutate_device_graph_layout") {
         scope.postMessage({
           ok: true,

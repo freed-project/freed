@@ -548,6 +548,7 @@ mod tests {
     };
     use crate::sqlite_contract_generated::{
         CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
+        SQLITE_SCOPE_ACTION_PROGRAMS,
     };
     use rusqlite::params;
     use serde_json::json;
@@ -742,6 +743,72 @@ mod tests {
                 .expect("operation table");
             assert_eq!(exists, 1, "missing {table}");
         }
+    }
+
+    #[test]
+    fn scope_action_programs_freeze_and_page_only_finalized_members() {
+        let connection = fixture();
+        let sql = |program_id: &str| {
+            SQLITE_SCOPE_ACTION_PROGRAMS
+                .iter()
+                .find_map(|(candidate, sql)| (*candidate == program_id).then_some(*sql))
+                .expect("scope action program")
+        };
+        connection
+            .execute(
+                sql("create"),
+                params!["stage-1", "read", "a".repeat(64), 1_000],
+            )
+            .expect("create stage");
+        connection
+            .execute(
+                sql("append"),
+                params!["stage-1", 0, r#"["item-1","item-2"]"#],
+            )
+            .expect("append members");
+        connection
+            .execute(
+                "UPDATE library_device_scope_actions
+                 SET member_count = member_count + 2
+                 WHERE action_id = 'stage-1' AND state = 'staging' AND member_count = 0;",
+                [],
+            )
+            .expect("advance member count");
+        let before_finalize: i64 = connection
+            .query_row(sql("page"), params!["stage-1", -1, 1_000], |_| Ok(1))
+            .optional()
+            .expect("read staging page")
+            .unwrap_or(0);
+        assert_eq!(before_finalize, 0);
+        assert_eq!(
+            connection
+                .execute(sql("finalize"), params!["stage-1", 2])
+                .expect("finalize stage"),
+            1
+        );
+        let mut statement = connection.prepare(sql("page")).expect("prepare page");
+        let members = statement
+            .query_map(params!["stage-1", -1, 1_000], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("page members")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect members");
+        assert_eq!(members, vec![(0, "item-1".into()), (1, "item-2".into())]);
+        assert_eq!(
+            connection
+                .execute(sql("delete"), ["stage-1"])
+                .expect("delete stage"),
+            1
+        );
+        let member_count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_device_scope_action_members;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("member count");
+        assert_eq!(member_count, 0);
     }
 
     #[test]

@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import { createLibraryCoreNormalizedCheckpointRecordV2 } from "./normalized-checkpoint-contracts.js";
 import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
+  createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
+  createLibraryCoreSqliteBeginScopeActionWorkerRequest,
+  createLibraryCoreSqliteCloseScopeActionWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
   createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest,
   createLibraryCoreSqliteFollowerIntentCommitWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPageWorkerRequest,
   createLibraryCoreSqliteFollowerIntentPublicationWorkerRequest,
   createLibraryCoreSqliteFollowerResultApplyWorkerRequest,
+  createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
+  createLibraryCoreSqlitePageScopeActionWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
   parseLibraryCoreSqliteWorkerRequest,
@@ -441,6 +446,81 @@ describe("Library Core SQLite worker protocol", () => {
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
+  });
+
+  it("carries only closed bounded SQLite scope action stages", () => {
+    const scope = {
+      action: "read" as const,
+      filter: {
+        archivedOnly: false,
+        authorId: null,
+        feedUrl: null,
+        platform: null,
+        savedOnly: false,
+        schemaVersion: 1 as const,
+        showHidden: false,
+        signals: [],
+        socialContentFilter: "all" as const,
+        tags: [],
+      },
+      identityMode: "all_content" as const,
+      query: null,
+      schemaVersion: 1 as const,
+    };
+    expect(
+      createLibraryCoreSqliteBeginScopeActionWorkerRequest(
+        "begin-scope",
+        "stage-1",
+        scope,
+        1_000,
+      ).kind,
+    ).toBe("begin_scope_action");
+    const append = createLibraryCoreSqliteAppendScopeActionWorkerRequest(
+      "append-scope",
+      "stage-1",
+      0,
+      ["item-1", "item-2"],
+    );
+    expect(append.kind).toBe("append_scope_action");
+    expect(
+      createLibraryCoreSqliteFinalizeScopeActionWorkerRequest(
+        "finalize-scope",
+        "stage-1",
+        2,
+      ).kind,
+    ).toBe("finalize_scope_action");
+    expect(
+      createLibraryCoreSqlitePageScopeActionWorkerRequest(
+        "page-scope",
+        "stage-1",
+        -1,
+      ).kind,
+    ).toBe("page_scope_action");
+    expect(
+      createLibraryCoreSqliteCloseScopeActionWorkerRequest(
+        "close-scope",
+        "stage-1",
+      ).kind,
+    ).toBe("close_scope_action");
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({ ...append, sql: "SELECT 1" }),
+    ).toThrow(/identity is invalid/);
+    expect(() =>
+      createLibraryCoreSqliteAppendScopeActionWorkerRequest(
+        "oversized-scope",
+        "stage-1",
+        0,
+        Array.from({ length: 257 }, (_, index) => `item-${String(index)}`),
+      ),
+    ).toThrow(/append request is invalid/);
+    expect(() =>
+      createLibraryCoreSqliteAppendScopeActionWorkerRequest(
+        "oversized-identity",
+        "stage-1",
+        0,
+        ["x".repeat(4_097)],
+      ),
+    ).toThrow(/append request is invalid/);
   });
 
   it("rejects unknown fields, versions, kinds, and unbounded identities", () => {

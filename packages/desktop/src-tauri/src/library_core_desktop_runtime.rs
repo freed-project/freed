@@ -959,6 +959,186 @@ pub(super) fn query_normalized_library(
         .map_err(|error| error.to_string())
 }
 
+fn scope_action_sql(program_id: &str) -> Result<&'static str, String> {
+    freed_library_core::sqlite_contract_generated::SQLITE_SCOPE_ACTION_PROGRAMS
+        .iter()
+        .find_map(|(id, sql)| (*id == program_id).then_some(*sql))
+        .ok_or_else(|| format!("missing scope action program {program_id}"))
+}
+
+fn validate_scope_action_stage_id(stage_id: &str) -> bool {
+    !stage_id.is_empty() && stage_id.len() <= 255
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ScopeActionStageStatus {
+    member_count: i64,
+    stage_id: String,
+    state: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ScopeActionStagePage {
+    entity_ids: Vec<String>,
+    next_ordinal: i64,
+    stage_id: String,
+}
+
+#[tauri::command]
+pub(super) fn begin_normalized_scope_action(
+    app: tauri::AppHandle,
+    stage_id: String,
+    action_kind: String,
+    request_digest: String,
+    created_at: i64,
+) -> Result<ScopeActionStageStatus, String> {
+    if !validate_scope_action_stage_id(&stage_id)
+        || !matches!(action_kind.as_str(), "archive" | "read")
+        || !validate_hex_digest(&request_digest)
+        || created_at < 0
+    {
+        return Err("normalized scope action identity is invalid".into());
+    }
+    let connection = open_normalized_database(&app)?;
+    connection
+        .execute(
+            scope_action_sql("create")?,
+            params![stage_id, action_kind, request_digest, created_at],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(ScopeActionStageStatus {
+        member_count: 0,
+        stage_id,
+        state: "staging".into(),
+    })
+}
+
+#[tauri::command]
+pub(super) fn append_normalized_scope_action(
+    app: tauri::AppHandle,
+    stage_id: String,
+    expected_ordinal: i64,
+    entity_ids: Vec<String>,
+) -> Result<ScopeActionStageStatus, String> {
+    if !validate_scope_action_stage_id(&stage_id)
+        || expected_ordinal < 0
+        || entity_ids.is_empty()
+        || entity_ids.len() > 256
+        || entity_ids.iter().any(|id| id.is_empty() || id.len() > 4096)
+    {
+        return Err("normalized scope action append is invalid".into());
+    }
+    let mut connection = open_normalized_database(&app)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let status: (String, i64) = transaction
+        .query_row(scope_action_sql("status")?, params![stage_id], |row| {
+            Ok((row.get(2)?, row.get(3)?))
+        })
+        .map_err(|error| error.to_string())?;
+    if status.0 != "staging" || status.1 != expected_ordinal {
+        return Err("normalized scope action append fence is stale".into());
+    }
+    let ids_json = serde_json::to_string(&entity_ids).map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            scope_action_sql("append")?,
+            params![stage_id, expected_ordinal, ids_json],
+        )
+        .map_err(|error| error.to_string())?;
+    let member_count = expected_ordinal
+        .checked_add(i64::try_from(entity_ids.len()).map_err(|error| error.to_string())?)
+        .ok_or_else(|| "normalized scope action count overflow".to_string())?;
+    transaction
+        .execute(
+            "UPDATE library_device_scope_actions SET member_count = ?2 WHERE action_id = ?1;",
+            params![stage_id, member_count],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(ScopeActionStageStatus {
+        member_count,
+        stage_id,
+        state: "staging".into(),
+    })
+}
+
+#[tauri::command]
+pub(super) fn finalize_normalized_scope_action(
+    app: tauri::AppHandle,
+    stage_id: String,
+    expected_member_count: i64,
+) -> Result<ScopeActionStageStatus, String> {
+    if !validate_scope_action_stage_id(&stage_id) || expected_member_count < 0 {
+        return Err("normalized scope action final count is invalid".into());
+    }
+    let connection = open_normalized_database(&app)?;
+    let changed = connection
+        .execute(
+            scope_action_sql("finalize")?,
+            params![stage_id, expected_member_count],
+        )
+        .map_err(|error| error.to_string())?;
+    if changed != 1 {
+        return Err("normalized scope action could not finalize".into());
+    }
+    Ok(ScopeActionStageStatus {
+        member_count: expected_member_count,
+        stage_id,
+        state: "ready".into(),
+    })
+}
+
+#[tauri::command]
+pub(super) fn page_normalized_scope_action(
+    app: tauri::AppHandle,
+    stage_id: String,
+    after_ordinal: i64,
+) -> Result<ScopeActionStagePage, String> {
+    if !validate_scope_action_stage_id(&stage_id) || after_ordinal < -1 {
+        return Err("normalized scope action page cursor is invalid".into());
+    }
+    let connection = open_normalized_database(&app)?;
+    let mut statement = connection
+        .prepare(scope_action_sql("page")?)
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![stage_id, after_ordinal, 1_000_i64], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut next_ordinal = after_ordinal;
+    let mut entity_ids = Vec::new();
+    for row in rows {
+        let (ordinal, entity_id) = row.map_err(|error| error.to_string())?;
+        next_ordinal = ordinal;
+        entity_ids.push(entity_id);
+    }
+    Ok(ScopeActionStagePage {
+        entity_ids,
+        next_ordinal,
+        stage_id,
+    })
+}
+
+#[tauri::command]
+pub(super) fn close_normalized_scope_action(
+    app: tauri::AppHandle,
+    stage_id: String,
+) -> Result<(), String> {
+    if !validate_scope_action_stage_id(&stage_id) {
+        return Err("normalized scope action identity is invalid".into());
+    }
+    let connection = open_normalized_database(&app)?;
+    connection
+        .execute(scope_action_sql("delete")?, params![stage_id])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn validate_hex_digest(value: &str) -> bool {
     value.len() == 64
         && value

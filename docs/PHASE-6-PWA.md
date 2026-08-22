@@ -421,6 +421,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.36 | Delete SearchJump's rollback key, compatibility corpus lease, browser-derived facets, and selected-item fallback so missing or failed OPFS SQLite readers fail closed | High | ✓ Complete |
 | 6.37 | Route SearchJump complex counts and bulk selection through the typed source-fenced OPFS feed reader and delete its generic whole-item scanner dependency | High | ✓ Complete |
 | 6.38 | Move SearchJump bulk resolution outside React, cover the complete OPFS SQLite feed or search scope, emit one explicit signed transaction of at most 1,000 members, and fail before mutation when durable multi-transaction staging is required | High | ✓ Complete |
+| 6.39 | Freeze complete SearchJump scope actions in installation-local OPFS SQLite before the first intent, then emit the stable set through bounded 1,000-member signed transactions without returning selected IDs to React | High | ✓ Complete |
 
 ---
 

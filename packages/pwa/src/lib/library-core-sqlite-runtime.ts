@@ -2,6 +2,8 @@ import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreSqliteQueryRequest,
   LibraryCoreSqliteQueryResponseFor,
+  LibraryCoreScopeActionRequestV1,
+  LibraryCoreScopeActionStagePageV1,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -36,6 +38,45 @@ export const queryPwaNormalizedLibrary: LibraryCoreNormalizedQueryExecutor =
     const active = await openClient();
     return active.query(request);
   };
+
+export async function beginPwaScopeActionStage(
+  stageId: string,
+  request: LibraryCoreScopeActionRequestV1,
+): Promise<void> {
+  const active = await openClient();
+  await active.beginScopeAction(stageId, request, Date.now());
+}
+
+export async function appendPwaScopeActionStage(
+  stageId: string,
+  expectedOrdinal: number,
+  entityIds: readonly string[],
+): Promise<void> {
+  const active = await openClient();
+  await active.appendScopeAction(stageId, expectedOrdinal, entityIds);
+}
+
+export async function finalizePwaScopeActionStage(
+  stageId: string,
+  expectedMemberCount: number,
+): Promise<number> {
+  const active = await openClient();
+  return (await active.finalizeScopeAction(stageId, expectedMemberCount))
+    .memberCount;
+}
+
+export async function pagePwaScopeActionStage(
+  stageId: string,
+  afterOrdinal: number,
+): Promise<LibraryCoreScopeActionStagePageV1> {
+  const active = await openClient();
+  return active.pageScopeAction(stageId, afterOrdinal);
+}
+
+export async function closePwaScopeActionStage(stageId: string): Promise<void> {
+  const active = await openClient();
+  await active.closeScopeAction(stageId);
+}
 
 export async function closePwaNormalizedLibrary(): Promise<void> {
   const active = client;

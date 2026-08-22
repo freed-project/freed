@@ -30,10 +30,11 @@ Last updated: 2026-08-21
 
 SearchJump bulk read and archive now cross one closed platform action boundary.
 React sends only the normalized feed or search scope and receives one compact
-receipt. Desktop and PWA resolve the complete SQLite scope before committing
-one explicit assignment transaction of at most 1,000 members. Larger sets fail
-before mutation. Durable SQLite action staging remains required to freeze and
-resume larger sets across multiple signed transactions.
+receipt. Desktop and PWA freeze the complete eligible set in installation-local
+SQLite before the first write. They stage at most 256 stable IDs per append,
+then page the frozen set through explicit assignment transactions of at most
+1,000 members. Staging rows never enter checkpoints or replication. React never
+receives the complete selected set.
 
 ## Destination
 

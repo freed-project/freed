@@ -26,6 +26,35 @@ function item(
 }
 
 describe("Library Core scope actions", () => {
+  function stageRuntime(
+    scan: Parameters<typeof executeLibraryCoreScopeActionV1>[1]["scan"],
+    batches: string[][],
+  ): Parameters<typeof executeLibraryCoreScopeActionV1>[1] {
+    const staged: string[] = [];
+    return {
+      scan,
+      beginStage: async () => "stage:1",
+      appendStage: async (_stageId, ids) => {
+        staged.push(...ids);
+      },
+      finalizeStage: async () => staged.length,
+      readStage: async (_stageId, afterOrdinal) => {
+        const entityIds = staged.slice(
+          afterOrdinal + 1,
+          afterOrdinal + 1 + LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT,
+        );
+        return {
+          entityIds,
+          nextOrdinal: afterOrdinal + entityIds.length,
+        };
+      },
+      closeStage: async () => {},
+      commitBatch: vi.fn(async (_action, ids) => {
+        batches.push([...ids]);
+      }),
+    };
+  }
+
   it("commits one complete eligible set at the transaction ceiling", async () => {
     const eligible = Array.from(
       { length: LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT },
@@ -44,14 +73,9 @@ describe("Library Core scope actions", () => {
         query: null,
         schemaVersion: 1,
       },
-      {
-        scan: async (visit) => {
-          for (const page of pages) await visit(page);
-        },
-        commitBatch: vi.fn(async (_action, ids) => {
-          batches.push([...ids]);
-        }),
-      },
+      stageRuntime(async (visit) => {
+        for (const page of pages) await visit(page);
+      }, batches),
     );
 
     expect(batches.map((batch) => batch.length)).toEqual([1_000]);
@@ -62,8 +86,36 @@ describe("Library Core scope actions", () => {
     });
   });
 
-  it("fails before mutation when the set requires durable staging", async () => {
-    const commitBatch = vi.fn();
+  it("processes a larger frozen set through multiple bounded transactions", async () => {
+    const batches: string[][] = [];
+    const receipt = await executeLibraryCoreScopeActionV1(
+      {
+        action: "read",
+        filter: normalizeLibraryCoreFeedBrowseFilterV1({}),
+        identityMode: "all_content",
+        query: null,
+        schemaVersion: 1,
+      },
+      stageRuntime(async (visit) => {
+        await visit(
+          Array.from(
+            { length: LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT + 1 },
+            (_, index) => item(`item:${index}`),
+          ),
+        );
+      }, batches),
+    );
+    expect(batches.map((batch) => batch.length)).toEqual([1_000, 1]);
+    expect(receipt).toEqual({
+      affectedCount: 1_001,
+      batchCount: 2,
+      schemaVersion: 1,
+    });
+  });
+
+  it("closes staging when a bounded transaction fails", async () => {
+    const closeStage = vi.fn(async () => {});
+    const runtime = stageRuntime(async (visit) => visit([item("item:1")]), []);
     await expect(
       executeLibraryCoreScopeActionV1(
         {
@@ -74,19 +126,15 @@ describe("Library Core scope actions", () => {
           schemaVersion: 1,
         },
         {
-          scan: async (visit) => {
-            await visit(
-              Array.from(
-                { length: LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT + 1 },
-                (_, index) => item(`item:${index}`),
-              ),
-            );
+          ...runtime,
+          closeStage,
+          commitBatch: async () => {
+            throw new Error("commit failed");
           },
-          commitBatch,
         },
       ),
-    ).rejects.toThrow("requires durable SQLite staging");
-    expect(commitBatch).not.toHaveBeenCalled();
+    ).rejects.toThrow("commit failed");
+    expect(closeStage).toHaveBeenCalledWith("stage:1");
   });
 
   it("rejects open or malformed requests before scanning", () => {

@@ -7,8 +7,10 @@ import {
 } from "@freed/shared";
 import {
   executeLibraryCoreScopeActionV1,
+  digestLibraryCoreScopeActionRequestV1,
   libraryCoreFeedBrowseFilterInputFromV1,
   searchLibraryCoreNormalizedItemsV1,
+  type LibraryCoreScopeActionStagePageV1,
 } from "@freed/shared/library-core";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
@@ -293,6 +295,7 @@ const executeDesktopLibraryScopeAction: NonNullable<
   PlatformConfig["executeLibraryScopeAction"]
 > = async (request) => {
   const filter = libraryCoreFeedBrowseFilterInputFromV1(request.filter);
+  let stagedCount = 0;
   return executeLibraryCoreScopeActionV1(request, {
     scan: async (visit) => {
       if (request.query !== null) {
@@ -321,6 +324,41 @@ const executeDesktopLibraryScopeAction: NonNullable<
         await reader.close();
       }
     },
+    beginStage: async (stageRequest) => {
+      const stageId = `scope-action:${crypto.randomUUID()}`;
+      stagedCount = 0;
+      await invoke("begin_normalized_scope_action", {
+        actionKind: stageRequest.action,
+        createdAt: Date.now(),
+        requestDigest: digestLibraryCoreScopeActionRequestV1(stageRequest),
+        stageId,
+      });
+      return stageId;
+    },
+    appendStage: async (stageId, entityIds) => {
+      await invoke("append_normalized_scope_action", {
+        entityIds,
+        expectedOrdinal: stagedCount,
+        stageId,
+      });
+      stagedCount += entityIds.length;
+    },
+    finalizeStage: async (stageId) => {
+      await invoke("finalize_normalized_scope_action", {
+        expectedMemberCount: stagedCount,
+        stageId,
+      });
+      return stagedCount;
+    },
+    readStage: async (stageId, afterOrdinal) => {
+      const page = await invoke<LibraryCoreScopeActionStagePageV1>(
+        "page_normalized_scope_action",
+        { afterOrdinal, stageId },
+      );
+      return { entityIds: page.entityIds, nextOrdinal: page.nextOrdinal };
+    },
+    closeStage: (stageId) =>
+      invoke("close_normalized_scope_action", { stageId }).then(() => {}),
     commitBatch: (action, entityIds) =>
       action === "read"
         ? docMarkItemsAsRead([...entityIds])

@@ -516,6 +516,23 @@ CREATE TABLE IF NOT EXISTS library_device_graph_layout_state (
 INSERT OR IGNORE INTO library_device_graph_layout_state (singleton_id, revision)
 VALUES (1, 0);
 
+CREATE TABLE IF NOT EXISTS library_device_scope_actions (
+  action_id TEXT PRIMARY KEY CHECK (length(CAST(action_id AS BLOB)) BETWEEN 1 AND 255),
+  action_kind TEXT NOT NULL CHECK (action_kind IN ('archive', 'read')),
+  request_digest TEXT NOT NULL CHECK (length(request_digest) = 64 AND request_digest = lower(request_digest)),
+  state TEXT NOT NULL CHECK (state IN ('staging', 'ready')),
+  member_count INTEGER NOT NULL DEFAULT 0 CHECK (member_count >= 0),
+  created_at INTEGER NOT NULL CHECK (created_at >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS library_device_scope_action_members (
+  action_id TEXT NOT NULL REFERENCES library_device_scope_actions(action_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  global_id TEXT NOT NULL CHECK (length(CAST(global_id AS BLOB)) BETWEEN 1 AND 4096),
+  PRIMARY KEY (action_id, ordinal),
+  UNIQUE (action_id, global_id)
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_device_account_graph_layout (
   account_id TEXT PRIMARY KEY REFERENCES library_accounts(id) ON DELETE CASCADE,
   graph_x REAL NOT NULL,
