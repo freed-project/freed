@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   commitFeedItemRemove: vi.fn(),
   commitRssFeedUpsert: vi.fn(),
   commitRssFeedRemove: vi.fn(),
+  commitRssFeedRemoves: vi.fn(),
+  commitRssFeedTitleAssignment: vi.fn(),
   commitPreferencesPatch: vi.fn(),
   commitPersonUpserts: vi.fn(),
   commitPersonRemove: vi.fn(),
@@ -22,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
   resetNormalizedLibrary: vi.fn(),
   prepareFollowerEnrollment: vi.fn(),
+  beginScopeAction: vi.fn(),
+  closeScopeAction: vi.fn(),
+  pageScopeAction: vi.fn(),
 }));
 
 vi.mock("./library-core-pwa-follower-mutations", () => ({
@@ -36,6 +41,9 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
   commitPwaLibraryCorePreferencesPatch: mocks.commitPreferencesPatch,
   commitPwaLibraryCoreReadAssignments: mocks.commitReadAssignments,
   commitPwaLibraryCoreRssFeedRemove: mocks.commitRssFeedRemove,
+  commitPwaLibraryCoreRssFeedRemoves: mocks.commitRssFeedRemoves,
+  commitPwaLibraryCoreRssFeedTitleAssignment:
+    mocks.commitRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert: mocks.commitRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments: mocks.commitUserStateAssignments,
 }));
@@ -63,6 +71,9 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   activatePwaNormalizedCheckpointStage: vi.fn(),
   appendPwaNormalizedCheckpointStagePage: vi.fn(),
   beginPwaNormalizedCheckpointStage: vi.fn(),
+  beginPwaScopeActionStage: mocks.beginScopeAction,
+  closePwaScopeActionStage: mocks.closeScopeAction,
+  pagePwaScopeActionStage: mocks.pageScopeAction,
   queryPwaNormalizedLibrary: mocks.queryNormalizedLibrary,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
@@ -77,6 +88,7 @@ import {
   enqueuePwaLibraryCoreFeedItemCaptures,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
+  enqueuePwaLibraryCoreRssFeedTitleAssignment,
   enqueuePwaLibraryCoreRssFeedUpsert,
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpserts,
@@ -89,6 +101,7 @@ import {
   readPwaLibraryCoreItemDetail,
   readPwaLibraryCorePersonTimeline,
   readPwaLibraryCoreSelectedCheckpointReceipt,
+  removeAllPwaLibraryCoreRssFeeds,
   scanPwaLibraryCoreItems,
   syncPwaLibraryCoreFromGoogleDrive,
 } from "./library-core-runtime";
@@ -243,6 +256,11 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitFeedItemRemove.mockReset();
     mocks.commitRssFeedUpsert.mockReset();
     mocks.commitRssFeedRemove.mockReset();
+    mocks.commitRssFeedRemoves.mockReset();
+    mocks.commitRssFeedTitleAssignment.mockReset();
+    mocks.beginScopeAction.mockReset();
+    mocks.closeScopeAction.mockReset();
+    mocks.pageScopeAction.mockReset();
     mocks.commitPreferencesPatch.mockReset();
     mocks.commitPersonUpserts.mockReset();
     mocks.commitPersonRemove.mockReset();
@@ -812,6 +830,7 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     await enqueuePwaLibraryCoreRssFeedRemove(feed.url, true);
+    await enqueuePwaLibraryCoreRssFeedTitleAssignment(feed.url, "Renamed");
 
     expect(mocks.commitRssFeedUpsert).toHaveBeenCalledWith(
       feed,
@@ -822,6 +841,45 @@ describe("PWA Library Core bounded scanner", () => {
       true,
       expect.any(Number),
     );
+    expect(mocks.commitRssFeedTitleAssignment).toHaveBeenCalledWith(
+      feed.url,
+      "Renamed",
+      expect.any(Number),
+    );
+  });
+
+  it("removes an exact frozen RSS scope in bounded signed batches", async () => {
+    const urls = Array.from(
+      { length: 300 },
+      (_, index) => `https://example.test/${index.toLocaleString()}`,
+    );
+    mocks.beginScopeAction.mockResolvedValue({
+      memberCount: urls.length,
+      stageId: "ignored",
+      state: "ready",
+    });
+    mocks.pageScopeAction
+      .mockResolvedValueOnce({
+        entityIds: urls,
+        nextOrdinal: urls.length - 1,
+        stageId: "ignored",
+      })
+      .mockResolvedValueOnce({
+        entityIds: [],
+        nextOrdinal: urls.length - 1,
+        stageId: "ignored",
+      });
+
+    await expect(removeAllPwaLibraryCoreRssFeeds(false)).resolves.toBe(300);
+
+    expect(mocks.beginScopeAction).toHaveBeenCalledWith(
+      expect.stringMatching(/^pwa-rss-scope:/),
+      { action: "rss_feeds_remove_keep_items", schemaVersion: 1 },
+    );
+    expect(mocks.commitRssFeedRemoves).toHaveBeenCalledTimes(2);
+    expect(mocks.commitRssFeedRemoves.mock.calls[0]?.[0]).toHaveLength(256);
+    expect(mocks.commitRssFeedRemoves.mock.calls[1]?.[0]).toHaveLength(44);
+    expect(mocks.closeScopeAction).toHaveBeenCalledOnce();
   });
 
   it("routes synchronized preferences through a signed Library Core patch", async () => {

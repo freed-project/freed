@@ -195,8 +195,8 @@ import {
   type LibraryCorePersonsGraphResponseV1,
 } from "./persons-graph-contracts.js";
 import {
-  parseLibraryCoreScopeActionRequestV1,
-  type LibraryCoreScopeActionRequestV1,
+  parseLibraryCoreAnyScopeActionRequestV1,
+  type LibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
 } from "./scope-action-contracts.js";
@@ -507,7 +507,7 @@ export type LibraryCoreSqliteWorkerRequest =
       createdAt: number;
       kind: "begin_scope_action";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
-      request: LibraryCoreScopeActionRequestV1;
+      request: LibraryCoreAnyScopeActionRequestV1;
       requestId: string;
       stageId: string;
     }>
@@ -834,7 +834,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
     );
     if (!mutation.ok) throw new TypeError(mutation.error);
   } else if (value.kind === "begin_scope_action") {
-    const request = parseLibraryCoreScopeActionRequestV1(value.request);
+    const request = parseLibraryCoreAnyScopeActionRequestV1(value.request);
     if (
       !isBoundedWorkerIdentity(value.stageId) ||
       !Number.isSafeInteger(value.createdAt) ||
@@ -1098,7 +1098,7 @@ export function createLibraryCoreSqliteDeviceGraphLayoutMutationWorkerRequest(
 export function createLibraryCoreSqliteBeginScopeActionWorkerRequest(
   requestId: string,
   stageId: string,
-  request: LibraryCoreScopeActionRequestV1,
+  request: LibraryCoreAnyScopeActionRequestV1,
   createdAt: number,
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({

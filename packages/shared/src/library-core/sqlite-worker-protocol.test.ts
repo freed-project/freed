@@ -690,6 +690,14 @@ describe("Library Core SQLite worker protocol", () => {
         1_000,
       ).kind,
     ).toBe("begin_scope_action");
+    expect(
+      createLibraryCoreSqliteBeginScopeActionWorkerRequest(
+        "begin-rss-scope",
+        "rss-stage-1",
+        { action: "rss_feeds_remove_with_items", schemaVersion: 1 },
+        1_000,
+      ).kind,
+    ).toBe("begin_scope_action");
     const append = createLibraryCoreSqliteAppendScopeActionWorkerRequest(
       "append-scope",
       "stage-1",

@@ -128,6 +128,34 @@ export function digestLibraryCoreRssFeedScopeActionRequestV1(
     .digestLowerHex();
 }
 
+export type LibraryCoreAnyScopeActionRequestV1 =
+  | LibraryCoreScopeActionRequestV1
+  | LibraryCoreRssFeedScopeActionRequestV1;
+
+export function parseLibraryCoreAnyScopeActionRequestV1(
+  value: unknown,
+): LibraryCoreAnyScopeActionRequestV1 {
+  const action =
+    value !== null && typeof value === "object"
+      ? (value as Readonly<Record<string, unknown>>).action
+      : null;
+  return typeof action === "string" && action.startsWith("rss_feeds_")
+    ? parseLibraryCoreRssFeedScopeActionRequestV1(value)
+    : parseLibraryCoreScopeActionRequestV1(value);
+}
+
+export function digestLibraryCoreAnyScopeActionRequestV1(
+  input: LibraryCoreAnyScopeActionRequestV1,
+): string {
+  return input.action.startsWith("rss_feeds_")
+    ? digestLibraryCoreRssFeedScopeActionRequestV1(
+        input as LibraryCoreRssFeedScopeActionRequestV1,
+      )
+    : digestLibraryCoreScopeActionRequestV1(
+        input as LibraryCoreScopeActionRequestV1,
+      );
+}
+
 export function parseLibraryCoreScopeActionRequestV1(
   value: unknown,
 ): LibraryCoreScopeActionRequestV1 {

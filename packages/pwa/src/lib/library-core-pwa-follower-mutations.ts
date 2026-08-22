@@ -16,6 +16,7 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
   finalizeLibraryCoreTransactionV1,
@@ -350,30 +351,79 @@ export async function commitPwaLibraryCoreRssFeedUpsert(
   await commitFollowerTransaction(context, [member]);
 }
 
-export async function commitPwaLibraryCoreRssFeedRemove(
+export async function commitPwaLibraryCoreRssFeedTitleAssignment(
   url: string,
-  includeItems: boolean,
-  removedAtMs: number,
+  title: string,
+  assignedAtMs: number,
 ): Promise<void> {
   if (!url) throw new TypeError("RSS feed URL is required");
   const context = await readPwaFollowerMutationContext();
-  const transactionId = transactionIdentity("pwa-rss-remove");
-  const schema = includeItems
-    ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
-    : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
-  const member = schema.construct(
+  const transactionId = transactionIdentity("pwa-rss-title");
+  const member = RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
     transactionMemberInput(
       context,
       transactionId,
       0,
       1,
       url,
-      removedAtMs,
-      { removed_at_ms: removedAtMs },
+      assignedAtMs,
+      { assigned_at_ms: assignedAtMs, title },
     ),
     { digest },
   );
   await commitFollowerTransaction(context, [member]);
+}
+
+export async function commitPwaLibraryCoreRssFeedRemove(
+  url: string,
+  includeItems: boolean,
+  removedAtMs: number,
+): Promise<void> {
+  await commitPwaLibraryCoreRssFeedRemoves(
+    [url],
+    includeItems,
+    removedAtMs,
+  );
+}
+
+export async function commitPwaLibraryCoreRssFeedRemoves(
+  urls: readonly string[],
+  includeItems: boolean,
+  removedAtMs: number,
+): Promise<void> {
+  const identities = [...new Set(urls)];
+  const maximumMembers = includeItems
+    ? LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_with_items
+        .maximumMembers
+    : LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_keep_items
+        .maximumMembers;
+  if (
+    identities.length < 1 ||
+    identities.length > maximumMembers ||
+    identities.some((url) => !url)
+  ) {
+    throw new RangeError("PWA RSS Feed removal transaction is invalid");
+  }
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-rss-remove");
+  const schema = includeItems
+    ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
+    : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
+  const members = identities.map((url, index) =>
+    schema.construct(
+      transactionMemberInput(
+        context,
+        transactionId,
+        index,
+        identities.length,
+        url,
+        removedAtMs,
+        { removed_at_ms: removedAtMs },
+      ),
+      { digest },
+    ),
+  );
+  await commitFollowerTransaction(context, members);
 }
 
 export async function commitPwaLibraryCorePreferencesPatch(

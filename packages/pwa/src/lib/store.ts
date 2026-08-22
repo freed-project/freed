@@ -17,7 +17,6 @@ import {
   stripDeviceLocalPreferenceUpdates,
   stripDeviceLocalGraphPositionUpdates,
   sanitizeReachOutLogWrite,
-  sanitizeRssFeedWrite,
 } from "@freed/shared";
 import {
   projectArchiveAllReadUnsaved,
@@ -80,7 +79,9 @@ import {
   enqueuePwaLibraryCoreFeedItemCaptures,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
+  enqueuePwaLibraryCoreRssFeedTitleAssignment,
   enqueuePwaLibraryCoreRssFeedUpsert,
+  removeAllPwaLibraryCoreRssFeeds,
   enqueuePwaLibraryCorePreferencesPatch,
   enqueuePwaLibraryCorePersonUpsert,
   enqueuePwaLibraryCorePersonUpserts,
@@ -577,9 +578,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeAllFeeds: async (includeItems) => {
-    for (const url of Object.keys(get().feeds)) {
-      await enqueuePwaLibraryCoreRssFeedRemove(url, includeItems);
-    }
+    await removeAllPwaLibraryCoreRssFeeds(includeItems);
   },
 
   renameFeed: async (url, title) => {
@@ -588,14 +587,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:renameFeed",
       (state) => projectRenameFeed(state, url, title),
-      () => {
-        const feed = get().feeds[url];
-        if (!feed) throw new Error("RSS feed is unavailable");
-        return enqueuePwaLibraryCoreRssFeedUpsert({
-          ...feed,
-          ...sanitizeRssFeedWrite({ title }),
-        });
-      },
+      () => enqueuePwaLibraryCoreRssFeedTitleAssignment(url, title),
       { allowLibraryCoreIntent: true },
     );
   },

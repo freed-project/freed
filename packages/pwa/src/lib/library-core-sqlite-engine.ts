@@ -146,9 +146,9 @@ import {
   parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
-  digestLibraryCoreScopeActionRequestV1,
-  parseLibraryCoreScopeActionRequestV1,
-  type LibraryCoreScopeActionRequestV1,
+  digestLibraryCoreAnyScopeActionRequestV1,
+  parseLibraryCoreAnyScopeActionRequestV1,
+  type LibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
   encodeLibraryCoreCanonicalBase64,
@@ -3722,10 +3722,10 @@ export class PwaLibraryCoreSqliteEngine {
 
   beginScopeAction(
     stageId: string,
-    input: LibraryCoreScopeActionRequestV1,
+    input: LibraryCoreAnyScopeActionRequestV1,
     createdAt: number,
   ): LibraryCoreScopeActionStageStatusV1 {
-    const request = parseLibraryCoreScopeActionRequestV1(input);
+    const request = parseLibraryCoreAnyScopeActionRequestV1(input);
     if (
       stageId.length < 1 ||
       stageId.length > 255 ||
@@ -3734,12 +3734,46 @@ export class PwaLibraryCoreSqliteEngine {
     ) {
       throw new Error("Library scope action stage identity is invalid");
     }
-    const digest = digestLibraryCoreScopeActionRequestV1(request);
-    this.#database.exec({
-      sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.create,
-      bind: [stageId, request.action, digest, createdAt],
-    });
-    return Object.freeze({ memberCount: 0, stageId, state: "staging" });
+    const digest = digestLibraryCoreAnyScopeActionRequestV1(request);
+    const frozenRssScope = request.action.startsWith("rss_feeds_");
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec({
+        sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.create,
+        bind: [stageId, request.action, digest, createdAt],
+      });
+      if (!frozenRssScope) {
+        this.#database.exec("COMMIT;");
+        return Object.freeze({ memberCount: 0, stageId, state: "staging" });
+      }
+      this.#database.exec({
+        sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.freezeRssFeeds,
+        bind: [stageId, request.action],
+      });
+      const memberCount = safeInteger(
+        this.#database.exec({
+          sql: `SELECT count(*) FROM library_device_scope_action_members
+                WHERE action_id = ?1;`,
+          bind: [stageId],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "frozen RSS scope member count",
+      );
+      this.#database.exec({
+        sql: "UPDATE library_device_scope_actions SET member_count = ?2 WHERE action_id = ?1;",
+        bind: [stageId, memberCount],
+      });
+      this.#database.exec({
+        sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.finalize,
+        bind: [stageId, memberCount],
+      });
+      this.#database.exec("COMMIT;");
+      return Object.freeze({ memberCount, stageId, state: "ready" });
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   appendScopeAction(

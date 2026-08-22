@@ -135,6 +135,43 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([0]);
   });
 
+  it("atomically freezes the exact RSS Feed scope before signed removals", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_rss_feeds
+        (url, title, enabled, track_unread, updated_at)
+      VALUES
+        ('https://z.example/feed', 'Z', 1, 0, 1),
+        ('https://a.example/feed', 'A', 1, 0, 1);
+    `);
+    expect(
+      engine.beginScopeAction(
+        "rss-stage:1",
+        { action: "rss_feeds_remove_keep_items", schemaVersion: 1 },
+        10,
+      ),
+    ).toEqual({
+      memberCount: 2,
+      stageId: "rss-stage:1",
+      state: "ready",
+    });
+    database.exec(`
+      INSERT INTO library_rss_feeds
+        (url, title, enabled, track_unread, updated_at)
+      VALUES ('https://m.example/feed', 'M', 1, 0, 1);
+    `);
+    expect(engine.pageScopeAction("rss-stage:1", -1)).toEqual({
+      entityIds: ["https://a.example/feed", "https://z.example/feed"],
+      nextOrdinal: 1,
+      stageId: "rss-stage:1",
+    });
+    engine.closeScopeAction("rss-stage:1");
+  });
+
   function checkpointHeader(): LibraryCoreNormalizedCheckpointRecordV2 {
     return createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "00_checkpoint_header",

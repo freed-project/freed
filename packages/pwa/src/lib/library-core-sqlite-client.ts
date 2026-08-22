@@ -57,7 +57,7 @@ import {
   type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreNormalizedCheckpointActivationReceiptV2,
   type LibraryCoreNormalizedCheckpointSelectionV2,
-  type LibraryCoreScopeActionRequestV1,
+  type LibraryCoreAnyScopeActionRequestV1,
   type LibraryCoreScopeActionStagePageV1,
   type LibraryCoreScopeActionStageStatusV1,
 } from "@freed/shared/library-core";
@@ -121,7 +121,7 @@ export class PwaLibraryCoreSqliteClient {
 
   beginScopeAction(
     stageId: string,
-    request: LibraryCoreScopeActionRequestV1,
+    request: LibraryCoreAnyScopeActionRequestV1,
     createdAt: number,
   ): Promise<LibraryCoreScopeActionStageStatusV1> {
     return this.#send((requestId) =>

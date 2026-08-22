@@ -29,6 +29,8 @@ import {
   commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
   commitPwaLibraryCoreRssFeedRemove,
+  commitPwaLibraryCoreRssFeedRemoves,
+  commitPwaLibraryCoreRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments,
 } from "./library-core-pwa-follower-mutations";
@@ -233,9 +235,14 @@ describe("PWA SQLite follower mutations", () => {
       true,
       6_001,
     );
+    await commitPwaLibraryCoreRssFeedTitleAssignment(
+      "https://example.test/feed",
+      "Renamed",
+      6_002,
+    );
     await commitPwaLibraryCorePreferencesPatch(
       { display: { archivePruneDays: 14 } } as never,
-      6_002,
+      6_003,
     );
     await commitPwaLibraryCorePersonUpserts(
       [
@@ -248,9 +255,9 @@ describe("PWA SQLite follower mutations", () => {
           updatedAt: 2,
         },
       ],
-      6_003,
+      6_004,
     );
-    await commitPwaLibraryCorePersonRemove("person:1", 6_004);
+    await commitPwaLibraryCorePersonRemove("person:1", 6_005);
     await commitPwaLibraryCoreAccountUpserts(
       [
         {
@@ -265,9 +272,9 @@ describe("PWA SQLite follower mutations", () => {
           updatedAt: 2,
         },
       ],
-      6_005,
+      6_006,
     );
-    await commitPwaLibraryCoreAccountRemove("account:1", 6_006);
+    await commitPwaLibraryCoreAccountRemove("account:1", 6_007);
 
     expect(
       mocks.commitFollowerIntent.mock.calls.map(
@@ -276,11 +283,34 @@ describe("PWA SQLite follower mutations", () => {
     ).toEqual([
       "rss_feed_upsert",
       "rss_feed_remove_with_items",
+      "rss_feed_title_assignment",
       "preferences_leaf_assignment",
       "person_upsert",
       "person_remove_and_accounts",
       "account_upsert",
       "account_remove",
+    ]);
+  });
+
+  it("commits a bounded RSS removal page as one signed transaction", async () => {
+    await commitPwaLibraryCoreRssFeedRemoves(
+      ["https://a.example/feed", "https://b.example/feed"],
+      false,
+      7_000,
+    );
+
+    const commit = mocks.commitFollowerIntent.mock.calls[0]![0];
+    const envelopes = decodeCommit(commit);
+    expect(envelopes.map((envelope) => envelope.entity_id)).toEqual([
+      "https://a.example/feed",
+      "https://b.example/feed",
+    ]);
+    expect(envelopes.map((envelope) => envelope.operation_type)).toEqual([
+      "rss_feed_remove_keep_items",
+      "rss_feed_remove_keep_items",
+    ]);
+    expect(envelopes.map((envelope) => envelope.actor_sequence)).toEqual([
+      4, 5,
     ]);
   });
 });

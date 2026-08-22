@@ -33,6 +33,7 @@ import {
   sha256LowerHex,
   type FeedItemUserStateAssignmentFieldV1,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
+  type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
 } from "@freed/shared/library-core";
@@ -73,6 +74,8 @@ import {
   commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
   commitPwaLibraryCoreRssFeedRemove,
+  commitPwaLibraryCoreRssFeedRemoves,
+  commitPwaLibraryCoreRssFeedTitleAssignment,
   commitPwaLibraryCoreRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments,
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
@@ -438,6 +441,58 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
   includeItems: boolean,
 ): Promise<void> {
   await commitPwaLibraryCoreRssFeedRemove(url, includeItems, Date.now());
+}
+
+/** Freeze the complete RSS scope in SQLite, then emit bounded signed removals. */
+export async function removeAllPwaLibraryCoreRssFeeds(
+  includeItems: boolean,
+): Promise<number> {
+  const action: LibraryCoreRssFeedScopeActionKindV1 = includeItems
+    ? "rss_feeds_remove_with_items"
+    : "rss_feeds_remove_keep_items";
+  const stageId = `pwa-rss-scope:${crypto.randomUUID()}`;
+  const status = await beginPwaScopeActionStage(stageId, {
+    action,
+    schemaVersion: 1,
+  });
+  if (status.state !== "ready") {
+    await closePwaScopeActionStage(stageId);
+    throw new Error("PWA RSS Feed scope did not freeze atomically");
+  }
+  try {
+    let afterOrdinal = -1;
+    for (;;) {
+      const page = await pagePwaScopeActionStage(stageId, afterOrdinal);
+      if (page.entityIds.length === 0) break;
+      for (let offset = 0; offset < page.entityIds.length; offset += 256) {
+        await commitPwaLibraryCoreRssFeedRemoves(
+          page.entityIds.slice(offset, offset + 256),
+          includeItems,
+          Date.now(),
+        );
+      }
+      if (page.nextOrdinal <= afterOrdinal) {
+        throw new Error("PWA RSS Feed scope page did not advance");
+      }
+      afterOrdinal = page.nextOrdinal;
+    }
+    return status.memberCount;
+  } finally {
+    await closePwaScopeActionStage(stageId);
+  }
+}
+
+/** Assign one RSS title without reading or replacing the complete feed row. */
+export async function enqueuePwaLibraryCoreRssFeedTitleAssignment(
+  url: string,
+  title: string,
+): Promise<void> {
+  const sanitized = sanitizeRssFeedWrite({ title });
+  await commitPwaLibraryCoreRssFeedTitleAssignment(
+    url,
+    sanitized.title ?? title,
+    Date.now(),
+  );
 }
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */

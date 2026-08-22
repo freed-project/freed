@@ -2,8 +2,9 @@ import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreSqliteQueryRequest,
   LibraryCoreSqliteQueryResponseFor,
-  LibraryCoreScopeActionRequestV1,
+  LibraryCoreAnyScopeActionRequestV1,
   LibraryCoreScopeActionStagePageV1,
+  LibraryCoreScopeActionStageStatusV1,
   LibraryCoreFollowerIntentCommitResultV1,
   LibraryCoreFollowerIntentCommitV1,
   LibraryCoreFollowerMutationContextV1,
@@ -59,10 +60,10 @@ export const queryPwaNormalizedLibrary: LibraryCoreNormalizedQueryExecutor =
 
 export async function beginPwaScopeActionStage(
   stageId: string,
-  request: LibraryCoreScopeActionRequestV1,
-): Promise<void> {
+  request: LibraryCoreAnyScopeActionRequestV1,
+): Promise<LibraryCoreScopeActionStageStatusV1> {
   const active = await openClient();
-  await active.beginScopeAction(stageId, request, Date.now());
+  return active.beginScopeAction(stageId, request, Date.now());
 }
 
 export async function appendPwaScopeActionStage(
