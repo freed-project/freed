@@ -13,9 +13,7 @@ import {
   type LibraryCoreContentFetchCandidateV1,
 } from "@freed/shared/library-core";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
-import { querySqliteItems } from "./sqlite-library";
 
-const ITEM_SCAN_PAGE_LIMIT = 64;
 let activeItemScan: Promise<void> | null = null;
 
 export const LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY =
@@ -251,23 +249,21 @@ async function scanLibraryCoreItemsExclusive(
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
   filter: LibraryCoreItemScanFilter,
 ): Promise<void> {
-  let offset: number | null = 0;
-  try {
-    for (;;) {
-      const page = await querySqliteItems({
-        ...filter,
-        offset: offset ?? 0,
-        limit: ITEM_SCAN_PAGE_LIMIT,
-        showHidden: true,
-        includeTotalCount: false,
-      });
-      await visitPage(page.items);
-      offset = page.nextOffset;
-      if (offset === null) return;
-    }
-  } finally {
-    /* The native query owns no persistent cursor. */
-  }
+  await scanLibraryCoreNormalizedBackgroundItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    async (items) => {
+      const selected = items.filter(
+        (item) =>
+          (filter.hasLinkPreview === undefined ||
+            Boolean(item.content.linkPreview) === filter.hasLinkPreview) &&
+          (filter.missingPreservedText === undefined ||
+            !Boolean(item.preservedContent?.text) ===
+              filter.missingPreservedText),
+      );
+      if (selected.length > 0) await visitPage(selected);
+      return "continue" as const;
+    },
+  );
 }
 
 export async function scanLibraryCoreItems(

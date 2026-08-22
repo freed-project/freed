@@ -14,7 +14,9 @@ vi.mock("./library-core-normalized-query-client", () => ({
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 
-const { loadSqliteLibraryState } = await import("./sqlite-library");
+const { loadSqliteLibraryState, readSqliteItems } = await import(
+  "./sqlite-library"
+);
 
 describe("Freed Desktop normalized bootstrap projection", () => {
   beforeEach(() => {
@@ -77,5 +79,53 @@ describe("Freed Desktop normalized bootstrap projection", () => {
         ([request]) => request.queryId,
       ),
     ).toEqual(["library_facet_summary_v1", "preferences_snapshot_v1"]);
+  });
+
+  it("reads exact items through normalized detail instead of historical rows", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      item: {
+        card: {
+          archived: false,
+          authorAvatarUrl: null,
+          authorDisplayName: "Ada",
+          authorHandle: "ada",
+          authorId: "author-1",
+          capturedAt: 20,
+          contentSignalTags: [],
+          contentText: "Bounded",
+          contentType: "post",
+          engagementComments: null,
+          engagementLikes: null,
+          eventConfidenceBasisPoints: null,
+          eventStartsAt: null,
+          globalId: "x:item-1",
+          liked: false,
+          likedAt: null,
+          likedSyncedAt: null,
+          linkPreviewTitle: null,
+          locationName: null,
+          mediaTypes: [],
+          mediaUrls: [],
+          platform: "x",
+          publishedAt: 10,
+          readAt: null,
+          readingTimeMinutes: null,
+          saved: false,
+          sourceUrl: null,
+          tags: [],
+        },
+      },
+    });
+
+    await expect(readSqliteItems(["x:item-1"])).resolves.toEqual([
+      expect.objectContaining({ globalId: "x:item-1" }),
+    ]);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        globalId: "x:item-1",
+        queryId: "item_detail_v1",
+      }),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });

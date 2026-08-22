@@ -40,6 +40,7 @@ import {
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
+  scanLibraryCoreNormalizedBackgroundItemsV1,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -1715,6 +1716,17 @@ export async function readSqliteItems(
   ids: readonly string[],
 ): Promise<FeedItem[]> {
   if (ids.length === 0) return [];
+  if (import.meta.env.VITE_TEST_TAURI !== "1") {
+    const items = await Promise.all(
+      ids.map((globalId) =>
+        readLibraryCoreNormalizedItemDetailV1(
+          NORMALIZED_MUTATION_READER_RUNTIME,
+          globalId,
+        ),
+      ),
+    );
+    return items.filter((item): item is FeedItem => item !== null);
+  }
   const encoded = await invoke<string[]>("read_sqlite_library_items", {
     request: { ids: [...ids] },
   });
@@ -1821,11 +1833,49 @@ async function collectSqliteItemIds(
   options: Parameters<typeof querySqliteItems>[0],
   include: (item: FeedItem) => boolean,
 ): Promise<string[]> {
+  const filters = options ?? {};
+  if (import.meta.env.VITE_TEST_TAURI !== "1") {
+    const ids: string[] = [];
+    await scanLibraryCoreNormalizedBackgroundItemsV1(
+      NORMALIZED_MUTATION_READER_RUNTIME,
+      (items) => {
+        for (const item of items) {
+          if (
+            filters.platform !== undefined &&
+            item.platform !== filters.platform
+          ) {
+            continue;
+          }
+          if (
+            filters.feedUrl !== undefined &&
+            item.rssSource?.feedUrl !== filters.feedUrl
+          ) {
+            continue;
+          }
+          if (
+            filters.saved !== undefined &&
+            item.userState.saved !== filters.saved
+          ) {
+            continue;
+          }
+          if (
+            filters.archived !== undefined &&
+            item.userState.archived !== filters.archived
+          ) {
+            continue;
+          }
+          if (include(item)) ids.push(item.globalId);
+        }
+        return "continue";
+      },
+    );
+    return ids;
+  }
   const ids: string[] = [];
   let offset: number | null = 0;
   while (offset !== null) {
     const page = await querySqliteItems({
-      ...options,
+      ...filters,
       includeTotalCount: false,
       limit: 1_000,
       offset,

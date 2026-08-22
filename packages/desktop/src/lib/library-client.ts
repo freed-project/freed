@@ -37,12 +37,12 @@ import {
   dispatchSqliteMutation,
   finalizePortableSqliteLibraryImport,
   loadSqliteLibraryState,
-  querySqliteItems,
   readSqliteLibrarySyncDescriptor,
   readSqliteItems,
   recoverSqliteLibraryFollowerOverlay,
   sqliteLibraryStatus,
 } from "./sqlite-library";
+import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
 import { readPersistedSqliteLibraryCloudIdentity } from "./library-core-cloud-sync";
 import {
   hasLegacyLibraryData,
@@ -202,17 +202,10 @@ export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
 }
 
 async function scanAllItems(visit: (page: FeedItem[]) => void): Promise<void> {
-  let offset: number | null = 0;
-  while (offset !== null) {
-    const page = await querySqliteItems({
-      offset,
-      limit: 256,
-      showHidden: true,
-      includeTotalCount: false,
-    });
-    visit(page.items);
-    offset = page.nextOffset;
-  }
+  await scanLibraryCoreBackgroundItems((page) => {
+    visit([...page]);
+    return "continue";
+  });
 }
 
 export async function getAllItemIds(): Promise<string[]> {

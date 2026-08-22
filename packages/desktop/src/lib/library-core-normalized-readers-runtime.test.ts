@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { FeedItem } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   queryNormalizedLibrary: vi.fn(),
@@ -21,6 +22,7 @@ const {
   readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
+  scanLibraryCoreItems,
 } = await import("./library-core-item-detail-runtime");
 
 const feedCard = {
@@ -237,6 +239,38 @@ describe("Freed Desktop normalized surface readers", () => {
         limit: 1,
         queryId: "account_timeline_v1",
       }),
+    );
+    expect(mocks.querySqliteItems).not.toHaveBeenCalled();
+  });
+
+  it("scans filtered background windows without the historical item reader", async () => {
+    mocks.queryNormalizedLibrary.mockResolvedValue({
+      nextCursor: null,
+      rows: [
+        {
+          ...feedCard,
+          hidden: false,
+          linkPreviewTitle: "Article",
+          rssSource: null,
+          sampleDataFingerprint: null,
+          sourceUrl: "https://example.test/article",
+        },
+      ],
+    });
+    const pages: FeedItem[][] = [];
+
+    await scanLibraryCoreItems(
+      (items) => {
+        pages.push([...items]);
+      },
+      { hasLinkPreview: true },
+    );
+
+    expect(pages).toEqual([
+      [expect.objectContaining({ globalId: "x:item-1" })],
+    ]);
+    expect(mocks.queryNormalizedLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({ queryId: "background_item_page_v1" }),
     );
     expect(mocks.querySqliteItems).not.toHaveBeenCalled();
   });

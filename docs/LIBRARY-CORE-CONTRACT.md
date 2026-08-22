@@ -1040,6 +1040,15 @@ Those collections enter React only through the bounded query window owned by
 the view that requested them. Browser-only UI fixtures may retain a synthetic
 projection, but that fixture is not a production storage or transport path.
 
+Exact item lookups use `item_detail_v1`. Background enumeration uses
+`background_item_page_v1` with an opaque source-fenced cursor and a 64-row
+window. Mutation target discovery applies its product predicate while each
+page is visible and never invokes the historical offset reader. Workflows that
+still collect a complete identity or URL set must move to durable scope staging
+or a narrower aggregate before the final memory gate. The same page contract
+serves capture maintenance, import identity checks, and saved-media discovery
+until those narrower contracts take ownership.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner
