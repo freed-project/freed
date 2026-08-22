@@ -1033,6 +1033,13 @@ monotonically from `candidate` through `authority_installed` to
 same receipt. A different witness, changed source fence, changed certificate,
 or changed installed row fails before selector publication.
 
+After selector publication, renderer bootstrap performs two bounded queries:
+the maintained Library facet summary and the normalized preference snapshot.
+It does not read a shell or hydrate FeedItem, Feed, Person, or Account maps.
+Those collections enter React only through the bounded query window owned by
+the view that requested them. Browser-only UI fixtures may retain a synthetic
+projection, but that fixture is not a production storage or transport path.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

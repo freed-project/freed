@@ -39,6 +39,7 @@ import {
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  readLibraryCoreNormalizedPreferencesV1,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -1648,13 +1649,13 @@ export async function finalizePortableSqliteLibraryImport(
 }
 
 export async function loadSqliteLibraryState(): Promise<DocState> {
-  const result = await invoke<SqliteShell>("read_sqlite_library_shell");
-  sqliteActive = true;
   // Browser E2E tests deliberately keep the legacy renderer projection so
   // their UI assertions can exercise cards, maps, and mutations without a
   // native process. Production Freed Desktop never takes this branch and
   // continues to hold only bounded SQLite pages in renderer memory.
   if (import.meta.env.VITE_TEST_TAURI === "1") {
+    const result = await invoke<SqliteShell>("read_sqlite_library_shell");
+    sqliteActive = true;
     const items: FeedItem[] = [];
     let offset: number | null = 0;
     while (offset !== null) {
@@ -1668,7 +1669,26 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
     }
     return stateFromShell(result, items);
   }
-  return stateFromShell(result);
+  const [facets, preferences] = await Promise.all([
+    queryNormalizedLibrary({
+      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    }),
+    readLibraryCoreNormalizedPreferencesV1(NORMALIZED_MUTATION_READER_RUNTIME),
+  ]);
+  sqliteActive = true;
+  return {
+    ...emptyShell(),
+    items: [],
+    preferences,
+    searchCorpusVersion: facets.source.transitionSequence,
+    totalItemCount: facets.summary.totalCount,
+    totalArchivableCount: Math.max(
+      0,
+      facets.summary.totalCount - facets.summary.archivedCount,
+    ),
+    docItemCount: facets.summary.totalCount,
+  };
 }
 
 async function replaceShell(state: DocState): Promise<void> {
