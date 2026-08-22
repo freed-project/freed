@@ -165,6 +165,20 @@ impl LibraryCoreDesktopBinding {
         Ok(connection)
     }
 
+    /// Opens normalized SQLite only after its authority selector is verified.
+    pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStoreError> {
+        if self.authority_selection()?.is_none() {
+            return Err(LibraryCoreStoreError::from(
+                "normalized SQLite authority is not selected".to_string(),
+            ));
+        }
+        let connection = self
+            .normalized_database
+            .open(normalized_open_flags(false))?;
+        configure_normalized_connection(&connection)?;
+        Ok(connection)
+    }
+
     pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
         self.require_legacy_authority()?;
         self.store.open_bound_journal()
@@ -363,6 +377,7 @@ mod tests {
                 .connect_normalized()
                 .expect("open normalized Desktop database"),
         );
+        assert!(binding.connect_selected_normalized().is_err());
     }
 
     #[test]
@@ -444,6 +459,11 @@ mod tests {
             binding
                 .connect_normalized()
                 .expect("selected normalized database remains available"),
+        );
+        drop(
+            binding
+                .connect_selected_normalized()
+                .expect("selected authority opening remains available"),
         );
     }
 }

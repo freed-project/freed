@@ -989,6 +989,14 @@ opening paths fail closed for the rest of the process and after restart. A
 missing selector preserves the pre-cutover state. A malformed selector or one
 that does not match normalized SQLite activates neither side.
 
+The renderer asks native code for one mutation context. Native code returns a
+Primary context only after this selector verifies. Before selection, the same
+request can resolve only to an enrolled follower intent context or no Library
+Core mutation authority. The shared TypeScript assembler is identical in both
+cases. The final transport either commits the canonical envelopes through the
+selected Primary or appends them to the follower intent outbox. It never writes
+both and never treats a populated migration candidate as runtime authority.
+
 Selector publication writes canonical bytes to a private pending file, flushes
 the file, atomically renames it to the one final selector name, and flushes the
 bound directory. The final name is never overwritten with different bytes.

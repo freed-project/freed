@@ -218,6 +218,46 @@ export interface SqliteLibraryFollowerOperationSignature {
   readonly signature: string;
 }
 
+export interface SqliteLibraryPrimaryMutationContext {
+  readonly libraryId: string;
+  readonly epoch: number;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly actorPublicKey: string;
+  readonly nextCounter: number;
+  readonly previousOperationId: string | null;
+  readonly previousChainDigest: string;
+  readonly observedFrontier: readonly Readonly<{
+    readonly actorId: string;
+    readonly sequence: number;
+    readonly operationId: string;
+    readonly chainDigest: string;
+  }>[];
+}
+
+export interface SqliteLibraryNormalizedMutationReceipt {
+  readonly transactionId: string;
+  readonly transactionDigest: string;
+  readonly actorId: string;
+  readonly memberCount: number;
+  readonly firstCounter: number;
+  readonly lastCounter: number;
+  readonly committedOperationId: string;
+  readonly committedChainDigest: string;
+  readonly previousRevision: number;
+  readonly committedRevision: number;
+  readonly committedAt: number;
+  readonly followerResultDigest: string;
+  readonly followerResultSequence: number;
+  readonly canonicalFollowerResultJson: string;
+  readonly invalidations: readonly Readonly<{
+    readonly ordinal: number;
+    readonly topic: string;
+    readonly entityId: string | null;
+    readonly resetRequired: boolean;
+  }>[];
+}
+
 export interface SqliteLibraryFollowerIntentReceipt {
   readonly transactionId: string;
   readonly firstIntentSequence: number;
@@ -357,7 +397,13 @@ export async function appendSqliteLibraryFollowerResultSegment(input: {
 }): Promise<SqliteLibraryFollowerResultImportReceipt> {
   return invoke<SqliteLibraryFollowerResultImportReceipt>(
     "append_sqlite_library_follower_result_segment",
-    { request: { ...input, entries: [...input.entries], importedAtMs: Date.now() } },
+    {
+      request: {
+        ...input,
+        entries: [...input.entries],
+        importedAtMs: Date.now(),
+      },
+    },
   );
 }
 
@@ -413,13 +459,93 @@ export async function enqueueSqliteLibraryFollowerIntent(
   );
 }
 
-function followerDigest(
+function operationDigest(
   domain: Parameters<typeof encodeLibraryCoreDigestInput>[0],
   value: unknown,
 ): string {
   return sha256LowerHex(
     encodeLibraryCoreDigestInput(domain, value as LibraryCoreCanonicalValue),
   );
+}
+
+type SqliteLibraryMutationContext = Readonly<{
+  mode: "primary" | "follower";
+  libraryId: string;
+  epoch: number;
+  epochId: string;
+  actorId: string;
+  actorPublicKey: string;
+  nextSequence: number;
+  previousOperationId: string | null;
+  previousChainDigest: string;
+  observedFrontier: readonly Readonly<{
+    actor_id: string;
+    sequence: number;
+    operation_id: string;
+    chain_digest: string;
+  }>[];
+}>;
+
+async function primaryMutationContext(): Promise<SqliteLibraryMutationContext | null> {
+  let context: SqliteLibraryPrimaryMutationContext;
+  try {
+    context = await invoke<SqliteLibraryPrimaryMutationContext>(
+      "normalized_library_primary_mutation_context",
+    );
+  } catch (error) {
+    if (
+      String(error).includes(
+        "normalized Primary mutation context is unavailable",
+      ) ||
+      String(error).includes("normalized SQLite authority is not selected") ||
+      String(error).includes(
+        "normalized SQLite authority selection is unavailable on this host",
+      )
+    ) {
+      return null;
+    }
+    throw error;
+  }
+  return {
+    mode: "primary",
+    libraryId: context.libraryId,
+    epoch: context.epoch,
+    epochId: context.epochId,
+    actorId: context.actorId,
+    actorPublicKey: context.actorPublicKey,
+    nextSequence: context.nextCounter,
+    previousOperationId: context.previousOperationId,
+    previousChainDigest: context.previousChainDigest,
+    observedFrontier: context.observedFrontier.map((tip) => ({
+      actor_id: tip.actorId,
+      sequence: tip.sequence,
+      operation_id: tip.operationId,
+      chain_digest: tip.chainDigest,
+    })),
+  };
+}
+
+async function mutationContext(
+  allowPrimary = true,
+): Promise<SqliteLibraryMutationContext | null> {
+  if (allowPrimary) {
+    const primary = await primaryMutationContext();
+    if (primary) return primary;
+  }
+  const follower = await sqliteLibraryFollowerIntentContext();
+  if (!follower) return null;
+  return {
+    mode: "follower",
+    libraryId: follower.authority.library_id,
+    epoch: follower.authority.epoch,
+    epochId: follower.authority.epoch_id,
+    actorId: follower.actorId,
+    actorPublicKey: follower.actorPublicKey,
+    nextSequence: follower.nextIntentSequence,
+    previousOperationId: follower.previousOperationId,
+    previousChainDigest: follower.previousChainDigest,
+    observedFrontier: follower.authority.observed_frontier,
+  };
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
@@ -429,18 +555,19 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   );
 }
 
-async function finalizeAndEnqueueFollowerTransaction(
-  context: SqliteLibraryFollowerIntentContext,
+async function finalizeAndSubmitTransaction(
+  context: SqliteLibraryMutationContext,
   members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
+  committedAtMs: number,
 ): Promise<void> {
   const assembled = assembleLibraryCoreTransactionV1(
     members,
     context.previousChainDigest as LibraryCoreLowercaseHex64,
-    { digest: followerDigest },
+    { digest: operationDigest },
   );
   let signatureIndex = 0;
   const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
-    digest: followerDigest,
+    digest: operationDigest,
     signOperation: async (message) => {
       const member = assembled.members[signatureIndex++];
       if (!member) throw new Error("Follower signer received too many members");
@@ -452,12 +579,26 @@ async function finalizeAndEnqueueFollowerTransaction(
           "Follower signer input does not match its assembled member",
         );
       }
-      const signed = await signSqliteLibraryFollowerOperation({
-        libraryId: context.authority.library_id,
-        epochId: context.authority.epoch_id,
-        actorId: context.actorId,
-        operationSigningBodyDigest: member.signing_body_digest,
-      });
+      const signed =
+        context.mode === "primary"
+          ? await invoke<SqliteLibraryFollowerOperationSignature>(
+              "sign_normalized_library_operation",
+              {
+                request: {
+                  libraryId: context.libraryId,
+                  epochId: context.epochId,
+                  actorId: context.actorId,
+                  actorPublicKey: context.actorPublicKey,
+                  operationSigningBodyDigest: member.signing_body_digest,
+                },
+              },
+            )
+          : await signSqliteLibraryFollowerOperation({
+              libraryId: context.libraryId,
+              epochId: context.epochId,
+              actorId: context.actorId,
+              operationSigningBodyDigest: member.signing_body_digest,
+            });
       if (
         signed.actorId !== context.actorId ||
         signed.operationSigningBodyDigest !== member.signing_body_digest
@@ -468,25 +609,47 @@ async function finalizeAndEnqueueFollowerTransaction(
     },
   });
   if (signatureIndex !== assembled.members.length) {
-    throw new Error("Follower signer did not sign every transaction member");
+    throw new Error("Library signer did not sign every transaction member");
   }
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  await enqueueSqliteLibraryFollowerIntent(
-    finalized.members.map((member) =>
-      decoder.decode(
-        encodeLibraryCoreCanonicalValue(
-          member.envelope as unknown as LibraryCoreCanonicalValue,
-        ),
+  const canonicalEnvelopeJson = finalized.members.map((member) =>
+    decoder.decode(
+      encodeLibraryCoreCanonicalValue(
+        member.envelope as unknown as LibraryCoreCanonicalValue,
       ),
     ),
   );
+  if (context.mode === "follower") {
+    await enqueueSqliteLibraryFollowerIntent(canonicalEnvelopeJson);
+    return;
+  }
+  const receipt = await invoke<SqliteLibraryNormalizedMutationReceipt>(
+    "commit_normalized_library_transaction",
+    {
+      request: {
+        libraryId: context.libraryId,
+        canonicalEnvelopeJson,
+        committedAtMs,
+      },
+    },
+  );
+  if (
+    receipt.transactionId !== finalized.transaction_body.transaction_id ||
+    receipt.transactionDigest !== finalized.transaction_digest ||
+    receipt.actorId !== context.actorId ||
+    receipt.memberCount !== finalized.members.length
+  ) {
+    throw new Error(
+      "Primary returned a mismatched normalized mutation receipt",
+    );
+  }
 }
 
-async function maybeEnqueueFollowerReadAssignments(
+async function maybeSubmitReadAssignments(
   entityIds: readonly string[],
   readAtMs: number,
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  let context = await mutationContext();
   if (!context) return false;
   const uniqueIds = [...new Set(entityIds)];
   if (uniqueIds.length === 0) return true;
@@ -494,21 +657,21 @@ async function maybeEnqueueFollowerReadAssignments(
     const batchContext = context;
     const batch = uniqueIds.slice(start, start + 1_000);
     const transactionId =
-      `desktop-follower-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((entityId, index) =>
       FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: readAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -518,20 +681,20 @@ async function maybeEnqueueFollowerReadAssignments(
           payload: { read_at_ms: readAtMs },
           created_at_ms: readAtMs,
         } satisfies FeedItemReadAssignmentTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       ),
     );
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    await finalizeAndSubmitTransaction(batchContext, members, readAtMs);
     if (start + batch.length < uniqueIds.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext();
       if (!context)
-        throw new Error("Follower actor disappeared during read enqueue");
+        throw new Error("Library mutation context changed during read commit");
     }
   }
   return true;
 }
 
-async function maybeEnqueueFollowerUserStateAssignments(
+async function maybeSubmitUserStateAssignments(
   assignments: readonly {
     readonly entityId: string;
     readonly field: FeedItemUserStateAssignmentFieldV1;
@@ -539,14 +702,15 @@ async function maybeEnqueueFollowerUserStateAssignments(
     readonly assignedAtMs: number;
   }[],
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  const allowPrimary = assignments.every(({ field }) => field !== "liked");
+  let context = await mutationContext(allowPrimary);
   if (!context) return false;
   if (assignments.length === 0) return true;
   for (let start = 0; start < assignments.length; start += 1_000) {
     const batchContext = context;
     const batch = assignments.slice(start, start + 1_000);
     const transactionId =
-      `desktop-follower-assignment:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-assignment:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((assignment, index) => {
       const schema =
         assignment.field === "saved"
@@ -557,16 +721,16 @@ async function maybeEnqueueFollowerUserStateAssignments(
       return schema.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: assignment.assignedAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -579,14 +743,20 @@ async function maybeEnqueueFollowerUserStateAssignments(
           },
           created_at_ms: assignment.assignedAtMs,
         } satisfies FeedItemUserStateAssignmentTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       );
     });
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    const committedAtMs = batch.reduce(
+      (latest, assignment) => Math.max(latest, assignment.assignedAtMs),
+      0,
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, committedAtMs);
     if (start + batch.length < assignments.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext(allowPrimary);
       if (!context)
-        throw new Error("Follower actor disappeared during assignment enqueue");
+        throw new Error(
+          "Library mutation context changed during assignment commit",
+        );
     }
   }
   return true;
@@ -612,11 +782,11 @@ function synchronizedRssFeed(
   >;
 }
 
-async function maybeEnqueueFollowerFeedItemCaptures(
+async function maybeSubmitFeedItemCaptures(
   input: readonly FeedItem[],
   createdAtMs: number,
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  let context = await mutationContext();
   if (!context) return false;
   const items = uniqueByIdentity(input, (item) => item.globalId);
   if (items.length === 0) return true;
@@ -628,21 +798,21 @@ async function maybeEnqueueFollowerFeedItemCaptures(
     const batchContext = context;
     const batch = items.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
-      `desktop-follower-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((item, index) =>
       FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: createdAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -657,24 +827,26 @@ async function maybeEnqueueFollowerFeedItemCaptures(
           },
           created_at_ms: createdAtMs,
         } satisfies FeedItemCaptureUpsertTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       ),
     );
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < items.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext();
       if (!context)
-        throw new Error("Follower actor disappeared during capture enqueue");
+        throw new Error(
+          "Library mutation context changed during capture commit",
+        );
     }
   }
   return true;
 }
 
-async function maybeEnqueueFollowerFeedItemRemoves(
+async function maybeSubmitFeedItemRemoves(
   entityIds: readonly string[],
   removedAtMs: number,
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  let context = await mutationContext();
   if (!context) return false;
   const uniqueIds = [...new Set(entityIds)];
   if (uniqueIds.length === 0) return true;
@@ -686,21 +858,21 @@ async function maybeEnqueueFollowerFeedItemRemoves(
     const batchContext = context;
     const batch = uniqueIds.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
-      `desktop-follower-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((entityId, index) =>
       FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: removedAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -710,37 +882,39 @@ async function maybeEnqueueFollowerFeedItemRemoves(
           payload: { removed_at_ms: removedAtMs },
           created_at_ms: removedAtMs,
         } satisfies FeedItemRemoveTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       ),
     );
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
     if (start + batch.length < uniqueIds.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext();
       if (!context)
-        throw new Error("Follower actor disappeared during removal enqueue");
+        throw new Error(
+          "Library mutation context changed during removal commit",
+        );
     }
   }
   return true;
 }
 
-async function maybeEnqueueFollowerRssFeedUpsert(
+async function maybeSubmitRssFeedUpsert(
   feed: RssFeed,
   createdAtMs: number,
 ): Promise<boolean> {
-  const context = await sqliteLibraryFollowerIntentContext();
+  const context = await mutationContext();
   if (!context) return false;
   const transactionId =
-    `desktop-follower-rss-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    `desktop-library-rss-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const member = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
     {
       operation_id: `${transactionId}:0`,
-      library_id: context.authority.library_id,
-      epoch: context.authority.epoch,
-      epoch_id: context.authority.epoch_id,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
       actor_id: context.actorId,
-      actor_sequence: context.nextIntentSequence,
+      actor_sequence: context.nextSequence,
       previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.authority.observed_frontier,
+      causal_frontier: context.observedFrontier,
       hlc_wall_ms: createdAtMs,
       hlc_counter: 0,
       transaction_id: transactionId,
@@ -752,34 +926,34 @@ async function maybeEnqueueFollowerRssFeedUpsert(
       },
       created_at_ms: createdAtMs,
     } satisfies RssFeedUpsertTransactionMemberInputV1,
-    { digest: followerDigest },
+    { digest: operationDigest },
   );
-  await finalizeAndEnqueueFollowerTransaction(context, [member]);
+  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
   return true;
 }
 
-async function maybeEnqueueFollowerRssFeedRemove(input: {
+async function maybeSubmitRssFeedRemove(input: {
   readonly includeItems: boolean;
   readonly removedAtMs: number;
   readonly url: string;
 }): Promise<boolean> {
-  const context = await sqliteLibraryFollowerIntentContext();
+  const context = await mutationContext();
   if (!context) return false;
   const transactionId =
-    `desktop-follower-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    `desktop-library-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const schema = input.includeItems
     ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
     : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
   const member = schema.construct(
     {
       operation_id: `${transactionId}:0`,
-      library_id: context.authority.library_id,
-      epoch: context.authority.epoch,
-      epoch_id: context.authority.epoch_id,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
       actor_id: context.actorId,
-      actor_sequence: context.nextIntentSequence,
+      actor_sequence: context.nextSequence,
       previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.authority.observed_frontier,
+      causal_frontier: context.observedFrontier,
       hlc_wall_ms: input.removedAtMs,
       hlc_counter: 0,
       transaction_id: transactionId,
@@ -789,33 +963,33 @@ async function maybeEnqueueFollowerRssFeedRemove(input: {
       payload: { removed_at_ms: input.removedAtMs },
       created_at_ms: input.removedAtMs,
     } satisfies RssFeedRemoveTransactionMemberInputV1,
-    { digest: followerDigest },
+    { digest: operationDigest },
   );
-  await finalizeAndEnqueueFollowerTransaction(context, [member]);
+  await finalizeAndSubmitTransaction(context, [member], input.removedAtMs);
   return true;
 }
 
-async function maybeEnqueueFollowerPreferences(
+async function maybeSubmitPreferences(
   updates: Partial<UserPreferences>,
   createdAtMs: number,
 ): Promise<boolean> {
-  const context = await sqliteLibraryFollowerIntentContext();
+  const context = await mutationContext();
   if (!context) return false;
   const synchronized = stripDeviceLocalPreferenceUpdates(updates);
   if (Object.keys(synchronized).length === 0) return true;
   const transactionId =
-    `desktop-follower-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    `desktop-library-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const member =
     PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
       {
         operation_id: `${transactionId}:0`,
-        library_id: context.authority.library_id,
-        epoch: context.authority.epoch,
-        epoch_id: context.authority.epoch_id,
+        library_id: context.libraryId,
+        epoch: context.epoch,
+        epoch_id: context.epochId,
         actor_id: context.actorId,
-        actor_sequence: context.nextIntentSequence,
+        actor_sequence: context.nextSequence,
         previous_actor_operation_id: context.previousOperationId,
-        causal_frontier: context.authority.observed_frontier,
+        causal_frontier: context.observedFrontier,
         hlc_wall_ms: createdAtMs,
         hlc_counter: 0,
         transaction_id: transactionId,
@@ -830,17 +1004,17 @@ async function maybeEnqueueFollowerPreferences(
         },
         created_at_ms: createdAtMs,
       } satisfies PreferencesLeafAssignmentTransactionMemberInputV1,
-      { digest: followerDigest },
+      { digest: operationDigest },
     );
-  await finalizeAndEnqueueFollowerTransaction(context, [member]);
+  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
   return true;
 }
 
-async function maybeEnqueueFollowerPersonUpserts(
+async function maybeSubmitPersonUpserts(
   input: readonly Person[],
   createdAtMs: number,
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  let context = await mutationContext();
   if (!context) return false;
   const persons = uniqueByIdentity(input, (person) => person.id);
   if (persons.length === 0) return true;
@@ -852,21 +1026,21 @@ async function maybeEnqueueFollowerPersonUpserts(
     const batchContext = context;
     const batch = persons.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
-      `desktop-follower-person-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-person-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((person, index) =>
       PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: createdAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -881,37 +1055,39 @@ async function maybeEnqueueFollowerPersonUpserts(
           },
           created_at_ms: createdAtMs,
         } satisfies PersonUpsertTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       ),
     );
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < persons.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext();
       if (!context)
-        throw new Error("Follower actor disappeared during Person enqueue");
+        throw new Error(
+          "Library mutation context changed during Person commit",
+        );
     }
   }
   return true;
 }
 
-async function maybeEnqueueFollowerPersonRemove(
+async function maybeSubmitPersonRemove(
   personId: string,
   removedAtMs: number,
 ): Promise<boolean> {
-  const context = await sqliteLibraryFollowerIntentContext();
+  const context = await mutationContext();
   if (!context) return false;
   const transactionId =
-    `desktop-follower-person-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    `desktop-library-person-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const member = PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
     {
       operation_id: `${transactionId}:0`,
-      library_id: context.authority.library_id,
-      epoch: context.authority.epoch,
-      epoch_id: context.authority.epoch_id,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
       actor_id: context.actorId,
-      actor_sequence: context.nextIntentSequence,
+      actor_sequence: context.nextSequence,
       previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.authority.observed_frontier,
+      causal_frontier: context.observedFrontier,
       hlc_wall_ms: removedAtMs,
       hlc_counter: 0,
       transaction_id: transactionId,
@@ -921,17 +1097,17 @@ async function maybeEnqueueFollowerPersonRemove(
       payload: { removed_at_ms: removedAtMs },
       created_at_ms: removedAtMs,
     } satisfies PersonRemoveTransactionMemberInputV1,
-    { digest: followerDigest },
+    { digest: operationDigest },
   );
-  await finalizeAndEnqueueFollowerTransaction(context, [member]);
+  await finalizeAndSubmitTransaction(context, [member], removedAtMs);
   return true;
 }
 
-async function maybeEnqueueFollowerAccountUpserts(
+async function maybeSubmitAccountUpserts(
   input: readonly Account[],
   createdAtMs: number,
 ): Promise<boolean> {
-  let context = await sqliteLibraryFollowerIntentContext();
+  let context = await mutationContext();
   if (!context) return false;
   const accounts = uniqueByIdentity(input, (account) => account.id);
   if (accounts.length === 0) return true;
@@ -943,21 +1119,21 @@ async function maybeEnqueueFollowerAccountUpserts(
     const batchContext = context;
     const batch = accounts.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
-      `desktop-follower-account-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+      `desktop-library-account-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
     const members = batch.map((account, index) =>
       ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.authority.library_id,
-          epoch: batchContext.authority.epoch,
-          epoch_id: batchContext.authority.epoch_id,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
           actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextIntentSequence + index,
+          actor_sequence: batchContext.nextSequence + index,
           previous_actor_operation_id:
             index === 0
               ? batchContext.previousOperationId
               : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.authority.observed_frontier,
+          causal_frontier: batchContext.observedFrontier,
           hlc_wall_ms: createdAtMs,
           hlc_counter: index,
           transaction_id: transactionId,
@@ -972,37 +1148,39 @@ async function maybeEnqueueFollowerAccountUpserts(
           },
           created_at_ms: createdAtMs,
         } satisfies AccountUpsertTransactionMemberInputV1,
-        { digest: followerDigest },
+        { digest: operationDigest },
       ),
     );
-    await finalizeAndEnqueueFollowerTransaction(batchContext, members);
+    await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < accounts.length) {
-      context = await sqliteLibraryFollowerIntentContext();
+      context = await mutationContext();
       if (!context)
-        throw new Error("Follower actor disappeared during Account enqueue");
+        throw new Error(
+          "Library mutation context changed during Account commit",
+        );
     }
   }
   return true;
 }
 
-async function maybeEnqueueFollowerAccountRemove(
+async function maybeSubmitAccountRemove(
   accountId: string,
   removedAtMs: number,
 ): Promise<boolean> {
-  const context = await sqliteLibraryFollowerIntentContext();
+  const context = await mutationContext();
   if (!context) return false;
   const transactionId =
-    `desktop-follower-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    `desktop-library-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const member = ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
     {
       operation_id: `${transactionId}:0`,
-      library_id: context.authority.library_id,
-      epoch: context.authority.epoch,
-      epoch_id: context.authority.epoch_id,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
       actor_id: context.actorId,
-      actor_sequence: context.nextIntentSequence,
+      actor_sequence: context.nextSequence,
       previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.authority.observed_frontier,
+      causal_frontier: context.observedFrontier,
       hlc_wall_ms: removedAtMs,
       hlc_counter: 0,
       transaction_id: transactionId,
@@ -1012,9 +1190,9 @@ async function maybeEnqueueFollowerAccountRemove(
       payload: { removed_at_ms: removedAtMs },
       created_at_ms: removedAtMs,
     } satisfies AccountRemoveTransactionMemberInputV1,
-    { digest: followerDigest },
+    { digest: operationDigest },
   );
-  await finalizeAndEnqueueFollowerTransaction(context, [member]);
+  await finalizeAndSubmitTransaction(context, [member], removedAtMs);
   return true;
 }
 
@@ -1529,7 +1707,7 @@ async function insertMissingSqliteItems(
     ),
   );
   const missing = items.filter((item) => !existing.has(item.globalId));
-  if (!(await maybeEnqueueFollowerFeedItemCaptures(missing, Date.now()))) {
+  if (!(await maybeSubmitFeedItemCaptures(missing, Date.now()))) {
     await upsertSqliteItems(missing);
   }
   return missing;
@@ -1549,7 +1727,7 @@ async function mergeIncomingSqliteItems(
     if (!current) return incoming;
     return mergeSqliteFeedItem(current, incoming);
   });
-  if (!(await maybeEnqueueFollowerFeedItemCaptures(merged, Date.now()))) {
+  if (!(await maybeSubmitFeedItemCaptures(merged, Date.now()))) {
     await upsertSqliteItems(merged);
   }
   return merged;
@@ -1752,9 +1930,9 @@ export async function dispatchSqliteMutation(
   };
   const saveMetadata = async (
     update: (next: DocState) => void,
-    followerHandled = false,
+    normalizedHandled = false,
   ) => {
-    if (followerHandled) {
+    if (normalizedHandled) {
       projectMetadata(update);
     } else {
       nextState = await saveMetadataMutation(nextState, update);
@@ -1766,13 +1944,13 @@ export async function dispatchSqliteMutation(
       current.accounts,
     );
     if (missing.length === 0) return;
-    const followerHandled = await maybeEnqueueFollowerAccountUpserts(
+    const normalizedHandled = await maybeSubmitAccountUpserts(
       missing,
       timestamp,
     );
     await saveMetadata((next) => {
       for (const account of missing) next.accounts[account.id] = account;
-    }, followerHandled);
+    }, normalizedHandled);
   };
 
   switch (message.type) {
@@ -1824,33 +2002,32 @@ export async function dispatchSqliteMutation(
           }
         }
       }
-      const followerHandled = await maybeEnqueueFollowerAccountUpserts(
+      const normalizedHandled = await maybeSubmitAccountUpserts(
         [...reconciled.values()],
         timestamp,
       );
       await saveMetadata((next) => {
         for (const [id, account] of reconciled) next.accounts[id] = account;
-      }, followerHandled);
+      }, normalizedHandled);
       changedIds = merged.map((item) => item.globalId);
       break;
     }
     case "ADD_SAMPLE_LIBRARY_DATA": {
       await insertMissingSqliteItems(message.items);
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         for (const feed of message.feeds) {
-          await maybeEnqueueFollowerRssFeedUpsert(feed, timestamp);
+          await maybeSubmitRssFeedUpsert(feed, timestamp);
         }
-        await maybeEnqueueFollowerPersonUpserts(message.persons, timestamp);
-        await maybeEnqueueFollowerAccountUpserts(message.accounts, timestamp);
+        await maybeSubmitPersonUpserts(message.persons, timestamp);
+        await maybeSubmitAccountUpserts(message.accounts, timestamp);
       }
       await saveMetadata((next) => {
         for (const feed of message.feeds) next.feeds[feed.url] = feed;
         for (const person of message.persons) next.persons[person.id] = person;
         for (const account of message.accounts)
           next.accounts[account.id] = account;
-      }, followerHandled);
+      }, normalizedHandled);
       changedIds = message.items.map((item) => item.globalId);
       break;
     }
@@ -1866,30 +2043,29 @@ export async function dispatchSqliteMutation(
       const sampleAccounts = Object.values(current.accounts).filter(
         hasSampleDataFingerprint,
       );
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      const sampleItemIds = followerHandled
+      const normalizedHandled = (await mutationContext()) !== null;
+      const sampleItemIds = normalizedHandled
         ? await collectSqliteItemIds({}, hasSampleDataFingerprint)
         : [];
-      if (followerHandled) {
-        await maybeEnqueueFollowerFeedItemRemoves(sampleItemIds, timestamp);
+      if (normalizedHandled) {
+        await maybeSubmitFeedItemRemoves(sampleItemIds, timestamp);
         for (const feed of sampleFeeds) {
-          await maybeEnqueueFollowerRssFeedRemove({
+          await maybeSubmitRssFeedRemove({
             includeItems: false,
             removedAtMs: timestamp,
             url: feed.url,
           });
         }
         for (const personId of samplePersonIds) {
-          await maybeEnqueueFollowerPersonRemove(personId, timestamp);
+          await maybeSubmitPersonRemove(personId, timestamp);
         }
         for (const account of sampleAccounts) {
-          await maybeEnqueueFollowerAccountRemove(account.id, timestamp);
+          await maybeSubmitAccountRemove(account.id, timestamp);
         }
       }
       const summary = {
         feeds: sampleFeeds.length,
-        items: followerHandled
+        items: normalizedHandled
           ? sampleItemIds.length
           : await mutateItems("clear_sample", { timestampMs: timestamp }),
         persons: samplePersonIds.size,
@@ -1909,7 +2085,7 @@ export async function dispatchSqliteMutation(
             account.personId &&
             samplePersonIds.has(account.personId)
           ) {
-            if (followerHandled) {
+            if (normalizedHandled) {
               delete next.accounts[id];
             } else {
               next.accounts[id] = {
@@ -1921,7 +2097,7 @@ export async function dispatchSqliteMutation(
           }
         }
         for (const personId of samplePersonIds) delete next.persons[personId];
-      }, followerHandled);
+      }, normalizedHandled);
       result = summary;
       break;
     }
@@ -1929,9 +2105,7 @@ export async function dispatchSqliteMutation(
       const [item] = await readSqliteItems([message.globalId]);
       if (item) {
         const updated = deepMerge(item, message.updates);
-        if (
-          !(await maybeEnqueueFollowerFeedItemCaptures([updated], timestamp))
-        ) {
+        if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
           await upsertSqliteItems([updated]);
         }
       }
@@ -1940,12 +2114,7 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "MARK_AS_READ":
-      if (
-        !(await maybeEnqueueFollowerReadAssignments(
-          [message.globalId],
-          timestamp,
-        ))
-      ) {
+      if (!(await maybeSubmitReadAssignments([message.globalId], timestamp))) {
         await mutateItems("mark_read", {
           ids: [message.globalId],
           timestampMs: timestamp,
@@ -1955,12 +2124,7 @@ export async function dispatchSqliteMutation(
       source = "item_patch";
       break;
     case "MARK_ITEMS_AS_READ":
-      if (
-        !(await maybeEnqueueFollowerReadAssignments(
-          message.globalIds,
-          timestamp,
-        ))
-      ) {
+      if (!(await maybeSubmitReadAssignments(message.globalIds, timestamp))) {
         await mutateItems("mark_read", {
           ids: message.globalIds,
           timestampMs: timestamp,
@@ -1970,14 +2134,13 @@ export async function dispatchSqliteMutation(
       source = "item_patch";
       break;
     case "MARK_ALL_AS_READ": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         const ids = await collectSqliteItemIds(
           { platform: message.platform },
           (item) => item.userState.readAt === undefined,
         );
-        await maybeEnqueueFollowerReadAssignments(ids, timestamp);
+        await maybeSubmitReadAssignments(ids, timestamp);
       } else {
         await mutateItems("mark_all_read", {
           platform: message.platform,
@@ -1990,7 +2153,7 @@ export async function dispatchSqliteMutation(
       const [item] = await readSqliteItems([message.globalId]);
       const assigned = item?.userState?.saved !== true;
       if (
-        !(await maybeEnqueueFollowerUserStateAssignments([
+        !(await maybeSubmitUserStateAssignments([
           {
             entityId: message.globalId,
             field: "saved",
@@ -2012,7 +2175,7 @@ export async function dispatchSqliteMutation(
       const [item] = await readSqliteItems([message.globalId]);
       const assigned = item?.userState?.archived !== true;
       if (
-        !(await maybeEnqueueFollowerUserStateAssignments([
+        !(await maybeSubmitUserStateAssignments([
           {
             entityId: message.globalId,
             field: "archived",
@@ -2032,7 +2195,7 @@ export async function dispatchSqliteMutation(
     }
     case "ARCHIVE_ITEMS":
       if (
-        !(await maybeEnqueueFollowerUserStateAssignments(
+        !(await maybeSubmitUserStateAssignments(
           message.globalIds.map((entityId) => ({
             entityId,
             field: "archived" as const,
@@ -2053,7 +2216,7 @@ export async function dispatchSqliteMutation(
       const [item] = await readSqliteItems([message.globalId]);
       const assigned = item?.userState?.liked !== true;
       if (
-        !(await maybeEnqueueFollowerUserStateAssignments([
+        !(await maybeSubmitUserStateAssignments([
           {
             entityId: message.globalId,
             field: "liked",
@@ -2088,12 +2251,7 @@ export async function dispatchSqliteMutation(
       source = "item_patch";
       break;
     case "REMOVE_FEED_ITEM":
-      if (
-        !(await maybeEnqueueFollowerFeedItemRemoves(
-          [message.globalId],
-          timestamp,
-        ))
-      ) {
+      if (!(await maybeSubmitFeedItemRemoves([message.globalId], timestamp))) {
         await mutateItems("delete", {
           ids: [message.globalId],
           timestampMs: timestamp,
@@ -2102,9 +2260,8 @@ export async function dispatchSqliteMutation(
       changedIds = [message.globalId];
       break;
     case "ARCHIVE_ALL_READ_UNSAVED": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         const ids = await collectSqliteItemIds(
           { platform: message.platform, feedUrl: message.feedUrl },
           (item) =>
@@ -2113,7 +2270,7 @@ export async function dispatchSqliteMutation(
             !item.userState.archived &&
             !item.userState.hidden,
         );
-        await maybeEnqueueFollowerUserStateAssignments(
+        await maybeSubmitUserStateAssignments(
           ids.map((entityId) => ({
             entityId,
             field: "archived" as const,
@@ -2131,14 +2288,13 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "UNARCHIVE_SAVED_ITEMS": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         const ids = await collectSqliteItemIds(
           { saved: true, archived: true },
           () => true,
         );
-        await maybeEnqueueFollowerUserStateAssignments(
+        await maybeSubmitUserStateAssignments(
           ids.map((entityId) => ({
             entityId,
             field: "archived" as const,
@@ -2152,23 +2308,21 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "DELETE_ALL_ARCHIVED": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         const ids = await collectSqliteItemIds(
           { archived: true },
           (item) => !item.userState.saved,
         );
-        await maybeEnqueueFollowerFeedItemRemoves(ids, timestamp);
+        await maybeSubmitFeedItemRemoves(ids, timestamp);
       } else {
         await mutateItems("delete_all_archived", { timestampMs: timestamp });
       }
       break;
     }
     case "PRUNE_ARCHIVED_ITEMS": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         const cutoff = timestamp - Math.max(0, message.maxAgeMs ?? 0);
         const ids = await collectSqliteItemIds(
           { archived: true },
@@ -2177,7 +2331,7 @@ export async function dispatchSqliteMutation(
             item.userState.archivedAt !== undefined &&
             item.userState.archivedAt <= cutoff,
         );
-        await maybeEnqueueFollowerFeedItemRemoves(ids, timestamp);
+        await maybeSubmitFeedItemRemoves(ids, timestamp);
       } else {
         await mutateItems("prune_archived", {
           maxAgeMs: message.maxAgeMs,
@@ -2187,33 +2341,33 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "ADD_RSS_FEED": {
-      const followerHandled = await maybeEnqueueFollowerRssFeedUpsert(
+      const normalizedHandled = await maybeSubmitRssFeedUpsert(
         message.feed,
         timestamp,
       );
       await saveMetadata((next) => {
         next.feeds[message.feed.url] = message.feed;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "UPDATE_RSS_FEED": {
       const feed = nextState.feeds[message.url];
       const updated = feed ? { ...feed, ...message.updates } : null;
-      const followerHandled = updated
-        ? await maybeEnqueueFollowerRssFeedUpsert(updated, timestamp)
+      const normalizedHandled = updated
+        ? await maybeSubmitRssFeedUpsert(updated, timestamp)
         : false;
       await saveMetadata((next) => {
         if (updated) next.feeds[message.url] = updated;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "REMOVE_RSS_FEED": {
-      const followerHandled = await maybeEnqueueFollowerRssFeedRemove({
+      const normalizedHandled = await maybeSubmitRssFeedRemove({
         includeItems: message.includeItems === true,
         removedAtMs: timestamp,
         url: message.url,
       });
-      if (message.includeItems && !followerHandled) {
+      if (message.includeItems && !normalizedHandled) {
         await mutateItems("delete_rss", {
           feedUrl: message.url,
           timestampMs: timestamp,
@@ -2221,15 +2375,14 @@ export async function dispatchSqliteMutation(
       }
       await saveMetadata((next) => {
         delete next.feeds[message.url];
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "REMOVE_ALL_FEEDS": {
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         for (const feed of Object.values(nextState.feeds)) {
-          await maybeEnqueueFollowerRssFeedRemove({
+          await maybeSubmitRssFeedRemove({
             includeItems: message.includeItems === true,
             removedAtMs: timestamp,
             url: feed.url,
@@ -2240,11 +2393,11 @@ export async function dispatchSqliteMutation(
       }
       await saveMetadata((next) => {
         next.feeds = {};
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "UPDATE_PREFERENCES": {
-      const followerHandled = await maybeEnqueueFollowerPreferences(
+      const normalizedHandled = await maybeSubmitPreferences(
         message.updates,
         timestamp,
       );
@@ -2253,39 +2406,39 @@ export async function dispatchSqliteMutation(
           next.preferences,
           message.updates,
         );
-      }, followerHandled);
+      }, normalizedHandled);
       source = "preferences_patch";
       break;
     }
     case "ADD_PERSON": {
-      const followerHandled = await maybeEnqueueFollowerPersonUpserts(
+      const normalizedHandled = await maybeSubmitPersonUpserts(
         [message.person],
         timestamp,
       );
       await saveMetadata((next) => {
         next.persons[message.person.id] = message.person;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "ADD_PERSONS": {
-      const followerHandled = await maybeEnqueueFollowerPersonUpserts(
+      const normalizedHandled = await maybeSubmitPersonUpserts(
         message.persons,
         timestamp,
       );
       await saveMetadata((next) => {
         for (const person of message.persons) next.persons[person.id] = person;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "UPDATE_PERSON": {
       const person = nextState.persons[message.personId];
       const updated = person ? { ...person, ...message.updates } : null;
-      const followerHandled = updated
-        ? await maybeEnqueueFollowerPersonUpserts([updated], timestamp)
+      const normalizedHandled = updated
+        ? await maybeSubmitPersonUpserts([updated], timestamp)
         : false;
       await saveMetadata((next) => {
         if (updated) next.persons[message.personId] = updated;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "UPSERT_CONNECTION_PERSONS": {
@@ -2298,20 +2451,19 @@ export async function dispatchSqliteMutation(
             accounts.push({ ...account, personId: candidate.person.id });
         }
       }
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
-        await maybeEnqueueFollowerPersonUpserts(persons, timestamp);
-        await maybeEnqueueFollowerAccountUpserts(accounts, timestamp);
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
+        await maybeSubmitPersonUpserts(persons, timestamp);
+        await maybeSubmitAccountUpserts(accounts, timestamp);
       }
       await saveMetadata((next) => {
         for (const person of persons) next.persons[person.id] = person;
         for (const account of accounts) next.accounts[account.id] = account;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "REMOVE_PERSON": {
-      const followerHandled = await maybeEnqueueFollowerPersonRemove(
+      const normalizedHandled = await maybeSubmitPersonRemove(
         message.personId,
         timestamp,
       );
@@ -2319,13 +2471,13 @@ export async function dispatchSqliteMutation(
         delete next.persons[message.personId];
         for (const [id, account] of Object.entries(next.accounts)) {
           if (account.personId !== message.personId) continue;
-          if (followerHandled) {
+          if (normalizedHandled) {
             delete next.accounts[id];
           } else {
             next.accounts[id] = { ...account, personId: undefined };
           }
         }
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "LOG_REACH_OUT": {
@@ -2340,54 +2492,54 @@ export async function dispatchSqliteMutation(
             updatedAt: timestamp,
           }
         : null;
-      const followerHandled = updated
-        ? await maybeEnqueueFollowerPersonUpserts([updated], timestamp)
+      const normalizedHandled = updated
+        ? await maybeSubmitPersonUpserts([updated], timestamp)
         : false;
       await saveMetadata((next) => {
         if (updated) next.persons[message.personId] = updated;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "ADD_ACCOUNT": {
-      const followerHandled = await maybeEnqueueFollowerAccountUpserts(
+      const normalizedHandled = await maybeSubmitAccountUpserts(
         [message.account],
         timestamp,
       );
       await saveMetadata((next) => {
         next.accounts[message.account.id] = message.account;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "ADD_ACCOUNTS": {
-      const followerHandled = await maybeEnqueueFollowerAccountUpserts(
+      const normalizedHandled = await maybeSubmitAccountUpserts(
         message.accounts,
         timestamp,
       );
       await saveMetadata((next) => {
         for (const account of message.accounts)
           next.accounts[account.id] = account;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "UPDATE_ACCOUNT": {
       const account = nextState.accounts[message.accountId];
       const updated = account ? { ...account, ...message.updates } : null;
-      const followerHandled = updated
-        ? await maybeEnqueueFollowerAccountUpserts([updated], timestamp)
+      const normalizedHandled = updated
+        ? await maybeSubmitAccountUpserts([updated], timestamp)
         : false;
       await saveMetadata((next) => {
         if (updated) next.accounts[message.accountId] = updated;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "REMOVE_ACCOUNT": {
-      const followerHandled = await maybeEnqueueFollowerAccountRemove(
+      const normalizedHandled = await maybeSubmitAccountRemove(
         message.accountId,
         timestamp,
       );
       await saveMetadata((next) => {
         delete next.accounts[message.accountId];
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "BATCH_REFRESH_FEEDS": {
@@ -2396,16 +2548,15 @@ export async function dispatchSqliteMutation(
         const feed = nextState.feeds[update.url];
         return feed ? [{ ...feed, ...update }] : [];
       });
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         for (const feed of feeds) {
-          await maybeEnqueueFollowerRssFeedUpsert(feed, timestamp);
+          await maybeSubmitRssFeedUpsert(feed, timestamp);
         }
       }
       await saveMetadata((next) => {
         for (const feed of feeds) next.feeds[feed.url] = feed;
-      }, followerHandled);
+      }, normalizedHandled);
       changedIds = message.items.map((item) => item.globalId);
       break;
     }
@@ -2423,16 +2574,15 @@ export async function dispatchSqliteMutation(
           // A malformed legacy feed URL remains unchanged.
         }
       }
-      const followerHandled =
-        (await sqliteLibraryFollowerIntentContext()) !== null;
-      if (followerHandled) {
+      const normalizedHandled = (await mutationContext()) !== null;
+      if (normalizedHandled) {
         for (const feed of feeds) {
-          await maybeEnqueueFollowerRssFeedUpsert(feed, timestamp);
+          await maybeSubmitRssFeedUpsert(feed, timestamp);
         }
       }
       await saveMetadata((next) => {
         for (const feed of feeds) next.feeds[feed.url] = feed;
-      }, followerHandled);
+      }, normalizedHandled);
       break;
     }
     case "DEDUPLICATE_ITEMS":

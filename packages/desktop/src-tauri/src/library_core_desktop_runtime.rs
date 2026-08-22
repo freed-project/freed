@@ -1021,6 +1021,17 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
     Ok(connection)
 }
 
+fn open_selected_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    #[cfg(unix)]
+    if let Ok(binding) = freed_library_core::desktop_binding() {
+        return binding
+            .connect_selected_normalized()
+            .map_err(|error| error.to_string());
+    }
+    let _ = app;
+    Err("normalized SQLite authority selection is unavailable on this host".into())
+}
+
 #[tauri::command]
 pub(super) fn query_normalized_library(
     app: tauri::AppHandle,
@@ -1036,7 +1047,7 @@ pub(super) fn query_normalized_library(
 pub(super) fn normalized_library_primary_mutation_context(
     app: tauri::AppHandle,
 ) -> Result<NormalizedMutationContextV1, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_selected_normalized_database(&app)?;
     normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())
 }
 
@@ -1046,7 +1057,7 @@ pub(super) fn sign_normalized_library_operation(
     app: tauri::AppHandle,
     request: SignNormalizedOperationRequest,
 ) -> Result<DesktopLibraryOperationSignature, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_selected_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
     if request.library_id != context.library_id
@@ -1094,7 +1105,7 @@ pub(super) fn commit_normalized_library_transaction(
     {
         return Err("normalized mutation transaction exceeds its closed bounds".into());
     }
-    let mut connection = open_normalized_database(&app)?;
+    let mut connection = open_selected_normalized_database(&app)?;
     let context =
         normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
     if request.library_id != context.library_id {

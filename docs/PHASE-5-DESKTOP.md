@@ -523,6 +523,7 @@ export async function captureDomFeed(
 | 5.67 | Freeze complete SearchJump scope actions in installation-local native SQLite before the first mutation, then execute the stable set through bounded 1,000-member transactions without returning selected IDs to React                                                                                      | High       | ✓ Complete |
 | 5.68 | Delete the provider-settings rollback key and legacy renderer-item acquisition path, leaving Facebook group repair, media backup, and saved YouTube discovery on bounded source-fenced SQLite reads                                                                                                        | High       | ✓ Complete |
 | 5.69 | Register Freed Desktop's final normalized Primary mutation commands for admitted actor context, native operation signing, and atomic transaction commit, with exact closed bounds and no shell mutation                                                                                                                                                                  | High       | ✓ Complete |
+| 5.70 | Route Freed Desktop's non-provider FeedItem, RSS, preference, Person, and Account product mutations through the selected normalized Primary, while reusing the same canonical transaction transform for editable followers and refusing Primary activation against an unselected migration candidate                                                                      | High       | ✓ Complete |
 
 ---
 

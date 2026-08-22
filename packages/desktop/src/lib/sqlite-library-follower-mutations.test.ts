@@ -66,6 +66,9 @@ describe("SQLite editable follower mutations", () => {
     mocks.enqueuedEnvelopes = [];
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_library_primary_mutation_context") {
+        throw new Error("normalized SQLite authority is not selected");
+      }
       if (command === "sqlite_library_follower_intent_context") {
         return {
           authority: {
@@ -239,5 +242,197 @@ describe("SQLite editable follower mutations", () => {
       "mutate_sqlite_library_items",
       expect.anything(),
     );
+  });
+});
+
+describe("SQLite Primary mutations", () => {
+  beforeEach(() => {
+    mocks.enqueuedEnvelopes = [];
+    mocks.invoke.mockReset();
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_library_primary_mutation_context") {
+        return {
+          libraryId: "ab".repeat(32),
+          epoch: 1,
+          epochId: "cd".repeat(32),
+          actorId: "12".repeat(32),
+          actorPublicKey: "23".repeat(32),
+          nextCounter: 1,
+          previousOperationId: null,
+          previousChainDigest: "34".repeat(32),
+          observedFrontier: [],
+        };
+      }
+      if (command === "sqlite_library_follower_intent_context") {
+        return {
+          authority: {
+            library_id: "ab".repeat(32),
+            epoch: 1,
+            epoch_id: "cd".repeat(32),
+            authority_key_id: "de".repeat(32),
+            authority_public_key: "ef".repeat(32),
+            observed_frontier: [],
+          },
+          actorId: "78".repeat(32),
+          actorPublicKey: "89".repeat(32),
+          nextIntentSequence: 1,
+          previousOperationId: null,
+          previousChainDigest: "9a".repeat(32),
+        };
+      }
+      if (command === "sign_normalized_library_operation") {
+        const request = (
+          args as {
+            request: { actorId: string; operationSigningBodyDigest: string };
+          }
+        ).request;
+        return {
+          actorId: request.actorId,
+          operationSigningBodyDigest: request.operationSigningBodyDigest,
+          signature: "45".repeat(64),
+        };
+      }
+      if (command === "sign_sqlite_library_follower_operation") {
+        const request = (
+          args as {
+            request: { actorId: string; operationSigningBodyDigest: string };
+          }
+        ).request;
+        return {
+          actorId: request.actorId,
+          operationSigningBodyDigest: request.operationSigningBodyDigest,
+          signature: "9b".repeat(64),
+        };
+      }
+      if (command === "enqueue_sqlite_library_follower_intent") {
+        const request = (
+          args as { request: { canonicalEnvelopeJson: string[] } }
+        ).request;
+        mocks.enqueuedEnvelopes = request.canonicalEnvelopeJson;
+        return {
+          transactionId: "desktop-library-like:test",
+          firstIntentSequence: 1,
+          lastIntentSequence: 1,
+          operationCount: 1,
+          status: "enqueued",
+        };
+      }
+      if (command === "commit_normalized_library_transaction") {
+        const request = (
+          args as {
+            request: { canonicalEnvelopeJson: string[] };
+          }
+        ).request;
+        mocks.enqueuedEnvelopes = request.canonicalEnvelopeJson;
+        const envelope = JSON.parse(request.canonicalEnvelopeJson[0]) as {
+          actor_id: string;
+          transaction_id: string;
+          transaction_digest: string;
+        };
+        return {
+          transactionId: envelope.transaction_id,
+          transactionDigest: envelope.transaction_digest,
+          actorId: envelope.actor_id,
+          memberCount: request.canonicalEnvelopeJson.length,
+          firstCounter: 1,
+          lastCounter: 1,
+          committedOperationId: "op:primary:1",
+          committedChainDigest: "56".repeat(32),
+          previousRevision: 1,
+          committedRevision: 2,
+          committedAt: 1_000,
+          followerResultDigest: "67".repeat(32),
+          followerResultSequence: 1,
+          canonicalFollowerResultJson: "{}",
+          invalidations: [
+            {
+              ordinal: 0,
+              topic: "feed_item",
+              entityId: ITEM_ID,
+              resetRequired: false,
+            },
+          ],
+        };
+      }
+      if (command === "read_sqlite_library_counts") {
+        return {
+          revision: 2,
+          itemCount: 1,
+          unreadCount: 0,
+          archivableCount: 1,
+          countsByPlatform: { rss: 1 },
+          unreadByPlatform: {},
+          archivableByPlatform: { rss: 1 },
+          feedCounts: {},
+          unreadFeedCounts: {},
+          archivableFeedCounts: {},
+        };
+      }
+      if (command === "read_sqlite_library_items") {
+        return [JSON.stringify(item(1_000))];
+      }
+      throw new Error(`Unexpected native command: ${command}`);
+    });
+  });
+
+  it("commits a read assignment through the selected normalized Primary", async () => {
+    await dispatchSqliteMutation(
+      { reqId: 5, type: "MARK_AS_READ", globalId: ITEM_ID },
+      state(),
+    );
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope).toMatchObject({
+      operation_type: "feed_item_read_assignment",
+      actor_id: "12".repeat(32),
+      actor_sequence: 1,
+      entity_id: ITEM_ID,
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "commit_normalized_library_transaction",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          libraryId: "ab".repeat(32),
+          canonicalEnvelopeJson: expect.any(Array),
+        }),
+      }),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "sqlite_library_follower_intent_context",
+      expect.anything(),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "mutate_sqlite_library_items",
+      expect.anything(),
+    );
+  });
+
+  it("keeps provider-visible likes off the Primary path", async () => {
+    await dispatchSqliteMutation(
+      { reqId: 6, type: "TOGGLE_LIKED", globalId: ITEM_ID },
+      state(),
+    );
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope).toMatchObject({
+      operation_type: "feed_item_like_assignment",
+      actor_id: "78".repeat(32),
+      entity_id: ITEM_ID,
+    });
+    expect(
+      mocks.invoke.mock.calls.some(
+        ([command]) =>
+          command === "normalized_library_primary_mutation_context",
+      ),
+    ).toBe(false);
+    expect(
+      mocks.invoke.mock.calls.some(
+        ([command]) => command === "commit_normalized_library_transaction",
+      ),
+    ).toBe(false);
   });
 });
