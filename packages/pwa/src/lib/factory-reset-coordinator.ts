@@ -13,7 +13,7 @@ const RESET_LOCK_NAME = "freed-pwa-factory-reset-v1";
 const DEFAULT_CLAIM_ELECTION_WINDOW_MS = 50;
 const DEFAULT_CLAIM_TTL_MS = 5 * 60_000;
 const DEFAULT_QUIESCE_HANDLER_TIMEOUT_MS = 12_000;
-// Sync, store, and Automerge quiesce sequentially. Allow their complete
+// Sync, store, and SQLite worker handlers quiesce sequentially. Allow their complete
 // bounded budget plus time for cross-tab transport and timer throttling.
 const DEFAULT_ACK_TIMEOUT_MS = 3 * DEFAULT_QUIESCE_HANDLER_TIMEOUT_MS + 9_000;
 

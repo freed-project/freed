@@ -1,7 +1,7 @@
 /**
  * Global app state management with Zustand
  *
- * PWA version. IndexedDB Library Core is the only durable product store.
+ * PWA version. OPFS SQLite is the only durable Library row store.
  */
 
 import { create } from "zustand";
@@ -317,7 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeView: "feed",
   pendingMatchCount: 0,
 
-  // Initialize from IndexedDB Library Core.
+  // Initialize from the bounded OPFS SQLite Library window.
   initialize: () => {
     if (storeQuiesced)
       return Promise.reject(

@@ -7,7 +7,7 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 
-/** Bounded UI state hydrated from the PWA IndexedDB Library Core. */
+/** Bounded UI state hydrated from the PWA OPFS SQLite Library. */
 export interface LibraryState {
   items: FeedItem[];
   searchCorpusVersion: number;

@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, and product mutation entrypoints are implemented; follower enrollment transport, result reconciliation wiring, navigation aggregates, physical iPhone proof, and IndexedDB Library deletion remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, and IndexedDB Library deletion are implemented; follower cloud transport, result reconciliation wiring, navigation aggregates, and physical iPhone proof remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -215,7 +215,7 @@
         renderer source sequence.
 - [ ] Support metadata only, streaming, partial cache, full cache, pinned
       offline, and excluded content modes per device and rendition.
-- [ ] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
+- [x] Delete IndexedDB Library generations, rows, overlays, checkpoint cursors,
       search postings, and compatibility code after verified cutover.
 
 ---
@@ -478,6 +478,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.46 | Move PWA actor enrollment, normalized intent publication, normalized result import, and exact cloud receipts from the retired portable store onto the existing closed OPFS SQLite transport transactions. The normalized intent, result, and enrollment transactions now cross the closed worker boundary. Drive publication and result orchestration remain open. | High       | 🚧 In Progress                                                                                   |
 | 6.47 | Replace the actor key hidden inside the portable checkpoint database with a dedicated IndexedDB key vault that contains only one nonextractable Ed25519 key and its public identity per Library, with exact SQLite identity checks on every signature | High       | ✓ Complete                                                                                       |
 | 6.48 | Generate the PWA proof-only editor capability request from the shared contract after normalized checkpoint activation, store its exact canonical bytes in SQLite, and install only the matching authority-countersigned certificate with replay-stable receipts | High       | ✓ Complete                                                                                       |
+| 6.49 | Delete the portable checkpoint store, IndexedDB feed reader, intent overlay, shell bootstrap, and their compatibility tests, leaving IndexedDB only as the nonextractable actor key vault | High       | ✓ Complete                                                                                       |
 
 ---
 
@@ -508,7 +509,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status. Only the last successful refresh syncs. Retry timing and failures remain local to the polling device. Deprecated synchronized HTTP validators are ignored because the current Desktop transport does not persist them.
 - [x] First launch is blocked behind a local-only legal clickwrap gate
-- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, the OPFS SQLite pool, and retired IndexedDB databases. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
+- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, the OPFS SQLite pool, and the nonextractable actor key vault. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report

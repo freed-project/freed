@@ -1,13 +1,13 @@
 /**
  * Feed management for the PWA
  *
- * The PWA is a reader — it displays items synced from the desktop app
- * via Automerge. RSS subscription and feed fetching are desktop-only
- * capabilities. The PWA has a saved-article proxy, but not an RSS fetch path.
+ * The PWA displays records synchronized through normalized checkpoints and
+ * signed intents. RSS polling and feed fetching remain Primary capabilities.
+ * The PWA has a saved-article proxy, but not an RSS fetch path.
  *
- * The PWA CAN subscribe to feeds by writing a stub entry to the CRDT doc.
- * The desktop poller detects the stub (title === url sentinel) on next sync
- * and heals it with real metadata and content.
+ * The PWA can subscribe through a signed RSS Feed upsert. The Primary detects
+ * the URL-title sentinel after accepting the intent, then fetches the feed and
+ * replaces the sentinel with real metadata and content.
  */
 
 import type { RssFeed } from "@freed/shared";
@@ -18,10 +18,10 @@ import { toast } from "@freed/ui/components/Toast";
 /**
  * Subscribe to an RSS feed from the PWA.
  *
- * The PWA cannot fetch RSS content directly. Instead, this writes a
- * stub subscription to the Automerge doc using the URL as a sentinel title.
- * The desktop poller recognises the sentinel on next sync, fetches real
- * metadata and content, and heals the title in-place.
+ * The PWA cannot fetch RSS content directly. Instead, this commits a signed
+ * stub subscription using the URL as a sentinel title. The Primary recognizes
+ * the sentinel on the next accepted synchronization pass, fetches real
+ * metadata and content, and replaces the title.
  */
 export async function subscribeToFeed(url: string): Promise<void> {
   let parsed: URL;

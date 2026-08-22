@@ -692,7 +692,7 @@ export async function openPwaLibraryCoreFeedReader(
   );
 }
 
-/** Open the complete Person-first Friends feed through bounded IndexedDB pages. */
+/** Open the complete Person-first Friends feed through bounded SQLite pages. */
 export async function openPwaLibraryCoreFriendsFeedReader(
   filter: FilterOptions,
   rankingClockMs: number,
@@ -856,8 +856,6 @@ registerPwaFactoryResetQuiesceHandler(
           { once: true },
         );
       });
-    await deleteDatabase("freed-library-core-portable-v1");
-    await deleteDatabase("freed-library-core-read-model-v1");
     await deleteDatabase(PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
   },
   25,
