@@ -271,8 +271,10 @@
   - [x] Stream native range bytes through one 256 KiB bounded verifier, require
         a host durability barrier, and register only proofs matching the
         canonical SQLite range identity.
-  - [ ] Publish digest-verified ranges into the descriptor-bound content vault
-        without routing complete media through the renderer or native IPC.
+  - [x] Publish digest-verified ranges into the private descriptor-bound,
+        content-addressed vault without routing complete media through the
+        renderer or native IPC. Startup removes partial and orphan objects,
+        prunes missing or mismatched SQLite proofs, and preserves exact files.
 - [ ] Remove `shellJson`, `DocState`, whole FeedItem transport, Automerge
       workers, shadow stores, compatibility flags, and unconsumed migration
       exports after one-epoch activation proof.

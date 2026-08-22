@@ -886,6 +886,13 @@ time. Local range rows are keyed by the canonical content digest and range
 index. They retain the verified length and digest as local proof, then reconcile
 against every activated canonical generation. Exact matches survive checkpoint
 replacement. Removed or changed ranges lose their local availability proof.
+Physical object keys bind the content digest, range index, and verified range
+digest. Desktop resolves its private vault through a held directory descriptor
+and crosses file and directory durability barriers before SQLite registration.
+The PWA owns the equivalent OPFS lifecycle in the SQLite worker. Startup scans
+physical entries and SQLite proofs in bounded pages. Exact length-bound matches
+survive. Orphans, partial files, missing objects, and mismatched proofs are
+removed before the vault becomes ready.
 
 ### 13.3 Device policy
 

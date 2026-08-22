@@ -15,6 +15,8 @@ mod library_core_bound_sqlite_vfs;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
 #[cfg(unix)]
+mod library_core_content_vault;
+#[cfg(unix)]
 mod library_core_desktop_binding;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;

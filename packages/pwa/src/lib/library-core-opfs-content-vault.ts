@@ -1,5 +1,6 @@
 import {
   createLibraryCoreMediaBlobDigestStateV1,
+  createLibraryCoreContentRangeStorageKeyV1,
   isLibraryCoreLowercaseHex64,
   LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
   parseLibraryCoreContentRangePublicationAbortV1,
@@ -32,8 +33,15 @@ export interface PwaContentRangeObjectV1 {
 }
 
 export interface PwaContentRangeStorageV1 {
-  create(publicationId: string): Promise<PwaContentRangeObjectV1>;
+  create(
+    publicationId: string,
+    storageKey: string,
+  ): Promise<PwaContentRangeObjectV1>;
   remove(storageKey: string): Promise<void>;
+  scan(
+    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+  ): Promise<void>;
+  stat(storageKey: string): Promise<number | null>;
 }
 
 interface PublicationSession {
@@ -53,6 +61,10 @@ interface OpfsSyncAccessHandleV1 {
   flush(): void;
   truncate(size: number): void;
   write(bytes: Uint8Array, options: { readonly at: number }): number;
+}
+
+interface OpfsDirectoryHandleV1 extends FileSystemDirectoryHandle {
+  entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
 }
 
 export class PwaLibraryCoreOpfsContentVault {
@@ -77,6 +89,15 @@ export class PwaLibraryCoreOpfsContentVault {
     if (this.#sessions.has(request.publicationId)) {
       throw new Error("content range publication identity is already active");
     }
+    if (
+      [...this.#sessions.values()].some(
+        (session) =>
+          session.contentDigest === request.contentDigest &&
+          session.rangeIndex === request.rangeIndex,
+      )
+    ) {
+      throw new Error("content range is already being published");
+    }
     if (this.#sessions.size >= MAXIMUM_ACTIVE_PUBLICATIONS) {
       throw new Error("content range publication capacity is exhausted");
     }
@@ -84,7 +105,12 @@ export class PwaLibraryCoreOpfsContentVault {
       request.contentDigest,
       request.rangeIndex,
     );
-    const object = await this.#storage.create(request.publicationId);
+    const storageKey = createLibraryCoreContentRangeStorageKeyV1(
+      request.contentDigest,
+      request.rangeIndex,
+      canonical.rangeContentDigest,
+    );
+    const object = await this.#storage.create(request.publicationId, storageKey);
     const session: PublicationSession = {
       contentDigest: request.contentDigest,
       expectedByteLength: canonical.byteLength,
@@ -175,6 +201,50 @@ export class PwaLibraryCoreOpfsContentVault {
     await Promise.all(sessions.map((session) => this.#discard(session)));
   }
 
+  async reconcile(): Promise<void> {
+    let staleStorageKeys: string[] = [];
+    const flushStaleProofs = () => {
+      if (staleStorageKeys.length === 0) return;
+      this.#engine.pruneVerifiedContentRangeStorageProofs(staleStorageKeys);
+      staleStorageKeys = [];
+    };
+    await this.#storage.scan(async (entry) => {
+      const proof = this.#engine.readVerifiedContentRangeStorageProof(
+        entry.storageKey,
+      );
+      if (
+        proof === null ||
+        proof.storageKey !== proof.canonicalStorageKey ||
+        proof.byteLength !== entry.byteLength
+      ) {
+        await this.#storage.remove(entry.storageKey);
+        if (proof !== null) staleStorageKeys.push(entry.storageKey);
+        if (staleStorageKeys.length === 128) flushStaleProofs();
+      }
+    });
+    flushStaleProofs();
+
+    let afterStorageKey: string | null = null;
+    while (true) {
+      const page = this.#engine.pageVerifiedContentRangeStorageProofs(
+        afterStorageKey,
+      );
+      if (page.length === 0) return;
+      for (const proof of page) {
+        const byteLength = await this.#storage.stat(proof.storageKey);
+        if (
+          proof.storageKey !== proof.canonicalStorageKey ||
+          byteLength !== proof.byteLength
+        ) {
+          await this.#storage.remove(proof.storageKey).catch(() => undefined);
+          staleStorageKeys.push(proof.storageKey);
+        }
+      }
+      flushStaleProofs();
+      afterStorageKey = page.at(-1)!.storageKey;
+    }
+  }
+
   #session(publicationId: string): PublicationSession {
     if (!isLibraryCoreLowercaseHex64(publicationId)) {
       throw new TypeError("content range publication identity is invalid");
@@ -211,13 +281,15 @@ export class PwaLibraryCoreOpfsContentVault {
 }
 
 class BrowserOpfsContentRangeStorageV1 implements PwaContentRangeStorageV1 {
-  async create(publicationId: string): Promise<PwaContentRangeObjectV1> {
+  async create(
+    _publicationId: string,
+    storageKey: string,
+  ): Promise<PwaContentRangeObjectV1> {
     const root = await navigator.storage.getDirectory();
     const directory = await root.getDirectoryHandle(
       PWA_LIBRARY_CORE_CONTENT_VAULT_DIRECTORY,
       { create: true },
     );
-    const storageKey = `range-${publicationId}.bin`;
     const file = await directory.getFileHandle(storageKey, { create: true });
     if ((await file.getFile()).size !== 0) {
       throw new Error("content range publication object already exists");
@@ -251,5 +323,41 @@ class BrowserOpfsContentRangeStorageV1 implements PwaContentRangeStorageV1 {
       { create: true },
     );
     await directory.removeEntry(storageKey);
+  }
+
+  async scan(
+    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+  ): Promise<void> {
+    const root = await navigator.storage.getDirectory();
+    const directory = await root.getDirectoryHandle(
+      PWA_LIBRARY_CORE_CONTENT_VAULT_DIRECTORY,
+      { create: true },
+    );
+    for await (const [storageKey, handle] of (
+      directory as OpfsDirectoryHandleV1
+    ).entries()) {
+      if (handle.kind !== "file") {
+        throw new Error("content vault contains a non-file entry");
+      }
+      const file = await (handle as FileSystemFileHandle).getFile();
+      await visit(Object.freeze({ byteLength: file.size, storageKey }));
+    }
+  }
+
+  async stat(storageKey: string): Promise<number | null> {
+    const root = await navigator.storage.getDirectory();
+    const directory = await root.getDirectoryHandle(
+      PWA_LIBRARY_CORE_CONTENT_VAULT_DIRECTORY,
+      { create: true },
+    );
+    try {
+      const file = await directory.getFileHandle(storageKey);
+      return (await file.getFile()).size;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotFoundError") {
+        return null;
+      }
+      throw error;
+    }
   }
 }

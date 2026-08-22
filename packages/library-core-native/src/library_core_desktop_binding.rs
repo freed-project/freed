@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -10,16 +11,19 @@ use serde::{Deserialize, Serialize};
 use crate::library_core_bound_root::LibraryCoreBoundRoot;
 use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
+use crate::library_core_content_vault::LibraryCoreContentVault;
 use crate::normalized_sqlite::{
     configure_normalized_sqlite_connection, normalized_sqlite_open_flags,
 };
 use crate::{
-    LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
-    NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity,
+    publish_content_range_from_reader_v1, ContentRangePublicationRequestV1, LibraryCoreJournal,
+    LibraryCoreProcessLease, LibraryCoreStore, LibraryCoreStoreError,
+    NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity, VerifiedContentRangeReceiptV1,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
 const NORMALIZED_LIBRARY_DIRECTORY: &str = "library-sqlite";
+const CONTENT_VAULT_DIRECTORY: &str = "library-content-vault";
 const AUTHORITY_SELECTION_FILE: &str = "library-authority-selection-v1.json";
 const AUTHORITY_SELECTION_MAXIMUM_BYTES: usize = 16_384;
 
@@ -35,6 +39,7 @@ struct DesktopAuthoritySelectionV1 {
 /// The app-data pathname is consumed once. Every later SQLite, WAL, SHM,
 /// journal, lease, and backup operation resolves from held directory handles.
 pub struct LibraryCoreDesktopBinding {
+    content_vault: LibraryCoreContentVault,
     store: LibraryCoreStore,
     normalized_database: BoundSqliteDatabase,
     _lease: LibraryCoreProcessLease,
@@ -109,13 +114,19 @@ impl LibraryCoreDesktopBinding {
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
         let normalized_database =
             BoundSqliteDatabase::from_directory(normalized_directory.try_clone()?)?;
-        let normalized_connection = normalized_database.open(normalized_sqlite_open_flags(true))?;
+        let content_vault_directory =
+            app_root.open_or_create_private_directory(CONTENT_VAULT_DIRECTORY)?;
+        let content_vault = LibraryCoreContentVault::from_directory(content_vault_directory)?;
+        let mut normalized_connection =
+            normalized_database.open(normalized_sqlite_open_flags(true))?;
         configure_normalized_sqlite_connection(&normalized_connection)
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+        content_vault.reconcile_v1(&mut normalized_connection)?;
         drop(normalized_connection);
         let backup_directory = app_root.open_or_create_private_directory("library-backups")?;
         let store = LibraryCoreStore::open_bound_directories(library_directory, backup_directory)?;
         Ok(Self {
+            content_vault,
             store,
             normalized_database,
             _lease: lease,
@@ -155,6 +166,31 @@ impl LibraryCoreDesktopBinding {
         configure_normalized_sqlite_connection(&connection)
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
         Ok(connection)
+    }
+
+    pub fn publish_content_range_from_reader_v1<R: Read>(
+        &self,
+        publication_id: &str,
+        request: &ContentRangePublicationRequestV1,
+        reader: &mut R,
+    ) -> Result<VerifiedContentRangeReceiptV1, LibraryCoreStoreError> {
+        let mut connection = self.connect_selected_normalized()?;
+        let range_digest = connection
+            .query_row(
+                "SELECT range_digest FROM library_content_ranges
+                 WHERE content_digest = ?1 COLLATE BINARY AND range_index = ?2;",
+                rusqlite::params![request.content_digest, request.range_index],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(LibraryCoreStoreError::from)?;
+        let mut object = self.content_vault.create_range_object_v1(
+            publication_id,
+            &request.content_digest,
+            request.range_index,
+            &range_digest,
+        )?;
+        publish_content_range_from_reader_v1(&mut connection, request, reader, &mut object)
+            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))
     }
 
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStoreError> {
@@ -315,7 +351,10 @@ impl LibraryCoreDesktopBinding {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use std::os::unix::fs::PermissionsExt;
+
+    use sha2::{Digest, Sha256};
 
     use super::*;
 
@@ -451,6 +490,86 @@ mod tests {
             binding
                 .connect_selected_normalized()
                 .expect("selected authority opening remains available"),
+        );
+        let bytes = b"descriptor-bound content range".to_vec();
+        let mut digest = Sha256::new();
+        digest.update(b"freed.library-core.v1/digest-bytes/blob-content\0");
+        digest.update(&bytes);
+        let content_digest = crate::lower_hex(&digest.finalize());
+        let normalized = binding
+            .connect_selected_normalized()
+            .expect("open selected authority for content descriptor");
+        normalized
+            .execute(
+                "INSERT INTO library_blobs
+                   (content_digest, byte_length, storage_layout, chunk_bytes, chunk_count,
+                    range_count, range_granularity, range_index_root_digest, rendition_id,
+                    cloud_availability_commitment, media_type)
+                 VALUES (?1, ?2, 'authenticated_ranges', 0, 0, 1, ?2, ?3,
+                         'original', ?4, 'application/octet-stream');",
+                rusqlite::params![
+                    content_digest,
+                    i64::try_from(bytes.len()).expect("range length"),
+                    "7".repeat(64),
+                    "8".repeat(64),
+                ],
+            )
+            .expect("insert content descriptor");
+        normalized
+            .execute(
+                "INSERT INTO library_content_ranges
+                   (content_digest, range_index, byte_offset, byte_length, range_digest)
+                 VALUES (?1, 0, 0, ?2, ?1);",
+                rusqlite::params![
+                    content_digest,
+                    i64::try_from(bytes.len()).expect("range length")
+                ],
+            )
+            .expect("insert content range");
+        drop(normalized);
+        let visible_vault = app_root.join(CONTENT_VAULT_DIRECTORY);
+        let moved_vault = app_root.join("moved-library-content-vault");
+        fs::rename(&visible_vault, &moved_vault).expect("move bound content vault");
+        fs::create_dir(&visible_vault).expect("create replacement content vault");
+        fs::set_permissions(&visible_vault, fs::Permissions::from_mode(0o700))
+            .expect("set replacement vault permissions");
+        fs::write(visible_vault.join("sentinel"), b"replacement")
+            .expect("write replacement vault sentinel");
+        let receipt = binding
+            .publish_content_range_from_reader_v1(
+                &"9".repeat(64),
+                &ContentRangePublicationRequestV1 {
+                    content_digest: content_digest.clone(),
+                    range_index: 0,
+                    schema_version: 1,
+                    verified_at: 600,
+                },
+                &mut Cursor::new(bytes.clone()),
+            )
+            .expect("publish descriptor-bound content range");
+        assert!(receipt.changed);
+        let storage_key = binding
+            .connect_selected_normalized()
+            .expect("open selected authority for content proof")
+            .query_row(
+                "SELECT storage_key FROM library_device_content_ranges
+                 WHERE content_digest = ?1 AND range_index = 0;",
+                [&content_digest],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("registered content vault key");
+        assert_eq!(
+            storage_key,
+            format!("range-{content_digest}-0-{content_digest}.bin")
+        );
+        assert_eq!(
+            fs::read(moved_vault.join(&storage_key)).expect("bound range bytes"),
+            bytes
+        );
+        assert!(!visible_vault.join(&storage_key).exists());
+        assert_eq!(
+            fs::read(visible_vault.join("sentinel")).expect("replacement vault sentinel"),
+            b"replacement"
         );
         let normalized = binding
             .connect_selected_normalized()

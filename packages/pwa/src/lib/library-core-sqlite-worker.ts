@@ -53,6 +53,7 @@ async function acquireOwnership(): Promise<void> {
 async function open(): Promise<PwaLibraryCoreSqliteEngine> {
   if (engine) return engine;
   await acquireOwnership();
+  let openingEngine: PwaLibraryCoreSqliteEngine | null = null;
   try {
     const sqlite3 = await sqlite3InitModule();
     const pool = await sqlite3.installOpfsSAHPoolVfs({
@@ -67,11 +68,16 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
       database,
       sqlite3.version.libVersion,
     );
+    openingEngine = next;
     next.initialize();
+    const nextContentVault = new PwaLibraryCoreOpfsContentVault(next);
+    await nextContentVault.reconcile();
     engine = next;
-    contentVault = new PwaLibraryCoreOpfsContentVault(next);
+    contentVault = nextContentVault;
+    openingEngine = null;
     return next;
   } catch (error) {
+    openingEngine?.close();
     releaseOwnership?.();
     releaseOwnership = null;
     await ownershipTask?.catch(() => undefined);

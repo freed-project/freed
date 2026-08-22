@@ -8,6 +8,11 @@
   "checkpointExportFormat": "freed_normalized_checkpoint_export_v2",
   "checkpointDatasetSchemaId": "library_core_normalized_checkpoint_v2",
   "contentRangeMapDigestDomain": "freed.library-core.v1/digest-records/content-range-map\u0000",
+  "contentRangeStorageKey": {
+    "maximumUtf8Bytes": 255,
+    "prefix": "range-",
+    "suffix": ".bin"
+  },
   "preferenceWritePolicies": {
     "ai": {
       "provider": "device-local",

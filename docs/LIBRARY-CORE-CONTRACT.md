@@ -979,6 +979,19 @@ authority. A failed or changed stream is discarded before availability can be
 published. A crash before the SQLite commit can leave an unreachable object,
 but never a false cached-range claim.
 
+Physical range keys bind the content digest, range index, and canonical range
+digest. Freed Desktop resolves the vault through one held private directory
+descriptor, writes a 0600 staging file, syncs it, renames it to the canonical
+key, syncs the directory, and only then registers SQLite proof. The PWA follows
+the same proof order with its worker-owned OPFS handle.
+
+Every runtime reconciles physical objects before declaring the vault ready.
+The scan keeps at most 128 SQLite proofs in memory. It deletes unfinished and
+unreferenced objects, prunes proofs for missing or length-mismatched files,
+recomputes aggregate availability through generated SQL, and advances exactly
+one device-local content revision when state changed. Exact physical and SQLite
+matches survive restart and canonical checkpoint replacement.
+
 Garbage collection preserves canonical references, active checkpoint roots,
 backups, pinned local renditions, in-flight transfers, and retained receipts.
 

@@ -2,7 +2,12 @@ import {
   isLibraryCoreLowercaseHex64,
   isLibraryCoreNonnegativeSafeInteger,
 } from "./protocol-scalars.js";
-import { LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES } from "./sqlite-contract.generated.js";
+import {
+  LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
+  LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES,
+  LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_PREFIX,
+  LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_SUFFIX,
+} from "./sqlite-contract.generated.js";
 
 export const LIBRARY_CORE_SELECTIVE_CONTENT_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_CONTENT_HYDRATION_POLICIES = Object.freeze([
@@ -186,6 +191,28 @@ function validState(
   return LIBRARY_CORE_CONTENT_HYDRATION_STATES.includes(
     value as LibraryCoreContentHydrationStateV1,
   );
+}
+
+export function createLibraryCoreContentRangeStorageKeyV1(
+  contentDigest: string,
+  rangeIndex: number,
+  rangeContentDigest: string,
+): string {
+  if (
+    !isLibraryCoreLowercaseHex64(contentDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(rangeIndex) ||
+    !isLibraryCoreLowercaseHex64(rangeContentDigest)
+  ) {
+    throw new TypeError("content range storage identity is invalid");
+  }
+  const storageKey = `${LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_PREFIX}${contentDigest}-${rangeIndex.toLocaleString("en-US", { useGrouping: false })}-${rangeContentDigest}${LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_SUFFIX}`;
+  if (
+    new TextEncoder().encode(storageKey).length >
+    LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES
+  ) {
+    throw new TypeError("content range storage key exceeds its bound");
+  }
+  return storageKey;
 }
 
 export function parseLibraryCoreContentPolicyMutationV1(

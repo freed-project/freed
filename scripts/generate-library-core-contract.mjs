@@ -73,6 +73,7 @@ function assertContract(contract) {
     "checkpointImports",
     "checkpointRecords",
     "contentRangeMapDigestDomain",
+    "contentRangeStorageKey",
     "contractVersion",
     "fractionalFields",
     "limits",
@@ -101,6 +102,15 @@ function assertContract(contract) {
     "freed.library-core.v1/digest-records/content-range-map\0"
   ) {
     throw new TypeError("SQLite content range map digest domain is invalid");
+  }
+  if (
+    Object.keys(contract.contentRangeStorageKey).sort().join(",") !==
+      "maximumUtf8Bytes,prefix,suffix" ||
+    contract.contentRangeStorageKey.maximumUtf8Bytes !== 255 ||
+    contract.contentRangeStorageKey.prefix !== "range-" ||
+    contract.contentRangeStorageKey.suffix !== ".bin"
+  ) {
+    throw new TypeError("SQLite content range storage key contract is invalid");
   }
   if (
     contract.applicationId !== 1_179_796_804 ||
@@ -602,6 +612,9 @@ export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_FORMAT = ${JSON.stringify(contra
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT = ${JSON.stringify(contract.checkpointExportFormat)} as const;
 export const LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID = ${JSON.stringify(contract.checkpointDatasetSchemaId)} as const;
 export const LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN = ${JSON.stringify(contract.contentRangeMapDigestDomain)} as const;
+export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_PREFIX = ${JSON.stringify(contract.contentRangeStorageKey.prefix)} as const;
+export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_SUFFIX = ${JSON.stringify(contract.contentRangeStorageKey.suffix)} as const;
+export const LIBRARY_CORE_CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES = ${contract.contentRangeStorageKey.maximumUtf8Bytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES = ${contract.limits.checkpointRecordCanonicalBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES = ${contract.limits.checkpointPageDecodedBytes} as const;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS = ${contract.limits.checkpointPageRecords} as const;
@@ -773,6 +786,9 @@ pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = ${JSON.stringify(contract.
 pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = ${JSON.stringify(contract.checkpointDatasetSchemaId)};
 pub const CONTENT_RANGE_MAP_DIGEST_DOMAIN: &str =
     ${rustString(contract.contentRangeMapDigestDomain)};
+pub const CONTENT_RANGE_STORAGE_KEY_PREFIX: &str = ${JSON.stringify(contract.contentRangeStorageKey.prefix)};
+pub const CONTENT_RANGE_STORAGE_KEY_SUFFIX: &str = ${JSON.stringify(contract.contentRangeStorageKey.suffix)};
+pub const CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES: usize = ${contract.contentRangeStorageKey.maximumUtf8Bytes};
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = ${contract.limits.checkpointRecordCanonicalBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = ${contract.limits.checkpointPageDecodedBytes};
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.checkpointPageRecords};

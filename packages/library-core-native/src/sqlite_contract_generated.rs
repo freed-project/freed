@@ -10,6 +10,9 @@ pub const NORMALIZED_CHECKPOINT_EXPORT_FORMAT: &str = "freed_normalized_checkpoi
 pub const NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID: &str = "library_core_normalized_checkpoint_v2";
 pub const CONTENT_RANGE_MAP_DIGEST_DOMAIN: &str =
     "freed.library-core.v1/digest-records/content-range-map\0";
+pub const CONTENT_RANGE_STORAGE_KEY_PREFIX: &str = "range-";
+pub const CONTENT_RANGE_STORAGE_KEY_SUFFIX: &str = ".bin";
+pub const CONTENT_RANGE_STORAGE_KEY_MAXIMUM_UTF8_BYTES: usize = 255;
 pub const CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES: usize = 131072;
 pub const CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES: usize = 2097152;
 pub const CHECKPOINT_PAGE_MAXIMUM_RECORDS: usize = 128;

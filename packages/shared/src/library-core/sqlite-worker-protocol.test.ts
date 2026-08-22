@@ -8,6 +8,7 @@ import {
   parseLibraryCoreNormalizedResultTransportImportV2,
 } from "./normalized-result-segment-contracts.js";
 import { parseLibraryCoreNormalizedIntentTransportPublicationV2 } from "./normalized-intent-segment-contracts.js";
+import { createLibraryCoreContentRangeStorageKeyV1 } from "./selective-content-contracts.js";
 import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
@@ -462,6 +463,9 @@ describe("Library Core SQLite worker protocol", () => {
         },
       }),
     ).toThrow(/selective content policy mutation is invalid/);
+    expect(
+      createLibraryCoreContentRangeStorageKeyV1(digest, 2, "b".repeat(64)),
+    ).toBe(`range-${digest}-2-${"b".repeat(64)}.bin`);
   });
 
   it("carries only bounded sequential content range publication frames", () => {

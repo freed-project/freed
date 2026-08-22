@@ -14,10 +14,11 @@
 > Policy and byte availability are separate facts. Device content rows do not
 > enter checkpoints, authority revisions, or replication. Canonical typed range
 > records now authenticate multi-gigabyte logical content without allocating
-> media bytes. The PWA worker publishes verified OPFS ranges through bounded
-> frames, and native Rust exposes the same streaming durability contract.
-> Desktop vault binding, playback streaming, reconciliation, and eviction
-> remain in progress.
+> media bytes. The PWA worker publishes verified content-addressed OPFS ranges
+> through bounded frames. Freed Desktop streams the same verified ranges into
+> its private descriptor-bound content vault. Both runtimes reconcile physical
+> objects against local SQLite proofs at startup. Playback streaming, complete
+> cache closure, pinning, and eviction remain in progress.
 
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 

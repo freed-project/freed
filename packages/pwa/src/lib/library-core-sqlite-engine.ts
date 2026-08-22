@@ -162,6 +162,7 @@ import {
   parseLibraryCoreContentPolicyMutationV1,
   parseLibraryCoreContentStateRequestV1,
   parseLibraryCoreContentStateV1,
+  createLibraryCoreContentRangeStorageKeyV1,
   parseLibraryCoreVerifiedContentRangePublicationV1,
   parseLibraryCoreVerifiedContentRangeReceiptV1,
   digestLibraryCoreAnyScopeActionRequestV1,
@@ -1188,7 +1189,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  #reconcileLocalContentState(): void {
+  #reconcileLocalContentState(changedBefore = false): void {
     const before = safeInteger(
       this.#database.exec({
         sql: "SELECT total_changes();",
@@ -1208,7 +1209,7 @@ export class PwaLibraryCoreSqliteEngine {
       })[0],
       "content reconciliation ending change count",
     );
-    if (after > before) {
+    if (changedBefore || after > before) {
       this.#database.exec(`UPDATE library_device_content_state
         SET revision = revision + 1
         WHERE singleton_id = 1 AND revision < 9007199254740991;`);
@@ -1712,6 +1713,131 @@ export class PwaLibraryCoreSqliteEngine {
       if (!receipt.ok) throw new TypeError(receipt.error);
       this.#database.exec("COMMIT;");
       return receipt.value;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  readVerifiedContentRangeStorageProof(
+    storageKey: string,
+  ): Readonly<{
+    byteLength: number;
+    canonicalStorageKey: string;
+    storageKey: string;
+  }> | null {
+    if (
+      storageKey.length === 0 ||
+      new TextEncoder().encode(storageKey).length > 1_024
+    ) {
+      throw new TypeError("content range storage key is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT content_digest, range_index, verified_range_digest,
+                   verified_byte_length, storage_key
+            FROM library_device_content_ranges
+            WHERE storage_kind = 'opfs' AND storage_key = ?1;`,
+      bind: [storageKey],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length === 0) return null;
+    if (rows.length !== 1) {
+      throw new Error("content range storage proof is ambiguous");
+    }
+    return Object.freeze({
+      canonicalStorageKey: createLibraryCoreContentRangeStorageKeyV1(
+        text(rows[0]![0], "verified content range identity"),
+        safeInteger(rows[0]![1], "verified content range index"),
+        text(rows[0]![2], "verified content range digest"),
+      ),
+      byteLength: safeInteger(
+        rows[0]![3],
+        "verified content range storage length",
+      ),
+      storageKey: text(rows[0]![4], "verified content range storage key"),
+    });
+  }
+
+  pageVerifiedContentRangeStorageProofs(
+    afterStorageKey: string | null,
+  ): readonly Readonly<{
+    byteLength: number;
+    canonicalStorageKey: string;
+    storageKey: string;
+  }>[] {
+    if (
+      afterStorageKey !== null &&
+      (afterStorageKey.length === 0 ||
+        new TextEncoder().encode(afterStorageKey).length > 1_024)
+    ) {
+      throw new TypeError("content range storage cursor is invalid");
+    }
+    const rows = this.#database.exec({
+      sql: `SELECT content_digest, range_index, verified_range_digest,
+                   verified_byte_length, storage_key
+            FROM library_device_content_ranges
+            WHERE storage_kind = 'opfs'
+              AND (?1 IS NULL OR storage_key > ?1 COLLATE BINARY)
+            ORDER BY storage_key COLLATE BINARY ASC LIMIT 128;`,
+      bind: [afterStorageKey],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          canonicalStorageKey: createLibraryCoreContentRangeStorageKeyV1(
+            text(row[0], "verified content range identity"),
+            safeInteger(row[1], "verified content range index"),
+            text(row[2], "verified content range digest"),
+          ),
+          byteLength: safeInteger(
+            row[3],
+            "verified content range storage length",
+          ),
+          storageKey: text(row[4], "verified content range storage key"),
+        }),
+      ),
+    );
+  }
+
+  pruneVerifiedContentRangeStorageProofs(
+    storageKeys: readonly string[],
+  ): void {
+    if (
+      storageKeys.length > 128 ||
+      new Set(storageKeys).size !== storageKeys.length ||
+      storageKeys.some(
+        (storageKey) =>
+          storageKey.length === 0 ||
+          new TextEncoder().encode(storageKey).length > 1_024,
+      )
+    ) {
+      throw new TypeError("content range storage prune request is invalid");
+    }
+    if (storageKeys.length === 0) return;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      let changed = false;
+      for (const storageKey of storageKeys) {
+        this.#database.exec({
+          sql: `DELETE FROM library_device_content_ranges
+                WHERE storage_kind = 'opfs' AND storage_key = ?1;`,
+          bind: [storageKey],
+        });
+        changed ||=
+          safeInteger(
+            this.#database.exec({
+              sql: "SELECT changes();",
+              rowMode: 0,
+              returnValue: "resultRows",
+            })[0],
+            "content range storage prune row count",
+          ) === 1;
+      }
+      this.#reconcileLocalContentState(changed);
+      this.#database.exec("COMMIT;");
     } catch (error) {
       this.#database.exec("ROLLBACK;");
       throw error;

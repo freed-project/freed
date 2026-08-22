@@ -24,13 +24,10 @@ fn reconcile_local_content_state(
         .iter()
         .find(|program| program.0 == "content_checkpoint_reconcile_v1")
         .ok_or_else(|| invalid("content checkpoint reconciliation program is missing"))?;
-    let before = transaction.query_row("SELECT total_changes();", [], |row| {
-        row.get::<_, i64>(0)
-    })?;
+    let before =
+        transaction.query_row("SELECT total_changes();", [], |row| row.get::<_, i64>(0))?;
     transaction.execute_batch(program.1)?;
-    let after = transaction.query_row("SELECT total_changes();", [], |row| {
-        row.get::<_, i64>(0)
-    })?;
+    let after = transaction.query_row("SELECT total_changes();", [], |row| row.get::<_, i64>(0))?;
     if after > before {
         let advanced = transaction.execute(
             "UPDATE library_device_content_state

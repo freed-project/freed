@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, selective content range publication, and IndexedDB Library deletion are implemented; Google Drive adapter binding, recovery UI, startup vault reconciliation, and physical iPhone proof remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded feed and identity queries, navigation aggregates, follower transport coordinator, selective content range publication and startup reconciliation, and IndexedDB Library deletion are implemented; Google Drive adapter binding, recovery UI, and physical iPhone proof remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -28,6 +28,10 @@
       no larger than 256 KiB. Hash bytes incrementally, flush and close the OPFS
       object, then register its canonical range identity in SQLite. Changed or
       incomplete bytes are deleted without creating availability.
+- [x] Reconcile the OPFS content vault before the worker becomes ready. Preserve
+      exact file-length proofs, remove orphan or partial files, prune missing or
+      mismatched SQLite proofs in bounded pages, and advance device content
+      revision once when availability changes.
 - [ ] Add the explicit recovery route and complete physical OPFS lifecycle
       verification in Chromium, WebKit, and iPhone Safari.
 - [ ] Persist the Library, query indexes, search, intent outbox, result receipts,

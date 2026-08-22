@@ -5,6 +5,7 @@ import sqlite3InitModule, {
 } from "@sqlite.org/sqlite-wasm";
 import {
   digestLibraryCoreMediaBlobBytesV1,
+  createLibraryCoreContentRangeStorageKeyV1,
   LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
 } from "@freed/shared/library-core";
 
@@ -19,8 +20,7 @@ class MemoryRangeStorage implements PwaContentRangeStorageV1 {
   readonly removed: string[] = [];
   maximumWrite = 0;
 
-  async create(publicationId: string) {
-    const storageKey = `range-${publicationId}.bin`;
+  async create(_publicationId: string, storageKey: string) {
     let bytes = new Uint8Array();
     let closed = false;
     return {
@@ -49,6 +49,18 @@ class MemoryRangeStorage implements PwaContentRangeStorageV1 {
   async remove(storageKey: string): Promise<void> {
     this.removed.push(storageKey);
     this.objects.delete(storageKey);
+  }
+
+  async scan(
+    visit: (entry: Readonly<{ byteLength: number; storageKey: string }>) => Promise<void>,
+  ): Promise<void> {
+    for (const [storageKey, bytes] of [...this.objects]) {
+      await visit({ byteLength: bytes.byteLength, storageKey });
+    }
+  }
+
+  async stat(storageKey: string): Promise<number | null> {
+    return this.objects.get(storageKey)?.byteLength ?? null;
   }
 }
 
@@ -136,7 +148,12 @@ describe("PWA Library Core OPFS content vault", () => {
     expect(storage.maximumWrite).toBe(
       LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES,
     );
-    expect(storage.objects.get(`range-${publicationId}.bin`)).toEqual(bytes);
+    const storageKey = createLibraryCoreContentRangeStorageKeyV1(
+      contentDigest,
+      0,
+      contentDigest,
+    );
+    expect(storage.objects.get(storageKey)).toEqual(bytes);
     expect(
       engine.readContentState({ contentDigest, schemaVersion: 1 }),
     ).toMatchObject({
@@ -148,6 +165,11 @@ describe("PWA Library Core OPFS content vault", () => {
         verifiedBytes: bytes.byteLength,
       },
     });
+    await vault.reconcile();
+    expect(storage.objects.get(storageKey)).toEqual(bytes);
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({ contentRevision: 1 });
   });
 
   it("deletes changed bytes without publishing a SQLite range", async () => {
@@ -171,7 +193,13 @@ describe("PWA Library Core OPFS content vault", () => {
     await expect(
       vault.finalize({ publicationId, schemaVersion: 1, verifiedAt: 100 }),
     ).rejects.toThrow(/digest is invalid/);
-    expect(storage.removed).toEqual([`range-${publicationId}.bin`]);
+    expect(storage.removed).toEqual([
+      createLibraryCoreContentRangeStorageKeyV1(
+        contentDigest,
+        0,
+        contentDigest,
+      ),
+    ]);
     expect(
       database.exec({
         sql: "SELECT count(*) FROM library_device_content_ranges;",
@@ -179,5 +207,35 @@ describe("PWA Library Core OPFS content vault", () => {
         returnValue: "resultRows",
       }),
     ).toEqual([0]);
+  });
+
+  it("prunes missing proofs and orphan objects during bounded startup reconciliation", async () => {
+    const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
+    const contentDigest = installRange(bytes);
+    const storage = new MemoryRangeStorage();
+    const storageKey = createLibraryCoreContentRangeStorageKeyV1(
+      contentDigest,
+      0,
+      contentDigest,
+    );
+    engine.registerVerifiedContentRange({
+      byteLength: bytes.byteLength,
+      contentDigest,
+      rangeContentDigest: contentDigest,
+      rangeIndex: 0,
+      schemaVersion: 1,
+      storageKey,
+      storageKind: "opfs",
+      verifiedAt: 100,
+    });
+    storage.objects.set("orphan.bin", bytes);
+    const vault = new PwaLibraryCoreOpfsContentVault(engine, storage);
+
+    await vault.reconcile();
+
+    expect(storage.objects.size).toBe(0);
+    expect(
+      engine.readContentState({ contentDigest, schemaVersion: 1 }),
+    ).toMatchObject({ availability: null, contentRevision: 2 });
   });
 });
