@@ -34,12 +34,15 @@ import {
   FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   finalizeLibraryCoreTransactionV1,
+  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
+  readLibraryCoreNormalizedItemDetailV1,
   sha256LowerHex,
   type AccountRemoveTransactionMemberInputV1,
   type AccountUpsertTransactionMemberInputV1,
@@ -61,6 +64,7 @@ import {
 import { decodeJson, encodeJson } from "@freed/shared/projection";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
 export interface SqliteStatus {
@@ -1891,6 +1895,38 @@ async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
   };
 }
 
+const NORMALIZED_MUTATION_READER_RUNTIME = Object.freeze({
+  query: queryNormalizedLibrary,
+  randomId: () => crypto.randomUUID(),
+});
+
+async function refreshNormalizedMutationProjection(
+  state: DocState,
+  changedIds: readonly string[],
+): Promise<{ state: DocState; changedItems: FeedItem[] }> {
+  const facets = await queryNormalizedLibrary({
+    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  });
+  const changedItems: FeedItem[] = [];
+  for (const globalId of changedIds) {
+    const item = await readLibraryCoreNormalizedItemDetailV1(
+      NORMALIZED_MUTATION_READER_RUNTIME,
+      globalId,
+    );
+    if (item) changedItems.push(item);
+  }
+  return {
+    state: {
+      ...state,
+      searchCorpusVersion: facets.source.transitionSequence,
+      totalItemCount: facets.summary.totalCount,
+      docItemCount: facets.summary.totalCount,
+    },
+    changedItems,
+  };
+}
+
 async function saveMetadataMutation(
   current: DocState,
   update: (next: DocState) => void,
@@ -2592,15 +2628,27 @@ export async function dispatchSqliteMutation(
       throw new Error(`SQLite Library does not implement ${message.type}`);
   }
 
-  // Browser E2E deliberately retains the complete mock projection so existing
-  // workflow tests can inspect injected rows. Production never reloads it.
-  const state = await refreshSqliteLibraryCounts(
-    import.meta.env.VITE_TEST_TAURI === "1"
-      ? await loadSqliteLibraryState()
-      : nextState,
-  );
-  const changedItems =
-    changedIds.length > 0 ? await readSqliteItems(changedIds) : [];
+  const selectedPrimary = await primaryMutationContext();
+  let state: DocState;
+  let changedItems: FeedItem[];
+  if (selectedPrimary) {
+    const normalized = await refreshNormalizedMutationProjection(
+      nextState,
+      changedIds,
+    );
+    state = normalized.state;
+    changedItems = normalized.changedItems;
+  } else {
+    // Browser E2E deliberately retains the complete mock projection so existing
+    // workflow tests can inspect injected rows. Production never reloads it.
+    state = await refreshSqliteLibraryCounts(
+      import.meta.env.VITE_TEST_TAURI === "1"
+        ? await loadSqliteLibraryState()
+        : nextState,
+    );
+    changedItems =
+      changedIds.length > 0 ? await readSqliteItems(changedIds) : [];
+  }
   const event: DocChangeEvent =
     source === "item_patch"
       ? {

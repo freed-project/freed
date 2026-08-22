@@ -354,6 +354,40 @@ describe("SQLite Primary mutations", () => {
           ],
         };
       }
+      if (command === "query_normalized_library") {
+        const request = (
+          args as { request: { queryId: string; schemaVersion: number } }
+        ).request;
+        const source = {
+          generationId: "bc".repeat(32),
+          projectionRevision: 2,
+          transitionSequence: 2,
+        };
+        if (request.queryId === "library_facet_summary_v1") {
+          return {
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+            summary: {
+              archivedCount: 0,
+              sampleItemCount: 0,
+              savedArchivedCount: 0,
+              savedCount: 0,
+              savedPlatformCount: 0,
+              tags: [],
+              totalCount: 1,
+            },
+          };
+        }
+        if (request.queryId === "item_detail_v1") {
+          return {
+            item: null,
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
+      }
       if (command === "read_sqlite_library_counts") {
         return {
           revision: 2,
@@ -407,6 +441,13 @@ describe("SQLite Primary mutations", () => {
       "mutate_sqlite_library_items",
       expect.anything(),
     );
+    expect(
+      mocks.invoke.mock.calls.some(
+        ([command]) =>
+          command === "read_sqlite_library_counts" ||
+          command === "read_sqlite_library_items",
+      ),
+    ).toBe(false);
   });
 
   it("keeps provider-visible likes off the Primary path", async () => {
@@ -425,8 +466,7 @@ describe("SQLite Primary mutations", () => {
     });
     expect(
       mocks.invoke.mock.calls.some(
-        ([command]) =>
-          command === "normalized_library_primary_mutation_context",
+        ([command]) => command === "sign_normalized_library_operation",
       ),
     ).toBe(false);
     expect(

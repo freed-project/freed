@@ -996,6 +996,11 @@ Core mutation authority. The shared TypeScript assembler is identical in both
 cases. The final transport either commits the canonical envelopes through the
 selected Primary or appends them to the follower intent outbox. It never writes
 both and never treats a populated migration candidate as runtime authority.
+After a Primary commit, Freed Desktop reads the new source revision and corpus
+total through the normalized facet query. It resolves only the changed visible
+item identities through exact normalized detail queries. The mutation tail
+cannot reopen historical count, shell, or item storage after the selector has
+retired those paths.
 
 Selector publication writes canonical bytes to a private pending file, flushes
 the file, atomically renames it to the one final selector name, and flushes the
