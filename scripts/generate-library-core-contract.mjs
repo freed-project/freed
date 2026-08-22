@@ -122,6 +122,7 @@ function assertContract(contract) {
     "create",
     "delete",
     "finalize",
+    "freezeRssFeeds",
     "page",
     "status",
   ];

@@ -13,7 +13,7 @@ use freed_library_core::{
     LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
     LibraryCoreStoreStatus, NormalizedMutationContextV1, NormalizedMutationReceiptV1,
 };
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1230,6 +1230,100 @@ pub(super) fn begin_normalized_scope_action(
         member_count: 0,
         stage_id,
         state: "staging".into(),
+    })
+}
+
+#[tauri::command]
+pub(super) fn freeze_normalized_rss_feed_scope(
+    app: tauri::AppHandle,
+    stage_id: String,
+    action_kind: String,
+    request_digest: String,
+    created_at: i64,
+) -> Result<ScopeActionStageStatus, String> {
+    if !validate_scope_action_stage_id(&stage_id)
+        || !matches!(
+            action_kind.as_str(),
+            "rss_feeds_heal_untitled_frozen"
+                | "rss_feeds_remove_keep_items"
+                | "rss_feeds_remove_with_items"
+        )
+        || !validate_hex_digest(&request_digest)
+        || created_at < 0
+    {
+        return Err("normalized RSS Feed scope identity is invalid".into());
+    }
+    let mut connection = open_normalized_database(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let existing = transaction
+        .query_row(scope_action_sql("status")?, params![stage_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some((stored_action, stored_digest, state, member_count, stored_created_at)) = existing {
+        if stored_action != action_kind
+            || stored_digest != request_digest
+            || state != "ready"
+            || stored_created_at != created_at
+        {
+            return Err("normalized RSS Feed scope replay changed identity".into());
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
+        return Ok(ScopeActionStageStatus {
+            member_count,
+            stage_id,
+            state,
+        });
+    }
+    transaction
+        .execute(
+            scope_action_sql("create")?,
+            params![stage_id, action_kind, request_digest, created_at],
+        )
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            scope_action_sql("freezeRssFeeds")?,
+            params![stage_id, action_kind],
+        )
+        .map_err(|error| error.to_string())?;
+    let member_count = transaction
+        .query_row(
+            "SELECT count(*) FROM library_device_scope_action_members WHERE action_id = ?1;",
+            params![stage_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute(
+            "UPDATE library_device_scope_actions SET member_count = ?2 WHERE action_id = ?1;",
+            params![stage_id, member_count],
+        )
+        .map_err(|error| error.to_string())?;
+    if transaction
+        .execute(
+            scope_action_sql("finalize")?,
+            params![stage_id, member_count],
+        )
+        .map_err(|error| error.to_string())?
+        != 1
+    {
+        return Err("normalized RSS Feed scope could not finalize".into());
+    }
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(ScopeActionStageStatus {
+        member_count,
+        stage_id,
+        state: "ready".into(),
     })
 }
 

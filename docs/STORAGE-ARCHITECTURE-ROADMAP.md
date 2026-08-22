@@ -118,6 +118,13 @@ Each mutation commits canonical rows, journal occurrence, materialized effects,
 actor tip, tombstone or cascade effects, receipt, replication outbox, and
 invalidation topics in one SQLite transaction.
 
+Complete maintenance actions first freeze their target identities in a durable
+installation-local SQLite stage. RSS Feed removal and untitled-title repair
+already use this path in Freed Desktop. The freeze and its exact response-loss
+replay happen in one immediate transaction. React receives only bounded pages,
+and each page is converted into canonical mutation batches. Scope stages never
+enter checkpoints or replication.
+
 Exit proof:
 
 - every product write maps to one registered mutation

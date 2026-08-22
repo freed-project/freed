@@ -812,6 +812,65 @@ mod tests {
     }
 
     #[test]
+    fn rss_feed_scope_program_freezes_exact_normalized_rows_in_binary_order() {
+        let connection = fixture();
+        let sql = |program_id: &str| {
+            SQLITE_SCOPE_ACTION_PROGRAMS
+                .iter()
+                .find_map(|(candidate, sql)| (*candidate == program_id).then_some(*sql))
+                .expect("scope action program")
+        };
+        connection
+            .execute_batch(
+                "INSERT INTO library_rss_feeds
+                   (url, title, enabled, track_unread, updated_at)
+                 VALUES
+                   ('https://z.example/feed', 'Named', 1, 0, 1),
+                   ('https://a.example/feed', 'Untitled Feed', 1, 0, 1),
+                   ('https://m.example/feed', 'https://m.example/feed', 1, 0, 1);",
+            )
+            .expect("RSS Feed fixture");
+
+        for (stage_id, action_kind, expected) in [
+            (
+                "rss-remove",
+                "rss_feeds_remove_keep_items",
+                vec![
+                    "https://a.example/feed",
+                    "https://m.example/feed",
+                    "https://z.example/feed",
+                ],
+            ),
+            (
+                "rss-heal",
+                "rss_feeds_heal_untitled_frozen",
+                vec!["https://a.example/feed", "https://m.example/feed"],
+            ),
+        ] {
+            connection
+                .execute(
+                    sql("create"),
+                    params![stage_id, action_kind, "b".repeat(64), 1_000],
+                )
+                .expect("create RSS scope");
+            connection
+                .execute(sql("freezeRssFeeds"), params![stage_id, action_kind])
+                .expect("freeze RSS scope");
+            let members = connection
+                .prepare(
+                    "SELECT entity_id FROM library_device_scope_action_members
+                     WHERE action_id = ?1 ORDER BY ordinal;",
+                )
+                .expect("prepare RSS scope page")
+                .query_map([stage_id], |row| row.get::<_, String>(0))
+                .expect("read RSS scope page")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect RSS scope page");
+            assert_eq!(members, expected);
+        }
+    }
+
+    #[test]
     fn schema_install_refuses_a_foreign_application_identity_without_writes() {
         let connection = Connection::open_in_memory().expect("open");
         connection

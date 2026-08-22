@@ -14,7 +14,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "35bfe6b75dfaaa4772de7f6825d85cd018d22684c1c05bca43e34a63969e0e67";
+    "816104204ee297d1561a4ed9c620263e9318e1f0ae9e61df697f86ba3750b333";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -588,12 +588,13 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
 ];
 
 pub const SQLITE_SCOPE_ACTION_PROGRAMS: &[(&str, &str)] = &[
-    ("append", "INSERT INTO library_device_scope_action_members (action_id, ordinal, global_id) SELECT ?1, ?2 + CAST(key AS INTEGER), value FROM json_each(?3);"),
+    ("append", "INSERT INTO library_device_scope_action_members (action_id, ordinal, entity_id) SELECT ?1, ?2 + CAST(key AS INTEGER), value FROM json_each(?3);"),
     ("create", "INSERT INTO library_device_scope_actions (action_id, action_kind, request_digest, state, member_count, created_at) VALUES (?1, ?2, ?3, 'staging', 0, ?4);"),
     ("delete", "DELETE FROM library_device_scope_actions WHERE action_id = ?1;"),
     ("finalize", "UPDATE library_device_scope_actions SET state = 'ready' WHERE action_id = ?1 AND state = 'staging' AND member_count = ?2;"),
-    ("page", "SELECT member.ordinal, member.global_id FROM library_device_scope_action_members AS member JOIN library_device_scope_actions AS action ON action.action_id = member.action_id WHERE member.action_id = ?1 AND action.state = 'ready' AND member.ordinal > ?2 ORDER BY member.ordinal LIMIT ?3;"),
-    ("status", "SELECT action_kind, request_digest, state, member_count FROM library_device_scope_actions WHERE action_id = ?1;"),
+    ("freezeRssFeeds", "INSERT INTO library_device_scope_action_members (action_id, ordinal, entity_id) SELECT ?1, row_number() OVER (ORDER BY feed.url COLLATE BINARY) - 1, feed.url FROM library_rss_feeds AS feed WHERE ?2 <> 'rss_feeds_heal_untitled_frozen' OR feed.title = 'Untitled Feed' OR feed.title = feed.url ORDER BY feed.url COLLATE BINARY;"),
+    ("page", "SELECT member.ordinal, member.entity_id FROM library_device_scope_action_members AS member JOIN library_device_scope_actions AS action ON action.action_id = member.action_id WHERE member.action_id = ?1 AND action.state = 'ready' AND member.ordinal > ?2 ORDER BY member.ordinal LIMIT ?3;"),
+    ("status", "SELECT action_kind, request_digest, state, member_count, created_at FROM library_device_scope_actions WHERE action_id = ?1;"),
 ];
 
 pub const QUERY_IDS: &[&str] = &[

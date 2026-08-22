@@ -27,6 +27,7 @@ import {
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreFractionalNumbersV1,
   encodeLibraryCoreOperationSignatureInput,
+  digestLibraryCoreRssFeedScopeActionRequestV1,
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -49,6 +50,7 @@ import {
   scanLibraryCoreNormalizedBackgroundItemsV1,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
+  RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedItemDetailV1,
   sha256LowerHex,
@@ -63,10 +65,13 @@ import {
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
+  type LibraryCoreRssFeedScopeActionKindV1,
+  type LibraryCoreScopeActionStagePageV1,
   type PersonRemoveTransactionMemberInputV1,
   type PersonUpsertTransactionMemberInputV1,
   type PreferencesLeafAssignmentTransactionMemberInputV1,
   type RssFeedRemoveTransactionMemberInputV1,
+  type RssFeedTitleAssignmentTransactionMemberInputV1,
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
 import { decodeJson, encodeJson } from "@freed/shared/projection";
@@ -949,36 +954,180 @@ async function maybeSubmitRssFeedRemove(input: {
   readonly removedAtMs: number;
   readonly url: string;
 }): Promise<boolean> {
-  const context = await mutationContext();
+  return maybeSubmitRssFeedRemoves(
+    [input.url],
+    input.includeItems,
+    input.removedAtMs,
+  );
+}
+
+async function maybeSubmitRssFeedRemoves(
+  urls: readonly string[],
+  includeItems: boolean,
+  removedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
   if (!context) return false;
-  const transactionId =
-    `desktop-library-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const schema = input.includeItems
+  const uniqueUrls = [...new Set(urls)];
+  if (uniqueUrls.length === 0) return true;
+  const schema = includeItems
     ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
     : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
-  const member = schema.construct(
-    {
-      operation_id: `${transactionId}:0`,
-      library_id: context.libraryId,
-      epoch: context.epoch,
-      epoch_id: context.epochId,
-      actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.observedFrontier,
-      hlc_wall_ms: input.removedAtMs,
-      hlc_counter: 0,
-      transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
-      entity_id: input.url,
-      payload: { removed_at_ms: input.removedAtMs },
-      created_at_ms: input.removedAtMs,
-    } satisfies RssFeedRemoveTransactionMemberInputV1,
-    { digest: operationDigest },
-  );
-  await finalizeAndSubmitTransaction(context, [member], input.removedAtMs);
+  for (
+    let start = 0;
+    start < uniqueUrls.length;
+    start += FOLLOWER_ENTITY_BATCH_LIMIT
+  ) {
+    const batchContext = context;
+    const batch = uniqueUrls.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
+    const transactionId =
+      `desktop-library-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((url, index) =>
+      schema.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: removedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: url,
+          payload: { removed_at_ms: removedAtMs },
+          created_at_ms: removedAtMs,
+        } satisfies RssFeedRemoveTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
+    if (start + batch.length < uniqueUrls.length) {
+      context = await mutationContext();
+      if (!context)
+        throw new Error(
+          "Library mutation context changed during RSS Feed removal",
+        );
+    }
+  }
   return true;
+}
+
+async function maybeSubmitRssFeedTitleAssignments(
+  assignments: readonly Readonly<{ readonly title: string; readonly url: string }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const uniqueAssignments = uniqueByIdentity(assignments, (entry) => entry.url);
+  if (uniqueAssignments.length === 0) return true;
+  for (
+    let start = 0;
+    start < uniqueAssignments.length;
+    start += FOLLOWER_ENTITY_BATCH_LIMIT
+  ) {
+    const batchContext = context;
+    const batch = uniqueAssignments.slice(
+      start,
+      start + FOLLOWER_ENTITY_BATCH_LIMIT,
+    );
+    const transactionId =
+      `desktop-library-rss-title:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = batch.map((assignment, index) =>
+      RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: assignment.url,
+          payload: {
+            assigned_at_ms: assignedAtMs,
+            title: assignment.title,
+          },
+          created_at_ms: assignedAtMs,
+        } satisfies RssFeedTitleAssignmentTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
+    if (start + batch.length < uniqueAssignments.length) {
+      context = await mutationContext();
+      if (!context)
+        throw new Error(
+          "Library mutation context changed during RSS Feed title repair",
+        );
+    }
+  }
+  return true;
+}
+
+async function executeFrozenRssFeedScope(
+  action: LibraryCoreRssFeedScopeActionKindV1,
+  createdAt: number,
+  commit: (urls: readonly string[]) => Promise<void>,
+): Promise<number> {
+  const request = { action, schemaVersion: 1 as const };
+  const stageId = `rss-feed-scope:${crypto.randomUUID()}`;
+  const freezeRequest = {
+    actionKind: action,
+    createdAt,
+    requestDigest: digestLibraryCoreRssFeedScopeActionRequestV1(request),
+    stageId,
+  };
+  try {
+    try {
+      await invoke("freeze_normalized_rss_feed_scope", freezeRequest);
+    } catch {
+      await invoke("freeze_normalized_rss_feed_scope", freezeRequest);
+    }
+    let afterOrdinal = -1;
+    let affectedCount = 0;
+    for (;;) {
+      const page = await invoke<LibraryCoreScopeActionStagePageV1>(
+        "page_normalized_scope_action",
+        { afterOrdinal, stageId },
+      );
+      if (page.entityIds.length === 0) return affectedCount;
+      await commit(page.entityIds);
+      affectedCount += page.entityIds.length;
+      if (page.nextOrdinal <= afterOrdinal) {
+        throw new Error("RSS Feed scope page did not advance");
+      }
+      afterOrdinal = page.nextOrdinal;
+    }
+  } finally {
+    await invoke("close_normalized_scope_action", { stageId });
+  }
+}
+
+function repairedRssFeedTitle(url: string): string | null {
+  try {
+    return (
+      new URL(url).hostname.replace(/^(?:www|feeds?)\./, "").trim() || null
+    );
+  } catch {
+    return null;
+  }
 }
 
 async function maybeSubmitPreferences(
@@ -2634,13 +2783,25 @@ export async function dispatchSqliteMutation(
     case "REMOVE_ALL_FEEDS": {
       const normalizedHandled = (await mutationContext()) !== null;
       if (normalizedHandled) {
-        for (const feed of Object.values(nextState.feeds)) {
-          await maybeSubmitRssFeedRemove({
-            includeItems: message.includeItems === true,
-            removedAtMs: timestamp,
-            url: feed.url,
-          });
-        }
+        await executeFrozenRssFeedScope(
+          message.includeItems === true
+            ? "rss_feeds_remove_with_items"
+            : "rss_feeds_remove_keep_items",
+          timestamp,
+          async (urls) => {
+            if (
+              !(await maybeSubmitRssFeedRemoves(
+                urls,
+                message.includeItems === true,
+                timestamp,
+              ))
+            ) {
+              throw new Error(
+                "Library mutation context changed during frozen RSS Feed removal",
+              );
+            }
+          },
+        );
       } else if (message.includeItems) {
         await mutateItems("delete_rss", { timestampMs: timestamp });
       }
@@ -2825,27 +2986,42 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "HEAL_UNTITLED_FEEDS": {
-      const feeds: RssFeed[] = [];
+      const visibleAssignments: Array<{ title: string; url: string }> = [];
       for (const feed of Object.values(nextState.feeds)) {
         if (feed.title !== "Untitled Feed" && feed.title !== feed.url) continue;
-        try {
-          const title = new URL(feed.url).hostname.replace(
-            /^(?:www|feeds?)\./,
-            "",
-          );
-          if (title && title !== feed.title) feeds.push({ ...feed, title });
-        } catch {
-          // A malformed legacy feed URL remains unchanged.
+        const title = repairedRssFeedTitle(feed.url);
+        if (title && title !== feed.title) {
+          visibleAssignments.push({ title, url: feed.url });
         }
       }
       const normalizedHandled = (await mutationContext()) !== null;
       if (normalizedHandled) {
-        for (const feed of feeds) {
-          await maybeSubmitRssFeedUpsert(feed, timestamp);
-        }
+        await executeFrozenRssFeedScope(
+          "rss_feeds_heal_untitled_frozen",
+          timestamp,
+          async (urls) => {
+            const assignments = urls.flatMap((url) => {
+              const title = repairedRssFeedTitle(url);
+              return title ? [{ title, url }] : [];
+            });
+            if (
+              !(await maybeSubmitRssFeedTitleAssignments(
+                assignments,
+                timestamp,
+              ))
+            ) {
+              throw new Error(
+                "Library mutation context changed during frozen RSS Feed repair",
+              );
+            }
+          },
+        );
       }
       await saveMetadata((next) => {
-        for (const feed of feeds) next.feeds[feed.url] = feed;
+        for (const assignment of visibleAssignments) {
+          const feed = next.feeds[assignment.url];
+          if (feed) next.feeds[assignment.url] = { ...feed, ...assignment };
+        }
       }, normalizedHandled);
       break;
     }

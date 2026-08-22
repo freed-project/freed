@@ -12,6 +12,16 @@ export const LIBRARY_CORE_SCOPE_ACTION_STAGE_APPEND_LIMIT = 256 as const;
 
 export type LibraryCoreScopeActionKindV1 = "archive" | "read";
 
+export type LibraryCoreRssFeedScopeActionKindV1 =
+  | "rss_feeds_heal_untitled_frozen"
+  | "rss_feeds_remove_keep_items"
+  | "rss_feeds_remove_with_items";
+
+export interface LibraryCoreRssFeedScopeActionRequestV1 {
+  readonly action: LibraryCoreRssFeedScopeActionKindV1;
+  readonly schemaVersion: typeof LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION;
+}
+
 export interface LibraryCoreScopeActionRequestV1 {
   readonly action: LibraryCoreScopeActionKindV1;
   readonly filter: LibraryCoreFeedBrowseFilterV1;
@@ -73,6 +83,50 @@ const REQUEST_KEYS = [
   "query",
   "schemaVersion",
 ] as const;
+const RSS_FEED_REQUEST_KEYS = ["action", "schemaVersion"] as const;
+
+export function parseLibraryCoreRssFeedScopeActionRequestV1(
+  value: unknown,
+): LibraryCoreRssFeedScopeActionRequestV1 {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new TypeError("Library RSS Feed scope action must be one plain record");
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Reflect.ownKeys(record);
+  if (
+    keys.length !== RSS_FEED_REQUEST_KEYS.length ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !RSS_FEED_REQUEST_KEYS.includes(
+          key as (typeof RSS_FEED_REQUEST_KEYS)[number],
+        ),
+    ) ||
+    record.schemaVersion !== LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION ||
+    (record.action !== "rss_feeds_heal_untitled_frozen" &&
+      record.action !== "rss_feeds_remove_keep_items" &&
+      record.action !== "rss_feeds_remove_with_items")
+  ) {
+    throw new TypeError("Library RSS Feed scope action fields are invalid");
+  }
+  return Object.freeze({
+    action: record.action as LibraryCoreRssFeedScopeActionKindV1,
+    schemaVersion: LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION,
+  });
+}
+
+export function digestLibraryCoreRssFeedScopeActionRequestV1(
+  input: LibraryCoreRssFeedScopeActionRequestV1,
+): string {
+  const request = parseLibraryCoreRssFeedScopeActionRequestV1(input);
+  return new LibraryCoreSha256()
+    .update(new TextEncoder().encode(JSON.stringify(request)))
+    .digestLowerHex();
+}
 
 export function parseLibraryCoreScopeActionRequestV1(
   value: unknown,

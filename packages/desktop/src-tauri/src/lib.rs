@@ -14191,6 +14191,7 @@ pub fn run() {
             library_core_desktop_runtime::sign_normalized_library_operation,
             library_core_desktop_runtime::commit_normalized_library_transaction,
             library_core_desktop_runtime::begin_normalized_scope_action,
+            library_core_desktop_runtime::freeze_normalized_rss_feed_scope,
             library_core_desktop_runtime::append_normalized_scope_action,
             library_core_desktop_runtime::finalize_normalized_scope_action,
             library_core_desktop_runtime::page_normalized_scope_action,

@@ -1065,6 +1065,17 @@ durable authority. Batched RSS refreshes resolve each missing feed through the
 same exact query before applying refreshed fields, so a sparse renderer cannot
 erase polling policy, unread behavior, folder, URLs, or sample provenance.
 
+Complete RSS Feed maintenance never derives its target set from React. The
+native boundary freezes the matching `library_rss_feeds` primary keys inside
+one immediate SQLite transaction. Removal stages every feed. Title repair
+stages only feeds whose title is `Untitled Feed` or still equals the feed URL.
+The installation-local stage records typed `entity_id` values, pages at most
+1,000 identities at a time, and is excluded from checkpoints and replication.
+Each page becomes bounded canonical transactions, with no complete URL array
+in renderer memory. Retrying an ambiguous freeze response must repeat the same
+stage ID, action, request digest, and creation time. Any changed replay fails
+closed.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

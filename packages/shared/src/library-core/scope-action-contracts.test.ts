@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "../types.js";
 import { normalizeLibraryCoreFeedBrowseFilterV1 } from "./feed-browse-filter-contract.js";
 import {
+  digestLibraryCoreRssFeedScopeActionRequestV1,
   executeLibraryCoreScopeActionV1,
   LIBRARY_CORE_SCOPE_ACTION_BATCH_LIMIT,
+  parseLibraryCoreRssFeedScopeActionRequestV1,
   parseLibraryCoreScopeActionRequestV1,
 } from "./scope-action-contracts.js";
 
@@ -147,6 +149,22 @@ describe("Library Core scope actions", () => {
         query: null,
         schemaVersion: 1,
       }),
+    ).toThrow("fields are invalid");
+  });
+
+  it("closes and digests RSS Feed scope action identities", () => {
+    const request = {
+      action: "rss_feeds_remove_keep_items" as const,
+      schemaVersion: 1 as const,
+    };
+    expect(parseLibraryCoreRssFeedScopeActionRequestV1(request)).toEqual(
+      request,
+    );
+    expect(digestLibraryCoreRssFeedScopeActionRequestV1(request)).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(() =>
+      parseLibraryCoreRssFeedScopeActionRequestV1({ ...request, extra: true }),
     ).toThrow("fields are invalid");
   });
 });

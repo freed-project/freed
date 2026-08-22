@@ -5,6 +5,7 @@ import type { DocState } from "./library-types";
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   enqueuedEnvelopes: [] as string[],
+  scopeActionKind: null as string | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -110,6 +111,7 @@ function state(): DocState {
 describe("SQLite editable follower mutations", () => {
   beforeEach(() => {
     mocks.enqueuedEnvelopes = [];
+    mocks.scopeActionKind = null;
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
       if (command === "normalized_library_primary_mutation_context") {
@@ -431,6 +433,31 @@ describe("SQLite Primary mutations", () => {
           ],
         };
       }
+      if (command === "freeze_normalized_rss_feed_scope") {
+        mocks.scopeActionKind = (args as { actionKind: string }).actionKind;
+        return {
+          memberCount: 2,
+          stageId: (args as { stageId: string }).stageId,
+          state: "ready",
+        };
+      }
+      if (command === "page_normalized_scope_action") {
+        const request = args as { afterOrdinal: number; stageId: string };
+        return {
+          entityIds:
+            request.afterOrdinal < 0
+              ? mocks.scopeActionKind === "rss_feeds_heal_untitled_frozen"
+                ? ["https://feeds.example.com/rss"]
+                : [
+                    "https://one.example/feed.xml",
+                    "https://two.example/feed.xml",
+                  ]
+              : [],
+          nextOrdinal: request.afterOrdinal < 0 ? 1 : request.afterOrdinal,
+          stageId: request.stageId,
+        };
+      }
+      if (command === "close_normalized_scope_action") return undefined;
       if (command === "query_normalized_library") {
         const request = (
           args as { request: { queryId: string; schemaVersion: number } }
@@ -663,6 +690,54 @@ describe("SQLite Primary mutations", () => {
     expect(mocks.invoke).not.toHaveBeenCalledWith(
       "replace_sqlite_library_shell",
       expect.anything(),
+    );
+  });
+
+  it("removes the complete frozen RSS Feed scope without a renderer feed map", async () => {
+    await dispatchSqliteMutation(
+      { includeItems: false, reqId: 8, type: "REMOVE_ALL_FEEDS" },
+      state(),
+    );
+
+    const envelopes = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
+    expect(envelopes).toHaveLength(2);
+    expect(envelopes.map((value) => value.entity_id)).toEqual([
+      "https://one.example/feed.xml",
+      "https://two.example/feed.xml",
+    ]);
+    expect(
+      envelopes.every(
+        (value) => value.operation_type === "rss_feed_remove_keep_items",
+      ),
+    ).toBe(true);
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "freeze_normalized_rss_feed_scope",
+      expect.objectContaining({
+        actionKind: "rss_feeds_remove_keep_items",
+        requestDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+  });
+
+  it("repairs the complete frozen untitled RSS scope with title assignments", async () => {
+    await dispatchSqliteMutation(
+      { reqId: 9, type: "HEAL_UNTITLED_FEEDS" },
+      state(),
+    );
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope).toMatchObject({
+      entity_id: "https://feeds.example.com/rss",
+      operation_type: "rss_feed_title_assignment",
+      payload: { title: "example.com" },
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "freeze_normalized_rss_feed_scope",
+      expect.objectContaining({
+        actionKind: "rss_feeds_heal_untitled_frozen",
+      }),
     );
   });
 
