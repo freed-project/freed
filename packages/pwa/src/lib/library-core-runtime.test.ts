@@ -14,18 +14,9 @@ const mocks = vi.hoisted(() => ({
   commitPersonRemove: vi.fn(),
   commitAccountUpserts: vi.fn(),
   commitAccountRemove: vi.fn(),
-  readSelectedCollectionPage: vi.fn(),
-  readSelectedMaterializedPage: vi.fn(),
-  readSelectedMaterializedRow: vi.fn(),
-  readSelectedCheckpointReceipt: vi.fn(),
-  readIntentOverlayRecoveryState: vi.fn(),
-  readSelectedAcceptedAuthorityState: vi.fn(),
-  preparePwaActorEnrollmentRequest: vi.fn(),
-  readPendingIntentActors: vi.fn(),
-  readIntentActors: vi.fn(),
-  reapplySelectedIntentOverlay: vi.fn(),
+  readNormalizedCheckpointReceipt: vi.fn(),
+  createNormalizedCheckpointWriter: vi.fn(),
   createCloudAdapter: vi.fn(),
-  discoverActorEnrollments: vi.fn(),
   discoverControl: vi.fn(),
   importCheckpoint: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
@@ -48,31 +39,15 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
   commitPwaLibraryCoreUserStateAssignments: mocks.commitUserStateAssignments,
 }));
 
-vi.mock("./library-core-portable-checkpoint-store", () => ({
-  PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT: 128,
-  PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT: 128,
-  PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT: 128,
-  createPwaLibraryCorePortableCheckpointStore: () => ({
-    readSelectedMaterializedPage: mocks.readSelectedMaterializedPage,
-    readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
-    readSelectedCheckpointReceipt: mocks.readSelectedCheckpointReceipt,
-    readIntentOverlayRecoveryState: mocks.readIntentOverlayRecoveryState,
-    readSelectedAcceptedAuthorityState:
-      mocks.readSelectedAcceptedAuthorityState,
-    preparePwaActorEnrollmentRequest: mocks.preparePwaActorEnrollmentRequest,
-    readPendingIntentActors: mocks.readPendingIntentActors,
-    readIntentActors: mocks.readIntentActors,
-    reapplySelectedIntentOverlay: mocks.reapplySelectedIntentOverlay,
-  }),
-}));
-
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@freed/sync/cloud/library-core")>()),
   createGoogleDriveLibraryCoreAdapterV1: mocks.createCloudAdapter,
-  discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
-    mocks.discoverActorEnrollments,
   discoverPublishedGoogleDriveLibraryCoreControlV1: mocks.discoverControl,
-  importLibraryCorePortableCheckpointV1: mocks.importCheckpoint,
+  importLibraryCoreNormalizedCheckpointV2: mocks.importCheckpoint,
+}));
+
+vi.mock("./library-core-pwa-normalized-checkpoint-writer", () => ({
+  createPwaNormalizedCheckpointWriter: mocks.createNormalizedCheckpointWriter,
 }));
 
 vi.mock("./factory-reset-coordinator", () => ({
@@ -80,16 +55,18 @@ vi.mock("./factory-reset-coordinator", () => ({
 }));
 
 vi.mock("./library-core-sqlite-runtime", () => ({
+  activatePwaNormalizedCheckpointStage: vi.fn(),
+  appendPwaNormalizedCheckpointStagePage: vi.fn(),
+  beginPwaNormalizedCheckpointStage: vi.fn(),
   queryPwaNormalizedLibrary: mocks.queryNormalizedLibrary,
+  readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
 }));
 
 import {
-  clearPwaLibraryCoreSampleData,
   enqueuePwaLibraryCoreArchiveItems,
   enqueuePwaLibraryCoreArchiveAllReadUnsaved,
   enqueuePwaLibraryCoreDeleteAllArchived,
-  isPwaLibraryCoreEnabled,
   enqueuePwaLibraryCoreUserStateToggle,
   enqueuePwaLibraryCoreMarkAllAsRead,
   enqueuePwaLibraryCoreFeedItemCaptures,
@@ -104,7 +81,6 @@ import {
   enqueuePwaLibraryCoreUnarchiveSavedItems,
   initializePwaLibraryCoreState,
   openPwaLibraryCoreFriendsFeedReader,
-  readPwaLibraryCoreIntentOverlayRecoveryState,
   readPwaLibraryCoreItemDetail,
   readPwaLibraryCorePersonTimeline,
   readPwaLibraryCoreSelectedCheckpointReceipt,
@@ -115,6 +91,20 @@ import {
 const SELECTED_SOURCE = Object.freeze({
   generationId: "45".repeat(32),
   selectionSequence: 7,
+});
+
+const SELECTED_RECEIPT = Object.freeze({
+  authorityEpoch: "33".repeat(32),
+  checkpointDigest: "45".repeat(32),
+  checkpointGeneration: 7,
+  controlRevision: "22".repeat(32),
+  installedAt: 2_000,
+  libraryId: "55".repeat(32),
+  manifestContentDigest: "45".repeat(32),
+  manifestObjectKey: "manifest-key",
+  manifestTransportObjectId: "manifest-object",
+  sourceRevision: 7,
+  writerActorId: "66".repeat(32),
 });
 
 function normalizedItemDetail(
@@ -198,63 +188,12 @@ function backgroundRow(
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
     localStorage.clear();
-    mocks.readSelectedCollectionPage.mockReset();
-    mocks.readSelectedMaterializedPage.mockReset();
-    mocks.readSelectedMaterializedPage.mockImplementation(
-      async ({ cursor, limit }) => {
-        const page = await mocks.readSelectedCollectionPage({
-          afterOrdinal: cursor === null ? null : Number(cursor),
-          collection: "materialized_rows",
-          limit,
-        });
-        return {
-          entries: page.entries.map(
-            ({ value }: { value: { registry_key: string; row: unknown } }) => ({
-              primaryKey: JSON.stringify(
-                (value.row as { globalId?: string }).globalId ?? "shell",
-              ),
-              registryKey: value.registry_key,
-              row: value.row,
-            }),
-          ),
-          nextCursor:
-            page.nextOrdinal === null ? null : String(page.nextOrdinal),
-          source: SELECTED_SOURCE,
-        };
-      },
-    );
-    mocks.readSelectedMaterializedRow.mockReset();
-    mocks.readSelectedCheckpointReceipt.mockReset();
-    mocks.readIntentOverlayRecoveryState.mockReset();
-    mocks.readSelectedAcceptedAuthorityState.mockReset();
-    mocks.preparePwaActorEnrollmentRequest.mockReset();
-    mocks.readPendingIntentActors.mockReset();
-    mocks.readIntentActors.mockReset();
-    mocks.reapplySelectedIntentOverlay.mockReset();
-    mocks.reapplySelectedIntentOverlay.mockResolvedValue({
-      canonicalEnvelopeBytes: 0,
-      countsAreLowerBounds: false,
-      operationCount: 0,
-      schemaVersion: 1,
-      status: "ready",
-      transactionCount: 0,
-    });
-    mocks.readSelectedCheckpointReceipt.mockResolvedValue(SELECTED_SOURCE);
-    mocks.readIntentOverlayRecoveryState.mockResolvedValue({
-      canonicalEnvelopeBytes: 0,
-      countsAreLowerBounds: false,
-      operationCount: 0,
-      schemaVersion: 1,
-      status: "ready",
-      transactionCount: 0,
-    });
-    mocks.preparePwaActorEnrollmentRequest.mockResolvedValue(null);
-    mocks.readPendingIntentActors.mockResolvedValue([]);
-    mocks.readIntentActors.mockResolvedValue([]);
+    mocks.readNormalizedCheckpointReceipt.mockReset();
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({ receipt: null });
+    mocks.createNormalizedCheckpointWriter.mockReset();
+    mocks.createNormalizedCheckpointWriter.mockReturnValue({});
     mocks.createCloudAdapter.mockReset();
     mocks.createCloudAdapter.mockReturnValue({});
-    mocks.discoverActorEnrollments.mockReset();
-    mocks.discoverActorEnrollments.mockResolvedValue([]);
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
@@ -276,62 +215,23 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitAccountRemove.mockReset();
   });
 
-  it("keeps IndexedDB Library Core active when stale rollback state is present", () => {
-    expect(isPwaLibraryCoreEnabled()).toBe(true);
-    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
-    expect(isPwaLibraryCoreEnabled()).toBe(true);
-  });
-
-  it("reads the exact selected IndexedDB checkpoint receipt", async () => {
-    const receipt = {
-      generationId: "67".repeat(32),
-      manifest: {
-        descriptor: { contentDigest: "67".repeat(32) },
-        transportObjectId: "drive-manifest-4",
-      },
-    };
-    mocks.readSelectedCheckpointReceipt.mockResolvedValue(receipt);
-
+  it("reads the exact selected OPFS SQLite checkpoint receipt", async () => {
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: SELECTED_RECEIPT,
+    });
     await expect(readPwaLibraryCoreSelectedCheckpointReceipt()).resolves.toBe(
-      receipt,
+      SELECTED_RECEIPT,
     );
   });
 
-  it("keeps the selected Library readable while bounded overlay recovery awaits cloud sync", async () => {
-    const recovery = {
-      canonicalEnvelopeBytes: 16_777_217,
-      countsAreLowerBounds: true,
-      operationCount: 4_097,
-      schemaVersion: 1 as const,
-      status: "overflow" as const,
-      transactionCount: 513,
-    };
-    mocks.reapplySelectedIntentOverlay.mockResolvedValueOnce(recovery);
-    mocks.readSelectedMaterializedRow.mockResolvedValueOnce({
-      accounts: {},
-      feeds: {},
-      persons: {},
-      preferences: createDefaultPreferences(),
-    });
-    mocks.readSelectedMaterializedPage.mockResolvedValueOnce({
-      entries: [],
-      nextCursor: null,
-      source: SELECTED_SOURCE,
-    });
-
-    await expect(initializePwaLibraryCoreState()).resolves.toEqual(
-      expect.objectContaining({ items: [], preferences: expect.any(Object) }),
-    );
-    expect(readPwaLibraryCoreIntentOverlayRecoveryState()).toEqual(recovery);
-  });
-
-  it("keeps intent publication fenced while repeated cloud sync advances bounded recovery", async () => {
-    const libraryId = "library-runtime-recovery";
-    const storageEpoch = "epoch-runtime-recovery";
-    const manifestDigest = "6".repeat(64);
+  it("imports the normalized checkpoint through the OPFS SQLite writer", async () => {
+    const libraryId = "55".repeat(32);
+    const storageEpoch = "33".repeat(32);
+    const writerId = "66".repeat(32);
+    const manifestDigest = "77".repeat(32);
     const pointer = {
       activeTransport: "google_drive_app_data_v1",
-      causalFrontierDigest: "7".repeat(64),
+      causalFrontierDigest: "88".repeat(32),
       generation: 9,
       libraryId,
       manifest: {
@@ -351,52 +251,8 @@ describe("PWA Library Core bounded scanner", () => {
       protocolVersion: 1,
       schemaVersion: 1,
       storageEpoch,
-      writerId: "writer-runtime-recovery",
+      writerId,
     };
-    const overflow = {
-      canonicalEnvelopeBytes: 16_777_217,
-      countsAreLowerBounds: true,
-      operationCount: 4_097,
-      schemaVersion: 1,
-      status: "overflow" as const,
-      transactionCount: 513,
-    };
-    const ready = {
-      canonicalEnvelopeBytes: 0,
-      countsAreLowerBounds: false,
-      operationCount: 0,
-      schemaVersion: 1,
-      status: "ready" as const,
-      transactionCount: 0,
-    };
-    const backfillPending = {
-      canonicalEnvelopeBytes: 128,
-      countsAreLowerBounds: true,
-      operationCount: 128,
-      schemaVersion: 1,
-      status: "backfill_pending" as const,
-      transactionCount: 128,
-    };
-    const secondBackfillPass = {
-      ...backfillPending,
-      canonicalEnvelopeBytes: 256,
-      operationCount: 256,
-      transactionCount: 256,
-    };
-    mocks.reapplySelectedIntentOverlay.mockResolvedValueOnce(overflow);
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      accounts: {},
-      feeds: {},
-      persons: {},
-      preferences: createDefaultPreferences(),
-    });
-    mocks.readSelectedMaterializedPage.mockResolvedValue({
-      entries: [],
-      nextCursor: null,
-      source: SELECTED_SOURCE,
-    });
-    await initializePwaLibraryCoreState();
-
     mocks.discoverControl.mockResolvedValue({
       control: {
         bytes: new TextEncoder().encode(JSON.stringify(pointer)),
@@ -404,100 +260,120 @@ describe("PWA Library Core bounded scanner", () => {
       controlFileId: "control-runtime-recovery",
       libraryId,
     });
+    const writer = Object.freeze({ beginImport: vi.fn() });
+    mocks.createNormalizedCheckpointWriter.mockReturnValue(writer);
     mocks.importCheckpoint.mockResolvedValue({ status: "already_complete" });
-    mocks.readIntentOverlayRecoveryState
-      .mockResolvedValueOnce(backfillPending)
-      .mockResolvedValueOnce(secondBackfillPass)
-      .mockResolvedValueOnce(ready);
-    mocks.readSelectedAcceptedAuthorityState.mockResolvedValue({
-      authority_key_id: "8".repeat(64),
-      authority_public_key: "9".repeat(64),
-      epoch: 1,
-      epoch_id: storageEpoch,
-      library_id: libraryId,
-      observed_frontier: [],
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: { ...SELECTED_RECEIPT, libraryId, writerActorId: writerId },
+    });
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+      if (request.queryId === "feed_browse_page_v3") {
+        return {
+          nextCursor: null,
+          previousCursor: null,
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: 3,
+          source: SELECTED_SOURCE,
+          totalCount: 0,
+        };
+      }
+      if (request.queryId === "preferences_snapshot_v1") {
+        return {
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: 1,
+          source: SELECTED_SOURCE,
+        };
+      }
+      return {
+        queryId: "library_facet_summary_v1",
+        schemaVersion: 1,
+        source: SELECTED_SOURCE,
+        summary: {
+          archivedCount: 0,
+          sampleItemCount: 0,
+          savedArchivedCount: 0,
+          savedCount: 0,
+          savedPlatformCount: 0,
+          tags: [],
+          totalCount: 0,
+        },
+      };
     });
 
     await expect(
       syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
     ).resolves.toEqual(expect.objectContaining({ items: [] }));
-    expect(readPwaLibraryCoreIntentOverlayRecoveryState().status).toBe(
-      "backfill_pending",
+    expect(mocks.importCheckpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ writer }),
     );
-    expect(mocks.readPendingIntentActors).not.toHaveBeenCalled();
-    await expect(
-      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
-    ).resolves.toEqual(expect.objectContaining({ items: [] }));
-    expect(readPwaLibraryCoreIntentOverlayRecoveryState()).toEqual(
-      secondBackfillPass,
+    expect(mocks.createNormalizedCheckpointWriter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkpointGeneration: 9,
+        controlRevision: expect.stringMatching(/^[0-9a-f]{64}$/),
+        writerActorId: writerId,
+      }),
     );
-    expect(mocks.readPendingIntentActors).not.toHaveBeenCalled();
-    await expect(
-      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
-    ).resolves.toEqual(expect.objectContaining({ items: [] }));
-    expect(mocks.importCheckpoint).toHaveBeenCalledTimes(3);
-    expect(readPwaLibraryCoreIntentOverlayRecoveryState().status).toBe("ready");
-    expect(mocks.readPendingIntentActors).toHaveBeenCalledTimes(1);
   });
 
   it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      accounts: {},
-      feeds: {},
-      persons: {},
-      preferences: createDefaultPreferences(),
-      searchCorpusVersion: 1,
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: SELECTED_RECEIPT,
     });
-    mocks.readSelectedMaterializedPage.mockResolvedValue({
-      entries: [],
-      nextCursor: null,
-      source: SELECTED_SOURCE,
-    });
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
+      request.queryId === "library_facet_summary_v1"
+        ? {
+            summary: { totalCount: 0 },
+          }
+        : request.queryId === "preferences_snapshot_v1"
+          ? { rows: [] }
+          : { nextCursor: null, previousCursor: null, rows: [], totalCount: 0 },
+    );
 
     const state = await initializePwaLibraryCoreState();
 
-    expect(state.searchCorpusVersion).toBe(SELECTED_SOURCE.selectionSequence);
+    expect(state.searchCorpusVersion).toBe(SELECTED_RECEIPT.sourceRevision);
   });
 
   it("hydrates synchronized preferences from SQLite instead of the shell", async () => {
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      accounts: {},
-      feeds: {},
-      persons: {},
-      preferences: {
-        ...createDefaultPreferences(),
-        display: {
-          ...createDefaultPreferences().display,
-          themeId: "scriptorium",
-        },
-      },
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
+      receipt: SELECTED_RECEIPT,
     });
-    mocks.readSelectedMaterializedPage.mockResolvedValue({
-      entries: [],
-      nextCursor: null,
-      source: SELECTED_SOURCE,
-    });
-    mocks.queryNormalizedLibrary.mockResolvedValue({
-      rows: [
-        {
-          booleanValue: null,
-          integerValue: null,
-          path: "o:$.display",
-          realValue: null,
-          textValue: null,
-          updatedAt: 1,
-          valueType: "null",
-        },
-        {
-          booleanValue: null,
-          integerValue: null,
-          path: "v:$.display.themeId",
-          realValue: null,
-          textValue: "neon",
-          updatedAt: 1,
-          valueType: "text",
-        },
-      ],
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+      if (request.queryId === "preferences_snapshot_v1") {
+        return {
+          rows: [
+            {
+              booleanValue: null,
+              integerValue: null,
+              path: "o:$.display",
+              realValue: null,
+              textValue: null,
+              updatedAt: 1,
+              valueType: "null",
+            },
+            {
+              booleanValue: null,
+              integerValue: null,
+              path: "v:$.display.themeId",
+              realValue: null,
+              textValue: "neon",
+              updatedAt: 1,
+              valueType: "text",
+            },
+          ],
+        };
+      }
+      if (request.queryId === "library_facet_summary_v1") {
+        return { summary: { totalCount: 0 } };
+      }
+      return {
+        nextCursor: null,
+        previousCursor: null,
+        rows: [],
+        totalCount: 0,
+      };
     });
 
     await expect(initializePwaLibraryCoreState()).resolves.toEqual(
@@ -605,7 +481,6 @@ describe("PWA Library Core bounded scanner", () => {
       queryId: "item_detail_v1",
       schemaVersion: 1,
     });
-    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("opens Friends through the normalized relational predicate", async () => {
@@ -653,7 +528,6 @@ describe("PWA Library Core bounded scanner", () => {
         queryId: "person_timeline_v1",
       }),
     );
-    expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
   });
 
   it("reads one unlinked Account timeline page through normalized SQLite", async () => {
@@ -681,7 +555,6 @@ describe("PWA Library Core bounded scanner", () => {
         queryId: "account_timeline_v1",
       }),
     );
-    expect(mocks.readSelectedMaterializedPage).not.toHaveBeenCalled();
   });
 
   it("reads toggle state from SQLite before queuing a signed intent", async () => {
@@ -701,7 +574,6 @@ describe("PWA Library Core bounded scanner", () => {
       true,
       expect.any(Number),
     );
-    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("commits FeedItem removal through the signed SQLite intent path", async () => {
@@ -807,7 +679,6 @@ describe("PWA Library Core bounded scanner", () => {
         backgroundRow("rss-read", { readAt: 1 }),
       ],
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
 
     await enqueuePwaLibraryCoreMarkAllAsRead("rss");
 
@@ -843,7 +714,6 @@ describe("PWA Library Core bounded scanner", () => {
       true,
       expect.any(Number),
     );
-    expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
   it("archives the complete selected scope in one bounded assignment batch", async () => {
@@ -906,7 +776,6 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitRssFeedRemove.mockResolvedValue({
       operationId: "op:rss:remove",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
     const feed = {
       url: "https://example.test/feed.xml",
       title: "Example",
@@ -932,7 +801,6 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitPreferencesPatch.mockResolvedValue({
       operationId: "op:preferences",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
     const update = {
       display: {
         ...createDefaultPreferences().display,
@@ -952,7 +820,6 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitPersonUpserts.mockResolvedValue({
       operationId: "op:persons",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
     const person = {
       id: "person:one",
       name: "One Person",
@@ -986,7 +853,6 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitPersonRemove.mockResolvedValue({
       operationId: "op:person-remove",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
 
     await enqueuePwaLibraryCorePersonRemove("person:one");
 
@@ -1004,7 +870,6 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitAccountRemove.mockResolvedValue({
       operationId: "op:account-remove",
     });
-    mocks.readSelectedMaterializedRow.mockResolvedValue(null);
     const account = {
       id: "account:one",
       personId: "person:one",
@@ -1046,107 +911,4 @@ describe("PWA Library Core bounded scanner", () => {
     );
   });
 
-  it("clears only fingerprinted sample records and unlinks real accounts", async () => {
-    const sampleDataFingerprint = {
-      marker: "freed.sample-data.v1" as const,
-      batchId: "sample-batch",
-      generatedAt: 1,
-      generatorVersion: 1,
-    };
-    mocks.readSelectedMaterializedRow.mockResolvedValue({
-      feeds: {
-        "https://sample.test/feed": {
-          url: "https://sample.test/feed",
-          title: "Sample",
-          enabled: true,
-          trackUnread: true,
-          lastFetched: 1,
-          sampleDataFingerprint,
-        },
-      },
-      persons: {
-        "person:sample": {
-          id: "person:sample",
-          name: "Sample",
-          relationshipStatus: "friend",
-          careLevel: 3,
-          createdAt: 1,
-          updatedAt: 1,
-          sampleDataFingerprint,
-        },
-      },
-      accounts: {
-        "account:sample": {
-          id: "account:sample",
-          personId: "person:sample",
-          kind: "social",
-          provider: "instagram",
-          externalId: "sample",
-          discoveredFrom: "manual_entry",
-          firstSeenAt: 1,
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-          sampleDataFingerprint,
-        },
-        "account:real": {
-          id: "account:real",
-          personId: "person:sample",
-          kind: "social",
-          provider: "facebook",
-          externalId: "real",
-          discoveredFrom: "manual_entry",
-          firstSeenAt: 1,
-          lastSeenAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      },
-      preferences: createDefaultPreferences(),
-    });
-    mocks.readSelectedCollectionPage.mockResolvedValue({
-      entries: [],
-      nextOrdinal: null,
-    });
-    await initializePwaLibraryCoreState();
-    mocks.queryNormalizedLibrary.mockResolvedValueOnce({
-      nextCursor: null,
-      rows: [backgroundRow("item:sample", {}, { sampleDataFingerprint })],
-    });
-
-    await expect(clearPwaLibraryCoreSampleData()).resolves.toEqual({
-      feeds: 1,
-      items: 1,
-      persons: 1,
-      accounts: 1,
-      total: 4,
-    });
-
-    expect(mocks.commitAccountUpserts).toHaveBeenCalledOnce();
-    const unlinkedAccount = mocks.commitAccountUpserts.mock.calls[0]?.[0]?.[0];
-    expect(unlinkedAccount).toEqual(
-      expect.objectContaining({
-        id: "account:real",
-        updatedAt: expect.any(Number),
-      }),
-    );
-    expect(unlinkedAccount).not.toHaveProperty("personId");
-    expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
-      "account:sample",
-      expect.any(Number),
-    );
-    expect(mocks.commitPersonRemove).toHaveBeenCalledWith(
-      "person:sample",
-      expect.any(Number),
-    );
-    expect(mocks.commitRssFeedRemove).toHaveBeenCalledWith(
-      "https://sample.test/feed",
-      false,
-      expect.any(Number),
-    );
-    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
-      "item:sample",
-      expect.any(Number),
-    );
-  });
 });

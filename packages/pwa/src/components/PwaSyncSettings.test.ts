@@ -15,23 +15,17 @@ const mocks = vi.hoisted(() => ({
   stopCloudSync: vi.fn(),
   syncCloudProviderNow: vi.fn(async () => {}),
   readSelectedCheckpoint: vi.fn(async () => ({
-    generationId: "67".repeat(32),
-    selectionSequence: 3,
+    authorityEpoch: "02".repeat(32),
+    checkpointDigest: "67".repeat(32),
+    checkpointGeneration: 4,
+    controlRevision: "68".repeat(32),
+    installedAt: Date.now(),
     libraryId: "01".repeat(32),
-    storageEpoch: "02".repeat(32),
-    manifestGeneration: 4,
-    manifest: {
-      descriptor: {
-        byteLength: 123,
-        contentDigest: "67".repeat(32),
-        objectKey: "checkpoint-manifest-object-key",
-      },
-      transportObjectId: "drive-object-12345678",
-    },
-    importedThroughIngestSequence: 7,
-    totalRecordCount: 19_003,
-    itemCount: 19_000,
-    checkpointStoredByteLength: 1_536,
+    manifestContentDigest: "67".repeat(32),
+    manifestObjectKey: "checkpoint-manifest-object-key",
+    manifestTransportObjectId: "drive-object-12345678",
+    sourceRevision: 7,
+    writerActorId: "69".repeat(32),
   })),
 }));
 
@@ -176,10 +170,10 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     expect(diagnostics?.textContent).toContain(
       "Checked cloud storage. No remote changes found.",
     );
-    expect(diagnostics?.textContent).toContain("Manifest records");
-    expect(diagnostics?.textContent).toContain("19,003");
-    expect(diagnostics?.textContent).toContain("19,000");
-    expect(diagnostics?.textContent).toContain("1.5 KB");
+    expect(diagnostics?.textContent).toContain("Source revision");
+    expect(diagnostics?.textContent).toContain("7");
+    expect(diagnostics?.textContent).toContain("Checkpoint digest");
+    expect(diagnostics?.textContent).toContain("Control revision");
     expect(diagnostics?.textContent).toContain("...67676767");
     expect(diagnostics?.textContent).toContain("...12345678");
     const manifestDigest = Array.from(

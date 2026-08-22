@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
+import type { LibraryCoreSelectedNormalizedCheckpointReceiptV2 } from "@freed/shared/library-core";
 import { usePlatform } from "@freed/ui/context";
 import {
   useDebugStore,
@@ -29,7 +30,6 @@ import {
 import { SyncConnectContent } from "./SyncConnectDialog";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
 import { readPwaLibraryCoreSelectedCheckpointReceipt } from "../lib/library-core-runtime";
-import type { PwaLibraryCoreSelectedCheckpointReceiptV1 } from "../lib/library-core-portable-checkpoint-store";
 
 type Provider = "gdrive" | "dropbox" | "local";
 
@@ -208,7 +208,7 @@ export function PwaSyncSettings() {
     getCloudProvider(),
   );
   const [selectedCheckpoint, setSelectedCheckpoint] =
-    useState<PwaLibraryCoreSelectedCheckpointReceiptV1 | null>(null);
+    useState<LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null>(null);
   const [selectedCheckpointError, setSelectedCheckpointError] = useState<
     string | null
   >(null);
@@ -258,7 +258,7 @@ export function PwaSyncSettings() {
       setSelectedCheckpointError(
         error instanceof Error
           ? error.message
-          : "IndexedDB checkpoint receipt is unavailable.",
+          : "SQLite checkpoint receipt is unavailable.",
       );
     }
   }, [activeCloudProvider]);
@@ -274,7 +274,7 @@ export function PwaSyncSettings() {
       setSelectedCheckpointError(
         error instanceof Error
           ? error.message
-          : "IndexedDB checkpoint receipt could not be copied.",
+          : "SQLite checkpoint receipt could not be copied.",
       );
     }
   }, [selectedCheckpoint]);
@@ -551,55 +551,63 @@ export function PwaSyncSettings() {
           <SyncDiagnosticCell
             label="Checkpoint"
             value={
-              selectedCheckpoint?.manifestGeneration.toLocaleString() ?? "-"
+              selectedCheckpoint?.checkpointGeneration.toLocaleString() ?? "-"
             }
           />
           <SyncDiagnosticCell
-            label="Imported revision"
+            label="Source revision"
             value={
-              selectedCheckpoint?.importedThroughIngestSequence.toLocaleString() ??
-              "-"
+              selectedCheckpoint?.sourceRevision.toLocaleString() ?? "-"
             }
           />
           <SyncDiagnosticCell
-            label="Manifest records"
-            value={selectedCheckpoint?.totalRecordCount.toLocaleString() ?? "-"}
+            label="Installed"
+            value={formatDiagnosticTime(selectedCheckpoint?.installedAt)}
           />
           <SyncDiagnosticCell
-            label="Receipt items"
-            value={selectedCheckpoint?.itemCount?.toLocaleString() ?? "-"}
-          />
-          <SyncDiagnosticCell
-            label="Checkpoint bytes"
-            value={formatBytes(
-              selectedCheckpoint?.checkpointStoredByteLength ?? undefined,
-            )}
-          />
-          <SyncDiagnosticCell
-            label="Selection"
+            label="Writer"
+            title={selectedCheckpoint?.writerActorId}
             value={
-              selectedCheckpoint?.selectionSequence.toLocaleString() ?? "-"
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.writerActorId)
+                : "-"
             }
           />
           <SyncDiagnosticCell
             label="Manifest digest"
-            title={selectedCheckpoint?.manifest.descriptor.contentDigest}
+            title={selectedCheckpoint?.manifestContentDigest}
             value={
               selectedCheckpoint
-                ? formatIdentityTail(
-                    selectedCheckpoint.manifest.descriptor.contentDigest,
-                  )
+                ? formatIdentityTail(selectedCheckpoint.manifestContentDigest)
                 : "-"
             }
           />
           <SyncDiagnosticCell
             label="Drive object"
-            title={selectedCheckpoint?.manifest.transportObjectId}
+            title={selectedCheckpoint?.manifestTransportObjectId}
             value={
               selectedCheckpoint
                 ? formatIdentityTail(
-                    selectedCheckpoint.manifest.transportObjectId,
+                    selectedCheckpoint.manifestTransportObjectId,
                   )
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Checkpoint digest"
+            title={selectedCheckpoint?.checkpointDigest}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.checkpointDigest)
+                : "-"
+            }
+          />
+          <SyncDiagnosticCell
+            label="Control revision"
+            title={selectedCheckpoint?.controlRevision}
+            value={
+              selectedCheckpoint
+                ? formatIdentityTail(selectedCheckpoint.controlRevision)
                 : "-"
             }
           />

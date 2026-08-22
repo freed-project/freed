@@ -7,6 +7,12 @@ import type {
   LibraryCoreFollowerIntentCommitResultV1,
   LibraryCoreFollowerIntentCommitV1,
   LibraryCoreFollowerMutationContextV1,
+  LibraryCoreActivateNormalizedCheckpointStageV2,
+  LibraryCoreBeginNormalizedCheckpointStageV2,
+  LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  LibraryCoreNormalizedCheckpointSelectionV2,
+  LibraryCoreNormalizedCheckpointStagePageV2,
+  LibraryCoreNormalizedCheckpointStageStatusV2,
 } from "@freed/shared/library-core";
 import { PwaLibraryCoreSqliteClient } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
@@ -91,6 +97,32 @@ export async function commitPwaFollowerIntent(
 ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
   const active = await openClient();
   return active.commitFollowerIntent(commit);
+}
+
+export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
+  const active = await openClient();
+  return active.readNormalizedCheckpointReceipt();
+}
+
+export async function beginPwaNormalizedCheckpointStage(
+  stage: LibraryCoreBeginNormalizedCheckpointStageV2,
+): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+  const active = await openClient();
+  return active.beginNormalizedCheckpointStage(stage);
+}
+
+export async function appendPwaNormalizedCheckpointStagePage(
+  page: LibraryCoreNormalizedCheckpointStagePageV2,
+): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+  const active = await openClient();
+  return active.appendNormalizedCheckpointStagePage(page);
+}
+
+export async function activatePwaNormalizedCheckpointStage(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const active = await openClient();
+  return active.activateNormalizedCheckpointStage(activation);
 }
 
 export async function closePwaNormalizedLibrary(): Promise<void> {

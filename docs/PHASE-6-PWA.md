@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, and normalized checkpoint activation are implemented; product query cutover, physical iPhone proof, and IndexedDB Library deletion remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, and product mutation entrypoints are implemented; follower enrollment transport, result reconciliation wiring, navigation aggregates, physical iPhone proof, and IndexedDB Library deletion remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -115,7 +115,7 @@
         Exact next-revision commits emit one entity-scoped invalidation per
         member. Results beyond the next revision settle durably but wait for
         ordered operation or checkpoint catchup before changing canonical rows.
-- [ ] Import normalized typed checkpoints into a verified staging database and
+- [x] Import normalized typed checkpoints into a verified staging database and
       activate only after exact registry, frontier, state, and content-root
       proof.
   - [x] Stage closed normalized records directly in browser SQLite with the
@@ -474,6 +474,8 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.42 | Route PWA read, saved, archived, and liked product actions directly through the OPFS SQLite follower mutation context and atomic intent transaction, with IndexedDB limited to the matching nonextractable signing key and no dual write                                          | High       | ✓ Complete                                                                                       |
 | 6.43 | Route every remaining PWA product write through registered signed OPFS SQLite follower transactions, including FeedItem, RSS, preferences, Person, and Account families, with generated bounds and no IndexedDB mutation calls                                                   | High       | ✓ Complete                                                                                       |
 | 6.44 | Match native atomic checkpoint replacement in PWA OPFS SQLite, refuse replacement around unresolved local work, install the exact follower receipt, and expose that receipt through one closed worker request                                                         | High       | ✓ Complete                                                                                       |
+| 6.45 | Replace the production PWA portable checkpoint and shell bootstrap with normalized v2 Google Drive import directly into OPFS SQLite, then hydrate only the bounded visible feed window, preferences, facet total, and exact SQLite receipt                                   | High       | ✓ Complete                                                                                       |
+| 6.46 | Move PWA actor enrollment, normalized intent publication, normalized result import, and exact cloud receipts from the retired portable store onto the existing closed OPFS SQLite transport transactions                                                                  | High       | 🚧 In Progress                                                                                   |
 
 ---
 
@@ -510,15 +512,15 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
 - [x] Private reports can send a redacted description and selected stack traces to the repository's private GitHub vulnerability inbox after an explicit click, with no automatic retry and no diagnostic zip upload
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
-- [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser imported an immutable checkpoint, published signed intents, reconciled results, hit an error, or needs a manual `Sync now` pass
-- [x] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated immutable Library Core generation, publish signed epoch-scoped intents, refresh and retry once when Drive unexpectedly rejects an expired access token, disconnect by clearing the captured provider credentials before resetting app connection state, and never synchronize a SQLite database, WAL, or SHM file
+- [ ] PWA Settings surfaces exact OPFS SQLite checkpoint identity now. Add the normalized actor, intent head, result head, and reconciliation receipts as their SQLite cloud transactions are connected.
+- [ ] PWA Google Drive resume, manual sync, and OAuth callback sync import only a complete authenticated normalized Library Core generation into OPFS SQLite and never synchronize a SQLite database, WAL, or SHM file. Reconnect normalized enrollment, intent publication, and result reconciliation without reviving the portable store.
 - [x] PWA control, intent head, and result head adapters sample the shared bounded strong Drive v2 JSON ETag around each v3 media read and use exact v2 media PUT with If-Match for mutable updates. All immutable, list, create, media read, multipart, and resumable traffic remains on Drive v3. The request count and 60-second cadence are unchanged, and a stale ETag fails as `412` before exact current readback.
 - [x] Person add, bounded batch add, and synchronized profile updates use whole-record Library Core intents while device-local graph coordinates remain local
 - [x] FeedItem capture and typed field updates use bounded signed Library Core intents, update normalized SQLite projections, preserve repeated-identity order, and exclude device-local ranking fields
 - [x] Sample seeding, fingerprinted sample clearing, and bulk feed removal use Library Core operations without waking Automerge or deleting real linked accounts
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.
-- [x] Runtime state, counts, bounded maintenance queries, and item detail resolve from the current OPFS SQLite materialization after local intents instead of rereading an immutable bootstrap checkpoint. Fractional location coordinates survive canonical signing and restart exactly, and hidden or archived captures remain stored without corrupting visible feed totals.
+- [ ] Runtime state now hydrates one bounded visible OPFS SQLite feed window, synchronized preferences, the exact facet total, and the selected checkpoint receipt without a shell. Move the remaining navigation counts and sample-data maintenance inputs to dedicated bounded SQLite aggregates before declaring the runtime-state cutover complete.
 - [x] Archived, provider, feed, tag, signal, author, hidden, post, and story filters, all four Saved orders, facets, Saved analytics, Friends activity and timelines, Map, and Story Wall query the complete selected SQLite generation through bounded contracts.
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
