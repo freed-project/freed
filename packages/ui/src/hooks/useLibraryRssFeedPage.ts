@@ -52,12 +52,14 @@ function matches(
  * only the visible result rows plus opaque page-start cursors.
  */
 export function useLibraryRssFeedPage({
+  enabled = true,
   enabledOnly = false,
   includeUrls = null,
   pageSize,
   search = "",
   sourceVersion,
 }: {
+  readonly enabled?: boolean;
   readonly enabledOnly?: boolean;
   readonly includeUrls?: ReadonlySet<string> | null;
   readonly pageSize: number;
@@ -86,12 +88,13 @@ export function useLibraryRssFeedPage({
   );
   const queryKey = useMemo(
     () => JSON.stringify({
+      enabled,
       enabledOnly,
       includeUrlKey,
       searchTerms,
       sourceVersion,
     }),
-    [enabledOnly, includeUrlKey, searchTerms, sourceVersion],
+    [enabled, enabledOnly, includeUrlKey, searchTerms, sourceVersion],
   );
   const [pageStartCursor, setPageStartCursor] = useState<string | null>(null);
   const [previousPageStarts, setPreviousPageStarts] = useState<
@@ -113,6 +116,14 @@ export function useLibraryRssFeedPage({
     const attempt = attemptRef.current + 1;
     attemptRef.current = attempt;
     let cancelled = false;
+    if (!enabled) {
+      setPage(null);
+      setLoading(false);
+      setError(null);
+      return () => {
+        cancelled = true;
+      };
+    }
     if (!queryLibraryCore) {
       setPage(null);
       setLoading(false);
@@ -177,6 +188,7 @@ export function useLibraryRssFeedPage({
     };
   }, [
     boundedPageSize,
+    enabled,
     enabledOnly,
     pageStartCursor,
     queryKey,

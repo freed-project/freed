@@ -15,6 +15,8 @@ import {
 import type { FeedItem } from "@freed/shared";
 import type {
   LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreAccountGraphPageResponseV1,
+  LibraryCoreAccountGraphRowV1,
   LibraryCoreRssFeedPageResponseV1,
   LibraryCoreRssFeedPageRowV1,
 } from "@freed/shared/library-core";
@@ -46,6 +48,10 @@ import {
   useLibraryRssFeedPage,
   type LibraryRssFeedPageState,
 } from "./useLibraryRssFeedPage.js";
+import {
+  useLibrarySocialChannelPage,
+  type LibrarySocialChannelPageState,
+} from "./useLibrarySocialChannelPage.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -250,6 +256,19 @@ function RssFeedPageHarness({
   return null;
 }
 
+function SocialChannelPageHarness({
+  enabled = true,
+  onState,
+  query,
+}: {
+  enabled?: boolean;
+  onState: (state: LibrarySocialChannelPageState) => void;
+  query: string;
+}) {
+  onState(useLibrarySocialChannelPage({ enabled, query, sourceVersion: 1 }));
+  return null;
+}
+
 function rssFeedRow(
   url: string,
   title: string,
@@ -283,6 +302,52 @@ function rssFeedResponse(
     layoutRevision: 1,
     nextCursor,
     queryId: "rss_feed_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+  };
+}
+
+function accountGraphRow(
+  id: string,
+  personName: string | null,
+): LibraryCoreAccountGraphRowV1 {
+  return {
+    activityCount: 3,
+    avatarUrl: null,
+    discoveredFrom: "captured_item",
+    displayName: id,
+    externalId: id,
+    firstSeenAt: 1,
+    followRosterActive: true,
+    graphPinned: false,
+    graphUpdatedAt: null,
+    graphX: null,
+    graphY: null,
+    handle: id,
+    id,
+    kind: "social",
+    lastSeenAt: 2,
+    latestActivityAt: 2,
+    personId: personName ? `person-${id}` : null,
+    personName,
+    provider: "x",
+    updatedAt: 2,
+  };
+}
+
+function accountGraphResponse(
+  rows: readonly LibraryCoreAccountGraphRowV1[],
+  nextCursor: string | null,
+): LibraryCoreAccountGraphPageResponseV1 {
+  return {
+    layoutRevision: 1,
+    nextCursor,
+    queryId: "account_graph_page_v1",
     rows,
     schemaVersion: 1,
     source: {
@@ -1287,5 +1352,46 @@ describe("Library row query hooks", () => {
       }),
     );
     expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(2);
+  });
+
+  it("queries social channels only while the palette is open and matches linked Person names", async () => {
+    const queryLibraryCore = vi.fn(async () => accountGraphResponse([
+      accountGraphRow("unrelated", null),
+      accountGraphRow("target-account", "Ada Lovelace"),
+    ], null)) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const config = platformConfig({ queryLibraryCore });
+    let current: LibrarySocialChannelPageState | null = null;
+    const renderChannels = (enabled: boolean) => (
+      <PlatformProvider value={config}>
+        <SocialChannelPageHarness
+          enabled={enabled}
+          query="lovelace"
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>
+    );
+
+    renderHarness(renderChannels(false));
+    await flush();
+    expect(queryLibraryCore).not.toHaveBeenCalled();
+
+    act(() => root?.render(renderChannels(true)));
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledOnce();
+    expect(queryLibraryCore).toHaveBeenCalledWith(expect.objectContaining({
+      cursor: null,
+      limit: 128,
+      queryId: "account_graph_page_v1",
+    }));
+    expect((current as LibrarySocialChannelPageState | null)?.channels).toEqual([
+      expect.objectContaining({
+        account: expect.objectContaining({ id: "target-account" }),
+        personName: "Ada Lovelace",
+      }),
+    ]);
   });
 });

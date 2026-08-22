@@ -986,6 +986,7 @@ pub struct NormalizedAccountGraphRowV1 {
     pub last_seen_at: i64,
     pub latest_activity_at: Option<i64>,
     pub person_id: Option<String>,
+    pub person_name: Option<String>,
     pub provider: String,
     pub updated_at: i64,
 }
@@ -4566,6 +4567,7 @@ fn query_account_graph_page(
                 last_seen_at: row.get("lastSeenAt")?,
                 latest_activity_at: row.get("latestActivityAt")?,
                 person_id: row.get("personId")?,
+                person_name: row.get("personName")?,
                 provider: row.get("provider")?,
                 updated_at: row.get("updatedAt")?,
             })
@@ -4578,7 +4580,7 @@ fn query_account_graph_page(
             "normalized Account graph page exceeded its row bound",
         ));
     }
-    let has_more = rows.len() > request.limit;
+    let mut has_more = rows.len() > request.limit;
     rows.truncate(request.limit);
     for row in &rows {
         let bounded = |value: &Option<String>, maximum| {
@@ -4595,6 +4597,7 @@ fn query_account_graph_page(
             || row.discovered_from.is_empty()
             || row.discovered_from.len() > 64
             || !bounded(&row.person_id, 2_048)
+            || !bounded(&row.person_name, 4_096)
             || !bounded(&row.handle, 512)
             || !bounded(&row.display_name, 512)
             || !bounded(&row.avatar_url, 8_192)
@@ -4624,41 +4627,48 @@ fn query_account_graph_page(
     if rows.windows(2).any(|pair| pair[0].id >= pair[1].id) {
         return Err(invalid("normalized Account graph page order is invalid"));
     }
-    let next_cursor = if has_more {
-        let last = rows.last().ok_or(invalid(
-            "normalized Account graph page cursor row is missing",
-        ))?;
-        Some(encode_cursor(&FeedPageCursorV1 {
-            generation_id: generation_id.clone(),
-            transition_sequence: source_revision,
-            projection_revision: source_revision,
-            sort_at: layout_revision,
-            global_id: last.id.clone(),
-        })?)
-    } else {
-        None
+    let response = loop {
+        let next_cursor = if has_more {
+            let last = rows.last().ok_or(invalid(
+                "normalized Account graph page cursor row is missing",
+            ))?;
+            Some(encode_cursor(&FeedPageCursorV1 {
+                generation_id: generation_id.clone(),
+                transition_sequence: source_revision,
+                projection_revision: source_revision,
+                sort_at: layout_revision,
+                global_id: last.id.clone(),
+            })?)
+        } else {
+            None
+        };
+        let candidate = NormalizedAccountGraphPageResponseV1 {
+            layout_revision,
+            next_cursor,
+            query_id: "account_graph_page_v1".to_owned(),
+            rows: rows.clone(),
+            schema_version: 1,
+            source: NormalizedFeedPageSourceV1 {
+                generation_id: generation_id.clone(),
+                projection_revision: source_revision,
+                transition_sequence: source_revision,
+            },
+        };
+        if serde_json::to_vec(&candidate)
+            .map_err(|_| invalid("normalized Account graph page response is invalid"))?
+            .len()
+            <= FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+        {
+            break candidate;
+        }
+        if rows.len() <= 1 {
+            return Err(invalid(
+                "normalized Account graph page contains an oversized row",
+            ));
+        }
+        rows.pop();
+        has_more = true;
     };
-    let response = NormalizedAccountGraphPageResponseV1 {
-        layout_revision,
-        next_cursor,
-        query_id: "account_graph_page_v1".to_owned(),
-        rows,
-        schema_version: 1,
-        source: NormalizedFeedPageSourceV1 {
-            generation_id,
-            projection_revision: source_revision,
-            transition_sequence: source_revision,
-        },
-    };
-    if serde_json::to_vec(&response)
-        .map_err(|_| invalid("normalized Account graph page response is invalid"))?
-        .len()
-        > FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
-    {
-        return Err(invalid(
-            "normalized Account graph page response exceeds its byte bound",
-        ));
-    }
     transaction.commit()?;
     Ok(response)
 }
@@ -7356,6 +7366,7 @@ mod tests {
             panic!("Account graph page response");
         };
         assert_eq!(first.rows[0].id, "account-1");
+        assert_eq!(first.rows[0].person_name.as_deref(), Some("Ada"));
         assert_eq!(first.rows[0].activity_count, 1);
         assert_eq!(first.rows[0].latest_activity_at, Some(220));
         assert!(first.rows[0].graph_pinned);
@@ -7503,6 +7514,95 @@ mod tests {
                     && row.site_url.as_deref() == Some(site_url.as_str())
                     && row.image_url.as_deref() == Some(image_url.as_str())
             }));
+            row_count += page.rows.len();
+            page_count += 1;
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(row_count, 130);
+        assert!(page_count > 1);
+    }
+
+    #[test]
+    fn native_account_pages_shorten_by_bytes_without_losing_linked_names() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, 'library-1', 1, 'epoch-1', 1, 1);
+                 INSERT INTO library_materialization_generation
+                   (singleton_id, generation_id) VALUES (1, '{}');
+                 UPDATE library_change_state SET revision = 1
+                   WHERE singleton_id = 1;",
+                "a".repeat(64)
+            ))
+            .expect("source fixture");
+        let person_name = "p".repeat(4_096);
+        connection
+            .execute(
+                "INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, created_at, updated_at)
+                 VALUES ('person-maximum', ?1, 'friend', 3, 1, 1);",
+                params![person_name],
+            )
+            .expect("maximum Person name");
+        let handle = "h".repeat(512);
+        let display_name = "d".repeat(512);
+        let avatar_url = "a".repeat(8_192);
+        for index in 0..130 {
+            let id_prefix = format!("000-large-account-{index:03}-");
+            let id = format!("{}{}", id_prefix, "i".repeat(2_048 - id_prefix.len()));
+            let external_prefix = format!("external-{index:03}-");
+            let external_id = format!(
+                "{}{}",
+                external_prefix,
+                "e".repeat(4_096 - external_prefix.len())
+            );
+            connection
+                .execute(
+                    "INSERT INTO library_accounts
+                       (id, person_id, kind, provider, external_id, handle,
+                        display_name, avatar_url, first_seen_at, last_seen_at,
+                        discovered_from, created_at, updated_at)
+                     VALUES (?1, 'person-maximum', 'social', 'x', ?2, ?3,
+                             ?4, ?5, 1, 1, 'captured_item', 1, 1);",
+                    params![id, external_id, handle, display_name, avatar_url],
+                )
+                .expect("maximum Account row");
+        }
+        let mut cursor = None;
+        let mut row_count = 0usize;
+        let mut page_count = 0usize;
+        loop {
+            let NormalizedQueryResponseV1::AccountGraphPage(page) = query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::AccountGraphPage(NormalizedAccountGraphPageRequestV1 {
+                    cancellation_id: format!("cancel-account-maximum-{page_count}"),
+                    cursor,
+                    limit: 128,
+                    reader_session_id: format!("reader-account-maximum-{page_count}"),
+                    schema_version: 1,
+                }),
+            )
+            .expect("maximum Account page") else {
+                panic!("Account page response");
+            };
+            assert!(
+                serde_json::to_vec(&page).expect("serialized page").len()
+                    <= FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+            );
+            if page_count == 0 {
+                assert!(page.rows.len() < 128);
+            }
+            assert!(page
+                .rows
+                .iter()
+                .all(|row| row.person_name.as_deref() == Some(person_name.as_str())));
             row_count += page.rows.len();
             page_count += 1;
             cursor = page.next_cursor;

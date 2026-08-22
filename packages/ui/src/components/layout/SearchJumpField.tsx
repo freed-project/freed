@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -16,6 +17,8 @@ import {
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
+import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
+import { useLibrarySocialChannelPage } from "../../hooks/useLibrarySocialChannelPage.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
@@ -331,9 +334,6 @@ export function SearchJumpField({
   const openSettingsTo = useSettingsStore((s) => s.openTo);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
-  const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -381,6 +381,7 @@ export function SearchJumpField({
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface =
     showFloatingField || showInlineSurface || !!confirmAction;
+  const deferredIdentityQuery = useDeferredValue(inputValue);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
   const { filteredItems: commandScopeItems } = useSearchResults(
@@ -410,53 +411,40 @@ export function SearchJumpField({
     selectedItemId,
     sourceVersion: libraryItemVersion,
   });
-  const enabledFeeds = useMemo(
-    () =>
-      Object.values(feeds)
-        .filter(
-          (feed) =>
-            feed.enabled && typeof feed.url === "string" && feed.url.trim(),
-        )
-        .sort((left, right) => {
-          const leftTitle = sortLabel(left.title, left.url);
-          const rightTitle = sortLabel(right.title, right.url);
-          return leftTitle.localeCompare(rightTitle);
-        }),
-    [feeds],
-  );
+  const identityQueryEnabled =
+    showCommandSurface && deferredIdentityQuery.trim().length > 0;
+  const feedPage = useLibraryRssFeedPage({
+    enabled: identityQueryEnabled,
+    enabledOnly: true,
+    pageSize: 25,
+    search: deferredIdentityQuery,
+    sourceVersion: searchCorpusVersion,
+  });
   const commandFeeds = useMemo(
     () =>
-      enabledFeeds.map((feed) => {
-        const title = sortLabel(feed.title, feed.url);
-        return {
-          url: feed.url,
-          title,
-          searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
-        };
-      }),
-    [enabledFeeds],
+      feedPage.feeds
+        .map((feed) => {
+          const title = sortLabel(feed.title, feed.url);
+          return {
+            url: feed.url,
+            title,
+            searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
+          };
+        })
+        .sort((left, right) => left.title.localeCompare(right.title)),
+    [feedPage.feeds],
   );
+  const socialChannelPage = useLibrarySocialChannelPage({
+    enabled: identityQueryEnabled,
+    query: deferredIdentityQuery,
+    sourceVersion: searchCorpusVersion,
+  });
   const socialChannels = useMemo(
-    () =>
-      Object.values(accounts)
-        .filter((account) =>
-          account.kind === "social" &&
-          account.provider !== "rss" &&
-          account.provider !== "saved" &&
-          typeof account.externalId === "string" &&
-          account.externalId.trim()
-        )
-        .map((account) => ({
-          account,
-          person: account.personId ? persons[account.personId] : undefined,
-          personName: account.personId ? persons[account.personId]?.name : undefined,
-        }))
-        .sort((left, right) => {
-          const leftTitle = accountSortLabel(left.account);
-          const rightTitle = accountSortLabel(right.account);
-          return leftTitle.localeCompare(rightTitle);
-        }),
-    [accounts, persons],
+    () => [...socialChannelPage.channels].sort((left, right) =>
+      accountSortLabel(left.account).localeCompare(
+        accountSortLabel(right.account),
+      )),
+    [socialChannelPage.channels],
   );
   const tagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
   const settingsSections = useMemo(
@@ -513,9 +501,9 @@ export function SearchJumpField({
     setInputValue("");
   }, [setSearchQuery]);
   const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
-    if (personId && persons[personId]) return personId;
+    if (personId) return personId;
     return await createConnectionPersonFromAccounts([accountId]);
-  }, [createConnectionPersonFromAccounts, persons]);
+  }, [createConnectionPersonFromAccounts]);
 
   const actions = useMemo(
     () =>
@@ -564,7 +552,7 @@ export function SearchJumpField({
         navigateToSocialProfileFriends: (account, personId) => {
           clearQueryForNavigation();
           setSelectedItem(null);
-          if (personId && persons[personId]) {
+          if (personId) {
             setSelectedPerson(personId);
           } else {
             setSelectedAccount(account.id);

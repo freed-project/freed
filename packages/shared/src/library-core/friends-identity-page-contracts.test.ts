@@ -98,6 +98,7 @@ describe("Friends identity page contracts", () => {
       lastSeenAt: 2,
       latestActivityAt: null,
       personId: null,
+      personName: null,
       provider: "x",
       updatedAt: 2,
     });

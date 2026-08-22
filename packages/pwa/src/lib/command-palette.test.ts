@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
 import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person } from "@freed/shared";
 import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreRssFeedPageRowV1,
+  LibraryCoreAccountGraphRowV1,
+} from "@freed/shared/library-core";
+import type {
   BoundedFeedReader,
   PlatformConfig,
 } from "../../../ui/src/context/PlatformContext.tsx";
@@ -281,6 +286,94 @@ function createPlatform(store: PlatformConfig["store"], overrides: Partial<Platf
     GoogleContactsSettingsContent: null,
     ...overrides,
   };
+}
+
+function identityQueryFromStore(
+  store: PlatformConfig["store"],
+): LibraryCoreNormalizedQueryExecutor {
+  return (async (request: { queryId: string; limit?: number }) => {
+    const state = store.getState() as Pick<
+      BaseAppState,
+      "accounts" | "feeds" | "persons"
+    >;
+    const source = {
+      generationId: "a".repeat(64),
+      projectionRevision: 1,
+      transitionSequence: 1,
+    };
+    if (request.queryId === "rss_feed_page_v1") {
+      const rows: LibraryCoreRssFeedPageRowV1[] = Object.values(state.feeds)
+        .map((feed) => ({
+          activityCount: 0,
+          enabled: feed.enabled !== false,
+          folder: feed.folder ?? null,
+          imageUrl: feed.imageUrl ?? null,
+          lastFetched: feed.lastFetched ?? null,
+          latestActivityAt: null,
+          pollInterval: feed.pollInterval ?? null,
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          siteUrl: feed.siteUrl ?? null,
+          title: typeof feed.title === "string" && feed.title.trim()
+            ? feed.title
+            : feed.url,
+          trackUnread: feed.trackUnread === true,
+          unreadCount: 0,
+          updatedAt: 1,
+          url: feed.url,
+        }))
+        .sort((left, right) => left.url.localeCompare(right.url))
+        .slice(0, request.limit ?? 128);
+      return {
+        layoutRevision: 1,
+        nextCursor: null,
+        queryId: "rss_feed_page_v1",
+        rows,
+        schemaVersion: 1,
+        source,
+      };
+    }
+    if (request.queryId === "account_graph_page_v1") {
+      const rows: LibraryCoreAccountGraphRowV1[] = Object.values(state.accounts)
+        .filter((account) => typeof account.externalId === "string")
+        .map((account) => ({
+          activityCount: 0,
+          avatarUrl: account.avatarUrl ?? null,
+          discoveredFrom: account.discoveredFrom,
+          displayName: account.displayName ?? null,
+          externalId: account.externalId,
+          firstSeenAt: account.firstSeenAt,
+          followRosterActive: account.followRosterActive ?? null,
+          graphPinned: false,
+          graphUpdatedAt: null,
+          graphX: null,
+          graphY: null,
+          handle: account.handle ?? null,
+          id: account.id,
+          kind: account.kind,
+          lastSeenAt: account.lastSeenAt,
+          latestActivityAt: null,
+          personId: account.personId ?? null,
+          personName: account.personId
+            ? state.persons[account.personId]?.name ?? null
+            : null,
+          provider: account.provider,
+          updatedAt: account.updatedAt,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .slice(0, request.limit ?? 128);
+      return {
+        layoutRevision: 1,
+        nextCursor: null,
+        queryId: "account_graph_page_v1",
+        rows,
+        schemaVersion: 1,
+        source,
+      };
+    }
+    throw new Error(`Unexpected identity query: ${request.queryId}`);
+  }) as unknown as LibraryCoreNormalizedQueryExecutor;
 }
 
 function boundedReader(items: readonly FeedItem[]): BoundedFeedReader {
@@ -683,7 +776,9 @@ describe("command palette", () => {
         } as BaseAppState["feeds"][string],
       },
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFromStore(store),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -809,7 +904,9 @@ describe("command palette", () => {
         } as unknown as Account,
       },
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFromStore(store),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,
@@ -1461,7 +1558,9 @@ describe("command palette", () => {
         } as BaseAppState["feeds"][string],
       },
     });
-    const platform = createPlatform(store);
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFromStore(store),
+    });
     const render = renderNode(
       createElement(
         PlatformProvider,

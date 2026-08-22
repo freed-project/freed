@@ -4552,7 +4552,7 @@ export class PwaLibraryCoreSqliteEngine {
         "PWA Library SQLite Account graph page exceeded its row bound",
       );
     }
-    const hasMore = rawRows.length > request.value.limit;
+    let hasMore = rawRows.length > request.value.limit;
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
       activityCount: safeInteger(
         row.activityCount,
@@ -4589,37 +4589,50 @@ export class PwaLibraryCoreSqliteEngine {
         "Account graph latest activity",
       ),
       personId: nullableText(row.personId, "Account graph Person identity"),
+      personName: nullableText(row.personName, "Account graph Person name"),
       provider: text(row.provider, "Account graph provider"),
       updatedAt: safeInteger(row.updatedAt, "Account graph update time"),
     }));
-    const last = rows.at(-1);
-    const response = {
-      layoutRevision,
-      nextCursor:
-        hasMore && last
-          ? encodeLibraryCoreIdentityPageCursorV1({
-              entityId: last.id,
-              generationId,
-              layoutRevision,
-              projectionRevision: sourceRevision,
-              transitionSequence: sourceRevision,
-            })
-          : null,
-      queryId: "account_graph_page_v1" as const,
-      rows,
-      schemaVersion: 1 as const,
-      source: {
-        generationId,
-        projectionRevision: sourceRevision,
-        transitionSequence: sourceRevision,
-      },
-    };
-    const parsed = parseLibraryCoreAccountGraphPageResponseV1(
-      response,
-      request.value,
-    );
-    if (!parsed.ok) throw new Error(parsed.error);
-    return parsed.value;
+    for (;;) {
+      const last = rows.at(-1);
+      const response = {
+        layoutRevision,
+        nextCursor:
+          hasMore && last
+            ? encodeLibraryCoreIdentityPageCursorV1({
+                entityId: last.id,
+                generationId,
+                layoutRevision,
+                projectionRevision: sourceRevision,
+                transitionSequence: sourceRevision,
+              })
+            : null,
+        queryId: "account_graph_page_v1" as const,
+        rows,
+        schemaVersion: 1 as const,
+        source: {
+          generationId,
+          projectionRevision: sourceRevision,
+          transitionSequence: sourceRevision,
+        },
+      };
+      if (
+        new TextEncoder().encode(JSON.stringify(response)).byteLength <=
+        LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+      ) {
+        const parsed = parseLibraryCoreAccountGraphPageResponseV1(
+          response,
+          request.value,
+        );
+        if (!parsed.ok) throw new Error(parsed.error);
+        return parsed.value;
+      }
+      if (rows.length <= 1) {
+        throw new Error("PWA Library SQLite Account graph page contains an oversized row");
+      }
+      rows.pop();
+      hasMore = true;
+    }
   }
 
   #queryRssFeedPage(

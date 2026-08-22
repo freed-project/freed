@@ -626,6 +626,13 @@ Settings management and preview surfaces use the same page contract with a
 Complete unsubscribe freezes its scope inside SQLite before mutation. OPML
 export visits source-fenced pages outside React and retains only the output
 artifact required for download.
+The command palette performs no identity read while closed. Once opened with a
+typed query, it walks source-fenced RSS Feed and Account pages and retains at
+most 25 matching rows from each catalog. Account page rows include the linked
+Person name through the normalized foreign-key join, so the palette never
+hydrates Person, Account, or RSS Feed dictionaries to label search results.
+Native and browser Account executors shorten a page by exact serialized bytes
+when legal maximum-sized identity rows approach the 2 MiB response ceiling.
 Person and Account rows left-join their installation-local graph position from
 `library_device_person_graph_layout` and
 `library_device_account_graph_layout`. A missing local row is an explicit

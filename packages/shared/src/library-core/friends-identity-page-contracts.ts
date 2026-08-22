@@ -71,6 +71,7 @@ const ACCOUNT_KEYS = [
   "lastSeenAt",
   "latestActivityAt",
   "personId",
+  "personName",
   "provider",
   "updatedAt",
 ] as const;
@@ -234,6 +235,7 @@ export interface LibraryCoreAccountGraphRowV1 {
   readonly lastSeenAt: number;
   readonly latestActivityAt: number | null;
   readonly personId: string | null;
+  readonly personName: string | null;
   readonly provider: string;
   readonly updatedAt: number;
 }
@@ -505,6 +507,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
   const graphX = nullableFiniteNumber(row.graphX);
   const graphY = nullableFiniteNumber(row.graphY);
   const personId = boundedText(row.personId, 2_048, true);
+  const personName = boundedText(row.personName, 4_096, true);
   const provider = boundedText(row.provider, 64);
   if (
     avatarUrl === undefined ||
@@ -523,6 +526,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
       ? graphX === null || graphY === null || graphUpdatedAt === null
       : graphX !== null || graphY !== null || graphUpdatedAt !== null) ||
     personId === undefined ||
+    personName === undefined ||
     !provider ||
     !isLibraryCoreNonnegativeSafeInteger(row.activityCount) ||
     !isLibraryCoreNonnegativeSafeInteger(row.firstSeenAt) ||
@@ -551,6 +555,7 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
     lastSeenAt: row.lastSeenAt,
     latestActivityAt,
     personId,
+    personName,
     provider,
     updatedAt: row.updatedAt,
   });

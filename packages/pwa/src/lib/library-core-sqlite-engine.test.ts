@@ -2540,6 +2540,7 @@ describe("PWA Library Core SQLite engine", () => {
         graphY: 6.75,
         id: "account-1",
         latestActivityAt: 200,
+        personName: "Ada",
       },
     ]);
     expect(
@@ -2550,6 +2551,72 @@ describe("PWA Library Core SQLite engine", () => {
         })
         .rows.map((row) => row.id),
     ).toEqual(["account-2"]);
+    const maximumPersonName = "p".repeat(4_096);
+    database.exec({
+      sql: `INSERT INTO library_persons
+              (id, name, relationship_status, care_level, created_at, updated_at)
+            VALUES ('person-maximum', ?1, 'friend', 3, 1, 1);`,
+      bind: [maximumPersonName],
+    });
+    const maximumHandle = "h".repeat(512);
+    const maximumDisplayName = "d".repeat(512);
+    const maximumAvatarUrl = "a".repeat(8_192);
+    for (let index = 0; index < 130; index += 1) {
+      const suffix = index.toLocaleString("en-US", {
+        minimumIntegerDigits: 3,
+        useGrouping: false,
+      });
+      const accountIdPrefix = `000-large-account-${suffix}-`;
+      const externalIdPrefix = `external-${suffix}-`;
+      database.exec({
+        sql: `INSERT INTO library_accounts
+                (id, person_id, kind, provider, external_id, handle,
+                 display_name, avatar_url, first_seen_at, last_seen_at,
+                 discovered_from, created_at, updated_at)
+              VALUES (?1, 'person-maximum', 'social', 'x', ?2, ?3,
+                      ?4, ?5, 1, 1, 'captured_item', 1, 1);`,
+        bind: [
+          `${accountIdPrefix}${"i".repeat(2_048 - accountIdPrefix.length)}`,
+          `${externalIdPrefix}${"e".repeat(4_096 - externalIdPrefix.length)}`,
+          maximumHandle,
+          maximumDisplayName,
+          maximumAvatarUrl,
+        ],
+      });
+    }
+    const maximumAccountPageRequest = {
+      ...accountGraphRequest,
+      cancellationId: operationId("cancel-account-maximum-page"),
+      limit: 128,
+      readerSessionId: operationId("reader-account-maximum-page"),
+    };
+    const maximumAccountFirstPage = engine.query(maximumAccountPageRequest);
+    expect(maximumAccountFirstPage.nextCursor).not.toBeNull();
+    expect(maximumAccountFirstPage.rows.length).toBeLessThan(128);
+    expect(
+      new TextEncoder().encode(JSON.stringify(maximumAccountFirstPage)).byteLength,
+    ).toBeLessThanOrEqual(
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    );
+    const maximumAccountRows = [...maximumAccountFirstPage.rows];
+    let maximumAccountCursor = maximumAccountFirstPage.nextCursor;
+    while (maximumAccountCursor !== null) {
+      const page = engine.query({
+        ...maximumAccountPageRequest,
+        cursor: maximumAccountCursor,
+      });
+      maximumAccountRows.push(...page.rows);
+      maximumAccountCursor = page.nextCursor;
+    }
+    expect(maximumAccountRows).toHaveLength(133);
+    expect(
+      maximumAccountRows.find((row) => row.id.startsWith("000-large-account-")),
+    ).toMatchObject({
+      avatarUrl: maximumAvatarUrl,
+      displayName: maximumDisplayName,
+      handle: maximumHandle,
+      personName: maximumPersonName,
+    });
     const rssFeedGraphRequest = {
       cancellationId: operationId("cancel-rss-feed-graph-1"),
       cursor: null,

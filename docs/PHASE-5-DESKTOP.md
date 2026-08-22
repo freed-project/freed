@@ -550,6 +550,7 @@ export async function captureDomFeed(
 | 5.89 | Extend the shared constant-time Library facet query with trigger-maintained unread, archivable, sample-root, and bounded per-platform counts so Desktop and PWA navigation never scan FeedItem rows or derive whole-Library totals in React | High | ✓ Complete |
 | 5.90 | Replace the primary sidebar's complete RSS Feed dictionary, derived per-feed count dictionaries, whole-catalog search, and renderer slicing with the shared `rss_feed_page_v1` native SQLite reader. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High | ✓ Complete |
 | 5.91 | Replace Settings feed management and export previews with 50-row native SQLite windows, route complete unsubscribe through the atomically frozen SQLite scope, resolve OPML import duplicates through exact feed queries, and generate OPML through bounded background feed pages outside React | High | ✓ Complete |
+| 5.92 | Replace the always-mounted command palette's complete Feed, Person, and Account dictionaries with query-on-open native SQLite pages that retain at most 25 matching feeds and 25 matching social channels | High | ✓ Complete |
 
 ---
 
