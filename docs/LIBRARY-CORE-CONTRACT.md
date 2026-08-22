@@ -636,6 +636,19 @@ provenance needed by maintenance actions. Desktop and PWA call one shared
 adapter for this traversal. PWA reads OPFS SQLite directly and never reconstructs
 these pages from IndexedDB materializations.
 
+`content_fetch_claim_v1` is the dedicated discovery query for article content
+enrichment. SQLite selects only rows with a nonempty link URL and no preserved
+body, either inline or content-addressed. It returns at most 64 closed rows
+containing only `globalId`, `linkUrl`, `publishedAt`, and `capturedAt`, after
+reading at most 65 rows. The source-fenced keyset cursor orders candidates by
+publication time and binary identity. Freed Desktop feeds these compact rows
+directly into its existing paced fetch queue. It does not reconstruct a
+FeedItem, page the generic corpus, or change fetch cadence, retries, headers,
+or provider behavior. A partial SQLite index contains only eligible rows and
+satisfies the complete keyset order without a table scan or temporary sort.
+Native Rust and browser OPFS SQLite execute the same generated SQL and shared
+response contract.
+
 `provider_media_page_v1` is the query-specific source for provider settings,
 Facebook group-name repair, media backup, and saved YouTube discovery. The
 request names Facebook, Instagram, or YouTube and may require saved rows.

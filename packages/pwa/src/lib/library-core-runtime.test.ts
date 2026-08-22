@@ -107,14 +107,6 @@ import {
   syncPwaLibraryCoreFromGoogleDrive,
 } from "./library-core-runtime";
 
-function entry(registryKey: string, globalId: string) {
-  return {
-    primaryKey: JSON.stringify(globalId),
-    registryKey,
-    row: { globalId },
-  };
-}
-
 const SELECTED_SOURCE = Object.freeze({
   generationId: "45".repeat(32),
   selectionSequence: 7,

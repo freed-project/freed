@@ -151,6 +151,10 @@
         SQLite and no longer page IndexedDB materialized FeedItem records. The
         closed row preserves RSS identity and sample provenance for maintenance
         actions.
+  - [x] `content_fetch_claim_v1` executes the same generated SQL and closed
+        four-field candidate contract in OPFS SQLite as native Rust. It pages
+        at most 64 linked rows without preserved inline or blob content and
+        never reconstructs candidates from IndexedDB records.
   - [x] `provider_media_page_v1` runs through OPFS SQLite with the same closed
         request, compact projection, generated SQL, 64-row response ceiling,
         and request-bound cursor as native Rust. Provider settings can share

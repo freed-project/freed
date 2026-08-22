@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import type { LibraryCoreContentFetchCandidateV1 } from "@freed/shared/library-core";
 import { MAX_SYNCED_PRESERVED_TEXT_CHARS } from "./preserved-text.js";
 
 const SAMPLE_URL = "https://example.com/articles/memory-landfill";
@@ -69,7 +70,9 @@ async function loadContentFetcherModule(options: {
   cacheSetImpl?: () => Promise<void>;
   isFactoryResetInProgress?: () => boolean;
   scanItems?: (
-    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+    visitPage: (
+      items: readonly LibraryCoreContentFetchCandidateV1[],
+    ) => void | Promise<void>,
   ) => Promise<void>;
 } = {}) {
   vi.resetModules();
@@ -90,10 +93,17 @@ async function loadContentFetcherModule(options: {
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
-  const mockScanLibraryCoreItems = vi.fn(
+  const mockScanLibraryCoreContentFetchCandidates = vi.fn(
     options.scanItems ??
       (async (visitPage) => {
-        await visitPage(latestItems);
+        await visitPage(
+          latestItems.map((item) => ({
+            capturedAt: item.capturedAt,
+            globalId: item.globalId,
+            linkUrl: item.content.linkPreview?.url ?? "",
+            publishedAt: item.publishedAt,
+          })),
+        );
       }),
   );
   const mockSubscribe = vi.fn<(cb: (
@@ -130,7 +140,8 @@ async function loadContentFetcherModule(options: {
     subscribe: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
-    scanLibraryCoreItems: mockScanLibraryCoreItems,
+    scanLibraryCoreContentFetchCandidates:
+      mockScanLibraryCoreContentFetchCandidates,
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -192,7 +203,7 @@ async function loadContentFetcherModule(options: {
     mockCacheSet,
     mockDocUpdateFeedItem,
     mockRecordReaderArticleFetchAttempt,
-    mockScanLibraryCoreItems,
+    mockScanLibraryCoreContentFetchCandidates,
   };
 }
 
@@ -275,7 +286,16 @@ async function loadContentFetcherModuleWithAi({
     subscribe: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
-    scanLibraryCoreItems: vi.fn(async (visitPage) => visitPage(latestItems)),
+    scanLibraryCoreContentFetchCandidates: vi.fn(async (visitPage) =>
+      visitPage(
+        latestItems.map((item) => ({
+          capturedAt: item.capturedAt,
+          globalId: item.globalId,
+          linkUrl: item.content.linkPreview?.url ?? "",
+          publishedAt: item.publishedAt,
+        })),
+      ),
+    ),
   }));
   vi.doMock("./store.js", () => ({
     useAppStore: {
@@ -353,10 +373,22 @@ afterEach(() => {
 describe("content fetcher", () => {
   it("discovers new article stubs through bounded SQLite pages", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockInvoke, mockScanLibraryCoreItems } =
+    const {
+      mod,
+      subscriberRef,
+      mockInvoke,
+      mockScanLibraryCoreContentFetchCandidates,
+    } =
       await loadContentFetcherModule({
         scanItems: async (visitPage) => {
-          await visitPage([makeStubItem()]);
+          await visitPage([
+            {
+              capturedAt: 1,
+              globalId: "rss:1",
+              linkUrl: SAMPLE_URL,
+              publishedAt: 1,
+            },
+          ]);
         },
       });
 
@@ -365,10 +397,9 @@ describe("content fetcher", () => {
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
-    expect(mockScanLibraryCoreItems).toHaveBeenCalledTimes(1);
-    expect(mockScanLibraryCoreItems).toHaveBeenCalledWith(
+    expect(mockScanLibraryCoreContentFetchCandidates).toHaveBeenCalledTimes(1);
+    expect(mockScanLibraryCoreContentFetchCandidates).toHaveBeenCalledWith(
       expect.any(Function),
-      { hasLinkPreview: true, missingPreservedText: true },
     );
     expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
       url: SAMPLE_URL,

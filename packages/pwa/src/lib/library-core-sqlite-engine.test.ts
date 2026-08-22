@@ -1696,12 +1696,12 @@ describe("PWA Library Core SQLite engine", () => {
       INSERT INTO library_feed_items
         (global_id, platform, content_type, captured_at, published_at,
          author_id, author_handle, author_display_name, author_avatar_url,
-         rss_feed_url, content_text,
+         rss_feed_url, content_text, link_url,
          hidden, saved, archived, updated_at)
       VALUES
-        ('item-2', 'x', 'article', 200, 200, 'ada-remote', 'ada', 'Ada', NULL, NULL, 'newer', 0, 1, 0, 200),
-        ('item-1', 'rss', 'article', 100, 100, 'alpha', 'grace', 'Grace', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 'older', 0, 0, 0, 100),
-        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', NULL, NULL, 'nope', 1, 0, 0, 300);
+        ('item-2', 'x', 'article', 200, 200, 'ada-remote', 'ada', 'Ada', NULL, NULL, 'newer', 'https://example.com/two', 0, 1, 0, 200),
+        ('item-1', 'rss', 'article', 100, 100, 'alpha', 'grace', 'Grace', 'https://alpha.example/avatar.png', 'https://alpha.example/feed', 'older', 'https://example.com/one', 0, 0, 0, 100),
+        ('hidden', 'saved', 'post', 300, 300, 'author-3', 'hidden', 'Hidden', NULL, NULL, 'nope', NULL, 1, 0, 0, 300);
       INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('item-2', 'favorite');
       INSERT INTO library_feed_item_media (global_id, ordinal, source_url, media_type)
       VALUES ('item-2', 0, 'https://example.com/image', 'image');
@@ -1976,6 +1976,24 @@ describe("PWA Library Core SQLite engine", () => {
     });
     expect(secondScan.rows.map((row) => row.globalId)).toEqual(["item-2"]);
     expect(secondScan.nextCursor).toBeNull();
+    const contentFetchRequest = {
+      cancellationId: operationId("cancel-content-fetch-1"),
+      cursor: null,
+      limit: 1,
+      queryId: "content_fetch_claim_v1" as const,
+      readerSessionId: operationId("reader-content-fetch-1"),
+      schemaVersion: 1 as const,
+    };
+    const contentFetch = engine.query(contentFetchRequest);
+    expect(contentFetch.rows).toEqual([
+      {
+        capturedAt: 100,
+        globalId: "item-1",
+        linkUrl: "https://example.com/one",
+        publishedAt: 100,
+      },
+    ]);
+    expect(contentFetch.nextCursor).toBeNull();
     database.exec(`
       INSERT INTO library_invalidations
         (revision, ordinal, topic, entity_id, reset_required)

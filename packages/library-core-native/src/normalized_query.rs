@@ -22,6 +22,8 @@ const STORY_WALL_CANDIDATES_MAXIMUM_LIMIT: usize = 250;
 const SECONDARY_SURFACE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const ITEM_SCAN_MAXIMUM_LIMIT: usize = 64;
 const ITEM_SCAN_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const CONTENT_FETCH_MAXIMUM_LIMIT: usize = 64;
+const CONTENT_FETCH_MAXIMUM_RESPONSE_BYTES: usize = 1_048_576;
 const PROVIDER_MEDIA_MAXIMUM_LIMIT: usize = 64;
 const PROVIDER_MEDIA_MAXIMUM_RESPONSE_BYTES: usize = 4 * 1_048_576;
 const CHANGE_FEED_MAXIMUM_LIMIT: usize = 512;
@@ -194,6 +196,16 @@ pub struct NormalizedItemScanRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedContentFetchPageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedProviderMediaPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -338,6 +350,7 @@ pub enum NormalizedQueryRequestV1 {
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    ContentFetchPage(NormalizedContentFetchPageRequestV1),
     ProviderMediaPage(NormalizedProviderMediaPageRequestV1),
     MapMarkers(NormalizedMapMarkersRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
@@ -559,6 +572,25 @@ pub struct NormalizedItemScanResponseV1 {
     pub next_cursor: Option<String>,
     pub query_id: String,
     pub rows: Vec<NormalizedItemScanRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedContentFetchCandidateV1 {
+    pub captured_at: i64,
+    pub global_id: String,
+    pub link_url: String,
+    pub published_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedContentFetchPageResponseV1 {
+    pub next_cursor: Option<String>,
+    pub query_id: String,
+    pub rows: Vec<NormalizedContentFetchCandidateV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -984,6 +1016,7 @@ pub enum NormalizedQueryResponseV1 {
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
+    ContentFetchPage(NormalizedContentFetchPageResponseV1),
     ProviderMediaPage(NormalizedProviderMediaPageResponseV1),
     MapMarkers(NormalizedMapMarkersResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
@@ -1649,6 +1682,15 @@ fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV
         hidden,
         rss_source,
         sample_data_fingerprint,
+    })
+}
+
+fn content_fetch_row(row: &Row<'_>) -> rusqlite::Result<NormalizedContentFetchCandidateV1> {
+    Ok(NormalizedContentFetchCandidateV1 {
+        captured_at: row.get("capturedAt")?,
+        global_id: row.get("globalId")?,
+        link_url: row.get("linkUrl")?,
+        published_at: row.get("publishedAt")?,
     })
 }
 
@@ -2924,6 +2966,116 @@ fn query_item_scan(
     {
         return Err(invalid(
             "normalized item scan response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn content_fetch_binding_digest() -> String {
+    lower_hex(&Sha256::digest(
+        br#"{"queryId":"content_fetch_claim_v1","schemaVersion":1}"#,
+    ))
+}
+
+fn query_content_fetch_page(
+    connection: &mut Connection,
+    request: NormalizedContentFetchPageRequestV1,
+) -> Result<NormalizedContentFetchPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=CONTENT_FETCH_MAXIMUM_LIMIT).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("normalized content fetch identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "content_fetch_claim_v1")
+        .ok_or(invalid("normalized content fetch program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let cursor = request
+        .cursor
+        .as_deref()
+        .map(decode_feed_browse_cursor)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.filter_digest != content_fetch_binding_digest()
+            || cursor.priority != 0
+            || cursor.generation_id != generation_id
+            || cursor.transition_sequence != source_revision
+            || cursor.projection_revision != source_revision
+    }) {
+        return Err(invalid("normalized content fetch cursor is stale"));
+    }
+    let mut statement = transaction.prepare(program.sql)?;
+    let mut query_rows = statement.query_map(
+        params![
+            cursor.as_ref().map(|value| value.published_at),
+            cursor
+                .as_ref()
+                .map(|value| value.global_id.as_str())
+                .unwrap_or(""),
+            i64::try_from(request.limit + 1).expect("bounded content fetch limit"),
+        ],
+        content_fetch_row,
+    )?;
+    let mut rows = Vec::with_capacity(request.limit + 1);
+    for row in query_rows.by_ref() {
+        let row = row?;
+        if !valid_safe_integer(row.captured_at)
+            || !valid_safe_integer(row.published_at)
+            || row.global_id.is_empty()
+            || row.global_id.len() > 4_096
+            || row.link_url.is_empty()
+            || row.link_url.len() > 8_192
+        {
+            return Err(invalid("normalized content fetch row is invalid"));
+        }
+        rows.push(row);
+        if rows.len() > program.maximum_scan_rows {
+            return Err(invalid("normalized content fetch exceeded its row bound"));
+        }
+    }
+    drop(query_rows);
+    drop(statement);
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let next_cursor = if has_more {
+        let last = rows
+            .last()
+            .ok_or(invalid("normalized content fetch cursor row is missing"))?;
+        Some(encode_feed_browse_cursor(&FeedBrowseCursorV2 {
+            filter_digest: content_fetch_binding_digest(),
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            priority: 0,
+            published_at: last.published_at,
+            global_id: last.global_id.clone(),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedContentFetchPageResponseV1 {
+        next_cursor,
+        query_id: "content_fetch_claim_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized content fetch response is invalid"))?
+        .len()
+        > CONTENT_FETCH_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized content fetch response exceeds its byte bound",
         ));
     }
     transaction.commit()?;
@@ -4692,6 +4844,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
             query_item_scan(connection, request)?,
         )),
+        NormalizedQueryRequestV1::ContentFetchPage(request) => {
+            Ok(NormalizedQueryResponseV1::ContentFetchPage(
+                query_content_fetch_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ProviderMediaPage(request) => {
             Ok(NormalizedQueryResponseV1::ProviderMediaPage(
                 query_provider_media_page(connection, request)?,
@@ -4796,6 +4953,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
         "background_item_page_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "content_fetch_claim_v1" => {
+            decode_request!(NormalizedContentFetchPageRequestV1, ContentFetchPage)
+        }
         "provider_media_page_v1" => {
             decode_request!(NormalizedProviderMediaPageRequestV1, ProviderMediaPage)
         }
@@ -4857,6 +5017,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ContentFetchPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ProviderMediaPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::MapMarkers(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
@@ -6103,6 +6264,98 @@ mod tests {
             }),
         )
         .expect_err("stale item scan cursor");
+        assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_content_fetch_pages_exclude_materialized_bodies_and_bind_cursors() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "content_fetch_claim_v1")
+            .expect("content fetch program");
+        let plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+            .expect("content fetch plan")
+            .query_map(params![Option::<i64>::None, "", 2], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("content fetch plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("content fetch plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("library_feed_items_content_fetch")));
+        assert!(plan.iter().all(|detail| !detail.contains("TEMP B-TREE")));
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+                 INSERT INTO library_feed_items
+                   (global_id, platform, content_type, captured_at, published_at,
+                    author_id, author_handle, author_display_name, link_url,
+                    preserved_text, hidden, saved, archived, updated_at)
+                   VALUES
+                     ('saved:newest', 'saved', 'article', 300, 300,
+                      'author-1', 'newest', 'Newest',
+                      'https://example.test/newest', NULL, 1, 0, 0, 300),
+                     ('saved:materialized', 'saved', 'article', 200, 200,
+                      'author-2', 'materialized', 'Materialized',
+                      'https://example.test/materialized', 'already here', 0, 0, 0, 200),
+                     ('rss:oldest', 'rss', 'article', 100, 100,
+                      'author-3', 'oldest', 'Oldest',
+                      'https://example.test/oldest', NULL, 0, 0, 0, 100);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let request = NormalizedContentFetchPageRequestV1 {
+            cancellation_id: "cancel-content-fetch-1".to_owned(),
+            cursor: None,
+            limit: 1,
+            reader_session_id: "reader-content-fetch-1".to_owned(),
+            schema_version: 1,
+        };
+        let NormalizedQueryResponseV1::ContentFetchPage(first) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ContentFetchPage(request.clone()),
+        )
+        .expect("first content fetch page") else {
+            panic!("content fetch response");
+        };
+        assert_eq!(first.rows[0].global_id, "saved:newest");
+        let cursor = first.next_cursor.expect("content fetch cursor");
+        let NormalizedQueryResponseV1::ContentFetchPage(second) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ContentFetchPage(NormalizedContentFetchPageRequestV1 {
+                cursor: Some(cursor.clone()),
+                ..request.clone()
+            }),
+        )
+        .expect("second content fetch page") else {
+            panic!("content fetch response");
+        };
+        assert_eq!(second.rows[0].global_id, "rss:oldest");
+        assert!(second.next_cursor.is_none());
+        connection
+            .execute_batch(
+                "UPDATE library_meta SET source_revision = 8 WHERE singleton_id = 1;
+                 UPDATE library_change_state SET revision = 8 WHERE singleton_id = 1;",
+            )
+            .expect("advance revision");
+        let error = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::ContentFetchPage(NormalizedContentFetchPageRequestV1 {
+                cursor: Some(cursor),
+                ..request
+            }),
+        )
+        .expect_err("stale content fetch cursor");
         assert!(error.to_string().contains("cursor is stale"));
     }
 

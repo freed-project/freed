@@ -950,6 +950,7 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.change_feed_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.content_fetch_claim_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.map_markers_v1 ||

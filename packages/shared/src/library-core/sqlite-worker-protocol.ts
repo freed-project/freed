@@ -93,6 +93,12 @@ import {
   type LibraryCoreItemScanResponseV1,
 } from "./item-scan-contracts.js";
 import {
+  parseLibraryCoreContentFetchPageRequestV1,
+  parseLibraryCoreContentFetchPageResponseV1,
+  type LibraryCoreContentFetchPageRequestV1,
+  type LibraryCoreContentFetchPageResponseV1,
+} from "./content-fetch-page-contracts.js";
+import {
   parseLibraryCorePersonDetailRequestV1,
   parseLibraryCorePersonDetailResponseV1,
   type LibraryCorePersonDetailRequestV1,
@@ -182,6 +188,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemDetailRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
+  | LibraryCoreContentFetchPageRequestV1
   | LibraryCoreMapMarkersRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
@@ -217,7 +224,9 @@ export type LibraryCoreSqliteQueryResponseFor<
                   ? LibraryCoreItemReaderBodyResponseV1
                   : T extends LibraryCoreItemScanRequestV1
                     ? LibraryCoreItemScanResponseV1
-                    : T extends LibraryCoreMapMarkersRequestV1
+                    : T extends LibraryCoreContentFetchPageRequestV1
+                      ? LibraryCoreContentFetchPageResponseV1
+                      : T extends LibraryCoreMapMarkersRequestV1
                       ? LibraryCoreMapMarkersResponseV1
                       : T extends LibraryCorePersonDetailRequestV1
                         ? LibraryCorePersonDetailResponseV1
@@ -268,7 +277,12 @@ export function parseLibraryCoreSqliteQueryResponse<
                       ? parseLibraryCoreItemReaderBodyResponseV1(value, request)
                       : request.queryId === "background_item_page_v1"
                         ? parseLibraryCoreItemScanResponseV1(value, request)
-                        : request.queryId === "provider_media_page_v1"
+                        : request.queryId === "content_fetch_claim_v1"
+                          ? parseLibraryCoreContentFetchPageResponseV1(
+                              value,
+                              request,
+                            )
+                          : request.queryId === "provider_media_page_v1"
                           ? parseLibraryCoreProviderMediaPageResponseV1(
                               value,
                               request,
@@ -465,6 +479,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreItemDetailResponseV1
   | LibraryCoreItemReaderBodyResponseV1
   | LibraryCoreItemScanResponseV1
+  | LibraryCoreContentFetchPageResponseV1
   | LibraryCoreMapMarkersResponseV1
   | LibraryCorePersonDetailResponseV1
   | LibraryCorePersonGraphPageResponseV1
@@ -653,7 +668,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
                       ? parseLibraryCoreItemReaderBodyRequestV1(value.query)
                       : value.query.queryId === "background_item_page_v1"
                         ? parseLibraryCoreItemScanRequestV1(value.query)
-                        : value.query.queryId === "provider_media_page_v1"
+                        : value.query.queryId === "content_fetch_claim_v1"
+                          ? parseLibraryCoreContentFetchPageRequestV1(
+                              value.query,
+                            )
+                          : value.query.queryId === "provider_media_page_v1"
                           ? parseLibraryCoreProviderMediaPageRequestV1(
                               value.query,
                             )

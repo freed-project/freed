@@ -3,6 +3,7 @@ import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
+  scanLibraryCoreContentFetchCandidatesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
@@ -104,6 +105,46 @@ describe("cross-platform normalized feed readers", () => {
     );
 
     expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("streams compact content fetch candidates without reconstructing items", async () => {
+    const candidate = {
+      capturedAt: 20,
+      globalId: "rss:item-1",
+      linkUrl: "https://example.test/article",
+      publishedAt: 10,
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ nextCursor: "next", rows: [candidate] })
+      .mockResolvedValueOnce({
+        nextCursor: null,
+        rows: [],
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const visit = vi.fn();
+
+    await scanLibraryCoreContentFetchCandidatesV1(
+      { query, randomId: () => "test" },
+      visit,
+    );
+
+    expect(visit).toHaveBeenCalledOnce();
+    expect(visit).toHaveBeenCalledWith([candidate]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      cancellationId: "content-fetch-page:test",
+      cursor: null,
+      limit: 64,
+      queryId: "content_fetch_claim_v1",
+      readerSessionId: "content-fetch-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: "next",
+        readerSessionId: "content-fetch-reader:test",
+      }),
+    );
   });
 
   it("batches Friends aggregates through the bounded SQLite contract", async () => {

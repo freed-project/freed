@@ -72,6 +72,10 @@ import {
   encodeLibraryCoreItemScanCursorV1,
   parseLibraryCoreItemScanRequestV1,
   parseLibraryCoreItemScanResponseV1,
+  decodeLibraryCoreContentFetchPageCursorV1,
+  encodeLibraryCoreContentFetchPageCursorV1,
+  parseLibraryCoreContentFetchPageRequestV1,
+  parseLibraryCoreContentFetchPageResponseV1,
   decodeLibraryCoreProviderMediaPageCursorV1,
   encodeLibraryCoreProviderMediaPageCursorV1,
   libraryCoreProviderMediaBindingDigestV1,
@@ -157,6 +161,8 @@ import {
   type LibraryCoreItemReaderBodyResponseV1,
   type LibraryCoreItemScanRequestV1,
   type LibraryCoreItemScanResponseV1,
+  type LibraryCoreContentFetchPageRequestV1,
+  type LibraryCoreContentFetchPageResponseV1,
   type LibraryCoreProviderMediaPageRequestV1,
   type LibraryCoreProviderMediaPageResponseV1,
   type LibraryCoreProviderMediaRowV1,
@@ -2620,6 +2626,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemScan(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "content_fetch_claim_v1":
+        return this.#queryContentFetchPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "provider_media_page_v1":
         return this.#queryProviderMediaPage(
           input,
@@ -3839,6 +3849,80 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreItemScanResponseV1(response, request.value);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryContentFetchPage(
+    input: LibraryCoreContentFetchPageRequestV1,
+  ): LibraryCoreContentFetchPageResponseV1 {
+    const request = parseLibraryCoreContentFetchPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    let afterPublishedAt: number | null = null;
+    let afterGlobalId = "";
+    if (request.value.cursor !== null) {
+      const cursor = decodeLibraryCoreContentFetchPageCursorV1(
+        request.value.cursor,
+      );
+      if (!cursor.ok) throw new TypeError(cursor.error);
+      if (
+        cursor.value.generationId !== generationId ||
+        cursor.value.projectionRevision !== sourceRevision ||
+        cursor.value.transitionSequence !== sourceRevision
+      ) {
+        throw new Error("PWA Library SQLite content fetch cursor is stale");
+      }
+      afterPublishedAt = cursor.value.publishedAt;
+      afterGlobalId = cursor.value.globalId;
+    }
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.content_fetch_claim_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [afterPublishedAt, afterGlobalId, request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite content fetch exceeded its row bound",
+      );
+    }
+    const hasMore = rows.length > request.value.limit;
+    const candidates = rows.slice(0, request.value.limit).map((row) => ({
+      capturedAt: safeInteger(row.capturedAt, "content fetch capture time"),
+      globalId: text(row.globalId, "content fetch global ID"),
+      linkUrl: text(row.linkUrl, "content fetch URL"),
+      publishedAt: safeInteger(
+        row.publishedAt,
+        "content fetch publication time",
+      ),
+    }));
+    const last = candidates.at(-1);
+    const response = {
+      nextCursor:
+        hasMore && last
+          ? encodeLibraryCoreContentFetchPageCursorV1({
+              generationId: generationId as never,
+              globalId: last.globalId as never,
+              projectionRevision: sourceRevision,
+              publishedAt: last.publishedAt,
+              transitionSequence: sourceRevision,
+            })
+          : null,
+      queryId: "content_fetch_claim_v1" as const,
+      rows: candidates,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreContentFetchPageResponseV1(
+      response,
+      request.value,
+    );
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

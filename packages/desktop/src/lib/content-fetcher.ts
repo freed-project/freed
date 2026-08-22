@@ -43,7 +43,7 @@ import {
   isFactoryResetInProgress,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
-import { scanLibraryCoreItems } from "./library-core-item-detail-runtime.js";
+import { scanLibraryCoreContentFetchCandidates } from "./library-core-item-detail-runtime.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -217,6 +217,21 @@ function hasRecentFailure(globalId: string, now = Date.now()): boolean {
 export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
   if (factoryResetDrainInProgress) return;
   const newEntries = newStubItems(items, { force: options.force });
+  enqueueEntries(newEntries, options);
+}
+
+function enqueueEntries(
+  candidates: readonly QueueEntry[],
+  options: EnqueueOptions = {},
+): void {
+  if (factoryResetDrainInProgress) return;
+  const queuedIds = new Set(queue.map((entry) => entry.globalId));
+  const newEntries = candidates.filter(
+    (entry) =>
+      !queuedIds.has(entry.globalId) &&
+      !inFlight.has(entry.globalId) &&
+      !hasRecentFailure(entry.globalId),
+  );
   if (options.reopenSaveDialogOnError) {
     for (const entry of newEntries) {
       reopenSaveDialogOnErrorIds.add(entry.globalId);
@@ -266,9 +281,13 @@ function maybeScanLibraryItems(
   if (!event.requiresFullScan) return;
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
-  void scanLibraryCoreItems(
-    (page) => enqueue([...page]),
-    { hasLinkPreview: true, missingPreservedText: true },
+  void scanLibraryCoreContentFetchCandidates((page) =>
+    enqueueEntries(
+      page.map((candidate) => ({
+        globalId: candidate.globalId,
+        url: candidate.linkUrl,
+      })),
+    ),
   ).catch((error) => {
     log.error(
       `[content-fetcher] bounded SQLite scan unavailable; background fetch remains paused: ${

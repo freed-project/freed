@@ -9,6 +9,8 @@ import {
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
+  scanLibraryCoreContentFetchCandidatesV1,
+  type LibraryCoreContentFetchCandidateV1,
 } from "@freed/shared/library-core";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { querySqliteItems } from "./sqlite-library";
@@ -224,6 +226,17 @@ export async function scanLibraryCoreBackgroundItems(
   ) => "continue" | "stop" | Promise<"continue" | "stop">,
 ): Promise<void> {
   return scanLibraryCoreNormalizedBackgroundItemsV1(
+    NORMALIZED_READER_RUNTIME,
+    visitPage,
+  );
+}
+
+export async function scanLibraryCoreContentFetchCandidates(
+  visitPage: (
+    rows: readonly LibraryCoreContentFetchCandidateV1[],
+  ) => void | Promise<void>,
+): Promise<void> {
+  return scanLibraryCoreContentFetchCandidatesV1(
     NORMALIZED_READER_RUNTIME,
     visitPage,
   );

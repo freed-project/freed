@@ -27,6 +27,13 @@ import {
   LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
   type LibraryCoreItemScanResponseV1,
 } from "./item-scan-contracts.js";
+import {
+  LIBRARY_CORE_CONTENT_FETCH_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_CONTENT_FETCH_PAGE_QUERY_ID,
+  LIBRARY_CORE_CONTENT_FETCH_PAGE_SCHEMA_VERSION,
+  type LibraryCoreContentFetchCandidateV1,
+  type LibraryCoreContentFetchPageResponseV1,
+} from "./content-fetch-page-contracts.js";
 import { LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION } from "./feed-recommendation-order-contract.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
 import {
@@ -111,6 +118,29 @@ export async function scanLibraryCoreNormalizedBackgroundItemsV1(
       }),
     );
     if (items.length > 0 && (await visit(items)) === "stop") return;
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+}
+
+/** Visit content fetch candidates without materializing FeedItem records. */
+export async function scanLibraryCoreContentFetchCandidatesV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  visit: (
+    rows: readonly LibraryCoreContentFetchCandidateV1[],
+  ) => void | Promise<void>,
+): Promise<void> {
+  const readerSessionId = operationId(runtime, "content-fetch-reader");
+  let cursor: string | null = null;
+  do {
+    const page: LibraryCoreContentFetchPageResponseV1 = await runtime.query({
+      cancellationId: operationId(runtime, "content-fetch-page"),
+      cursor,
+      limit: LIBRARY_CORE_CONTENT_FETCH_PAGE_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_CONTENT_FETCH_PAGE_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_CONTENT_FETCH_PAGE_SCHEMA_VERSION,
+    });
+    if (page.rows.length > 0) await visit(page.rows);
     cursor = page.nextCursor;
   } while (cursor !== null);
 }

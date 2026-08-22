@@ -173,8 +173,13 @@
         archived records needed by background jobs, and never carries reader
         bodies or uses offset paging. Freed Desktop contact discovery and
         explicit Library enumeration use the shared typed adapter. Filtered
-        content enrichment retains its separate path until its dedicated query
-        contract replaces the historical item query.
+        content enrichment uses its dedicated query contract instead of the
+        historical item query.
+  - [x] `content_fetch_claim_v1` now selects only linked rows with no inline or
+        content-addressed preserved body. Native SQLite returns 64 compact
+        candidates from at most 65 rows, and the existing paced fetch queue
+        consumes those candidates without reconstructing FeedItems or changing
+        network cadence, retries, headers, or provider behavior.
   - [x] Provider settings, Facebook group-name repair, media backup, and saved
         YouTube discovery now call `provider_media_page_v1` through the native
         typed query command. SQLite filters provider, visibility, and saved

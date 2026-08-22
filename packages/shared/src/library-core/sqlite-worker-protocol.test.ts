@@ -190,6 +190,16 @@ describe("Library Core SQLite worker protocol", () => {
       }).kind,
     ).toBe("query");
     expect(
+      createLibraryCoreSqliteQueryWorkerRequest("request-content-fetch", {
+        cancellationId: "cancel-content-fetch-1",
+        cursor: null,
+        limit: 64,
+        queryId: "content_fetch_claim_v1",
+        readerSessionId: "reader-content-fetch-1",
+        schemaVersion: 1,
+      }).kind,
+    ).toBe("query");
+    expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-provider-media", {
         cancellationId: "cancel-provider-media-1",
         cursor: null,

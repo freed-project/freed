@@ -197,6 +197,12 @@ CREATE INDEX IF NOT EXISTS library_feed_items_platform
 CREATE INDEX IF NOT EXISTS library_feed_items_rss_feed
   ON library_feed_items(rss_feed_url, hidden, published_at DESC, global_id)
   WHERE rss_feed_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS library_feed_items_content_fetch
+  ON library_feed_items(published_at DESC, global_id)
+  WHERE link_url IS NOT NULL
+    AND link_url <> ''
+    AND (preserved_text IS NULL OR preserved_text = '')
+    AND preserved_text_blob_digest IS NULL;
 
 CREATE TABLE IF NOT EXISTS library_feed_item_media (
   global_id TEXT NOT NULL REFERENCES library_feed_items(global_id) ON DELETE CASCADE,
