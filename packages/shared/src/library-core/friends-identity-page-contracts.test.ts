@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   decodeLibraryCoreIdentityPageCursorV1,
   encodeLibraryCoreIdentityPageCursorV1,
+  libraryCoreRssFeedPageRowToRssFeedV1,
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageResponseV1,
-  parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCoreRssFeedPageResponseV1,
 } from "./friends-identity-page-contracts";
 
 const source = {
@@ -116,37 +117,74 @@ describe("Friends identity page contracts", () => {
   });
 
   it("accepts compact binary-ordered RSS feed rows", () => {
+    const rss = (
+      url: string,
+      overrides: Partial<
+        Parameters<typeof libraryCoreRssFeedPageRowToRssFeedV1>[0]
+      > = {},
+    ) => ({
+      activityCount: 0,
+      enabled: true,
+      folder: null,
+      imageUrl: null,
+      lastFetched: null,
+      latestActivityAt: null,
+      pollInterval: null,
+      sampleBatchId: null,
+      sampleGeneratedAt: null,
+      sampleGeneratorVersion: null,
+      siteUrl: null,
+      title: url,
+      trackUnread: false,
+      unreadCount: 0,
+      updatedAt: 1,
+      url,
+      ...overrides,
+    });
     expect(
-      parseLibraryCoreRssFeedGraphPageResponseV1(
+      parseLibraryCoreRssFeedPageResponseV1(
         {
           layoutRevision: 3,
           nextCursor: null,
-          queryId: "rss_feed_graph_page_v1",
+          queryId: "rss_feed_page_v1",
           rows: [
-            {
+            rss("https://alpha.example/feed", {
               activityCount: 4,
-              enabled: true,
-              imageUrl: null,
               latestActivityAt: 30,
               title: "Alpha",
+              trackUnread: true,
+              unreadCount: 2,
               updatedAt: 3,
-              url: "https://alpha.example/feed",
-            },
-            {
-              activityCount: 0,
+            }),
+            rss("https://beta.example/feed", {
               enabled: false,
               imageUrl: "https://beta.example/icon.png",
-              latestActivityAt: null,
+              sampleBatchId: "batch-1",
+              sampleGeneratedAt: 2,
+              sampleGeneratorVersion: 1,
               title: "Beta",
               updatedAt: 4,
-              url: "https://beta.example/feed",
-            },
+            }),
           ],
           schemaVersion: 1,
           source,
         },
-        { ...baseRequest, queryId: "rss_feed_graph_page_v1" },
+        { ...baseRequest, queryId: "rss_feed_page_v1" },
       ).ok,
     ).toBe(true);
+    expect(
+      libraryCoreRssFeedPageRowToRssFeedV1(
+        rss("https://sample.example/feed", {
+          sampleBatchId: "batch-1",
+          sampleGeneratedAt: 2,
+          sampleGeneratorVersion: 1,
+        }),
+      ),
+    ).toMatchObject({
+      sampleDataFingerprint: {
+        marker: "freed.sample-data.v1",
+        batchId: "batch-1",
+      },
+    });
   });
 });

@@ -152,7 +152,7 @@ describe("Friends Galaxy product worker client", () => {
     expect(queryIds).toEqual([
       "person_graph_page_v1",
       "account_graph_page_v1",
-      "rss_feed_graph_page_v1",
+      "rss_feed_page_v1",
     ]);
     expect(sourceReady).toEqual([9]);
     expect(client.sourceReady).toBe(true);

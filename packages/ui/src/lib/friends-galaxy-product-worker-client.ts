@@ -16,7 +16,7 @@ import {
 import type {
   LibraryCoreAccountGraphPageRequestV1,
   LibraryCorePersonGraphPageRequestV1,
-  LibraryCoreRssFeedGraphPageRequestV1,
+  LibraryCoreRssFeedPageRequestV1,
 } from "@freed/shared/library-core";
 import type { FriendsGalaxySqliteSourcePage } from "./friends-galaxy-sqlite-source.js";
 
@@ -24,7 +24,7 @@ const DEFAULT_PRODUCT_WORKER_TIMEOUT_MS = 30_000;
 const NORMALIZED_SOURCE_QUERY_IDS = [
   "person_graph_page_v1",
   "account_graph_page_v1",
-  "rss_feed_graph_page_v1",
+  "rss_feed_page_v1",
 ] as const;
 
 export type FriendsGalaxyProductWorkerSourceInput = Omit<
@@ -50,7 +50,7 @@ export type FriendsGalaxyProductWorkerNormalizedSourceInput = Omit<
 export type FriendsGalaxySqliteGraphPageRequest =
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCoreAccountGraphPageRequestV1
-  | LibraryCoreRssFeedGraphPageRequestV1;
+  | LibraryCoreRssFeedPageRequestV1;
 
 export type FriendsGalaxySqliteGraphQuery = (
   request: FriendsGalaxySqliteGraphPageRequest,

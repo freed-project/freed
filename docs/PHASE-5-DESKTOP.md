@@ -149,7 +149,7 @@
         feed edit or refresh targets a feed outside the visible renderer
         window, preserving polling, unread, folder, URL, and sample fields.
   - [x] `person_graph_page_v1`, `account_graph_page_v1`, and
-        `rss_feed_graph_page_v1` now stream compact
+        `rss_feed_page_v1` now stream compact
         identity roots through source-fenced binary primary-key pages shared
         by native Rust and PWA SQLite. Each request returns at most 128 rows
         and 2 MiB without notes, contact fields, histories, polling policy, or
@@ -516,7 +516,7 @@ export async function captureDomFeed(
 | 5.55 | Extract item detail, Library facets, Saved analytics, Map, and Story Wall orchestration into one shared bounded adapter, with Freed Desktop supplying only the native query executor                                                                                                                       | High       | ✓ Complete |
 | 5.56 | Bind Friends mode into the normalized feed query, resolve friend membership through Account and Person joins in SQLite, and remove Desktop shell and historical-item dependencies from Friends paging                                                                                                      | High       | ✓ Complete |
 | 5.57 | Route selected Person timelines through the shared `person_timeline_v1` adapter, keyed by stable Person ID, with bounded compact rows and opaque source-fenced cursors                                                                                                                                     | High       | ✓ Complete |
-| 5.58 | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_graph_page_v1` executors so React never compiles the identity corpus                                                                                                                    | High       | ✓ Complete |
+| 5.58 | Supply the Friends Galaxy worker with direct native `person_graph_page_v1`, `account_graph_page_v1`, and `rss_feed_page_v1` executors so React never compiles the identity corpus                                                                                                                    | High       | ✓ Complete |
 | 5.59 | Route selected unlinked Account timelines through the shared native `account_timeline_v1` adapter, keyed by stable Account ID, while linked Accounts continue through the combined Person timeline                                                                                                         | High       | ✓ Complete |
 | 5.60 | Expose one generic typed normalized query executor to shared UI and use bounded Account graph pages plus exact Account detail reads for the Friend editor instead of scanning the Desktop item corpus                                                                                                      | High       | ✓ Complete |
 | 5.61 | Make Map, Story Wall, Library facets, feed signal counts, and Saved analytics fail closed on their typed SQLite readers, with no renderer corpus lease or scan fallback                                                                                                                                    | High       | ✓ Complete |
@@ -548,6 +548,7 @@ export async function captureDomFeed(
 | 5.87 | Expose one closed native command that atomically records a normalized v2 intent transport page, its exact semantic and stored digests, immutable object identity, actor head advance, completed transaction publication state, and response-loss replay receipt                                                                                                                    | High       | ✓ Complete |
 | 5.88 | Expose one closed native command that atomically verifies and imports a normalized v2 result segment, reconciles accepted or rejected intents and optimistic fields, persists the exact transport receipt, advances both result heads, and returns the same receipt after response loss                                                                                              | High       | ✓ Complete |
 | 5.89 | Extend the shared constant-time Library facet query with trigger-maintained unread, archivable, sample-root, and bounded per-platform counts so Desktop and PWA navigation never scan FeedItem rows or derive whole-Library totals in React | High | ✓ Complete |
+| 5.90 | Replace the primary sidebar's complete RSS Feed dictionary, derived per-feed count dictionaries, whole-catalog search, and renderer slicing with the shared `rss_feed_page_v1` native SQLite reader. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High | ✓ Complete |
 
 ---
 

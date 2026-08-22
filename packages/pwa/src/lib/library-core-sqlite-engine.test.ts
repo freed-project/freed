@@ -14,6 +14,7 @@ import {
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalBase64,
@@ -2553,12 +2554,12 @@ describe("PWA Library Core SQLite engine", () => {
       cancellationId: operationId("cancel-rss-feed-graph-1"),
       cursor: null,
       limit: 1,
-      queryId: "rss_feed_graph_page_v1" as const,
+      queryId: "rss_feed_page_v1" as const,
       readerSessionId: operationId("reader-rss-feed-graph-1"),
       schemaVersion: 1 as const,
     };
-    const firstRssFeedGraphPage = engine.query(rssFeedGraphRequest);
-    expect(firstRssFeedGraphPage.rows).toMatchObject([
+    const firstRssFeedPage = engine.query(rssFeedGraphRequest);
+    expect(firstRssFeedPage.rows).toMatchObject([
       {
         activityCount: 1,
         enabled: true,
@@ -2572,10 +2573,63 @@ describe("PWA Library Core SQLite engine", () => {
       engine
         .query({
           ...rssFeedGraphRequest,
-          cursor: firstRssFeedGraphPage.nextCursor,
+          cursor: firstRssFeedPage.nextCursor,
         })
         .rows.map((row) => row.url),
     ).toEqual(["https://beta.example/feed"]);
+    const maximumTitle = "t".repeat(4_096);
+    const maximumFolder = "f".repeat(4_096);
+    const maximumSiteUrl = `https://example.com/${"s".repeat(4_076)}`;
+    const maximumImageUrl = `https://example.com/${"i".repeat(4_076)}`;
+    for (let index = 0; index < 130; index += 1) {
+      const feedUrlPrefix = `https://000-large-${index.toLocaleString("en-US", { minimumIntegerDigits: 3, useGrouping: false })}.example/`;
+      database.exec({
+        sql: `INSERT INTO library_rss_feeds
+                (url, title, site_url, image_url, enabled, track_unread,
+                 folder, updated_at)
+              VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, 1);`,
+        bind: [
+          `${feedUrlPrefix}${"u".repeat(4_096 - feedUrlPrefix.length)}`,
+          maximumTitle,
+          maximumSiteUrl,
+          maximumImageUrl,
+          maximumFolder,
+        ],
+      });
+    }
+    const maximumPageRequest = {
+      ...rssFeedGraphRequest,
+      cancellationId: operationId("cancel-rss-feed-maximum-page"),
+      limit: 128,
+      readerSessionId: operationId("reader-rss-feed-maximum-page"),
+    };
+    const maximumFirstPage = engine.query(maximumPageRequest);
+    expect(maximumFirstPage.nextCursor).not.toBeNull();
+    expect(maximumFirstPage.rows.length).toBeLessThan(128);
+    expect(
+      new TextEncoder().encode(JSON.stringify(maximumFirstPage)).byteLength,
+    ).toBeLessThanOrEqual(
+      LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
+    );
+    const maximumRows = [...maximumFirstPage.rows];
+    let maximumCursor = maximumFirstPage.nextCursor;
+    while (maximumCursor !== null) {
+      const page = engine.query({
+        ...maximumPageRequest,
+        cursor: maximumCursor,
+      });
+      maximumRows.push(...page.rows);
+      maximumCursor = page.nextCursor;
+    }
+    expect(maximumRows).toHaveLength(132);
+    expect(
+      maximumRows.find((row) => row.url.startsWith("https://000-large-")),
+    ).toMatchObject({
+      folder: maximumFolder,
+      imageUrl: maximumImageUrl,
+      siteUrl: maximumSiteUrl,
+      title: maximumTitle,
+    });
     expect(
       engine.query({
         queryId: "persons_graph_v1",
@@ -2791,7 +2845,7 @@ describe("PWA Library Core SQLite engine", () => {
     expect(() =>
       engine.query({
         ...rssFeedGraphRequest,
-        cursor: firstRssFeedGraphPage.nextCursor,
+        cursor: firstRssFeedPage.nextCursor,
       }),
     ).toThrow(/cursor is stale/);
   });

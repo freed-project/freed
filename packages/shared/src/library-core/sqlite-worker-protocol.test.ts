@@ -89,7 +89,7 @@ describe("Library Core SQLite worker protocol", () => {
         cancellationId: "cancel-rss-feed-graph",
         cursor: null,
         limit: 64,
-        queryId: "rss_feed_graph_page_v1",
+        queryId: "rss_feed_page_v1",
         readerSessionId: "reader-rss-feed-graph",
         schemaVersion: 1,
       }).kind,

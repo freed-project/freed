@@ -232,7 +232,7 @@ export function validateFriendsGalaxyProductWorkerResponse(
       ![
         "person_graph_page_v1",
         "account_graph_page_v1",
-        "rss_feed_graph_page_v1",
+        "rss_feed_page_v1",
       ].includes(response.queryId)
     ) {
       throw new Error("Friends Galaxy worker returned invalid source progress.");
@@ -252,7 +252,7 @@ export function validateFriendsGalaxyProductWorkerResponse(
         response.acceptedRows !== request.page.rows.length ||
         response.totalRows < response.acceptedRows ||
         response.complete !==
-          (request.page.queryId === "rss_feed_graph_page_v1" &&
+          (request.page.queryId === "rss_feed_page_v1" &&
             request.page.nextCursor === null))
     ) {
       throw new Error("Friends Galaxy worker returned mismatched source progress.");

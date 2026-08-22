@@ -3,14 +3,14 @@ import {
   LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
   LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID,
-  LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+  LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageResponseV1,
-  parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCoreRssFeedPageResponseV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCoreFeedPageSourceV1,
   type LibraryCorePersonGraphPageResponseV1,
-  type LibraryCoreRssFeedGraphPageResponseV1,
+  type LibraryCoreRssFeedPageResponseV1,
 } from "@freed/shared/library-core";
 import type {
   BuildIdentityGraphAtlasModelInput,
@@ -24,7 +24,7 @@ export const FRIENDS_GALAXY_SQLITE_SOURCE_ROW_CAP = 100_000;
 export type FriendsGalaxySqliteSourcePage =
   | LibraryCorePersonGraphPageResponseV1
   | LibraryCoreAccountGraphPageResponseV1
-  | LibraryCoreRssFeedGraphPageResponseV1;
+  | LibraryCoreRssFeedPageResponseV1;
 
 export interface FriendsGalaxySqliteSourcePageInput {
   readonly cursor: string | null;
@@ -54,7 +54,7 @@ interface FriendsGalaxySqliteSourceFence {
 type SourcePhase =
   | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID
   | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
-  | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID
+  | typeof LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID
   | "complete";
 
 const EMPTY_ACTIVITY = Object.freeze({
@@ -91,7 +91,7 @@ function nextPhase(phase: Exclude<SourcePhase, "complete">): SourcePhase {
     return LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID;
   }
   if (phase === LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID) {
-    return LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID;
+    return LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID;
   }
   return "complete";
 }
@@ -170,7 +170,7 @@ export class FriendsGalaxySqliteSourceAccumulator {
       ? parseLibraryCorePersonGraphPageResponseV1(input.page, request)
       : this.#phase === LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
         ? parseLibraryCoreAccountGraphPageResponseV1(input.page, request)
-        : parseLibraryCoreRssFeedGraphPageResponseV1(input.page, request);
+        : parseLibraryCoreRssFeedPageResponseV1(input.page, request);
     if (!parsed.ok) throw new Error(parsed.error);
     const page = parsed.value;
     const fence = sourceFence(page.source, page.layoutRevision);
@@ -215,7 +215,7 @@ export class FriendsGalaxySqliteSourceAccumulator {
           ...graphPosition(account),
         });
       } else {
-        const feed = row as LibraryCoreRssFeedGraphPageResponseV1["rows"][number];
+        const feed = row as LibraryCoreRssFeedPageResponseV1["rows"][number];
         this.#feeds[feed.url] = Object.freeze({
           activityCount: feed.activityCount,
           enabled: feed.enabled,

@@ -5,6 +5,7 @@ import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SQL,
   LIBRARY_CORE_CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
   LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS,
   LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS,
@@ -140,8 +141,8 @@ import {
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
   parseLibraryCorePersonGraphPageResponseV1,
-  parseLibraryCoreRssFeedGraphPageRequestV1,
-  parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCoreRssFeedPageRequestV1,
+  parseLibraryCoreRssFeedPageResponseV1,
   parseLibraryCorePersonsGraphRequestV1,
   parseLibraryCorePersonsGraphResponseV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
@@ -218,8 +219,8 @@ import {
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
   type LibraryCorePersonGraphPageResponseV1,
-  type LibraryCoreRssFeedGraphPageRequestV1,
-  type LibraryCoreRssFeedGraphPageResponseV1,
+  type LibraryCoreRssFeedPageRequestV1,
+  type LibraryCoreRssFeedPageResponseV1,
   type LibraryCorePersonsGraphRequestV1,
   type LibraryCorePersonsGraphResponseV1,
   type LibraryCoreDeviceGraphLayoutMutationV1,
@@ -3962,8 +3963,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryRssFeedDetail(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
-      case "rss_feed_graph_page_v1":
-        return this.#queryRssFeedGraphPage(
+      case "rss_feed_page_v1":
+        return this.#queryRssFeedPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "saved_analytics_v2":
@@ -4621,10 +4622,10 @@ export class PwaLibraryCoreSqliteEngine {
     return parsed.value;
   }
 
-  #queryRssFeedGraphPage(
-    input: LibraryCoreRssFeedGraphPageRequestV1,
-  ): LibraryCoreRssFeedGraphPageResponseV1 {
-    const request = parseLibraryCoreRssFeedGraphPageRequestV1(input);
+  #queryRssFeedPage(
+    input: LibraryCoreRssFeedPageRequestV1,
+  ): LibraryCoreRssFeedPageResponseV1 {
+    const request = parseLibraryCoreRssFeedPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
     const { generationId, layoutRevision, sourceRevision } =
       this.#queryGraphSource();
@@ -4640,9 +4641,9 @@ export class PwaLibraryCoreSqliteEngine {
         cursor.value.projectionRevision !== sourceRevision ||
         cursor.value.transitionSequence !== sourceRevision)
     ) {
-      throw new Error("PWA Library SQLite RSS feed graph cursor is stale");
+      throw new Error("PWA Library SQLite RSS Feed page cursor is stale");
     }
-    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.rss_feed_graph_page_v1;
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.rss_feed_page_v1;
     const rawRows = this.#database.exec({
       sql: program.sql,
       bind: [
@@ -4654,53 +4655,80 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (rawRows.length > program.maximumScanRows) {
       throw new Error(
-        "PWA Library SQLite RSS feed graph page exceeded its row bound",
+        "PWA Library SQLite RSS Feed page exceeded its row bound",
       );
     }
-    const hasMore = rawRows.length > request.value.limit;
+    let hasMore = rawRows.length > request.value.limit;
     const rows = rawRows.slice(0, request.value.limit).map((row) => ({
       activityCount: safeInteger(
         row.activityCount,
-        "RSS feed graph activity count",
+        "RSS Feed activity count",
       ),
-      enabled: requiredBoolean(row.enabled, "RSS feed graph enabled"),
-      imageUrl: nullableText(row.imageUrl, "RSS feed graph image URL"),
+      enabled: requiredBoolean(row.enabled, "RSS Feed enabled"),
+      folder: nullableText(row.folder, "RSS Feed folder"),
+      imageUrl: nullableText(row.imageUrl, "RSS Feed image URL"),
+      lastFetched: nullableInteger(row.lastFetched, "RSS Feed last fetched"),
       latestActivityAt: nullableInteger(
         row.latestActivityAt,
-        "RSS feed graph latest activity",
+        "RSS Feed latest activity",
       ),
-      title: text(row.title, "RSS feed graph title"),
-      updatedAt: safeInteger(row.updatedAt, "RSS feed graph update time"),
-      url: text(row.url, "RSS feed graph URL"),
+      pollInterval: nullableInteger(row.pollInterval, "RSS Feed poll interval"),
+      sampleBatchId: nullableText(row.sampleBatchId, "RSS Feed sample batch"),
+      sampleGeneratedAt: nullableInteger(
+        row.sampleGeneratedAt,
+        "RSS Feed sample generation time",
+      ),
+      sampleGeneratorVersion: nullableInteger(
+        row.sampleGeneratorVersion,
+        "RSS Feed sample generator version",
+      ),
+      siteUrl: nullableText(row.siteUrl, "RSS Feed site URL"),
+      title: text(row.title, "RSS Feed title"),
+      trackUnread: requiredBoolean(row.trackUnread, "RSS Feed track unread"),
+      unreadCount: safeInteger(row.unreadCount, "RSS Feed unread count"),
+      updatedAt: safeInteger(row.updatedAt, "RSS Feed update time"),
+      url: text(row.url, "RSS Feed URL"),
     }));
-    const last = rows.at(-1);
-    const response = {
-      layoutRevision,
-      nextCursor:
-        hasMore && last
-          ? encodeLibraryCoreIdentityPageCursorV1({
-              entityId: last.url,
-              generationId,
-              layoutRevision,
-              projectionRevision: sourceRevision,
-              transitionSequence: sourceRevision,
-            })
-          : null,
-      queryId: "rss_feed_graph_page_v1" as const,
-      rows,
-      schemaVersion: 1 as const,
-      source: {
-        generationId,
-        projectionRevision: sourceRevision,
-        transitionSequence: sourceRevision,
-      },
-    };
-    const parsed = parseLibraryCoreRssFeedGraphPageResponseV1(
-      response,
-      request.value,
-    );
-    if (!parsed.ok) throw new Error(parsed.error);
-    return parsed.value;
+    for (;;) {
+      const last = rows.at(-1);
+      const response = {
+        layoutRevision,
+        nextCursor:
+          hasMore && last
+            ? encodeLibraryCoreIdentityPageCursorV1({
+                entityId: last.url,
+                generationId,
+                layoutRevision,
+                projectionRevision: sourceRevision,
+                transitionSequence: sourceRevision,
+              })
+            : null,
+        queryId: "rss_feed_page_v1" as const,
+        rows,
+        schemaVersion: 1 as const,
+        source: {
+          generationId,
+          projectionRevision: sourceRevision,
+          transitionSequence: sourceRevision,
+        },
+      };
+      if (
+        new TextEncoder().encode(JSON.stringify(response)).byteLength <=
+        LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+      ) {
+        const parsed = parseLibraryCoreRssFeedPageResponseV1(
+          response,
+          request.value,
+        );
+        if (!parsed.ok) throw new Error(parsed.error);
+        return parsed.value;
+      }
+      if (rows.length <= 1) {
+        throw new Error("PWA Library SQLite RSS Feed page contains an oversized row");
+      }
+      rows.pop();
+      hasMore = true;
+    }
   }
 
   #queryPersonsGraph(

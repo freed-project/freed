@@ -13,6 +13,11 @@ import {
   vi,
 } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreRssFeedPageResponseV1,
+  LibraryCoreRssFeedPageRowV1,
+} from "@freed/shared/library-core";
 import {
   PlatformProvider,
   type LibraryFacetSummary,
@@ -37,6 +42,10 @@ import {
   type LibraryFriendsRowsState,
 } from "./useLibraryFriendsRows.js";
 import { createLibrarySavedAnalyticsRequest } from "../lib/saved-library-analytics.js";
+import {
+  useLibraryRssFeedPage,
+  type LibraryRssFeedPageState,
+} from "./useLibraryRssFeedPage.js";
 
 function item(globalId: string): FeedItem {
   return {
@@ -62,6 +71,7 @@ function platformConfig(
       | "readLibraryPersonTimeline"
       | "readLibrarySavedAnalytics"
       | "readLibrarySurfaceItems"
+      | "queryLibraryCore"
     >
   >,
 ): PlatformConfig {
@@ -220,6 +230,67 @@ function FriendsHarness({
     }),
   );
   return null;
+}
+
+function RssFeedPageHarness({
+  onState,
+  search,
+}: {
+  onState: (state: LibraryRssFeedPageState) => void;
+  search: string;
+}) {
+  onState(
+    useLibraryRssFeedPage({
+      enabledOnly: true,
+      pageSize: 2,
+      search,
+      sourceVersion: 1,
+    }),
+  );
+  return null;
+}
+
+function rssFeedRow(
+  url: string,
+  title: string,
+  enabled = true,
+): LibraryCoreRssFeedPageRowV1 {
+  return {
+    activityCount: 3,
+    enabled,
+    folder: null,
+    imageUrl: null,
+    lastFetched: null,
+    latestActivityAt: null,
+    pollInterval: null,
+    sampleBatchId: null,
+    sampleGeneratedAt: null,
+    sampleGeneratorVersion: null,
+    siteUrl: null,
+    title,
+    trackUnread: true,
+    unreadCount: 2,
+    updatedAt: 1,
+    url,
+  };
+}
+
+function rssFeedResponse(
+  rows: readonly LibraryCoreRssFeedPageRowV1[],
+  nextCursor: string | null,
+): LibraryCoreRssFeedPageResponseV1 {
+  return {
+    layoutRevision: 1,
+    nextCursor,
+    queryId: "rss_feed_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: {
+      generationId: "a".repeat(64) as never,
+      projectionRevision: 1,
+      transitionSequence: 1,
+    },
+  };
 }
 
 async function flush(): Promise<void> {
@@ -1158,5 +1229,63 @@ describe("Library row query hooks", () => {
     expect(secondTimelineReader).toHaveBeenCalledOnce();
     expect((current as LibraryFriendsRowsState | null)?.graph).toBeNull();
     expect((current as LibraryFriendsRowsState | null)?.timelineItems).toEqual([]);
+  });
+
+  it("keeps RSS catalog search bounded to visible rows and opaque cursors", async () => {
+    const firstRawPage = Array.from({ length: 128 }, (_, index) =>
+      rssFeedRow(
+        `https://feed-${index.toLocaleString("en-US", { useGrouping: false })}.example/rss`,
+        `Unrelated ${index.toLocaleString("en-US", { useGrouping: false })}`,
+      ),
+    );
+    const matchingRows = [
+      rssFeedRow("https://alpha.example/rss", "Target Alpha"),
+      rssFeedRow("https://beta.example/rss", "Target Beta"),
+      rssFeedRow("https://gamma.example/rss", "Target Gamma"),
+    ];
+    const queryLibraryCore = vi.fn(async (request: { cursor: string | null }) => {
+      if (request.cursor === null) {
+        return rssFeedResponse(firstRawPage, "second-raw-page");
+      }
+      return rssFeedResponse(matchingRows, null);
+    }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let current: LibraryRssFeedPageState | null = null;
+
+    renderHarness(
+      <PlatformProvider value={platformConfig({ queryLibraryCore })}>
+        <RssFeedPageHarness
+          search="target"
+          onState={(state) => {
+            current = state;
+          }}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledTimes(2);
+    expect((current as LibraryRssFeedPageState | null)?.rows.map((row) => row.title)).toEqual([
+      "Target Alpha",
+      "Target Beta",
+    ]);
+    expect((current as LibraryRssFeedPageState | null)?.hasNext).toBe(true);
+    expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(1);
+    expect((current as LibraryRssFeedPageState | null)?.rows).toHaveLength(2);
+
+    act(() => {
+      (current as LibraryRssFeedPageState | null)?.nextPage();
+    });
+    await flush();
+
+    expect(queryLibraryCore).toHaveBeenCalledTimes(3);
+    expect(queryLibraryCore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: expect.any(String),
+        limit: 128,
+        queryId: "rss_feed_page_v1",
+      }),
+    );
+    expect((current as LibraryRssFeedPageState | null)?.pageNumber).toBe(2);
   });
 });

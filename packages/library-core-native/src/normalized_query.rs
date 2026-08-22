@@ -328,7 +328,7 @@ pub struct NormalizedAccountGraphPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NormalizedRssFeedGraphPageRequestV1 {
+pub struct NormalizedRssFeedPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
     pub limit: usize,
@@ -367,7 +367,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonsGraph(NormalizedPersonsGraphRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedDetail(NormalizedRssFeedDetailRequestV1),
-    RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
+    RssFeedPage(NormalizedRssFeedPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
     SavedFeedPage(NormalizedSavedFeedPageRequestV2),
     SearchPage(NormalizedSearchPageRequestV1),
@@ -992,12 +992,21 @@ pub struct NormalizedAccountGraphRowV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NormalizedRssFeedGraphRowV1 {
+pub struct NormalizedRssFeedPageRowV1 {
     pub activity_count: i64,
     pub enabled: bool,
+    pub folder: Option<String>,
     pub image_url: Option<String>,
+    pub last_fetched: Option<i64>,
     pub latest_activity_at: Option<i64>,
+    pub poll_interval: Option<i64>,
+    pub sample_batch_id: Option<String>,
+    pub sample_generated_at: Option<i64>,
+    pub sample_generator_version: Option<i64>,
+    pub site_url: Option<String>,
     pub title: String,
+    pub track_unread: bool,
+    pub unread_count: i64,
     pub updated_at: i64,
     pub url: String,
 }
@@ -1026,11 +1035,11 @@ pub struct NormalizedAccountGraphPageResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NormalizedRssFeedGraphPageResponseV1 {
+pub struct NormalizedRssFeedPageResponseV1 {
     pub layout_revision: i64,
     pub next_cursor: Option<String>,
     pub query_id: String,
-    pub rows: Vec<NormalizedRssFeedGraphRowV1>,
+    pub rows: Vec<NormalizedRssFeedPageRowV1>,
     pub schema_version: u32,
     pub source: NormalizedFeedPageSourceV1,
 }
@@ -1076,7 +1085,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonsGraph(NormalizedPersonsGraphResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedDetail(NormalizedRssFeedDetailResponseV1),
-    RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
+    RssFeedPage(NormalizedRssFeedPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
     SavedFeedPage(Box<NormalizedSavedFeedPageResponseV2>),
     SearchPage(NormalizedSearchPageResponseV1),
@@ -4654,21 +4663,21 @@ fn query_account_graph_page(
     Ok(response)
 }
 
-fn query_rss_feed_graph_page(
+fn query_rss_feed_page(
     connection: &mut Connection,
-    request: NormalizedRssFeedGraphPageRequestV1,
-) -> Result<NormalizedRssFeedGraphPageResponseV1, NormalizedSqliteError> {
+    request: NormalizedRssFeedPageRequestV1,
+) -> Result<NormalizedRssFeedPageResponseV1, NormalizedSqliteError> {
     if request.schema_version != 1
         || !(1..=FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT).contains(&request.limit)
         || !valid_operation_instance_id(&request.cancellation_id)
         || !valid_operation_instance_id(&request.reader_session_id)
     {
-        return Err(invalid("normalized RSS feed graph page request is invalid"));
+        return Err(invalid("normalized RSS Feed page request is invalid"));
     }
     let program = SQLITE_QUERY_PROGRAMS
         .iter()
-        .find(|program| program.query_id == "rss_feed_graph_page_v1")
-        .ok_or(invalid("normalized RSS feed graph page program is missing"))?;
+        .find(|program| program.query_id == "rss_feed_page_v1")
+        .ok_or(invalid("normalized RSS Feed page program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
     let layout_revision = query_graph_layout_revision(&transaction)?;
@@ -4679,13 +4688,13 @@ fn query_rss_feed_graph_page(
             || cursor.transition_sequence != source_revision
             || cursor.projection_revision != source_revision
     }) {
-        return Err(invalid("normalized RSS feed graph page cursor is stale"));
+        return Err(invalid("normalized RSS Feed page cursor is stale"));
     }
     let mut statement = transaction.prepare(program.sql)?;
     let mapped = statement.query_map(
         params![
             cursor.as_ref().map(|cursor| cursor.global_id.as_str()),
-            i64::try_from(request.limit + 1).expect("bounded RSS feed graph page limit"),
+            i64::try_from(request.limit + 1).expect("bounded RSS Feed page limit"),
         ],
         |row| {
             let enabled = match row.get::<_, i64>("enabled")? {
@@ -4693,12 +4702,26 @@ fn query_rss_feed_graph_page(
                 1 => true,
                 _ => return Err(rusqlite::Error::InvalidQuery),
             };
-            Ok(NormalizedRssFeedGraphRowV1 {
+            let track_unread = match row.get::<_, i64>("trackUnread")? {
+                0 => false,
+                1 => true,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+            Ok(NormalizedRssFeedPageRowV1 {
                 activity_count: row.get("activityCount")?,
                 enabled,
+                folder: row.get("folder")?,
                 image_url: row.get("imageUrl")?,
+                last_fetched: row.get("lastFetched")?,
                 latest_activity_at: row.get("latestActivityAt")?,
+                poll_interval: row.get("pollInterval")?,
+                sample_batch_id: row.get("sampleBatchId")?,
+                sample_generated_at: row.get("sampleGeneratedAt")?,
+                sample_generator_version: row.get("sampleGeneratorVersion")?,
+                site_url: row.get("siteUrl")?,
                 title: row.get("title")?,
+                track_unread,
+                unread_count: row.get("unreadCount")?,
                 updated_at: row.get("updatedAt")?,
                 url: row.get("url")?,
             })
@@ -4707,68 +4730,97 @@ fn query_rss_feed_graph_page(
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     if rows.len() > program.maximum_scan_rows {
-        return Err(invalid(
-            "normalized RSS feed graph page exceeded its row bound",
-        ));
+        return Err(invalid("normalized RSS Feed page exceeded its row bound"));
     }
-    let has_more = rows.len() > request.limit;
+    let mut has_more = rows.len() > request.limit;
     rows.truncate(request.limit);
     for row in &rows {
         if row.url.is_empty()
-            || row.url.len() > 8_192
-            || row.title.is_empty()
+            || row.url.len() > 4_096
             || row.title.len() > 4_096
+            || row.folder.as_ref().is_some_and(|value| value.len() > 4_096)
             || row
                 .image_url
                 .as_ref()
-                .is_some_and(|value| value.len() > 8_192)
+                .is_some_and(|value| value.len() > 4_096)
+            || row
+                .site_url
+                .as_ref()
+                .is_some_and(|value| value.len() > 4_096)
+            || row
+                .sample_batch_id
+                .as_ref()
+                .is_some_and(|value| value.len() > 255)
             || !valid_safe_integer(row.activity_count)
+            || !valid_safe_integer(row.unread_count)
+            || row.unread_count > row.activity_count
             || !valid_safe_integer(row.updated_at)
+            || row
+                .last_fetched
+                .is_some_and(|value| !valid_safe_integer(value))
             || row
                 .latest_activity_at
                 .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .poll_interval
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .sample_generated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row
+                .sample_generator_version
+                .is_some_and(|value| !valid_safe_integer(value))
+            || row.sample_batch_id.is_none() != row.sample_generated_at.is_none()
+            || row.sample_batch_id.is_none() != row.sample_generator_version.is_none()
         {
-            return Err(invalid("normalized RSS feed graph page row is invalid"));
+            return Err(invalid("normalized RSS Feed page row is invalid"));
         }
     }
     if rows.windows(2).any(|pair| pair[0].url >= pair[1].url) {
-        return Err(invalid("normalized RSS feed graph page order is invalid"));
+        return Err(invalid("normalized RSS Feed page order is invalid"));
     }
-    let next_cursor = if has_more {
-        let last = rows.last().ok_or(invalid(
-            "normalized RSS feed graph page cursor row is missing",
-        ))?;
-        Some(encode_cursor(&FeedPageCursorV1 {
-            generation_id: generation_id.clone(),
-            transition_sequence: source_revision,
-            projection_revision: source_revision,
-            sort_at: layout_revision,
-            global_id: last.url.clone(),
-        })?)
-    } else {
-        None
+    let response = loop {
+        let next_cursor = if has_more {
+            let last = rows
+                .last()
+                .ok_or(invalid("normalized RSS Feed page cursor row is missing"))?;
+            Some(encode_cursor(&FeedPageCursorV1 {
+                generation_id: generation_id.clone(),
+                transition_sequence: source_revision,
+                projection_revision: source_revision,
+                sort_at: layout_revision,
+                global_id: last.url.clone(),
+            })?)
+        } else {
+            None
+        };
+        let candidate = NormalizedRssFeedPageResponseV1 {
+            layout_revision,
+            next_cursor,
+            query_id: "rss_feed_page_v1".to_owned(),
+            rows: rows.clone(),
+            schema_version: 1,
+            source: NormalizedFeedPageSourceV1 {
+                generation_id: generation_id.clone(),
+                projection_revision: source_revision,
+                transition_sequence: source_revision,
+            },
+        };
+        if serde_json::to_vec(&candidate)
+            .map_err(|_| invalid("normalized RSS Feed page response is invalid"))?
+            .len()
+            <= FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+        {
+            break candidate;
+        }
+        if rows.len() <= 1 {
+            return Err(invalid(
+                "normalized RSS Feed page contains an oversized row",
+            ));
+        }
+        rows.pop();
+        has_more = true;
     };
-    let response = NormalizedRssFeedGraphPageResponseV1 {
-        layout_revision,
-        next_cursor,
-        query_id: "rss_feed_graph_page_v1".to_owned(),
-        rows,
-        schema_version: 1,
-        source: NormalizedFeedPageSourceV1 {
-            generation_id,
-            projection_revision: source_revision,
-            transition_sequence: source_revision,
-        },
-    };
-    if serde_json::to_vec(&response)
-        .map_err(|_| invalid("normalized RSS feed graph page response is invalid"))?
-        .len()
-        > FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
-    {
-        return Err(invalid(
-            "normalized RSS feed graph page response exceeds its byte bound",
-        ));
-    }
     transaction.commit()?;
     Ok(response)
 }
@@ -5068,11 +5120,9 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::RssFeedDetail(request) => Ok(
             NormalizedQueryResponseV1::RssFeedDetail(query_rss_feed_detail(connection, request)?),
         ),
-        NormalizedQueryRequestV1::RssFeedGraphPage(request) => {
-            Ok(NormalizedQueryResponseV1::RssFeedGraphPage(
-                query_rss_feed_graph_page(connection, request)?,
-            ))
-        }
+        NormalizedQueryRequestV1::RssFeedPage(request) => Ok(
+            NormalizedQueryResponseV1::RssFeedPage(query_rss_feed_page(connection, request)?),
+        ),
         NormalizedQueryRequestV1::SavedAnalytics(request) => Ok(
             NormalizedQueryResponseV1::SavedAnalytics(query_saved_analytics(connection, request)?),
         ),
@@ -5166,8 +5216,8 @@ pub fn query_normalized_json_v1(
         "rss_feed_detail_v1" => {
             decode_request!(NormalizedRssFeedDetailRequestV1, RssFeedDetail)
         }
-        "rss_feed_graph_page_v1" => {
-            decode_request!(NormalizedRssFeedGraphPageRequestV1, RssFeedGraphPage)
+        "rss_feed_page_v1" => {
+            decode_request!(NormalizedRssFeedPageRequestV1, RssFeedPage)
         }
         "saved_analytics_v2" => {
             decode_request!(NormalizedSavedAnalyticsRequestV2, SavedAnalytics)
@@ -5219,7 +5269,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
-        NormalizedQueryResponseV1::RssFeedGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RssFeedPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedAnalytics(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedFeedPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::SearchPage(response) => encode_response!(response),
@@ -7204,7 +7254,7 @@ mod tests {
         for query_id in [
             "person_graph_page_v1",
             "account_graph_page_v1",
-            "rss_feed_graph_page_v1",
+            "rss_feed_page_v1",
         ] {
             let program = SQLITE_QUERY_PROGRAMS
                 .iter()
@@ -7233,7 +7283,7 @@ mod tests {
                     .iter()
                     .any(|detail| { detail.contains("library_feed_items_provider_author") }));
             }
-            if query_id == "rss_feed_graph_page_v1" {
+            if query_id == "rss_feed_page_v1" {
                 assert!(plan
                     .iter()
                     .any(|detail| detail.contains("library_feed_items_rss_feed")));
@@ -7323,19 +7373,19 @@ mod tests {
             panic!("Account graph page response");
         };
         assert_eq!(second.rows[0].id, "account-2");
-        let rss_request = NormalizedRssFeedGraphPageRequestV1 {
+        let rss_request = NormalizedRssFeedPageRequestV1 {
             cancellation_id: "cancel-rss-graph".to_owned(),
             cursor: None,
             limit: 1,
             reader_session_id: "reader-rss-graph".to_owned(),
             schema_version: 1,
         };
-        let NormalizedQueryResponseV1::RssFeedGraphPage(first) = query_normalized_v1(
+        let NormalizedQueryResponseV1::RssFeedPage(first) = query_normalized_v1(
             &mut connection,
-            NormalizedQueryRequestV1::RssFeedGraphPage(rss_request.clone()),
+            NormalizedQueryRequestV1::RssFeedPage(rss_request.clone()),
         )
-        .expect("RSS feed graph page") else {
-            panic!("RSS feed graph page response");
+        .expect("RSS feed page") else {
+            panic!("RSS feed page response");
         };
         assert_eq!(first.rows[0].url, "https://alpha.example/feed");
         assert!(first.rows[0].enabled);
@@ -7346,15 +7396,15 @@ mod tests {
             Some("https://alpha.example/avatar.png")
         );
         let rss_cursor = first.next_cursor.clone();
-        let NormalizedQueryResponseV1::RssFeedGraphPage(second) = query_normalized_v1(
+        let NormalizedQueryResponseV1::RssFeedPage(second) = query_normalized_v1(
             &mut connection,
-            NormalizedQueryRequestV1::RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1 {
+            NormalizedQueryRequestV1::RssFeedPage(NormalizedRssFeedPageRequestV1 {
                 cursor: first.next_cursor,
                 ..rss_request
             }),
         )
-        .expect("second RSS feed graph page") else {
-            panic!("RSS feed graph page response");
+        .expect("second RSS feed page") else {
+            panic!("RSS feed page response");
         };
         assert_eq!(second.rows[0].url, "https://beta.example/feed");
         connection
@@ -7377,7 +7427,7 @@ mod tests {
         assert!(error.to_string().contains("cursor is stale"));
         let error = query_normalized_v1(
             &mut connection,
-            NormalizedQueryRequestV1::RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1 {
+            NormalizedQueryRequestV1::RssFeedPage(NormalizedRssFeedPageRequestV1 {
                 cancellation_id: "cancel-rss-graph-stale".to_owned(),
                 cursor: rss_cursor,
                 limit: 1,
@@ -7385,8 +7435,83 @@ mod tests {
                 schema_version: 1,
             }),
         )
-        .expect_err("stale RSS feed graph cursor");
+        .expect_err("stale RSS feed cursor");
         assert!(error.to_string().contains("cursor is stale"));
+    }
+
+    #[test]
+    fn native_rss_feed_pages_shorten_by_bytes_without_losing_legal_rows() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, 'library-1', 1, 'epoch-1', 1, 1);
+                 INSERT INTO library_materialization_generation
+                   (singleton_id, generation_id) VALUES (1, '{}');
+                 UPDATE library_change_state SET revision = 1
+                   WHERE singleton_id = 1;",
+                "a".repeat(64)
+            ))
+            .expect("source fixture");
+        let title = "t".repeat(4_096);
+        let folder = "f".repeat(4_096);
+        let site_url = format!("https://example.com/{}", "s".repeat(4_076));
+        let image_url = format!("https://example.com/{}", "i".repeat(4_076));
+        for index in 0..130 {
+            let prefix = format!("https://000-large-{index:03}.example/");
+            let url = format!("{}{}", prefix, "u".repeat(4_096 - prefix.len()));
+            connection
+                .execute(
+                    "INSERT INTO library_rss_feeds
+                       (url, title, site_url, image_url, enabled, track_unread,
+                        folder, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, 1);",
+                    params![url, title, site_url, image_url, folder],
+                )
+                .expect("maximum RSS Feed row");
+        }
+        let mut cursor = None;
+        let mut row_count = 0usize;
+        let mut page_count = 0usize;
+        loop {
+            let NormalizedQueryResponseV1::RssFeedPage(page) = query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::RssFeedPage(NormalizedRssFeedPageRequestV1 {
+                    cancellation_id: format!("cancel-rss-maximum-{page_count}"),
+                    cursor,
+                    limit: 128,
+                    reader_session_id: format!("reader-rss-maximum-{page_count}"),
+                    schema_version: 1,
+                }),
+            )
+            .expect("maximum RSS Feed page") else {
+                panic!("RSS Feed page response");
+            };
+            assert!(
+                serde_json::to_vec(&page).expect("serialized page").len()
+                    <= FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES
+            );
+            if page_count == 0 {
+                assert!(page.rows.len() < 128);
+            }
+            assert!(page.rows.iter().all(|row| {
+                row.title == title
+                    && row.folder.as_deref() == Some(folder.as_str())
+                    && row.site_url.as_deref() == Some(site_url.as_str())
+                    && row.image_url.as_deref() == Some(image_url.as_str())
+            }));
+            row_count += page.rows.len();
+            page_count += 1;
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(row_count, 130);
+        assert!(page_count > 1);
     }
 
     #[test]

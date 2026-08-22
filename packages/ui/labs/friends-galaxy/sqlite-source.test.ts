@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   LibraryCoreAccountGraphPageResponseV1,
   LibraryCorePersonGraphPageResponseV1,
-  LibraryCoreRssFeedGraphPageResponseV1,
+  LibraryCoreRssFeedPageResponseV1,
 } from "@freed/shared/library-core";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
@@ -75,17 +75,26 @@ function accountPage(): LibraryCoreAccountGraphPageResponseV1 {
   };
 }
 
-function rssPage(): LibraryCoreRssFeedGraphPageResponseV1 {
+function rssPage(): LibraryCoreRssFeedPageResponseV1 {
   return {
     layoutRevision: 3,
     nextCursor: null,
-    queryId: "rss_feed_graph_page_v1",
+    queryId: "rss_feed_page_v1",
     rows: [{
       activityCount: 8,
       enabled: true,
+      folder: null,
       imageUrl: "https://example.com/feed.png",
+      lastFetched: 170,
       latestActivityAt: 180,
+      pollInterval: 60,
+      sampleBatchId: null,
+      sampleGeneratedAt: null,
+      sampleGeneratorVersion: null,
+      siteUrl: "https://example.com",
       title: "Example feed",
+      trackUnread: true,
+      unreadCount: 3,
       updatedAt: 220,
       url: "https://example.com/feed.xml",
     }],

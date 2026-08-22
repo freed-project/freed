@@ -602,19 +602,25 @@ scheduler state and HTTP cache validators are excluded. Missing feeds return a
 typed null result without consulting a renderer collection or Library shell.
 
 `person_graph_page_v1`, `account_graph_page_v1`, and
-`rss_feed_graph_page_v1` provide compact identity source pages for Friends
-graph compilation. Each returns at most 128 rows and
+`rss_feed_page_v1` provide compact identity source pages. The RSS page is the
+canonical subscription catalog for every view, including Friends graph
+compilation, the sidebar, settings, command surfaces, and OPML workflows. Each
+returns at most 128 rows and
 2 MiB in binary primary-key order after reading at most 129 rows. The Person
 projection includes the latest reach-out time but excludes tags, notes, bio,
 and reach-out history. The Account projection excludes contact fields,
 follow-role history, and profile metadata that graph compilation does not use.
 It includes the visible activity count and latest activity time computed by
 SQLite through the provider and author index. The RSS feed projection carries
-only its URL, title, best available image, enabled state, revision, visible
-activity count, and latest activity time. Its activity and image fallback use
-the RSS feed item index, with no polling or unread policy. These fields replace
+every synchronized subscription field plus exact visible and unread activity
+counts. Its activity and image fallback use the RSS feed item index. Friends
+compilation consumes only the compact subset it needs, while catalog views
+reuse the same closed row without a second query contract. These fields replace
 the separate whole-graph activity aggregate. JavaScript never scans FeedItems
-to assemble graph activity.
+to assemble graph activity. When legal RSS rows approach 2 MiB, native and
+browser executors shorten the page by exact serialized bytes and bind the
+continuation cursor to its final row. A legal row never makes the complete
+catalog unreadable.
 Person and Account rows left-join their installation-local graph position from
 `library_device_person_graph_layout` and
 `library_device_account_graph_layout`. A missing local row is an explicit

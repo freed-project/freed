@@ -15,14 +15,14 @@ import {
   parseLibraryCoreAccountGraphPageResponseV1,
   parseLibraryCorePersonGraphPageRequestV1,
   parseLibraryCorePersonGraphPageResponseV1,
-  parseLibraryCoreRssFeedGraphPageRequestV1,
-  parseLibraryCoreRssFeedGraphPageResponseV1,
+  parseLibraryCoreRssFeedPageRequestV1,
+  parseLibraryCoreRssFeedPageResponseV1,
   type LibraryCoreAccountGraphPageRequestV1,
   type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCorePersonGraphPageRequestV1,
   type LibraryCorePersonGraphPageResponseV1,
-  type LibraryCoreRssFeedGraphPageRequestV1,
-  type LibraryCoreRssFeedGraphPageResponseV1,
+  type LibraryCoreRssFeedPageRequestV1,
+  type LibraryCoreRssFeedPageResponseV1,
 } from "./friends-identity-page-contracts.js";
 import {
   parseLibraryCoreChangeFeedRequestV1,
@@ -228,7 +228,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreProviderMediaPageRequestV1
   | LibraryCorePersonsGraphRequestV1
   | LibraryCoreRssFeedDetailRequestV1
-  | LibraryCoreRssFeedGraphPageRequestV1
+  | LibraryCoreRssFeedPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCoreSavedFeedPageRequestV2
   | LibraryCoreSearchPageRequestV1
@@ -273,8 +273,8 @@ export type LibraryCoreSqliteQueryResponseFor<
                                   ? LibraryCoreProviderMediaPageResponseV1
                                   : T extends LibraryCoreRssFeedDetailRequestV1
                                     ? LibraryCoreRssFeedDetailResponseV1
-                                    : T extends LibraryCoreRssFeedGraphPageRequestV1
-                                      ? LibraryCoreRssFeedGraphPageResponseV1
+                                    : T extends LibraryCoreRssFeedPageRequestV1
+                                      ? LibraryCoreRssFeedPageResponseV1
                                       : T extends LibraryCoreSavedAnalyticsRequestV2
                                         ? LibraryCoreSavedAnalyticsResponseV2
                                         : T extends LibraryCoreSavedFeedPageRequestV2
@@ -362,8 +362,8 @@ export function parseLibraryCoreSqliteQueryResponse<
                                               request,
                                             )
                                           : request.queryId ===
-                                              "rss_feed_graph_page_v1"
-                                            ? parseLibraryCoreRssFeedGraphPageResponseV1(
+                                              "rss_feed_page_v1"
+                                            ? parseLibraryCoreRssFeedPageResponseV1(
                                                 value,
                                                 request,
                                               )
@@ -794,8 +794,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                             value.query,
                                           )
                                         : value.query.queryId ===
-                                            "rss_feed_graph_page_v1"
-                                          ? parseLibraryCoreRssFeedGraphPageRequestV1(
+                                            "rss_feed_page_v1"
+                                          ? parseLibraryCoreRssFeedPageRequestV1(
                                               value.query,
                                             )
                                           : value.query.queryId ===

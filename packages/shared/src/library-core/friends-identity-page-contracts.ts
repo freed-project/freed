@@ -9,13 +9,14 @@ import {
   isLibraryCoreNonnegativeSafeInteger,
   isLibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import type { RssFeed } from "../types.js";
 
 export const LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID =
   "person_graph_page_v1" as const;
 export const LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID =
   "account_graph_page_v1" as const;
-export const LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID =
-  "rss_feed_graph_page_v1" as const;
+export const LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID =
+  "rss_feed_page_v1" as const;
 export const LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_DEFAULT_LIMIT = 64;
 export const LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT = 128;
@@ -76,9 +77,18 @@ const ACCOUNT_KEYS = [
 const RSS_FEED_KEYS = [
   "activityCount",
   "enabled",
+  "folder",
   "imageUrl",
+  "lastFetched",
   "latestActivityAt",
+  "pollInterval",
+  "sampleBatchId",
+  "sampleGeneratedAt",
+  "sampleGeneratorVersion",
+  "siteUrl",
   "title",
+  "trackUnread",
+  "unreadCount",
   "updatedAt",
   "url",
 ] as const;
@@ -100,10 +110,10 @@ export const LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_REQUEST_SCHEMA = Object.freeze({
   queryId: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
 });
 
-export const LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_REQUEST_SCHEMA = Object.freeze({
+export const LIBRARY_CORE_RSS_FEED_PAGE_REQUEST_SCHEMA = Object.freeze({
   ...LIBRARY_CORE_PERSON_GRAPH_PAGE_REQUEST_SCHEMA,
-  schemaId: "library_core_rss_feed_graph_page_request_v1",
-  queryId: LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+  schemaId: "library_core_rss_feed_page_request_v1",
+  queryId: LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
 });
 
 export const LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA = Object.freeze({
@@ -122,10 +132,10 @@ export const LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_RESPONSE_SCHEMA = Object.freeze({
   queryId: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
 });
 
-export const LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_RESPONSE_SCHEMA = Object.freeze({
+export const LIBRARY_CORE_RSS_FEED_PAGE_RESPONSE_SCHEMA = Object.freeze({
   ...LIBRARY_CORE_PERSON_GRAPH_PAGE_RESPONSE_SCHEMA,
-  schemaId: "library_core_rss_feed_graph_page_response_v1",
-  queryId: LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+  schemaId: "library_core_rss_feed_page_response_v1",
+  queryId: LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
 });
 
 export const LIBRARY_CORE_PERSON_GRAPH_PAGE_PROJECTION = Object.freeze({
@@ -142,8 +152,8 @@ export const LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_PROJECTION = Object.freeze({
   orderedColumns: Object.freeze(["id"]),
 });
 
-export const LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_PROJECTION = Object.freeze({
-  projectionId: "library_core_rss_feed_graph_row_v1",
+export const LIBRARY_CORE_RSS_FEED_PAGE_PROJECTION = Object.freeze({
+  projectionId: "library_core_rss_feed_row_v1",
   sourceTable: "library_rss_feeds",
   fullContentAllowed: false,
   orderedColumns: Object.freeze(["url"]),
@@ -187,8 +197,8 @@ export interface LibraryCoreAccountGraphPageRequestV1 extends LibraryCoreIdentit
   readonly queryId: typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID;
 }
 
-export interface LibraryCoreRssFeedGraphPageRequestV1 extends LibraryCoreIdentityPageRequestV1 {
-  readonly queryId: typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID;
+export interface LibraryCoreRssFeedPageRequestV1 extends LibraryCoreIdentityPageRequestV1 {
+  readonly queryId: typeof LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID;
 }
 
 export interface LibraryCorePersonGraphRowV1 {
@@ -228,12 +238,21 @@ export interface LibraryCoreAccountGraphRowV1 {
   readonly updatedAt: number;
 }
 
-export interface LibraryCoreRssFeedGraphRowV1 {
+export interface LibraryCoreRssFeedPageRowV1 {
   readonly activityCount: number;
   readonly enabled: boolean;
+  readonly folder: string | null;
   readonly imageUrl: string | null;
+  readonly lastFetched: number | null;
   readonly latestActivityAt: number | null;
+  readonly pollInterval: number | null;
+  readonly sampleBatchId: string | null;
+  readonly sampleGeneratedAt: number | null;
+  readonly sampleGeneratorVersion: number | null;
+  readonly siteUrl: string | null;
   readonly title: string;
+  readonly trackUnread: boolean;
+  readonly unreadCount: number;
   readonly updatedAt: number;
   readonly url: string;
 }
@@ -255,9 +274,9 @@ export interface LibraryCoreAccountGraphPageResponseV1 extends LibraryCoreIdenti
   readonly rows: readonly LibraryCoreAccountGraphRowV1[];
 }
 
-export interface LibraryCoreRssFeedGraphPageResponseV1 extends LibraryCoreIdentityPageResponseV1 {
-  readonly queryId: typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID;
-  readonly rows: readonly LibraryCoreRssFeedGraphRowV1[];
+export interface LibraryCoreRssFeedPageResponseV1 extends LibraryCoreIdentityPageResponseV1 {
+  readonly queryId: typeof LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID;
+  readonly rows: readonly LibraryCoreRssFeedPageRowV1[];
 }
 
 function failure<T>(error: string): LibraryCoreFeedPageParseResult<T> {
@@ -362,11 +381,11 @@ function parseRequest(
   queryId:
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
-    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+    | typeof LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
 ): LibraryCoreFeedPageParseResult<
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCoreAccountGraphPageRequestV1
-  | LibraryCoreRssFeedGraphPageRequestV1
+  | LibraryCoreRssFeedPageRequestV1
 > {
   const record = closedRecord(value, REQUEST_KEYS);
   if (
@@ -397,7 +416,7 @@ function parseRequest(
     }) as
       | LibraryCorePersonGraphPageRequestV1
       | LibraryCoreAccountGraphPageRequestV1
-      | LibraryCoreRssFeedGraphPageRequestV1,
+      | LibraryCoreRssFeedPageRequestV1,
   });
 }
 
@@ -415,11 +434,11 @@ export function parseLibraryCoreAccountGraphPageRequestV1(value: unknown) {
   ) as LibraryCoreFeedPageParseResult<LibraryCoreAccountGraphPageRequestV1>;
 }
 
-export function parseLibraryCoreRssFeedGraphPageRequestV1(value: unknown) {
+export function parseLibraryCoreRssFeedPageRequestV1(value: unknown) {
   return parseRequest(
     value,
-    LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
-  ) as LibraryCoreFeedPageParseResult<LibraryCoreRssFeedGraphPageRequestV1>;
+    LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreRssFeedPageRequestV1>;
 }
 
 function parsePerson(value: unknown): LibraryCorePersonGraphRowV1 | null {
@@ -537,20 +556,39 @@ function parseAccount(value: unknown): LibraryCoreAccountGraphRowV1 | null {
   });
 }
 
-function parseRssFeed(value: unknown): LibraryCoreRssFeedGraphRowV1 | null {
+function parseRssFeed(value: unknown): LibraryCoreRssFeedPageRowV1 | null {
   const row = closedRecord(value, RSS_FEED_KEYS);
   if (!row) return null;
-  const imageUrl = boundedText(row.imageUrl, 8_192, true);
+  const folder = boundedText(row.folder, 4_096, true);
+  const imageUrl = boundedText(row.imageUrl, 4_096, true);
+  const lastFetched = nullableInteger(row.lastFetched);
   const latestActivityAt = nullableInteger(row.latestActivityAt);
+  const pollInterval = nullableInteger(row.pollInterval);
+  const sampleBatchId = boundedText(row.sampleBatchId, 255, true);
+  const sampleGeneratedAt = nullableInteger(row.sampleGeneratedAt);
+  const sampleGeneratorVersion = nullableInteger(row.sampleGeneratorVersion);
+  const siteUrl = boundedText(row.siteUrl, 4_096, true);
   const title = boundedText(row.title, 4_096);
-  const url = boundedText(row.url, 8_192);
+  const url = boundedText(row.url, 4_096);
   if (
+    folder === undefined ||
     imageUrl === undefined ||
+    lastFetched === undefined ||
     latestActivityAt === undefined ||
-    !title ||
+    pollInterval === undefined ||
+    sampleBatchId === undefined ||
+    sampleGeneratedAt === undefined ||
+    sampleGeneratorVersion === undefined ||
+    siteUrl === undefined ||
+    title === undefined ||
     !url ||
     typeof row.enabled !== "boolean" ||
+    typeof row.trackUnread !== "boolean" ||
     !isLibraryCoreNonnegativeSafeInteger(row.activityCount) ||
+    !isLibraryCoreNonnegativeSafeInteger(row.unreadCount) ||
+    (row.unreadCount as number) > (row.activityCount as number) ||
+    (sampleBatchId === null) !== (sampleGeneratedAt === null) ||
+    (sampleBatchId === null) !== (sampleGeneratorVersion === null) ||
     !isLibraryCoreNonnegativeSafeInteger(row.updatedAt)
   ) {
     return null;
@@ -558,11 +596,46 @@ function parseRssFeed(value: unknown): LibraryCoreRssFeedGraphRowV1 | null {
   return Object.freeze({
     activityCount: row.activityCount,
     enabled: row.enabled,
+    folder,
     imageUrl,
+    lastFetched,
     latestActivityAt,
+    pollInterval,
+    sampleBatchId,
+    sampleGeneratedAt,
+    sampleGeneratorVersion,
+    siteUrl,
     title,
+    trackUnread: row.trackUnread,
+    unreadCount: row.unreadCount,
     updatedAt: row.updatedAt,
     url,
+  });
+}
+
+export function libraryCoreRssFeedPageRowToRssFeedV1(
+  row: LibraryCoreRssFeedPageRowV1,
+): RssFeed {
+  return Object.freeze({
+    enabled: row.enabled,
+    ...(row.folder !== null ? { folder: row.folder } : {}),
+    ...(row.imageUrl !== null ? { imageUrl: row.imageUrl } : {}),
+    ...(row.lastFetched !== null ? { lastFetched: row.lastFetched } : {}),
+    ...(row.pollInterval !== null ? { pollInterval: row.pollInterval } : {}),
+    ...(row.sampleBatchId !== null
+      ? {
+          sampleDataFingerprint: {
+            marker: "freed.sample-data.v1" as const,
+            batchId: row.sampleBatchId,
+            generatedAt: row.sampleGeneratedAt!,
+            generatorVersion: row.sampleGeneratorVersion!,
+          },
+        }
+      : {}),
+    ...(row.siteUrl !== null ? { siteUrl: row.siteUrl } : {}),
+    title: row.title,
+    trackUnread: row.trackUnread,
+    url: row.url,
   });
 }
 
@@ -572,7 +645,7 @@ function parseResponse<Row>(
   queryId:
     | typeof LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID
     | typeof LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID
-    | typeof LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+    | typeof LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
   parseRow: (value: unknown) => Row | null,
   rowIdentity: (row: Row) => string,
 ): LibraryCoreFeedPageParseResult<{
@@ -671,15 +744,15 @@ export function parseLibraryCoreAccountGraphPageResponseV1(
   ) as LibraryCoreFeedPageParseResult<LibraryCoreAccountGraphPageResponseV1>;
 }
 
-export function parseLibraryCoreRssFeedGraphPageResponseV1(
+export function parseLibraryCoreRssFeedPageResponseV1(
   value: unknown,
   requestValue: unknown,
 ) {
   return parseResponse(
     value,
     requestValue,
-    LIBRARY_CORE_RSS_FEED_GRAPH_PAGE_QUERY_ID,
+    LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
     parseRssFeed,
     (row) => row.url,
-  ) as LibraryCoreFeedPageParseResult<LibraryCoreRssFeedGraphPageResponseV1>;
+  ) as LibraryCoreFeedPageParseResult<LibraryCoreRssFeedPageResponseV1>;
 }

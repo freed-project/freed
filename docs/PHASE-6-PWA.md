@@ -482,6 +482,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.49 | Delete the portable checkpoint store, IndexedDB feed reader, intent overlay, shell bootstrap, and their compatibility tests, leaving IndexedDB only as the nonextractable actor key vault | High       | ✓ Complete                                                                                       |
 | 6.50 | Hydrate exact total, unread, archivable, sample-root, and bounded per-platform navigation counts from the trigger-maintained SQLite facet row, with no FeedItem scan or renderer aggregation | High | ✓ Complete |
 | 6.51 | Replace renderer-backed RSS rename and bulk removal with one field-level title assignment and one atomically frozen OPFS SQLite scope paged into bounded signed removal transactions | High | ✓ Complete |
+| 6.52 | Replace the shared PWA sidebar's complete RSS Feed dictionary, derived count dictionaries, whole-catalog search, and renderer slicing with `rss_feed_page_v1` over OPFS SQLite. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High | ✓ Complete |
 
 ---
 
