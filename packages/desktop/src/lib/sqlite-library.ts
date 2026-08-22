@@ -106,46 +106,27 @@ export interface SqliteStatus {
   sourceDigest: string;
 }
 
-export interface SqliteLibrarySyncDescriptor {
-  revision: number;
-  itemCount: number;
-  sourceDigest: string;
-  materializedDigest: string;
-}
-
 export type SqliteLibraryAcceptedAuthority =
   LibraryCoreAcceptedAuthorityStateV1;
 
-export interface SqliteLibraryAuthorityBootstrap {
-  readonly authority: SqliteLibraryAcceptedAuthority;
-  readonly actor: Readonly<{
-    readonly actor_id: string;
-    readonly actor_public_key: string;
-    readonly enrollment_operation_id: string;
-    readonly enrollment_certificate_digest: string;
-    readonly canonical_enrollment_certificate_json: string;
-    readonly actor_chain_genesis: string;
-  }>;
-  readonly protocol: SqliteLibraryAuthorityProtocol;
-}
-
-export interface SqliteLibraryAuthorityProtocol {
-  readonly format: "freed_library_core_native_authority_protocol_v1";
-  readonly active_engine: "library_core_v1";
-  readonly schema_version: 12;
-  readonly replication_protocol: "op_segments_v1";
-  readonly checkpoint_format: "freed_logical_checkpoint_v1";
-  readonly transition_certificate_digest: string;
-  readonly native_protocol_certificate_digest: string;
-  readonly prior_transition_certificate_digest: string | null;
-  readonly source_manifest_digest: string;
+export interface SqliteLibraryActorEnrollment {
+  readonly actor_id: string;
+  readonly actor_public_key: string;
+  readonly enrollment_operation_id: string;
+  readonly enrollment_certificate_digest: string;
+  readonly canonical_enrollment_certificate_json: string;
+  readonly actor_chain_genesis: string;
 }
 
 export interface SqliteLibraryPersistedCloudIdentity {
   readonly libraryId: string;
   readonly storageEpoch: string;
   readonly writerId: string;
-  readonly sourceDigest: string;
+}
+
+export interface NormalizedLibraryCloudIdentity
+  extends LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+  readonly localActorId: string;
 }
 
 export interface NormalizedLibraryWriterEpochReassignment {
@@ -1579,6 +1560,32 @@ export async function describeNormalizedLibraryCheckpoint(): Promise<
   );
 }
 
+export async function describeNormalizedLibraryCloudIdentity(): Promise<NormalizedLibraryCloudIdentity> {
+  const installationWitness = await invoke<string>(
+    "get_desktop_installation_witness",
+  );
+  if (!HEX_64.test(installationWitness)) {
+    throw new TypeError(
+      "Freed Desktop returned an invalid installation witness",
+    );
+  }
+  const value = await invoke<unknown>(
+    "describe_normalized_library_cloud_identity",
+    { installationWitness },
+  );
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Freed Desktop returned an invalid cloud identity");
+  }
+  const { localActorId, ...checkpointValue } = value as Record<string, unknown>;
+  if (typeof localActorId !== "string" || !HEX_64.test(localActorId)) {
+    throw new TypeError("Freed Desktop returned an invalid local actor ID");
+  }
+  return Object.freeze({
+    ...parseLibraryCoreNormalizedCheckpointExportDescriptorV2(checkpointValue),
+    localActorId,
+  });
+}
+
 export async function readNormalizedLibraryCheckpointPage(input: {
   readonly snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2;
   readonly after: LibraryCoreNormalizedCheckpointCursorV2 | null;
@@ -1678,113 +1685,18 @@ export async function reassignNormalizedLibraryWriterEpoch(input: {
   return Object.freeze(reassignment);
 }
 
-export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {
-  return invoke<SqliteLibrarySyncDescriptor>(
-    "read_sqlite_library_sync_descriptor",
-  );
-}
-
-/** Establish and read the active SQLite Library's signed authority and Desktop actor. */
 const HEX_64 = /^[a-f0-9]{64}$/;
-
-/** Close and validate the signed native protocol receipt returned by Rust. */
-export function parseSqliteLibraryAuthorityProtocol(
-  value: unknown,
-): SqliteLibraryAuthorityProtocol {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Freed Desktop returned an invalid authority protocol");
-  }
-  const record = value as Record<string, unknown>;
-  const expectedKeys = [
-    "active_engine",
-    "checkpoint_format",
-    "format",
-    "native_protocol_certificate_digest",
-    "prior_transition_certificate_digest",
-    "replication_protocol",
-    "schema_version",
-    "source_manifest_digest",
-    "transition_certificate_digest",
-  ].sort();
-  const keys = Object.keys(record).sort();
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key, index) => key !== expectedKeys[index]) ||
-    record.format !== "freed_library_core_native_authority_protocol_v1" ||
-    record.active_engine !== "library_core_v1" ||
-    record.schema_version !== 12 ||
-    record.replication_protocol !== "op_segments_v1" ||
-    record.checkpoint_format !== "freed_logical_checkpoint_v1" ||
-    typeof record.transition_certificate_digest !== "string" ||
-    !HEX_64.test(record.transition_certificate_digest) ||
-    typeof record.native_protocol_certificate_digest !== "string" ||
-    !HEX_64.test(record.native_protocol_certificate_digest) ||
-    (record.prior_transition_certificate_digest !== null &&
-      (typeof record.prior_transition_certificate_digest !== "string" ||
-        !HEX_64.test(record.prior_transition_certificate_digest))) ||
-    typeof record.source_manifest_digest !== "string" ||
-    !HEX_64.test(record.source_manifest_digest)
-  ) {
-    throw new TypeError("Freed Desktop returned an invalid authority protocol");
-  }
-  return Object.freeze({
-    format: record.format,
-    active_engine: record.active_engine,
-    schema_version: record.schema_version,
-    replication_protocol: record.replication_protocol,
-    checkpoint_format: record.checkpoint_format,
-    transition_certificate_digest: record.transition_certificate_digest,
-    native_protocol_certificate_digest:
-      record.native_protocol_certificate_digest,
-    prior_transition_certificate_digest:
-      record.prior_transition_certificate_digest,
-    source_manifest_digest: record.source_manifest_digest,
-  });
-}
-
-export async function bootstrapSqliteLibraryAuthority(input: {
-  readonly descriptor: SqliteLibrarySyncDescriptor;
-  readonly persistedCloudIdentity: SqliteLibraryPersistedCloudIdentity | null;
-}): Promise<SqliteLibraryAuthorityBootstrap> {
-  const installationWitness = await invoke<string>(
-    "get_desktop_installation_witness",
-  );
-  if (!HEX_64.test(installationWitness)) {
-    throw new TypeError(
-      "Freed Desktop returned an invalid installation witness",
-    );
-  }
-  const bootstrap = await invoke<SqliteLibraryAuthorityBootstrap>(
-    "bootstrap_sqlite_library_authority",
-    {
-      request: {
-        installationWitness,
-        acceptedAtMs: Date.now(),
-        revision: input.descriptor.revision,
-        itemCount: input.descriptor.itemCount,
-        sourceDigest: input.descriptor.sourceDigest,
-        materializedDigest: input.descriptor.materializedDigest,
-        persistedCloudIdentity: input.persistedCloudIdentity,
-      },
-    },
-  );
-  return Object.freeze({
-    ...bootstrap,
-    protocol: parseSqliteLibraryAuthorityProtocol(bootstrap.protocol),
-  });
-}
-
 /** Countersign and enroll one proof-only PWA actor request in native SQLite. */
 export async function acceptPwaActorEnrollmentRequest(
   canonicalRequestBytes: Uint8Array,
-): Promise<SqliteLibraryAuthorityBootstrap["actor"]> {
+): Promise<SqliteLibraryActorEnrollment> {
   if (
     canonicalRequestBytes.byteLength === 0 ||
     canonicalRequestBytes.byteLength > 65_536
   ) {
     throw new RangeError("PWA actor enrollment request has an invalid size");
   }
-  return invoke<SqliteLibraryAuthorityBootstrap["actor"]>(
+  return invoke<SqliteLibraryActorEnrollment>(
     "accept_pwa_actor_enrollment_request",
     {
       request: {

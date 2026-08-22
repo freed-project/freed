@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   publishedRecords: [] as unknown[],
   publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
-  readDescriptor: vi.fn(),
+  describeCloudIdentity: vi.fn(),
   describeNormalizedCheckpoint: vi.fn(),
   readNormalizedCheckpointPage: vi.fn(),
   beginNormalizedImport: vi.fn(async (input: Record<string, unknown>) => ({
@@ -55,28 +55,8 @@ const mocks = vi.hoisted(() => ({
       authority_public_key: "ef".repeat(32),
       observed_frontier: [],
     },
-    actor: {
-      actor_id: "12".repeat(32),
-      actor_public_key: "23".repeat(32),
-      enrollment_operation_id: "actor-enrolled:fixture",
-      enrollment_certificate_digest: "44".repeat(32),
-      canonical_enrollment_certificate_json: "{}",
-      actor_chain_genesis: "45".repeat(32),
-    },
     canonicalEpochCertificateJson: "{}",
-    protocol: {
-      format: "freed_library_core_native_authority_protocol_v1",
-      active_engine: "library_core_v1",
-      schema_version: 12,
-      replication_protocol: "op_segments_v1",
-      checkpoint_format: "freed_logical_checkpoint_v1",
-      transition_certificate_digest: "59".repeat(32),
-      native_protocol_certificate_digest: "57".repeat(32),
-      prior_transition_certificate_digest: null,
-      source_manifest_digest: "58".repeat(32),
-    },
   })),
-  bootstrapNative: vi.fn(),
   bootstrapAuthority: {
     authority: {
       library_id: "ab".repeat(32),
@@ -94,17 +74,6 @@ const mocks = vi.hoisted(() => ({
         "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
       canonical_enrollment_certificate_json: "{}",
       actor_chain_genesis: "45".repeat(32),
-    },
-    protocol: {
-      format: "freed_library_core_native_authority_protocol_v1",
-      active_engine: "library_core_v1",
-      schema_version: 12,
-      replication_protocol: "op_segments_v1",
-      checkpoint_format: "freed_logical_checkpoint_v1",
-      transition_certificate_digest: "56".repeat(32),
-      native_protocol_certificate_digest: "57".repeat(32),
-      prior_transition_certificate_digest: null,
-      source_manifest_digest: "58".repeat(32),
     },
   },
   readNative: vi.fn(),
@@ -151,11 +120,9 @@ vi.mock("./sqlite-library", () => ({
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   appendSqliteLibraryFollowerResultSegment: mocks.appendFollowerResultSegment,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
-  bootstrapSqliteLibraryAuthority: mocks.bootstrapNative.mockImplementation(
-    async () => mocks.bootstrapAuthority,
-  ),
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
+  describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
   installSqliteLibraryFollowerActorEnrollment:
     mocks.installFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments: vi.fn(async () => [
@@ -171,7 +138,6 @@ vi.mock("./sqlite-library", () => ({
       canonical_enrollment_certificate_json: "{}",
     },
   ]),
-  readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readNormalizedLibraryCheckpointPage: mocks.readNormalizedCheckpointPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
   prepareSqliteLibraryFollowerActorRequest: mocks.prepareFollowerActorRequest,
@@ -420,9 +386,6 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
     mocks.reassign.mockClear();
     mocks.reassignNative.mockClear();
-    mocks.bootstrapNative
-      .mockReset()
-      .mockImplementation(async () => mocks.bootstrapAuthority);
     mocks.importCheckpoint.mockClear();
     mocks.beginNormalizedImport.mockClear();
     mocks.appendNormalizedPage.mockClear();
@@ -455,11 +418,17 @@ describe("SQLite Library Google Drive production wiring", () => {
         body: request,
       }));
     mocks.readResultHead.mockReset();
-    mocks.readDescriptor.mockReset().mockResolvedValue({
-      revision: 7,
+    mocks.describeCloudIdentity.mockReset().mockResolvedValue({
+      format: "freed_normalized_checkpoint_export_v2",
+      protocolVersion: 2,
+      libraryId: "ab".repeat(32),
+      authorityEpoch: "cd".repeat(32),
+      writerId: "12".repeat(32),
+      sourceRevision: 7,
+      causalFrontierDigest: "66".repeat(32),
+      recordCount: 1,
       itemCount: 2,
-      sourceDigest: "ab".repeat(32),
-      materializedDigest: "cd".repeat(32),
+      localActorId: "12".repeat(32),
     });
   });
 
@@ -530,7 +499,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).toThrow("cannot publish or replace the Primary cloud Library");
 
-    expect(mocks.readDescriptor).not.toHaveBeenCalled();
+    expect(mocks.describeCloudIdentity).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
@@ -873,17 +842,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     ).resolves.toEqual({ status: "published", revision: 7 });
 
     expect(mocks.publish).toHaveBeenCalledTimes(1);
-    expect(mocks.bootstrapNative).toHaveBeenCalledWith({
-      descriptor: expect.objectContaining({
-        revision: 7,
-        sourceDigest: "ab".repeat(32),
-        materializedDigest: "cd".repeat(32),
-      }),
-      persistedCloudIdentity: null,
-    });
-    expect(mocks.readNative.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.bootstrapNative.mock.invocationCallOrder[0]!,
-    );
+    expect(mocks.describeCloudIdentity).toHaveBeenCalledTimes(1);
     const request = mocks.publishRequest;
     expect(request?.generation).toBe(0);
     expect(request?.descriptor).toMatchObject({
@@ -900,6 +859,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       }),
     ]);
     expect(mocks.nativeState).toMatchObject({
+      version: 2,
       controlFileId: "control-1",
       lastPublishedRevision: 7,
       lastPublishedCheckpoint: {
@@ -955,14 +915,19 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
-  it("loads persisted identity before bootstrap and chains the previous manifest", async () => {
+  it("reuses normalized persisted identity and chains the previous manifest", async () => {
     await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
-    mocks.bootstrapNative.mockClear();
-    mocks.readDescriptor.mockResolvedValue({
-      revision: 8,
+    mocks.describeCloudIdentity.mockResolvedValue({
+      format: "freed_normalized_checkpoint_export_v2",
+      protocolVersion: 2,
+      libraryId: "ab".repeat(32),
+      authorityEpoch: "cd".repeat(32),
+      writerId: "12".repeat(32),
+      sourceRevision: 8,
+      causalFrontierDigest: "68".repeat(32),
+      recordCount: 1,
       itemCount: 2,
-      sourceDigest: "ab".repeat(32),
-      materializedDigest: "ce".repeat(32),
+      localActorId: "12".repeat(32),
     });
     mocks.describeNormalizedCheckpoint.mockResolvedValue({
       format: "freed_normalized_checkpoint_export_v2",
@@ -1002,15 +967,6 @@ describe("SQLite Library Google Drive production wiring", () => {
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 8 });
 
-    expect(mocks.bootstrapNative).toHaveBeenCalledWith({
-      descriptor: expect.objectContaining({ revision: 8 }),
-      persistedCloudIdentity: {
-        libraryId: mocks.bootstrapAuthority.authority.library_id,
-        storageEpoch: mocks.bootstrapAuthority.authority.epoch_id,
-        writerId: mocks.bootstrapAuthority.actor.actor_id,
-        sourceDigest: "ab".repeat(32),
-      },
-    });
     expect(mocks.publishRequest?.descriptor).toMatchObject({
       sourceRevision: 8,
       causalFrontierDigest: "68".repeat(32),
@@ -1035,38 +991,10 @@ describe("SQLite Library Google Drive production wiring", () => {
     ).resolves.toBeNull();
   });
 
-  it("replaces an unpublished synthetic empty cloud identity after Library recovery", async () => {
-    mocks.nativeState = {
-      version: 1,
-      libraryId: "01".repeat(32),
-      sourceDigest: "0".repeat(64),
-      storageEpoch: "02".repeat(32),
-      writerId: "03".repeat(32),
-      controlFileId: "empty-control",
-      lastPublishedRevision: null,
-      lastPublishedActorDigest: null,
-    };
-
-    await expect(
-      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "published", revision: 7 });
-
-    expect(mocks.publish).toHaveBeenCalledTimes(1);
-    expect(mocks.nativeState).toMatchObject({
-      libraryId: mocks.bootstrapAuthority.authority.library_id,
-      sourceDigest: "ab".repeat(32),
-      storageEpoch: mocks.bootstrapAuthority.authority.epoch_id,
-      writerId: mocks.bootstrapAuthority.actor.actor_id,
-      controlFileId: "control-1",
-      lastPublishedRevision: 7,
-    });
-  });
-
   it("refuses to replace a mismatched cloud identity that published a revision", async () => {
     mocks.nativeState = {
-      version: 1,
+      version: 2,
       libraryId: "01".repeat(32),
-      sourceDigest: "0".repeat(64),
       storageEpoch: "02".repeat(32),
       writerId: "03".repeat(32),
       controlFileId: "published-control",
@@ -1084,7 +1012,7 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("preserves a native string rejection with its publication stage", async () => {
-    mocks.readDescriptor.mockRejectedValueOnce(
+    mocks.describeCloudIdentity.mockRejectedValueOnce(
       "SQLite Library could not read its authority key",
     );
 
@@ -1097,7 +1025,7 @@ describe("SQLite Library Google Drive production wiring", () => {
 
   it("does not queue a fresh publication behind an abandoned native command", async () => {
     const controller = new AbortController();
-    mocks.readDescriptor
+    mocks.describeCloudIdentity
       .mockReset()
       .mockImplementationOnce(() => new Promise(() => {}));
     const abandoned = publishCurrentSqliteLibraryToGoogleDrive({
@@ -1106,11 +1034,17 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
     await Promise.resolve();
 
-    mocks.readDescriptor.mockResolvedValue({
-      revision: 7,
+    mocks.describeCloudIdentity.mockResolvedValue({
+      format: "freed_normalized_checkpoint_export_v2",
+      protocolVersion: 2,
+      libraryId: "ab".repeat(32),
+      authorityEpoch: "cd".repeat(32),
+      writerId: "12".repeat(32),
+      sourceRevision: 7,
+      causalFrontierDigest: "66".repeat(32),
+      recordCount: 1,
       itemCount: 2,
-      sourceDigest: "ab".repeat(32),
-      materializedDigest: "cd".repeat(32),
+      localActorId: "12".repeat(32),
     });
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
@@ -1122,9 +1056,8 @@ describe("SQLite Library Google Drive production wiring", () => {
 
   it("refuses cloud publication when restored state belongs to another Desktop installation", async () => {
     mocks.nativeState = {
-      version: 1,
+      version: 2,
       libraryId: "ab".repeat(32),
-      sourceDigest: "ab".repeat(32),
       storageEpoch: "cd".repeat(32),
       writerId: "34".repeat(32),
       controlFileId: "control-1",
@@ -1175,9 +1108,8 @@ describe("SQLite Library Google Drive production wiring", () => {
         itemCount: 2,
       });
     mocks.nativeState = {
-      version: 1,
+      version: 2,
       libraryId,
-      sourceDigest: "ab".repeat(32),
       storageEpoch: "cd".repeat(32),
       writerId: "34".repeat(32),
       controlFileId: "control-1",
@@ -1277,27 +1209,38 @@ describe("SQLite Library Google Drive production wiring", () => {
         itemCount: 2,
       });
     mocks.nativeState = {
-      version: 1,
+      version: 2,
       libraryId,
-      sourceDigest: "ab".repeat(32),
       storageEpoch: "cd".repeat(32),
       writerId: "34".repeat(32),
       controlFileId: "control-1",
       lastPublishedRevision: 7,
     };
-    mocks.readDescriptor
+    mocks.describeCloudIdentity
       .mockReset()
       .mockResolvedValueOnce({
-        revision: 8,
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: "cd".repeat(32),
+        writerId: "34".repeat(32),
+        sourceRevision: 8,
+        causalFrontierDigest: "66".repeat(32),
+        recordCount: 1,
         itemCount: 2,
-        sourceDigest: "ab".repeat(32),
-        materializedDigest: "cd".repeat(32),
+        localActorId: mocks.bootstrapAuthority.actor.actor_id,
       })
       .mockResolvedValue({
-        revision: 1,
+        format: "freed_normalized_checkpoint_export_v2",
+        protocolVersion: 2,
+        libraryId,
+        authorityEpoch: cloudEpoch,
+        writerId: cloudWriter,
+        sourceRevision: 1,
+        causalFrontierDigest: "ef".repeat(32),
+        recordCount: 1,
         itemCount: 2,
-        sourceDigest: "ab".repeat(32),
-        materializedDigest: "34".repeat(32),
+        localActorId: mocks.bootstrapAuthority.actor.actor_id,
       });
     mocks.controlRead = {
       revision: '"etag-current"',

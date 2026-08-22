@@ -421,6 +421,7 @@ loads an alternate Library engine or compatibility path.
 | 4.227 | Define the provider-neutral PWA follower coordinator over one closed SQLite transport frontier, direct bounded actor-counter intent pages, immutable normalized v2 segment publication, exact response-loss repair from the committed segment, and verified result import callbacks. Google Drive adapters retain sole ownership of provider requests and cadence | ✓      | High       |
 | 4.228 | Define like and seen provider-delivery acknowledgements as closed Primary-only signed operations with exact timestamp payloads, generated SQLite materializers, independent field clocks, bounded envelopes, and normalized replication receipts. These operations record completed provider work and never initiate provider traffic | ✓      | High       |
 | 4.229 | Route Desktop follower bootstrap and writer-transfer restore through the normalized v2 checkpoint importer and one shared cross-runtime staging state machine. Delete the portable checkpoint producer, importer, contracts, and whole-item compatibility tests without changing Drive request behavior | ✓      | High       |
+| 4.230 | Replace the historical source-digest sync descriptor and authority bootstrap with one normalized SQLite cloud identity read. Keep the checkpoint writer and this installation's actor identity distinct so restored clients can transfer authority without a compatibility journal | ✓      | High       |
 
 ---
 

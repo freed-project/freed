@@ -590,6 +590,7 @@ export async function captureDomFeed(
 | 5.100 | Delete the native and browser-harness whole-item upsert, point-read, and generic offset-query commands plus their payload-JSON query plans and tests. Browser item reads and background scans now use the normalized item-detail and background-page contracts                                                                          | High       | ✓ Complete |
 | 5.101 | Delete the native and browser-harness generic item mutation command. Route like and seen delivery acknowledgements through Primary-only signed normalized operations, and leave ordinary browser mutation simulation behind an explicit test-only bridge with no native command identity | High       | ✓ Complete |
 | 5.102 | Delete the native portable import begin, whole-item append, finalize, and offset-page commands. Desktop cloud restore now appends bounded normalized records into native SQLite staging and activates them atomically | High       | ✓ Complete |
+| 5.103 | Delete the native whole-item sync descriptor, renderer authority bootstrap, legacy protocol parser, commands, and browser mocks. Desktop now reads the normalized checkpoint identity and its installation-local actor identity through one closed native call | High       | ✓ Complete |
 
 ---
 

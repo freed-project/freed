@@ -462,6 +462,32 @@ fn load_or_create_actor_key_pair(
         .map_err(|_| "Library Core actor signing key readback is corrupt".to_string())
 }
 
+/// Return this installation's stable actor identity for one normalized Library.
+///
+/// This may create the installation's actor key, but it does not enroll the
+/// actor, change authority, admit a writer, or write Library content.
+pub fn load_or_create_normalized_actor_id_v2(
+    library_id: &str,
+    installation_witness: &str,
+    store: &dyn ActorKeyStore,
+) -> Result<String, String> {
+    if !is_lower_sha256(library_id) || !is_lower_sha256(installation_witness) {
+        return Err("normalized Library actor identity is invalid".to_string());
+    }
+    let key_pair = load_or_create_actor_key_pair(store, library_id)?;
+    actor_identity(
+        &EnrollmentAuthority {
+            library_id: library_id.to_string(),
+            epoch: 0,
+            epoch_id: String::new(),
+            authority_key_id: String::new(),
+            installation_witness: installation_witness.to_string(),
+        },
+        &key_pair,
+    )
+    .map(|identity| identity.actor_id)
+}
+
 fn load_actor_key_pair(
     store: &dyn ActorKeyStore,
     library_id: &str,
@@ -1005,6 +1031,29 @@ mod tests {
         let error = load_or_create_actor_key_pair(&store, "library-a").unwrap_err();
 
         assert!(error.contains("readback changed"), "{error}");
+    }
+
+    #[test]
+    fn normalized_actor_identity_is_stable_without_enrolling_or_changing_authority() {
+        let store = MemoryActorKeyStore::default();
+        let library_id = "a".repeat(64);
+        let installation_witness = "b".repeat(64);
+
+        let first = load_or_create_normalized_actor_id_v2(
+            &library_id,
+            &installation_witness,
+            &store,
+        )
+        .unwrap();
+        let replay = load_or_create_normalized_actor_id_v2(
+            &library_id,
+            &installation_witness,
+            &store,
+        )
+        .unwrap();
+
+        assert!(is_lower_sha256(&first));
+        assert_eq!(first, replay);
     }
 
     #[test]

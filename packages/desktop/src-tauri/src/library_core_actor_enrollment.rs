@@ -5,8 +5,8 @@ use crate::library_core_platform_key::{load_platform_key, store_platform_key, Pl
 use freed_library_core::{ActorKeyStore, LibraryCoreJournal};
 
 pub(super) use freed_library_core::{
-    enroll_desktop_actor, prepare_follower_actor_enrollment_request,
-    sign_library_core_operation_digest, EnrollmentAuthority,
+    prepare_follower_actor_enrollment_request, sign_library_core_operation_digest,
+    EnrollmentAuthority,
 };
 
 const ACTOR_VAULT: PlatformKeyVault = PlatformKeyVault {

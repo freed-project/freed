@@ -52,45 +52,20 @@ export function tauriInitScript(): string {
     function sqliteItemState(item) {
       return item && item.userState ? item.userState : {};
     }
-    function sqliteSyncDescriptor() {
+    function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
       return {
-        revision: state.revision,
+        format: 'freed_normalized_checkpoint_export_v2',
+        protocolVersion: 2,
+        libraryId: '2'.repeat(64),
+        authorityEpoch: '3'.repeat(64),
+        writerId: '6'.repeat(64),
+        sourceRevision: state.sourceRevision,
+        causalFrontierDigest: 'a'.repeat(64),
+        recordCount: items.length + 1,
         itemCount: items.length,
-        sourceDigest: state.sourceDigest || '0'.repeat(64),
-        materializedDigest: '1'.repeat(64),
-      };
-    }
-    function sqliteAuthorityBootstrap() {
-      return {
-        authority: {
-          library_id: '2'.repeat(64),
-          epoch: 1,
-          epoch_id: '3'.repeat(64),
-          authority_key_id: '4'.repeat(64),
-          authority_public_key: '5'.repeat(64),
-          observed_frontier: [],
-        },
-        actor: {
-          actor_id: '6'.repeat(64),
-          actor_public_key: '7'.repeat(64),
-          enrollment_operation_id: 'e2e-local-authority-enrollment',
-          enrollment_certificate_digest: '8'.repeat(64),
-          canonical_enrollment_certificate_json: '{}',
-          actor_chain_genesis: '9'.repeat(64),
-        },
-        protocol: {
-          format: 'freed_library_core_native_authority_protocol_v1',
-          active_engine: 'library_core_v1',
-          schema_version: 12,
-          replication_protocol: 'op_segments_v1',
-          checkpoint_format: 'freed_logical_checkpoint_v1',
-          transition_certificate_digest: 'a'.repeat(64),
-          native_protocol_certificate_digest: 'b'.repeat(64),
-          prior_transition_certificate_digest: null,
-          source_manifest_digest: 'c'.repeat(64),
-        },
+        localActorId: '6'.repeat(64),
       };
     }
     function sqliteFacetSummary() {
@@ -503,8 +478,7 @@ export function tauriInitScript(): string {
         materializedRowCount: 0,
         revisionAdvanced: false,
       }),
-      read_sqlite_library_sync_descriptor: sqliteSyncDescriptor,
-      bootstrap_sqlite_library_authority: sqliteAuthorityBootstrap,
+      describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
       set_sqlite_library_cloud_writer_admission: (args) => {

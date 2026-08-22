@@ -851,6 +851,17 @@ The cloud publisher stores the typed records directly under dataset schema
 `library_core_normalized_checkpoint_v2`. It does not wrap them in logical rows,
 whole FeedItem values, or a Library shell.
 
+Desktop cloud coordination reads that normalized descriptor together with one
+installation-local actor ID derived by the native key store. The descriptor's
+`writerId` is the actor currently admitted by SQLite. The local actor ID names
+the current installation and may differ on a restored or follower client.
+Cloud state stores only the normalized Library ID, authority epoch, admitted
+writer ID, provider control locator, and publication receipts. It contains no
+source-shell digest. Writer transfer uses the local actor ID as its proposed
+writer and lets normalized SQLite verify and enroll it while signing the next
+authority epoch. No renderer authority bootstrap or historical journal is part
+of this path.
+
 Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which
 leaves deterministic room for base64 and record metadata below the canonical

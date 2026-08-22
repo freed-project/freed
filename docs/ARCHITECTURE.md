@@ -109,6 +109,14 @@ Device-local state such as window geometry, graph pin coordinates, temporary
 filters, provider session cookies, retry timers, machine endpoints, and cache
 residency remains outside synchronized Library state.
 
+Cloud coordination reads Library identity, accepted authority epoch, admitted
+writer, source revision, causal frontier, and bounded record counts directly
+from normalized SQLite. The native key store separately derives the current
+installation's actor ID. A copied Library therefore retains its admitted
+writer while the receiving installation has a distinct candidate actor for an
+explicit writer transfer. No whole-item digest or compatibility authority
+bootstrap mediates this distinction.
+
 No `shellJson`, `DocState`, monolithic FeedItem record, generic JSON patch, or
 equivalent catch-all object is part of the runtime model.
 
