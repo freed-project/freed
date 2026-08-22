@@ -10,7 +10,6 @@ import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
   collectSavedYouTubeVideoUrls,
-  createDefaultPreferences,
   type Account,
   type ContentSignal,
   type ContentSignalBackfillSummary,
@@ -30,25 +29,15 @@ import type {
 } from "./library-types";
 import { registerDocAccessors, setDocSnapshot } from "@freed/ui/lib/debug-store";
 import {
-  appendPortableSqliteLibraryItems,
-  beginPortableSqliteLibraryImport,
-  bootstrapSqliteLibraryAuthority,
   clearSqliteLibrary,
   dispatchSqliteMutation,
   ensureFreshNormalizedDesktopLibrary,
-  finalizePortableSqliteLibraryImport,
   loadSqliteLibraryState,
-  readSqliteLibrarySyncDescriptor,
   readSqliteItems,
   recoverSqliteLibraryFollowerOverlay,
-  sqliteLibraryStatus,
 } from "./sqlite-library";
 import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
-import { readPersistedSqliteLibraryCloudIdentity } from "./library-core-cloud-sync";
-import {
-  hasLegacyLibraryData,
-  shouldBlockForLegacyLibrary,
-} from "./legacy-library-presence";
+import { hasLegacyLibraryData } from "./legacy-library-presence";
 import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
 
 export type { DocChangeEvent, DocState } from "./library-types";
@@ -82,51 +71,14 @@ function updateSqliteDebugSnapshot(state: DocState): void {
   });
 }
 
-function emptyShell(): Omit<DocState, "items"> {
-  return {
-    searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-    docItemCount: 0,
-  };
-}
-
 function publish(state: DocState, event: DocChangeEvent): void {
   lastState = state;
   updateSqliteDebugSnapshot(state);
   for (const subscriber of subscribers) subscriber(state, event);
 }
 
-async function initializeEmptySqliteLibrary(): Promise<void> {
-  await beginPortableSqliteLibraryImport({
-    expectedItemCount: 0,
-    shell: emptyShell(),
-    sourceDigest: "0".repeat(64),
-    sourceGeneration: 0,
-    sourceRevision: 0,
-  });
-  await appendPortableSqliteLibraryItems([]);
-  await finalizePortableSqliteLibraryImport();
-}
-
 async function ensureInitialized(): Promise<DocState> {
   if (lastState) return lastState;
-  const browserTestProjection = import.meta.env.VITE_TEST_TAURI === "1";
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
   let legacyDataPresent = false;
   if (!normalizedSelected) {
@@ -135,31 +87,15 @@ async function ensureInitialized(): Promise<DocState> {
       !legacyDataPresent,
     );
   }
-  if (!normalizedSelected && !browserTestProjection) {
+  if (!normalizedSelected) {
     throw new Error(
       legacyDataPresent
         ? "Freed Desktop could not complete the one-time SQLite Library transition. The historical source remains untouched."
         : "Freed Desktop could not establish SQLite Library authority.",
     );
   }
-  if (normalizedSelected && readLibraryCoreDesktopRole() === "follower") {
+  if (readLibraryCoreDesktopRole() === "follower") {
     await recoverSqliteLibraryFollowerOverlay();
-  } else if (!normalizedSelected) {
-    const status = await sqliteLibraryStatus();
-    if (shouldBlockForLegacyLibrary(status, legacyDataPresent)) {
-      throw new Error(
-        "The Desktop browser test projection refused an occupied historical Library.",
-      );
-    }
-    if (!status?.active) await initializeEmptySqliteLibrary();
-    if (readLibraryCoreDesktopRole() === "follower") {
-      await recoverSqliteLibraryFollowerOverlay();
-    } else {
-      await bootstrapSqliteLibraryAuthority({
-        descriptor: await readSqliteLibrarySyncDescriptor(),
-        persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),
-      });
-    }
   }
   const state = await loadSqliteLibraryState();
   lastState = state;

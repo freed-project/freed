@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  beginImport: vi.fn(),
-  bootstrap: vi.fn(),
   load: vi.fn(),
 }));
 
@@ -23,11 +21,8 @@ vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    beginPortableSqliteLibraryImport: mocks.beginImport,
-    bootstrapSqliteLibraryAuthority: mocks.bootstrap,
     ensureFreshNormalizedDesktopLibrary: vi.fn(async () => false),
     loadSqliteLibraryState: mocks.load,
-    sqliteLibraryStatus: vi.fn(),
   };
 });
 
@@ -37,8 +32,6 @@ describe("normalized Desktop authority requirement", () => {
   it("fails closed without creating a portable shell when native cutover is unavailable", async () => {
     await expect(initDoc()).rejects.toThrow(/one-time SQLite Library transition/);
 
-    expect(mocks.beginImport).not.toHaveBeenCalled();
-    expect(mocks.bootstrap).not.toHaveBeenCalled();
     expect(mocks.load).not.toHaveBeenCalled();
   });
 });

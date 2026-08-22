@@ -1629,7 +1629,7 @@ export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
 export async function ensureFreshNormalizedDesktopLibrary(
   legacyDataAbsent: boolean,
 ): Promise<boolean> {
-  if (!isTauri() || import.meta.env.VITE_TEST_TAURI === "1") return false;
+  if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return false;
   return invoke<boolean>("ensure_fresh_normalized_desktop_library", {
     legacyDataAbsent,
   });

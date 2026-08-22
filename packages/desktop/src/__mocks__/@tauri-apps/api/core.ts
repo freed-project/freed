@@ -378,6 +378,7 @@ function sqliteAuthorityBootstrap(): Record<string, unknown> {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
+  ensure_fresh_normalized_desktop_library: () => true,
   sqlite_library_status: () => {
     const state = sqliteLibrary();
     return state.active ? {

@@ -289,9 +289,9 @@ and cannot be mistaken for a fresh Library.
 Production renderer startup proceeds only after native code verifies that
 normalized SQLite is selected. A failed migration or genesis stops startup
 without creating a portable shell or reopening historical authority. Historical
-bytes remain untouched for diagnosis and an exact retry. Compatibility setup is
-limited to the isolated browser test projection and cannot select product
-storage.
+bytes remain untouched for diagnosis and an exact retry. The isolated browser
+test harness reports normalized authority before supplying its in-memory view
+fixture. It cannot create or select product storage.
 
 Delete:
 

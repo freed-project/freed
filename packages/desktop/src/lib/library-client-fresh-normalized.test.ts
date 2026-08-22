@@ -2,10 +2,7 @@ import { createDefaultPreferences } from "@freed/shared";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  bootstrap: vi.fn(),
-  beginImport: vi.fn(),
   calls: [] as string[],
-  status: vi.fn(),
 }));
 
 vi.mock("./legacy-library-presence", () => ({
@@ -27,8 +24,6 @@ vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    beginPortableSqliteLibraryImport: mocks.beginImport,
-    bootstrapSqliteLibraryAuthority: mocks.bootstrap,
     ensureFreshNormalizedDesktopLibrary: vi.fn(async (legacyDataAbsent: boolean) => {
       mocks.calls.push(`select:${String(legacyDataAbsent)}`);
       return legacyDataAbsent;
@@ -58,7 +53,6 @@ vi.mock("./sqlite-library", async (importOriginal) => {
         docItemCount: 0,
       };
     }),
-    sqliteLibraryStatus: mocks.status,
   };
 });
 
@@ -69,8 +63,5 @@ describe("fresh normalized Desktop startup", () => {
     await initDoc();
 
     expect(mocks.calls).toEqual(["select:false", "select:true", "load"]);
-    expect(mocks.status).not.toHaveBeenCalled();
-    expect(mocks.beginImport).not.toHaveBeenCalled();
-    expect(mocks.bootstrap).not.toHaveBeenCalled();
   });
 });

@@ -1057,9 +1057,9 @@ selection. If native startup cannot complete migration or fresh genesis, the
 renderer stops before loading Library state or opening a historical mutation
 path. Existing historical bytes remain untouched for diagnosis and retry. The
 renderer never creates a portable shell, promotes historical storage, or
-chooses a fallback authority. Browser-only test projections may construct an
-isolated compatibility fixture, but that fixture is not compiled as a product
-authority path.
+chooses a fallback authority. Browser-only test harnesses may supply an
+isolated in-memory view fixture after reporting normalized authority, but that
+fixture cannot create or select product storage.
 
 The renderer asks native code for one mutation context. Native code returns a
 Primary context only after this selector verifies. Before selection, the same

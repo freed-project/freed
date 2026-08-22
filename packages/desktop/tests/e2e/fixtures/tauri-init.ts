@@ -463,6 +463,7 @@ export function tauriInitScript(): string {
       };
     }
     window.__TAURI_MOCK_HANDLERS__ = {
+      ensure_fresh_normalized_desktop_library: () => true,
       sqlite_library_status: () => {
         var state = sqliteState();
         return state.active ? {
