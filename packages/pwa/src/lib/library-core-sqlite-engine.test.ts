@@ -712,6 +712,31 @@ describe("PWA Library Core SQLite engine", () => {
       limit: 128,
       schemaVersion: 1,
     });
+    expect(engine.followerTransportContext()).toEqual({
+      actorId,
+      libraryId,
+      nextIntentActorCounter: 1,
+      nextResultSequence: 1,
+      previousIntentSegmentDigest: null,
+      previousResultSegmentDigest: null,
+      schemaVersion: 2,
+      storageEpochId: epochId,
+    });
+    expect(
+      engine.pageFollowerTransport({
+        actorId: lowercaseHex64(actorId),
+        firstActorCounter: 1,
+        limit: 128,
+        schemaVersion: 2,
+      }),
+    ).toEqual({
+      actorId,
+      canonicalEnvelopes: envelopeBytes,
+      done: true,
+      firstActorCounter: 1,
+      lastActorCounter: 1,
+      schemaVersion: 2,
+    });
     expect(intentPage).toEqual({
       actorId,
       done: true,
@@ -784,6 +809,18 @@ describe("PWA Library Core SQLite engine", () => {
       semanticSegmentDigest: "12".repeat(32),
       storedSegmentDigest,
     });
+    expect(engine.followerTransportContext()).toMatchObject({
+      nextIntentActorCounter: 2,
+      previousIntentSegmentDigest: storedSegmentDigest,
+    });
+    expect(
+      engine.pageFollowerTransport({
+        actorId: lowercaseHex64(actorId),
+        firstActorCounter: 2,
+        limit: 128,
+        schemaVersion: 2,
+      }),
+    ).toMatchObject({ canonicalEnvelopes: [], done: true });
     expect(
       engine.publishNormalizedFollowerIntentTransport(publication),
     ).toEqual(publicationReceipt);
@@ -970,6 +1007,10 @@ describe("PWA Library Core SQLite engine", () => {
       resultCount: 1,
       semanticSegmentDigest: semanticResultDigest,
       storedSegmentDigest: storedResultDigest,
+    });
+    expect(engine.followerTransportContext()).toMatchObject({
+      nextResultSequence: 2,
+      previousResultSegmentDigest: storedResultDigest,
     });
     expect(
       await engine.importNormalizedFollowerResultTransport(resultPublication),

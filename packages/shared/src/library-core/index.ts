@@ -41,6 +41,7 @@ export * from "./follower-intent-contracts.js";
 export * from "./follower-mutation-context-contracts.js";
 export * from "./follower-actor-enrollment-contracts.js";
 export * from "./follower-result-contracts.js";
+export * from "./follower-transport-contracts.js";
 export * from "./result-segment-contracts.js";
 export * from "./operation-registry.js";
 export * from "./operation-segment-contracts.js";

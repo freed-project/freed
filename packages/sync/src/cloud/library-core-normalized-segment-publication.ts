@@ -7,7 +7,9 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreNormalizedIntentHeadV2,
+  type LibraryCoreNormalizedIntentSegmentHeaderV2,
   type LibraryCoreNormalizedResultHeadV2,
+  type LibraryCoreNormalizedResultSegmentHeaderV2,
 } from "@freed/shared/library-core";
 import type { LibraryCoreImmutablePublicationAdapterV1 } from "./library-core-immutable-publication.js";
 import { prepareLibraryCoreNormalizedIntentSegmentV2 } from "./library-core-normalized-intent-segments.js";
@@ -118,6 +120,7 @@ export async function publishLibraryCoreNormalizedIntentSegmentV2(input: {
   readonly subtle: SubtleCrypto;
 }): Promise<Readonly<{
   publishedHead: LibraryCoreNormalizedIntentHeadV2;
+  segmentHeader: LibraryCoreNormalizedIntentSegmentHeaderV2;
   segmentReference: LibraryCoreImmutableObjectReferenceV1;
   status: "committed" | "recovered_after_response_loss";
 }>> {
@@ -156,7 +159,12 @@ export async function publishLibraryCoreNormalizedIntentSegmentV2(input: {
     expected: initial,
     next: publishedHead,
   });
-  return Object.freeze({ publishedHead, segmentReference, status });
+  return Object.freeze({
+    publishedHead,
+    segmentHeader: prepared.header,
+    segmentReference,
+    status,
+  });
 }
 
 export async function publishLibraryCoreNormalizedResultSegmentV2(input: {
@@ -165,6 +173,7 @@ export async function publishLibraryCoreNormalizedResultSegmentV2(input: {
   readonly subtle: SubtleCrypto;
 }): Promise<Readonly<{
   publishedHead: LibraryCoreNormalizedResultHeadV2;
+  segmentHeader: LibraryCoreNormalizedResultSegmentHeaderV2;
   segmentReference: LibraryCoreImmutableObjectReferenceV1;
   status: "committed" | "recovered_after_response_loss";
 }>> {
@@ -203,5 +212,10 @@ export async function publishLibraryCoreNormalizedResultSegmentV2(input: {
     expected: initial,
     next: publishedHead,
   });
-  return Object.freeze({ publishedHead, segmentReference, status });
+  return Object.freeze({
+    publishedHead,
+    segmentHeader: prepared.header,
+    segmentReference,
+    status,
+  });
 }

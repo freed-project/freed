@@ -156,6 +156,11 @@ describe("normalized segment publication v2", () => {
     });
     expect(published.status).toBe("committed");
     expect(published.publishedHead.next_actor_counter).toBe(2);
+    expect(published.segmentHeader).toMatchObject({
+      first_actor_counter: 1,
+      last_actor_counter: 1,
+      record_count: 1,
+    });
     expect(published.segmentReference.descriptor.objectKey).toContain("~s1-1~");
   });
 
@@ -177,5 +182,10 @@ describe("normalized segment publication v2", () => {
     });
     expect(published.status).toBe("recovered_after_response_loss");
     expect(published.publishedHead.next_result_sequence).toBe(2);
+    expect(published.segmentHeader).toMatchObject({
+      first_result_sequence: 1,
+      last_result_sequence: 1,
+      result_count: 1,
+    });
   });
 });

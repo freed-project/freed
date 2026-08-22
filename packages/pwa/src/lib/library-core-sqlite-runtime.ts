@@ -8,6 +8,9 @@ import type {
   LibraryCoreFollowerIntentCommitResultV1,
   LibraryCoreFollowerIntentCommitV1,
   LibraryCoreFollowerMutationContextV1,
+  LibraryCoreFollowerTransportContextV2,
+  LibraryCoreFollowerTransportPageRequestV2,
+  LibraryCoreFollowerTransportPageResponseV2,
   LibraryCoreActivateNormalizedCheckpointStageV2,
   LibraryCoreBeginNormalizedCheckpointStageV2,
   LibraryCoreNormalizedCheckpointActivationReceiptV2,
@@ -100,6 +103,18 @@ export async function closePwaScopeActionStage(stageId: string): Promise<void> {
 export async function readPwaFollowerMutationContext(): Promise<LibraryCoreFollowerMutationContextV1> {
   const active = await openClient();
   return active.followerMutationContext();
+}
+
+export async function readPwaFollowerTransportContext(): Promise<LibraryCoreFollowerTransportContextV2> {
+  const active = await openClient();
+  return active.followerTransportContext();
+}
+
+export async function pagePwaFollowerTransport(
+  page: LibraryCoreFollowerTransportPageRequestV2,
+): Promise<LibraryCoreFollowerTransportPageResponseV2> {
+  const active = await openClient();
+  return active.pageFollowerTransport(page);
 }
 
 export async function commitPwaFollowerIntent(

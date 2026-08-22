@@ -53,8 +53,10 @@ function digest(
 
 export interface PwaLibraryCoreFollowerEnrollmentCandidateV2 {
   readonly descriptor: LibraryCoreImmutableObjectDescriptorV1;
+  readonly libraryId: LibraryCoreLowercaseHex64;
   readonly receipt: LibraryCoreFollowerActorRequestReceiptV2;
   readonly source: Uint8Array;
+  readonly storageEpochId: LibraryCoreLowercaseHex64;
 }
 
 export async function preparePwaLibraryCoreFollowerEnrollment(
@@ -75,8 +77,10 @@ export async function preparePwaLibraryCoreFollowerEnrollment(
           libraryId: context.authority.library_id,
         }),
       }),
+      libraryId: context.authority.library_id,
       receipt: context.request,
       source: new Uint8Array(context.request.canonicalRequestBytes),
+      storageEpochId: context.authority.epoch_id,
     });
   }
   const identity = await runtime.getOrCreateIdentity(
@@ -134,8 +138,10 @@ export async function preparePwaLibraryCoreFollowerEnrollment(
         libraryId: context.authority.library_id,
       }),
     }),
+    libraryId: context.authority.library_id,
     receipt,
     source,
+    storageEpochId: context.authority.epoch_id,
   });
 }
 

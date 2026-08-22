@@ -418,6 +418,7 @@ loads an alternate Library engine or compatibility path.
 | 4.224 | Extend the shared Account page with its linked Person name through the normalized foreign-key join, shorten legal maximum-sized Account pages by exact response bytes, then compose Account and RSS Feed pages into a query-on-open command identity reader with 25-row result bounds per catalog | ✓      | High       |
 | 4.225 | Extend the constant-time SQLite facet row with trigger-maintained RSS Feed, enabled RSS Feed, Friend Person, and social Account counts, including insert, delete, and classification transition invariants | ✓      | High       |
 | 4.226 | Define one closed `filter_scope_summary_v1` contract that resolves exactly one Feed URL or provider-author identity to a nullable label and exact visible-item count through indexed native and browser SQLite reads | ✓      | High       |
+| 4.227 | Define the provider-neutral PWA follower coordinator over one closed SQLite transport frontier, direct bounded actor-counter intent pages, immutable normalized v2 segment publication, exact response-loss repair from the committed segment, and verified result import callbacks. Google Drive adapters retain sole ownership of provider requests and cadence | ✓      | High       |
 
 ---
 

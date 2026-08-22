@@ -179,6 +179,7 @@ export interface LibraryCoreNormalizedResultSegmentImportWriterV2 {
     canonicalResults: readonly Uint8Array[];
     header: LibraryCoreNormalizedResultSegmentHeaderV2;
     reference: LibraryCoreImmutableObjectReferenceV1;
+    results: readonly LibraryCoreFollowerResultEnvelopeV1[];
   }>): Promise<void>;
 }
 
@@ -244,5 +245,6 @@ export async function importLibraryCoreNormalizedResultSegmentV2(input: {
     canonicalResults: Object.freeze(canonicalResults),
     header,
     reference,
+    results: Object.freeze(results),
   });
 }

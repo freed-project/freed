@@ -379,6 +379,27 @@ pending page. The signed actor chain inside each canonical envelope remains the
 admission proof. The query uses the actor-counter index with no offset, table
 scan, or temporary sort.
 
+The PWA cloud coordinator never resumes publication by scanning that history
+from counter one. One closed SQLite transport context returns the enrolled
+actor, Library, storage epoch, next intent counter, previous stored-segment
+digest, next result sequence, and previous result-segment digest. A second
+closed request reads direct from that next actor counter and returns at most 128
+exact canonical envelopes and at most 1,048,576 canonical bytes. SQLite rejects
+gaps, changed actors, noncanonical envelopes, and mismatched counters before the
+coordinator sees a page. This keeps restart cost constant with Library age.
+
+The coordinator is provider neutral. A transport supplies immutable enrollment
+publication and certificate discovery, one normalized v2 intent-head adapter,
+bounded result references, and immutable reads. The coordinator publishes at
+most one intent segment per pass, records the exact header and immutable
+reference in SQLite, and imports each verified result segment through one atomic
+SQLite callback. If the mutable intent head committed but its response was
+lost, the coordinator reads the head's immutable segment, verifies its exact
+actor, epoch, counter, digest chain, and canonical bytes, then records the
+missing local receipt. It refuses a remote head behind SQLite or more than one
+unrecorded segment ahead. Google Drive endpoint selection, headers, retries,
+paging, and cadence remain inside the Drive adapter.
+
 The Primary admits browser intent pages through dedicated SQLite staging
 tables that are excluded from checkpoints, materialized-state digests, and
 replication. One page carries at most 128 records. One transaction carries at

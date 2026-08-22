@@ -29,6 +29,8 @@ import {
   createLibraryCoreSqliteStoreFollowerActorRequestWorkerRequest,
   createLibraryCoreSqliteFinalizeScopeActionWorkerRequest,
   createLibraryCoreSqliteFollowerMutationContextWorkerRequest,
+  createLibraryCoreSqliteFollowerTransportContextWorkerRequest,
+  createLibraryCoreSqliteFollowerTransportPageWorkerRequest,
   createLibraryCoreSqlitePageScopeActionWorkerRequest,
   createLibraryCoreSqliteWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
@@ -459,6 +461,33 @@ describe("Library Core SQLite worker protocol", () => {
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
+  });
+
+  it("carries only bounded normalized follower transport reads", () => {
+    expect(
+      createLibraryCoreSqliteFollowerTransportContextWorkerRequest(
+        "request-follower-transport",
+      ).kind,
+    ).toBe("follower_transport_context");
+    const request = createLibraryCoreSqliteFollowerTransportPageWorkerRequest(
+      "request-follower-transport-page",
+      {
+        actorId: "a".repeat(64) as never,
+        firstActorCounter: 9,
+        limit: 128,
+        schemaVersion: 2,
+      },
+    );
+    expect(request.kind).toBe("page_follower_transport");
+    if (request.kind !== "page_follower_transport") {
+      throw new Error("follower transport page request lane is invalid");
+    }
+    expect(() =>
+      parseLibraryCoreSqliteWorkerRequest({
+        ...request,
+        page: { ...request.page, limit: 129 },
+      }),
+    ).toThrow(/page request is invalid/);
   });
 
   it("carries only closed exact follower intent publications", () => {

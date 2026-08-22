@@ -26,6 +26,9 @@ import {
   type LibraryCoreFollowerIntentPublicationReceiptV1,
   type LibraryCoreFollowerIntentPublicationV1,
   type LibraryCoreFollowerMutationContextV1,
+  type LibraryCoreFollowerTransportContextV2,
+  type LibraryCoreFollowerTransportPageRequestV2,
+  type LibraryCoreFollowerTransportPageResponseV2,
   type LibraryCoreNormalizedIntentTransportPublicationReceiptV2,
   type LibraryCoreNormalizedIntentTransportPublicationV2,
   type LibraryCoreNormalizedResultTransportImportReceiptV2,
@@ -54,6 +57,10 @@ import {
   parseLibraryCoreFollowerIntentPageResponseV1,
   parseLibraryCoreFollowerIntentPublicationV1,
   parseLibraryCoreFollowerMutationContextV1,
+  parseLibraryCoreFollowerTransportContextV2,
+  parseLibraryCoreFollowerTransportPageRequestV2,
+  parseLibraryCoreFollowerTransportPageResponseV2,
+  LIBRARY_CORE_FOLLOWER_TRANSPORT_PAGE_CANONICAL_BYTE_LIMIT,
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   normalizedResultSegmentBodyFromRecordsV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
@@ -1781,6 +1788,114 @@ export class PwaLibraryCoreSqliteEngine {
         "PWA follower mutation previous operation ID",
       ),
       schema_version: 1,
+    });
+  }
+
+  followerTransportContext(): LibraryCoreFollowerTransportContextV2 {
+    const rows = this.#database.exec({
+      sql: `SELECT request.actor_id, m.library_id, e.epoch_id,
+                   COALESCE(intent_head.next_actor_counter, 1),
+                   intent_head.latest_segment_digest,
+                   COALESCE(result_head.next_result_sequence, 1),
+                   result_head.latest_segment_digest
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            JOIN library_follower_actor_request AS request
+              ON request.singleton_id = 1
+             AND request.library_id = m.library_id
+             AND request.authority_epoch_id = e.epoch_id
+             AND request.enrollment_certificate_digest IS NOT NULL
+            JOIN library_intent_actors AS actor
+              ON actor.actor_id = request.actor_id
+            LEFT JOIN library_intent_transport_heads AS intent_head
+              ON intent_head.actor_id = request.actor_id
+            LEFT JOIN library_result_transport_heads AS result_head
+              ON result_head.actor_id = request.actor_id
+            WHERE m.singleton_id = 1;`,
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (rows.length !== 1) {
+      throw new Error("PWA follower transport context is unavailable");
+    }
+    const row = rows[0]!;
+    return parseLibraryCoreFollowerTransportContextV2({
+      actorId: text(row[0], "PWA follower transport actor"),
+      libraryId: text(row[1], "PWA follower transport Library"),
+      nextIntentActorCounter: safeInteger(
+        row[3],
+        "PWA follower transport next intent counter",
+      ),
+      nextResultSequence: safeInteger(
+        row[5],
+        "PWA follower transport next result sequence",
+      ),
+      previousIntentSegmentDigest: nullableText(
+        row[4],
+        "PWA follower transport previous intent digest",
+      ),
+      previousResultSegmentDigest: nullableText(
+        row[6],
+        "PWA follower transport previous result digest",
+      ),
+      schemaVersion: 2,
+      storageEpochId: text(row[2], "PWA follower transport storage epoch"),
+    });
+  }
+
+  pageFollowerTransport(
+    input: LibraryCoreFollowerTransportPageRequestV2,
+  ): LibraryCoreFollowerTransportPageResponseV2 {
+    const request = parseLibraryCoreFollowerTransportPageRequestV2(input);
+    const rows = this.#database.exec({
+      sql: `SELECT member.actor_counter, member.canonical_member
+            FROM library_intent_members AS member
+            JOIN library_intent_transactions AS intent
+              ON intent.transaction_id = member.transaction_id
+             AND intent.actor_id = member.actor_id
+            WHERE member.actor_id = ?1
+              AND member.actor_counter >= ?2
+              AND intent.state IN ('pending', 'published')
+            ORDER BY member.actor_counter
+            LIMIT ?3;`,
+      bind: [request.actorId, request.firstActorCounter, request.limit + 1],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    const canonicalEnvelopes: Uint8Array[] = [];
+    let canonicalBytes = 0;
+    let stoppedForBytes = false;
+    for (const [index, row] of rows.slice(0, request.limit).entries()) {
+      const counter = safeInteger(
+        row[0],
+        "PWA follower transport actor counter",
+      );
+      if (counter !== request.firstActorCounter + index) {
+        throw new Error("PWA follower transport actor chain has a gap");
+      }
+      const envelope = bytes(row[1], "PWA follower transport envelope");
+      if (
+        canonicalBytes + envelope.byteLength >
+        LIBRARY_CORE_FOLLOWER_TRANSPORT_PAGE_CANONICAL_BYTE_LIMIT
+      ) {
+        stoppedForBytes = true;
+        break;
+      }
+      canonicalEnvelopes.push(envelope);
+      canonicalBytes += envelope.byteLength;
+    }
+    return parseLibraryCoreFollowerTransportPageResponseV2({
+      actorId: request.actorId,
+      canonicalEnvelopes,
+      done: !stoppedForBytes && rows.length <= request.limit,
+      firstActorCounter: request.firstActorCounter,
+      lastActorCounter:
+        canonicalEnvelopes.length === 0
+          ? null
+          : request.firstActorCounter + canonicalEnvelopes.length - 1,
+      schemaVersion: 2,
     });
   }
 
