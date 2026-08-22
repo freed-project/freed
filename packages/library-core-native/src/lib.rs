@@ -85,7 +85,8 @@ pub use normalized_import::{
     NormalizedCheckpointActivationReceiptV2,
 };
 pub use normalized_migration::{
-    prepare_normalized_desktop_cutover_v1, NormalizedDesktopCutoverPreparedV1,
+    prepare_fresh_normalized_desktop_library_v1, prepare_normalized_desktop_cutover_v1,
+    NormalizedDesktopAuthorityPreparedV1,
 };
 pub use normalized_mutation::{
     accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,

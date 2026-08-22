@@ -1082,6 +1082,88 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, Str
     Ok(true)
 }
 
+#[cfg(unix)]
+#[tauri::command]
+pub(super) fn ensure_fresh_normalized_desktop_library(
+    legacy_data_absent: bool,
+) -> Result<bool, String> {
+    let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
+    if binding
+        .normalized_authority_is_selected_v1()
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(true);
+    }
+    if !legacy_data_absent {
+        return Ok(false);
+    }
+    let source = binding.connect().map_err(|error| error.to_string())?;
+    let source_state: Option<i64> = source
+        .query_row(
+            "SELECT singletonId FROM library_core_desktop_state WHERE singletonId = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if source_state.is_some() {
+        return Ok(false);
+    }
+    let mut tables = source
+        .prepare(
+            "SELECT name FROM sqlite_schema
+             WHERE type = 'table' AND name LIKE 'library_core_%'
+             ORDER BY name;",
+        )
+        .map_err(|error| error.to_string())?;
+    let table_names = tables
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(tables);
+    for table_name in table_names {
+        if table_name == "library_core_meta" {
+            continue;
+        }
+        if !table_name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        {
+            return Err("historical Library table identity is invalid".into());
+        }
+        let occupied: i64 = source
+            .query_row(
+                &format!("SELECT EXISTS(SELECT 1 FROM \"{table_name}\" LIMIT 1);"),
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if occupied != 0 {
+            return Ok(false);
+        }
+    }
+    drop(source);
+    let mut target = binding
+        .connect_normalized()
+        .map_err(|error| error.to_string())?;
+    let installation_witness = crate::get_desktop_installation_witness()?;
+    let accepted_at = i64::try_from(crate::unix_millis_now())
+        .map_err(|_| "Desktop fresh Library time is invalid".to_owned())?;
+    let prepared = freed_library_core::prepare_fresh_normalized_desktop_library_v1(
+        &mut target,
+        &installation_witness,
+        &PlatformActorKeyStore,
+        &PlatformAuthorityKeyStore,
+        accepted_at,
+    )
+    .map_err(|error| error.to_string())?;
+    binding
+        .publish_normalized_authority_selection_v1(&prepared)
+        .map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub(super) fn query_normalized_library(
     app: tauri::AppHandle,

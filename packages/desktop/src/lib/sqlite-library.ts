@@ -504,9 +504,9 @@ type SqliteLibraryMutationContext = Readonly<{
 }>;
 
 async function primaryMutationContext(): Promise<SqliteLibraryMutationContext | null> {
-  let context: SqliteLibraryPrimaryMutationContext;
+  let context: SqliteLibraryPrimaryMutationContext | null;
   try {
-    context = await invoke<SqliteLibraryPrimaryMutationContext>(
+    context = await invoke<SqliteLibraryPrimaryMutationContext | null>(
       "normalized_library_primary_mutation_context",
     );
   } catch (error) {
@@ -523,6 +523,7 @@ async function primaryMutationContext(): Promise<SqliteLibraryMutationContext | 
     }
     throw error;
   }
+  if (!context) return null;
   return {
     mode: "primary",
     libraryId: context.libraryId,
@@ -1536,6 +1537,15 @@ export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
   const status = await invoke<SqliteStatus | null>("sqlite_library_status");
   sqliteActive = status?.active === true;
   return status;
+}
+
+export async function ensureFreshNormalizedDesktopLibrary(
+  legacyDataAbsent: boolean,
+): Promise<boolean> {
+  if (!isTauri() || import.meta.env.VITE_TEST_TAURI === "1") return false;
+  return invoke<boolean>("ensure_fresh_normalized_desktop_library", {
+    legacyDataAbsent,
+  });
 }
 
 export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {

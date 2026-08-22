@@ -188,12 +188,24 @@ describe("capture factory reset boundary", () => {
       }),
     );
     const pendingFetches: Array<(html: string) => void> = [];
-    mocks.invoke.mockImplementation((command: string) => {
-      if (command === "query_sqlite_library_items") {
+    mocks.invoke.mockImplementation((command: string, args?: unknown) => {
+      if (command === "query_normalized_library") {
+        const request = (args as {
+          request?: { queryId?: string; schemaVersion?: number };
+        })?.request;
+        if (request?.queryId !== "background_item_page_v1") {
+          throw new Error(`Unexpected normalized query: ${request?.queryId}`);
+        }
         return Promise.resolve({
-          itemsJson: [],
-          nextOffset: null,
-          totalCount: 0,
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: [],
+          schemaVersion: request.schemaVersion,
+          source: {
+            generationId: "d".repeat(64),
+            projectionRevision: 0,
+            transitionSequence: 0,
+          },
         });
       }
       return new Promise<string>((resolve) => pendingFetches.push(resolve));

@@ -1,7 +1,9 @@
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
-use crate::library_core_authority_genesis::AuthorityKeyStore;
+use crate::library_core_authority_genesis::{
+    load_or_create_authority_key_pair, native_library_id, AuthorityKeyStore,
+};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
@@ -44,6 +46,7 @@ const MAXIMUM_TRANSITION_CERTIFICATE_BYTES: usize = 65_536;
 const SIGNATURE_ALGORITHM: &str = "ed25519";
 const NORMALIZED_STORAGE_TRANSITION_FORMAT: &str =
     "freed_normalized_storage_transition_certificate_v1";
+const NORMALIZED_FRESH_GENESIS_FORMAT: &str = "freed_normalized_fresh_genesis_certificate_v1";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct LegacyShellCountsV1 {
@@ -82,7 +85,7 @@ struct NormalizedMigrationCandidateReceiptV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NormalizedDesktopCutoverPreparedV1 {
+pub struct NormalizedDesktopAuthorityPreparedV1 {
     pub format: String,
     pub library_id: String,
     pub epoch_id: String,
@@ -167,6 +170,36 @@ struct SignedNormalizedStorageTransitionV1 {
     canonical_transition_certificate: String,
     authority_key_id: String,
     authority_public_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NormalizedFreshGenesisBodyV1 {
+    format: String,
+    library_id: String,
+    epoch_number: u64,
+    writer_id: String,
+    authority_key_id: String,
+    authority_public_key: String,
+    signature_algorithm: String,
+    sqlite_contract_version: u32,
+    sqlite_schema_version: u32,
+    sqlite_protocol_version: u32,
+    normalized_schema_sha256: String,
+    checkpoint_format: String,
+    normalized_product_digest: String,
+    normalized_record_count: u64,
+    normalized_canonical_bytes: u64,
+    accepted_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NormalizedFreshGenesisCertificateV1 {
+    certificate_body: NormalizedFreshGenesisBodyV1,
+    epoch_id: String,
+    epoch_signature: String,
+    authority_key_possession_signature: String,
 }
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
@@ -406,6 +439,143 @@ fn verify_normalized_storage_transition_v1(
         return Err(invalid(
             "normalized storage transition signature is invalid",
         ));
+    }
+    Ok(certificate)
+}
+
+fn sign_normalized_fresh_genesis_v1(
+    body: NormalizedFreshGenesisBodyV1,
+    authority_store: &dyn AuthorityKeyStore,
+) -> Result<SignedNormalizedStorageTransitionV1, NormalizedSqliteError> {
+    let key_pair = load_or_create_authority_key_pair(authority_store, &body.library_id)
+        .map_err(|_| invalid("normalized fresh authority key is unavailable"))?;
+    let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+    let authority_key_id = transition_authority_key_id(&authority_public_key)?;
+    if body.format != NORMALIZED_FRESH_GENESIS_FORMAT
+        || body.epoch_number != 1
+        || body.writer_id != "primary:desktop"
+        || body.authority_key_id != authority_key_id
+        || body.authority_public_key != authority_public_key
+        || body.signature_algorithm != SIGNATURE_ALGORITHM
+        || body.sqlite_contract_version != SQLITE_CONTRACT_VERSION
+        || body.sqlite_schema_version != SQLITE_SCHEMA_VERSION
+        || body.sqlite_protocol_version != SQLITE_PROTOCOL_VERSION
+        || body.normalized_schema_sha256 != NORMALIZED_SCHEMA_SHA256
+        || body.checkpoint_format != NORMALIZED_CHECKPOINT_FORMAT
+        || !valid_sha256(&body.normalized_product_digest)
+        || body.accepted_at > 9_007_199_254_740_991
+    {
+        return Err(invalid("normalized fresh genesis body is invalid"));
+    }
+    let body_value = serde_json::to_value(&body)
+        .map_err(|_| invalid("normalized fresh genesis body is invalid"))?;
+    let epoch_id = transition_digest("epoch-transition-certificate", &body_value)?;
+    let epoch_input = transition_signature_input(
+        "epoch-transition-certificate",
+        serde_json::json!({ "certificate_digest": epoch_id }),
+    )?;
+    let possession_input = transition_signature_input(
+        "authority-key-possession",
+        serde_json::json!({
+            "certificate_digest": epoch_id,
+            "target_authority_key_id": authority_key_id
+        }),
+    )?;
+    let certificate = NormalizedFreshGenesisCertificateV1 {
+        certificate_body: body,
+        epoch_id: epoch_id.clone(),
+        epoch_signature: lower_hex(key_pair.sign(&epoch_input).as_ref()),
+        authority_key_possession_signature: lower_hex(key_pair.sign(&possession_input).as_ref()),
+    };
+    let value = serde_json::to_value(&certificate)
+        .map_err(|_| invalid("normalized fresh genesis certificate is invalid"))?;
+    let canonical = encode_canonical_value(&value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized fresh genesis certificate is not canonical"))?;
+    let canonical_transition_certificate = String::from_utf8(canonical)
+        .map_err(|_| invalid("normalized fresh genesis certificate is not UTF-8"))?;
+    let signed = SignedNormalizedStorageTransitionV1 {
+        epoch_id,
+        transition_certificate_digest: transition_digest("epoch-transition-certificate", &value)?,
+        canonical_transition_certificate,
+        authority_key_id,
+        authority_public_key,
+    };
+    verify_normalized_fresh_genesis_v1(&signed)?;
+    Ok(signed)
+}
+
+fn verify_normalized_fresh_genesis_v1(
+    signed: &SignedNormalizedStorageTransitionV1,
+) -> Result<NormalizedFreshGenesisCertificateV1, NormalizedSqliteError> {
+    if signed.canonical_transition_certificate.is_empty()
+        || signed.canonical_transition_certificate.len() > MAXIMUM_TRANSITION_CERTIFICATE_BYTES
+        || !valid_sha256(&signed.epoch_id)
+        || !valid_sha256(&signed.transition_certificate_digest)
+        || !valid_sha256(&signed.authority_key_id)
+        || !valid_sha256(&signed.authority_public_key)
+    {
+        return Err(invalid("normalized fresh genesis is invalid"));
+    }
+    let value: Value = serde_json::from_str(&signed.canonical_transition_certificate)
+        .map_err(|_| invalid("normalized fresh genesis certificate is invalid JSON"))?;
+    let canonical = encode_canonical_value(&value, MAXIMUM_TRANSITION_CERTIFICATE_BYTES)
+        .map_err(|_| invalid("normalized fresh genesis certificate is not canonical"))?;
+    if canonical.as_slice() != signed.canonical_transition_certificate.as_bytes()
+        || transition_digest("epoch-transition-certificate", &value)?
+            != signed.transition_certificate_digest
+    {
+        return Err(invalid("normalized fresh genesis certificate changed"));
+    }
+    let certificate: NormalizedFreshGenesisCertificateV1 = serde_json::from_value(value)
+        .map_err(|_| invalid("normalized fresh genesis certificate is invalid"))?;
+    let body = &certificate.certificate_body;
+    let body_value = serde_json::to_value(body)
+        .map_err(|_| invalid("normalized fresh genesis body is invalid"))?;
+    if body.format != NORMALIZED_FRESH_GENESIS_FORMAT
+        || body.epoch_number != 1
+        || body.writer_id != "primary:desktop"
+        || body.signature_algorithm != SIGNATURE_ALGORITHM
+        || body.sqlite_contract_version != SQLITE_CONTRACT_VERSION
+        || body.sqlite_schema_version != SQLITE_SCHEMA_VERSION
+        || body.sqlite_protocol_version != SQLITE_PROTOCOL_VERSION
+        || body.normalized_schema_sha256 != NORMALIZED_SCHEMA_SHA256
+        || body.checkpoint_format != NORMALIZED_CHECKPOINT_FORMAT
+        || !valid_sha256(&body.library_id)
+        || !valid_sha256(&body.normalized_product_digest)
+        || body.authority_key_id != signed.authority_key_id
+        || body.authority_public_key != signed.authority_public_key
+        || transition_authority_key_id(&body.authority_public_key)? != body.authority_key_id
+        || body.accepted_at > 9_007_199_254_740_991
+        || certificate.epoch_id != signed.epoch_id
+        || transition_digest("epoch-transition-certificate", &body_value)? != certificate.epoch_id
+    {
+        return Err(invalid("normalized fresh genesis body is invalid"));
+    }
+    let epoch_input = transition_signature_input(
+        "epoch-transition-certificate",
+        serde_json::json!({ "certificate_digest": certificate.epoch_id }),
+    )?;
+    let possession_input = transition_signature_input(
+        "authority-key-possession",
+        serde_json::json!({
+            "certificate_digest": certificate.epoch_id,
+            "target_authority_key_id": body.authority_key_id
+        }),
+    )?;
+    if !verify_library_core_ed25519(
+        &body.authority_public_key,
+        &certificate.epoch_signature,
+        &epoch_input,
+    )
+    .map_err(|_| invalid("normalized fresh genesis signature is malformed"))?
+        || !verify_library_core_ed25519(
+            &body.authority_public_key,
+            &certificate.authority_key_possession_signature,
+            &possession_input,
+        )
+        .map_err(|_| invalid("normalized fresh authority possession signature is malformed"))?
+    {
+        return Err(invalid("normalized fresh genesis signature is invalid"));
     }
     Ok(certificate)
 }
@@ -1829,6 +1999,237 @@ fn advance_normalized_transition_plan_v1(
     Ok(())
 }
 
+pub fn prepare_fresh_normalized_desktop_library_v1(
+    target: &mut Connection,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    requested_accepted_at: i64,
+) -> Result<NormalizedDesktopAuthorityPreparedV1, NormalizedSqliteError> {
+    if !valid_sha256(installation_witness) || requested_accepted_at < 0 {
+        return Err(invalid("normalized fresh Library identity is invalid"));
+    }
+    let inspection = target.transaction()?;
+    let (product_digest, product_records, product_bytes) =
+        normalized_product_digest(&inspection, false)?;
+    let transition_rows: i64 = inspection.query_row(
+        "SELECT count(*) FROM library_storage_transition_plan;",
+        [],
+        |row| row.get(0),
+    )?;
+    let authority_rows: i64 = inspection.query_row(
+        "SELECT (SELECT count(*) FROM library_meta)
+              + (SELECT count(*) FROM library_materialization_generation)
+              + (SELECT count(*) FROM library_authority_epochs)
+              + (SELECT count(*) FROM library_authority_frontier)
+              + (SELECT count(*) FROM library_active_authority)
+              + (SELECT count(*) FROM library_writer_admission);",
+        [],
+        |row| row.get(0),
+    )?;
+    inspection.commit()?;
+    if transition_rows != 0 {
+        return Err(invalid(
+            "normalized fresh Library conflicts with a migration candidate",
+        ));
+    }
+    let library_id = native_library_id(&product_digest, installation_witness)
+        .map_err(|_| invalid("normalized fresh Library identity is invalid"))?;
+
+    let signed = if authority_rows == 0 {
+        let key_pair = load_or_create_authority_key_pair(authority_store, &library_id)
+            .map_err(|_| invalid("normalized fresh authority key is unavailable"))?;
+        let authority_public_key = lower_hex(key_pair.public_key().as_ref());
+        let body = NormalizedFreshGenesisBodyV1 {
+            format: NORMALIZED_FRESH_GENESIS_FORMAT.to_owned(),
+            library_id: library_id.clone(),
+            epoch_number: 1,
+            writer_id: "primary:desktop".to_owned(),
+            authority_key_id: transition_authority_key_id(&authority_public_key)?,
+            authority_public_key,
+            signature_algorithm: SIGNATURE_ALGORITHM.to_owned(),
+            sqlite_contract_version: SQLITE_CONTRACT_VERSION,
+            sqlite_schema_version: SQLITE_SCHEMA_VERSION,
+            sqlite_protocol_version: SQLITE_PROTOCOL_VERSION,
+            normalized_schema_sha256: NORMALIZED_SCHEMA_SHA256.to_owned(),
+            checkpoint_format: NORMALIZED_CHECKPOINT_FORMAT.to_owned(),
+            normalized_product_digest: product_digest.clone(),
+            normalized_record_count: product_records,
+            normalized_canonical_bytes: product_bytes,
+            accepted_at: unsigned_count(
+                requested_accepted_at,
+                "normalized fresh Library time is invalid",
+            )?,
+        };
+        let signed = sign_normalized_fresh_genesis_v1(body, authority_store)?;
+        let certificate = verify_normalized_fresh_genesis_v1(&signed)?;
+        let body = &certificate.certificate_body;
+        let frontier_digest = transition_digest("causal-frontier", &serde_json::json!([]))?;
+        let transaction = target.transaction()?;
+        let (checked_digest, checked_records, checked_bytes) =
+            normalized_product_digest(&transaction, true)?;
+        if checked_digest != product_digest
+            || checked_records != product_records
+            || checked_bytes != product_bytes
+        {
+            return Err(invalid("normalized fresh Library changed before genesis"));
+        }
+        transaction.execute(
+            "INSERT INTO library_authority_epochs
+             (epoch_id, library_id, epoch_number, authority_key_id,
+              authority_public_key, transition_certificate_digest,
+              canonical_transition_certificate, accepted_manifest_generation,
+              checkpoint_frontier_digest, materialized_state_digest, accepted_at)
+             VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?9);",
+            params![
+                signed.epoch_id,
+                body.library_id,
+                signed.authority_key_id,
+                signed.authority_public_key,
+                signed.transition_certificate_digest,
+                signed.canonical_transition_certificate,
+                frontier_digest,
+                body.normalized_product_digest,
+                i64::try_from(body.accepted_at)
+                    .map_err(|_| invalid("normalized fresh Library time is invalid"))?,
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO library_active_authority
+             (active_key, library_id, epoch_id, writer_id,
+              accepted_manifest_generation, activated_at)
+             VALUES ('active', ?1, ?2, 'primary:desktop', 0, ?3);",
+            params![body.library_id, signed.epoch_id, body.accepted_at],
+        )?;
+        transaction.execute(
+            "INSERT INTO library_writer_admission
+             (singleton_id, local_writer_id, active_writer_id,
+              observed_manifest_generation, observed_at)
+             VALUES (1, 'primary:desktop', 'primary:desktop', 0, ?1);",
+            [body.accepted_at],
+        )?;
+        transaction.execute(
+            "INSERT INTO library_meta
+             (singleton_id, library_id, schema_version, authority_epoch,
+              source_revision, updated_at)
+             VALUES (1, ?1, ?2, ?3, 0, ?4);",
+            params![
+                body.library_id,
+                i64::from(SQLITE_SCHEMA_VERSION),
+                signed.epoch_id,
+                body.accepted_at,
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO library_materialization_generation
+             (singleton_id, generation_id) VALUES (1, ?1);",
+            [&body.normalized_product_digest],
+        )?;
+        let violation: Option<String> = transaction
+            .query_row(
+                "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1;",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if violation.is_some() {
+            return Err(invalid(
+                "normalized fresh Library foreign key closure failed",
+            ));
+        }
+        transaction.commit()?;
+        signed
+    } else {
+        if authority_rows != 5 {
+            return Err(invalid("normalized fresh Library authority is incomplete"));
+        }
+        let stored: (String, String, String, String, String, i64, String, i64) = target.query_row(
+            "SELECT epoch.epoch_id, epoch.transition_certificate_digest,
+                    epoch.canonical_transition_certificate, epoch.authority_key_id,
+                    epoch.authority_public_key, epoch.accepted_at,
+                    epoch.checkpoint_frontier_digest, meta.source_revision
+             FROM library_authority_epochs AS epoch
+             JOIN library_active_authority AS active
+               ON active.active_key = 'active'
+              AND active.library_id = epoch.library_id
+              AND active.epoch_id = epoch.epoch_id
+              AND active.writer_id = 'primary:desktop'
+              AND active.accepted_manifest_generation = 0
+              AND active.activated_at = epoch.accepted_at
+             JOIN library_writer_admission AS admission
+               ON admission.singleton_id = 1
+              AND admission.local_writer_id = 'primary:desktop'
+              AND admission.active_writer_id = 'primary:desktop'
+              AND admission.observed_manifest_generation = 0
+              AND admission.observed_at = epoch.accepted_at
+             JOIN library_meta AS meta
+               ON meta.singleton_id = 1
+              AND meta.library_id = epoch.library_id
+              AND meta.authority_epoch = epoch.epoch_id
+             JOIN library_materialization_generation AS generation
+               ON generation.singleton_id = 1
+              AND generation.generation_id = epoch.materialized_state_digest
+             WHERE epoch.library_id = ?1
+               AND epoch.epoch_number = 1
+               AND epoch.accepted_manifest_generation = 0
+               AND epoch.materialized_state_digest = ?2;",
+            params![library_id, product_digest],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )?;
+        let signed = SignedNormalizedStorageTransitionV1 {
+            epoch_id: stored.0,
+            transition_certificate_digest: stored.1,
+            canonical_transition_certificate: stored.2,
+            authority_key_id: stored.3,
+            authority_public_key: stored.4,
+        };
+        let certificate = verify_normalized_fresh_genesis_v1(&signed)?;
+        let body = certificate.certificate_body;
+        if body.library_id != library_id
+            || body.normalized_product_digest != product_digest
+            || body.normalized_record_count != product_records
+            || body.normalized_canonical_bytes != product_bytes
+            || i64::try_from(body.accepted_at).ok() != Some(stored.5)
+            || stored.6 != transition_digest("causal-frontier", &serde_json::json!([]))?
+            || stored.7 != 0
+            || sign_normalized_fresh_genesis_v1(body, authority_store)? != signed
+        {
+            return Err(invalid("normalized fresh Library authority changed"));
+        }
+        signed
+    };
+    let certificate = verify_normalized_fresh_genesis_v1(&signed)?;
+    let accepted_at = certificate.certificate_body.accepted_at;
+    let primary_actor_id = install_normalized_primary_actor_v2(
+        target,
+        installation_witness,
+        actor_store,
+        authority_store,
+        i64::try_from(accepted_at)
+            .map_err(|_| invalid("normalized fresh Library time is invalid"))?,
+    )?;
+    Ok(NormalizedDesktopAuthorityPreparedV1 {
+        format: "freed_normalized_desktop_authority_prepared_v1".to_owned(),
+        library_id,
+        epoch_id: signed.epoch_id,
+        transition_certificate_digest: signed.transition_certificate_digest,
+        normalized_product_digest: product_digest,
+        selected_at: accepted_at,
+        primary_actor_id,
+    })
+}
+
 pub fn prepare_normalized_desktop_cutover_v1(
     source: &mut Connection,
     target: &mut Connection,
@@ -1836,7 +2237,7 @@ pub fn prepare_normalized_desktop_cutover_v1(
     actor_store: &dyn ActorKeyStore,
     authority_store: &dyn AuthorityKeyStore,
     requested_accepted_at: i64,
-) -> Result<NormalizedDesktopCutoverPreparedV1, NormalizedSqliteError> {
+) -> Result<NormalizedDesktopAuthorityPreparedV1, NormalizedSqliteError> {
     let candidate = match load_normalized_migration_candidate_v1(target)? {
         Some(candidate) => candidate,
         None => migrate_legacy_snapshot_v1(source, target)?,
@@ -1874,8 +2275,8 @@ pub fn prepare_normalized_desktop_cutover_v1(
         accepted_at,
         "actor_installed",
     )?;
-    Ok(NormalizedDesktopCutoverPreparedV1 {
-        format: "freed_normalized_desktop_cutover_prepared_v1".to_owned(),
+    Ok(NormalizedDesktopAuthorityPreparedV1 {
+        format: "freed_normalized_desktop_authority_prepared_v1".to_owned(),
         library_id: candidate.library_id,
         epoch_id: transition.epoch_id,
         transition_certificate_digest: transition.transition_certificate_digest,
@@ -2644,6 +3045,71 @@ mod tests {
     }
 
     #[test]
+    fn fresh_desktop_library_starts_in_normalized_sqlite_without_a_migration_source() {
+        let authority_key = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+            .unwrap()
+            .as_ref()
+            .to_vec();
+        let actor_key = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+            .unwrap()
+            .as_ref()
+            .to_vec();
+        let authority_store = TestAuthorityKeyStore(authority_key);
+        let actor_store = TestActorKeyStore(actor_key);
+        let mut target = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&target).unwrap();
+        let witness = "7".repeat(64);
+
+        let prepared = prepare_fresh_normalized_desktop_library_v1(
+            &mut target,
+            &witness,
+            &actor_store,
+            &authority_store,
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(prepared.selected_at, 1_000);
+        assert!(!prepared.primary_actor_id.is_empty());
+        let certificate: String = target
+            .query_row(
+                "SELECT canonical_transition_certificate FROM library_authority_epochs;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(certificate.contains(NORMALIZED_FRESH_GENESIS_FORMAT));
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_storage_transition_plan;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            prepare_fresh_normalized_desktop_library_v1(
+                &mut target,
+                &witness,
+                &actor_store,
+                &authority_store,
+                2_000,
+            )
+            .unwrap(),
+            prepared
+        );
+        assert!(prepare_fresh_normalized_desktop_library_v1(
+            &mut target,
+            &"8".repeat(64),
+            &actor_store,
+            &authority_store,
+            2_000,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn cutover_preparation_pins_identity_and_replays_one_selector_receipt() {
         let (mut source, authority_key_bytes) = legacy_source_fixture();
         let mut target = Connection::open_in_memory().unwrap();
@@ -2664,7 +3130,7 @@ mod tests {
         assert_eq!(prepared.selected_at, 1_000);
         assert_eq!(
             prepared.format,
-            "freed_normalized_desktop_cutover_prepared_v1"
+            "freed_normalized_desktop_authority_prepared_v1"
         );
         assert_eq!(
             target

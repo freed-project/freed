@@ -35,6 +35,7 @@ import {
   bootstrapSqliteLibraryAuthority,
   clearSqliteLibrary,
   dispatchSqliteMutation,
+  ensureFreshNormalizedDesktopLibrary,
   finalizePortableSqliteLibraryImport,
   loadSqliteLibraryState,
   readSqliteLibrarySyncDescriptor,
@@ -125,19 +126,26 @@ async function initializeEmptySqliteLibrary(): Promise<void> {
 
 async function ensureInitialized(): Promise<DocState> {
   if (lastState) return lastState;
-  const status = await sqliteLibraryStatus();
-  if (
-    shouldBlockForLegacyLibrary(status, true) &&
-    (await hasLegacyLibraryData())
-  ) {
+  let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
+  let legacyDataPresent = false;
+  if (!normalizedSelected) {
+    legacyDataPresent = await hasLegacyLibraryData();
+    normalizedSelected = await ensureFreshNormalizedDesktopLibrary(
+      !legacyDataPresent,
+    );
+  }
+  const status = normalizedSelected ? null : await sqliteLibraryStatus();
+  if (shouldBlockForLegacyLibrary(status, legacyDataPresent)) {
     throw new Error(
       "Freed Desktop found legacy Library data and refused to replace it with an empty SQLite Library. Recover the existing Library before continuing.",
     );
   }
-  if (!status?.active) await initializeEmptySqliteLibrary();
+  if (!normalizedSelected && !status?.active) {
+    await initializeEmptySqliteLibrary();
+  }
   if (readLibraryCoreDesktopRole() === "follower") {
     await recoverSqliteLibraryFollowerOverlay();
-  } else {
+  } else if (!normalizedSelected) {
     await bootstrapSqliteLibraryAuthority({
       descriptor: await readSqliteLibrarySyncDescriptor(),
       persistedCloudIdentity: await readPersistedSqliteLibraryCloudIdentity(),

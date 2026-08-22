@@ -14187,6 +14187,7 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             library_core_desktop_runtime::query_normalized_library,
+            library_core_desktop_runtime::ensure_fresh_normalized_desktop_library,
             library_core_desktop_runtime::normalized_library_primary_mutation_context,
             library_core_desktop_runtime::sign_normalized_library_operation,
             library_core_desktop_runtime::commit_normalized_library_transaction,

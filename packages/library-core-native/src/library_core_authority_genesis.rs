@@ -271,7 +271,10 @@ fn legacy_library_id(document_id: &str) -> Result<String, String> {
     )
 }
 
-fn native_library_id(source_digest: &str, installation_witness: &str) -> Result<String, String> {
+pub(crate) fn native_library_id(
+    source_digest: &str,
+    installation_witness: &str,
+) -> Result<String, String> {
     if !is_lower_sha256(source_digest) || !is_lower_sha256(installation_witness) {
         return Err("Library Core native Library identity input is invalid".to_string());
     }
@@ -692,7 +695,7 @@ pub trait AuthorityKeyStore {
     fn store(&self, library_id: &str, bytes: &[u8]) -> Result<(), String>;
 }
 
-fn load_or_create_authority_key_pair(
+pub(crate) fn load_or_create_authority_key_pair(
     store: &dyn AuthorityKeyStore,
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {

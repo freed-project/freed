@@ -10,6 +10,11 @@ vi.mock("./library-core-desktop-role", () => ({
   readLibraryCoreDesktopRole: () => "primary",
 }));
 
+vi.mock("./legacy-library-presence", () => ({
+  hasLegacyLibraryData: vi.fn(async () => false),
+  shouldBlockForLegacyLibrary: vi.fn(() => false),
+}));
+
 vi.mock("./library-core-cloud-sync", () => ({
   readPersistedSqliteLibraryCloudIdentity: vi.fn(async () => {
     mocks.calls.push("cloud-identity");

@@ -261,6 +261,9 @@ export type LibraryCoreSqliteQueryResponseFor<
                                             ? LibraryCorePreferencesSnapshotResponseV1
                                             : never;
 
+export type LibraryCoreSqliteQueryResponse =
+  LibraryCoreSqliteQueryResponseFor<LibraryCoreSqliteQueryRequest>;
+
 /** Validates one native or browser query response against its exact request. */
 export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
@@ -484,29 +487,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 }
 
 export type LibraryCoreSqliteWorkerResult =
-  | LibraryCoreAccountDetailResponseV1
-  | LibraryCoreAccountGraphPageResponseV1
-  | LibraryCoreAccountTimelineResponseV1
-  | LibraryCoreChangeFeedResponseV1
-  | LibraryCoreFacetSummaryResponseV1
-  | LibraryCoreFeedBrowsePageResponseV3
-  | LibraryCoreFeedPageResponseV1
-  | LibraryCoreItemDetailResponseV1
-  | LibraryCoreItemReaderBodyResponseV1
-  | LibraryCoreItemScanResponseV1
-  | LibraryCoreContentFetchPageResponseV1
-  | LibraryCoreMapMarkersResponseV1
-  | LibraryCorePersonDetailResponseV1
-  | LibraryCorePersonGraphPageResponseV1
-  | LibraryCorePersonTimelineResponseV1
-  | LibraryCorePersonsGraphResponseV1
-  | LibraryCoreProviderMediaPageResponseV1
-  | LibraryCoreRssFeedGraphPageResponseV1
-  | LibraryCoreSavedAnalyticsResponseV2
-  | LibraryCoreSavedFeedPageResponseV2
-  | LibraryCoreSearchPageResponseV1
-  | LibraryCoreStoryWallCandidatesResponseV1
-  | LibraryCorePreferencesSnapshotResponseV1
+  | LibraryCoreSqliteQueryResponse
   | LibraryCoreNormalizedCheckpointStageStatusV2
   | LibraryCoreNormalizedCheckpointActivationReceiptV2
   | LibraryCoreDeviceGraphLayoutMutationResultV1

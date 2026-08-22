@@ -1,12 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
+import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  bootstrap: vi.fn(),
+  beginImport: vi.fn(),
   calls: [] as string[],
-}));
-
-vi.mock("./library-core-desktop-role", () => ({
-  readLibraryCoreDesktopRole: () => "follower",
+  status: vi.fn(),
 }));
 
 vi.mock("./legacy-library-presence", () => ({
@@ -14,37 +13,31 @@ vi.mock("./legacy-library-presence", () => ({
   shouldBlockForLegacyLibrary: vi.fn(() => false),
 }));
 
+vi.mock("./library-core-desktop-role", () => ({
+  readLibraryCoreDesktopRole: () => "primary",
+}));
+
 vi.mock("./library-core-cloud-sync", () => ({
-  readPersistedSqliteLibraryCloudIdentity: vi.fn(),
+  readPersistedSqliteLibraryCloudIdentity: vi.fn(async () => {
+    throw new Error("fresh normalized startup must not read legacy authority hints");
+  }),
 }));
 
 vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    sqliteLibraryStatus: vi.fn(async () => ({
-      active: true,
-      revision: 4,
-      expectedItemCount: 0,
-      importedItemCount: 0,
-      sourceGeneration: 2,
-      sourceRevision: 3,
-      sourceDigest: "ab".repeat(32),
-    })),
-    recoverSqliteLibraryFollowerOverlay: vi.fn(async () => {
-      mocks.calls.push("recover");
-      return {
-        transactionCount: 1,
-        operationCount: 1,
-        materializedRowCount: 1,
-        revisionAdvanced: true,
-      };
+    beginPortableSqliteLibraryImport: mocks.beginImport,
+    bootstrapSqliteLibraryAuthority: mocks.bootstrap,
+    ensureFreshNormalizedDesktopLibrary: vi.fn(async (legacyDataAbsent: boolean) => {
+      mocks.calls.push(`select:${String(legacyDataAbsent)}`);
+      return legacyDataAbsent;
     }),
     loadSqliteLibraryState: vi.fn(async () => {
       mocks.calls.push("load");
       return {
         items: [],
-        searchCorpusVersion: 5,
+        searchCorpusVersion: 0,
         feeds: {},
         persons: {},
         accounts: {},
@@ -65,15 +58,19 @@ vi.mock("./sqlite-library", async (importOriginal) => {
         docItemCount: 0,
       };
     }),
+    sqliteLibraryStatus: mocks.status,
   };
 });
 
 import { initDoc } from "./library-client";
 
-describe("editable follower startup recovery", () => {
-  it("replays durable local edits before exposing the active checkpoint", async () => {
+describe("fresh normalized Desktop startup", () => {
+  it("selects native SQLite without creating or bootstrapping a historical Library", async () => {
     await initDoc();
 
-    expect(mocks.calls).toEqual(["recover", "load"]);
+    expect(mocks.calls).toEqual(["select:false", "select:true", "load"]);
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.beginImport).not.toHaveBeenCalled();
+    expect(mocks.bootstrap).not.toHaveBeenCalled();
   });
 });

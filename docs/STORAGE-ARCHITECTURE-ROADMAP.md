@@ -279,6 +279,13 @@ Rollback is allowed only before a later canonical write and only to the same
 frontier. After a later write, recovery rolls forward from immutable logical
 objects and backups.
 
+Fresh Freed Desktop installations do not manufacture an empty historical
+Library to enter this sequence. After bounded retired-storage absence checks,
+the native core signs a fresh SQLite genesis, installs its normalized authority
+and Primary actor, and publishes the final selector during the first launch.
+Existing installations with any historical row remain on the migration path
+and cannot be mistaken for a fresh Library.
+
 Delete:
 
 - Automerge runtime, worker, persistence, merge, and cloud paths

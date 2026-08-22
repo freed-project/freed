@@ -12,7 +12,7 @@ use crate::library_core_bound_sqlite_vfs::BoundSqliteDatabase;
 use crate::library_core_canonical::encode_canonical_value;
 use crate::{
     install_normalized_schema_v1, LibraryCoreJournal, LibraryCoreProcessLease, LibraryCoreStore,
-    LibraryCoreStoreError, NormalizedDesktopCutoverPreparedV1, ProcessLeaseIdentity,
+    LibraryCoreStoreError, NormalizedDesktopAuthorityPreparedV1, ProcessLeaseIdentity,
 };
 
 const LIBRARY_DIRECTORY: &str = "library-core";
@@ -335,9 +335,9 @@ impl LibraryCoreDesktopBinding {
 
     pub fn publish_normalized_authority_selection_v1(
         &self,
-        prepared: &NormalizedDesktopCutoverPreparedV1,
+        prepared: &NormalizedDesktopAuthorityPreparedV1,
     ) -> Result<(), LibraryCoreStoreError> {
-        if prepared.format != "freed_normalized_desktop_cutover_prepared_v1"
+        if prepared.format != "freed_normalized_desktop_authority_prepared_v1"
             || prepared.primary_actor_id.is_empty()
         {
             return Err(LibraryCoreStoreError::from(
@@ -469,8 +469,8 @@ mod tests {
             normalized_product_digest: "1".repeat(64),
             selected_at: 400,
         };
-        let prepared = NormalizedDesktopCutoverPreparedV1 {
-            format: "freed_normalized_desktop_cutover_prepared_v1".to_owned(),
+        let prepared = NormalizedDesktopAuthorityPreparedV1 {
+            format: "freed_normalized_desktop_authority_prepared_v1".to_owned(),
             library_id: selection.library_id.clone(),
             epoch_id: selection.epoch_id.clone(),
             transition_certificate_digest: selection.transition_certificate_digest.clone(),

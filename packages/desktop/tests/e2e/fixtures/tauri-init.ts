@@ -333,6 +333,69 @@ export function tauriInitScript(): string {
         projectionRevision: Math.max(0, sqliteState().revision || 0),
         transitionSequence: Math.max(0, sqliteState().sourceGeneration || 0),
       };
+      if (request.queryId === 'account_detail_v1') {
+        var shell = sqliteState().shell || {};
+        var account = shell.accounts && shell.accounts[request.accountId] || null;
+        var fingerprint = account && account.sampleDataFingerprint || null;
+        return {
+          account: account ? {
+            address: account.address == null ? null : account.address,
+            avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+            createdAt: account.createdAt,
+            discoveredFrom: account.discoveredFrom,
+            displayName: account.displayName == null ? null : account.displayName,
+            email: account.email == null ? null : account.email,
+            externalId: account.externalId,
+            firstSeenAt: account.firstSeenAt,
+            followRosterActive: account.followRosterActive == null ? null : account.followRosterActive,
+            followRosterRoles: (account.followRosterRoles || []).slice().sort(),
+            followRosterSyncedAt: account.followRosterSyncedAt == null ? null : account.followRosterSyncedAt,
+            handle: account.handle == null ? null : account.handle,
+            id: account.id,
+            importedAt: account.importedAt == null ? null : account.importedAt,
+            kind: account.kind,
+            lastSeenAt: account.lastSeenAt,
+            personId: account.personId == null ? null : account.personId,
+            phone: account.phone == null ? null : account.phone,
+            profileUrl: account.profileUrl == null ? null : account.profileUrl,
+            provider: account.provider,
+            sampleBatchId: fingerprint ? fingerprint.batchId : null,
+            sampleGeneratedAt: fingerprint ? fingerprint.generatedAt : null,
+            sampleGeneratorVersion: fingerprint ? fingerprint.generatorVersion : null,
+            updatedAt: account.updatedAt,
+          } : null,
+          queryId: request.queryId,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'background_item_page_v1') {
+        var backgroundRows = Object.values(sqliteState().items)
+          .filter(function(item) { return item && !item.__deleted; })
+          .sort(function(left, right) {
+            return left.globalId.localeCompare(right.globalId);
+          })
+          .slice(0, request.limit || 64)
+          .map(function(item) {
+            var rss = item.rssSource || null;
+            return Object.assign({}, sqliteFeedCard(item), {
+              hidden: !!sqliteItemState(item).hidden,
+              rssSource: rss ? {
+                feedTitle: rss.feedTitle || '',
+                feedUrl: rss.feedUrl,
+                siteUrl: rss.siteUrl || '',
+              } : null,
+              sampleDataFingerprint: item.sampleDataFingerprint || null,
+            });
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: backgroundRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'provider_media_page_v1') {
         var providerRows = Object.values(sqliteState().items).filter(function(item) {
           if (!item || item.__deleted) return false;

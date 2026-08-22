@@ -1031,6 +1031,19 @@ complete actor row, capability certificate, and every generated mutation
 grant. Merely finding existing rows never counts as success. Missing, extra,
 or changed rows fail closed.
 
+A fresh Freed Desktop installation starts directly in normalized SQLite. The
+renderer first asks whether a normalized selector already exists. Only when it
+does not exist does it inspect the retired IndexedDB metadata for historical
+Library presence. Native startup then also proves that every historical
+Library table except its schema metadata is empty. The reusable Rust core
+derives one stable Library identity, creates or reads back the authority key,
+signs `freed_normalized_fresh_genesis_certificate_v1`, installs the empty
+normalized authority and Primary actor, and publishes the selector in the same
+app launch. It never creates an empty shell, historical authority, or migration
+candidate. Exact retry reconstructs and verifies the stored certificate and
+actor. A different installation witness, changed key, changed product digest,
+partial authority, or any historical row fails closed.
+
 The native Desktop cutover preparation operation owns the stage sequence. It
 creates the candidate only when none exists, binds the installation witness and
 first acceptance time once, installs the signed authority, enrolls the local
