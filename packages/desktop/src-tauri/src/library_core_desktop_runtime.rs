@@ -420,6 +420,7 @@ pub(super) struct DesktopNormalizedMutationReceipt {
     follower_result_digest: String,
     follower_result_sequence: i64,
     canonical_follower_result_json: String,
+    invalidations: Vec<freed_library_core::NormalizedMutationInvalidationV1>,
 }
 
 impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
@@ -442,6 +443,7 @@ impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
             follower_result_sequence: receipt.follower_result_sequence,
             canonical_follower_result_json: String::from_utf8(receipt.canonical_follower_result)
                 .map_err(|_| "normalized mutation result is not canonical UTF-8".to_string())?,
+            invalidations: receipt.invalidations,
         })
     }
 }

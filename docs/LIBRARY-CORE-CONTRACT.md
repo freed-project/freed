@@ -243,7 +243,10 @@ The native core then rechecks the complete canonical transaction, current
 writer admission, actor capability, actor tip, causal frontier, and authority
 key before one SQLite commit. The renderer cannot supply a key, sequence,
 revision, SQL statement, or authority decision. It receives only the exact
-transaction and revision receipt plus the canonical signed follower result.
+transaction and revision receipt, its ordered compact invalidations, and the
+canonical signed follower result. Exact response-loss replay returns the same
+invalidation list from SQLite. React invalidates only affected visible query
+windows and never reconstructs a state shell to discover what changed.
 
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They

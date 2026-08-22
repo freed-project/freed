@@ -53,6 +53,16 @@ pub struct NormalizedMutationReceiptV1 {
     pub follower_result_digest: String,
     pub follower_result_sequence: i64,
     pub canonical_follower_result: Vec<u8>,
+    pub invalidations: Vec<NormalizedMutationInvalidationV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMutationInvalidationV1 {
+    pub ordinal: i64,
+    pub topic: String,
+    pub entity_id: Option<String>,
+    pub reset_required: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1456,22 +1466,53 @@ fn stored_receipt(
                     follower_result_digest: row.get(10)?,
                     follower_result_sequence: row.get(11)?,
                     canonical_follower_result: row.get(12)?,
+                    invalidations: Vec::new(),
                 })
             },
         )
         .optional()?;
-    if let Some(receipt) = &receipt {
-        if receipt.transaction_digest != verified.transaction_digest
-            || receipt.actor_id != verified.actor_id
-            || receipt.member_count != verified.members.len()
-        {
-            return Err(JournalError::TransactionReplayConflict {
-                transaction_id: verified.transaction_id.clone(),
-            }
-            .into());
+    let Some(mut receipt) = receipt else {
+        return Ok(None);
+    };
+    if receipt.transaction_digest != verified.transaction_digest
+        || receipt.actor_id != verified.actor_id
+        || receipt.member_count != verified.members.len()
+    {
+        return Err(JournalError::TransactionReplayConflict {
+            transaction_id: verified.transaction_id.clone(),
         }
+        .into());
     }
-    Ok(receipt)
+    receipt.invalidations = invalidations_at(transaction, receipt.committed_revision)?;
+    Ok(Some(receipt))
+}
+
+fn invalidations_at(
+    connection: &Connection,
+    revision: i64,
+) -> Result<Vec<NormalizedMutationInvalidationV1>, NormalizedSqliteError> {
+    let mut statement = connection.prepare(
+        "SELECT ordinal, topic, entity_id, reset_required
+         FROM library_invalidations
+         WHERE revision = ?1
+         ORDER BY ordinal;",
+    )?;
+    let invalidations = statement
+        .query_map([revision], |row| {
+            Ok(NormalizedMutationInvalidationV1 {
+                ordinal: row.get(0)?,
+                topic: row.get(1)?,
+                entity_id: row.get(2)?,
+                reset_required: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if invalidations.len() > 256 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation invalidation count is invalid",
+        ));
+    }
+    Ok(invalidations)
 }
 
 fn require_causal_tips(
@@ -2444,6 +2485,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         follower_result_digest,
         follower_result_sequence,
         canonical_follower_result,
+        invalidations: invalidations_at(&transaction, committed_revision)?,
     };
     transaction.commit()?;
     Ok(NormalizedMutationResolutionV1::Accepted(receipt))
@@ -2913,6 +2955,23 @@ mod tests {
         assert_eq!(receipt.previous_revision, 0);
         assert_eq!(receipt.committed_revision, 1);
         assert_eq!(receipt.follower_result_sequence, 1);
+        assert_eq!(
+            receipt.invalidations,
+            vec![
+                NormalizedMutationInvalidationV1 {
+                    ordinal: 0,
+                    topic: "feed_item".into(),
+                    entity_id: Some("rss:item:1".into()),
+                    reset_required: false,
+                },
+                NormalizedMutationInvalidationV1 {
+                    ordinal: 1,
+                    topic: "feed_item".into(),
+                    entity_id: Some("rss:item:2".into()),
+                    reset_required: false,
+                },
+            ]
+        );
         assert!(receipt.canonical_follower_result.len() <= 131_072);
         let native_vector: Value = serde_json::from_str(include_str!(
             "../../shared/src/library-core/follower-result-native-vector-v1.json"

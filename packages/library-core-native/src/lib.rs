@@ -86,7 +86,8 @@ pub use normalized_import::{
 };
 pub use normalized_mutation::{
     accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
-    NormalizedMutationCausalTipV1, NormalizedMutationContextV1, NormalizedMutationReceiptV1,
+    NormalizedMutationCausalTipV1, NormalizedMutationContextV1, NormalizedMutationInvalidationV1,
+    NormalizedMutationReceiptV1,
 };
 pub use normalized_query::{
     query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,
