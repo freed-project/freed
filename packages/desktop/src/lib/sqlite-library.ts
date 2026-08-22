@@ -40,6 +40,8 @@ import {
   LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
   LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
   LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
+  LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
+  LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -2084,6 +2086,33 @@ async function readNormalizedAccount(accountId: string): Promise<Account | null>
   };
 }
 
+async function readNormalizedRssFeed(url: string): Promise<RssFeed | null> {
+  const response = await queryNormalizedLibrary({
+    queryId: LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
+    url,
+  });
+  const feed = response.feed;
+  if (!feed) return null;
+  const sampleDataFingerprint = normalizedSampleFingerprint(
+    feed.sampleBatchId,
+    feed.sampleGeneratedAt,
+    feed.sampleGeneratorVersion,
+  );
+  return {
+    enabled: feed.enabled,
+    title: feed.title,
+    trackUnread: feed.trackUnread,
+    url: feed.url,
+    ...(feed.siteUrl === null ? {} : { siteUrl: feed.siteUrl }),
+    ...(feed.lastFetched === null ? {} : { lastFetched: feed.lastFetched }),
+    ...(feed.imageUrl === null ? {} : { imageUrl: feed.imageUrl }),
+    ...(feed.pollInterval === null ? {} : { pollInterval: feed.pollInterval }),
+    ...(feed.folder === null ? {} : { folder: feed.folder }),
+    ...(sampleDataFingerprint === undefined ? {} : { sampleDataFingerprint }),
+  };
+}
+
 async function refreshNormalizedMutationProjection(
   state: DocState,
   changedIds: readonly string[],
@@ -2573,7 +2602,9 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "UPDATE_RSS_FEED": {
-      const feed = nextState.feeds[message.url];
+      const feed =
+        nextState.feeds[message.url] ??
+        (await readNormalizedRssFeed(message.url));
       const updated = feed ? { ...feed, ...message.updates } : null;
       const normalizedHandled = updated
         ? await maybeSubmitRssFeedUpsert(updated, timestamp)
@@ -2774,10 +2805,13 @@ export async function dispatchSqliteMutation(
     }
     case "BATCH_REFRESH_FEEDS": {
       await mergeIncomingSqliteItems(message.items);
-      const feeds = message.feeds.flatMap((update) => {
-        const feed = nextState.feeds[update.url];
-        return feed ? [{ ...feed, ...update }] : [];
-      });
+      const feeds: RssFeed[] = [];
+      for (const update of message.feeds) {
+        const feed =
+          nextState.feeds[update.url] ??
+          (await readNormalizedRssFeed(update.url));
+        if (feed) feeds.push({ ...feed, ...update });
+      }
       const normalizedHandled = (await mutationContext()) !== null;
       if (normalizedHandled) {
         for (const feed of feeds) {

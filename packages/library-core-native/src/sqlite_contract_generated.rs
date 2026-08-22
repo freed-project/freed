@@ -623,6 +623,7 @@ pub const QUERY_IDS: &[&str] = &[
     "provider_action_claim_v1",
     "provider_media_page_v1",
     "repair_work_claim_v1",
+    "rss_feed_detail_v1",
     "rss_feed_graph_page_v1",
     "saved_analytics_v1",
     "saved_analytics_v2",
@@ -703,6 +704,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 
     ] },
     SqliteQueryProgram { query_id: "preferences_snapshot_v1", maximum_scan_rows: 513, sql: "SELECT path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences ORDER BY path COLLATE BINARY LIMIT 513;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_preferences;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "rss_feed_detail_v1", maximum_scan_rows: 1, sql: "SELECT feed.url, feed.title, feed.site_url AS siteUrl, feed.last_fetched AS lastFetched, feed.image_url AS imageUrl, CASE feed.enabled WHEN 1 THEN 1 ELSE 0 END AS enabled, feed.poll_interval AS pollInterval, CASE feed.track_unread WHEN 1 THEN 1 ELSE 0 END AS trackUnread, feed.folder, feed.sample_batch_id AS sampleBatchId, feed.sample_generated_at AS sampleGeneratedAt, feed.sample_generator_version AS sampleGeneratorVersion, feed.updated_at AS updatedAt FROM library_rss_feeds AS feed WHERE feed.url = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_rss_feeds WHERE url = ?1 COLLATE BINARY;", variants: &[
 
     ] },
     SqliteQueryProgram { query_id: "rss_feed_graph_page_v1", maximum_scan_rows: 129, sql: "SELECT feed.url, feed.title, COALESCE(feed.image_url, (SELECT item.author_avatar_url FROM library_feed_items AS item WHERE item.rss_feed_url = feed.url AND item.hidden = 0 AND item.author_avatar_url IS NOT NULL ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT 1)) AS imageUrl, CASE feed.enabled WHEN 1 THEN 1 ELSE 0 END AS enabled, feed.updated_at AS updatedAt, (SELECT count(*) FROM library_feed_items AS item WHERE item.rss_feed_url = feed.url AND item.hidden = 0) AS activityCount, (SELECT max(item.published_at) FROM library_feed_items AS item WHERE item.rss_feed_url = feed.url AND item.hidden = 0) AS latestActivityAt FROM library_rss_feeds AS feed WHERE feed.url > COALESCE(?1, '') COLLATE BINARY ORDER BY feed.url COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_rss_feeds;", variants: &[

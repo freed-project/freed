@@ -34,6 +34,7 @@ const PREFERENCE_PATH_MAXIMUM_BYTES: usize = 4_096;
 const PREFERENCE_TEXT_MAXIMUM_BYTES: usize = 8_192;
 const PERSON_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
 const ACCOUNT_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 512 * 1_024;
+const RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES: usize = 64 * 1_024;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT: usize = 128;
 const FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const PERSONS_GRAPH_MAXIMUM_COMBINED_SOURCES: usize = 128;
@@ -300,6 +301,13 @@ pub struct NormalizedAccountDetailRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedDetailRequestV1 {
+    pub schema_version: u32,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -358,6 +366,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonTimeline(NormalizedPersonTimelineRequestV1),
     PersonsGraph(NormalizedPersonsGraphRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
+    RssFeedDetail(NormalizedRssFeedDetailRequestV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
     SavedFeedPage(NormalizedSavedFeedPageRequestV2),
@@ -898,6 +907,33 @@ pub struct NormalizedAccountDetailResponseV1 {
     pub source: NormalizedFeedPageSourceV1,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedDetailV1 {
+    pub enabled: bool,
+    pub folder: Option<String>,
+    pub image_url: Option<String>,
+    pub last_fetched: Option<i64>,
+    pub poll_interval: Option<i64>,
+    pub sample_batch_id: Option<String>,
+    pub sample_generated_at: Option<i64>,
+    pub sample_generator_version: Option<i64>,
+    pub site_url: Option<String>,
+    pub title: String,
+    pub track_unread: bool,
+    pub updated_at: i64,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssFeedDetailResponseV1 {
+    pub feed: Option<NormalizedRssFeedDetailV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonGraphRowV1 {
@@ -1024,6 +1060,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonTimeline(NormalizedPersonTimelineResponseV1),
     PersonsGraph(NormalizedPersonsGraphResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
+    RssFeedDetail(NormalizedRssFeedDetailResponseV1),
     RssFeedGraphPage(NormalizedRssFeedGraphPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
     SavedFeedPage(Box<NormalizedSavedFeedPageResponseV2>),
@@ -4164,6 +4201,99 @@ fn query_account_detail(
     Ok(response)
 }
 
+fn query_rss_feed_detail(
+    connection: &mut Connection,
+    request: NormalizedRssFeedDetailRequestV1,
+) -> Result<NormalizedRssFeedDetailResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 || request.url.is_empty() || request.url.len() > 4_096 {
+        return Err(invalid("normalized RSS Feed detail URL is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "rss_feed_detail_v1")
+        .ok_or(invalid("normalized RSS Feed detail program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(params![request.url], |row| {
+        let boolean = |column| match row.get::<_, i64>(column)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(rusqlite::Error::InvalidQuery),
+        };
+        Ok(NormalizedRssFeedDetailV1 {
+            enabled: boolean("enabled")?,
+            folder: row.get("folder")?,
+            image_url: row.get("imageUrl")?,
+            last_fetched: row.get("lastFetched")?,
+            poll_interval: row.get("pollInterval")?,
+            sample_batch_id: row.get("sampleBatchId")?,
+            sample_generated_at: row.get("sampleGeneratedAt")?,
+            sample_generator_version: row.get("sampleGeneratorVersion")?,
+            site_url: row.get("siteUrl")?,
+            title: row.get("title")?,
+            track_unread: boolean("trackUnread")?,
+            updated_at: row.get("updatedAt")?,
+            url: row.get("url")?,
+        })
+    })?;
+    let mut feeds = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if feeds.len() > program.maximum_scan_rows {
+        return Err(invalid("normalized RSS Feed detail exceeded its row bound"));
+    }
+    if let Some(feed) = feeds.first() {
+        let bounded_optional = |value: &Option<String>, maximum| {
+            value.as_ref().is_none_or(|text| text.len() <= maximum)
+        };
+        if feed.url != request.url
+            || feed.url.is_empty()
+            || feed.url.len() > 4_096
+            || feed.title.len() > 4_096
+            || !bounded_optional(&feed.site_url, 4_096)
+            || !bounded_optional(&feed.image_url, 4_096)
+            || !bounded_optional(&feed.folder, 4_096)
+            || !bounded_optional(&feed.sample_batch_id, 255)
+            || !valid_safe_integer(feed.updated_at)
+            || feed
+                .last_fetched
+                .is_some_and(|value| !valid_safe_integer(value))
+            || feed
+                .poll_interval
+                .is_some_and(|value| !valid_safe_integer(value))
+            || feed
+                .sample_generated_at
+                .is_some_and(|value| !valid_safe_integer(value))
+            || feed
+                .sample_generator_version
+                .is_some_and(|value| !valid_safe_integer(value))
+        {
+            return Err(invalid("normalized RSS Feed detail row is invalid"));
+        }
+    }
+    let response = NormalizedRssFeedDetailResponseV1 {
+        feed: feeds.pop(),
+        query_id: "rss_feed_detail_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized RSS Feed detail response is invalid"))?
+        .len()
+        > RSS_FEED_DETAIL_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid(
+            "normalized RSS Feed detail response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_person_graph_page(
     connection: &mut Connection,
     request: NormalizedPersonGraphPageRequestV1,
@@ -4878,6 +5008,9 @@ pub fn query_normalized_v1(
                 query_preferences_snapshot(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::RssFeedDetail(request) => Ok(
+            NormalizedQueryResponseV1::RssFeedDetail(query_rss_feed_detail(connection, request)?),
+        ),
         NormalizedQueryRequestV1::RssFeedGraphPage(request) => {
             Ok(NormalizedQueryResponseV1::RssFeedGraphPage(
                 query_rss_feed_graph_page(connection, request)?,
@@ -4973,6 +5106,9 @@ pub fn query_normalized_json_v1(
         "preferences_snapshot_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
         }
+        "rss_feed_detail_v1" => {
+            decode_request!(NormalizedRssFeedDetailRequestV1, RssFeedDetail)
+        }
         "rss_feed_graph_page_v1" => {
             decode_request!(NormalizedRssFeedGraphPageRequestV1, RssFeedGraphPage)
         }
@@ -5025,6 +5161,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedAnalytics(response) => encode_response!(response),
         NormalizedQueryResponseV1::SavedFeedPage(response) => encode_response!(response),
@@ -6861,6 +6998,79 @@ mod tests {
             panic!("account detail response");
         };
         assert!(missing.account.is_none());
+    }
+
+    #[test]
+    fn native_rss_feed_detail_returns_every_synchronized_field() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO library_meta
+                   (singleton_id, library_id, schema_version, authority_epoch,
+                    source_revision, updated_at)
+                   VALUES (1, '{}', 1, 'epoch-1', 13, 1000);
+                 INSERT INTO library_materialization_generation
+                   SELECT 1, library_id FROM library_meta;
+                 UPDATE library_change_state SET revision = 13 WHERE singleton_id = 1;
+                 INSERT INTO library_rss_feeds
+                   (url, title, site_url, last_fetched, image_url, enabled,
+                    poll_interval, track_unread, folder, sample_batch_id,
+                    sample_generated_at, sample_generator_version, updated_at)
+                   VALUES ('https://example.com/feed.xml', 'Example Feed',
+                           'https://example.com', '30',
+                           'https://example.com/icon.png', 1, 15, 1,
+                           'Research', 'sample-batch', 10, 1, 40);",
+                "a".repeat(64)
+            ))
+            .expect("fixture");
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "rss_feed_detail_v1")
+            .expect("RSS Feed detail program");
+        let plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+            .expect("RSS Feed detail plan")
+            .query_map(params!["https://example.com/feed.xml"], |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("plan");
+        assert!(plan
+            .iter()
+            .any(|detail| detail.contains("SEARCH feed USING INDEX")));
+
+        let NormalizedQueryResponseV1::RssFeedDetail(response) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::RssFeedDetail(NormalizedRssFeedDetailRequestV1 {
+                schema_version: 1,
+                url: "https://example.com/feed.xml".to_owned(),
+            }),
+        )
+        .expect("RSS Feed detail") else {
+            panic!("RSS Feed detail response");
+        };
+        let feed = response.feed.expect("feed");
+        assert_eq!(feed.title, "Example Feed");
+        assert_eq!(feed.site_url.as_deref(), Some("https://example.com"));
+        assert_eq!(feed.last_fetched, Some(30));
+        assert_eq!(feed.poll_interval, Some(15));
+        assert!(feed.track_unread);
+        assert_eq!(feed.folder.as_deref(), Some("Research"));
+        assert_eq!(feed.sample_batch_id.as_deref(), Some("sample-batch"));
+
+        let NormalizedQueryResponseV1::RssFeedDetail(missing) = query_normalized_v1(
+            &mut connection,
+            NormalizedQueryRequestV1::RssFeedDetail(NormalizedRssFeedDetailRequestV1 {
+                schema_version: 1,
+                url: "https://missing.example/feed.xml".to_owned(),
+            }),
+        )
+        .expect("missing RSS Feed detail") else {
+            panic!("RSS Feed detail response");
+        };
+        assert!(missing.feed.is_none());
     }
 
     #[test]

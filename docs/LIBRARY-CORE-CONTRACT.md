@@ -594,6 +594,13 @@ roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.
 The source-fenced response is capped at 512 KiB. Missing Accounts return a
 typed null result rather than causing a whole-library fallback.
 
+`rss_feed_detail_v1` is the matching normalized point query for one RSS Feed.
+It returns every synchronized feed field, including polling and unread policy,
+folder, site and image URLs, last successful fetch time, and sample provenance,
+from one primary-key lookup under a 64 KiB response ceiling. Device-local
+scheduler state and HTTP cache validators are excluded. Missing feeds return a
+typed null result without consulting a renderer collection or Library shell.
+
 `person_graph_page_v1`, `account_graph_page_v1`, and
 `rss_feed_graph_page_v1` provide compact identity source pages for Friends
 graph compilation. Each returns at most 128 rows and
@@ -1049,11 +1056,14 @@ or a narrower aggregate before the final memory gate. The same page contract
 serves capture maintenance, import identity checks, and saved-media discovery
 until those narrower contracts take ownership.
 
-Partial Person and Account edits never assume that React holds the entity.
-They read one exact `person_detail_v1` or `account_detail_v1` row, merge the
-requested fields into that closed record, and submit a complete typed mutation.
-The current visible renderer object may avoid that query, but it is a cache of
-the same bounded detail contract, not durable authority.
+Partial Person, Account, and RSS Feed edits never assume that React holds the
+entity. They read one exact `person_detail_v1`, `account_detail_v1`, or
+`rss_feed_detail_v1` row, merge the requested fields into that closed record,
+and submit a complete typed mutation. The current visible renderer object may
+avoid that query, but it is a cache of the same bounded detail contract, not
+durable authority. Batched RSS refreshes resolve each missing feed through the
+same exact query before applying refreshed fields, so a sparse renderer cannot
+erase polling policy, unread behavior, folder, URLs, or sample provenance.
 
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and

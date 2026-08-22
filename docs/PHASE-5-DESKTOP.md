@@ -143,6 +143,11 @@
         the shared native and PWA dispatch, returns at most eight ordered
         follow-roster roles, and never hydrates a Person or FeedItem corpus.
         Freed Desktop view wiring remains open.
+  - [x] `rss_feed_detail_v1` now performs one primary-key SQLite lookup through
+        the shared native and PWA dispatch and returns every synchronized RSS
+        Feed field under a 64 KiB ceiling. Freed Desktop uses it when a partial
+        feed edit or refresh targets a feed outside the visible renderer
+        window, preserving polling, unread, folder, URL, and sample fields.
   - [x] `person_graph_page_v1`, `account_graph_page_v1`, and
         `rss_feed_graph_page_v1` now stream compact
         identity roots through source-fenced binary primary-key pages shared
@@ -531,6 +536,7 @@ export async function captureDomFeed(
 | 5.75 | Bootstrap Freed Desktop renderer state after cutover from the bounded normalized facet and preferences queries, keeping item, Feed, Person, and Account collections empty until their owning views request a typed window, with no production shell read                                                                                                             | High       | ✓ Complete |
 | 5.76 | Route Freed Desktop exact-item reads, mutation target discovery, background capture scans, import identity scans, and saved-video discovery through normalized detail or source-fenced background pages, leaving the historical offset reader reachable only by browser fixtures while later tasks replace workflows that still accumulate complete identity sets | High       | ✓ Complete |
 | 5.77 | Resolve partial Person and Account mutations through exact bounded normalized detail queries when the entity is not in the current visible renderer window, preserving complete synchronized fields without repopulating global renderer maps or reading the shell                                                                                              | High       | ✓ Complete |
+| 5.78 | Resolve partial RSS Feed edits and batch refreshes through the exact bounded normalized feed detail query when the feed is not in the current visible renderer window, preserving every synchronized feed field without repopulating the renderer feed map or reading the shell                                                                                 | High       | ✓ Complete |
 
 ---
 

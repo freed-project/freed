@@ -49,6 +49,7 @@ export * from "./account-timeline-contracts.js";
 export * from "./persons-graph-contracts.js";
 export * from "./person-detail-contracts.js";
 export * from "./account-detail-contracts.js";
+export * from "./rss-feed-detail-contracts.js";
 export * from "./friends-identity-page-contracts.js";
 export * from "./device-graph-layout-mutation-contracts.js";
 export * from "./item-detail-contracts.js";

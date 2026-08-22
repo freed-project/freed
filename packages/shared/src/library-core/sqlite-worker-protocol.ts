@@ -105,6 +105,12 @@ import {
   type LibraryCorePersonDetailResponseV1,
 } from "./person-detail-contracts.js";
 import {
+  parseLibraryCoreRssFeedDetailRequestV1,
+  parseLibraryCoreRssFeedDetailResponseV1,
+  type LibraryCoreRssFeedDetailRequestV1,
+  type LibraryCoreRssFeedDetailResponseV1,
+} from "./rss-feed-detail-contracts.js";
+import {
   parseLibraryCorePersonTimelineRequestV1,
   parseLibraryCorePersonTimelineResponseV1,
   type LibraryCorePersonTimelineRequestV1,
@@ -195,6 +201,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCorePersonTimelineRequestV1
   | LibraryCoreProviderMediaPageRequestV1
   | LibraryCorePersonsGraphRequestV1
+  | LibraryCoreRssFeedDetailRequestV1
   | LibraryCoreRssFeedGraphPageRequestV1
   | LibraryCoreSavedAnalyticsRequestV2
   | LibraryCoreSavedFeedPageRequestV2
@@ -238,8 +245,10 @@ export type LibraryCoreSqliteQueryResponseFor<
                               ? LibraryCorePersonsGraphResponseV1
                               : T extends LibraryCoreProviderMediaPageRequestV1
                                 ? LibraryCoreProviderMediaPageResponseV1
-                                : T extends LibraryCoreRssFeedGraphPageRequestV1
-                                  ? LibraryCoreRssFeedGraphPageResponseV1
+                                : T extends LibraryCoreRssFeedDetailRequestV1
+                                  ? LibraryCoreRssFeedDetailResponseV1
+                                  : T extends LibraryCoreRssFeedGraphPageRequestV1
+                                    ? LibraryCoreRssFeedGraphPageResponseV1
                                   : T extends LibraryCoreSavedAnalyticsRequestV2
                                     ? LibraryCoreSavedAnalyticsResponseV2
                                     : T extends LibraryCoreSavedFeedPageRequestV2
@@ -318,6 +327,12 @@ export function parseLibraryCoreSqliteQueryResponse<
                                           value,
                                         )
                                       : request.queryId ===
+                                          "rss_feed_detail_v1"
+                                        ? parseLibraryCoreRssFeedDetailResponseV1(
+                                            value,
+                                            request,
+                                          )
+                                        : request.queryId ===
                                           "rss_feed_graph_page_v1"
                                         ? parseLibraryCoreRssFeedGraphPageResponseV1(
                                             value,
@@ -694,8 +709,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                     ? parseLibraryCorePersonsGraphRequestV1(
                                         value.query,
                                       )
-                                    : value.query.queryId ===
-                                        "rss_feed_graph_page_v1"
+                                      : value.query.queryId ===
+                                          "rss_feed_detail_v1"
+                                        ? parseLibraryCoreRssFeedDetailRequestV1(
+                                            value.query,
+                                          )
+                                        : value.query.queryId ===
+                                          "rss_feed_graph_page_v1"
                                       ? parseLibraryCoreRssFeedGraphPageRequestV1(
                                           value.query,
                                         )

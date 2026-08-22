@@ -488,6 +488,28 @@ describe("SQLite Primary mutations", () => {
             source,
           };
         }
+        if (request.queryId === "rss_feed_detail_v1") {
+          return {
+            feed: {
+              enabled: true,
+              folder: "Research",
+              imageUrl: "https://example.com/icon.png",
+              lastFetched: 100,
+              pollInterval: 30,
+              sampleBatchId: "sample-batch",
+              sampleGeneratedAt: 10,
+              sampleGeneratorVersion: 1,
+              siteUrl: "https://example.com",
+              title: "Existing Feed",
+              trackUnread: true,
+              updatedAt: 20,
+              url: "https://example.com/feed.xml",
+            },
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
       }
       if (command === "read_sqlite_library_counts") {
         return {
@@ -583,6 +605,58 @@ describe("SQLite Primary mutations", () => {
         request: expect.objectContaining({
           personId: "person-1",
           queryId: "person_detail_v1",
+        }),
+      }),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "replace_sqlite_library_shell",
+      expect.anything(),
+    );
+  });
+
+  it("reads an exact RSS Feed before applying a partial normalized update", async () => {
+    await dispatchSqliteMutation(
+      {
+        reqId: 7,
+        type: "UPDATE_RSS_FEED",
+        url: "https://example.com/feed.xml",
+        updates: { title: "Renamed Feed" },
+      },
+      state(),
+    );
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope).toMatchObject({
+      operation_type: "rss_feed_upsert",
+      entity_id: "https://example.com/feed.xml",
+      payload: {
+        feed: {
+          enabled: true,
+          folder: "Research",
+          imageUrl: "https://example.com/icon.png",
+          lastFetched: 100,
+          pollInterval: 30,
+          sampleDataFingerprint: {
+            batchId: "sample-batch",
+            generatedAt: 10,
+            generatorVersion: 1,
+            marker: "freed.sample-data.v1",
+          },
+          siteUrl: "https://example.com",
+          title: "Renamed Feed",
+          trackUnread: true,
+          url: "https://example.com/feed.xml",
+        },
+      },
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "query_normalized_library",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          queryId: "rss_feed_detail_v1",
+          url: "https://example.com/feed.xml",
         }),
       }),
     );

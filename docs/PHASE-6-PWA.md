@@ -139,6 +139,11 @@
   - [x] `item_detail_v1` performs one primary-key lookup in browser SQLite and
         returns the same closed compact card and typed reader-body locators as
         native Rust. Full reader content remains outside the metadata response.
+  - [x] `rss_feed_detail_v1` performs one primary-key lookup in browser SQLite
+        and returns the same complete synchronized RSS Feed record as native
+        Rust under a 64 KiB source-fenced response ceiling. Device-local
+        scheduler state and compatibility-only HTTP validators never enter the
+        query result.
   - [x] `item_reader_body_v1` returns exact bounded byte ranges from inline
         SQLite text or content-addressed chunks through the same closed worker
         query union as native Rust. Cross-chunk ranges reassemble losslessly,

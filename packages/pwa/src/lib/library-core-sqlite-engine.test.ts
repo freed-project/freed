@@ -1689,10 +1689,14 @@ describe("PWA Library Core SQLite engine", () => {
       VALUES (1, '${"a".repeat(64)}');
       UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
       INSERT INTO library_rss_feeds
-        (url, title, image_url, enabled, track_unread, updated_at)
+        (url, title, site_url, last_fetched, image_url, enabled, poll_interval,
+         track_unread, folder, sample_batch_id, sample_generated_at,
+         sample_generator_version, updated_at)
       VALUES
-        ('https://alpha.example/feed', 'Alpha', NULL, 1, 1, 200),
-        ('https://beta.example/feed', 'Beta', 'https://beta.example/icon.png', 0, 1, 210);
+        ('https://alpha.example/feed', 'Alpha', 'https://alpha.example', 150,
+         NULL, 1, 15, 1, 'Research', 'sample-batch', 100, 1, 200),
+        ('https://beta.example/feed', 'Beta', NULL, NULL,
+         'https://beta.example/icon.png', 0, NULL, 1, NULL, NULL, NULL, NULL, 210);
       INSERT INTO library_feed_items
         (global_id, platform, content_type, captured_at, published_at,
          author_id, author_handle, author_display_name, author_avatar_url,
@@ -2093,6 +2097,34 @@ describe("PWA Library Core SQLite engine", () => {
         queryId: "account_detail_v1",
         schemaVersion: 1,
       }).account,
+    ).toBeNull();
+    expect(
+      engine.query({
+        queryId: "rss_feed_detail_v1",
+        schemaVersion: 1,
+        url: "https://alpha.example/feed",
+      }),
+    ).toMatchObject({
+      feed: {
+        enabled: true,
+        folder: "Research",
+        lastFetched: 150,
+        pollInterval: 15,
+        sampleBatchId: "sample-batch",
+        siteUrl: "https://alpha.example",
+        title: "Alpha",
+        trackUnread: true,
+        url: "https://alpha.example/feed",
+      },
+      queryId: "rss_feed_detail_v1",
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
+        queryId: "rss_feed_detail_v1",
+        schemaVersion: 1,
+        url: "https://missing.example/feed",
+      }).feed,
     ).toBeNull();
     const personGraphRequest = {
       cancellationId: operationId("cancel-person-graph-1"),

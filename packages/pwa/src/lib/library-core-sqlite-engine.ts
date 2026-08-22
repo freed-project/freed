@@ -94,6 +94,8 @@ import {
   parseLibraryCoreStoryWallCandidatesResponseV1,
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
+  parseLibraryCoreRssFeedDetailRequestV1,
+  parseLibraryCoreRssFeedDetailResponseV1,
   decodeLibraryCoreAccountTimelineCursorV1,
   encodeLibraryCoreAccountTimelineCursorV1,
   libraryCoreAccountTimelineAccountDigestV1,
@@ -178,6 +180,8 @@ import {
   type LibraryCoreStoryWallCandidatesResponseV1,
   type LibraryCoreAccountDetailRequestV1,
   type LibraryCoreAccountDetailResponseV1,
+  type LibraryCoreRssFeedDetailRequestV1,
+  type LibraryCoreRssFeedDetailResponseV1,
   type LibraryCoreAccountTimelineRequestV1,
   type LibraryCoreAccountTimelineResponseV1,
   type LibraryCoreSearchFieldV1,
@@ -2654,6 +2658,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonsGraph(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "rss_feed_detail_v1":
+        return this.#queryRssFeedDetail(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "rss_feed_graph_page_v1":
         return this.#queryRssFeedGraphPage(
           input,
@@ -3031,6 +3039,79 @@ export class PwaLibraryCoreSqliteEngine {
       },
     };
     const parsed = parseLibraryCoreAccountDetailResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryRssFeedDetail(
+    input: LibraryCoreRssFeedDetailRequestV1,
+  ): LibraryCoreRssFeedDetailResponseV1 {
+    const request = parseLibraryCoreRssFeedDetailRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.rss_feed_detail_v1;
+    const rows = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.url],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rows.length > program.maximumScanRows) {
+      throw new Error(
+        "PWA Library SQLite RSS Feed detail exceeded its row bound",
+      );
+    }
+    const row = rows[0];
+    const feed =
+      row === undefined
+        ? null
+        : {
+            enabled: requiredBoolean(row.enabled, "RSS Feed enabled"),
+            folder: nullableText(row.folder, "RSS Feed folder"),
+            imageUrl: nullableText(row.imageUrl, "RSS Feed image URL"),
+            lastFetched: nullableInteger(
+              row.lastFetched,
+              "RSS Feed last fetched",
+            ),
+            pollInterval: nullableInteger(
+              row.pollInterval,
+              "RSS Feed poll interval",
+            ),
+            sampleBatchId: nullableText(
+              row.sampleBatchId,
+              "RSS Feed sample batch",
+            ),
+            sampleGeneratedAt: nullableInteger(
+              row.sampleGeneratedAt,
+              "RSS Feed sample generation time",
+            ),
+            sampleGeneratorVersion: nullableInteger(
+              row.sampleGeneratorVersion,
+              "RSS Feed sample generator version",
+            ),
+            siteUrl: nullableText(row.siteUrl, "RSS Feed site URL"),
+            title: text(row.title, "RSS Feed title"),
+            trackUnread: requiredBoolean(
+              row.trackUnread,
+              "RSS Feed track unread",
+            ),
+            updatedAt: safeInteger(row.updatedAt, "RSS Feed update time"),
+            url: text(row.url, "RSS Feed URL"),
+          };
+    const response = {
+      feed,
+      queryId: "rss_feed_detail_v1" as const,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCoreRssFeedDetailResponseV1(
       response,
       request.value,
     );
