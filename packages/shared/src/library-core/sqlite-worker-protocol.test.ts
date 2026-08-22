@@ -434,7 +434,6 @@ describe("Library Core SQLite worker protocol", () => {
       {
         authorityEpoch: "epoch-1",
         createdAt: 1_000,
-        expectedCheckpointDigest: "a".repeat(64) as never,
         expectedRecordCount: 1,
         libraryId: "library-1",
         sourceRevision: 7,

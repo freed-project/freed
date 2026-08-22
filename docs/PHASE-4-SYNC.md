@@ -46,6 +46,12 @@
       indexes, manifests, and control tuples.
 - [x] Remove the Library shell checkpoint record and every whole FeedItem JSON
       checkpoint row.
+- [x] Stream normalized checkpoint manifests through one typed importer that
+      verifies canonical ordering and computes the exact dataset digest while
+      pages are appended. Native SQLite computes the activation digest again
+      from staged canonical records. It can replace existing canonical rows in
+      one transaction, and refuses the replacement without changing the
+      current Library when local intents or outbound operations are unresolved.
 - [x] Reassign one cloud writer through a signed normalized SQLite authority
       epoch, carry the exact prior causal frontier, re-enroll the target
       Desktop actor, and publish generation zero from the pinned typed export.
@@ -395,6 +401,7 @@ loads an alternate Library engine or compatibility path.
 | 4.213 | Publish the Primary's ordinary cloud checkpoint from a revision-pinned native normalized SQLite export, with exact closed registry records, bounded renderer responses and immutable pages, a normalized dataset schema identity, and no shell or whole FeedItem payload in the publication path                                                                                                                                                                                                         | ✓      | High       |
 | 4.214 | Reassign cloud writer authority inside normalized SQLite with an exact signed source-control certificate, carried causal frontier, target actor re-enrollment, response-loss replay, and generation-zero normalized checkpoint publication, while deleting the historical portable-checkpoint writer-transfer producer and command                                                                                                                                                                                    | ✓      | High       |
 | 4.215 | Keep the descriptor-bound Desktop selector as one stable choice of normalized SQLite for a Library, with the changing epoch, certificate chain, writer actor, and materialization generation owned only by SQLite, so a signed writer transition cannot invalidate the next native open                                                                                                                                                                                                                               | ✓      | High       |
+| 4.216 | Stream authenticated normalized checkpoint pages through one closed importer, derive the checkpoint digest independently from exact staged canonical records, and atomically replace existing canonical SQLite state only when no unresolved local operation could be lost                                                                                                                                                                                                                                   | ✓      | High       |
 
 ---
 

@@ -497,13 +497,89 @@ function canonicalLengthBytes(length: number): Uint8Array {
   return bytes;
 }
 
+export interface LibraryCoreNormalizedCheckpointDigestV2 {
+  readonly canonicalBytes: number;
+  readonly checkpointDigest: LibraryCoreLowercaseHex64;
+  readonly recordCount: number;
+}
+
+export interface LibraryCoreNormalizedCheckpointDigestAccumulatorV2 {
+  readonly canonicalBytes: number;
+  readonly recordCount: number;
+  push(record: LibraryCoreNormalizedCheckpointRecordV2): void;
+  finish(): LibraryCoreNormalizedCheckpointDigestV2;
+}
+
+export function createLibraryCoreNormalizedCheckpointDigestAccumulatorV2(): LibraryCoreNormalizedCheckpointDigestAccumulatorV2 {
+  const digest = new LibraryCoreSha256().update(checkpointDigestPrefix);
+  let canonicalBytes = 0;
+  let recordCount = 0;
+  let finished = false;
+  let previousPrimaryKey: Uint8Array | null = null;
+  let previousRegistryKey: LibraryCoreCheckpointRegistryKey | null = null;
+
+  return {
+    get canonicalBytes() {
+      return canonicalBytes;
+    },
+    get recordCount() {
+      return recordCount;
+    },
+    push(record) {
+      if (finished) {
+        throw new TypeError("checkpoint digest accumulator is finalized");
+      }
+      const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
+      const primaryKey = encodeLibraryCoreCanonicalValue(parsed.primaryKey, {
+        maximumBytes: 4_096,
+      });
+      if (previousRegistryKey !== null) {
+        const order =
+          previousRegistryKey === parsed.registryKey
+            ? compareBytes(previousPrimaryKey!, primaryKey)
+            : previousRegistryKey < parsed.registryKey
+              ? -1
+              : 1;
+        if (order >= 0) {
+          throw new TypeError(
+            order === 0
+              ? "checkpoint record identity is duplicated"
+              : "checkpoint records are not in canonical order",
+          );
+        }
+      }
+      const canonical = encodeLibraryCoreNormalizedCheckpointRecordV2(parsed);
+      canonicalBytes += canonical.byteLength;
+      if (!Number.isSafeInteger(canonicalBytes)) {
+        throw new TypeError("checkpoint canonical byte count is unsafe");
+      }
+      recordCount += 1;
+      digest.update(canonicalLengthBytes(canonical.byteLength));
+      digest.update(canonical);
+      previousPrimaryKey = primaryKey;
+      previousRegistryKey = parsed.registryKey;
+    },
+    finish() {
+      if (finished) {
+        throw new TypeError("checkpoint digest accumulator is finalized");
+      }
+      finished = true;
+      return Object.freeze({
+        canonicalBytes,
+        checkpointDigest: digest.digestLowerHex(),
+        recordCount,
+      });
+    },
+  };
+}
+
 export function digestLibraryCoreNormalizedCheckpointRecordsV2(
   records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
 ): LibraryCoreLowercaseHex64 {
   const encoded = records.map((record) => {
     const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
     return {
-      canonical: encodeLibraryCoreNormalizedCheckpointRecordV2(parsed),
+      parsed,
       primaryKey: encodeLibraryCoreCanonicalValue(parsed.primaryKey, {
         maximumBytes: 4_096,
       }),
@@ -517,22 +593,11 @@ export function digestLibraryCoreNormalizedCheckpointRecordsV2(
         ? -1
         : 1,
   );
-  for (let index = 1; index < encoded.length; index += 1) {
-    const previous = encoded[index - 1]!;
-    const current = encoded[index]!;
-    if (
-      previous.registryKey === current.registryKey &&
-      compareBytes(previous.primaryKey, current.primaryKey) === 0
-    ) {
-      throw new TypeError("checkpoint record identity is duplicated");
-    }
-  }
-  const digest = new LibraryCoreSha256().update(checkpointDigestPrefix);
+  const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
   for (const record of encoded) {
-    digest.update(canonicalLengthBytes(record.canonical.byteLength));
-    digest.update(record.canonical);
+    digest.push(record.parsed);
   }
-  return digest.digestLowerHex();
+  return digest.finish().checkpointDigest;
 }
 
 export function libraryCoreNormalizedCheckpointRecordIdentityV2(

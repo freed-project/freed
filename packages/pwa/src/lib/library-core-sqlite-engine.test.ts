@@ -222,14 +222,10 @@ describe("PWA Library Core SQLite engine", () => {
     engine: PwaLibraryCoreSqliteEngine,
     records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
     stageId: string,
-    expectedCheckpointDigest = digestLibraryCoreNormalizedCheckpointRecordsV2(
-      records,
-    ),
   ): void {
     engine.beginNormalizedCheckpointStage({
       authorityEpoch: "epoch-1",
       createdAt: 1_000,
-      expectedCheckpointDigest,
       expectedRecordCount: records.length,
       libraryId: "library-1",
       sourceRevision: 7,
@@ -2802,8 +2798,6 @@ describe("PWA Library Core SQLite engine", () => {
     const stage = {
       authorityEpoch: "epoch-1",
       createdAt: 1_000,
-      expectedCheckpointDigest:
-        digestLibraryCoreNormalizedCheckpointRecordsV2(records),
       expectedRecordCount: records.length,
       libraryId: "library-1",
       sourceRevision: 7,
@@ -2843,7 +2837,8 @@ describe("PWA Library Core SQLite engine", () => {
     expect(
       engine.activateNormalizedCheckpointStage(stage.stageId),
     ).toMatchObject({
-      checkpointDigest: stage.expectedCheckpointDigest,
+      checkpointDigest:
+        digestLibraryCoreNormalizedCheckpointRecordsV2(records),
       libraryId: stage.libraryId,
       recordCount: records.length,
       sourceRevision: stage.sourceRevision,
@@ -2887,30 +2882,19 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
-  it("rolls back browser activation on digest mismatch and unresolved references", () => {
+  it("rolls back browser activation on unresolved references", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
     );
     engine.initialize();
     const header = checkpointHeader();
-    stageRecords(engine, [header], "bad-digest", "a".repeat(64) as never);
-    expect(() =>
-      engine.activateNormalizedCheckpointStage("bad-digest"),
-    ).toThrow(/digest does not match/);
-    expect(
-      database.exec({
-        sql: "SELECT count(*) FROM library_meta;",
-        rowMode: 0,
-        returnValue: "resultRows",
-      }),
-    ).toEqual([0]);
     const orphan = createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "13_feed_item_tag",
       primaryKey: ["missing-item", "favorite"],
       payload: { tag: "favorite" },
     });
-    stageRecords(engine, [header, orphan], "orphan");
+    stageRecords(engine, [header, ...authorityRecords(), orphan], "orphan");
     expect(() => engine.activateNormalizedCheckpointStage("orphan")).toThrow(
       /unresolved foreign reference/,
     );

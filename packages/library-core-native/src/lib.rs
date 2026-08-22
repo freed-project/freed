@@ -83,7 +83,7 @@ pub use normalized_checkpoint::{
 };
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
-    NormalizedCheckpointActivationReceiptV2,
+    replace_with_normalized_checkpoint_stage_v2, NormalizedCheckpointActivationReceiptV2,
 };
 pub use normalized_migration::{
     prepare_fresh_normalized_desktop_library_v1, prepare_normalized_desktop_cutover_v1,

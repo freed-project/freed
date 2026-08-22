@@ -55,10 +55,14 @@ export {
   type ReassignLibraryCorePortableCheckpointRequestV1,
 } from "./library-core-portable-checkpoint.js";
 export {
+  importLibraryCoreNormalizedCheckpointV2,
   prepareLibraryCoreNormalizedCheckpointPagesV2,
   publishLibraryCoreNormalizedCheckpointV2,
   reassignLibraryCoreNormalizedCheckpointV2,
   type PrepareLibraryCoreNormalizedCheckpointPagesRequestV2,
+  type ImportLibraryCoreNormalizedCheckpointRequestV2,
+  type ImportLibraryCoreNormalizedCheckpointResultV2,
+  type LibraryCoreNormalizedCheckpointImportWriterV2,
   type PublishLibraryCoreNormalizedCheckpointRequestV2,
   type ReassignLibraryCoreNormalizedCheckpointRequestV2,
 } from "./library-core-normalized-checkpoint.js";

@@ -123,7 +123,6 @@ pub struct BeginNormalizedCheckpointStageV2 {
     pub authority_epoch: String,
     pub source_revision: u64,
     pub expected_record_count: usize,
-    pub expected_checkpoint_digest: String,
     pub created_at: u64,
 }
 
@@ -188,14 +187,6 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
     Ok(())
 }
 
-fn valid_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
-}
-
 fn stage_status(
     connection: &Connection,
     stage_id: &str,
@@ -236,7 +227,6 @@ pub fn begin_normalized_checkpoint_stage_v2(
         || request.authority_epoch.is_empty()
         || request.authority_epoch.len() > 255
         || request.expected_record_count == 0
-        || !valid_digest(&request.expected_checkpoint_digest)
     {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized checkpoint stage identity is invalid",
@@ -256,23 +246,21 @@ pub fn begin_normalized_checkpoint_stage_v2(
     let inserted = connection.execute(
         "INSERT OR IGNORE INTO library_checkpoint_stages
          (stage_id, library_id, authority_epoch, source_revision,
-          expected_record_count, expected_checkpoint_digest, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+          expected_record_count, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
         params![
             request.stage_id,
             request.library_id,
             request.authority_epoch,
             source_revision,
             expected_record_count,
-            request.expected_checkpoint_digest,
             created_at,
         ],
     )?;
     if inserted == 0 {
         let matches: bool = connection.query_row(
             "SELECT library_id = ?2 AND authority_epoch = ?3 AND source_revision = ?4
-                    AND expected_record_count = ?5 AND expected_checkpoint_digest = ?6
-                    AND created_at = ?7
+                    AND expected_record_count = ?5 AND created_at = ?6
              FROM library_checkpoint_stages WHERE stage_id = ?1;",
             params![
                 request.stage_id,
@@ -280,7 +268,6 @@ pub fn begin_normalized_checkpoint_stage_v2(
                 request.authority_epoch,
                 source_revision,
                 expected_record_count,
-                request.expected_checkpoint_digest,
                 created_at,
             ],
             |row| row.get(0),
@@ -715,6 +702,7 @@ mod tests {
     use crate::normalized_checkpoint::split_content_records_v1;
     use crate::normalized_import::{
         finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
+        replace_with_normalized_checkpoint_stage_v2,
     };
     use crate::sqlite_contract_generated::{
         CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, CONTENT_CHUNK_BYTES,
@@ -841,7 +829,6 @@ mod tests {
         connection: &Connection,
         stage_id: &str,
         records: &[NormalizedCheckpointRecordV2],
-        digest: String,
     ) {
         begin_normalized_checkpoint_stage_v2(
             connection,
@@ -851,11 +838,29 @@ mod tests {
                 authority_epoch: "epoch-1".into(),
                 source_revision: 7,
                 expected_record_count: records.len(),
-                expected_checkpoint_digest: digest,
                 created_at: 1000,
             },
         )
         .expect("begin stage");
+    }
+
+    fn normalized_source_page() -> NormalizedCheckpointExportPageV2 {
+        let source = fixture();
+        source
+            .execute(
+                "INSERT INTO library_meta
+                 (singleton_id, library_id, schema_version, authority_epoch,
+                  source_revision, updated_at)
+                 VALUES (1, 'library-1', 1, 'epoch-1', 7, 1000);",
+                [],
+            )
+            .expect("source metadata");
+        install_test_authority(&source, 0);
+        export_normalized_checkpoint_page_v2(
+            &source,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .expect("source page")
     }
 
     #[test]
@@ -1431,7 +1436,6 @@ mod tests {
             authority_epoch: "epoch-1".into(),
             source_revision: 7,
             expected_record_count: records.len(),
-            expected_checkpoint_digest: "a".repeat(64),
             created_at: 1000,
         };
         let initial = begin_normalized_checkpoint_stage_v2(&connection, &request).expect("begin");
@@ -1465,12 +1469,7 @@ mod tests {
         let mut connection = fixture();
         let records =
             split_content_records_v1(&[9; 17], "application/octet-stream").expect("records");
-        begin_stage(
-            &connection,
-            "stage-changed-replay",
-            &records,
-            "a".repeat(64),
-        );
+        begin_stage(&connection, "stage-changed-replay", &records);
         let first = append_normalized_checkpoint_stage_page_v2(
             &mut connection,
             "stage-changed-replay",
@@ -1495,27 +1494,6 @@ mod tests {
     }
 
     #[test]
-    fn checkpoint_digest_mismatch_rolls_back_activation_and_preserves_the_stage() {
-        let mut connection = fixture();
-        let records = vec![checkpoint_header()];
-        begin_stage(&connection, "stage-bad-digest", &records, "a".repeat(64));
-        append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-bad-digest", &records)
-            .expect("stage records");
-        let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-bad-digest")
-            .expect_err("digest mismatch");
-        assert!(error.to_string().contains("digest does not match"));
-        let materialized: i64 = connection
-            .query_row("SELECT count(*) FROM library_meta;", [], |row| row.get(0))
-            .expect("materialized rows");
-        assert_eq!(materialized, 0);
-        assert!(
-            stage_status(&connection, "stage-bad-digest")
-                .expect("preserved stage")
-                .complete
-        );
-    }
-
-    #[test]
     fn activation_refuses_an_independent_row_in_the_target() {
         let mut connection = fixture();
         connection
@@ -1526,8 +1504,7 @@ mod tests {
             )
             .expect("existing preference");
         let records = vec![checkpoint_header()];
-        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
-        begin_stage(&connection, "stage-nonempty", &records, digest);
+        begin_stage(&connection, "stage-nonempty", &records);
         append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-nonempty", &records)
             .expect("stage records");
         let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-nonempty")
@@ -1542,6 +1519,79 @@ mod tests {
     }
 
     #[test]
+    fn replacement_atomically_supersedes_existing_canonical_rows() {
+        let page = normalized_source_page();
+        let mut target = fixture();
+        target
+            .execute(
+                "INSERT INTO library_preferences (path, value_type, updated_at)
+                 VALUES ('v:$.old', 'null', 1);",
+                [],
+            )
+            .expect("old canonical row");
+        begin_stage(&target, "stage-replacement", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-replacement", &page.records)
+            .expect("stage replacement");
+        let receipt = replace_with_normalized_checkpoint_stage_v2(&mut target, "stage-replacement")
+            .expect("replace canonical rows");
+        assert_eq!(receipt.record_count, page.records.len());
+        assert_eq!(
+            target
+                .query_row("SELECT count(*) FROM library_preferences;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("preference count"),
+            0
+        );
+        assert_eq!(
+            export_normalized_checkpoint_page_v2(
+                &target,
+                &NormalizedCheckpointExportRequestV2::default(),
+            )
+            .expect("replacement export")
+            .records,
+            page.records
+        );
+    }
+
+    #[test]
+    fn replacement_preserves_current_state_when_local_operations_are_unresolved() {
+        let page = normalized_source_page();
+        let mut target = fixture();
+        target
+            .execute_batch(
+                "INSERT INTO library_preferences (path, value_type, updated_at)
+                   VALUES ('v:$.old', 'null', 1);
+                 INSERT INTO library_primary_intent_stage_transactions
+                   (transaction_id, transaction_digest, actor_id, intent_epoch,
+                    intent_epoch_id, member_count, first_counter, last_counter,
+                    received_count, canonical_member_bytes, created_at, updated_at)
+                   VALUES ('pending-1',
+                     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                     'actor-local', 1, 'epoch-local', 1, 1, 1, 0, 0, 1, 1);",
+            )
+            .expect("unresolved local operation");
+        begin_stage(&target, "stage-pending", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-pending", &page.records)
+            .expect("stage pending replacement");
+        let error = replace_with_normalized_checkpoint_stage_v2(&mut target, "stage-pending")
+            .expect_err("unresolved local operation");
+        assert!(error.to_string().contains("unresolved local operations"));
+        assert_eq!(
+            target
+                .query_row("SELECT path FROM library_preferences;", [], |row| row
+                    .get::<_, String>(0),)
+                .expect("preserved current state"),
+            "v:$.old"
+        );
+        assert!(
+            stage_status(&target, "stage-pending")
+                .expect("preserved stage")
+                .complete
+        );
+    }
+
+    #[test]
     fn unresolved_foreign_reference_rolls_back_activation() {
         let mut connection = fixture();
         let records = vec![
@@ -1553,8 +1603,7 @@ mod tests {
             )
             .expect("orphan tag"),
         ];
-        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
-        begin_stage(&connection, "stage-orphan", &records, digest);
+        begin_stage(&connection, "stage-orphan", &records);
         append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-orphan", &records)
             .expect("stage records");
         let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-orphan")
@@ -1580,8 +1629,7 @@ mod tests {
     fn activation_refuses_a_checkpoint_without_accepted_authority() {
         let mut connection = fixture();
         let records = vec![checkpoint_header()];
-        let digest = normalized_checkpoint_digest_v2(&records).expect("digest");
-        begin_stage(&connection, "stage-no-authority", &records, digest);
+        begin_stage(&connection, "stage-no-authority", &records);
         append_normalized_checkpoint_stage_page_v2(&mut connection, "stage-no-authority", &records)
             .expect("stage records");
         let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-no-authority")
@@ -1757,7 +1805,6 @@ mod tests {
                 authority_epoch: "epoch-1".into(),
                 source_revision: 7,
                 expected_record_count: page.records.len(),
-                expected_checkpoint_digest: digest.clone(),
                 created_at: 1000,
             },
         )

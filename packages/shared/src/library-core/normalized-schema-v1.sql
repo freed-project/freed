@@ -979,7 +979,6 @@ CREATE TABLE IF NOT EXISTS library_checkpoint_stages (
   authority_epoch TEXT NOT NULL CHECK (length(CAST(authority_epoch AS BLOB)) BETWEEN 1 AND 255),
   source_revision INTEGER NOT NULL CHECK (source_revision >= 0),
   expected_record_count INTEGER NOT NULL CHECK (expected_record_count >= 1),
-  expected_checkpoint_digest TEXT NOT NULL CHECK (length(expected_checkpoint_digest) = 64 AND expected_checkpoint_digest NOT GLOB '*[^0-9a-f]*'),
   staged_record_count INTEGER NOT NULL DEFAULT 0 CHECK (staged_record_count >= 0),
   staged_canonical_bytes INTEGER NOT NULL DEFAULT 0 CHECK (staged_canonical_bytes >= 0),
   created_at INTEGER NOT NULL CHECK (created_at >= 0)

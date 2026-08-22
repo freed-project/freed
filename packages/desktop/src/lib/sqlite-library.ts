@@ -49,6 +49,10 @@ import {
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
   parseLibraryCoreNormalizedCheckpointExportPageV2,
+  parseLibraryCoreBeginNormalizedCheckpointStageV2,
+  parseLibraryCoreNormalizedCheckpointActivationReceiptV2,
+  parseLibraryCoreNormalizedCheckpointStagePageV2,
+  parseLibraryCoreNormalizedCheckpointStageStatusV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -71,6 +75,10 @@ import {
   type LibraryCoreNormalizedCheckpointCursorV2,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreNormalizedCheckpointExportPageV2,
+  type LibraryCoreBeginNormalizedCheckpointStageV2,
+  type LibraryCoreNormalizedCheckpointActivationReceiptV2,
+  type LibraryCoreNormalizedCheckpointRecordV2,
+  type LibraryCoreNormalizedCheckpointStageStatusV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionStagePageV1,
@@ -1579,6 +1587,40 @@ export async function readNormalizedLibraryCheckpointPage(input: {
             LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
         },
       },
+    }),
+  );
+}
+
+export async function beginNormalizedLibraryCheckpointImport(
+  input: LibraryCoreBeginNormalizedCheckpointStageV2,
+): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+  const request = parseLibraryCoreBeginNormalizedCheckpointStageV2(input);
+  return parseLibraryCoreNormalizedCheckpointStageStatusV2(
+    await invoke<unknown>("begin_normalized_library_checkpoint_import", {
+      request,
+    }),
+  );
+}
+
+export async function appendNormalizedLibraryCheckpointImportPage(input: {
+  readonly stageId: string;
+  readonly records: readonly LibraryCoreNormalizedCheckpointRecordV2[];
+}): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
+  const request = parseLibraryCoreNormalizedCheckpointStagePageV2(input);
+  return parseLibraryCoreNormalizedCheckpointStageStatusV2(
+    await invoke<unknown>(
+      "append_normalized_library_checkpoint_import_page",
+      { request },
+    ),
+  );
+}
+
+export async function activateNormalizedLibraryCheckpointImport(
+  stageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
+    await invoke<unknown>("activate_normalized_library_checkpoint_import", {
+      stageId,
     }),
   );
 }

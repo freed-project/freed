@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
+  createLibraryCoreNormalizedCheckpointDigestAccumulatorV2,
   digestLibraryCoreNormalizedCheckpointRecordsV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   libraryCoreNormalizedCheckpointRecordIdentityV2,
@@ -75,6 +76,16 @@ describe("normalized SQLite checkpoint contract", () => {
     expect(digestLibraryCoreNormalizedCheckpointRecordsV2([header])).toBe(
       "ce8a03cfece925243956fa104b7b583139da09036a14a1d7615a8994891d4104",
     );
+    const accumulator =
+      createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+    accumulator.push(header);
+    expect(accumulator.finish()).toEqual({
+      canonicalBytes:
+        encodeLibraryCoreNormalizedCheckpointRecordV2(header).byteLength,
+      checkpointDigest:
+        "ce8a03cfece925243956fa104b7b583139da09036a14a1d7615a8994891d4104",
+      recordCount: 1,
+    });
   });
 
   it("has stable registry plus typed primary-key identity and no shell record", () => {

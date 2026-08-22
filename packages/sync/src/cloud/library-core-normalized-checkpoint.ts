@@ -1,5 +1,6 @@
 import {
   createLibraryCoreImmutableObjectKey,
+  createLibraryCoreNormalizedCheckpointDigestAccumulatorV2,
   encodeLibraryCoreCanonicalValue,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
@@ -14,6 +15,10 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreCloudTransportId,
   type LibraryCoreControlPointerV1,
+  type LibraryCoreCheckpointManifestV1,
+  type LibraryCoreImmutableObjectReferenceV1,
+  type LibraryCoreLowercaseHex64,
+  type LibraryCoreNormalizedCheckpointActivationReceiptV2,
   type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
 } from "@freed/shared/library-core";
@@ -22,7 +27,12 @@ import {
   reassignLibraryCoreCheckpointGenerationV1,
   type LibraryCorePreparedCheckpointPageV1,
 } from "./library-core-checkpoint-publication.js";
+import {
+  importLibraryCoreCheckpointManifestV1,
+  type ImportLibraryCoreCheckpointManifestResultV1,
+} from "./library-core-checkpoint-import.js";
 import type {
+  LibraryCoreImmutableReadAdapterV1,
   LibraryCoreImmutablePublicationAdapterV1,
   LibraryCoreImmutablePublicationResultV1,
   LibraryCorePreparedImmutableObjectV1,
@@ -30,6 +40,43 @@ import type {
 import { encodeLibraryCoreWireObjectV1 } from "./library-core-wire-object.js";
 
 const NORMALIZED_CHECKPOINT_PAGE_LIMIT = 8_192;
+
+export interface LibraryCoreNormalizedCheckpointImportWriterV2 {
+  prepareImport?(
+    manifest: LibraryCoreCheckpointManifestV1,
+    manifestReference: LibraryCoreImmutableObjectReferenceV1,
+  ): Promise<"already_complete" | "import">;
+  beginImport(input: {
+    readonly header: LibraryCoreNormalizedCheckpointRecordV2;
+    readonly manifest: LibraryCoreCheckpointManifestV1;
+    readonly manifestReference: LibraryCoreImmutableObjectReferenceV1;
+  }): Promise<void>;
+  appendPage(
+    pageIndex: number,
+    records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
+  ): Promise<void>;
+  finalizeImport(input: {
+    readonly canonicalBytes: number;
+    readonly checkpointDigest: LibraryCoreLowercaseHex64;
+    readonly recordCount: number;
+  }): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2>;
+  abortImport?(): Promise<void>;
+}
+
+export interface ImportLibraryCoreNormalizedCheckpointRequestV2 {
+  readonly adapter: LibraryCoreImmutableReadAdapterV1;
+  readonly generation: number;
+  readonly libraryId: string;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly storageEpoch: string;
+  readonly subtle: SubtleCrypto;
+  readonly writer: LibraryCoreNormalizedCheckpointImportWriterV2;
+}
+
+export interface ImportLibraryCoreNormalizedCheckpointResultV2
+  extends ImportLibraryCoreCheckpointManifestResultV1 {
+  readonly activationReceipt: LibraryCoreNormalizedCheckpointActivationReceiptV2 | null;
+}
 
 async function* asAsyncIterable<T>(
   values: Iterable<T> | AsyncIterable<T>,
@@ -261,4 +308,106 @@ export function reassignLibraryCoreNormalizedCheckpointV2(
     subtle: input.subtle,
     writerId: descriptor.writerId,
   });
+}
+
+export async function importLibraryCoreNormalizedCheckpointV2(
+  input: ImportLibraryCoreNormalizedCheckpointRequestV2,
+): Promise<ImportLibraryCoreNormalizedCheckpointResultV2> {
+  const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+  let began = false;
+  let importedManifest: LibraryCoreCheckpointManifestV1 | null = null;
+  let importedManifestReference: LibraryCoreImmutableObjectReferenceV1 | null =
+    null;
+  try {
+    const imported = await importLibraryCoreCheckpointManifestV1({
+      adapter: input.adapter,
+      datasetSchemaId: LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
+      generation: input.generation,
+      libraryId: input.libraryId,
+      manifest: input.manifest,
+      async onPage(pageIndex, records) {
+        if (records.length === 0) {
+          throw new TypeError("normalized checkpoint page must not be empty");
+        }
+        if (!began) {
+          if (
+            pageIndex !== 0 ||
+            importedManifest === null ||
+            importedManifestReference === null
+          ) {
+            throw new TypeError(
+              "normalized checkpoint import did not begin at its first page",
+            );
+          }
+          const header = records[0]!;
+          if (
+            header.registryKey !== "00_checkpoint_header" ||
+            header.primaryKey !== "checkpoint" ||
+            header.payload.libraryId !== importedManifest.libraryId ||
+            header.payload.authorityEpoch !== importedManifest.storageEpoch ||
+            !Number.isSafeInteger(header.payload.sourceRevision) ||
+            (header.payload.sourceRevision as number) < 0
+          ) {
+            throw new TypeError(
+              "normalized checkpoint header does not match its manifest",
+            );
+          }
+          await input.writer.beginImport({
+            header,
+            manifest: importedManifest,
+            manifestReference: importedManifestReference,
+          });
+          began = true;
+        }
+        for (const record of records) digest.push(record);
+        await input.writer.appendPage(pageIndex, records);
+      },
+      parseRecord: parseLibraryCoreNormalizedCheckpointRecordV2,
+      async prepareImport(manifest, manifestReference) {
+        importedManifest = manifest;
+        importedManifestReference = manifestReference;
+        return (
+          (await input.writer.prepareImport?.(
+            manifest,
+            manifestReference,
+          )) ?? "import"
+        );
+      },
+      recordIdentity: libraryCoreNormalizedCheckpointRecordIdentityV2,
+      storageEpoch: input.storageEpoch,
+      subtle: input.subtle,
+    });
+    if (imported.status === "already_complete") {
+      return Object.freeze({ ...imported, activationReceipt: null });
+    }
+    if (!began) {
+      throw new TypeError("normalized checkpoint imported no records");
+    }
+    const completed = digest.finish();
+    const activationReceipt = await input.writer.finalizeImport(completed);
+    if (
+      activationReceipt.checkpointDigest !== completed.checkpointDigest ||
+      activationReceipt.canonicalBytes !== completed.canonicalBytes ||
+      activationReceipt.recordCount !== completed.recordCount ||
+      activationReceipt.libraryId !== input.libraryId ||
+      activationReceipt.authorityEpoch !== input.storageEpoch
+    ) {
+      throw new TypeError(
+        "normalized checkpoint activation receipt does not match its import",
+      );
+    }
+    return Object.freeze({ ...imported, activationReceipt });
+  } catch (error) {
+    if (began && input.writer.abortImport !== undefined) {
+      try {
+        await input.writer.abortImport();
+      } catch (abortError) {
+        throw new AggregateError(
+          [error, abortError],
+          "normalized checkpoint import and cleanup both failed",
+        );
+      }
+    }
+    throw error;
+  }
 }

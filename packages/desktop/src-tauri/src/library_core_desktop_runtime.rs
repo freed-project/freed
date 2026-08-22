@@ -1190,6 +1190,50 @@ pub(super) fn read_normalized_library_checkpoint_page(
         .map_err(|error| error.to_string())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AppendNormalizedLibraryCheckpointPageRequest {
+    stage_id: String,
+    records: Vec<freed_library_core::NormalizedCheckpointRecordV2>,
+}
+
+#[tauri::command]
+pub(super) fn begin_normalized_library_checkpoint_import(
+    app: tauri::AppHandle,
+    request: freed_library_core::BeginNormalizedCheckpointStageV2,
+) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::begin_normalized_checkpoint_stage_v2(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn append_normalized_library_checkpoint_import_page(
+    app: tauri::AppHandle,
+    request: AppendNormalizedLibraryCheckpointPageRequest,
+) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::append_normalized_checkpoint_stage_page_v2(
+        &mut connection,
+        &request.stage_id,
+        &request.records,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn activate_normalized_library_checkpoint_import(
+    app: tauri::AppHandle,
+    stage_id: String,
+) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::replace_with_normalized_checkpoint_stage_v2(
+        &mut connection,
+        &stage_id,
+    )
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub(super) fn reassign_normalized_library_writer_epoch(
     app: tauri::AppHandle,

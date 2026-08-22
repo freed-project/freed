@@ -323,16 +323,100 @@ fn verify_authority_rows(
     Ok(())
 }
 
-pub fn finalize_normalized_checkpoint_stage_v2(
+fn assert_checkpoint_replacement_has_no_local_overlay(
+    transaction: &Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    let unresolved: i64 = transaction.query_row(
+        "SELECT
+           (SELECT count(*) FROM library_intent_transactions
+              WHERE state IN ('pending', 'published')) +
+           (SELECT count(*) FROM library_optimistic_fields) +
+           (SELECT count(*) FROM library_replication_outbox
+              WHERE acknowledged_at IS NULL) +
+           (SELECT count(*) FROM library_follower_result_outbox
+              WHERE acknowledged_at IS NULL) +
+           (SELECT count(*) FROM library_primary_intent_stage_transactions);",
+        [],
+        |row| row.get(0),
+    )?;
+    if unresolved != 0 {
+        return Err(invalid(
+            "normalized checkpoint replacement has unresolved local operations",
+        ));
+    }
+    Ok(())
+}
+
+fn clear_checkpoint_replacement_target(
+    transaction: &Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    transaction.execute_batch(
+        "DELETE FROM library_optimistic_fields;
+         DELETE FROM library_intent_results;
+         DELETE FROM library_intent_result_cursors;
+         DELETE FROM library_intent_members;
+         DELETE FROM library_intent_transactions;
+         DELETE FROM library_intent_actors;
+         DELETE FROM library_primary_intent_stage_members;
+         DELETE FROM library_primary_intent_stage_transactions;
+         DELETE FROM library_follower_result_outbox;
+         DELETE FROM library_follower_result_cursors;
+         DELETE FROM library_replication_outbox;
+         DELETE FROM library_operation_causal_tips;
+         DELETE FROM library_operations;
+         DELETE FROM library_transactions;
+         DELETE FROM library_invalidations;
+         DELETE FROM library_device_scope_action_members;
+         DELETE FROM library_device_scope_actions;
+         DELETE FROM library_device_person_graph_layout;
+         DELETE FROM library_device_account_graph_layout;
+         DELETE FROM library_person_feed_items;
+         DELETE FROM library_relationships;
+         DELETE FROM library_field_clocks;
+         DELETE FROM library_tombstones;
+         DELETE FROM library_receipts;
+         DELETE FROM library_feed_items;
+         DELETE FROM library_rss_feeds;
+         DELETE FROM library_account_follow_roles;
+         DELETE FROM library_accounts;
+         DELETE FROM library_person_reach_outs;
+         DELETE FROM library_person_tags;
+         DELETE FROM library_persons;
+         DELETE FROM library_preferences;
+         DELETE FROM library_actor_capability_mutations;
+         DELETE FROM library_actor_capabilities;
+         DELETE FROM library_actors;
+         DELETE FROM library_active_authority;
+         DELETE FROM library_authority_frontier;
+         DELETE FROM library_authority_epochs;
+         DELETE FROM library_blob_chunks;
+         DELETE FROM library_blobs;
+         DELETE FROM library_materialization_generation;
+         DELETE FROM library_meta;
+         DELETE FROM library_storage_transition_plan;
+         DELETE FROM library_saved_platform_counts;
+         DELETE FROM library_tag_counts;
+         UPDATE library_facet_summary SET total_count = 0, archived_count = 0,
+           sample_item_count = 0, saved_count = 0, saved_archived_count = 0
+           WHERE singleton_id = 1;
+         UPDATE library_device_graph_layout_state SET revision = 0
+           WHERE singleton_id = 1;
+         UPDATE library_change_state SET revision = 0 WHERE singleton_id = 1;",
+    )?;
+    Ok(())
+}
+
+fn activate_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
+    replace_existing: bool,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
     let transaction = connection.transaction()?;
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
-    let stage: (String, String, i64, i64, i64, String) = transaction
+    let stage: (String, String, i64, i64, i64) = transaction
         .query_row(
             "SELECT library_id, authority_epoch, source_revision, expected_record_count,
-                    staged_canonical_bytes, expected_checkpoint_digest
+                    staged_canonical_bytes
              FROM library_checkpoint_stages
              WHERE stage_id = ?1 AND staged_record_count = expected_record_count;",
             [stage_id],
@@ -343,12 +427,15 @@ pub fn finalize_normalized_checkpoint_stage_v2(
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
-                    row.get(5)?,
                 ))
             },
         )
         .optional()?
         .ok_or(invalid("normalized checkpoint stage is incomplete"))?;
+    if replace_existing {
+        assert_checkpoint_replacement_has_no_local_overlay(&transaction)?;
+        clear_checkpoint_replacement_target(&transaction)?;
+    }
     let existing_rows: i64 = transaction.query_row(
         "SELECT
            (SELECT count(*) FROM library_meta) +
@@ -403,11 +490,6 @@ pub fn finalize_normalized_checkpoint_stage_v2(
     drop(rows);
     drop(statement);
     let checkpoint_digest = lower_hex(&digest.finalize());
-    if checkpoint_digest != stage.5 {
-        return Err(invalid(
-            "normalized checkpoint digest does not match its stage",
-        ));
-    }
     let meta_matches: bool = transaction.query_row(
         "SELECT library_id = ?1 AND authority_epoch = ?2 AND source_revision = ?3
          FROM library_meta WHERE singleton_id = 1;",
@@ -470,6 +552,20 @@ pub fn finalize_normalized_checkpoint_stage_v2(
             .map_err(|_| invalid("canonical byte count is invalid"))?,
         checkpoint_digest,
     })
+}
+
+pub fn finalize_normalized_checkpoint_stage_v2(
+    connection: &mut Connection,
+    stage_id: &str,
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, false)
+}
+
+pub fn replace_with_normalized_checkpoint_stage_v2(
+    connection: &mut Connection,
+    stage_id: &str,
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    activate_normalized_checkpoint_stage_v2(connection, stage_id, true)
 }
 
 pub fn normalized_checkpoint_digest_v2(

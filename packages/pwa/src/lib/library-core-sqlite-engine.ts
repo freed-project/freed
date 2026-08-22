@@ -581,22 +581,20 @@ export class PwaLibraryCoreSqliteEngine {
     this.#database.exec({
       sql: `INSERT OR IGNORE INTO library_checkpoint_stages
               (stage_id, library_id, authority_epoch, source_revision,
-               expected_record_count, expected_checkpoint_digest, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);`,
+               expected_record_count, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6);`,
       bind: [
         stage.stageId,
         stage.libraryId,
         stage.authorityEpoch,
         stage.sourceRevision,
         stage.expectedRecordCount,
-        stage.expectedCheckpointDigest,
         stage.createdAt,
       ],
     });
     const matches = this.#database.exec({
       sql: `SELECT library_id = ?2 AND authority_epoch = ?3 AND source_revision = ?4
-                   AND expected_record_count = ?5 AND expected_checkpoint_digest = ?6
-                   AND created_at = ?7
+                   AND expected_record_count = ?5 AND created_at = ?6
             FROM library_checkpoint_stages WHERE stage_id = ?1;`,
       bind: [
         stage.stageId,
@@ -604,7 +602,6 @@ export class PwaLibraryCoreSqliteEngine {
         stage.authorityEpoch,
         stage.sourceRevision,
         stage.expectedRecordCount,
-        stage.expectedCheckpointDigest,
         stage.createdAt,
       ],
       rowMode: 0,
@@ -739,8 +736,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec("PRAGMA defer_foreign_keys = ON;");
       const stages = this.#database.exec({
         sql: `SELECT library_id, authority_epoch, source_revision,
-                     expected_record_count, staged_canonical_bytes,
-                     expected_checkpoint_digest
+                     expected_record_count, staged_canonical_bytes
               FROM library_checkpoint_stages
               WHERE stage_id = ?1 AND staged_record_count = expected_record_count;`,
         bind: [stageId],
@@ -765,7 +761,6 @@ export class PwaLibraryCoreSqliteEngine {
         stage[4],
         "checkpoint canonical bytes",
       );
-      const expectedDigest = text(stage[5], "checkpoint digest");
       const existingRows = safeInteger(
         this.#database.exec({
           sql: `SELECT sum(row_count) FROM (
@@ -857,12 +852,9 @@ export class PwaLibraryCoreSqliteEngine {
         statement.finalize();
       }
       const checkpointDigest = digest.digestLowerHex();
-      if (
-        recordCount !== expectedRecordCount ||
-        checkpointDigest !== expectedDigest
-      ) {
+      if (recordCount !== expectedRecordCount) {
         throw new Error(
-          "normalized checkpoint digest does not match its stage",
+          "normalized checkpoint record count does not match its stage",
         );
       }
       const meta = this.#database.exec({

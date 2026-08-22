@@ -14,11 +14,84 @@ const textEncoder = new TextEncoder();
 export interface LibraryCoreBeginNormalizedCheckpointStageV2 {
   readonly authorityEpoch: string;
   readonly createdAt: number;
-  readonly expectedCheckpointDigest: LibraryCoreLowercaseHex64;
   readonly expectedRecordCount: number;
   readonly libraryId: string;
   readonly sourceRevision: number;
   readonly stageId: string;
+}
+
+export function parseLibraryCoreNormalizedCheckpointStageStatusV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointStageStatusV2 {
+  const record = closedRecord(
+    value,
+    [
+      "complete",
+      "expectedRecordCount",
+      "stagedCanonicalBytes",
+      "stagedRecordCount",
+      "stageId",
+    ],
+    "normalized checkpoint stage status",
+  );
+  if (
+    typeof record.complete !== "boolean" ||
+    !isLibraryCoreNonnegativeSafeInteger(record.expectedRecordCount) ||
+    record.expectedRecordCount === 0 ||
+    !isLibraryCoreNonnegativeSafeInteger(record.stagedCanonicalBytes) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.stagedRecordCount) ||
+    record.stagedRecordCount > record.expectedRecordCount ||
+    record.complete !==
+      (record.stagedRecordCount === record.expectedRecordCount)
+  ) {
+    throw new TypeError("normalized checkpoint stage status is invalid");
+  }
+  return Object.freeze({
+    complete: record.complete,
+    expectedRecordCount: record.expectedRecordCount,
+    stagedCanonicalBytes: record.stagedCanonicalBytes,
+    stagedRecordCount: record.stagedRecordCount,
+    stageId: boundedText(record.stageId, "stageId"),
+  });
+}
+
+export function parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
+  value: unknown,
+): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+  const record = closedRecord(
+    value,
+    [
+      "authorityEpoch",
+      "canonicalBytes",
+      "checkpointDigest",
+      "libraryId",
+      "recordCount",
+      "sourceRevision",
+      "stageId",
+    ],
+    "normalized checkpoint activation receipt",
+  );
+  if (
+    !isLibraryCoreNonnegativeSafeInteger(record.canonicalBytes) ||
+    record.canonicalBytes === 0 ||
+    !isLibraryCoreLowercaseHex64(record.checkpointDigest) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.recordCount) ||
+    record.recordCount === 0 ||
+    !isLibraryCoreNonnegativeSafeInteger(record.sourceRevision)
+  ) {
+    throw new TypeError(
+      "normalized checkpoint activation receipt is invalid",
+    );
+  }
+  return Object.freeze({
+    authorityEpoch: boundedText(record.authorityEpoch, "authorityEpoch"),
+    canonicalBytes: record.canonicalBytes,
+    checkpointDigest: record.checkpointDigest,
+    libraryId: boundedText(record.libraryId, "libraryId"),
+    recordCount: record.recordCount,
+    sourceRevision: record.sourceRevision,
+    stageId: boundedText(record.stageId, "stageId"),
+  });
 }
 
 export interface LibraryCoreNormalizedCheckpointStageStatusV2 {
@@ -91,7 +164,6 @@ export function parseLibraryCoreBeginNormalizedCheckpointStageV2(
     [
       "authorityEpoch",
       "createdAt",
-      "expectedCheckpointDigest",
       "expectedRecordCount",
       "libraryId",
       "sourceRevision",
@@ -103,15 +175,13 @@ export function parseLibraryCoreBeginNormalizedCheckpointStageV2(
     !isLibraryCoreNonnegativeSafeInteger(record.createdAt) ||
     !isLibraryCoreNonnegativeSafeInteger(record.sourceRevision) ||
     !isLibraryCoreNonnegativeSafeInteger(record.expectedRecordCount) ||
-    record.expectedRecordCount === 0 ||
-    !isLibraryCoreLowercaseHex64(record.expectedCheckpointDigest)
+    record.expectedRecordCount === 0
   ) {
     throw new TypeError("normalized checkpoint stage identity is invalid");
   }
   return Object.freeze({
     authorityEpoch: boundedText(record.authorityEpoch, "authorityEpoch"),
     createdAt: record.createdAt,
-    expectedCheckpointDigest: record.expectedCheckpointDigest,
     expectedRecordCount: record.expectedRecordCount,
     libraryId: boundedText(record.libraryId, "libraryId"),
     sourceRevision: record.sourceRevision,
