@@ -51,6 +51,14 @@
         does not assign sequence numbers, retain an optimistic overlay, or
         receive a second copy of the mutation. A lost worker response retries
         the exact canonical transaction bytes once.
+  - [x] Route FeedItem capture and removal, RSS feed changes, synchronized
+        preference patches, Person upserts and removal, and Account upserts and
+        removal through the same OPFS SQLite follower transaction boundary.
+        Product code no longer calls an IndexedDB mutation method. Capture
+        batches use the generated 32-member materializer ceiling. Other record
+        batches use the generated 256-member ceiling. Repeated identities split
+        before transaction assembly so every transaction remains homogeneous
+        and unambiguous.
   - [x] Apply one closed authority-signed Primary result through the same
         worker boundary. Browser SQLite verifies exact canonical bytes and the
         active authority key, requires a contiguous actor-scoped result chain,
@@ -457,6 +465,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.40 | Implement the normalized v2 intent transport publication transaction inside the PWA OPFS SQLite engine, using the shared closed header and immutable-reference contract, exact response-loss receipts, actor-head advancement, and transaction-completeness behavior matching native Rust                 | High       | ✓ Complete                                                                                       |
 | 6.41 | Import normalized v2 result transport segments inside one PWA OPFS SQLite transaction, including semantic digest and signature verification, result materialization, sparse-overlay cleanup, logical and transport cursor advancement, exact retry receipts, and full rollback on late receipt failure      | High       | ✓ Complete                                                                                       |
 | 6.42 | Route PWA read, saved, archived, and liked product actions directly through the OPFS SQLite follower mutation context and atomic intent transaction, with IndexedDB limited to the matching nonextractable signing key and no dual write                                          | High       | ✓ Complete                                                                                       |
+| 6.43 | Route every remaining PWA product write through registered signed OPFS SQLite follower transactions, including FeedItem, RSS, preferences, Person, and Account families, with generated bounds and no IndexedDB mutation calls                                                   | High       | ✓ Complete                                                                                       |
 
 ---
 

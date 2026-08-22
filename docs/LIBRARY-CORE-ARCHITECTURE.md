@@ -238,6 +238,10 @@ operation digest. Transaction assembly then commits the canonical envelopes,
 sparse optimistic fields, actor tip, and durable receipt to SQLite atomically.
 There is no IndexedDB mutation journal or dual write. Response loss retries the
 same canonical bytes and accepts only the receipt for that exact transaction.
+This boundary covers every PWA product write. FeedItem, RSS, preferences,
+Person, Account, and user-state mutations all use their registered generated
+member schema and generated transaction ceiling. Browser product code has no
+IndexedDB mutation API.
 
 ### 5.3 React
 

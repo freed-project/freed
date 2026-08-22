@@ -5,17 +5,15 @@ import { createLibraryCoreImmutableObjectKey } from "@freed/shared/library-core"
 const mocks = vi.hoisted(() => ({
   commitReadAssignments: vi.fn(),
   commitUserStateAssignments: vi.fn(),
-  enqueueReadAssignments: vi.fn(),
-  enqueueFeedItemCaptures: vi.fn(),
-  enqueueFeedItemRemove: vi.fn(),
-  enqueueRssFeedRemove: vi.fn(),
-  enqueueRssFeedUpsert: vi.fn(),
-  enqueuePreferencesLeafAssignment: vi.fn(),
-  enqueuePersonUpserts: vi.fn(),
-  enqueuePersonRemove: vi.fn(),
-  enqueueAccountUpserts: vi.fn(),
-  enqueueAccountRemove: vi.fn(),
-  enqueueUserStateAssignments: vi.fn(),
+  commitFeedItemCaptures: vi.fn(),
+  commitFeedItemRemove: vi.fn(),
+  commitRssFeedUpsert: vi.fn(),
+  commitRssFeedRemove: vi.fn(),
+  commitPreferencesPatch: vi.fn(),
+  commitPersonUpserts: vi.fn(),
+  commitPersonRemove: vi.fn(),
+  commitAccountUpserts: vi.fn(),
+  commitAccountRemove: vi.fn(),
   readSelectedCollectionPage: vi.fn(),
   readSelectedMaterializedPage: vi.fn(),
   readSelectedMaterializedRow: vi.fn(),
@@ -35,7 +33,18 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./library-core-pwa-follower-mutations", () => ({
+  PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT: 32,
+  PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT: 256,
+  commitPwaLibraryCoreAccountRemove: mocks.commitAccountRemove,
+  commitPwaLibraryCoreAccountUpserts: mocks.commitAccountUpserts,
+  commitPwaLibraryCoreFeedItemCaptures: mocks.commitFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemRemove: mocks.commitFeedItemRemove,
+  commitPwaLibraryCorePersonRemove: mocks.commitPersonRemove,
+  commitPwaLibraryCorePersonUpserts: mocks.commitPersonUpserts,
+  commitPwaLibraryCorePreferencesPatch: mocks.commitPreferencesPatch,
   commitPwaLibraryCoreReadAssignments: mocks.commitReadAssignments,
+  commitPwaLibraryCoreRssFeedRemove: mocks.commitRssFeedRemove,
+  commitPwaLibraryCoreRssFeedUpsert: mocks.commitRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments: mocks.commitUserStateAssignments,
 }));
 
@@ -44,17 +53,6 @@ vi.mock("./library-core-portable-checkpoint-store", () => ({
   PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT: 128,
   PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT: 128,
   createPwaLibraryCorePortableCheckpointStore: () => ({
-    enqueueReadAssignments: mocks.enqueueReadAssignments,
-    enqueueFeedItemCaptures: mocks.enqueueFeedItemCaptures,
-    enqueueFeedItemRemove: mocks.enqueueFeedItemRemove,
-    enqueueRssFeedRemove: mocks.enqueueRssFeedRemove,
-    enqueueRssFeedUpsert: mocks.enqueueRssFeedUpsert,
-    enqueuePreferencesLeafAssignment: mocks.enqueuePreferencesLeafAssignment,
-    enqueuePersonUpserts: mocks.enqueuePersonUpserts,
-    enqueuePersonRemove: mocks.enqueuePersonRemove,
-    enqueueAccountUpserts: mocks.enqueueAccountUpserts,
-    enqueueAccountRemove: mocks.enqueueAccountRemove,
-    enqueueUserStateAssignments: mocks.enqueueUserStateAssignments,
     readSelectedMaterializedPage: mocks.readSelectedMaterializedPage,
     readSelectedMaterializedRow: mocks.readSelectedMaterializedRow,
     readSelectedCheckpointReceipt: mocks.readSelectedCheckpointReceipt,
@@ -267,17 +265,15 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.resetNormalizedLibrary.mockReset();
     mocks.commitReadAssignments.mockReset();
     mocks.commitUserStateAssignments.mockReset();
-    mocks.enqueueUserStateAssignments.mockReset();
-    mocks.enqueueReadAssignments.mockReset();
-    mocks.enqueueFeedItemCaptures.mockReset();
-    mocks.enqueueFeedItemRemove.mockReset();
-    mocks.enqueueRssFeedRemove.mockReset();
-    mocks.enqueueRssFeedUpsert.mockReset();
-    mocks.enqueuePreferencesLeafAssignment.mockReset();
-    mocks.enqueuePersonUpserts.mockReset();
-    mocks.enqueuePersonRemove.mockReset();
-    mocks.enqueueAccountUpserts.mockReset();
-    mocks.enqueueAccountRemove.mockReset();
+    mocks.commitFeedItemCaptures.mockReset();
+    mocks.commitFeedItemRemove.mockReset();
+    mocks.commitRssFeedUpsert.mockReset();
+    mocks.commitRssFeedRemove.mockReset();
+    mocks.commitPreferencesPatch.mockReset();
+    mocks.commitPersonUpserts.mockReset();
+    mocks.commitPersonRemove.mockReset();
+    mocks.commitAccountUpserts.mockReset();
+    mocks.commitAccountRemove.mockReset();
   });
 
   it("keeps IndexedDB Library Core active when stale rollback state is present", () => {
@@ -708,20 +704,20 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.readSelectedMaterializedRow).not.toHaveBeenCalled();
   });
 
-  it("queues FeedItem removal through the signed IndexedDB intent path", async () => {
-    mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
+  it("commits FeedItem removal through the signed SQLite intent path", async () => {
+    mocks.commitFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
 
     await enqueuePwaLibraryCoreFeedItemRemove("item-9");
 
-    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
-    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
-      entityId: "item-9",
-      removedAtMs: expect.any(Number),
-    });
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledOnce();
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
+      "item-9",
+      expect.any(Number),
+    );
   });
 
-  it("batches sanitized FeedItem captures through the signed IndexedDB intent path", async () => {
-    mocks.enqueueFeedItemCaptures.mockResolvedValue({
+  it("batches sanitized FeedItem captures through the signed SQLite intent path", async () => {
+    mocks.commitFeedItemCaptures.mockResolvedValue({
       operationId: "op:capture",
     });
     const items = Array.from({ length: 129 }, (_, index) => ({
@@ -740,14 +736,14 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCoreFeedItemCaptures(items);
 
-    expect(mocks.enqueueFeedItemCaptures).toHaveBeenCalledTimes(2);
-    expect(mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]).toHaveLength(128);
-    expect(mocks.enqueueFeedItemCaptures.mock.calls[1]?.[0]).toHaveLength(1);
+    expect(mocks.commitFeedItemCaptures).toHaveBeenCalledTimes(5);
+    expect(mocks.commitFeedItemCaptures.mock.calls[0]?.[0]).toHaveLength(32);
+    expect(mocks.commitFeedItemCaptures.mock.calls[4]?.[0]).toHaveLength(1);
     expect(
-      mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]?.[0],
+      mocks.commitFeedItemCaptures.mock.calls[0]?.[0]?.[0],
     ).not.toHaveProperty("priority");
     expect(
-      mocks.enqueueFeedItemCaptures.mock.calls[0]?.[0]?.[0],
+      mocks.commitFeedItemCaptures.mock.calls[0]?.[0]?.[0],
     ).not.toHaveProperty("priorityComputedAt");
 
     await enqueuePwaLibraryCoreFeedItemCaptures([
@@ -757,9 +753,9 @@ describe("PWA Library Core bounded scanner", () => {
         content: { text: "Later", mediaUrls: [], mediaTypes: [] },
       },
     ]);
-    expect(mocks.enqueueFeedItemCaptures).toHaveBeenCalledTimes(4);
-    expect(mocks.enqueueFeedItemCaptures.mock.calls[2]?.[0]).toHaveLength(1);
-    expect(mocks.enqueueFeedItemCaptures.mock.calls[3]?.[0]).toHaveLength(1);
+    expect(mocks.commitFeedItemCaptures).toHaveBeenCalledTimes(7);
+    expect(mocks.commitFeedItemCaptures.mock.calls[5]?.[0]).toHaveLength(1);
+    expect(mocks.commitFeedItemCaptures.mock.calls[6]?.[0]).toHaveLength(1);
   });
 
   it("repairs saved archived items from bounded SQLite rows", async () => {
@@ -784,7 +780,7 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("deletes only archived unsaved items from bounded SQLite rows", async () => {
-    mocks.enqueueFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
+    mocks.commitFeedItemRemove.mockResolvedValue({ operationId: "op:remove" });
     mocks.queryNormalizedLibrary.mockResolvedValueOnce({
       nextCursor: null,
       rows: [
@@ -794,11 +790,11 @@ describe("PWA Library Core bounded scanner", () => {
     });
     await enqueuePwaLibraryCoreDeleteAllArchived();
 
-    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledOnce();
-    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
-      entityId: "plain-archived",
-      removedAtMs: expect.any(Number),
-    });
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledOnce();
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
+      "plain-archived",
+      expect.any(Number),
+    );
   });
 
   it("marks the complete selected platform read in bounded intent batches", async () => {
@@ -906,8 +902,8 @@ describe("PWA Library Core bounded scanner", () => {
   });
 
   it("routes RSS configuration through signed Library Core intents", async () => {
-    mocks.enqueueRssFeedUpsert.mockResolvedValue({ operationId: "op:rss:add" });
-    mocks.enqueueRssFeedRemove.mockResolvedValue({
+    mocks.commitRssFeedUpsert.mockResolvedValue({ operationId: "op:rss:add" });
+    mocks.commitRssFeedRemove.mockResolvedValue({
       operationId: "op:rss:remove",
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
@@ -921,16 +917,19 @@ describe("PWA Library Core bounded scanner", () => {
     await enqueuePwaLibraryCoreRssFeedUpsert(feed);
     await enqueuePwaLibraryCoreRssFeedRemove(feed.url, true);
 
-    expect(mocks.enqueueRssFeedUpsert).toHaveBeenCalledWith(feed);
-    expect(mocks.enqueueRssFeedRemove).toHaveBeenCalledWith({
-      includeItems: true,
-      removedAtMs: expect.any(Number),
-      url: feed.url,
-    });
+    expect(mocks.commitRssFeedUpsert).toHaveBeenCalledWith(
+      feed,
+      expect.any(Number),
+    );
+    expect(mocks.commitRssFeedRemove).toHaveBeenCalledWith(
+      feed.url,
+      true,
+      expect.any(Number),
+    );
   });
 
   it("routes synchronized preferences through a signed Library Core patch", async () => {
-    mocks.enqueuePreferencesLeafAssignment.mockResolvedValue({
+    mocks.commitPreferencesPatch.mockResolvedValue({
       operationId: "op:preferences",
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
@@ -943,11 +942,14 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCorePreferencesPatch(update);
 
-    expect(mocks.enqueuePreferencesLeafAssignment).toHaveBeenCalledWith(update);
+    expect(mocks.commitPreferencesPatch).toHaveBeenCalledWith(
+      update,
+      expect.any(Number),
+    );
   });
 
   it("batches synchronized Persons and removes device-local graph state", async () => {
-    mocks.enqueuePersonUpserts.mockResolvedValue({
+    mocks.commitPersonUpserts.mockResolvedValue({
       operationId: "op:persons",
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
@@ -964,39 +966,42 @@ describe("PWA Library Core bounded scanner", () => {
 
     await enqueuePwaLibraryCorePersonUpserts([person]);
 
-    expect(mocks.enqueuePersonUpserts).toHaveBeenCalledOnce();
-    expect(mocks.enqueuePersonUpserts).toHaveBeenCalledWith([
-      {
-        id: "person:one",
-        name: "One Person",
-        relationshipStatus: "friend",
-        careLevel: 3,
-        createdAt: 1,
-        updatedAt: 2,
-      },
-    ]);
+    expect(mocks.commitPersonUpserts).toHaveBeenCalledOnce();
+    expect(mocks.commitPersonUpserts).toHaveBeenCalledWith(
+      [
+        {
+          id: "person:one",
+          name: "One Person",
+          relationshipStatus: "friend",
+          careLevel: 3,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      expect.any(Number),
+    );
   });
 
   it("queues one atomic Person and linked-account removal", async () => {
-    mocks.enqueuePersonRemove.mockResolvedValue({
+    mocks.commitPersonRemove.mockResolvedValue({
       operationId: "op:person-remove",
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
 
     await enqueuePwaLibraryCorePersonRemove("person:one");
 
-    expect(mocks.enqueuePersonRemove).toHaveBeenCalledOnce();
-    expect(mocks.enqueuePersonRemove).toHaveBeenCalledWith(
+    expect(mocks.commitPersonRemove).toHaveBeenCalledOnce();
+    expect(mocks.commitPersonRemove).toHaveBeenCalledWith(
       "person:one",
       expect.any(Number),
     );
   });
 
   it("batches synchronized Accounts, strips graph state, and queues removal", async () => {
-    mocks.enqueueAccountUpserts.mockResolvedValue({
+    mocks.commitAccountUpserts.mockResolvedValue({
       operationId: "op:accounts",
     });
-    mocks.enqueueAccountRemove.mockResolvedValue({
+    mocks.commitAccountRemove.mockResolvedValue({
       operationId: "op:account-remove",
     });
     mocks.readSelectedMaterializedRow.mockResolvedValue(null);
@@ -1018,21 +1023,24 @@ describe("PWA Library Core bounded scanner", () => {
     await enqueuePwaLibraryCoreAccountUpserts([account]);
     await enqueuePwaLibraryCoreAccountRemove(account.id);
 
-    expect(mocks.enqueueAccountUpserts).toHaveBeenCalledWith([
-      {
-        id: "account:one",
-        personId: "person:one",
-        kind: "social",
-        provider: "instagram",
-        externalId: "one",
-        discoveredFrom: "manual_entry",
-        firstSeenAt: 1,
-        lastSeenAt: 2,
-        createdAt: 1,
-        updatedAt: 2,
-      },
-    ]);
-    expect(mocks.enqueueAccountRemove).toHaveBeenCalledWith(
+    expect(mocks.commitAccountUpserts).toHaveBeenCalledWith(
+      [
+        {
+          id: "account:one",
+          personId: "person:one",
+          kind: "social",
+          provider: "instagram",
+          externalId: "one",
+          discoveredFrom: "manual_entry",
+          firstSeenAt: 1,
+          lastSeenAt: 2,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      expect.any(Number),
+    );
+    expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
       "account:one",
       expect.any(Number),
     );
@@ -1114,8 +1122,8 @@ describe("PWA Library Core bounded scanner", () => {
       total: 4,
     });
 
-    expect(mocks.enqueueAccountUpserts).toHaveBeenCalledOnce();
-    const unlinkedAccount = mocks.enqueueAccountUpserts.mock.calls[0]?.[0]?.[0];
+    expect(mocks.commitAccountUpserts).toHaveBeenCalledOnce();
+    const unlinkedAccount = mocks.commitAccountUpserts.mock.calls[0]?.[0]?.[0];
     expect(unlinkedAccount).toEqual(
       expect.objectContaining({
         id: "account:real",
@@ -1123,22 +1131,22 @@ describe("PWA Library Core bounded scanner", () => {
       }),
     );
     expect(unlinkedAccount).not.toHaveProperty("personId");
-    expect(mocks.enqueueAccountRemove).toHaveBeenCalledWith(
+    expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
       "account:sample",
       expect.any(Number),
     );
-    expect(mocks.enqueuePersonRemove).toHaveBeenCalledWith(
+    expect(mocks.commitPersonRemove).toHaveBeenCalledWith(
       "person:sample",
       expect.any(Number),
     );
-    expect(mocks.enqueueRssFeedRemove).toHaveBeenCalledWith({
-      includeItems: false,
-      removedAtMs: expect.any(Number),
-      url: "https://sample.test/feed",
-    });
-    expect(mocks.enqueueFeedItemRemove).toHaveBeenCalledWith({
-      entityId: "item:sample",
-      removedAtMs: expect.any(Number),
-    });
+    expect(mocks.commitRssFeedRemove).toHaveBeenCalledWith(
+      "https://sample.test/feed",
+      false,
+      expect.any(Number),
+    );
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
+      "item:sample",
+      expect.any(Number),
+    );
   });
 });

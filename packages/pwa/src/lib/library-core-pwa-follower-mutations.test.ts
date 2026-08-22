@@ -20,7 +20,16 @@ vi.mock("./library-core-sqlite-runtime", () => ({
 }));
 
 import {
+  commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountUpserts,
+  commitPwaLibraryCoreFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonUpserts,
+  commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
+  commitPwaLibraryCoreRssFeedRemove,
+  commitPwaLibraryCoreRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments,
 } from "./library-core-pwa-follower-mutations";
 
@@ -149,5 +158,129 @@ describe("PWA SQLite follower mutations", () => {
         3_000,
       ),
     ).rejects.toThrow(/receipt does not match/);
+  });
+
+  it("commits bounded FeedItem captures with canonical fractional values", async () => {
+    await commitPwaLibraryCoreFeedItemCaptures(
+      [
+        {
+          globalId: "item:1",
+          platform: "rss",
+          contentType: "article",
+          capturedAt: 1_000,
+          publishedAt: 900,
+          author: {
+            id: "author:1",
+            handle: "author",
+            displayName: "Author",
+          },
+          content: { text: "Text", mediaUrls: [], mediaTypes: [] },
+          location: {
+            name: "Somewhere",
+            source: "geo_tag",
+            coordinates: { lat: 1.5, lng: -2.25 },
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+      ],
+      4_000,
+    );
+
+    const commit = mocks.commitFollowerIntent.mock.calls[0]![0];
+    const envelope = decodeCommit(commit)[0]!;
+    expect(envelope.operation_type).toBe("feed_item_capture_upsert");
+    expect(envelope.payload).toMatchObject({
+      item: {
+        location: {
+          coordinates: {
+            lat: { codec: "ieee754_binary64_hex_v1" },
+            lng: { codec: "ieee754_binary64_hex_v1" },
+          },
+        },
+      },
+    });
+  });
+
+  it("commits FeedItem tombstones through the same SQLite transaction path", async () => {
+    await commitPwaLibraryCoreFeedItemRemove("item:1", 5_000);
+
+    const commit = mocks.commitFollowerIntent.mock.calls[0]![0];
+    expect(decodeCommit(commit)[0]).toMatchObject({
+      entity_id: "item:1",
+      operation_type: "feed_item_remove",
+      payload: { removed_at_ms: 5_000 },
+    });
+  });
+
+  it("uses registered SQLite intents for remaining normalized record writes", async () => {
+    await commitPwaLibraryCoreRssFeedUpsert(
+      {
+        url: "https://example.test/feed",
+        title: "Example",
+        enabled: true,
+        trackUnread: true,
+      },
+      6_000,
+    );
+    await commitPwaLibraryCoreRssFeedRemove(
+      "https://example.test/feed",
+      true,
+      6_001,
+    );
+    await commitPwaLibraryCorePreferencesPatch(
+      { display: { archivePruneDays: 14 } } as never,
+      6_002,
+    );
+    await commitPwaLibraryCorePersonUpserts(
+      [
+        {
+          id: "person:1",
+          name: "Person",
+          relationshipStatus: "friend",
+          careLevel: 3,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      6_003,
+    );
+    await commitPwaLibraryCorePersonRemove("person:1", 6_004);
+    await commitPwaLibraryCoreAccountUpserts(
+      [
+        {
+          id: "account:1",
+          kind: "social",
+          provider: "instagram",
+          externalId: "one",
+          discoveredFrom: "manual_entry",
+          firstSeenAt: 1,
+          lastSeenAt: 2,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+      6_005,
+    );
+    await commitPwaLibraryCoreAccountRemove("account:1", 6_006);
+
+    expect(
+      mocks.commitFollowerIntent.mock.calls.map(
+        ([commit]) => decodeCommit(commit)[0]!.operation_type,
+      ),
+    ).toEqual([
+      "rss_feed_upsert",
+      "rss_feed_remove_with_items",
+      "preferences_leaf_assignment",
+      "person_upsert",
+      "person_remove_and_accounts",
+      "account_upsert",
+      "account_remove",
+    ]);
   });
 });

@@ -61,9 +61,6 @@ import type { LibraryState } from "./library-state-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
   createPwaLibraryCorePortableCheckpointStore,
-  PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT,
-  PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
-  PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
   type PwaLibraryCoreSelectedCheckpointReceiptV1,
   type PwaLibraryCoreIntentOverlayRecoveryStateV1,
 } from "./library-core-portable-checkpoint-store";
@@ -77,8 +74,19 @@ import {
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
 import {
+  commitPwaLibraryCoreAccountRemove,
+  commitPwaLibraryCoreAccountUpserts,
+  commitPwaLibraryCoreFeedItemCaptures,
+  commitPwaLibraryCoreFeedItemRemove,
+  commitPwaLibraryCorePersonRemove,
+  commitPwaLibraryCorePersonUpserts,
+  commitPwaLibraryCorePreferencesPatch,
   commitPwaLibraryCoreReadAssignments,
+  commitPwaLibraryCoreRssFeedRemove,
+  commitPwaLibraryCoreRssFeedUpsert,
   commitPwaLibraryCoreUserStateAssignments,
+  PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT,
+  PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
 const DATABASE_NAME = "freed-library-core-portable-v1";
@@ -478,25 +486,22 @@ export async function enqueuePwaLibraryCoreUserStateAssignment(
   await enqueuePwaLibraryCoreUserStateAssignments([globalId], field, assigned);
 }
 
-/** Queue one signed FeedItem removal and remove it from local IndexedDB. */
+/** Commit one signed FeedItem removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemRemove(
   globalId: string,
 ): Promise<void> {
   if (!globalId) throw new TypeError("remove entity ID is required");
-  await getPortableStore().enqueueFeedItemRemove({
-    entityId: globalId,
-    removedAtMs: Date.now(),
-  });
+  await commitPwaLibraryCoreFeedItemRemove(globalId, Date.now());
 }
 
-/** Queue one signed FeedItem capture and expose it from local IndexedDB. */
+/** Commit one signed FeedItem capture to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemCapture(
   item: FeedItem,
 ): Promise<void> {
   await enqueuePwaLibraryCoreFeedItemCaptures([item]);
 }
 
-/** Queue bounded signed FeedItem captures and expose them from IndexedDB. */
+/** Commit bounded signed FeedItem captures to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreFeedItemCaptures(
   items: readonly FeedItem[],
 ): Promise<void> {
@@ -505,14 +510,14 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
   let identities = new Set<string>();
   const flush = async () => {
     if (batch.length === 0) return;
-    await getPortableStore().enqueueFeedItemCaptures(batch);
+    await commitPwaLibraryCoreFeedItemCaptures(batch, Date.now());
     batch = [];
     identities = new Set<string>();
   };
   for (const input of items) {
     const item = sanitizeFeedItemWrite(input) as FeedItem;
     if (
-      batch.length === PWA_LIBRARY_CORE_FEED_ITEM_UPSERT_BATCH_LIMIT ||
+      batch.length === PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT ||
       identities.has(item.globalId)
     ) {
       await flush();
@@ -521,18 +526,14 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
     identities.add(item.globalId);
   }
   await flush();
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one signed RSS feed upsert and update the selected IndexedDB shell. */
+/** Commit one signed RSS feed upsert to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreRssFeedUpsert(
   input: RssFeed,
 ): Promise<void> {
   const feed = sanitizeRssFeedWrite(input) as RssFeed;
-  await getPortableStore().enqueueRssFeedUpsert(feed);
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCoreRssFeedUpsert(feed, Date.now());
 }
 
 /** Queue one signed RSS removal, optionally removing its local feed items. */
@@ -540,13 +541,7 @@ export async function enqueuePwaLibraryCoreRssFeedRemove(
   url: string,
   includeItems: boolean,
 ): Promise<void> {
-  await getPortableStore().enqueueRssFeedRemove({
-    includeItems,
-    removedAtMs: Date.now(),
-    url,
-  });
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCoreRssFeedRemove(url, includeItems, Date.now());
 }
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */
@@ -613,23 +608,21 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
   };
 }
 
-/** Queue one synchronized preference patch and update the selected shell. */
+/** Commit one synchronized preference patch to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePreferencesPatch(
   updates: Partial<UserPreferences>,
 ): Promise<void> {
-  await getPortableStore().enqueuePreferencesLeafAssignment(updates);
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCorePreferencesPatch(updates, Date.now());
 }
 
-/** Queue one whole sanitized Person and update the selected IndexedDB shell. */
+/** Commit one whole sanitized Person to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonUpsert(
   person: Person,
 ): Promise<void> {
   await enqueuePwaLibraryCorePersonUpserts([person]);
 }
 
-/** Queue one bounded batch of whole sanitized Persons and update the selected shell. */
+/** Commit bounded whole sanitized Persons to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonUpserts(
   persons: readonly Person[],
 ): Promise<void> {
@@ -639,36 +632,33 @@ export async function enqueuePwaLibraryCorePersonUpserts(
   for (
     let offset = 0;
     offset < synchronized.length;
-    offset += PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT
+    offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await getPortableStore().enqueuePersonUpserts(
+    await commitPwaLibraryCorePersonUpserts(
       synchronized.slice(
         offset,
-        offset + PWA_LIBRARY_CORE_PERSON_UPSERT_BATCH_LIMIT,
+        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
       ),
+      Date.now(),
     );
   }
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one atomic Person and linked-account removal and refresh the shell. */
+/** Commit one atomic Person and linked-account removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCorePersonRemove(
   personId: string,
 ): Promise<void> {
-  await getPortableStore().enqueuePersonRemove(personId, Date.now());
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCorePersonRemove(personId, Date.now());
 }
 
-/** Queue one whole sanitized Account and update the selected IndexedDB shell. */
+/** Commit one whole sanitized Account to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountUpsert(
   account: Account,
 ): Promise<void> {
   await enqueuePwaLibraryCoreAccountUpserts([account]);
 }
 
-/** Queue one bounded batch of whole sanitized Accounts and update the selected shell. */
+/** Commit bounded whole sanitized Accounts to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountUpserts(
   accounts: readonly Account[],
 ): Promise<void> {
@@ -678,26 +668,23 @@ export async function enqueuePwaLibraryCoreAccountUpserts(
   for (
     let offset = 0;
     offset < synchronized.length;
-    offset += PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT
+    offset += PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT
   ) {
-    await getPortableStore().enqueueAccountUpserts(
+    await commitPwaLibraryCoreAccountUpserts(
       synchronized.slice(
         offset,
-        offset + PWA_LIBRARY_CORE_ACCOUNT_UPSERT_BATCH_LIMIT,
+        offset + PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
       ),
+      Date.now(),
     );
   }
-  const state = await readSelectedState();
-  if (state) publishState(state);
 }
 
-/** Queue one Account removal and refresh the selected IndexedDB shell. */
+/** Commit one Account removal to OPFS SQLite. */
 export async function enqueuePwaLibraryCoreAccountRemove(
   accountId: string,
 ): Promise<void> {
-  await getPortableStore().enqueueAccountRemove(accountId, Date.now());
-  const state = await readSelectedState();
-  if (state) publishState(state);
+  await commitPwaLibraryCoreAccountRemove(accountId, Date.now());
 }
 
 async function enqueuePwaLibraryCoreUserStateAssignments(
