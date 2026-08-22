@@ -230,6 +230,16 @@ There is no generic patch, toggle, merge-object, execute-SQL, or shell mutation
 route. Product conveniences such as toggles read an exact current value and
 submit a named assignment mutation with an explicit precondition.
 
+Freed Desktop assembles each Primary transaction from one native context read.
+That context contains only the admitted Library and epoch identity, the active
+Desktop actor public identity and exact chain tip, and the bounded accepted
+authority frontier. The native key store signs each finalized operation body.
+The native core then rechecks the complete canonical transaction, current
+writer admission, actor capability, actor tip, causal frontier, and authority
+key before one SQLite commit. The renderer cannot supply a key, sequence,
+revision, SQL statement, or authority decision. It receives only the exact
+transaction and revision receipt plus the canonical signed follower result.
+
 Installation-local SQLite writes use a separate generated registry. The four
 v1 graph-position programs set or clear one Person or Account position. They
 accept one closed bounded DTO, require the entity to exist inside the same

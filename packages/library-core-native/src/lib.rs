@@ -42,7 +42,7 @@ pub use device_graph_layout::{
 };
 pub use library_core_actor_enrollment::{
     countersign_actor_enrollment_request, enroll_desktop_actor,
-    prepare_follower_actor_enrollment_request, sign_follower_operation_digest, ActorKeyStore,
+    prepare_follower_actor_enrollment_request, sign_library_core_operation_digest, ActorKeyStore,
     EnrollmentAuthority, PreparedActorEnrollmentRequest,
 };
 pub use library_core_authority_genesis::{
@@ -83,6 +83,10 @@ pub use normalized_checkpoint::{
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
     NormalizedCheckpointActivationReceiptV2,
+};
+pub use normalized_mutation::{
+    accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
+    NormalizedMutationCausalTipV1, NormalizedMutationContextV1, NormalizedMutationReceiptV1,
 };
 pub use normalized_query::{
     query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,

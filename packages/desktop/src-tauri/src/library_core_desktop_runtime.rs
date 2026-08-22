@@ -7,10 +7,11 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
 use freed_library_core::{
+    accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
     upsert_item, BeginLibraryCoreImport, LibraryCoreBackupChunk as NativeLibraryCoreBackupChunk,
     LibraryCoreBackupOperationGuard, LibraryCoreBackupReceipt, LibraryCoreBackupRecord,
     LibraryCoreCheckpointReference, LibraryCoreImportItem, LibraryCoreStore,
-    LibraryCoreStoreStatus,
+    LibraryCoreStoreStatus, NormalizedMutationContextV1, NormalizedMutationReceiptV1,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -23,8 +24,8 @@ use tauri::Manager;
 
 use super::library_core_actor_enrollment::{
     countersign_pwa_actor_enrollment_request, enroll_desktop_actor,
-    prepare_follower_actor_enrollment_request, sign_follower_operation_digest, EnrollmentAuthority,
-    PlatformActorKeyStore,
+    prepare_follower_actor_enrollment_request, sign_library_core_operation_digest,
+    EnrollmentAuthority, PlatformActorKeyStore,
 };
 use super::library_core_authority_genesis::{
     establish_or_transition_sqlite_authority, load_established_authority_key_pair,
@@ -363,6 +364,24 @@ pub(super) struct SignFollowerOperationRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SignNormalizedOperationRequest {
+    library_id: String,
+    epoch_id: String,
+    actor_id: String,
+    actor_public_key: String,
+    operation_signing_body_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct CommitNormalizedTransactionRequest {
+    library_id: String,
+    canonical_envelope_json: Vec<String>,
+    committed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct EnqueueFollowerIntentRequest {
     canonical_envelope_json: Vec<String>,
     enqueued_at_ms: i64,
@@ -374,6 +393,57 @@ pub(super) struct DesktopLibraryFollowerOperationSignature {
     actor_id: String,
     operation_signing_body_digest: String,
     signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryOperationSignature {
+    actor_id: String,
+    operation_signing_body_digest: String,
+    signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopNormalizedMutationReceipt {
+    transaction_id: String,
+    transaction_digest: String,
+    actor_id: String,
+    member_count: usize,
+    first_counter: i64,
+    last_counter: i64,
+    committed_operation_id: String,
+    committed_chain_digest: String,
+    previous_revision: i64,
+    committed_revision: i64,
+    committed_at: i64,
+    follower_result_digest: String,
+    follower_result_sequence: i64,
+    canonical_follower_result_json: String,
+}
+
+impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
+    type Error = String;
+
+    fn try_from(receipt: NormalizedMutationReceiptV1) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction_id: receipt.transaction_id,
+            transaction_digest: receipt.transaction_digest,
+            actor_id: receipt.actor_id,
+            member_count: receipt.member_count,
+            first_counter: receipt.first_counter,
+            last_counter: receipt.last_counter,
+            committed_operation_id: receipt.committed_operation_id,
+            committed_chain_digest: receipt.committed_chain_digest,
+            previous_revision: receipt.previous_revision,
+            committed_revision: receipt.committed_revision,
+            committed_at: receipt.committed_at,
+            follower_result_digest: receipt.follower_result_digest,
+            follower_result_sequence: receipt.follower_result_sequence,
+            canonical_follower_result_json: String::from_utf8(receipt.canonical_follower_result)
+                .map_err(|_| "normalized mutation result is not canonical UTF-8".to_string())?,
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -957,6 +1027,91 @@ pub(super) fn query_normalized_library(
     let mut connection = open_normalized_database(&app)?;
     freed_library_core::query_normalized_json_v1(&mut connection, request)
         .map_err(|error| error.to_string())
+}
+
+/// Read the exact admitted Primary actor tip for one normalized transaction.
+#[tauri::command]
+pub(super) fn normalized_library_primary_mutation_context(
+    app: tauri::AppHandle,
+) -> Result<NormalizedMutationContextV1, String> {
+    let connection = open_normalized_database(&app)?;
+    normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())
+}
+
+/// Sign one finalized normalized operation with the native Primary actor key.
+#[tauri::command]
+pub(super) fn sign_normalized_library_operation(
+    app: tauri::AppHandle,
+    request: SignNormalizedOperationRequest,
+) -> Result<DesktopLibraryOperationSignature, String> {
+    let connection = open_normalized_database(&app)?;
+    let context =
+        normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
+    if request.library_id != context.library_id
+        || request.epoch_id != context.epoch_id
+        || request.actor_id != context.actor_id
+        || request.actor_public_key != context.actor_public_key
+    {
+        return Err("normalized mutation signer context changed".into());
+    }
+    let signature = sign_library_core_operation_digest(
+        &PlatformActorKeyStore,
+        &context.library_id,
+        &context.actor_public_key,
+        &request.operation_signing_body_digest,
+    )?;
+    Ok(DesktopLibraryOperationSignature {
+        actor_id: context.actor_id,
+        operation_signing_body_digest: request.operation_signing_body_digest,
+        signature,
+    })
+}
+
+/// Verify and commit one complete Primary transaction into normalized SQLite.
+#[tauri::command]
+pub(super) fn commit_normalized_library_transaction(
+    app: tauri::AppHandle,
+    request: CommitNormalizedTransactionRequest,
+) -> Result<DesktopNormalizedMutationReceipt, String> {
+    use freed_library_core::sqlite_contract_generated::{
+        CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES,
+        FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS,
+    };
+
+    if request.committed_at_ms < 0
+        || request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > FOLLOWER_INTENT_TRANSACTION_MAXIMUM_MEMBERS
+        || request.canonical_envelope_json.iter().any(|member| {
+            member.is_empty() || member.len() > CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
+        })
+        || request
+            .canonical_envelope_json
+            .iter()
+            .try_fold(0_usize, |total, member| total.checked_add(member.len()))
+            .is_none_or(|total| total > FOLLOWER_INTENT_TRANSACTION_MAXIMUM_BYTES)
+    {
+        return Err("normalized mutation transaction exceeds its closed bounds".into());
+    }
+    let mut connection = open_normalized_database(&app)?;
+    let context =
+        normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
+    if request.library_id != context.library_id {
+        return Err("normalized mutation Library identity changed".into());
+    }
+    let authority_key_pair = load_established_authority_key_pair(&context.library_id)?;
+    let canonical_envelopes = request
+        .canonical_envelope_json
+        .into_iter()
+        .map(String::into_bytes)
+        .collect::<Vec<_>>();
+    accept_normalized_operation_transaction_v1(
+        &mut connection,
+        &canonical_envelopes,
+        &authority_key_pair,
+        request.committed_at_ms,
+    )
+    .map_err(|error| error.to_string())?
+    .try_into()
 }
 
 fn scope_action_sql(program_id: &str) -> Result<&'static str, String> {
@@ -1816,7 +1971,7 @@ pub(super) fn sign_sqlite_library_follower_operation(
         .follower_actor_enrollment(&request.library_id, &request.epoch_id, &request.actor_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "SQLite Library follower actor is not enrolled".to_string())?;
-    let signature = sign_follower_operation_digest(
+    let signature = sign_library_core_operation_digest(
         &PlatformActorKeyStore,
         &request.library_id,
         &enrollment.actor_public_key,

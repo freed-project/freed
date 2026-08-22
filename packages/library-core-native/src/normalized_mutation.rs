@@ -38,7 +38,7 @@ type FeedItemUserStateRow = (
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedMutationReceiptV1 {
+pub struct NormalizedMutationReceiptV1 {
     pub transaction_id: String,
     pub transaction_digest: String,
     pub actor_id: String,
@@ -53,6 +53,29 @@ pub(crate) struct NormalizedMutationReceiptV1 {
     pub follower_result_digest: String,
     pub follower_result_sequence: i64,
     pub canonical_follower_result: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMutationContextV1 {
+    pub library_id: String,
+    pub epoch: i64,
+    pub epoch_id: String,
+    pub actor_id: String,
+    pub actor_public_key: String,
+    pub next_counter: i64,
+    pub previous_operation_id: Option<String>,
+    pub previous_chain_digest: String,
+    pub observed_frontier: Vec<NormalizedMutationCausalTipV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedMutationCausalTipV1 {
+    pub actor_id: String,
+    pub sequence: i64,
+    pub operation_id: String,
+    pub chain_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2005,6 +2028,94 @@ fn persist_rejected_resolution(
     })
 }
 
+/// Read the exact Primary actor and causal frontier used to assemble the next
+/// normalized transaction. The context is available only while this process is
+/// the admitted writer for the active authority epoch.
+pub fn normalized_primary_mutation_context_v1(
+    connection: &Connection,
+) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
+    type ContextRow = (
+        String,
+        i64,
+        String,
+        String,
+        String,
+        i64,
+        Option<String>,
+        String,
+    );
+    let mut statement = connection.prepare(
+        "SELECT epoch.library_id, epoch.epoch_number, epoch.epoch_id,
+                actor.actor_id, actor.public_key, actor.accepted_counter,
+                actor.accepted_operation_id, actor.accepted_chain_digest
+         FROM library_writer_admission AS admission
+         JOIN library_active_authority AS active ON active.active_key = 'active'
+         JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+         JOIN library_actors AS actor ON actor.authority_epoch_id = epoch.epoch_id
+         WHERE admission.singleton_id = 1
+           AND admission.local_writer_id = admission.active_writer_id
+           AND admission.active_writer_id = active.writer_id
+           AND admission.observed_manifest_generation = active.accepted_manifest_generation
+           AND actor.actor_kind = 'desktop'
+           AND actor.retired_at IS NULL
+         ORDER BY actor.actor_id
+         LIMIT 2;",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<ContextRow>>>()?;
+    let [row] = rows.as_slice() else {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized Primary mutation context is unavailable",
+        ));
+    };
+    let next_counter = row
+        .5
+        .checked_add(1)
+        .filter(|value| *value <= MAX_SAFE_INTEGER)
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized Primary actor counter is exhausted",
+        ))?;
+    let mut frontier_statement = connection.prepare(
+        "SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
+         FROM library_authority_frontier
+         WHERE epoch_id = ?1
+         ORDER BY ordinal;",
+    )?;
+    let observed_frontier = frontier_statement
+        .query_map([&row.2], |frontier| {
+            Ok(NormalizedMutationCausalTipV1 {
+                actor_id: frontier.get(0)?,
+                sequence: frontier.get(1)?,
+                operation_id: frontier.get(2)?,
+                chain_digest: frontier.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(NormalizedMutationContextV1 {
+        library_id: row.0.clone(),
+        epoch: row.1,
+        epoch_id: row.2.clone(),
+        actor_id: row.3.clone(),
+        actor_public_key: row.4.clone(),
+        next_counter,
+        previous_operation_id: row.6.clone(),
+        previous_chain_digest: row.7.clone(),
+        observed_frontier,
+    })
+}
+
 pub(crate) fn resolve_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
@@ -2338,7 +2449,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     Ok(NormalizedMutationResolutionV1::Accepted(receipt))
 }
 
-pub(crate) fn accept_normalized_operation_transaction_v1(
+pub fn accept_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
     authority_key_pair: &Ed25519KeyPair,
@@ -2541,6 +2652,46 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn primary_context_tracks_the_exact_normalized_actor_tip() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let initial =
+            normalized_primary_mutation_context_v1(&connection).expect("initial Primary context");
+        assert_eq!(initial.library_id, enrollment.library_id);
+        assert_eq!(initial.epoch, enrollment.epoch);
+        assert_eq!(initial.epoch_id, enrollment.epoch_id);
+        assert_eq!(initial.actor_id, enrollment.actor_id);
+        assert_eq!(initial.actor_public_key, enrollment.actor_public_key);
+        assert_eq!(initial.next_counter, 1);
+        assert_eq!(initial.previous_operation_id, None);
+        assert_eq!(
+            initial.previous_chain_digest,
+            enrollment.actor_chain_genesis
+        );
+        assert!(initial.observed_frontier.is_empty());
+
+        let envelopes = signed_envelopes(&key_pair, &enrollment);
+        let receipt = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .expect("accepted normalized transaction");
+        let advanced =
+            normalized_primary_mutation_context_v1(&connection).expect("advanced Primary context");
+        assert_eq!(advanced.next_counter, receipt.last_counter + 1);
+        assert_eq!(
+            advanced.previous_operation_id.as_deref(),
+            Some(receipt.committed_operation_id.as_str())
+        );
+        assert_eq!(
+            advanced.previous_chain_digest,
+            receipt.committed_chain_digest
+        );
+        assert!(advanced.observed_frontier.is_empty());
     }
 
     #[test]

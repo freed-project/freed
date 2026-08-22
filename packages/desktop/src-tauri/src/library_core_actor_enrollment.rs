@@ -6,7 +6,7 @@ use freed_library_core::{ActorKeyStore, LibraryCoreJournal};
 
 pub(super) use freed_library_core::{
     enroll_desktop_actor, prepare_follower_actor_enrollment_request,
-    sign_follower_operation_digest, EnrollmentAuthority,
+    sign_library_core_operation_digest, EnrollmentAuthority,
 };
 
 const ACTOR_VAULT: PlatformKeyVault = PlatformKeyVault {

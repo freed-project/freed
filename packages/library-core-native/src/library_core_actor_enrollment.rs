@@ -462,12 +462,12 @@ fn load_actor_key_pair(
         .map_err(|_| "Library Core actor signing key is corrupt".to_string())
 }
 
-/// Sign one already-canonicalized operation body digest for this follower.
+/// Sign one already-canonicalized operation body digest for this Library actor.
 ///
 /// The native key is opened only for its exact Library and must still match
 /// the enrolled public key. The returned signature is domain-separated for a
 /// Library Core operation envelope and grants no cloud publication by itself.
-pub fn sign_follower_operation_digest(
+pub fn sign_library_core_operation_digest(
     store: &dyn ActorKeyStore,
     library_id: &str,
     expected_actor_public_key: &str,
@@ -477,17 +477,17 @@ pub fn sign_follower_operation_digest(
         || !is_lower_sha256(expected_actor_public_key)
         || !is_lower_sha256(operation_signing_body_digest)
     {
-        return Err("Library Core follower operation signing request is invalid".to_string());
+        return Err("Library Core operation signing request is invalid".to_string());
     }
     let key_pair = load_actor_key_pair(store, library_id)?;
     if lower_hex(key_pair.public_key().as_ref()) != expected_actor_public_key {
-        return Err("Library Core follower actor signing key changed".to_string());
+        return Err("Library Core actor signing key changed".to_string());
     }
     let input = encode_operation_signature_input(
         &json!({ "operation_signing_body_digest": operation_signing_body_digest }),
         MAX_CERTIFICATE_BYTES,
     )
-    .map_err(|_| "Library Core follower operation signature input is invalid".to_string())?;
+    .map_err(|_| "Library Core operation signature input is invalid".to_string())?;
     Ok(lower_hex(key_pair.sign(&input).as_ref()))
 }
 
@@ -863,7 +863,7 @@ mod tests {
         assert!(is_lower_sha256(&prepared.actor_id));
 
         let digest = "9".repeat(64);
-        let signature = sign_follower_operation_digest(
+        let signature = sign_library_core_operation_digest(
             &store,
             &authority.library_id,
             &prepared.actor_public_key,
