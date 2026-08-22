@@ -4870,7 +4870,26 @@ export class PwaLibraryCoreSqliteEngine {
       },
       summary: {
         archivedCount: safeInteger(row.archivedCount, "archived count"),
+        archivableCount: safeInteger(
+          row.archivableCount,
+          "archivable count",
+        ),
+        platformCounts: JSON.parse(
+          text(row.platformCountsJson, "platform counts"),
+        ) as unknown,
+        sampleAccountCount: safeInteger(
+          row.sampleAccountCount,
+          "sample account count",
+        ),
+        sampleFeedCount: safeInteger(
+          row.sampleFeedCount,
+          "sample feed count",
+        ),
         sampleItemCount: safeInteger(row.sampleItemCount, "sample item count"),
+        samplePersonCount: safeInteger(
+          row.samplePersonCount,
+          "sample person count",
+        ),
         savedArchivedCount: safeInteger(
           row.savedArchivedCount,
           "saved archived count",
@@ -4882,6 +4901,7 @@ export class PwaLibraryCoreSqliteEngine {
         ),
         tags: stringArray(row.tagsJson, "facet tags"),
         totalCount: safeInteger(row.totalCount, "total count"),
+        unreadCount: safeInteger(row.unreadCount, "unread count"),
       },
     };
     const parsed = parseLibraryCoreFacetSummaryResponseV1(response);

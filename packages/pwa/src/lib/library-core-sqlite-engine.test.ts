@@ -2639,12 +2639,37 @@ describe("PWA Library Core SQLite engine", () => {
       source: { projectionRevision: 7 },
       summary: {
         archivedCount: 0,
+        archivableCount: 0,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            platform: "rss",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+          {
+            archivableCount: 0,
+            platform: "saved",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+          {
+            archivableCount: 0,
+            platform: "x",
+            totalCount: 1,
+            unreadCount: 1,
+          },
+        ],
+        sampleAccountCount: 0,
+        sampleFeedCount: 1,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 1,
         savedPlatformCount: 1,
         tags: ["favorite"],
         totalCount: 3,
+        unreadCount: 3,
       },
     });
     const analyticsWindows = (count: number) =>

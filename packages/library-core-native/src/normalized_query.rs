@@ -682,12 +682,27 @@ pub struct NormalizedChangeFeedResponseV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedFacetSummaryV1 {
     pub archived_count: i64,
+    pub archivable_count: i64,
+    pub platform_counts: Vec<NormalizedFacetPlatformCountV1>,
+    pub sample_account_count: i64,
+    pub sample_feed_count: i64,
     pub sample_item_count: i64,
+    pub sample_person_count: i64,
     pub saved_archived_count: i64,
     pub saved_count: i64,
     pub saved_platform_count: i64,
     pub tags: Vec<String>,
     pub total_count: i64,
+    pub unread_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFacetPlatformCountV1 {
+    pub archivable_count: i64,
+    pub platform: String,
+    pub total_count: i64,
+    pub unread_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3423,29 +3438,71 @@ fn query_facet_summary(
     let summary = transaction.query_row(program.sql, [], |row| {
         Ok(NormalizedFacetSummaryV1 {
             archived_count: row.get("archivedCount")?,
+            archivable_count: row.get("archivableCount")?,
+            platform_counts: decode_sqlite_json(&row.get::<_, String>("platformCountsJson")?)?,
+            sample_account_count: row.get("sampleAccountCount")?,
+            sample_feed_count: row.get("sampleFeedCount")?,
             sample_item_count: row.get("sampleItemCount")?,
+            sample_person_count: row.get("samplePersonCount")?,
             saved_archived_count: row.get("savedArchivedCount")?,
             saved_count: row.get("savedCount")?,
             saved_platform_count: row.get("savedPlatformCount")?,
             tags: string_array(row, "tagsJson", 4_096, 1_024)?,
             total_count: row.get("totalCount")?,
+            unread_count: row.get("unreadCount")?,
         })
     })?;
+    let platform_totals = summary.platform_counts.iter().try_fold(
+        (0_i64, 0_i64, 0_i64),
+        |(total, unread, archivable), counts| {
+            Some((
+                total.checked_add(counts.total_count)?,
+                unread.checked_add(counts.unread_count)?,
+                archivable.checked_add(counts.archivable_count)?,
+            ))
+        },
+    );
     if [
         summary.archived_count,
+        summary.archivable_count,
+        summary.sample_account_count,
+        summary.sample_feed_count,
         summary.sample_item_count,
+        summary.sample_person_count,
         summary.saved_archived_count,
         summary.saved_count,
         summary.saved_platform_count,
         summary.total_count,
+        summary.unread_count,
     ]
     .into_iter()
     .any(|value| !valid_safe_integer(value))
         || summary.archived_count > summary.total_count
+        || summary.archivable_count > summary.total_count
         || summary.sample_item_count > summary.total_count
         || summary.saved_count > summary.total_count
         || summary.saved_archived_count > summary.saved_count.min(summary.archived_count)
         || summary.saved_platform_count > summary.saved_count
+        || summary.platform_counts.len() > 64
+        || summary
+            .platform_counts
+            .windows(2)
+            .any(|counts| counts[0].platform.as_bytes() >= counts[1].platform.as_bytes())
+        || summary.platform_counts.iter().any(|counts| {
+            counts.platform.is_empty()
+                || counts.platform.len() > 256
+                || !valid_safe_integer(counts.total_count)
+                || !valid_safe_integer(counts.unread_count)
+                || !valid_safe_integer(counts.archivable_count)
+                || counts.unread_count > counts.total_count
+                || counts.archivable_count > counts.total_count
+        })
+        || platform_totals
+            != Some((
+                summary.total_count,
+                summary.unread_count,
+                summary.archivable_count,
+            ))
         || summary.tags.windows(2).any(|tags| tags[0] >= tags[1])
     {
         return Err(invalid("normalized facet query response is invalid"));
@@ -5923,7 +5980,19 @@ mod tests {
                      ('item-2', 'rss', 'article', 200, 200, 'b', 'b', 'B', 0, 1, 0, NULL, 200),
                      ('item-3', 'saved', 'post', 300, 300, 'c', 'c', 'C', 1, 0, 0, NULL, 300);
                  INSERT INTO library_feed_item_tags (global_id, tag)
-                   VALUES ('item-1', '😀'), ('item-1', 'alpha'), ('item-2', '');",
+                   VALUES ('item-1', '😀'), ('item-1', 'alpha'), ('item-2', '');
+                 INSERT INTO library_rss_feeds
+                   (url, title, enabled, track_unread, sample_batch_id, updated_at)
+                   VALUES ('https://sample.test/feed', 'Sample', 1, 0, 'sample-1', 100);
+                 INSERT INTO library_persons
+                   (id, name, relationship_status, care_level, sample_batch_id,
+                    created_at, updated_at)
+                   VALUES ('person-1', 'Sample', 'friend', 3, 'sample-1', 100, 100);
+                 INSERT INTO library_accounts
+                   (id, kind, provider, external_id, first_seen_at, last_seen_at,
+                    discovered_from, sample_batch_id, created_at, updated_at)
+                   VALUES ('account-1', 'social', 'x', 'sample', 100, 100,
+                           'sample', 'sample-1', 100, 100);",
                 "a".repeat(64)
             ))
             .expect("fixture");
@@ -5939,10 +6008,20 @@ mod tests {
         assert_eq!(response.source.projection_revision, 7);
         assert_eq!(response.summary.total_count, 3);
         assert_eq!(response.summary.archived_count, 1);
+        assert_eq!(response.summary.unread_count, 3);
+        assert_eq!(response.summary.archivable_count, 0);
         assert_eq!(response.summary.saved_count, 2);
         assert_eq!(response.summary.saved_archived_count, 1);
         assert_eq!(response.summary.saved_platform_count, 2);
         assert_eq!(response.summary.sample_item_count, 1);
+        assert_eq!(response.summary.sample_feed_count, 1);
+        assert_eq!(response.summary.sample_person_count, 1);
+        assert_eq!(response.summary.sample_account_count, 1);
+        assert_eq!(response.summary.platform_counts.len(), 2);
+        assert_eq!(response.summary.platform_counts[0].platform, "rss");
+        assert_eq!(response.summary.platform_counts[0].total_count, 1);
+        assert_eq!(response.summary.platform_counts[1].platform, "saved");
+        assert_eq!(response.summary.platform_counts[1].total_count, 2);
         assert_eq!(response.summary.tags, ["alpha", "\u{e000}", "😀"]);
 
         connection
@@ -5950,6 +6029,8 @@ mod tests {
                 "UPDATE library_feed_items
                    SET saved = 0, archived = 1, sample_batch_id = 'sample-2'
                    WHERE global_id = 'item-2';
+                 UPDATE library_feed_items SET hidden = 0, read_at = 500
+                   WHERE global_id = 'item-3';
                  DELETE FROM library_feed_items WHERE global_id = 'item-1';",
             )
             .expect("update fixture");
@@ -5964,6 +6045,8 @@ mod tests {
         };
         assert_eq!(updated.summary.total_count, 2);
         assert_eq!(updated.summary.archived_count, 1);
+        assert_eq!(updated.summary.unread_count, 1);
+        assert_eq!(updated.summary.archivable_count, 1);
         assert_eq!(updated.summary.saved_count, 0);
         assert_eq!(updated.summary.saved_archived_count, 0);
         assert_eq!(updated.summary.saved_platform_count, 0);

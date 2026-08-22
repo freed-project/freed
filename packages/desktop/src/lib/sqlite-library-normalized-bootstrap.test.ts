@@ -37,12 +37,25 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           },
           summary: {
             archivedCount: 3,
+            archivableCount: 0,
+            platformCounts: [
+              {
+                archivableCount: 0,
+                platform: "rss",
+                totalCount: 19,
+                unreadCount: 0,
+              },
+            ],
+            sampleAccountCount: 0,
+            sampleFeedCount: 0,
             sampleItemCount: 0,
+            samplePersonCount: 0,
             savedArchivedCount: 0,
             savedCount: 2,
             savedPlatformCount: 1,
             tags: [],
             totalCount: 19,
+            unreadCount: 0,
           },
         };
       }

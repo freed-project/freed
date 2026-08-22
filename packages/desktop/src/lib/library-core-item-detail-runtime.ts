@@ -11,6 +11,7 @@ import {
   scanLibraryCoreNormalizedBackgroundItemsV1,
   scanLibraryCoreContentFetchCandidatesV1,
   type LibraryCoreContentFetchCandidateV1,
+  type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 
@@ -23,15 +24,7 @@ export const LIBRARY_CORE_FRIENDS_READER_DISABLED_KEY =
 export const LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY =
   "freed.libraryCore.savedAnalyticsReaderV1.disabled";
 
-export interface LibraryCoreFacetSummary {
-  readonly archivedCount: number;
-  readonly sampleItemCount: number;
-  readonly savedArchivedCount: number;
-  readonly savedCount: number;
-  readonly savedPlatformCount: number;
-  readonly tags: readonly string[];
-  readonly totalCount: number;
-}
+export type LibraryCoreFacetSummary = LibraryCoreFacetSummaryV1;
 
 export interface LibraryFriendsSource {
   readonly platform: string;

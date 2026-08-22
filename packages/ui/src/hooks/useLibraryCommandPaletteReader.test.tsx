@@ -59,12 +59,25 @@ describe("useLibraryCommandPaletteReader", () => {
     const openBoundedFeedReader = vi.fn();
     const readLibraryFacetSummary = vi.fn(async () => ({
       archivedCount: 8,
+      archivableCount: 0,
+      platformCounts: [
+        {
+          archivableCount: 0,
+          platform: "rss",
+          totalCount: 20_000,
+          unreadCount: 0,
+        },
+      ],
+      sampleAccountCount: 0,
+      sampleFeedCount: 0,
       sampleItemCount: 0,
+      samplePersonCount: 0,
       savedArchivedCount: 3,
       savedCount: 4,
       savedPlatformCount: 1,
       tags: ["favorite"],
       totalCount: 20_000,
+      unreadCount: 0,
     }));
     let latest: ReturnType<typeof useLibraryCommandPaletteReader> | null = null;
     const config = {
@@ -142,12 +155,18 @@ describe("useLibraryCommandPaletteReader", () => {
       openBoundedFriendsFeedReader,
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
+        archivableCount: 0,
+        platformCounts: [],
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
         tags: [],
         totalCount: 0,
+        unreadCount: 0,
       }),
     } as unknown as PlatformConfig;
 

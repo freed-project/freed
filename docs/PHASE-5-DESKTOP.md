@@ -547,6 +547,7 @@ export async function captureDomFeed(
 | 5.86 | Expose closed native commands for normalized follower mutation context, operation signing, intent commit and paging, Primary intent ingestion, signed result paging, publication receipt, and exact result import, then route new Desktop follower mutations through those commands instead of the historical journal                                                                 | High       | ✓ Complete |
 | 5.87 | Expose one closed native command that atomically records a normalized v2 intent transport page, its exact semantic and stored digests, immutable object identity, actor head advance, completed transaction publication state, and response-loss replay receipt                                                                                                                    | High       | ✓ Complete |
 | 5.88 | Expose one closed native command that atomically verifies and imports a normalized v2 result segment, reconciles accepted or rejected intents and optimistic fields, persists the exact transport receipt, advances both result heads, and returns the same receipt after response loss                                                                                              | High       | ✓ Complete |
+| 5.89 | Extend the shared constant-time Library facet query with trigger-maintained unread, archivable, sample-root, and bounded per-platform counts so Desktop and PWA navigation never scan FeedItem rows or derive whole-Library totals in React | High | ✓ Complete |
 
 ---
 

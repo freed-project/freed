@@ -1,6 +1,6 @@
 # Phase 6: PWA
 
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, and IndexedDB Library deletion are implemented; follower cloud transport, result reconciliation wiring, navigation aggregates, and physical iPhone proof remain open)
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, navigation aggregates, and IndexedDB Library deletion are implemented; follower cloud transport, result reconciliation wiring, paged feed and identity surfaces, recovery, and physical iPhone proof remain open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
@@ -479,6 +479,7 @@ SQLite WebAssembly worker and keeps only bounded visible pages in React.
 | 6.47 | Replace the actor key hidden inside the portable checkpoint database with a dedicated IndexedDB key vault that contains only one nonextractable Ed25519 key and its public identity per Library, with exact SQLite identity checks on every signature | High       | ✓ Complete                                                                                       |
 | 6.48 | Generate the PWA proof-only editor capability request from the shared contract after normalized checkpoint activation, store its exact canonical bytes in SQLite, and install only the matching authority-countersigned certificate with replay-stable receipts | High       | ✓ Complete                                                                                       |
 | 6.49 | Delete the portable checkpoint store, IndexedDB feed reader, intent overlay, shell bootstrap, and their compatibility tests, leaving IndexedDB only as the nonextractable actor key vault | High       | ✓ Complete                                                                                       |
+| 6.50 | Hydrate exact total, unread, archivable, sample-root, and bounded per-platform navigation counts from the trigger-maintained SQLite facet row, with no FeedItem scan or renderer aggregation | High | ✓ Complete |
 
 ---
 

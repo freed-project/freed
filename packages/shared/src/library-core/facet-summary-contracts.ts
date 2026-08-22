@@ -15,6 +15,8 @@ export const LIBRARY_CORE_FACET_SUMMARY_QUERY_ID =
 export const LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_TAGS = 4_096;
 export const LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_TAG_UTF8_BYTES = 1_024;
+export const LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORMS = 64;
+export const LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORM_UTF8_BYTES = 256;
 export const LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_RESPONSE_BYTES = 2 * 1_048_576;
 
 export const LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA = Object.freeze({
@@ -37,12 +39,18 @@ export const LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA = Object.freeze({
   ]),
   summaryKeys: Object.freeze([
     "archivedCount",
+    "archivableCount",
+    "platformCounts",
+    "sampleAccountCount",
+    "sampleFeedCount",
     "sampleItemCount",
+    "samplePersonCount",
     "savedArchivedCount",
     "savedCount",
     "savedPlatformCount",
     "tags",
     "totalCount",
+    "unreadCount",
   ]),
   maximumTags: LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_TAGS,
   maximumResponseBytes: LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_RESPONSE_BYTES,
@@ -68,6 +76,11 @@ export const LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY = Object.freeze({
 });
 
 export const LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS = Object.freeze({
+  platformCounts: Object.freeze({
+    maximumItems: LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORMS,
+    maximumKeyUtf8Bytes:
+      LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORM_UTF8_BYTES,
+  }),
   tags: Object.freeze({
     maximumItems: LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_TAGS,
     maximumUnicodeScalarsPerItem:
@@ -89,12 +102,25 @@ export interface LibraryCoreFacetSummaryRequestV1 {
 
 export interface LibraryCoreFacetSummaryV1 {
   readonly archivedCount: number;
+  readonly archivableCount: number;
+  readonly platformCounts: readonly LibraryCoreFacetPlatformCountV1[];
+  readonly sampleAccountCount: number;
+  readonly sampleFeedCount: number;
   readonly sampleItemCount: number;
+  readonly samplePersonCount: number;
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
   readonly tags: readonly string[];
   readonly totalCount: number;
+  readonly unreadCount: number;
+}
+
+export interface LibraryCoreFacetPlatformCountV1 {
+  readonly archivableCount: number;
+  readonly platform: string;
+  readonly totalCount: number;
+  readonly unreadCount: number;
 }
 
 export interface LibraryCoreFacetSummaryResponseV1 {
@@ -153,6 +179,67 @@ function compareUtf8(left: string, right: string): number {
   return leftBytes.length - rightBytes.length;
 }
 
+function parsePlatformCounts(
+  value: unknown,
+): LibraryCoreFacetPlatformCountV1[] | null {
+  if (
+    !Array.isArray(value) ||
+    value.length > LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORMS
+  ) {
+    return null;
+  }
+  const counts: LibraryCoreFacetPlatformCountV1[] = [];
+  const keys = [
+    "archivableCount",
+    "platform",
+    "totalCount",
+    "unreadCount",
+  ] as const;
+  for (const entry of value) {
+    const record = closedRecord(entry, keys);
+    if (
+      !record ||
+      typeof record.platform !== "string" ||
+      record.platform.length === 0 ||
+      textEncoder.encode(record.platform).byteLength >
+        LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_PLATFORM_UTF8_BYTES ||
+      (counts.at(-1) !== undefined &&
+        compareUtf8(counts.at(-1)!.platform, record.platform) >= 0) ||
+      !Number.isSafeInteger(record.totalCount) ||
+      (record.totalCount as number) < 0 ||
+      !Number.isSafeInteger(record.unreadCount) ||
+      (record.unreadCount as number) < 0 ||
+      !Number.isSafeInteger(record.archivableCount) ||
+      (record.archivableCount as number) < 0 ||
+      (record.unreadCount as number) > (record.totalCount as number) ||
+      (record.archivableCount as number) > (record.totalCount as number)
+    ) {
+      return null;
+    }
+    counts.push(
+      Object.freeze({
+        archivableCount: record.archivableCount as number,
+        platform: record.platform,
+        totalCount: record.totalCount as number,
+        unreadCount: record.unreadCount as number,
+      }),
+    );
+  }
+  return counts;
+}
+
+function safeCountSum(
+  counts: readonly LibraryCoreFacetPlatformCountV1[],
+  select: (count: LibraryCoreFacetPlatformCountV1) => number,
+): number | null {
+  let total = 0;
+  for (const count of counts) {
+    total += select(count);
+    if (!Number.isSafeInteger(total)) return null;
+  }
+  return total;
+}
+
 export function parseLibraryCoreFacetSummaryRequestV1(
   value: unknown,
 ): LibraryCoreFeedPageParseResult<LibraryCoreFacetSummaryRequestV1> {
@@ -188,12 +275,16 @@ export function parseLibraryCoreFacetSummaryResponseV1(
   ) {
     return failure("facet summary response is invalid");
   }
-  const countKeys = SUMMARY_KEYS.filter((key) => key !== "tags");
+  const countKeys = SUMMARY_KEYS.filter(
+    (key) => key !== "tags" && key !== "platformCounts",
+  );
+  const platformCounts = parsePlatformCounts(summary.platformCounts);
   if (
     countKeys.some(
       (key) =>
         !Number.isSafeInteger(summary[key]) || (summary[key] as number) < 0,
     ) ||
+    platformCounts === null ||
     !Array.isArray(summary.tags) ||
     summary.tags.length > LIBRARY_CORE_FACET_SUMMARY_MAXIMUM_TAGS
   ) {
@@ -211,13 +302,32 @@ export function parseLibraryCoreFacetSummaryResponseV1(
     }
     tags.push(tag);
   }
+  const platformTotalCount = safeCountSum(
+    platformCounts,
+    (entry) => entry.totalCount,
+  );
+  const platformUnreadCount = safeCountSum(
+    platformCounts,
+    (entry) => entry.unreadCount,
+  );
+  const platformArchivableCount = safeCountSum(
+    platformCounts,
+    (entry) => entry.archivableCount,
+  );
   if (
     (summary.archivedCount as number) > (summary.totalCount as number) ||
+    (summary.archivableCount as number) > (summary.totalCount as number) ||
     (summary.sampleItemCount as number) > (summary.totalCount as number) ||
     (summary.savedCount as number) > (summary.totalCount as number) ||
     (summary.savedArchivedCount as number) >
       Math.min(summary.savedCount as number, summary.archivedCount as number) ||
-    (summary.savedPlatformCount as number) > (summary.savedCount as number)
+    (summary.savedPlatformCount as number) > (summary.savedCount as number) ||
+    platformTotalCount === null ||
+    platformTotalCount !== (summary.totalCount as number) ||
+    platformUnreadCount === null ||
+    platformUnreadCount !== (summary.unreadCount as number) ||
+    platformArchivableCount === null ||
+    platformArchivableCount !== (summary.archivableCount as number)
   ) {
     return failure("facet summary counts are inconsistent");
   }
@@ -227,12 +337,18 @@ export function parseLibraryCoreFacetSummaryResponseV1(
     source: source.value,
     summary: Object.freeze({
       archivedCount: summary.archivedCount as number,
+      archivableCount: summary.archivableCount as number,
+      platformCounts: Object.freeze(platformCounts),
+      sampleAccountCount: summary.sampleAccountCount as number,
+      sampleFeedCount: summary.sampleFeedCount as number,
       sampleItemCount: summary.sampleItemCount as number,
+      samplePersonCount: summary.samplePersonCount as number,
       savedArchivedCount: summary.savedArchivedCount as number,
       savedCount: summary.savedCount as number,
       savedPlatformCount: summary.savedPlatformCount as number,
       tags: Object.freeze(tags),
       totalCount: summary.totalCount as number,
+      unreadCount: summary.unreadCount as number,
     }),
   });
   if (

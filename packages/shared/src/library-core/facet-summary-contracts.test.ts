@@ -11,6 +11,29 @@ const source = {
   transitionSequence: 7,
 };
 
+const summary = {
+  archivedCount: 2,
+  archivableCount: 1,
+  platformCounts: [
+    {
+      archivableCount: 1,
+      platform: "rss",
+      totalCount: 5,
+      unreadCount: 2,
+    },
+  ],
+  sampleAccountCount: 1,
+  sampleFeedCount: 1,
+  sampleItemCount: 1,
+  samplePersonCount: 1,
+  savedArchivedCount: 1,
+  savedCount: 3,
+  savedPlatformCount: 2,
+  tags: ["alpha"],
+  totalCount: 5,
+  unreadCount: 2,
+};
+
 describe("Library Core facet summary contract", () => {
   it("snapshots one closed bounded response in SQLite binary tag order", () => {
     expect(
@@ -24,13 +47,8 @@ describe("Library Core facet summary contract", () => {
       schemaVersion: 1,
       source,
       summary: {
-        archivedCount: 2,
-        sampleItemCount: 1,
-        savedArchivedCount: 1,
-        savedCount: 3,
-        savedPlatformCount: 2,
+        ...summary,
         tags: ["alpha", "\ue000", "😀"],
-        totalCount: 5,
       },
     });
     expect(parsed).toMatchObject({
@@ -46,15 +64,7 @@ describe("Library Core facet summary contract", () => {
       queryId: "library_facet_summary_v1",
       schemaVersion: 1,
       source,
-      summary: {
-        archivedCount: 2,
-        sampleItemCount: 1,
-        savedArchivedCount: 1,
-        savedCount: 3,
-        savedPlatformCount: 2,
-        tags: ["alpha"],
-        totalCount: 5,
-      },
+      summary,
     };
     expect(
       parseLibraryCoreFacetSummaryResponseV1({

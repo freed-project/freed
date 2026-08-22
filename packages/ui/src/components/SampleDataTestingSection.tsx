@@ -8,7 +8,6 @@ import {
 import {
   formatSampleDataSummary,
   refreshSampleLibraryData,
-  summarizeSampleData,
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { toast } from "./Toast.js";
@@ -19,11 +18,7 @@ export function SampleDataTestingSection() {
   const isInitialized = useAppStore((s) => s.isInitialized);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
-  const items = useAppStore((s) => s.items);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const feeds = useAppStore((s) => s.feeds);
-  const persons = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const { seedSocialConnections } = usePlatform();
 
   const [seeding, setSeeding] = useState(false);
@@ -32,12 +27,18 @@ export function SampleDataTestingSection() {
   const [confirmClear, setConfirmClear] = useState(false);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const sampleDataSummary = useMemo(
-    () =>
-      summarizeSampleData(
-        { items, feeds, persons, accounts },
-        libraryFacets.sampleItemCount,
-      ),
-    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
+    () => ({
+      accounts: libraryFacets.sampleAccountCount,
+      feeds: libraryFacets.sampleFeedCount,
+      items: libraryFacets.sampleItemCount,
+      persons: libraryFacets.samplePersonCount,
+      total:
+        libraryFacets.sampleAccountCount +
+        libraryFacets.sampleFeedCount +
+        libraryFacets.sampleItemCount +
+        libraryFacets.samplePersonCount,
+    }),
+    [libraryFacets],
   );
   const hasSampleData = sampleDataSummary.total > 0;
 

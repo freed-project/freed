@@ -991,12 +991,25 @@ describe("command palette", () => {
       openBoundedFeedReader,
       readLibraryFacetSummary: async () => ({
         archivedCount: 3,
+        archivableCount: 0,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            platform: "rss",
+            totalCount: 3,
+            unreadCount: 0,
+          },
+        ],
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 2,
         savedCount: 2,
         savedPlatformCount: 0,
         tags: ["Architecture", "Research", "Secret"],
         totalCount: 3,
+        unreadCount: 0,
       }),
     });
     const render = renderNode(
@@ -1136,12 +1149,18 @@ describe("command palette", () => {
       readLibraryItemDetail,
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
+        archivableCount: 0,
+        platformCounts: [],
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
         tags: ["Research"],
         totalCount: 0,
+        unreadCount: 0,
       }),
     });
     const render = renderNode(
@@ -1200,12 +1219,25 @@ describe("command palette", () => {
     const platform = createPlatform(store, {
       readLibraryFacetSummary: async () => ({
         archivedCount: 0,
+        archivableCount: 0,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            platform: "rss",
+            totalCount: 17_000,
+            unreadCount: 0,
+          },
+        ],
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
         tags: ["Research"],
         totalCount: 17_000,
+        unreadCount: 0,
       }),
       openBoundedFeedReader,
     });
@@ -1354,12 +1386,25 @@ describe("command palette", () => {
     const platform = createPlatform(store, {
       readLibraryFacetSummary: async () => ({
         archivedCount: 1,
+        archivableCount: 0,
+        platformCounts: [
+          {
+            archivableCount: 0,
+            platform: "rss",
+            totalCount: 1,
+            unreadCount: 0,
+          },
+        ],
+        sampleAccountCount: 0,
+        sampleFeedCount: 0,
         sampleItemCount: 0,
+        samplePersonCount: 0,
         savedArchivedCount: 0,
         savedCount: 0,
         savedPlatformCount: 0,
         tags: [],
         totalCount: 1,
+        unreadCount: 0,
       }),
     });
     const render = renderNode(

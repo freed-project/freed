@@ -330,12 +330,25 @@ describe("Library row query hooks", () => {
   it("shares one exact facet query across multiple consumers", async () => {
     const summary: LibraryFacetSummary = {
       archivedCount: 2,
+      archivableCount: 1,
+      platformCounts: [
+        {
+          archivableCount: 1,
+          platform: "rss",
+          totalCount: 10,
+          unreadCount: 4,
+        },
+      ],
+      sampleAccountCount: 1,
+      sampleFeedCount: 1,
       sampleItemCount: 5,
+      samplePersonCount: 1,
       savedArchivedCount: 1,
       savedCount: 3,
       savedPlatformCount: 4,
       tags: ["alpha", "beta"],
       totalCount: 10,
+      unreadCount: 4,
     };
     const readLibraryFacetSummary = vi.fn(async () => summary);
     let current: readonly LibraryFacetSummary[] = [];

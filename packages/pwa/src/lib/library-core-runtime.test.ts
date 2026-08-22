@@ -98,6 +98,34 @@ const SELECTED_SOURCE = Object.freeze({
   selectionSequence: 7,
 });
 
+function facetSummary(totalCount = 0) {
+  return {
+    archivedCount: 0,
+    archivableCount: 0,
+    platformCounts:
+      totalCount === 0
+        ? []
+        : [
+            {
+              archivableCount: 0,
+              platform: "rss",
+              totalCount,
+              unreadCount: 0,
+            },
+          ],
+    sampleAccountCount: 0,
+    sampleFeedCount: 0,
+    sampleItemCount: 0,
+    samplePersonCount: 0,
+    savedArchivedCount: 0,
+    savedCount: 0,
+    savedPlatformCount: 0,
+    tags: [],
+    totalCount,
+    unreadCount: 0,
+  };
+}
+
 const SELECTED_RECEIPT = Object.freeze({
   authorityEpoch: "33".repeat(32),
   checkpointDigest: "45".repeat(32),
@@ -297,15 +325,7 @@ describe("PWA Library Core bounded scanner", () => {
         queryId: "library_facet_summary_v1",
         schemaVersion: 1,
         source: SELECTED_SOURCE,
-        summary: {
-          archivedCount: 0,
-          sampleItemCount: 0,
-          savedArchivedCount: 0,
-          savedCount: 0,
-          savedPlatformCount: 0,
-          tags: [],
-          totalCount: 0,
-        },
+        summary: facetSummary(),
       };
     });
 
@@ -331,7 +351,7 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
       request.queryId === "library_facet_summary_v1"
         ? {
-            summary: { totalCount: 0 },
+            summary: facetSummary(),
           }
         : request.queryId === "preferences_snapshot_v1"
           ? { rows: [] }
@@ -373,7 +393,7 @@ describe("PWA Library Core bounded scanner", () => {
         };
       }
       if (request.queryId === "library_facet_summary_v1") {
-        return { summary: { totalCount: 0 } };
+        return { summary: facetSummary() };
       }
       return {
         nextCursor: null,

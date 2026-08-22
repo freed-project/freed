@@ -158,12 +158,23 @@ export type ReadFeedSignalCounts = (
 
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
+  readonly archivableCount: number;
+  readonly platformCounts: readonly Readonly<{
+    archivableCount: number;
+    platform: string;
+    totalCount: number;
+    unreadCount: number;
+  }>[];
+  readonly sampleAccountCount: number;
+  readonly sampleFeedCount: number;
   readonly sampleItemCount: number;
+  readonly samplePersonCount: number;
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
   readonly tags: readonly string[];
   readonly totalCount: number;
+  readonly unreadCount: number;
 }
 
 export interface LibraryFriendsSource {

@@ -142,12 +142,35 @@ async function readSelectedState(): Promise<LibraryState | null> {
   ) {
     throw new Error("Selected PWA Library changed while reading its window");
   }
+  const itemCountByPlatform = Object.fromEntries(
+    facetSummary.platformCounts.map((entry) => [
+      entry.platform,
+      entry.totalCount,
+    ]),
+  );
+  const unreadCountByPlatform = Object.fromEntries(
+    facetSummary.platformCounts.map((entry) => [
+      entry.platform,
+      entry.unreadCount,
+    ]),
+  );
+  const archivableCountByPlatform = Object.fromEntries(
+    facetSummary.platformCounts.map((entry) => [
+      entry.platform,
+      entry.archivableCount,
+    ]),
+  );
   return Object.freeze({
     ...emptyState(),
     items: [...items],
     preferences,
     searchCorpusVersion: selected.sourceRevision,
+    totalArchivableCount: facetSummary.archivableCount,
     totalItemCount: facetSummary.totalCount,
+    totalUnreadCount: facetSummary.unreadCount,
+    archivableCountByPlatform,
+    itemCountByPlatform,
+    unreadCountByPlatform,
   });
 }
 

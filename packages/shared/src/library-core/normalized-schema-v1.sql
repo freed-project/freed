@@ -275,15 +275,28 @@ CREATE TABLE IF NOT EXISTS library_facet_summary (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   total_count INTEGER NOT NULL CHECK (total_count >= 0),
   archived_count INTEGER NOT NULL CHECK (archived_count >= 0),
+  unread_count INTEGER NOT NULL CHECK (unread_count >= 0),
+  archivable_count INTEGER NOT NULL CHECK (archivable_count >= 0),
   sample_item_count INTEGER NOT NULL CHECK (sample_item_count >= 0),
+  sample_feed_count INTEGER NOT NULL CHECK (sample_feed_count >= 0),
+  sample_person_count INTEGER NOT NULL CHECK (sample_person_count >= 0),
+  sample_account_count INTEGER NOT NULL CHECK (sample_account_count >= 0),
   saved_count INTEGER NOT NULL CHECK (saved_count >= 0),
   saved_archived_count INTEGER NOT NULL CHECK (saved_archived_count >= 0)
 ) STRICT;
 
 INSERT OR IGNORE INTO library_facet_summary
-  (singleton_id, total_count, archived_count, sample_item_count,
-   saved_count, saved_archived_count)
-VALUES (1, 0, 0, 0, 0, 0);
+  (singleton_id, total_count, archived_count, unread_count, archivable_count,
+   sample_item_count, sample_feed_count, sample_person_count,
+   sample_account_count, saved_count, saved_archived_count)
+VALUES (1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+CREATE TABLE IF NOT EXISTS library_platform_counts (
+  platform TEXT PRIMARY KEY,
+  total_count INTEGER NOT NULL CHECK (total_count >= 0),
+  unread_count INTEGER NOT NULL CHECK (unread_count >= 0),
+  archivable_count INTEGER NOT NULL CHECK (archivable_count >= 0)
+) STRICT;
 
 CREATE TABLE IF NOT EXISTS library_saved_platform_counts (
   platform TEXT PRIMARY KEY,
@@ -301,10 +314,24 @@ BEGIN
   UPDATE library_facet_summary SET
     total_count = total_count + 1,
     archived_count = archived_count + (NEW.archived = 1),
+    unread_count = unread_count + (NEW.read_at IS NULL),
+    archivable_count = archivable_count + (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0),
     sample_item_count = sample_item_count + (NEW.sample_batch_id IS NOT NULL),
     saved_count = saved_count + (NEW.saved = 1),
     saved_archived_count = saved_archived_count + (NEW.saved = 1 AND NEW.archived = 1)
   WHERE singleton_id = 1;
+  INSERT INTO library_platform_counts
+    (platform, total_count, unread_count, archivable_count)
+  VALUES (
+    NEW.platform,
+    1,
+    (NEW.read_at IS NULL),
+    (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0)
+  )
+  ON CONFLICT(platform) DO UPDATE SET
+    total_count = total_count + 1,
+    unread_count = unread_count + (NEW.read_at IS NULL),
+    archivable_count = archivable_count + (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0);
   INSERT INTO library_saved_platform_counts (platform, item_count)
     SELECT NEW.platform, 1 WHERE NEW.saved = 1
     ON CONFLICT(platform) DO UPDATE SET item_count = item_count + 1;
@@ -316,24 +343,52 @@ BEGIN
   UPDATE library_facet_summary SET
     total_count = total_count - 1,
     archived_count = archived_count - (OLD.archived = 1),
+    unread_count = unread_count - (OLD.read_at IS NULL),
+    archivable_count = archivable_count - (OLD.hidden = 0 AND OLD.archived = 0 AND OLD.read_at IS NOT NULL AND OLD.saved = 0),
     sample_item_count = sample_item_count - (OLD.sample_batch_id IS NOT NULL),
     saved_count = saved_count - (OLD.saved = 1),
     saved_archived_count = saved_archived_count - (OLD.saved = 1 AND OLD.archived = 1)
   WHERE singleton_id = 1;
+  UPDATE library_platform_counts SET
+    total_count = total_count - 1,
+    unread_count = unread_count - (OLD.read_at IS NULL),
+    archivable_count = archivable_count - (OLD.hidden = 0 AND OLD.archived = 0 AND OLD.read_at IS NOT NULL AND OLD.saved = 0)
+  WHERE platform = OLD.platform;
+  DELETE FROM library_platform_counts WHERE total_count = 0;
   UPDATE library_saved_platform_counts SET item_count = item_count - 1
     WHERE OLD.saved = 1 AND platform = OLD.platform;
   DELETE FROM library_saved_platform_counts WHERE item_count = 0;
 END;
 
 CREATE TRIGGER IF NOT EXISTS library_feed_item_facet_update
-AFTER UPDATE OF archived, saved, platform, sample_batch_id ON library_feed_items
+AFTER UPDATE OF archived, hidden, read_at, saved, platform, sample_batch_id ON library_feed_items
 BEGIN
   UPDATE library_facet_summary SET
     archived_count = archived_count + (NEW.archived = 1) - (OLD.archived = 1),
+    unread_count = unread_count + (NEW.read_at IS NULL) - (OLD.read_at IS NULL),
+    archivable_count = archivable_count + (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0) - (OLD.hidden = 0 AND OLD.archived = 0 AND OLD.read_at IS NOT NULL AND OLD.saved = 0),
     sample_item_count = sample_item_count + (NEW.sample_batch_id IS NOT NULL) - (OLD.sample_batch_id IS NOT NULL),
     saved_count = saved_count + (NEW.saved = 1) - (OLD.saved = 1),
     saved_archived_count = saved_archived_count + (NEW.saved = 1 AND NEW.archived = 1) - (OLD.saved = 1 AND OLD.archived = 1)
   WHERE singleton_id = 1;
+  UPDATE library_platform_counts SET
+    total_count = total_count - 1,
+    unread_count = unread_count - (OLD.read_at IS NULL),
+    archivable_count = archivable_count - (OLD.hidden = 0 AND OLD.archived = 0 AND OLD.read_at IS NOT NULL AND OLD.saved = 0)
+  WHERE platform = OLD.platform;
+  INSERT INTO library_platform_counts
+    (platform, total_count, unread_count, archivable_count)
+  VALUES (
+    NEW.platform,
+    1,
+    (NEW.read_at IS NULL),
+    (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0)
+  )
+  ON CONFLICT(platform) DO UPDATE SET
+    total_count = total_count + 1,
+    unread_count = unread_count + (NEW.read_at IS NULL),
+    archivable_count = archivable_count + (NEW.hidden = 0 AND NEW.archived = 0 AND NEW.read_at IS NOT NULL AND NEW.saved = 0);
+  DELETE FROM library_platform_counts WHERE total_count = 0;
   UPDATE library_saved_platform_counts SET item_count = item_count - 1
     WHERE OLD.saved = 1 AND platform = OLD.platform;
   INSERT INTO library_saved_platform_counts (platform, item_count)
@@ -478,6 +533,81 @@ CREATE TABLE IF NOT EXISTS library_accounts (
 CREATE INDEX IF NOT EXISTS library_accounts_person ON library_accounts(person_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS library_accounts_provider_external
   ON library_accounts(provider, external_id);
+
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_sample_insert
+AFTER INSERT ON library_rss_feeds
+WHEN NEW.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_feed_count = sample_feed_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_sample_delete
+AFTER DELETE ON library_rss_feeds
+WHEN OLD.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_feed_count = sample_feed_count - 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_rss_feed_sample_update
+AFTER UPDATE OF sample_batch_id ON library_rss_feeds
+WHEN (NEW.sample_batch_id IS NOT NULL) <> (OLD.sample_batch_id IS NOT NULL)
+BEGIN
+  UPDATE library_facet_summary SET
+    sample_feed_count = sample_feed_count + (NEW.sample_batch_id IS NOT NULL) - (OLD.sample_batch_id IS NOT NULL)
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_sample_insert
+AFTER INSERT ON library_persons
+WHEN NEW.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_person_count = sample_person_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_sample_delete
+AFTER DELETE ON library_persons
+WHEN OLD.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_person_count = sample_person_count - 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_person_sample_update
+AFTER UPDATE OF sample_batch_id ON library_persons
+WHEN (NEW.sample_batch_id IS NOT NULL) <> (OLD.sample_batch_id IS NOT NULL)
+BEGIN
+  UPDATE library_facet_summary SET
+    sample_person_count = sample_person_count + (NEW.sample_batch_id IS NOT NULL) - (OLD.sample_batch_id IS NOT NULL)
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_sample_insert
+AFTER INSERT ON library_accounts
+WHEN NEW.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_account_count = sample_account_count + 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_sample_delete
+AFTER DELETE ON library_accounts
+WHEN OLD.sample_batch_id IS NOT NULL
+BEGIN
+  UPDATE library_facet_summary SET sample_account_count = sample_account_count - 1
+  WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS library_account_sample_update
+AFTER UPDATE OF sample_batch_id ON library_accounts
+WHEN (NEW.sample_batch_id IS NOT NULL) <> (OLD.sample_batch_id IS NOT NULL)
+BEGIN
+  UPDATE library_facet_summary SET
+    sample_account_count = sample_account_count + (NEW.sample_batch_id IS NOT NULL) - (OLD.sample_batch_id IS NOT NULL)
+  WHERE singleton_id = 1;
+END;
 
 CREATE TABLE IF NOT EXISTS library_person_feed_items (
   person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,
