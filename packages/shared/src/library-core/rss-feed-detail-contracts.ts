@@ -4,6 +4,7 @@ import {
   type LibraryCoreFeedPageSourceV1,
 } from "./feed-page-contracts.js";
 import { isLibraryCoreNonnegativeSafeInteger } from "./protocol-scalars.js";
+import type { RssFeed } from "../types.js";
 
 export const LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID =
   "rss_feed_detail_v1" as const;
@@ -78,6 +79,32 @@ export interface LibraryCoreRssFeedDetailResponseV1 {
   readonly queryId: typeof LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID;
   readonly schemaVersion: typeof LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
+}
+
+export function libraryCoreRssFeedDetailToRssFeedV1(
+  feed: LibraryCoreRssFeedDetailV1,
+): RssFeed {
+  return Object.freeze({
+    enabled: feed.enabled,
+    ...(feed.folder !== null ? { folder: feed.folder } : {}),
+    ...(feed.imageUrl !== null ? { imageUrl: feed.imageUrl } : {}),
+    ...(feed.lastFetched !== null ? { lastFetched: feed.lastFetched } : {}),
+    ...(feed.pollInterval !== null ? { pollInterval: feed.pollInterval } : {}),
+    ...(feed.sampleBatchId !== null
+      ? {
+          sampleDataFingerprint: {
+            marker: "freed.sample-data.v1" as const,
+            batchId: feed.sampleBatchId,
+            generatedAt: feed.sampleGeneratedAt!,
+            generatorVersion: feed.sampleGeneratorVersion!,
+          },
+        }
+      : {}),
+    ...(feed.siteUrl !== null ? { siteUrl: feed.siteUrl } : {}),
+    title: feed.title,
+    trackUnread: feed.trackUnread,
+    url: feed.url,
+  });
 }
 
 const REQUEST_KEYS = ["queryId", "schemaVersion", "url"] as const;

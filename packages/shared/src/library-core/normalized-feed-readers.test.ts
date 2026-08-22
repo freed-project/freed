@@ -3,8 +3,10 @@ import {
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFeedSignalCountsV1,
+  readLibraryCoreRssFeedV1,
   scanLibraryCoreContentFetchCandidatesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
+  scanLibraryCoreRssFeedsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
 import {
@@ -54,6 +56,62 @@ const backgroundCard = (globalId: string) => ({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it("shares exact and paged RSS Feed transforms without renderer state", async () => {
+    const row = {
+      activityCount: 3,
+      enabled: true,
+      folder: "Research",
+      imageUrl: null,
+      lastFetched: 10,
+      latestActivityAt: 20,
+      pollInterval: 30,
+      sampleBatchId: null,
+      sampleGeneratedAt: null,
+      sampleGeneratorVersion: null,
+      siteUrl: "https://example.com",
+      title: "Example",
+      trackUnread: true,
+      unreadCount: 2,
+      updatedAt: 40,
+      url: "https://example.com/feed",
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ feed: row })
+      .mockResolvedValueOnce({ nextCursor: "opaque-rss-next", rows: [row] })
+      .mockResolvedValueOnce({ nextCursor: null, rows: [{ ...row, url: "https://example.org/feed" }] }) as unknown as LibraryCoreNormalizedQueryExecutor;
+
+    await expect(
+      readLibraryCoreRssFeedV1(query, row.url),
+    ).resolves.toMatchObject({ folder: "Research", url: row.url });
+    const visited: string[][] = [];
+    await scanLibraryCoreRssFeedsV1(
+      { query, randomId: () => "test" },
+      (feeds) => {
+        visited.push(feeds.map((feed) => feed.url));
+        return "continue";
+      },
+    );
+
+    expect(visited).toEqual([
+      ["https://example.com/feed"],
+      ["https://example.org/feed"],
+    ]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      queryId: "rss_feed_detail_v1",
+      schemaVersion: 1,
+      url: row.url,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        cursor: "opaque-rss-next",
+        limit: 128,
+        queryId: "rss_feed_page_v1",
+      }),
+    );
+  });
+
   it("streams bounded background pages through one source-fenced query contract", async () => {
     const query = vi
       .fn()

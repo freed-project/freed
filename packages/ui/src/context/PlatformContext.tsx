@@ -481,7 +481,7 @@ export interface PlatformConfig {
   ) => Promise<ImportProgress>;
 
   /** Download subscriptions as OPML */
-  exportFeedsAsOPML?: () => void;
+  exportFeedsAsOPML?: () => Promise<void>;
 
   // -- Platform behavior flags --
 

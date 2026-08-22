@@ -549,6 +549,7 @@ export async function captureDomFeed(
 | 5.88 | Expose one closed native command that atomically verifies and imports a normalized v2 result segment, reconciles accepted or rejected intents and optimistic fields, persists the exact transport receipt, advances both result heads, and returns the same receipt after response loss                                                                                              | High       | ✓ Complete |
 | 5.89 | Extend the shared constant-time Library facet query with trigger-maintained unread, archivable, sample-root, and bounded per-platform counts so Desktop and PWA navigation never scan FeedItem rows or derive whole-Library totals in React | High | ✓ Complete |
 | 5.90 | Replace the primary sidebar's complete RSS Feed dictionary, derived per-feed count dictionaries, whole-catalog search, and renderer slicing with the shared `rss_feed_page_v1` native SQLite reader. React retains ten visible subscriptions, exact per-row counts, and opaque source-fenced page cursors only. Legal maximum-sized rows shorten the page by bytes instead of failing the query | High | ✓ Complete |
+| 5.91 | Replace Settings feed management and export previews with 50-row native SQLite windows, route complete unsubscribe through the atomically frozen SQLite scope, resolve OPML import duplicates through exact feed queries, and generate OPML through bounded background feed pages outside React | High | ✓ Complete |
 
 ---
 

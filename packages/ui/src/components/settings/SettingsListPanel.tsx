@@ -21,6 +21,10 @@ export interface SettingsListPanelProps<T> {
   searchDataTestId?: string;
   scrollDataTestId?: string;
   estimateItemSize?: number;
+  externalCountLabel?: string;
+  externalQuery?: string;
+  footer?: ReactNode;
+  onExternalQueryChange?: (value: string) => void;
 }
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
@@ -50,11 +54,17 @@ export function SettingsListPanel<T>({
   searchDataTestId,
   scrollDataTestId,
   estimateItemSize = 72,
+  externalCountLabel,
+  externalQuery,
+  footer,
+  onExternalQueryChange,
 }: SettingsListPanelProps<T>) {
-  const [query, setQuery] = useState("");
+  const [internalQuery, setInternalQuery] = useState("");
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const query = externalQuery ?? internalQuery;
   const deferredQuery = useDeferredValue(query);
   const normalizedQuery = normalizeSearchText(deferredQuery);
+  const externallyFiltered = externalQuery !== undefined;
 
   const searchEntries = useMemo(
     () =>
@@ -66,15 +76,16 @@ export function SettingsListPanel<T>({
   );
 
   const filteredItems = useMemo(() => {
+    if (externallyFiltered) return items;
     if (!normalizedQuery) return items;
     return searchEntries
       .filter((entry) => entry.searchText.includes(normalizedQuery))
       .map((entry) => entry.item);
-  }, [items, normalizedQuery, searchEntries]);
+  }, [externallyFiltered, items, normalizedQuery, searchEntries]);
 
-  const countLabel = normalizedQuery
+  const countLabel = externalCountLabel ?? (normalizedQuery
     ? `${filteredItems.length.toLocaleString()} of ${items.length.toLocaleString()}`
-    : `${items.length.toLocaleString()} total`;
+    : `${items.length.toLocaleString()} total`);
 
   const contentLabel =
     items.length === 0 ? emptyLabel : filteredItems.length === 0 ? noMatchesLabel : null;
@@ -128,8 +139,15 @@ export function SettingsListPanel<T>({
 
       <SearchField
         value={query}
-        onChange={(event) => setQuery(event.currentTarget.value)}
-        onClear={() => setQuery("")}
+        onChange={(event) => {
+          const value = event.currentTarget.value;
+          if (onExternalQueryChange) onExternalQueryChange(value);
+          else setInternalQuery(value);
+        }}
+        onClear={() => {
+          if (onExternalQueryChange) onExternalQueryChange("");
+          else setInternalQuery("");
+        }}
         placeholder={searchPlaceholder}
         aria-label={ariaLabel}
         density="compact"
@@ -185,6 +203,7 @@ export function SettingsListPanel<T>({
           </div>
         )}
       </div>
+      {footer}
     </div>
   );
 }

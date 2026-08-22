@@ -621,6 +621,11 @@ to assemble graph activity. When legal RSS rows approach 2 MiB, native and
 browser executors shorten the page by exact serialized bytes and bind the
 continuation cursor to its final row. A legal row never makes the complete
 catalog unreadable.
+Settings management and preview surfaces use the same page contract with a
+50-row visible window. Exact duplicate checks use `rss_feed_detail_v1`.
+Complete unsubscribe freezes its scope inside SQLite before mutation. OPML
+export visits source-fenced pages outside React and retains only the output
+artifact required for download.
 Person and Account rows left-join their installation-local graph position from
 `library_device_person_graph_layout` and
 `library_device_account_graph_layout`. A missing local row is an explicit

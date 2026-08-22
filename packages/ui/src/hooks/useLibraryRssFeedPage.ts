@@ -35,9 +35,11 @@ function searchableText(row: LibraryCoreRssFeedPageRowV1): string {
 function matches(
   row: LibraryCoreRssFeedPageRowV1,
   enabledOnly: boolean,
+  includeUrls: ReadonlySet<string> | null,
   searchTerms: readonly string[],
 ): boolean {
   if (enabledOnly && !row.enabled) return false;
+  if (includeUrls !== null && !includeUrls.has(row.url)) return false;
   if (searchTerms.length === 0) return true;
   const candidate = searchableText(row);
   return searchTerms.every((term) => candidate.includes(term));
@@ -51,11 +53,13 @@ function matches(
  */
 export function useLibraryRssFeedPage({
   enabledOnly = false,
+  includeUrls = null,
   pageSize,
   search = "",
   sourceVersion,
 }: {
   readonly enabledOnly?: boolean;
+  readonly includeUrls?: ReadonlySet<string> | null;
   readonly pageSize: number;
   readonly search?: string;
   readonly sourceVersion: number;
@@ -71,9 +75,23 @@ export function useLibraryRssFeedPage({
         .filter(Boolean),
     [search],
   );
+  const includeUrlKey = includeUrls === null
+    ? null
+    : JSON.stringify([...includeUrls].sort());
+  const stableIncludeUrls = useMemo<ReadonlySet<string> | null>(
+    () => includeUrlKey === null
+      ? null
+      : new Set(JSON.parse(includeUrlKey) as string[]),
+    [includeUrlKey],
+  );
   const queryKey = useMemo(
-    () => JSON.stringify({ enabledOnly, searchTerms, sourceVersion }),
-    [enabledOnly, searchTerms, sourceVersion],
+    () => JSON.stringify({
+      enabledOnly,
+      includeUrlKey,
+      searchTerms,
+      sourceVersion,
+    }),
+    [enabledOnly, includeUrlKey, searchTerms, sourceVersion],
   );
   const [pageStartCursor, setPageStartCursor] = useState<string | null>(null);
   const [previousPageStarts, setPreviousPageStarts] = useState<
@@ -127,7 +145,7 @@ export function useLibraryRssFeedPage({
             projectionRevision: response.source.projectionRevision,
             transitionSequence: response.source.transitionSequence,
           });
-          if (matches(row, enabledOnly, searchTerms)) rows.push(row);
+          if (matches(row, enabledOnly, stableIncludeUrls, searchTerms)) rows.push(row);
           if (rows.length === boundedPageSize) {
             nextCursor =
               index < response.rows.length - 1 || response.nextCursor !== null
@@ -164,6 +182,7 @@ export function useLibraryRssFeedPage({
     queryKey,
     queryLibraryCore,
     searchTerms,
+    stableIncludeUrls,
   ]);
 
   const nextPage = useCallback(() => {

@@ -58,6 +58,11 @@ import {
   sqliteLibraryCloudWriterAdmissionStatus,
 } from "./sqlite-library";
 import { readLibraryCoreDesktopRole } from "./library-core-desktop-role";
+import {
+  readLibraryCoreRssFeedV1,
+  scanLibraryCoreRssFeedsV1,
+} from "@freed/shared/library-core";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 
 export type SocialProviderRefreshStatus =
   "success" | "empty" | "deferred" | "error" | "ignored";
@@ -867,7 +872,7 @@ export async function importOPMLFeeds(
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<ImportProgress> {
   const store = useAppStore.getState();
-  const existingUrls = new Set(Object.values(store.feeds).map((f) => f.url));
+  const existingUrls = new Set<string>();
 
   const progress: ImportProgress = {
     total: feeds.length,
@@ -879,6 +884,13 @@ export async function importOPMLFeeds(
   };
 
   for (const feed of feeds) {
+    if (!existingUrls.has(feed.url)) {
+      const existing = await readLibraryCoreRssFeedV1(
+        queryNormalizedLibrary,
+        feed.url,
+      );
+      if (existing !== null) existingUrls.add(feed.url);
+    }
     // Skip feeds already subscribed
     if (existingUrls.has(feed.url)) {
       progress.skipped++;
@@ -925,9 +937,18 @@ export async function importOPMLFeeds(
 /**
  * Export all current feed subscriptions as an OPML file download.
  */
-export function exportFeedsAsOPML(): void {
-  const store = useAppStore.getState();
-  const feeds = Object.values(store.feeds);
+export async function exportFeedsAsOPML(): Promise<void> {
+  const feeds: RssFeed[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (page) => {
+      feeds.push(...page);
+      return "continue";
+    },
+  );
 
   if (feeds.length === 0) return;
 

@@ -9,7 +9,7 @@ import {
   isLibraryCoreNonnegativeSafeInteger,
   isLibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
-import type { RssFeed } from "../types.js";
+import { libraryCoreRssFeedDetailToRssFeedV1 } from "./rss-feed-detail-contracts.js";
 
 export const LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID =
   "person_graph_page_v1" as const;
@@ -615,28 +615,8 @@ function parseRssFeed(value: unknown): LibraryCoreRssFeedPageRowV1 | null {
 
 export function libraryCoreRssFeedPageRowToRssFeedV1(
   row: LibraryCoreRssFeedPageRowV1,
-): RssFeed {
-  return Object.freeze({
-    enabled: row.enabled,
-    ...(row.folder !== null ? { folder: row.folder } : {}),
-    ...(row.imageUrl !== null ? { imageUrl: row.imageUrl } : {}),
-    ...(row.lastFetched !== null ? { lastFetched: row.lastFetched } : {}),
-    ...(row.pollInterval !== null ? { pollInterval: row.pollInterval } : {}),
-    ...(row.sampleBatchId !== null
-      ? {
-          sampleDataFingerprint: {
-            marker: "freed.sample-data.v1" as const,
-            batchId: row.sampleBatchId,
-            generatedAt: row.sampleGeneratedAt!,
-            generatorVersion: row.sampleGeneratorVersion!,
-          },
-        }
-      : {}),
-    ...(row.siteUrl !== null ? { siteUrl: row.siteUrl } : {}),
-    title: row.title,
-    trackUnread: row.trackUnread,
-    url: row.url,
-  });
+) {
+  return libraryCoreRssFeedDetailToRssFeedV1(row);
 }
 
 function parseResponse<Row>(

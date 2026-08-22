@@ -2,6 +2,7 @@ import { FEED_SIGNAL_FILTER_PRESETS } from "../feed-signal-filters.js";
 import type {
   FeedItem,
   FeedSignalMode,
+  RssFeed,
   SavedContentSortMode,
 } from "../types.js";
 import {
@@ -45,6 +46,18 @@ import type {
   LibraryCoreSqliteQueryRequest,
   LibraryCoreSqliteQueryResponseFor,
 } from "./sqlite-worker-protocol.js";
+import {
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
+  LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
+  libraryCoreRssFeedPageRowToRssFeedV1,
+  type LibraryCoreRssFeedPageResponseV1,
+} from "./friends-identity-page-contracts.js";
+import {
+  LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
+  LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
+  libraryCoreRssFeedDetailToRssFeedV1,
+} from "./rss-feed-detail-contracts.js";
 
 export type LibraryCoreNormalizedQueryExecutor = <
   T extends LibraryCoreSqliteQueryRequest,
@@ -74,6 +87,58 @@ export interface LibraryCoreNormalizedReaderRuntime {
 }
 
 export type LibraryCoreBackgroundScanDecision = "continue" | "stop";
+
+/** Read one exact synchronized RSS Feed without consulting renderer state. */
+export async function readLibraryCoreRssFeedV1(
+  query: LibraryCoreNormalizedQueryExecutor,
+  url: string,
+): Promise<RssFeed | null> {
+  const response = await query({
+    queryId: LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
+    url,
+  });
+  return response.feed === null
+    ? null
+    : libraryCoreRssFeedDetailToRssFeedV1(response.feed);
+}
+
+/**
+ * Visit every RSS Feed through bounded source-fenced SQLite pages.
+ *
+ * The visitor owns one page only. React views must use a visible-window hook
+ * instead of this maintenance and export primitive.
+ */
+export async function scanLibraryCoreRssFeedsV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  visit: (
+    feeds: readonly RssFeed[],
+  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+): Promise<void> {
+  let cursor: string | null = null;
+  const readerSessionId = createLibraryCoreOperationInstanceId(
+    "rss-feed-scan-reader",
+    runtime.randomId(),
+  );
+  for (;;) {
+    const response: LibraryCoreRssFeedPageResponseV1 = await runtime.query({
+      cancellationId: createLibraryCoreOperationInstanceId(
+        "rss-feed-scan-cancel",
+        runtime.randomId(),
+      ),
+      cursor,
+      limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
+    });
+    const decision = await visit(
+      response.rows.map(libraryCoreRssFeedPageRowToRssFeedV1),
+    );
+    if (decision === "stop" || response.nextCursor === null) return;
+    cursor = response.nextCursor;
+  }
+}
 
 /**
  * Visit compact background metadata through one source-fenced SQLite query.
