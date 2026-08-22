@@ -1049,6 +1049,12 @@ or a narrower aggregate before the final memory gate. The same page contract
 serves capture maintenance, import identity checks, and saved-media discovery
 until those narrower contracts take ownership.
 
+Partial Person and Account edits never assume that React holds the entity.
+They read one exact `person_detail_v1` or `account_detail_v1` row, merge the
+requested fields into that closed record, and submit a complete typed mutation.
+The current visible renderer object may avoid that query, but it is a cache of
+the same bounded detail contract, not durable authority.
+
 Cutover requires source fencing, final SQLite catalog verification, field and
 content closure, query parity beyond the former hydration cap, checkpoint and
 backup proof, follower import proof, exact receipt publication, and owner

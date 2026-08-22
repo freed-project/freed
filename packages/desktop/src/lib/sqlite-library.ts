@@ -36,6 +36,10 @@ import {
   finalizeLibraryCoreTransactionV1,
   LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+  LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
+  LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
+  LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
+  LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -1970,6 +1974,116 @@ const NORMALIZED_MUTATION_READER_RUNTIME = Object.freeze({
   randomId: () => crypto.randomUUID(),
 });
 
+function normalizedSampleFingerprint(
+  batchId: string | null,
+  generatedAt: number | null,
+  generatorVersion: number | null,
+): FeedItem["sampleDataFingerprint"] {
+  return batchId !== null && generatedAt !== null && generatorVersion !== null
+    ? {
+        marker: "freed.sample-data.v1",
+        batchId,
+        generatedAt,
+        generatorVersion,
+      }
+    : undefined;
+}
+
+async function readNormalizedPerson(personId: string): Promise<Person | null> {
+  const response = await queryNormalizedLibrary({
+    personId,
+    queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
+  });
+  const person = response.person;
+  if (!person) return null;
+  const sampleDataFingerprint = normalizedSampleFingerprint(
+    person.sampleBatchId,
+    person.sampleGeneratedAt,
+    person.sampleGeneratorVersion,
+  );
+  return {
+    id: person.id,
+    name: person.name,
+    relationshipStatus:
+      person.relationshipStatus as Person["relationshipStatus"],
+    careLevel: person.careLevel as Person["careLevel"],
+    createdAt: person.createdAt,
+    updatedAt: person.updatedAt,
+    ...(person.avatarUrl === null ? {} : { avatarUrl: person.avatarUrl }),
+    ...(person.bio === null ? {} : { bio: person.bio }),
+    ...(person.reachOutIntervalDays === null
+      ? {}
+      : { reachOutIntervalDays: person.reachOutIntervalDays }),
+    ...(person.notes === null ? {} : { notes: person.notes }),
+    ...(person.tags.length === 0 ? {} : { tags: [...person.tags] }),
+    ...(person.reachOuts.length === 0
+      ? {}
+      : {
+          reachOutLog: person.reachOuts.map((entry) => ({
+            loggedAt: entry.loggedAt,
+            ...(entry.channel === null
+              ? {}
+              : { channel: entry.channel as ReachOutLog["channel"] }),
+            ...(entry.notes === null ? {} : { notes: entry.notes }),
+          })),
+        }),
+    ...(sampleDataFingerprint === undefined ? {} : { sampleDataFingerprint }),
+  };
+}
+
+async function readNormalizedAccount(accountId: string): Promise<Account | null> {
+  const response = await queryNormalizedLibrary({
+    accountId,
+    queryId: LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
+  });
+  const account = response.account;
+  if (!account) return null;
+  const sampleDataFingerprint = normalizedSampleFingerprint(
+    account.sampleBatchId,
+    account.sampleGeneratedAt,
+    account.sampleGeneratorVersion,
+  );
+  return {
+    id: account.id,
+    kind: account.kind as Account["kind"],
+    provider: account.provider as Account["provider"],
+    externalId: account.externalId,
+    firstSeenAt: account.firstSeenAt,
+    lastSeenAt: account.lastSeenAt,
+    discoveredFrom: account.discoveredFrom as Account["discoveredFrom"],
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+    ...(account.personId === null ? {} : { personId: account.personId }),
+    ...(account.handle === null ? {} : { handle: account.handle }),
+    ...(account.displayName === null
+      ? {}
+      : { displayName: account.displayName }),
+    ...(account.avatarUrl === null ? {} : { avatarUrl: account.avatarUrl }),
+    ...(account.profileUrl === null
+      ? {}
+      : { profileUrl: account.profileUrl }),
+    ...(account.email === null ? {} : { email: account.email }),
+    ...(account.phone === null ? {} : { phone: account.phone }),
+    ...(account.address === null ? {} : { address: account.address }),
+    ...(account.importedAt === null ? {} : { importedAt: account.importedAt }),
+    ...(account.followRosterActive === null
+      ? {}
+      : { followRosterActive: account.followRosterActive }),
+    ...(account.followRosterSyncedAt === null
+      ? {}
+      : { followRosterSyncedAt: account.followRosterSyncedAt }),
+    ...(account.followRosterRoles.length === 0
+      ? {}
+      : {
+          followRosterRoles:
+            account.followRosterRoles as Account["followRosterRoles"],
+        }),
+    ...(sampleDataFingerprint === undefined ? {} : { sampleDataFingerprint }),
+  };
+}
+
 async function refreshNormalizedMutationProjection(
   state: DocState,
   changedIds: readonly string[],
@@ -2083,7 +2197,9 @@ export async function dispatchSqliteMutation(
         message.accounts.map((account) => account.id),
       );
       for (const account of message.accounts) {
-        const existing = nextState.accounts[account.id];
+        const existing =
+          nextState.accounts[account.id] ??
+          (await readNormalizedAccount(account.id));
         reconciled.set(
           account.id,
           existing ? { ...existing, ...account } : account,
@@ -2537,7 +2653,9 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "UPDATE_PERSON": {
-      const person = nextState.persons[message.personId];
+      const person =
+        nextState.persons[message.personId] ??
+        (await readNormalizedPerson(message.personId));
       const updated = person ? { ...person, ...message.updates } : null;
       const normalizedHandled = updated
         ? await maybeSubmitPersonUpserts([updated], timestamp)
@@ -2552,7 +2670,9 @@ export async function dispatchSqliteMutation(
       const accounts: Account[] = [];
       for (const candidate of message.candidates) {
         for (const accountId of candidate.accountIds) {
-          const account = nextState.accounts[accountId];
+          const account =
+            nextState.accounts[accountId] ??
+            (await readNormalizedAccount(accountId));
           if (account)
             accounts.push({ ...account, personId: candidate.person.id });
         }
@@ -2587,7 +2707,9 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "LOG_REACH_OUT": {
-      const person = nextState.persons[message.personId];
+      const person =
+        nextState.persons[message.personId] ??
+        (await readNormalizedPerson(message.personId));
       const updated = person
         ? {
             ...person,
@@ -2628,7 +2750,9 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "UPDATE_ACCOUNT": {
-      const account = nextState.accounts[message.accountId];
+      const account =
+        nextState.accounts[message.accountId] ??
+        (await readNormalizedAccount(message.accountId));
       const updated = account ? { ...account, ...message.updates } : null;
       const normalizedHandled = updated
         ? await maybeSubmitAccountUpserts([updated], timestamp)

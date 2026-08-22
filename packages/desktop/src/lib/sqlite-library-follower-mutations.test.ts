@@ -36,6 +36,52 @@ function item(readAt?: number): FeedItem {
   };
 }
 
+function normalizedRow(globalId = ITEM_ID) {
+  return {
+    archived: false,
+    authorAvatarUrl: null,
+    authorDisplayName: "Author",
+    authorHandle: "author",
+    authorId: "author",
+    capturedAt: 1,
+    contentSignalTags: [],
+    contentText: globalId,
+    contentType: "article",
+    engagementComments: null,
+    engagementLikes: null,
+    eventConfidenceBasisPoints: null,
+    eventStartsAt: null,
+    globalId,
+    hidden: false,
+    liked: false,
+    likedAt: null,
+    likedSyncedAt: null,
+    linkPreviewTitle: null,
+    locationName: null,
+    mediaTypes: [],
+    mediaUrls: [],
+    platform: "rss",
+    publishedAt: 1,
+    readAt: null,
+    readingTimeMinutes: null,
+    rssSource: null,
+    sampleDataFingerprint: null,
+    saved: false,
+    sourceUrl: null,
+    tags: [],
+  };
+}
+
+function normalizedCard(globalId = ITEM_ID) {
+  const {
+    hidden: _hidden,
+    rssSource: _rssSource,
+    sampleDataFingerprint: _sampleDataFingerprint,
+    ...card
+  } = normalizedRow(globalId);
+  return card;
+}
+
 function state(): DocState {
   return {
     items: [],
@@ -129,6 +175,37 @@ describe("SQLite editable follower mutations", () => {
       }
       if (command === "read_sqlite_library_items") {
         return [JSON.stringify(item(1_000))];
+      }
+      if (command === "query_normalized_library") {
+        const request = (
+          args as { request: { queryId: string; schemaVersion: number } }
+        ).request;
+        const source = {
+          generationId: "bc".repeat(32),
+          projectionRevision: 2,
+          transitionSequence: 2,
+        };
+        if (request.queryId === "item_detail_v1") {
+          return {
+            item: {
+              card: normalizedCard(),
+              contentBody: { blobDigest: null, storage: "inline" },
+              preservedBody: { blobDigest: null, storage: "none" },
+            },
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
+        if (request.queryId === "background_item_page_v1") {
+          return {
+            nextCursor: null,
+            queryId: request.queryId,
+            rows: [normalizedRow(), normalizedRow("rss:follower-item-2")],
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
       }
       if (command === "query_sqlite_library_items") {
         return {
@@ -387,6 +464,30 @@ describe("SQLite Primary mutations", () => {
             source,
           };
         }
+        if (request.queryId === "person_detail_v1") {
+          return {
+            person: {
+              avatarUrl: null,
+              bio: null,
+              careLevel: 3,
+              createdAt: 10,
+              id: "person-1",
+              name: "Ada",
+              notes: null,
+              reachOutIntervalDays: null,
+              reachOuts: [],
+              relationshipStatus: "friend",
+              sampleBatchId: null,
+              sampleGeneratedAt: null,
+              sampleGeneratorVersion: null,
+              tags: ["mathematician"],
+              updatedAt: 20,
+            },
+            queryId: request.queryId,
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
       }
       if (command === "read_sqlite_library_counts") {
         return {
@@ -448,6 +549,47 @@ describe("SQLite Primary mutations", () => {
           command === "read_sqlite_library_items",
       ),
     ).toBe(false);
+  });
+
+  it("reads an exact Person before applying a partial normalized update", async () => {
+    await dispatchSqliteMutation(
+      {
+        reqId: 6,
+        type: "UPDATE_PERSON",
+        personId: "person-1",
+        updates: { notes: "Follow up next week" },
+      },
+      state(),
+    );
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope).toMatchObject({
+      operation_type: "person_upsert",
+      entity_id: "person-1",
+      payload: {
+        person: {
+          id: "person-1",
+          name: "Ada",
+          notes: "Follow up next week",
+          tags: ["mathematician"],
+        },
+      },
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "query_normalized_library",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          personId: "person-1",
+          queryId: "person_detail_v1",
+        }),
+      }),
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "replace_sqlite_library_shell",
+      expect.anything(),
+    );
   });
 
   it("keeps provider-visible likes off the Primary path", async () => {
