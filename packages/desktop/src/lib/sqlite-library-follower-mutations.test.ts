@@ -117,24 +117,20 @@ describe("SQLite editable follower mutations", () => {
       if (command === "normalized_library_primary_mutation_context") {
         throw new Error("normalized SQLite authority is not selected");
       }
-      if (command === "sqlite_library_follower_intent_context") {
+      if (command === "normalized_library_follower_mutation_context") {
         return {
-          authority: {
-            library_id: "ab".repeat(32),
-            epoch: 1,
-            epoch_id: "cd".repeat(32),
-            authority_key_id: "de".repeat(32),
-            authority_public_key: "ef".repeat(32),
-            observed_frontier: [],
-          },
+          libraryId: "ab".repeat(32),
+          epoch: 1,
+          epochId: "cd".repeat(32),
           actorId: "12".repeat(32),
           actorPublicKey: "23".repeat(32),
-          nextIntentSequence: 1,
+          nextCounter: 1,
           previousOperationId: null,
           previousChainDigest: "34".repeat(32),
+          observedFrontier: [],
         };
       }
-      if (command === "sign_sqlite_library_follower_operation") {
+      if (command === "sign_normalized_library_follower_operation") {
         const request = (
           args as {
             request: { actorId: string; operationSigningBodyDigest: string };
@@ -146,7 +142,7 @@ describe("SQLite editable follower mutations", () => {
           signature: "45".repeat(64),
         };
       }
-      if (command === "enqueue_sqlite_library_follower_intent") {
+      if (command === "enqueue_normalized_library_follower_intent") {
         const request = (
           args as {
             request: { canonicalEnvelopeJson: string[] };
@@ -155,10 +151,12 @@ describe("SQLite editable follower mutations", () => {
         mocks.enqueuedEnvelopes = request.canonicalEnvelopeJson;
         return {
           transactionId: "desktop-follower-read:test",
-          firstIntentSequence: 1,
-          lastIntentSequence: 1,
-          operationCount: 1,
-          status: "enqueued",
+          actorId: "12".repeat(32),
+          firstCounter: 1,
+          lastCounter: 1,
+          memberCount: 1,
+          optimisticFieldCount: 0,
+          state: "pending",
         };
       }
       if (command === "read_sqlite_library_counts") {
@@ -342,21 +340,17 @@ describe("SQLite Primary mutations", () => {
           observedFrontier: [],
         };
       }
-      if (command === "sqlite_library_follower_intent_context") {
+      if (command === "normalized_library_follower_mutation_context") {
         return {
-          authority: {
-            library_id: "ab".repeat(32),
-            epoch: 1,
-            epoch_id: "cd".repeat(32),
-            authority_key_id: "de".repeat(32),
-            authority_public_key: "ef".repeat(32),
-            observed_frontier: [],
-          },
+          libraryId: "ab".repeat(32),
+          epoch: 1,
+          epochId: "cd".repeat(32),
           actorId: "78".repeat(32),
           actorPublicKey: "89".repeat(32),
-          nextIntentSequence: 1,
+          nextCounter: 1,
           previousOperationId: null,
           previousChainDigest: "9a".repeat(32),
+          observedFrontier: [],
         };
       }
       if (command === "sign_normalized_library_operation") {
@@ -371,7 +365,7 @@ describe("SQLite Primary mutations", () => {
           signature: "45".repeat(64),
         };
       }
-      if (command === "sign_sqlite_library_follower_operation") {
+      if (command === "sign_normalized_library_follower_operation") {
         const request = (
           args as {
             request: { actorId: string; operationSigningBodyDigest: string };
@@ -383,17 +377,19 @@ describe("SQLite Primary mutations", () => {
           signature: "9b".repeat(64),
         };
       }
-      if (command === "enqueue_sqlite_library_follower_intent") {
+      if (command === "enqueue_normalized_library_follower_intent") {
         const request = (
           args as { request: { canonicalEnvelopeJson: string[] } }
         ).request;
         mocks.enqueuedEnvelopes = request.canonicalEnvelopeJson;
         return {
           transactionId: "desktop-library-like:test",
-          firstIntentSequence: 1,
-          lastIntentSequence: 1,
-          operationCount: 1,
-          status: "enqueued",
+          actorId: "78".repeat(32),
+          firstCounter: 1,
+          lastCounter: 1,
+          memberCount: 1,
+          optimisticFieldCount: 0,
+          state: "pending",
         };
       }
       if (command === "commit_normalized_library_transaction") {
@@ -584,7 +580,7 @@ describe("SQLite Primary mutations", () => {
       }),
     );
     expect(mocks.invoke).not.toHaveBeenCalledWith(
-      "sqlite_library_follower_intent_context",
+      "normalized_library_follower_mutation_context",
       expect.anything(),
     );
     expect(mocks.invoke).not.toHaveBeenCalledWith(

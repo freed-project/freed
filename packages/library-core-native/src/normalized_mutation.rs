@@ -105,7 +105,7 @@ pub(crate) enum NormalizedMutationResolutionV1 {
     FollowerResult(NormalizedFollowerResultReceiptV1),
 }
 
-fn actor_state_at(
+pub(crate) fn actor_state_at(
     connection: &Connection,
     identity: &OperationIdentity,
 ) -> JournalResult<ActorState> {
@@ -304,7 +304,7 @@ const FOLLOWER_RESULT_REJECTION_REASONS: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerResultCursorV1 {
+pub struct NormalizedFollowerResultCursorV1 {
     pub actor_id: String,
     pub result_sequence: i64,
     pub result_digest: String,
@@ -312,7 +312,7 @@ pub(crate) struct NormalizedFollowerResultCursorV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerResultPageRequestV1 {
+pub struct NormalizedFollowerResultPageRequestV1 {
     pub actor_id: String,
     pub after: Option<NormalizedFollowerResultCursorV1>,
     pub maximum_records: usize,
@@ -321,7 +321,7 @@ pub(crate) struct NormalizedFollowerResultPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerResultRecordV1 {
+pub struct NormalizedFollowerResultRecordV1 {
     pub transaction_id: String,
     pub transaction_digest: String,
     pub actor_id: String,
@@ -340,7 +340,7 @@ pub(crate) struct NormalizedFollowerResultRecordV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerResultPageV1 {
+pub struct NormalizedFollowerResultPageV1 {
     pub records: Vec<NormalizedFollowerResultRecordV1>,
     pub next_cursor: Option<NormalizedFollowerResultCursorV1>,
     pub done: bool,
@@ -349,7 +349,7 @@ pub(crate) struct NormalizedFollowerResultPageV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerIntentStageRecordV1 {
+pub struct NormalizedFollowerIntentStageRecordV1 {
     pub actor_counter: i64,
     pub actor_id: String,
     pub canonical_envelope_json: String,
@@ -365,13 +365,13 @@ pub(crate) struct NormalizedFollowerIntentStageRecordV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerIntentStagePageV1 {
+pub struct NormalizedFollowerIntentStagePageV1 {
     pub records: Vec<NormalizedFollowerIntentStageRecordV1>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct NormalizedFollowerIntentStageReceiptV1 {
+pub struct NormalizedFollowerIntentStageReceiptV1 {
     pub exact_retries: usize,
     pub pending_transactions: usize,
     pub resolved_records: usize,
@@ -904,7 +904,7 @@ fn serialized_follower_result_page_bytes(
         })
 }
 
-pub(crate) fn export_normalized_follower_result_page_v1(
+pub fn export_normalized_follower_result_page_v1(
     connection: &Connection,
     request: &NormalizedFollowerResultPageRequestV1,
 ) -> Result<NormalizedFollowerResultPageV1, NormalizedSqliteError> {
@@ -1164,7 +1164,7 @@ fn verify_staged_follower_intent_identity(
     Ok(())
 }
 
-pub(crate) fn ingest_normalized_follower_intent_page_v1(
+pub fn ingest_normalized_follower_intent_page_v1(
     connection: &mut Connection,
     page: &NormalizedFollowerIntentStagePageV1,
     authority_key_pair: &Ed25519KeyPair,

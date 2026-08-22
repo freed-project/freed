@@ -84,10 +84,16 @@ pub use normalized_checkpoint::{
     NormalizedCheckpointRecordV2,
 };
 pub use normalized_follower::{
-    countersign_normalized_follower_actor_request_v2,
-    install_normalized_follower_actor_enrollment_v2, normalized_follower_runtime_status_v2,
-    prepare_normalized_follower_actor_request_v2, NormalizedFollowerActorEnrollmentV2,
-    NormalizedFollowerActorRequestV2, NormalizedFollowerRuntimeStatusV2,
+    countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1,
+    export_normalized_follower_intent_page_v1, import_normalized_follower_result_page_v1,
+    install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
+    normalized_follower_runtime_status_v2, prepare_normalized_follower_actor_request_v2,
+    record_normalized_follower_intent_publication_v1, NormalizedFollowerActorEnrollmentV2,
+    NormalizedFollowerActorRequestV2, NormalizedFollowerIntentCommitReceiptV1,
+    NormalizedFollowerIntentCursorV1, NormalizedFollowerIntentPageRecordV1,
+    NormalizedFollowerIntentPageRequestV1, NormalizedFollowerIntentPageV1,
+    NormalizedFollowerIntentPublicationReceiptV1, NormalizedFollowerResultImportReceiptV1,
+    NormalizedFollowerRuntimeStatusV2,
 };
 pub use normalized_import::{
     finalize_normalized_checkpoint_stage_v2, normalized_checkpoint_digest_v2,
@@ -100,9 +106,13 @@ pub use normalized_migration::{
     NormalizedDesktopAuthorityPreparedV1,
 };
 pub use normalized_mutation::{
-    accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
-    NormalizedMutationCausalTipV1, NormalizedMutationContextV1, NormalizedMutationInvalidationV1,
-    NormalizedMutationReceiptV1,
+    accept_normalized_operation_transaction_v1, export_normalized_follower_result_page_v1,
+    ingest_normalized_follower_intent_page_v1, normalized_primary_mutation_context_v1,
+    NormalizedFollowerIntentStagePageV1, NormalizedFollowerIntentStageReceiptV1,
+    NormalizedFollowerIntentStageRecordV1, NormalizedFollowerResultCursorV1,
+    NormalizedFollowerResultPageRequestV1, NormalizedFollowerResultPageV1,
+    NormalizedFollowerResultRecordV1, NormalizedMutationCausalTipV1, NormalizedMutationContextV1,
+    NormalizedMutationInvalidationV1, NormalizedMutationReceiptV1,
 };
 pub use normalized_query::{
     query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,

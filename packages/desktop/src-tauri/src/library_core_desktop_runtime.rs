@@ -386,6 +386,15 @@ pub(super) struct EnqueueFollowerIntentRequest {
     enqueued_at_ms: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RecordNormalizedFollowerIntentPublicationRequest {
+    transaction_id: String,
+    transaction_digest: String,
+    actor_id: String,
+    published_at: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DesktopLibraryFollowerOperationSignature {
@@ -1291,6 +1300,150 @@ pub(super) fn countersign_normalized_library_follower_actor_request(
         canonical_enrollment_request_json.as_bytes(),
         &PlatformAuthorityKeyStore,
         accepted_at,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn normalized_library_follower_mutation_context(
+    app: tauri::AppHandle,
+) -> Result<NormalizedMutationContextV1, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::normalized_follower_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn sign_normalized_library_follower_operation(
+    app: tauri::AppHandle,
+    request: SignNormalizedOperationRequest,
+) -> Result<DesktopLibraryOperationSignature, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    let context = freed_library_core::normalized_follower_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    if request.library_id != context.library_id
+        || request.epoch_id != context.epoch_id
+        || request.actor_id != context.actor_id
+        || request.actor_public_key != context.actor_public_key
+    {
+        return Err("normalized follower signer context changed".into());
+    }
+    let signature = sign_library_core_operation_digest(
+        &PlatformActorKeyStore,
+        &context.library_id,
+        &context.actor_public_key,
+        &request.operation_signing_body_digest,
+    )?;
+    Ok(DesktopLibraryOperationSignature {
+        actor_id: context.actor_id,
+        operation_signing_body_digest: request.operation_signing_body_digest,
+        signature,
+    })
+}
+
+#[tauri::command]
+pub(super) fn enqueue_normalized_library_follower_intent(
+    app: tauri::AppHandle,
+    request: EnqueueFollowerIntentRequest,
+) -> Result<freed_library_core::NormalizedFollowerIntentCommitReceiptV1, String> {
+    use freed_library_core::sqlite_contract_generated::{
+        CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES, OPERATION_TRANSACTION_MAXIMUM_BYTES,
+        OPERATION_TRANSACTION_MAXIMUM_MEMBERS,
+    };
+    if request.enqueued_at_ms < 0
+        || request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > OPERATION_TRANSACTION_MAXIMUM_MEMBERS
+        || request.canonical_envelope_json.iter().any(|member| {
+            member.is_empty() || member.len() > CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
+        })
+        || request
+            .canonical_envelope_json
+            .iter()
+            .try_fold(0_usize, |total, member| total.checked_add(member.len()))
+            .is_none_or(|total| total > OPERATION_TRANSACTION_MAXIMUM_BYTES)
+    {
+        return Err("normalized follower intent exceeds its closed bounds".into());
+    }
+    let mut connection = open_selected_normalized_database(&app)?;
+    let canonical = request
+        .canonical_envelope_json
+        .into_iter()
+        .map(String::into_bytes)
+        .collect::<Vec<_>>();
+    freed_library_core::enqueue_normalized_follower_intent_v1(
+        &mut connection,
+        &canonical,
+        request.enqueued_at_ms,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn read_normalized_library_follower_intent_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedFollowerIntentPageRequestV1,
+) -> Result<freed_library_core::NormalizedFollowerIntentPageV1, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::export_normalized_follower_intent_page_v1(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn record_normalized_library_follower_intent_publication(
+    app: tauri::AppHandle,
+    request: RecordNormalizedFollowerIntentPublicationRequest,
+) -> Result<freed_library_core::NormalizedFollowerIntentPublicationReceiptV1, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::record_normalized_follower_intent_publication_v1(
+        &mut connection,
+        &request.transaction_id,
+        &request.transaction_digest,
+        &request.actor_id,
+        request.published_at,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn ingest_normalized_library_follower_intent_page(
+    app: tauri::AppHandle,
+    page: freed_library_core::NormalizedFollowerIntentStagePageV1,
+    received_at: i64,
+) -> Result<freed_library_core::NormalizedFollowerIntentStageReceiptV1, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    let context =
+        normalized_primary_mutation_context_v1(&connection).map_err(|error| error.to_string())?;
+    let authority_key_pair = load_established_authority_key_pair(&context.library_id)?;
+    freed_library_core::ingest_normalized_follower_intent_page_v1(
+        &mut connection,
+        &page,
+        &authority_key_pair,
+        received_at,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn read_normalized_library_follower_result_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedFollowerResultPageRequestV1,
+) -> Result<freed_library_core::NormalizedFollowerResultPageV1, String> {
+    let connection = open_selected_normalized_database(&app)?;
+    freed_library_core::export_normalized_follower_result_page_v1(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn import_normalized_library_follower_result_page(
+    app: tauri::AppHandle,
+    records: Vec<freed_library_core::NormalizedFollowerResultRecordV1>,
+    received_at: i64,
+) -> Result<freed_library_core::NormalizedFollowerResultImportReceiptV1, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::import_normalized_follower_result_page_v1(
+        &mut connection,
+        &records,
+        received_at,
     )
     .map_err(|error| error.to_string())
 }

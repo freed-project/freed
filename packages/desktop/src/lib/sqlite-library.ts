@@ -268,6 +268,16 @@ export interface SqliteLibraryPrimaryMutationContext {
   }>[];
 }
 
+export interface SqliteLibraryNormalizedFollowerIntentReceipt {
+  readonly transactionId: string;
+  readonly actorId: string;
+  readonly firstCounter: number;
+  readonly lastCounter: number;
+  readonly memberCount: number;
+  readonly optimisticFieldCount: number;
+  readonly state: "pending";
+}
+
 export interface SqliteLibraryNormalizedMutationReceipt {
   readonly transactionId: string;
   readonly transactionDigest: string;
@@ -492,6 +502,47 @@ export async function enqueueSqliteLibraryFollowerIntent(
   );
 }
 
+export async function readNormalizedLibraryFollowerMutationContext(): Promise<SqliteLibraryPrimaryMutationContext | null> {
+  return invoke<SqliteLibraryPrimaryMutationContext | null>(
+    "normalized_library_follower_mutation_context",
+  );
+}
+
+export async function signNormalizedLibraryFollowerOperation(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly actorId: string;
+  readonly actorPublicKey: string;
+  readonly operationSigningBodyDigest: string;
+}): Promise<SqliteLibraryFollowerOperationSignature> {
+  return invoke<SqliteLibraryFollowerOperationSignature>(
+    "sign_normalized_library_follower_operation",
+    { request: input },
+  );
+}
+
+export async function enqueueNormalizedLibraryFollowerIntent(
+  canonicalEnvelopeJson: readonly string[],
+): Promise<SqliteLibraryNormalizedFollowerIntentReceipt> {
+  if (
+    canonicalEnvelopeJson.length === 0 ||
+    canonicalEnvelopeJson.length > 1_000
+  ) {
+    throw new RangeError(
+      "Normalized follower intent transaction has an invalid member count",
+    );
+  }
+  return invoke<SqliteLibraryNormalizedFollowerIntentReceipt>(
+    "enqueue_normalized_library_follower_intent",
+    {
+      request: {
+        canonicalEnvelopeJson: [...canonicalEnvelopeJson],
+        enqueuedAtMs: Date.now(),
+      },
+    },
+  );
+}
+
 function operationDigest(
   domain: Parameters<typeof encodeLibraryCoreDigestInput>[0],
   value: unknown,
@@ -566,19 +617,38 @@ async function mutationContext(
     const primary = await primaryMutationContext();
     if (primary) return primary;
   }
-  const follower = await sqliteLibraryFollowerIntentContext();
+  let follower: SqliteLibraryPrimaryMutationContext | null;
+  try {
+    follower = await readNormalizedLibraryFollowerMutationContext();
+  } catch (error) {
+    if (
+      String(error).includes("normalized follower actor is not active") ||
+      String(error).includes("normalized SQLite authority is not selected") ||
+      String(error).includes(
+        "normalized SQLite authority selection is unavailable on this host",
+      )
+    ) {
+      return null;
+    }
+    throw error;
+  }
   if (!follower) return null;
   return {
     mode: "follower",
-    libraryId: follower.authority.library_id,
-    epoch: follower.authority.epoch,
-    epochId: follower.authority.epoch_id,
+    libraryId: follower.libraryId,
+    epoch: follower.epoch,
+    epochId: follower.epochId,
     actorId: follower.actorId,
     actorPublicKey: follower.actorPublicKey,
-    nextSequence: follower.nextIntentSequence,
+    nextSequence: follower.nextCounter,
     previousOperationId: follower.previousOperationId,
     previousChainDigest: follower.previousChainDigest,
-    observedFrontier: follower.authority.observed_frontier,
+    observedFrontier: follower.observedFrontier.map((tip) => ({
+      actor_id: tip.actorId,
+      sequence: tip.sequence,
+      operation_id: tip.operationId,
+      chain_digest: tip.chainDigest,
+    })),
   };
 }
 
@@ -627,10 +697,11 @@ async function finalizeAndSubmitTransaction(
                 },
               },
             )
-          : await signSqliteLibraryFollowerOperation({
+          : await signNormalizedLibraryFollowerOperation({
               libraryId: context.libraryId,
               epochId: context.epochId,
               actorId: context.actorId,
+              actorPublicKey: context.actorPublicKey,
               operationSigningBodyDigest: member.signing_body_digest,
             });
       if (
@@ -654,7 +725,7 @@ async function finalizeAndSubmitTransaction(
     ),
   );
   if (context.mode === "follower") {
-    await enqueueSqliteLibraryFollowerIntent(canonicalEnvelopeJson);
+    await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson);
     return;
   }
   const receipt = await invoke<SqliteLibraryNormalizedMutationReceipt>(
