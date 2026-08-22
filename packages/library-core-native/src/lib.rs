@@ -86,6 +86,7 @@ pub use normalized_checkpoint::{
 pub use normalized_follower::{
     countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1,
     export_normalized_follower_intent_page_v1, import_normalized_follower_result_page_v1,
+    import_normalized_follower_result_transport_segment_v2,
     install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
     normalized_follower_runtime_status_v2, prepare_normalized_follower_actor_request_v2,
     record_normalized_follower_intent_publication_v1,
@@ -96,6 +97,7 @@ pub use normalized_follower::{
     NormalizedFollowerIntentPageV1, NormalizedFollowerIntentPublicationReceiptV1,
     NormalizedFollowerIntentTransportPublicationReceiptV2,
     NormalizedFollowerIntentTransportPublicationV2, NormalizedFollowerResultImportReceiptV1,
+    NormalizedFollowerResultTransportImportReceiptV2, NormalizedFollowerResultTransportImportV2,
     NormalizedFollowerRuntimeStatusV2,
 };
 pub use normalized_import::{

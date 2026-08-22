@@ -1025,6 +1025,40 @@ CREATE TABLE IF NOT EXISTS library_intent_result_cursors (
   )
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS library_result_transport_heads (
+  actor_id TEXT PRIMARY KEY REFERENCES library_intent_actors(actor_id) ON DELETE CASCADE,
+  library_id TEXT NOT NULL CHECK (length(CAST(library_id AS BLOB)) BETWEEN 1 AND 255),
+  storage_epoch_id TEXT NOT NULL CHECK (length(CAST(storage_epoch_id AS BLOB)) BETWEEN 1 AND 255),
+  next_result_sequence INTEGER NOT NULL CHECK (next_result_sequence >= 1),
+  latest_segment_digest TEXT CHECK (latest_segment_digest IS NULL OR (length(latest_segment_digest) = 64 AND latest_segment_digest NOT GLOB '*[^0-9a-f]*')),
+  CHECK (
+    (next_result_sequence = 1 AND latest_segment_digest IS NULL)
+    OR (next_result_sequence > 1 AND latest_segment_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS library_result_transport_segments (
+  actor_id TEXT NOT NULL REFERENCES library_result_transport_heads(actor_id) ON DELETE CASCADE,
+  first_result_sequence INTEGER NOT NULL CHECK (first_result_sequence >= 1),
+  last_result_sequence INTEGER NOT NULL CHECK (last_result_sequence >= first_result_sequence),
+  previous_segment_digest TEXT CHECK (previous_segment_digest IS NULL OR (length(previous_segment_digest) = 64 AND previous_segment_digest NOT GLOB '*[^0-9a-f]*')),
+  semantic_segment_digest TEXT NOT NULL CHECK (length(semantic_segment_digest) = 64 AND semantic_segment_digest NOT GLOB '*[^0-9a-f]*'),
+  stored_segment_digest TEXT NOT NULL CHECK (length(stored_segment_digest) = 64 AND stored_segment_digest NOT GLOB '*[^0-9a-f]*'),
+  object_key TEXT NOT NULL CHECK (length(CAST(object_key AS BLOB)) BETWEEN 1 AND 1024),
+  transport_object_id TEXT NOT NULL CHECK (length(CAST(transport_object_id AS BLOB)) BETWEEN 1 AND 1024),
+  received_at INTEGER NOT NULL CHECK (received_at >= 0),
+  result_count INTEGER NOT NULL CHECK (result_count BETWEEN 1 AND 128),
+  accepted_transaction_count INTEGER NOT NULL CHECK (accepted_transaction_count BETWEEN 0 AND result_count),
+  rejected_transaction_count INTEGER NOT NULL CHECK (rejected_transaction_count BETWEEN 0 AND result_count),
+  PRIMARY KEY (actor_id, first_result_sequence),
+  UNIQUE (stored_segment_digest),
+  CHECK (accepted_transaction_count + rejected_transaction_count <= result_count),
+  CHECK (
+    (first_result_sequence = 1 AND previous_segment_digest IS NULL)
+    OR (first_result_sequence > 1 AND previous_segment_digest IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS library_optimistic_fields (
   transaction_id TEXT NOT NULL REFERENCES library_intent_transactions(transaction_id) ON DELETE CASCADE,
   entity_type TEXT NOT NULL,

@@ -14206,6 +14206,7 @@ pub fn run() {
             library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
             library_core_desktop_runtime::read_normalized_library_follower_result_page,
             library_core_desktop_runtime::import_normalized_library_follower_result_page,
+            library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
             library_core_desktop_runtime::reassign_normalized_library_writer_epoch,
             library_core_desktop_runtime::normalized_library_primary_mutation_context,
             library_core_desktop_runtime::sign_normalized_library_operation,

@@ -16,7 +16,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "e4ef1267912851645569ae637edf2472e6354e3439cdce2e7a1f95efa7cce4ba";
+    "58c69e0f82eae7e4c48f3a7de3fa1149aef896d9e6048bd03761b65dab23c9ec";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =

@@ -1461,6 +1461,19 @@ pub(super) fn import_normalized_library_follower_result_page(
     .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub(super) fn import_normalized_library_follower_result_transport_segment(
+    app: tauri::AppHandle,
+    publication: freed_library_core::NormalizedFollowerResultTransportImportV2,
+) -> Result<freed_library_core::NormalizedFollowerResultTransportImportReceiptV2, String> {
+    let mut connection = open_selected_normalized_database(&app)?;
+    freed_library_core::import_normalized_follower_result_transport_segment_v2(
+        &mut connection,
+        &publication,
+    )
+    .map_err(|error| error.to_string())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ActivateNormalizedLibraryCheckpointImportRequest {

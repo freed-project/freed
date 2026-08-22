@@ -177,6 +177,36 @@ pub struct NormalizedFollowerResultImportReceiptV1 {
     pub rejected_transaction_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerResultTransportImportV2 {
+    pub actor_id: String,
+    pub library_id: String,
+    pub object_key: String,
+    pub previous_segment_digest: Option<String>,
+    pub received_at: i64,
+    pub records: Vec<NormalizedFollowerResultRecordV1>,
+    pub semantic_segment_digest: String,
+    pub stored_segment_digest: String,
+    pub storage_epoch_id: String,
+    pub transport_object_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedFollowerResultTransportImportReceiptV2 {
+    pub accepted_transaction_count: usize,
+    pub actor_id: String,
+    pub first_result_sequence: i64,
+    pub last_result_sequence: i64,
+    pub next_result_sequence: i64,
+    pub received_at: i64,
+    pub rejected_transaction_count: usize,
+    pub result_count: usize,
+    pub semantic_segment_digest: String,
+    pub stored_segment_digest: String,
+}
+
 fn actor_request(
     connection: &Connection,
     library_id: &str,
@@ -1239,23 +1269,22 @@ pub fn record_normalized_follower_intent_transport_publication_v2(
     })
 }
 
-pub fn import_normalized_follower_result_page_v1(
-    connection: &mut Connection,
+fn import_normalized_follower_result_page_in_transaction_v1(
+    transaction: &Transaction<'_>,
     records: &[NormalizedFollowerResultRecordV1],
     received_at: i64,
 ) -> Result<NormalizedFollowerResultImportReceiptV1, NormalizedSqliteError> {
     if records.is_empty() || records.len() > 128 || !(0..=MAX_SAFE_INTEGER).contains(&received_at) {
         return Err(invalid("normalized follower result page is invalid"));
     }
-    let (active_actor_id, _, _) = active_follower_actor(connection)?;
-    let (current_authority, _, _, _) = current_authority(connection)?;
+    let (active_actor_id, _, _) = active_follower_actor(transaction)?;
+    let (current_authority, _, _, _) = current_authority(transaction)?;
     if records
         .iter()
         .any(|record| record.actor_id != active_actor_id)
     {
         return Err(invalid("normalized follower result actor is invalid"));
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     transaction.execute(
         "INSERT OR IGNORE INTO library_intent_result_cursors
          (actor_id, next_result_sequence, previous_result_digest)
@@ -1494,7 +1523,6 @@ pub fn import_normalized_follower_result_page_v1(
     if cursor_updated != 1 {
         return Err(invalid("normalized follower result cursor is missing"));
     }
-    transaction.commit()?;
     Ok(NormalizedFollowerResultImportReceiptV1 {
         actor_id: active_actor_id,
         first_result_sequence,
@@ -1505,6 +1533,296 @@ pub fn import_normalized_follower_result_page_v1(
         result_count: records.len(),
         accepted_transaction_count,
         rejected_transaction_count,
+    })
+}
+
+pub fn import_normalized_follower_result_page_v1(
+    connection: &mut Connection,
+    records: &[NormalizedFollowerResultRecordV1],
+    received_at: i64,
+) -> Result<NormalizedFollowerResultImportReceiptV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let receipt = import_normalized_follower_result_page_in_transaction_v1(
+        &transaction,
+        records,
+        received_at,
+    )?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
+fn normalized_result_segment_digest_v2(
+    publication: &NormalizedFollowerResultTransportImportV2,
+) -> Result<String, NormalizedSqliteError> {
+    let first = publication
+        .records
+        .first()
+        .ok_or(invalid("normalized follower result segment is empty"))?;
+    let last = publication
+        .records
+        .last()
+        .ok_or(invalid("normalized follower result segment is empty"))?;
+    let mut results = Vec::with_capacity(publication.records.len());
+    let mut canonical_result_bytes = 0_usize;
+    for record in &publication.records {
+        canonical_result_bytes = canonical_result_bytes
+            .checked_add(record.canonical_result_json.len())
+            .ok_or(invalid("normalized follower result segment is too large"))?;
+        let value: Value = serde_json::from_str(&record.canonical_result_json)
+            .map_err(|_| invalid("normalized follower result JSON is invalid"))?;
+        if encode_canonical_value(&value, 131_072)
+            .map_err(|_| invalid("normalized follower result is not canonical"))?
+            != record.canonical_result_json.as_bytes()
+        {
+            return Err(invalid("normalized follower result is not canonical"));
+        }
+        results.push(value);
+    }
+    if canonical_result_bytes > 1_048_576 {
+        return Err(invalid("normalized follower result segment is too large"));
+    }
+    let body = json!({
+        "actor_id": publication.actor_id,
+        "canonical_result_bytes": canonical_result_bytes,
+        "first_result_sequence": first.result_sequence,
+        "format": "freed_normalized_result_segment_v2",
+        "kind": "normalized_result_segment_body",
+        "last_result_sequence": last.result_sequence,
+        "library_id": publication.library_id,
+        "previous_segment_digest": publication.previous_segment_digest,
+        "protocol": "normalized_result_segments_v2",
+        "protocol_version": 2,
+        "result_count": publication.records.len(),
+        "results": results,
+        "storage_epoch_id": publication.storage_epoch_id,
+    });
+    let digest_input =
+        encode_operation_digest_input("normalized-result-segment-body-v2", &body, 1_114_112)
+            .map_err(|_| invalid("normalized follower result segment digest input is invalid"))?;
+    Ok(lower_hex(&Sha256::digest(digest_input)))
+}
+
+pub fn import_normalized_follower_result_transport_segment_v2(
+    connection: &mut Connection,
+    publication: &NormalizedFollowerResultTransportImportV2,
+) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
+    let bounded_text = |value: &str, maximum: usize| !value.is_empty() && value.len() <= maximum;
+    let first_result_sequence = publication
+        .records
+        .first()
+        .map(|record| record.result_sequence)
+        .ok_or(invalid(
+            "normalized follower result transport segment is empty",
+        ))?;
+    let last_result_sequence = publication
+        .records
+        .last()
+        .map(|record| record.result_sequence)
+        .ok_or(invalid(
+            "normalized follower result transport segment is empty",
+        ))?;
+    if publication.records.len() > 128
+        || !bounded_text(&publication.actor_id, 255)
+        || !bounded_text(&publication.library_id, 255)
+        || !bounded_text(&publication.storage_epoch_id, 255)
+        || !bounded_text(&publication.object_key, 1_024)
+        || !bounded_text(&publication.transport_object_id, 1_024)
+        || !is_lower_sha256(&publication.semantic_segment_digest)
+        || !is_lower_sha256(&publication.stored_segment_digest)
+        || publication
+            .previous_segment_digest
+            .as_deref()
+            .is_some_and(|value| !is_lower_sha256(value))
+        || !(0..=MAX_SAFE_INTEGER).contains(&publication.received_at)
+        || (first_result_sequence == 1) != publication.previous_segment_digest.is_none()
+        || publication
+            .records
+            .iter()
+            .any(|record| record.actor_id != publication.actor_id)
+    {
+        return Err(invalid(
+            "normalized follower result transport segment is invalid",
+        ));
+    }
+    let computed_semantic_digest = normalized_result_segment_digest_v2(publication)?;
+    if computed_semantic_digest != publication.semantic_segment_digest {
+        return Err(invalid(
+            "normalized follower result transport semantic digest changed",
+        ));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let (active_actor_id, _, active_epoch_id) = active_follower_actor(&transaction)?;
+    let (authority, _, _, _) = current_authority(&transaction)?;
+    if active_actor_id != publication.actor_id
+        || active_epoch_id != publication.storage_epoch_id
+        || authority.library_id != publication.library_id
+        || authority.epoch_id != publication.storage_epoch_id
+    {
+        return Err(invalid(
+            "normalized follower result transport authority changed",
+        ));
+    }
+    transaction.execute(
+        "INSERT OR IGNORE INTO library_result_transport_heads
+         (actor_id, library_id, storage_epoch_id, next_result_sequence,
+          latest_segment_digest)
+         VALUES (?1, ?2, ?3, 1, NULL);",
+        params![
+            publication.actor_id,
+            publication.library_id,
+            publication.storage_epoch_id,
+        ],
+    )?;
+    let head: (String, String, i64, Option<String>) = transaction.query_row(
+        "SELECT library_id, storage_epoch_id, next_result_sequence,
+                latest_segment_digest
+         FROM library_result_transport_heads WHERE actor_id = ?1;",
+        [&publication.actor_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if head.0 != publication.library_id || head.1 != publication.storage_epoch_id {
+        return Err(invalid(
+            "normalized follower result transport head identity changed",
+        ));
+    }
+    type StoredSegment = (
+        i64,
+        Option<String>,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        i64,
+        i64,
+    );
+    let existing: Option<StoredSegment> = transaction
+        .query_row(
+            "SELECT last_result_sequence, previous_segment_digest,
+                    semantic_segment_digest, stored_segment_digest, object_key,
+                    transport_object_id, received_at, result_count,
+                    accepted_transaction_count, rejected_transaction_count
+             FROM library_result_transport_segments
+             WHERE actor_id = ?1 AND first_result_sequence = ?2;",
+            params![publication.actor_id, first_result_sequence],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                ))
+            },
+        )
+        .optional()?;
+    if let Some(existing) = existing {
+        if existing.0 != last_result_sequence
+            || existing.1 != publication.previous_segment_digest
+            || existing.2 != publication.semantic_segment_digest
+            || existing.3 != publication.stored_segment_digest
+            || existing.4 != publication.object_key
+            || existing.5 != publication.transport_object_id
+            || existing.6 != publication.received_at
+            || usize::try_from(existing.7).ok() != Some(publication.records.len())
+        {
+            return Err(invalid(
+                "normalized follower result transport replay changed",
+            ));
+        }
+        transaction.commit()?;
+        return Ok(NormalizedFollowerResultTransportImportReceiptV2 {
+            accepted_transaction_count: usize::try_from(existing.8)
+                .map_err(|_| invalid("normalized follower result transport receipt is invalid"))?,
+            actor_id: publication.actor_id.clone(),
+            first_result_sequence,
+            last_result_sequence,
+            next_result_sequence: last_result_sequence + 1,
+            received_at: publication.received_at,
+            rejected_transaction_count: usize::try_from(existing.9)
+                .map_err(|_| invalid("normalized follower result transport receipt is invalid"))?,
+            result_count: publication.records.len(),
+            semantic_segment_digest: publication.semantic_segment_digest.clone(),
+            stored_segment_digest: publication.stored_segment_digest.clone(),
+        });
+    }
+    if head.2 != first_result_sequence || head.3 != publication.previous_segment_digest {
+        return Err(invalid(
+            "normalized follower result transport segment does not extend its head",
+        ));
+    }
+    let receipt = import_normalized_follower_result_page_in_transaction_v1(
+        &transaction,
+        &publication.records,
+        publication.received_at,
+    )?;
+    if receipt.first_result_sequence != first_result_sequence
+        || receipt.last_result_sequence != last_result_sequence
+        || receipt.result_count != publication.records.len()
+    {
+        return Err(invalid(
+            "normalized follower result transport import receipt changed",
+        ));
+    }
+    transaction.execute(
+        "INSERT INTO library_result_transport_segments
+         (actor_id, first_result_sequence, last_result_sequence,
+          previous_segment_digest, semantic_segment_digest,
+          stored_segment_digest, object_key, transport_object_id, received_at,
+          result_count, accepted_transaction_count, rejected_transaction_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);",
+        params![
+            publication.actor_id,
+            first_result_sequence,
+            last_result_sequence,
+            publication.previous_segment_digest,
+            publication.semantic_segment_digest,
+            publication.stored_segment_digest,
+            publication.object_key,
+            publication.transport_object_id,
+            publication.received_at,
+            receipt.result_count,
+            receipt.accepted_transaction_count,
+            receipt.rejected_transaction_count,
+        ],
+    )?;
+    let next_result_sequence = last_result_sequence + 1;
+    let updated = transaction.execute(
+        "UPDATE library_result_transport_heads
+         SET next_result_sequence = ?2, latest_segment_digest = ?3
+         WHERE actor_id = ?1 AND next_result_sequence = ?4
+           AND latest_segment_digest IS ?5;",
+        params![
+            publication.actor_id,
+            next_result_sequence,
+            publication.stored_segment_digest,
+            first_result_sequence,
+            publication.previous_segment_digest,
+        ],
+    )?;
+    if updated != 1 {
+        return Err(invalid(
+            "normalized follower result transport head changed concurrently",
+        ));
+    }
+    transaction.commit()?;
+    Ok(NormalizedFollowerResultTransportImportReceiptV2 {
+        accepted_transaction_count: receipt.accepted_transaction_count,
+        actor_id: receipt.actor_id,
+        first_result_sequence,
+        last_result_sequence,
+        next_result_sequence,
+        received_at: publication.received_at,
+        rejected_transaction_count: receipt.rejected_transaction_count,
+        result_count: receipt.result_count,
+        semantic_segment_digest: publication.semantic_segment_digest.clone(),
+        stored_segment_digest: publication.stored_segment_digest.clone(),
     })
 }
 
@@ -1827,10 +2145,42 @@ mod tests {
         )
         .expect("export signed follower result");
         assert_eq!(results.records.len(), 1);
-        let imported =
-            import_normalized_follower_result_page_v1(&mut connection, &results.records, 2_500)
-                .expect("import follower result");
+        let mut result_publication = NormalizedFollowerResultTransportImportV2 {
+            actor_id: accepted.actor_id.clone(),
+            library_id: accepted.library_id.clone(),
+            object_key: "result-object-1".into(),
+            previous_segment_digest: None,
+            received_at: 2_500,
+            records: results.records.clone(),
+            semantic_segment_digest: "8".repeat(64),
+            stored_segment_digest: "9".repeat(64),
+            storage_epoch_id: accepted.authority_epoch_id.clone(),
+            transport_object_id: "result-transport-1".into(),
+        };
+        result_publication.semantic_segment_digest =
+            normalized_result_segment_digest_v2(&result_publication)
+                .expect("compute result segment digest");
+        let imported = import_normalized_follower_result_transport_segment_v2(
+            &mut connection,
+            &result_publication,
+        )
+        .expect("import follower result transport segment");
         assert_eq!(imported.result_count, 1);
+        assert_eq!(
+            import_normalized_follower_result_transport_segment_v2(
+                &mut connection,
+                &result_publication,
+            )
+            .expect("exact result segment replay"),
+            imported
+        );
+        let mut changed_result_publication = result_publication.clone();
+        changed_result_publication.transport_object_id = "changed-result-transport".into();
+        assert!(import_normalized_follower_result_transport_segment_v2(
+            &mut connection,
+            &changed_result_publication,
+        )
+        .is_err());
         assert_eq!(
             normalized_follower_runtime_status_v2(&connection)
                 .expect("resolved follower")

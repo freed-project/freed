@@ -911,6 +911,8 @@ mod tests {
             "library_intent_transport_segments",
             "library_intent_results",
             "library_intent_result_cursors",
+            "library_result_transport_heads",
+            "library_result_transport_segments",
             "library_optimistic_fields",
         ] {
             let exists: i64 = connection

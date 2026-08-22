@@ -665,6 +665,18 @@ transaction advances transport progress but leaves that transaction pending.
 Exact response-loss replay returns the stored receipt. Any changed range,
 digest, object identity, or time fails closed.
 
+Followers persist result transport progress by the same rule. Before SQLite
+changes product state, the native boundary reconstructs the closed v2 segment
+body from the canonical signed result records and verifies its semantic digest.
+One immediate transaction then verifies every authority signature and logical
+result-chain link, records accepted or rejected intent state, removes the
+matching sparse optimistic overlay, advances the logical result cursor, stores
+the immutable object's semantic digest, stored-byte digest, object key, and
+transport object ID, and advances the actor-scoped transport head. Exact retry
+returns that stored segment receipt. A changed record, digest, range, object
+identity, or receipt time fails closed. No Drive listing and no React state is
+used to infer whether a result was already applied.
+
 Google Drive remains an injected transport. This architecture does not change
 Drive endpoints, headers, OAuth, retries, range behavior, or polling cadence.
 
