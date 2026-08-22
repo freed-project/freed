@@ -61,6 +61,7 @@ import {
   resetPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
 import { createPwaNormalizedCheckpointWriter } from "./library-core-pwa-normalized-checkpoint-writer";
+import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-vault";
 import {
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountUpserts,
@@ -855,6 +856,7 @@ registerPwaFactoryResetQuiesceHandler(
       });
     await deleteDatabase("freed-library-core-portable-v1");
     await deleteDatabase("freed-library-core-read-model-v1");
+    await deleteDatabase(PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
   },
   25,
 );

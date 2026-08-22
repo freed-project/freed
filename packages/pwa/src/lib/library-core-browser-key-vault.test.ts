@@ -2,64 +2,21 @@ import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { parseLibraryCoreFollowerMutationContextV1 } from "@freed/shared/library-core";
 
-import { signPwaLibraryCoreFollowerOperation } from "./library-core-browser-key-vault";
+import {
+  getOrCreatePwaLibraryCoreActorIdentity,
+  signPwaLibraryCoreActorProof,
+  signPwaLibraryCoreFollowerOperation,
+} from "./library-core-browser-key-vault";
 
-const DATABASE_NAME = "freed-library-core-portable-v1";
-const STORE_NAME = "portable_pwa_actor_identities";
 const HEX = {
-  actor: "11".repeat(32),
   digest: "22".repeat(32),
   epoch: "33".repeat(32),
   library: "44".repeat(32),
 } as const;
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener("success", () => resolve(request.result), {
-      once: true,
-    });
-    request.addEventListener("error", () => reject(request.error), {
-      once: true,
-    });
-  });
-}
-
-async function installActorKey(actorId = HEX.actor) {
-  const pair = await crypto.subtle.generateKey(
-    { name: "Ed25519" },
-    false,
-    ["sign", "verify"],
-  );
-  const publicKey = new Uint8Array(
-    await crypto.subtle.exportKey("raw", pair.publicKey),
-  );
-  const actorPublicKey = Array.from(publicKey, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  const open = indexedDB.open(DATABASE_NAME, 11);
-  open.addEventListener(
-    "upgradeneeded",
-    () => open.result.createObjectStore(STORE_NAME, { keyPath: "libraryId" }),
-    { once: true },
-  );
-  const database = await requestResult(open);
-  const transaction = database.transaction(STORE_NAME, "readwrite");
-  await requestResult(
-    transaction.objectStore(STORE_NAME).add({
-      actorId,
-      actorPrivateKey: pair.privateKey,
-      actorPublicKey,
-      libraryId: HEX.library,
-      schemaVersion: 1,
-    }),
-  );
-  database.close();
-  return { actorPublicKey, privateKey: pair.privateKey };
-}
-
-function context(actorPublicKey: string) {
+function context(actorId: string, actorPublicKey: string) {
   return parseLibraryCoreFollowerMutationContextV1({
-    actor_id: HEX.actor,
+    actor_id: actorId,
     actor_public_key: actorPublicKey,
     epoch: 1,
     epoch_id: HEX.epoch,
@@ -80,22 +37,33 @@ describe("PWA Library Core browser key vault", () => {
     });
   });
 
-  it("signs with the matching nonextractable actor key", async () => {
-    const installed = await installActorKey();
-    const authority = context(installed.actorPublicKey);
+  it("creates one stable nonextractable actor identity per Library", async () => {
+    const first = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const second = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
 
-    const signature = await signPwaLibraryCoreFollowerOperation(
-      authority,
-      authority.previous_actor_chain_digest,
-    );
-
-    expect(signature).toMatch(/^[0-9a-f]{128}$/);
-    expect(installed.privateKey.extractable).toBe(false);
+    expect(second).toEqual(first);
+    expect(first.actorId).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.actorPublicKey).toMatch(/^[0-9a-f]{64}$/);
+    await expect(
+      signPwaLibraryCoreActorProof(first, Uint8Array.of(1, 2, 3)),
+    ).resolves.toMatch(/^[0-9a-f]{128}$/);
   });
 
-  it("refuses a key whose actor identity differs from SQLite authority", async () => {
-    const installed = await installActorKey("55".repeat(32));
-    const authority = context(installed.actorPublicKey);
+  it("signs with the identity accepted by SQLite", async () => {
+    const identity = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const authority = context(identity.actorId, identity.actorPublicKey);
+
+    await expect(
+      signPwaLibraryCoreFollowerOperation(
+        authority,
+        authority.previous_actor_chain_digest,
+      ),
+    ).resolves.toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it("refuses an actor identity that differs from SQLite authority", async () => {
+    const identity = await getOrCreatePwaLibraryCoreActorIdentity(HEX.library);
+    const authority = context("55".repeat(32), identity.actorPublicKey);
 
     await expect(
       signPwaLibraryCoreFollowerOperation(
