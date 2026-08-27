@@ -33,8 +33,12 @@ import {
 import {
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCorePersonPickerPageRequestV1,
+  parseLibraryCorePersonPickerPageResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCorePersonPickerPageRequestV1,
+  type LibraryCorePersonPickerPageResponseV1,
 } from "./friends-directory-contracts.js";
 import {
   parseLibraryCoreChangeFeedRequestV1,
@@ -285,6 +289,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreMapMarkersRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
+  | LibraryCorePersonPickerPageRequestV1
   | LibraryCorePersonTimelineRequestV1
   | LibraryCoreProviderMediaPageRequestV1
   | LibraryCorePersonsGraphRequestV1
@@ -332,6 +337,8 @@ export type LibraryCoreSqliteQueryResponseFor<
                             ? LibraryCorePersonDetailResponseV1
                             : T extends LibraryCorePersonGraphPageRequestV1
                               ? LibraryCorePersonGraphPageResponseV1
+                              : T extends LibraryCorePersonPickerPageRequestV1
+                                ? LibraryCorePersonPickerPageResponseV1
                               : T extends LibraryCorePersonTimelineRequestV1
                                 ? LibraryCorePersonTimelineResponseV1
                                 : T extends LibraryCorePersonsGraphRequestV1
@@ -426,6 +433,12 @@ export function parseLibraryCoreSqliteQueryResponse<
                                         value,
                                         request,
                                       )
+                                        : request.queryId ===
+                                            "person_picker_page_v1"
+                                          ? parseLibraryCorePersonPickerPageResponseV1(
+                                              value,
+                                              request,
+                                            )
                                         : request.queryId ===
                                             "person_timeline_v1"
                                       ? parseLibraryCorePersonTimelineResponseV1(
@@ -1015,6 +1028,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                     ? parseLibraryCorePersonGraphPageRequestV1(
                                         value.query,
                                       )
+                                    : value.query.queryId ===
+                                        "person_picker_page_v1"
+                                      ? parseLibraryCorePersonPickerPageRequestV1(
+                                          value.query,
+                                        )
                                     : value.query.queryId ===
                                         "person_timeline_v1"
                                       ? parseLibraryCorePersonTimelineRequestV1(

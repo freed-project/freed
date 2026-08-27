@@ -1381,6 +1381,11 @@
       "countSql": "SELECT count(*) FROM library_persons;",
       "sql": "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.updated_at AS updatedAt, (layout.person_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastReachOutAt FROM library_persons AS person LEFT JOIN library_device_person_graph_layout AS layout ON layout.person_id = person.id WHERE person.id > COALESCE(?1, '') COLLATE BINARY ORDER BY person.id COLLATE BINARY ASC LIMIT ?2;"
     },
+    "person_picker_page_v1": {
+      "maximumScanRows": 13,
+      "countSql": "SELECT count(*) FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE;",
+      "sql": "SELECT person.avatar_url AS avatarUrl, person.id, person.name, person.relationship_status AS relationshipStatus FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE ORDER BY person.relationship_status DESC, person.name COLLATE NOCASE ASC, person.id COLLATE BINARY ASC LIMIT ?2;"
+    },
     "person_timeline_v1": {
       "maximumScanRows": 101,
       "countSql": "SELECT count(*) FROM library_person_feed_items AS timeline JOIN library_feed_items AS item ON item.global_id = timeline.global_id WHERE timeline.person_id = ?1 COLLATE BINARY AND item.hidden = 0 AND item.archived = 0;",
@@ -1459,6 +1464,12 @@
       { "enumValues": [], "integerValues": [], "kind": "boolean", "maximumInteger": null, "maximumUtf8Bytes": null, "minimumInteger": null, "minimumUtf8Bytes": null, "name": "needsOutreach", "nullable": false },
       { "enumValues": [], "integerValues": [], "kind": "integer", "maximumInteger": 9007199254740991, "maximumUtf8Bytes": null, "minimumInteger": 0, "minimumUtf8Bytes": null, "name": "reachOutIntervalDays", "nullable": true },
       { "enumValues": ["friend"], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 255, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "relationshipStatus", "nullable": false }
+    ],
+    "person_picker_page_v1": [
+      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 8192, "minimumInteger": null, "minimumUtf8Bytes": 0, "name": "avatarUrl", "nullable": true },
+      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 2048, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "id", "nullable": false },
+      { "enumValues": [], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 4096, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "name", "nullable": false },
+      { "enumValues": ["connection", "friend"], "integerValues": [], "kind": "text", "maximumInteger": null, "maximumUtf8Bytes": 255, "minimumInteger": null, "minimumUtf8Bytes": 1, "name": "relationshipStatus", "nullable": false }
     ]
   },
   "scopeActionPrograms": {
@@ -1494,6 +1505,7 @@
     "map_markers_v1",
     "person_detail_v1",
     "person_graph_page_v1",
+    "person_picker_page_v1",
     "person_timeline_v1",
     "persons_graph_v1",
     "preferences_snapshot_v1",

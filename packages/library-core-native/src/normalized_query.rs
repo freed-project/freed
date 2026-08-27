@@ -357,6 +357,16 @@ pub struct NormalizedPersonGraphPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonPickerPageRequestV1 {
+    pub cancellation_id: String,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+    pub search: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountGraphPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -405,6 +415,7 @@ pub enum NormalizedQueryRequestV1 {
     MapMarkers(NormalizedMapMarkersRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
+    PersonPickerPage(NormalizedPersonPickerPageRequestV1),
     PersonTimeline(NormalizedPersonTimelineRequestV1),
     PersonsGraph(NormalizedPersonsGraphRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
@@ -1175,6 +1186,24 @@ pub struct NormalizedFriendsDirectoryPageResponseV1 {
     pub total_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonPickerRowV1 {
+    pub avatar_url: Option<String>,
+    pub id: String,
+    pub name: String,
+    pub relationship_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonPickerPageResponseV1 {
+    pub query_id: String,
+    pub rows: Vec<NormalizedPersonPickerRowV1>,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
@@ -1195,6 +1224,7 @@ pub enum NormalizedQueryResponseV1 {
     MapMarkers(NormalizedMapMarkersResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
+    PersonPickerPage(NormalizedPersonPickerPageResponseV1),
     PersonTimeline(NormalizedPersonTimelineResponseV1),
     PersonsGraph(NormalizedPersonsGraphResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
@@ -3880,6 +3910,67 @@ fn query_friends_directory_page(
     Ok(response)
 }
 
+fn query_person_picker_page(
+    connection: &mut Connection,
+    request: NormalizedPersonPickerPageRequestV1,
+) -> Result<NormalizedPersonPickerPageResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || !(1..=12).contains(&request.limit)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || request.search.len() > 1_024
+    {
+        return Err(invalid("normalized Person picker request is invalid"));
+    }
+    let escaped_search = request
+        .search
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    let pattern = format!("{escaped_search}%");
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "person_picker_page_v1")
+        .ok_or(invalid("normalized Person picker program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let mut statement = transaction.prepare(program.sql)?;
+    let mapped = statement.query_map(
+        params![
+            pattern,
+            i64::try_from(request.limit + 1).expect("bounded Person picker limit"),
+        ],
+        |row| decode_generated_query_row(row, "person_picker_page_v1"),
+    )?;
+    let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.maximum_scan_rows {
+        return Err(invalid("normalized Person picker exceeded its row bound"));
+    }
+    rows.truncate(request.limit);
+    let response = NormalizedPersonPickerPageResponseV1 {
+        query_id: "person_picker_page_v1".to_owned(),
+        rows,
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized Person picker response is invalid"))?
+        .len()
+        > 64 * 1_024
+    {
+        return Err(invalid(
+            "normalized Person picker response exceeds its byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_facet_summary(
     connection: &mut Connection,
     request: NormalizedFacetSummaryRequestV1,
@@ -5673,6 +5764,11 @@ pub fn query_normalized_v1(
                 query_person_graph_page(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::PersonPickerPage(request) => {
+            Ok(NormalizedQueryResponseV1::PersonPickerPage(
+                query_person_picker_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PersonTimeline(request) => Ok(
             NormalizedQueryResponseV1::PersonTimeline(query_person_timeline(connection, request)?),
         ),
@@ -5781,6 +5877,9 @@ pub fn query_normalized_json_v1(
         "person_graph_page_v1" => {
             decode_request!(NormalizedPersonGraphPageRequestV1, PersonGraphPage)
         }
+        "person_picker_page_v1" => {
+            decode_request!(NormalizedPersonPickerPageRequestV1, PersonPickerPage)
+        }
         "person_timeline_v1" => {
             decode_request!(NormalizedPersonTimelineRequestV1, PersonTimeline)
         }
@@ -5845,6 +5944,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::MapMarkers(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonGraphPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
@@ -5927,6 +6027,21 @@ mod tests {
                            'Ada', 'Analytical engine architecture', 0, 0, 0, 1);",
             )
             .expect("search fixture");
+        let picker = query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "cancellationId": "cancel-person-picker-1",
+                "limit": 12,
+                "queryId": "person_picker_page_v1",
+                "readerSessionId": "reader-person-picker-1",
+                "schemaVersion": 1,
+                "search": "Ad"
+            }),
+        )
+        .expect("query Person picker");
+        assert_eq!(picker["rows"][0]["id"], "person-1");
+        assert_eq!(picker["rows"][0]["relationshipStatus"], "friend");
+        assert!(picker["rows"][0].get("notes").is_none());
         let search = query_normalized_json_v1(
             &mut connection,
             serde_json::json!({
@@ -8200,6 +8315,23 @@ mod tests {
                     .any(|detail| detail.contains("library_feed_items_rss_feed")));
             }
         }
+        let picker_program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|program| program.query_id == "person_picker_page_v1")
+            .expect("Person picker program");
+        let picker_plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", picker_program.sql))
+            .expect("Person picker plan")
+            .query_map(params!["Per%", 13], |row| row.get::<_, String>(3))
+            .expect("Person picker plan rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("Person picker plan");
+        assert!(picker_plan
+            .iter()
+            .any(|detail| { detail.contains("SEARCH person USING INDEX library_persons_picker") }));
+        assert!(picker_plan
+            .iter()
+            .all(|detail| !detail.contains("SCAN person") && !detail.contains("USE TEMP B-TREE")));
 
         let request = NormalizedPersonGraphPageRequestV1 {
             cancellation_id: "cancel-person-graph".to_owned(),

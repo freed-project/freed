@@ -16,6 +16,14 @@ import type {
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
+  createLibraryCoreOperationInstanceId,
+  LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT,
+  LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+  LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+  type LibraryCoreNormalizedQueryExecutor,
+  type LibraryCorePersonPickerRowV1,
+} from "@freed/shared/library-core";
+import {
   friendsGalaxyGraphDescription,
   friendsGalaxyRecoveryAnnouncement,
   friendsGalaxySelectionAnnouncement,
@@ -35,7 +43,6 @@ import {
 import { FriendsGalaxyInputController } from "../../lib/friends-galaxy-input-controller.js";
 import type { FriendsGalaxyContextTarget } from "../../lib/friends-galaxy-interaction.js";
 import { FriendsGalaxyProductEngine } from "../../lib/friends-galaxy-product-engine.js";
-import type { FriendsGalaxySqliteGraphQuery } from "../../lib/friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
   FriendsGalaxyProductWorkerPresentationResponse,
@@ -73,14 +80,9 @@ export type FriendGraphContextResolver = (
 ) => Promise<IdentityGraphAtlasNode | null>;
 
 interface FriendGraphProps {
-  personPickerOptions: readonly Readonly<{
-    id: string;
-    name: string;
-    relationshipStatus: "connection" | "friend";
-  }>[];
   feedItems?: Record<string, FeedItem>;
   activitySummaries?: IdentityGraphActivitySummaries;
-  sqliteGraphQuery: FriendsGalaxySqliteGraphQuery;
+  sqliteGraphQuery: LibraryCoreNormalizedQueryExecutor;
   sourceVersion: number;
   mode: MapMode;
   selectedPersonId?: string | null;
@@ -311,7 +313,6 @@ function graphDebugNodes(
 
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
   {
-    personPickerOptions,
     feedItems,
     activitySummaries: activitySummariesProp,
     sqliteGraphQuery,
@@ -393,6 +394,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
+  const [personPickerOptions, setPersonPickerOptions] = useState<
+    readonly LibraryCorePersonPickerRowV1[]
+  >([]);
+  const personPickerRequestRef = useRef(0);
+  const personPickerReaderSessionRef = useRef(
+    createLibraryCoreOperationInstanceId(
+      "person-picker-reader",
+      crypto.randomUUID(),
+    ),
+  );
   const [reducedMotion, setReducedMotion] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const copyDiagnosticsRequestId = useCommandSurfaceStore(
@@ -408,20 +419,33 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   latestActivityRef.current = activitySummaries;
   sqliteGraphQueryRef.current = sqliteGraphQuery;
 
-  const visiblePersonPickerOptions = useMemo(() => {
-    const query = linkPickerQuery.trim().toLocaleLowerCase();
-    return personPickerOptions
-      .filter((person) => {
-        if (!query) return true;
-        return person.name.toLocaleLowerCase().includes(query);
-      })
-      .sort((left, right) => {
-        const friendOrder = Number(right.relationshipStatus === "friend") -
-          Number(left.relationshipStatus === "friend");
-        return friendOrder || left.name.localeCompare(right.name);
-      })
-      .slice(0, 12);
-  }, [linkPickerQuery, personPickerOptions]);
+  useEffect(() => {
+    const requestId = personPickerRequestRef.current + 1;
+    personPickerRequestRef.current = requestId;
+    if (linkPickerAccountId === null) {
+      setPersonPickerOptions([]);
+      return;
+    }
+    void sqliteGraphQuery({
+      cancellationId: createLibraryCoreOperationInstanceId(
+        "person-picker-query",
+        crypto.randomUUID(),
+      ),
+      limit: LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+      readerSessionId: personPickerReaderSessionRef.current,
+      schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+      search: linkPickerQuery.trim(),
+    }).then((response) => {
+      if (personPickerRequestRef.current === requestId) {
+        setPersonPickerOptions(response.rows);
+      }
+    }).catch(() => {
+      if (personPickerRequestRef.current === requestId) {
+        setPersonPickerOptions([]);
+      }
+    });
+  }, [linkPickerAccountId, linkPickerQuery, sqliteGraphQuery, sourceVersion]);
 
   const closeContextMenu = useCallback(() => {
     contextResolutionRef.current += 1;
@@ -1208,7 +1232,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
                 autoFocus
               />
               <div className="max-h-64 space-y-1 overflow-y-auto">
-                {visiblePersonPickerOptions.map((person) => (
+                {personPickerOptions.map((person) => (
                   <button
                     key={person.id}
                     type="button"

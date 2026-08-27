@@ -2179,7 +2179,6 @@ export function FriendsView({
         >
           <FriendGraph
             ref={graphRef}
-            personPickerOptions={friendsDirectory.rows}
             activitySummaries={graphActivitySummaries}
             sqliteGraphQuery={graphSqliteQuery}
             sourceVersion={searchCorpusVersion}

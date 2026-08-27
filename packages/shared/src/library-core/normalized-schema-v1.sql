@@ -529,6 +529,13 @@ CREATE TABLE IF NOT EXISTS library_persons (
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
 ) STRICT;
 
+CREATE INDEX IF NOT EXISTS library_persons_picker
+  ON library_persons(
+    relationship_status DESC,
+    name COLLATE NOCASE,
+    id COLLATE BINARY
+  );
+
 CREATE TABLE IF NOT EXISTS library_person_tags (
   person_id TEXT NOT NULL REFERENCES library_persons(id) ON DELETE CASCADE,
   tag TEXT NOT NULL,

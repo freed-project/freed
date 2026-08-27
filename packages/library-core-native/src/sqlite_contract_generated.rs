@@ -24,7 +24,7 @@ pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
 pub const NORMALIZED_SCHEMA_SHA256: &str =
-    "dd55a84d31d35f87210b4fe66a73d86ae5ec9c95e2539fcc679566fe2cc595ca";
+    "5bd2a8bd903a038c004bb14835f467f803b1a0deaa52952aa8226fae3eb5d095";
 pub const NORMALIZED_SCHEMA_SQL: &str =
     include_str!("../../shared/src/library-core/normalized-schema-v1.sql");
 pub const PREFERENCE_WRITE_POLICIES_JSON: &str =
@@ -679,6 +679,7 @@ pub const QUERY_IDS: &[&str] = &[
     "map_markers_v1",
     "person_detail_v1",
     "person_graph_page_v1",
+    "person_picker_page_v1",
     "person_timeline_v1",
     "persons_graph_v1",
     "preferences_snapshot_v1",
@@ -766,6 +767,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 
     ] },
     SqliteQueryProgram { query_id: "person_graph_page_v1", maximum_scan_rows: 129, sql: "SELECT person.id, person.name, person.avatar_url AS avatarUrl, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.updated_at AS updatedAt, (layout.person_id IS NOT NULL) AS graphPinned, layout.graph_x AS graphX, layout.graph_y AS graphY, layout.updated_at AS graphUpdatedAt, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastReachOutAt FROM library_persons AS person LEFT JOIN library_device_person_graph_layout AS layout ON layout.person_id = person.id WHERE person.id > COALESCE(?1, '') COLLATE BINARY ORDER BY person.id COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_persons;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "person_picker_page_v1", maximum_scan_rows: 13, sql: "SELECT person.avatar_url AS avatarUrl, person.id, person.name, person.relationship_status AS relationshipStatus FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE ORDER BY person.relationship_status DESC, person.name COLLATE NOCASE ASC, person.id COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE;", variants: &[
 
     ] },
     SqliteQueryProgram { query_id: "person_timeline_v1", maximum_scan_rows: 101, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints FROM library_person_feed_items AS timeline JOIN library_feed_items AS item ON item.global_id = timeline.global_id LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE timeline.person_id = ?1 COLLATE BINARY AND item.hidden = 0 AND item.archived = 0 AND (?2 IS NULL OR timeline.published_at < ?2 OR (timeline.published_at = ?2 AND timeline.global_id > ?3 COLLATE BINARY)) ORDER BY timeline.published_at DESC, timeline.global_id COLLATE BINARY ASC LIMIT ?4;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_person_feed_items AS timeline JOIN library_feed_items AS item ON item.global_id = timeline.global_id WHERE timeline.person_id = ?1 COLLATE BINARY AND item.hidden = 0 AND item.archived = 0;", variants: &[
@@ -972,6 +976,55 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &["friend"],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "person_picker_page_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "avatarUrl",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(8192),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "id",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "name",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "relationshipStatus",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(255),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["connection", "friend"],
             integer_values: &[],
         },
         ],

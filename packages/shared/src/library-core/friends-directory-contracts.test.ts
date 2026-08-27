@@ -5,6 +5,8 @@ import {
   libraryCoreFriendsDirectoryBindingDigestV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCorePersonPickerPageRequestV1,
+  parseLibraryCorePersonPickerPageResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
 } from "./friends-directory-contracts.js";
 import {
@@ -204,6 +206,71 @@ describe("Friends directory contract", () => {
         },
         parsedRequest.value,
       ).ok,
+    ).toBe(false);
+  });
+});
+
+describe("Person picker contract", () => {
+  const pickerRequest = {
+    cancellationId: "cancel-person-picker",
+    limit: 12,
+    queryId: "person_picker_page_v1" as const,
+    readerSessionId: "person-picker-session",
+    schemaVersion: 1 as const,
+    search: "Ada",
+  };
+
+  it("accepts only the compact generated Person row", () => {
+    const request = parseLibraryCorePersonPickerPageRequestV1(pickerRequest);
+    expect(request.ok).toBe(true);
+    if (!request.ok) return;
+    expect(
+      parseLibraryCorePersonPickerPageResponseV1(
+        {
+          queryId: "person_picker_page_v1",
+          rows: [{
+            avatarUrl: null,
+            id: "person-ada",
+            name: "Ada Lovelace",
+            relationshipStatus: "friend",
+          }],
+          schemaVersion: 1,
+          source,
+        },
+        request.value,
+      ).ok,
+    ).toBe(true);
+    expect(
+      parseLibraryCorePersonPickerPageResponseV1(
+        {
+          queryId: "person_picker_page_v1",
+          rows: [{
+            avatarUrl: null,
+            id: "person-ada",
+            name: "Ada Lovelace",
+            notes: "must never cross the picker boundary",
+            relationshipStatus: "friend",
+          }],
+          schemaVersion: 1,
+          source,
+        },
+        request.value,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("rejects oversized searches and unregistered request fields", () => {
+    expect(
+      parseLibraryCorePersonPickerPageRequestV1({
+        ...pickerRequest,
+        search: "x".repeat(1_025),
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseLibraryCorePersonPickerPageRequestV1({
+        ...pickerRequest,
+        arbitrarySql: "SELECT *",
+      }).ok,
     ).toBe(false);
   });
 });

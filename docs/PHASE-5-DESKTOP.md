@@ -180,7 +180,9 @@
         native query binding directly. The React graph no longer accepts an
         Account catalog, compiles a fallback identity source, or resolves node
         selections through renderer dictionaries. Worker-owned scene metadata
-        returns stable Person and Account IDs, labels, and admitted counts.
+        returns stable Person and Account IDs, labels, and admitted counts. The
+        graph link control searches the indexed Person model through
+        `person_picker_page_v1` and retains at most 12 compact results.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

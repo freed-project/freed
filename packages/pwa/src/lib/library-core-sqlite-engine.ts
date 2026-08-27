@@ -140,6 +140,8 @@ import {
   libraryCoreFriendsDirectoryBindingDigestV1,
   parseLibraryCoreFriendsDirectoryPageRequestV1,
   parseLibraryCoreFriendsDirectoryPageResponseV1,
+  parseLibraryCorePersonPickerPageRequestV1,
+  parseLibraryCorePersonPickerPageResponseV1,
   LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_DIRECTORY_RECENT_WINDOW_MS,
   parseLibraryCoreRssFeedDetailRequestV1,
@@ -262,6 +264,8 @@ import {
   type LibraryCoreFilterScopeSummaryResponseV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryPageResponseV1,
+  type LibraryCorePersonPickerPageRequestV1,
+  type LibraryCorePersonPickerPageResponseV1,
   type LibraryCoreRssFeedDetailRequestV1,
   type LibraryCoreRssFeedDetailResponseV1,
   type LibraryCoreAccountTimelineRequestV1,
@@ -5133,6 +5137,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryPersonGraphPage(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_picker_page_v1":
+        return this.#queryPersonPickerPage(
+          input,
+        ) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_timeline_v1":
         return this.#queryPersonTimeline(
           input,
@@ -6310,6 +6318,54 @@ export class PwaLibraryCoreSqliteEngine {
       rows.pop();
       hasMore = true;
     }
+  }
+
+  #queryPersonPickerPage(
+    input: LibraryCorePersonPickerPageRequestV1,
+  ): LibraryCorePersonPickerPageResponseV1 {
+    const request = parseLibraryCorePersonPickerPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const pattern = `${request.value.search
+      .replaceAll("\\", "\\\\")
+      .replaceAll("%", "\\%")
+      .replaceAll("_", "\\_")}%`;
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_picker_page_v1;
+    const rawRows = this.#database.exec({
+      sql: program.sql,
+      bind: [pattern, request.value.limit + 1],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    if (rawRows.length > program.maximumScanRows) {
+      throw new Error("PWA Library SQLite Person picker exceeded its row bound");
+    }
+    const rows = rawRows.slice(0, request.value.limit).map((row) => {
+      const parsed = coerceLibraryCoreGeneratedSqliteQueryRow(
+        "person_picker_page_v1",
+        row,
+      );
+      if (!parsed) {
+        throw new Error("PWA Library SQLite Person picker row is invalid");
+      }
+      return parsed;
+    });
+    const response = {
+      queryId: "person_picker_page_v1" as const,
+      rows,
+      schemaVersion: 1 as const,
+      source: {
+        generationId,
+        projectionRevision: sourceRevision,
+        transitionSequence: sourceRevision,
+      },
+    };
+    const parsed = parseLibraryCorePersonPickerPageResponseV1(
+      response,
+      request.value,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
   }
 
   #queryFacetSummary(

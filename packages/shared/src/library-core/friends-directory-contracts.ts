@@ -28,6 +28,11 @@ export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_RESPONSE_BYTES =
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES = 1_024;
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_RECENT_WINDOW_MS =
   7 * 24 * 60 * 60 * 1_000;
+export const LIBRARY_CORE_PERSON_PICKER_QUERY_ID =
+  "person_picker_page_v1" as const;
+export const LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION = 1 as const;
+export const LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT = 12;
+export const LIBRARY_CORE_PERSON_PICKER_MAXIMUM_RESPONSE_BYTES = 64 * 1_024;
 
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_FILTERS = Object.freeze([
   "close_friends",
@@ -71,6 +76,68 @@ const RESPONSE_KEYS = [
   "totalCount",
 ] as const;
 const textEncoder = new TextEncoder();
+const PERSON_PICKER_REQUEST_KEYS = [
+  "cancellationId",
+  "limit",
+  "queryId",
+  "readerSessionId",
+  "schemaVersion",
+  "search",
+] as const;
+const PERSON_PICKER_RESPONSE_KEYS = [
+  "queryId",
+  "rows",
+  "schemaVersion",
+  "source",
+] as const;
+
+export const LIBRARY_CORE_PERSON_PICKER_REQUEST_SCHEMA = Object.freeze({
+  schemaId: "library_core_person_picker_request_v1",
+  schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+  canonicalKeys: PERSON_PICKER_REQUEST_KEYS,
+  maximumLimit: LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT,
+  maximumSearchBytes: LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES,
+});
+
+export const LIBRARY_CORE_PERSON_PICKER_RESPONSE_SCHEMA = Object.freeze({
+  schemaId: "library_core_person_picker_response_v1",
+  schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+  canonicalKeys: PERSON_PICKER_RESPONSE_KEYS,
+  maximumRows: LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT,
+  maximumResponseBytes: LIBRARY_CORE_PERSON_PICKER_MAXIMUM_RESPONSE_BYTES,
+});
+
+export const LIBRARY_CORE_PERSON_PICKER_PROJECTION = Object.freeze({
+  projectionId: "library_core_person_picker_row_v1",
+  sourceTable: "library_persons",
+  fullContentAllowed: false,
+  orderedColumns: Object.freeze(["relationship_status", "name", "id"]),
+});
+
+export const LIBRARY_CORE_PERSON_PICKER_NESTED_BOUNDS = Object.freeze({
+  nestedValuesAllowed: false,
+});
+
+export interface LibraryCorePersonPickerPageRequestV1 {
+  readonly cancellationId: string;
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_PERSON_PICKER_QUERY_ID;
+  readonly readerSessionId: string;
+  readonly schemaVersion: typeof LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION;
+  readonly search: string;
+}
+
+export type LibraryCorePersonPickerRowV1 =
+  LibraryCoreGeneratedSqliteQueryRow<"person_picker_page_v1">;
+
+export interface LibraryCorePersonPickerPageResponseV1 {
+  readonly queryId: typeof LIBRARY_CORE_PERSON_PICKER_QUERY_ID;
+  readonly rows: readonly LibraryCorePersonPickerRowV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION;
+  readonly source: LibraryCoreFeedPageSourceV1;
+}
 
 export const LIBRARY_CORE_FRIENDS_DIRECTORY_REQUEST_SCHEMA = Object.freeze({
   schemaId: "library_core_friends_directory_request_v1",
@@ -346,6 +413,79 @@ export function parseLibraryCoreFriendsDirectoryPageResponseV1(
       schemaVersion: LIBRARY_CORE_FRIENDS_DIRECTORY_SCHEMA_VERSION,
       source: source.value,
       totalCount: record.totalCount,
+    }),
+  };
+}
+
+export function parseLibraryCorePersonPickerPageRequestV1(
+  input: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCorePersonPickerPageRequestV1> {
+  const record = recordValue(input);
+  if (
+    !record ||
+    !exactKeys(record, PERSON_PICKER_REQUEST_KEYS) ||
+    record.queryId !== LIBRARY_CORE_PERSON_PICKER_QUERY_ID ||
+    record.schemaVersion !== LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION ||
+    !isLibraryCoreOperationInstanceId(record.cancellationId) ||
+    !isLibraryCoreOperationInstanceId(record.readerSessionId) ||
+    !Number.isInteger(record.limit) ||
+    (record.limit as number) < 1 ||
+    (record.limit as number) > LIBRARY_CORE_PERSON_PICKER_MAXIMUM_LIMIT ||
+    !boundedText(
+      record.search,
+      LIBRARY_CORE_FRIENDS_DIRECTORY_MAXIMUM_SEARCH_BYTES,
+    )
+  ) {
+    return { ok: false, error: "Person picker request is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      cancellationId: record.cancellationId,
+      limit: record.limit,
+      queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+      readerSessionId: record.readerSessionId,
+      schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+      search: record.search,
+    }) as LibraryCorePersonPickerPageRequestV1,
+  };
+}
+
+export function parseLibraryCorePersonPickerPageResponseV1(
+  input: unknown,
+  request: LibraryCorePersonPickerPageRequestV1,
+): LibraryCoreFeedPageParseResult<LibraryCorePersonPickerPageResponseV1> {
+  const record = recordValue(input);
+  const source = parseLibraryCoreFeedPageSourceV1(record?.source);
+  if (
+    !record ||
+    !exactKeys(record, PERSON_PICKER_RESPONSE_KEYS) ||
+    record.queryId !== LIBRARY_CORE_PERSON_PICKER_QUERY_ID ||
+    record.schemaVersion !== LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION ||
+    !source.ok ||
+    !Array.isArray(record.rows) ||
+    record.rows.length > request.limit ||
+    textEncoder.encode(JSON.stringify(record)).byteLength >
+      LIBRARY_CORE_PERSON_PICKER_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return { ok: false, error: "Person picker response is invalid" };
+  }
+  const rows = record.rows.map((row) =>
+    parseLibraryCoreGeneratedSqliteQueryRow(
+      LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+      row,
+    ),
+  );
+  if (rows.some((row) => row === null)) {
+    return { ok: false, error: "Person picker row is invalid" };
+  }
+  return {
+    ok: true,
+    value: Object.freeze({
+      queryId: LIBRARY_CORE_PERSON_PICKER_QUERY_ID,
+      rows: Object.freeze(rows as LibraryCorePersonPickerRowV1[]),
+      schemaVersion: LIBRARY_CORE_PERSON_PICKER_SCHEMA_VERSION,
+      source: source.value,
     }),
   };
 }

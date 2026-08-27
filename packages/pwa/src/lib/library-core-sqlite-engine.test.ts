@@ -2789,6 +2789,24 @@ describe("PWA Library Core SQLite engine", () => {
     ).toThrow("cursor is invalid");
     expect(
       engine.query({
+        cancellationId: operationId("cancel-person-picker-1"),
+        limit: 12,
+        queryId: "person_picker_page_v1",
+        readerSessionId: operationId("reader-person-picker-1"),
+        schemaVersion: 1,
+        search: "Ad",
+      }),
+    ).toMatchObject({
+      queryId: "person_picker_page_v1",
+      rows: [{
+        id: "person-1",
+        name: "Ada",
+        relationshipStatus: "friend",
+      }],
+      source: { projectionRevision: 7 },
+    });
+    expect(
+      engine.query({
         emails: [],
         names: ["ada", "ada lovelace"],
         queryId: "contact_match_v1",

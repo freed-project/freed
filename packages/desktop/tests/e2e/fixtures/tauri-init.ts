@@ -299,6 +299,33 @@ export function tauriInitScript(): string {
           totalCount: directoryRows.length,
         };
       }
+      if (request.queryId === 'person_picker_page_v1') {
+        var pickerQuery = String(request.search || '').toLowerCase();
+        var pickerRows = Object.values(state.persons || {})
+          .filter(function(person) {
+            return !pickerQuery || String(person.name || '').toLowerCase().startsWith(pickerQuery);
+          })
+          .sort(function(left, right) {
+            var relationshipOrder = Number(right.relationshipStatus === 'friend') -
+              Number(left.relationshipStatus === 'friend');
+            return relationshipOrder || left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+          })
+          .slice(0, request.limit || 12)
+          .map(function(person) {
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              id: person.id,
+              name: person.name,
+              relationshipStatus: person.relationshipStatus,
+            };
+          });
+        return {
+          queryId: request.queryId,
+          rows: pickerRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'person_graph_page_v1') {
         var personRows = Object.values(state.persons || {})
           .sort(function(left, right) { return left.id.localeCompare(right.id); })
