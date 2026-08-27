@@ -13,6 +13,7 @@ import {
 
 interface WorkerScope {
   close(): void;
+  readonly location: Location;
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   postMessage(message: LibraryCoreSqliteWorkerResponse): void;
 }
@@ -22,6 +23,22 @@ let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
+
+/**
+ * A dedicated worker has no ambient message bus. Its creator owns the only
+ * ordinary postMessage capability. Browsers expose creator messages as trusted
+ * events with no MessageEvent source. The origin is either the worker origin or
+ * the empty string required by the dedicated-worker messaging algorithm.
+ *
+ * Keep this check outside command dispatch. Command `kind` selects one member
+ * of a closed, fully parsed protocol union. It is routing data, not an
+ * authorization decision.
+ */
+function isAcceptedWorkerMessage(event: MessageEvent<unknown>): boolean {
+  const originAccepted =
+    event.origin === "" || event.origin === scope.location.origin;
+  return event.isTrusted && event.source === null && originAccepted;
+}
 
 async function acquireOwnership(): Promise<void> {
   if (!("locks" in navigator)) return;
@@ -107,6 +124,7 @@ function failure(
 }
 
 scope.onmessage = (event) => {
+  if (!isAcceptedWorkerMessage(event)) return;
   void (async () => {
     let requestId = "invalid";
     try {

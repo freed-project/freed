@@ -107,13 +107,13 @@ function splitFacebookGroupName(rawName: string): {
   lastActiveText?: string;
 } {
   const trimmed = rawName.trim();
-  const match = trimmed.match(/^(.*?)(last active.+)$/i);
-  if (!match) {
+  const markerIndex = trimmed.toLowerCase().indexOf("last active");
+  if (markerIndex < 1) {
     return { title: trimmed };
   }
 
-  const title = match[1]?.trim();
-  const lastActiveText = match[2]?.trim();
+  const title = trimmed.slice(0, markerIndex).trim();
+  const lastActiveText = trimmed.slice(markerIndex).trim();
 
   if (!title || !lastActiveText) {
     return { title: trimmed };
