@@ -20,7 +20,6 @@ import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
-import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -141,11 +140,6 @@ import { captureMediumFeed } from "./lib/medium-capture";
 import { captureYouTube } from "./lib/youtube-capture";
 import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
-import {
-  clearDesktopClientWarningAcknowledgement,
-  desktopClientWarningSignature,
-  isDesktopClientWarningAcknowledged,
-} from "./lib/desktop-client-warning";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
 import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
 import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
@@ -198,7 +192,7 @@ import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
 import { DesktopFeedsSettingsSection } from "./components/DesktopFeedsSettingsSection";
-import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import {
   clearProviderPause,
@@ -518,9 +512,6 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
-  const desktopClientIds = useAppStore((state) => state.desktopClientIds);
-  const desktopWarningSignatureValue = desktopClientWarningSignature(desktopClientIds);
-  const lastDesktopWarningToast = useRef("");
   const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
   const [lockedStartupState, setLockedStartupState] = useState<LockedStartupState>(
     tauriRuntimeAvailable ? "checking" : "ready",
@@ -547,30 +538,6 @@ function App() {
     // Document initialization closes the window and discards a late result.
     void captureShellMemoryBaseline();
   }, [tauriRuntimeAvailable]);
-
-  useEffect(() => {
-    if (
-      !isInitialized ||
-      desktopClientIds.length < 2 ||
-      !desktopWarningSignatureValue ||
-      lastDesktopWarningToast.current === desktopWarningSignatureValue ||
-      isDesktopClientWarningAcknowledged(desktopWarningSignatureValue)
-    ) {
-      return;
-    }
-    lastDesktopWarningToast.current = desktopWarningSignatureValue;
-    toast.info(
-      "More than one Freed Desktop installation is registered. Each installation can contact your connected provider accounts, which can duplicate request traffic.",
-      {
-        actionLabel: "Review Sync",
-        onAction: () => useSettingsStore.getState().openTo("sync"),
-      },
-    );
-  }, [
-    desktopClientIds.length,
-    desktopWarningSignatureValue,
-    isInitialized,
-  ]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -1205,7 +1172,6 @@ function App() {
             resetInterfaceZoom,
             resetThemePreference,
             clearStoredCookies,
-            clearDesktopClientWarningAcknowledgement,
             clearProviderScheduleStateForFactoryReset,
             clearRssSyncScheduleForFactoryReset,
           ],
@@ -1417,15 +1383,13 @@ function App() {
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
     void (async () => {
-      const state = useAppStore.getState();
-      const facets = isSqliteLibraryActive()
-        ? await readLibraryCoreFacetSummary()
-        : null;
-      const sampleSummary = summarizeSampleData(
-        state,
-        facets?.sampleItemCount,
-      );
-      if (sampleSummary.total > 0) return;
+      const facets = await readLibraryCoreFacetSummary();
+      const sampleTotal =
+        facets.sampleAccountCount +
+        facets.sampleFeedCount +
+        facets.sampleItemCount +
+        facets.samplePersonCount;
+      if (sampleTotal > 0) return;
 
       await refreshSampleLibraryData({
         ...useAppStore.getState(),

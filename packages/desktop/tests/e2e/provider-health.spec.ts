@@ -401,24 +401,17 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
     return (
-      !!state?.feeds[feedUrl] &&
+      !!sqlite?.feeds[feedUrl] &&
       Object.values(sqlite?.items ?? {}).some(
         (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
       )
@@ -448,23 +441,16 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
 
   await page.waitForFunction((feedUrl) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
     const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
       | {
+          feeds: Record<string, unknown>;
           items: Record<
             string,
             { __deleted?: boolean; rssSource?: { feedUrl?: string } }
           >;
         }
       | undefined;
-    const state = store?.getState();
-    const feedGone = !state?.feeds[feedUrl];
+    const feedGone = !sqlite?.feeds[feedUrl];
     const matchingItems = Object.values(sqlite?.items ?? {}).filter(
       (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
     );

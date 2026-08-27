@@ -107,10 +107,7 @@ import {
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
 } from "./lib/library-core-sqlite-runtime";
-import {
-  refreshSampleLibraryData,
-  summarizeSampleData,
-} from "@freed/ui/lib/sample-library-seed";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -246,22 +243,15 @@ function App() {
 
   useEffect(() => {
     if (!isInitialized || !IS_FEATURE_PREVIEW) return;
-    const state = useAppStore.getState();
-    const sampleSummary = summarizeSampleData(state);
-    const hasTimeWindowMapSamples = state.items.some(
-      (item) =>
-        item.globalId.includes("sample-location-window:") &&
-        item.location?.coordinates &&
-        item.timeRange,
-    );
-    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
-
     void (async () => {
+      const facets = await readPwaLibraryCoreFacetSummary();
+      const sampleTotal =
+        facets.sampleAccountCount +
+        facets.sampleFeedCount +
+        facets.sampleItemCount +
+        facets.samplePersonCount;
+      if (sampleTotal > 0) return;
       await ensurePwaLibraryCoreLocalSampleState();
-      if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
-        await state.clearSampleData();
-      }
-
       await refreshSampleLibraryData(useAppStore.getState());
     })().catch((error) => {
       console.error("[sample-data] failed to seed local preview data:", error);

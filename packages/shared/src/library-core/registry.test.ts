@@ -1037,9 +1037,6 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
-      "saved_analytics_v1",
-    );
   });
 
   it("registers the cross-platform bounded SQLite Friends aggregate", () => {
@@ -1100,13 +1097,6 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.account_timeline_v1.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toEqual(
-      expect.arrayContaining([
-        "account_timeline_v1",
-        "persons_graph_v1",
-        "person_timeline_v1",
-      ]),
-    );
   });
 
   it("registers the active bounded Desktop Friends feed", () => {
@@ -1133,9 +1123,6 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
-      "feed_browse_page_v2",
-    );
   });
 
   it("closes the facet summary contract with no aggregate row ordering", () => {
@@ -1454,9 +1441,6 @@ describe("Library Core query registry", () => {
     expect(
       LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.blockers,
     ).not.toContain("runtime_adapter_unimplemented");
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds).toContain(
-      "feed_browse_page_v3",
-    );
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {
@@ -1520,9 +1504,6 @@ describe("Library Core query registry", () => {
 
 describe("BaseAppState surface registry", () => {
   it("retains only UI-local Friend selection aliases", () => {
-    expect(BASE_APP_STORE_SURFACE_REGISTRY.friends.deprecatedAliasFor).toBe(
-      "persons",
-    );
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.selectedFriendId.deprecatedAliasFor,
     ).toBe("selectedPersonId");
@@ -1541,25 +1522,25 @@ describe("BaseAppState surface registry", () => {
     }
   });
 
-  it("marks current full-corpus renderer state and generic authority methods as blockers", () => {
+  it("excludes full-corpus renderer collections", () => {
     for (const key of [
       "items",
       "feeds",
       "persons",
       "accounts",
-      "preferences",
       "friends",
-    ] as const) {
-      expect(BASE_APP_STORE_SURFACE_REGISTRY[key].classification).toBe(
-        "legacy_unbounded",
-      );
-      expect(
-        BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker,
-      ).toBeTruthy();
+      "feedUnreadCounts",
+      "feedTotalCounts",
+      "archivableFeedCounts",
+    ]) {
+      expect(key in BASE_APP_STORE_SURFACE_REGISTRY).toBe(false);
     }
+    expect(BASE_APP_STORE_SURFACE_REGISTRY.preferences.classification).toBe(
+      "derived",
+    );
     expect(BASE_APP_STORE_SURFACE_REGISTRY.initialize).toMatchObject({
-      classification: "legacy_unbounded",
-      activationBlocker: expect.stringContaining("complete legacy document"),
+      classification: "lifecycle",
+      activationBlocker: null,
     });
 
     for (const key of [
@@ -1570,11 +1551,11 @@ describe("BaseAppState surface registry", () => {
       "updatePreferences",
     ] as const) {
       expect(BASE_APP_STORE_SURFACE_REGISTRY[key].classification).toBe(
-        "legacy_compatibility",
+        "sqlite_mutation",
       );
       expect(
         BASE_APP_STORE_SURFACE_REGISTRY[key].activationBlocker,
-      ).toBeTruthy();
+      ).toBeNull();
     }
   });
 

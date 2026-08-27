@@ -9,11 +9,9 @@
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
-  Account,
   FeedItem,
   FilterOptions,
   Friend,
-  Person,
   RemoveFeedOptions,
   RssFeed,
   SampleDataClearSummary,
@@ -38,25 +36,7 @@ import {
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
 import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
-import {
-  migrateLegacyDeviceGraphLayout,
-  pruneDeviceGraphLayout,
-} from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
-import {
-  projectArchiveAllReadUnsaved,
-  projectArchiveItems,
-  projectMarkAllAsRead,
-  projectMarkItemsAsRead,
-  projectRemoveItem,
-  projectRenameFeed,
-  projectToggleArchived,
-  projectToggleLiked,
-  projectToggleSaved,
-  projectUpdateItem,
-  rollbackOptimisticPatch,
-  type OptimisticPatch,
-} from "@freed/shared/optimistic-state";
 import {
   initDoc,
   subscribe,
@@ -109,6 +89,8 @@ import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
+import { scanLibraryCoreRssFeedsV1 } from "@freed/shared/library-core";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { log } from "./logger";
 import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
 import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
@@ -294,27 +276,23 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
 
 // App state interface
 interface AppState {
-  // Data (received pre-hydrated from Automerge worker as DocState)
-  items: FeedItem[];
+  // Bounded SQLite query invalidation and visible settings state.
   searchCorpusVersion: number;
   libraryItemVersion: number;
   savedFeedVersion: number;
   savedFeedPresentationPatch: SavedFeedPresentationPatch | null;
-  feeds: Record<string, RssFeed>;
-  persons: Record<string, Person>;
-  accounts: Record<string, Account>;
-  friends: Record<string, Friend>;
   preferences: UserPreferences;
-  desktopClientIds: string[];
-  feedUnreadCounts: Record<string, number>;
-  feedTotalCounts: Record<string, number>;
   totalUnreadCount: number;
   unreadCountByPlatform: Record<string, number>;
   totalItemCount: number;
   itemCountByPlatform: Record<string, number>;
+  rssFeedCount: number;
+  enabledRssFeedCount: number;
+  archivedItemCount: number;
+  friendPersonCount: number;
+  socialAccountCount: number;
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
-  archivableFeedCounts: Record<string, number>;
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
   /** Total feed-item records including hidden and archived items. */
@@ -430,6 +408,45 @@ function shallowEqualRecord(
   );
 }
 
+function runtimeStatePatch(state: DocState): Pick<
+  AppState,
+  | "archivableCountByPlatform"
+  | "docItemCount"
+  | "itemCountByPlatform"
+  | "rssFeedCount"
+  | "enabledRssFeedCount"
+  | "archivedItemCount"
+  | "friendPersonCount"
+  | "socialAccountCount"
+  | "mapAllContentLocationCount"
+  | "mapFriendLocationCount"
+  | "preferences"
+  | "searchCorpusVersion"
+  | "totalArchivableCount"
+  | "totalItemCount"
+  | "totalUnreadCount"
+  | "unreadCountByPlatform"
+> {
+  return {
+    archivableCountByPlatform: state.archivableCountByPlatform,
+    docItemCount: state.docItemCount,
+    itemCountByPlatform: state.itemCountByPlatform,
+    rssFeedCount: state.rssFeedCount ?? 0,
+    enabledRssFeedCount: state.enabledRssFeedCount ?? 0,
+    archivedItemCount: state.archivedItemCount ?? 0,
+    friendPersonCount: state.friendPersonCount ?? 0,
+    socialAccountCount: state.socialAccountCount ?? 0,
+    mapAllContentLocationCount: state.mapAllContentLocationCount,
+    mapFriendLocationCount: state.mapFriendLocationCount,
+    preferences: state.preferences,
+    searchCorpusVersion: state.searchCorpusVersion,
+    totalArchivableCount: state.totalArchivableCount,
+    totalItemCount: state.totalItemCount,
+    totalUnreadCount: state.totalUnreadCount,
+    unreadCountByPlatform: state.unreadCountByPlatform,
+  };
+}
+
 function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -467,14 +484,6 @@ function mergeFacebookCapturePreferenceUpdate(
   return next;
 }
 
-function optimisticBefore(state: AppState, patch: OptimisticPatch): OptimisticPatch {
-  const before: OptimisticPatch = {};
-  for (const key of Object.keys(patch) as Array<keyof OptimisticPatch>) {
-    before[key] = state[key] as never;
-  }
-  return before;
-}
-
 function optimisticMutationTestFailure(source: string): Error | null {
   if (import.meta.env.VITE_TEST_TAURI !== "1") return null;
   const hook = (globalThis as unknown as {
@@ -484,34 +493,12 @@ function optimisticMutationTestFailure(source: string): Error | null {
   return message ? new Error(message) : null;
 }
 
-async function runOptimisticMutation(
-  getState: () => AppState,
-  setState: (patch: Partial<AppState>) => void,
+async function runStoreMutation(
   source: string,
-  project: (state: AppState) => OptimisticPatch | null,
   task: () => Promise<void>,
   options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
 ): Promise<void> {
   assertDesktopStoreWritable();
-  const projected = project(getState());
-  if (!projected) {
-    if (options.waitForPersistence === false) {
-      void task().catch((error) => {
-        if (options.recordFailure !== false) {
-          const detail = error instanceof Error ? error.message : String(error);
-          recordRuntimeError({ source, error, fatal: false });
-          recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
-        }
-      });
-      return;
-    }
-    await task();
-    return;
-  }
-
-  const before = optimisticBefore(getState(), projected);
-  setState(projected as Partial<AppState>);
-
   const persist = async () => {
     try {
       const testFailure = optimisticMutationTestFailure(source);
@@ -521,14 +508,10 @@ async function runOptimisticMutation(
       }
       await task();
     } catch (error) {
-      const rollback = rollbackOptimisticPatch(getState(), before, projected);
-      if (rollback) {
-        setState(rollback as Partial<AppState>);
-      }
       if (options.recordFailure !== false) {
         const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source, error, fatal: false });
-        recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+        recordBugReportEvent(source, "error", "SQLite mutation failed", detail);
       }
       throw error;
     }
@@ -698,6 +681,21 @@ async function flushPendingReadMarks(): Promise<void> {
   }
 }
 
+async function collectRssFeedUrls(): Promise<string[]> {
+  const urls: string[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (feeds) => {
+      for (const feed of feeds) urls.push(feed.url);
+      return "continue";
+    },
+  );
+  return urls;
+}
+
 function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return Promise.resolve();
   const nextIds = ids.filter(Boolean);
@@ -719,26 +717,22 @@ function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolea
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
-  items: [],
   searchCorpusVersion: 0,
   libraryItemVersion: 0,
   savedFeedVersion: 0,
   savedFeedPresentationPatch: null,
-  feeds: {},
-  persons: {},
-  accounts: {},
-  friends: {},
   preferences: createDefaultPreferences(),
-  desktopClientIds: [],
-  feedUnreadCounts: {},
-  feedTotalCounts: {},
   totalUnreadCount: 0,
   unreadCountByPlatform: {},
   totalItemCount: 0,
   itemCountByPlatform: {},
+  rssFeedCount: 0,
+  enabledRssFeedCount: 0,
+  archivedItemCount: 0,
+  friendPersonCount: 0,
+  socialAccountCount: 0,
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
-  archivableFeedCounts: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
   docItemCount: 0,
@@ -797,7 +791,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
         migrateLegacyThemePreference(docState.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);
-        migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on
@@ -805,12 +798,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribe((state: DocState, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
-          if (
-            event.mutation === "REMOVE_PERSON"
-            || event.mutation === "REMOVE_ACCOUNT"
-          ) {
-            pruneDeviceGraphLayout(state.persons, state.accounts);
-          }
           const prev = get();
           const libraryItemVersion =
             event.source === "item_patch" ||
@@ -858,16 +845,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? null
                 : prev.savedFeedPresentationPatch;
           let next: Partial<AppState> = {
-            ...state,
+            ...runtimeStatePatch(state),
             libraryItemVersion,
             savedFeedPresentationPatch,
             savedFeedVersion,
           };
 
-          if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
-            next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
-          if (shallowEqualRecord(state.feedTotalCounts, prev.feedTotalCounts))
-            next = { ...next, feedTotalCounts: prev.feedTotalCounts };
           if (shallowEqualRecord(state.unreadCountByPlatform, prev.unreadCountByPlatform))
             next = { ...next, unreadCountByPlatform: prev.unreadCountByPlatform };
           if (shallowEqualRecord(state.itemCountByPlatform, prev.itemCountByPlatform))
@@ -901,7 +884,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // Hydrate immediately from the initial DocState returned by the worker.
         set({
-          ...docState,
+          ...runtimeStatePatch(docState),
           activeFilter: applyFeedSignalModesToFilter(
             get().activeFilter,
             getDeviceDisplayPreferences().feedSignalModes,
@@ -964,11 +947,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateItem: async (id, update) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:updateItem",
-      (state) => projectUpdateItem(state, id, update),
       () => docUpdateFeedItem(id, update),
     );
   },
@@ -993,11 +973,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
 
     try {
-      await runOptimisticMutation(
-        get,
-        set,
+      await runStoreMutation(
         "desktop:readState",
-        (state) => projectMarkItemsAsRead(state, nextIds),
         () => queueReadMarks(nextIds),
         { recordFailure: false },
       );
@@ -1018,27 +995,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllAsRead: async (platform) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:markAllAsRead",
-      (state) => projectMarkAllAsRead(state, platform),
       () => docMarkAllAsRead(platform),
     );
   },
 
   toggleSaved: async (id) => {
-    let item = get().items.find((candidate) => candidate.globalId === id);
-    if (!item) {
-      item =
-        (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
-    }
+    const item =
+      (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
     const itemToPin = item && !item.userState.saved ? item : null;
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleSaved",
-      (state) => projectToggleSaved(state, id),
       () => docToggleSaved(id),
     );
     if (itemToPin) {
@@ -1053,32 +1021,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleArchived: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleArchived",
-      (state) => projectToggleArchived(state, id),
       () => docToggleArchived(id),
       { waitForPersistence: false },
     );
   },
 
   archiveItems: async (ids) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:archiveItems",
-      (state) => projectArchiveItems(state, ids),
       () => docArchiveItems(ids),
     );
   },
 
   toggleLiked: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:toggleLiked",
-      (state) => projectToggleLiked(state, id),
       () => docToggleLiked(id),
       { waitForPersistence: false },
     );
@@ -1086,11 +1045,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:archiveAllReadUnsaved",
-      (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
       () => docArchiveAllReadUnsaved(platform, feedUrl),
     );
   },
@@ -1104,11 +1060,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeItem: async (id) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:removeItem",
-      (state) => projectRemoveItem(state, id),
       () => docRemoveFeedItem(id),
     );
   },
@@ -1140,7 +1093,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeAllFeeds: async (includeItems) => {
-    const feedUrls = Object.keys(get().feeds);
+    const feedUrls = await collectRssFeedUrls();
     await docRemoveAllFeeds(includeItems);
     const { removeRssRuntimeState } = await import("./rss-runtime-state");
     for (const url of feedUrls) removeRssRuntimeState(url);
@@ -1149,11 +1102,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   renameFeed: async (url, title) => {
-    await runOptimisticMutation(
-      get,
-      set,
+    await runStoreMutation(
       "desktop:renameFeed",
-      (state) => projectRenameFeed(state, url, title),
       () => docUpdateRssFeed(url, { title }),
     );
   },
@@ -1180,15 +1130,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     try {
-      await runOptimisticMutation(
-        get,
-        set,
+      set({ preferences: nextPreferences });
+      await runStoreMutation(
         "desktop:updatePreferences",
-        () => ({ preferences: nextPreferences }),
         () => docUpdatePreferences(syncedUpdate),
         { recordFailure: false },
       );
     } catch (error) {
+      set({ preferences: currentPreferences });
       const detail = error instanceof Error ? error.message : String(error);
       recordRuntimeError({ source: "desktop:updatePreferences", error, fatal: false });
       recordBugReportEvent(

@@ -473,9 +473,6 @@ export async function submitPrivateVulnerabilityReport(
 
 export function summarizeStateForReport(input: {
   state: {
-    items: Array<{ userState: { archived: boolean } }>;
-    feeds: Record<string, unknown>;
-    friends: Record<string, unknown>;
     totalUnreadCount: number;
     activeView: "feed" | "friends" | "map" | "storyWall";
     isInitialized: boolean;
@@ -485,16 +482,21 @@ export function summarizeStateForReport(input: {
     searchQuery: string;
     pendingMatchCount?: number;
   };
+  library: {
+    totalItems: number;
+    totalFeeds: number;
+    totalFriends: number;
+    totalArchived: number;
+  };
   platformAuth?: Record<string, boolean>;
   cloudProviders?: Record<string, string>;
 }): BugReportStateSummary {
-  const archivedCount = input.state.items.filter((item) => item.userState.archived).length;
   return {
-    totalItems: input.state.items.length,
-    totalFeeds: Object.keys(input.state.feeds).length,
-    totalFriends: Object.keys(input.state.friends).length,
+    totalItems: input.library.totalItems,
+    totalFeeds: input.library.totalFeeds,
+    totalFriends: input.library.totalFriends,
     totalUnread: input.state.totalUnreadCount,
-    totalArchived: archivedCount,
+    totalArchived: input.library.totalArchived,
     activeView: input.state.activeView,
     isInitialized: input.state.isInitialized,
     isLoading: input.state.isLoading,

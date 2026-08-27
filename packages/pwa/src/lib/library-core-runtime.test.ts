@@ -96,6 +96,7 @@ import {
   enqueuePwaLibraryCoreAccountUpserts,
   enqueuePwaLibraryCoreAccountRemove,
   enqueuePwaLibraryCoreUnarchiveSavedItems,
+  clearPwaLibraryCoreSampleData,
   initializePwaLibraryCoreState,
   openPwaLibraryCoreFriendsFeedReader,
   readPwaLibraryCoreItemDetail,
@@ -359,7 +360,9 @@ describe("PWA Library Core bounded scanner", () => {
 
     await expect(
       syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
-    ).resolves.toEqual(expect.objectContaining({ items: [] }));
+    ).resolves.toEqual(
+      expect.not.objectContaining({ items: expect.anything() }),
+    );
     expect(mocks.importCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ writer }),
     );
@@ -489,6 +492,182 @@ describe("PWA Library Core bounded scanner", () => {
 
     await expect(scanPwaLibraryCoreItems(() => "continue")).rejects.toThrow(
       "item scan cursor is stale",
+    );
+  });
+
+  it("clears sample records across bounded SQLite identity pages", async () => {
+    const sample = {
+      batchId: "sample-batch",
+      generatedAt: 100,
+      generatorVersion: 1,
+      marker: "freed.sample-data.v1" as const,
+    };
+    const rssRow = {
+      activityCount: 1,
+      enabled: true,
+      folder: null,
+      imageUrl: null,
+      lastFetched: null,
+      latestActivityAt: 1,
+      pollInterval: 30,
+      sampleBatchId: sample.batchId,
+      sampleGeneratedAt: sample.generatedAt,
+      sampleGeneratorVersion: sample.generatorVersion,
+      siteUrl: null,
+      title: "Sample",
+      trackUnread: true,
+      unreadCount: 0,
+      updatedAt: 1,
+      url: "https://sample.test/feed",
+    };
+    const personGraphRow = {
+      avatarUrl: null,
+      careLevel: 3,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      id: "person-sample",
+      lastReachOutAt: null,
+      name: "Sample Person",
+      reachOutIntervalDays: null,
+      relationshipStatus: "friend",
+      updatedAt: 1,
+    };
+    const accountGraphRow = (id: string) => ({
+      activityCount: 0,
+      avatarUrl: null,
+      discoveredFrom: "manual_entry",
+      displayName: id,
+      externalId: id,
+      firstSeenAt: 1,
+      followRosterActive: null,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      handle: null,
+      id,
+      kind: "social",
+      lastSeenAt: 1,
+      latestActivityAt: null,
+      personId: "person-sample",
+      personName: "Sample Person",
+      provider: "x",
+      updatedAt: 1,
+    });
+    const accountDetail = (
+      id: string,
+      sampleDataFingerprint: typeof sample | null,
+    ) => ({
+      account: {
+        address: null,
+        avatarUrl: null,
+        createdAt: 1,
+        discoveredFrom: "manual_entry",
+        displayName: id,
+        email: null,
+        externalId: id,
+        firstSeenAt: 1,
+        followRosterActive: null,
+        followRosterRoles: [],
+        followRosterSyncedAt: null,
+        handle: null,
+        id,
+        importedAt: null,
+        kind: "social",
+        lastSeenAt: 1,
+        personId: "person-sample",
+        phone: null,
+        profileUrl: null,
+        provider: "x",
+        sampleBatchId: sampleDataFingerprint?.batchId ?? null,
+        sampleGeneratedAt: sampleDataFingerprint?.generatedAt ?? null,
+        sampleGeneratorVersion:
+          sampleDataFingerprint?.generatorVersion ?? null,
+        updatedAt: 1,
+      },
+    });
+    mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+      switch (request.queryId) {
+        case "rss_feed_page_v1":
+          return { nextCursor: null, rows: [rssRow] };
+        case "person_graph_page_v1":
+          return { nextCursor: null, rows: [personGraphRow] };
+        case "person_detail_v1":
+          return {
+            person: {
+              avatarUrl: null,
+              bio: null,
+              careLevel: 3,
+              createdAt: 1,
+              id: "person-sample",
+              name: "Sample Person",
+              notes: null,
+              reachOutIntervalDays: null,
+              reachOuts: [],
+              relationshipStatus: "friend",
+              sampleBatchId: sample.batchId,
+              sampleGeneratedAt: sample.generatedAt,
+              sampleGeneratorVersion: sample.generatorVersion,
+              tags: [],
+              updatedAt: 1,
+            },
+          };
+        case "account_graph_page_v1":
+          return {
+            nextCursor: null,
+            rows: [
+              accountGraphRow("account-sample"),
+              accountGraphRow("account-real"),
+            ],
+          };
+        case "account_detail_v1":
+          return request.accountId === "account-sample"
+            ? accountDetail("account-sample", sample)
+            : accountDetail("account-real", null);
+        case "background_item_page_v1":
+          return {
+            nextCursor: null,
+            rows: [
+              backgroundRow("item-sample", {}, {
+                sampleDataFingerprint: sample,
+              }),
+            ],
+          };
+        default:
+          throw new Error(`Unexpected query ${request.queryId}`);
+      }
+    });
+
+    await expect(clearPwaLibraryCoreSampleData()).resolves.toEqual({
+      accounts: 1,
+      feeds: 1,
+      items: 1,
+      persons: 1,
+      total: 4,
+    });
+    const detachedAccount = mocks.commitAccountUpserts.mock.calls[0]?.[0]?.[0];
+    expect(detachedAccount).toEqual(
+      expect.objectContaining({ id: "account-real" }),
+    );
+    expect(detachedAccount).not.toHaveProperty("personId");
+    expect(mocks.commitAccountRemove).toHaveBeenCalledWith(
+      "account-sample",
+      expect.any(Number),
+    );
+    expect(mocks.commitPersonRemove).toHaveBeenCalledWith(
+      "person-sample",
+      expect.any(Number),
+    );
+    expect(mocks.commitRssFeedRemove).toHaveBeenCalledWith(
+      rssRow.url,
+      false,
+      expect.any(Number),
+    );
+    expect(mocks.commitFeedItemRemove).toHaveBeenCalledWith(
+      "item-sample",
+      expect.any(Number),
     );
   });
 

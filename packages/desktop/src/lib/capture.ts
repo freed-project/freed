@@ -628,7 +628,7 @@ async function refreshEnabledRssFeeds(
       const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
-      const rssBefore = store.docItemCount ?? store.items.length;
+      const rssBefore = store.docItemCount ?? 0;
       let rssSeen = 0;
 
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
@@ -729,7 +729,7 @@ async function refreshEnabledRssFeeds(
         await docBatchRefreshFeeds(feedUpdates, allNewItems);
       }
       const rssAfterState = useAppStore.getState();
-      const rssAfter = rssAfterState.docItemCount ?? rssAfterState.items.length;
+      const rssAfter = rssAfterState.docItemCount ?? rssBefore;
       const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
       await recordProviderHealthEvent({
         provider: "rss",
@@ -778,6 +778,23 @@ async function refreshEnabledRssFeeds(
   }
 }
 
+async function readEnabledRssFeeds(): Promise<RssFeed[]> {
+  const feeds: RssFeed[] = [];
+  await scanLibraryCoreRssFeedsV1(
+    {
+      query: queryNormalizedLibrary,
+      randomId: () => crypto.randomUUID(),
+    },
+    (page) => {
+      for (const feed of page) {
+        if (feed.enabled) feeds.push(feed);
+      }
+      return "continue";
+    },
+  );
+  return feeds;
+}
+
 export async function refreshRssFeeds(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
@@ -791,9 +808,7 @@ export async function refreshRssFeeds(
   }
   if (!(await activeLibraryWriterMayContactProviders())) return;
   const store = useAppStore.getState();
-  const enabledFeeds = withRssRuntimeStates(
-    Object.values(store.feeds).filter((f) => f.enabled),
-  );
+  const enabledFeeds = withRssRuntimeStates(await readEnabledRssFeeds());
   const feeds = selectRssFeedsForRefresh(enabledFeeds, {
     ...options,
     respectRetryWindow: false,
@@ -824,9 +839,7 @@ export async function refreshScheduledRssFeeds(
   }
   if (!(await activeLibraryWriterMayContactProviders())) return;
   const store = useAppStore.getState();
-  const enabledFeeds = withRssRuntimeStates(
-    Object.values(store.feeds).filter((f) => f.enabled),
-  );
+  const enabledFeeds = withRssRuntimeStates(await readEnabledRssFeeds());
   const feeds = selectRssFeedsForRefresh(enabledFeeds, {
     ...options,
     respectRetryWindow: true,

@@ -6,11 +6,8 @@
  */
 
 import type {
-  Account,
   ContentSignal,
   FeedItem,
-  Friend,
-  Person,
   SampleDataClearSummary,
   UserPreferences,
   RssFeed,
@@ -75,9 +72,10 @@ export interface FilterOptions {
  * platform's own store extension and are accessed by platform-specific widgets.
  */
 export interface BaseAppState {
-  // Data (derived from Automerge doc)
-  items: FeedItem[];
-  /** Bumps only when search-relevant corpus content changes. */
+  /**
+   * Ephemeral invalidation token for bounded SQLite readers. This is not a
+   * durable revision and never authorizes a row or mutation.
+   */
   searchCorpusVersion: number;
   /**
    * Desktop bumps this after item patches and real full-state changes so
@@ -93,19 +91,8 @@ export interface BaseAppState {
   savedFeedVersion?: number;
   /** Desktop-only resident Saved-card delta; never a second item corpus. */
   savedFeedPresentationPatch?: SavedFeedPresentationPatch | null;
-  feeds: Record<string, RssFeed>;
-  /** Canonical same-human identities — keyed by Person.id */
-  persons: Record<string, Person>;
-  /** Attached social/contact nodes — keyed by Account.id */
-  accounts: Record<string, Account>;
-  /** @deprecated Use persons. */
-  friends: Record<string, Friend>;
+  /** One bounded synchronized preferences snapshot used by visible settings. */
   preferences: UserPreferences;
-  /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
-   *  UI components (Sidebar) don't need to subscribe to the full items array. */
-  feedUnreadCounts: Record<string, number>;
-  /** Total visible item count per RSS feed URL. */
-  feedTotalCounts: Record<string, number>;
   /** Total unread count across all non-hidden, non-archived items. */
   totalUnreadCount: number;
   /** Unread count bucketed by platform (e.g. "rss", "x"). */
@@ -114,12 +101,20 @@ export interface BaseAppState {
   totalItemCount: number;
   /** Total visible item count bucketed by platform. */
   itemCountByPlatform: Record<string, number>;
+  /** Trigger-maintained count of configured RSS subscriptions. */
+  rssFeedCount: number;
+  /** Trigger-maintained count of enabled RSS subscriptions. */
+  enabledRssFeedCount: number;
+  /** Trigger-maintained count of archived FeedItems. */
+  archivedItemCount: number;
+  /** Trigger-maintained count of Friend Persons. */
+  friendPersonCount: number;
+  /** Trigger-maintained count of synchronized social Accounts. */
+  socialAccountCount: number;
   /** Count of archivable items (read, non-saved, non-archived) across all platforms. */
   totalArchivableCount: number;
   /** Archivable count bucketed by platform. */
   archivableCountByPlatform: Record<string, number>;
-  /** Archivable count bucketed by RSS feed URL. */
-  archivableFeedCounts: Record<string, number>;
   /** Friends with recent mapped content. Derived off the render path. */
   mapFriendLocationCount: number;
   /** Authors with recent mapped content. Derived off the render path. */

@@ -4,7 +4,7 @@ import type { BackgroundRuntimeTask } from "./background-runtime-coordinator";
 const mocks = vi.hoisted(() => {
   const recordProviderHealthEvent = vi.fn();
   const storeState = {
-    items: [] as Array<{ platform: string; globalId?: string }>,
+    itemCountByPlatform: {} as Record<string, number>,
     preferences: {},
     fbAuth: { isAuthenticated: true, lastCapturedAt: 123_456 },
     igAuth: { isAuthenticated: true, lastCapturedAt: 123_456 },
@@ -38,8 +38,11 @@ const mocks = vi.hoisted(() => {
         storeState.liAuth = { ...storeState.liAuth, ...next };
       },
     ),
-    addItems: vi.fn(async (items: Array<{ platform: string; globalId?: string }>) => {
-      storeState.items.push(...items);
+    addItems: vi.fn(async (items: Array<{ platform: string }>) => {
+      for (const item of items) {
+        storeState.itemCountByPlatform[item.platform] =
+          (storeState.itemCountByPlatform[item.platform] ?? 0) + 1;
+      }
     }),
     updatePreferences: vi.fn(async (next: Record<string, unknown>) => {
       storeState.preferences = { ...storeState.preferences, ...next };
@@ -57,7 +60,7 @@ const mocks = vi.hoisted(() => {
     recordProviderHealthEvent,
     storeState,
     resetStoreState: () => {
-      storeState.items = [];
+      storeState.itemCountByPlatform = {};
       storeState.preferences = {};
       storeState.fbAuth = { isAuthenticated: true, lastCapturedAt: 123_456 };
       storeState.igAuth = { isAuthenticated: true, lastCapturedAt: 123_456 };
@@ -444,7 +447,7 @@ describe("social capture completion", () => {
 
   it("records why Facebook saw posts but added no new items", async () => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>();
-    mocks.storeState.items = [{ platform: "facebook", globalId: "existing-post" }];
+    mocks.storeState.itemCountByPlatform = { facebook: 1 };
     mocks.storeState.addItems.mockImplementationOnce(async () => undefined);
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},

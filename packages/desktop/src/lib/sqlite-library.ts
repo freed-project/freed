@@ -6,7 +6,6 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
   createDefaultPreferences,
-  hasSampleDataFingerprint,
   sanitizeAccountWrite,
   sanitizePersonRootWrite,
   sanitizeReachOutLogWrite,
@@ -66,6 +65,7 @@ import {
   parseLibraryCoreNormalizedResultTransportImportV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
+  collectLibraryCoreSampleRemovalPlanV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
@@ -1648,6 +1648,11 @@ function emptyShell(): Omit<DocState, "items"> {
     unreadCountByPlatform: {},
     totalItemCount: 0,
     itemCountByPlatform: {},
+    rssFeedCount: 0,
+    enabledRssFeedCount: 0,
+    archivedItemCount: 0,
+    friendPersonCount: 0,
+    socialAccountCount: 0,
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
     archivableFeedCounts: {},
@@ -1899,6 +1904,11 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
     preferences,
     searchCorpusVersion: facets.source.projectionRevision,
     totalItemCount: facets.summary.totalCount,
+    rssFeedCount: facets.summary.rssFeedCount,
+    enabledRssFeedCount: facets.summary.enabledRssFeedCount,
+    archivedItemCount: facets.summary.archivedCount,
+    friendPersonCount: facets.summary.friendPersonCount,
+    socialAccountCount: facets.summary.socialAccountCount,
     totalArchivableCount: facets.summary.archivableCount,
     docItemCount: facets.summary.totalCount,
   };
@@ -2116,6 +2126,11 @@ async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
       ]),
     ),
     totalItemCount: facets.summary.totalCount,
+    rssFeedCount: facets.summary.rssFeedCount,
+    enabledRssFeedCount: facets.summary.enabledRssFeedCount,
+    archivedItemCount: facets.summary.archivedCount,
+    friendPersonCount: facets.summary.friendPersonCount,
+    socialAccountCount: facets.summary.socialAccountCount,
     itemCountByPlatform: Object.fromEntries(
       facets.summary.platformCounts.map((count) => [
         count.platform,
@@ -2297,6 +2312,11 @@ async function refreshNormalizedMutationProjection(
       ...state,
       searchCorpusVersion: facets.source.projectionRevision,
       totalItemCount: facets.summary.totalCount,
+      rssFeedCount: facets.summary.rssFeedCount,
+      enabledRssFeedCount: facets.summary.enabledRssFeedCount,
+      archivedItemCount: facets.summary.archivedCount,
+      friendPersonCount: facets.summary.friendPersonCount,
+      socialAccountCount: facets.summary.socialAccountCount,
       docItemCount: facets.summary.totalCount,
     },
     changedItems,
@@ -2485,72 +2505,50 @@ export async function dispatchSqliteMutation(
       break;
     }
     case "CLEAR_SAMPLE_DATA": {
-      const samplePersonIds = new Set(
-        Object.values(current.persons)
-          .filter(hasSampleDataFingerprint)
-          .map((person) => person.id),
-      );
-      const sampleFeeds = Object.values(current.feeds).filter(
-        hasSampleDataFingerprint,
-      );
-      const sampleAccounts = Object.values(current.accounts).filter(
-        hasSampleDataFingerprint,
+      const {
+        feedUrls,
+        itemIds: sampleItemIds,
+        personIds: samplePersonIds,
+        realLinkedAccounts,
+        sampleAccountIds,
+      } = await collectLibraryCoreSampleRemovalPlanV1(
+        NORMALIZED_MUTATION_READER_RUNTIME,
       );
       const normalizedHandled = (await mutationContext()) !== null;
-      const sampleItemIds = normalizedHandled
-        ? await collectSqliteItemIds({}, hasSampleDataFingerprint)
-        : [];
       if (normalizedHandled) {
+        await maybeSubmitAccountUpserts(
+          realLinkedAccounts.map(({ personId, ...account }) => {
+            void personId;
+            return { ...account, updatedAt: timestamp };
+          }),
+          timestamp,
+        );
         await maybeSubmitFeedItemRemoves(sampleItemIds, timestamp);
-        for (const feed of sampleFeeds) {
+        for (const url of feedUrls) {
           await maybeSubmitRssFeedRemove({
             includeItems: false,
             removedAtMs: timestamp,
-            url: feed.url,
+            url,
           });
         }
         for (const personId of samplePersonIds) {
           await maybeSubmitPersonRemove(personId, timestamp);
         }
-        for (const account of sampleAccounts) {
-          await maybeSubmitAccountRemove(account.id, timestamp);
+        for (const accountId of sampleAccountIds) {
+          await maybeSubmitAccountRemove(accountId, timestamp);
         }
       }
       const summary = {
-        feeds: sampleFeeds.length,
+        feeds: feedUrls.length,
         items: normalizedHandled
           ? sampleItemIds.length
           : await mutateItems("clear_sample", { timestampMs: timestamp }),
-        persons: samplePersonIds.size,
-        accounts: sampleAccounts.length,
+        persons: samplePersonIds.length,
+        accounts: sampleAccountIds.length,
         total: 0,
       };
       summary.total =
         summary.feeds + summary.items + summary.persons + summary.accounts;
-      await saveMetadata((next) => {
-        for (const [url, feed] of Object.entries(next.feeds)) {
-          if (hasSampleDataFingerprint(feed)) delete next.feeds[url];
-        }
-        for (const [id, account] of Object.entries(next.accounts)) {
-          if (hasSampleDataFingerprint(account)) {
-            delete next.accounts[id];
-          } else if (
-            account.personId &&
-            samplePersonIds.has(account.personId)
-          ) {
-            if (normalizedHandled) {
-              delete next.accounts[id];
-            } else {
-              next.accounts[id] = {
-                ...account,
-                personId: undefined,
-                updatedAt: timestamp,
-              };
-            }
-          }
-        }
-        for (const personId of samplePersonIds) delete next.persons[personId];
-      }, normalizedHandled);
       result = summary;
       break;
     }

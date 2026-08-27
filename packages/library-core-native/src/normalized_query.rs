@@ -1534,7 +1534,7 @@ fn encode_cursor(cursor: &FeedPageCursorV1) -> Result<String, NormalizedSqliteEr
     }
     let mut bytes = Vec::with_capacity(CURSOR_FIXED_BYTES + cursor.global_id.len());
     bytes.push(1);
-    for pair in cursor.generation_id.as_bytes().chunks_exact(2) {
+    for pair in cursor.generation_id.as_bytes().as_chunks::<2>().0 {
         let text = std::str::from_utf8(pair)
             .map_err(|_| invalid("normalized feed cursor identity is invalid"))?;
         bytes.push(
@@ -1766,7 +1766,7 @@ fn encode_feed_browse_cursor(cursor: &FeedBrowseCursorV2) -> Result<String, Norm
     }
     let mut bytes = Vec::with_capacity(92 + cursor.global_id.len());
     bytes.push(2);
-    for pair in cursor.generation_id.as_bytes().chunks_exact(2) {
+    for pair in cursor.generation_id.as_bytes().as_chunks::<2>().0 {
         let text = std::str::from_utf8(pair)
             .map_err(|_| invalid("normalized browse cursor identity is invalid"))?;
         bytes.push(
@@ -1774,7 +1774,7 @@ fn encode_feed_browse_cursor(cursor: &FeedBrowseCursorV2) -> Result<String, Norm
                 .map_err(|_| invalid("normalized browse cursor identity is invalid"))?,
         );
     }
-    for pair in cursor.filter_digest.as_bytes().chunks_exact(2) {
+    for pair in cursor.filter_digest.as_bytes().as_chunks::<2>().0 {
         let text = std::str::from_utf8(pair)
             .map_err(|_| invalid("normalized browse cursor identity is invalid"))?;
         bytes.push(
@@ -1852,7 +1852,7 @@ fn saved_sort_mode_from_code(value: u8) -> Option<&'static str> {
 }
 
 fn append_lower_hex_32(bytes: &mut Vec<u8>, value: &str) -> Result<(), NormalizedSqliteError> {
-    for pair in value.as_bytes().chunks_exact(2) {
+    for pair in value.as_bytes().as_chunks::<2>().0 {
         let text = std::str::from_utf8(pair)
             .map_err(|_| invalid("normalized saved cursor identity is invalid"))?;
         bytes.push(

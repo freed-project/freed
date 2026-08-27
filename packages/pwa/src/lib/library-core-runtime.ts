@@ -1,6 +1,5 @@
 import {
   createDefaultPreferences,
-  hasSampleDataFingerprint,
   sanitizeFeedItemWrite,
   sanitizeRssFeedWrite,
   type Account,
@@ -32,6 +31,7 @@ import {
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
+  collectLibraryCoreSampleRemovalPlanV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   searchLibraryCoreNormalizedItemsV1,
   executeLibraryCoreScopeActionV1,
@@ -114,22 +114,19 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
 
 function emptyState(): LibraryState {
   return {
-    items: [],
     searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
     preferences: createDefaultPreferences(),
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
     totalUnreadCount: 0,
     unreadCountByPlatform: {},
     totalItemCount: 0,
     itemCountByPlatform: {},
+    rssFeedCount: 0,
+    enabledRssFeedCount: 0,
+    archivedItemCount: 0,
+    friendPersonCount: 0,
+    socialAccountCount: 0,
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
-    archivableFeedCounts: {},
     mapFriendLocationCount: 0,
     mapAllContentLocationCount: 0,
   };
@@ -138,21 +135,10 @@ function emptyState(): LibraryState {
 async function readSelectedState(): Promise<LibraryState | null> {
   const selected = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (!selected) return null;
-  const [reader, preferences, facetSummary] = await Promise.all([
-    openLibraryCoreNormalizedFeedReaderV1(
-      NORMALIZED_READER_RUNTIME,
-      {},
-      Date.now(),
-    ),
+  const [preferences, facetSummary] = await Promise.all([
     readLibraryCoreNormalizedPreferencesV1(NORMALIZED_READER_RUNTIME),
     readLibraryCoreNormalizedFacetSummaryV1(NORMALIZED_READER_RUNTIME),
   ]);
-  let items: readonly FeedItem[];
-  try {
-    items = await reader.readNext();
-  } finally {
-    await reader.close();
-  }
   const current = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (
     current === null ||
@@ -181,12 +167,16 @@ async function readSelectedState(): Promise<LibraryState | null> {
   );
   return Object.freeze({
     ...emptyState(),
-    items: [...items],
     preferences,
     searchCorpusVersion: selected.sourceRevision,
     totalArchivableCount: facetSummary.archivableCount,
     totalItemCount: facetSummary.totalCount,
     totalUnreadCount: facetSummary.unreadCount,
+    rssFeedCount: facetSummary.rssFeedCount,
+    enabledRssFeedCount: facetSummary.enabledRssFeedCount,
+    archivedItemCount: facetSummary.archivedCount,
+    friendPersonCount: facetSummary.friendPersonCount,
+    socialAccountCount: facetSummary.socialAccountCount,
     archivableCountByPlatform,
     itemCountByPlatform,
     unreadCountByPlatform,
@@ -513,31 +503,13 @@ export async function enqueuePwaLibraryCoreRssFeedTitleAssignment(
 
 /** Remove only fingerprinted sample records from the selected Library Core store. */
 export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSummary> {
-  const state = lastState ?? (await readSelectedState()) ?? emptyState();
-  const feedUrls = Object.values(state.feeds)
-    .filter(hasSampleDataFingerprint)
-    .map((feed) => feed.url);
-  const personIds = new Set(
-    Object.values(state.persons)
-      .filter(hasSampleDataFingerprint)
-      .map((person) => person.id),
-  );
-  const sampleAccountIds = Object.values(state.accounts)
-    .filter(hasSampleDataFingerprint)
-    .map((account) => account.id);
-  const realLinkedAccounts = Object.values(state.accounts).filter(
-    (account) =>
-      !hasSampleDataFingerprint(account) &&
-      account.personId !== undefined &&
-      personIds.has(account.personId),
-  );
-  const itemIds: string[] = [];
-  await scanPwaLibraryCoreItems((items) => {
-    for (const item of items) {
-      if (hasSampleDataFingerprint(item)) itemIds.push(item.globalId);
-    }
-    return "continue";
-  });
+  const {
+    feedUrls,
+    itemIds,
+    personIds,
+    realLinkedAccounts,
+    sampleAccountIds,
+  } = await collectLibraryCoreSampleRemovalPlanV1(NORMALIZED_READER_RUNTIME);
 
   const updatedAt = Date.now();
   await enqueuePwaLibraryCoreAccountUpserts(
@@ -565,12 +537,12 @@ export async function clearPwaLibraryCoreSampleData(): Promise<SampleDataClearSu
   return {
     feeds: feedUrls.length,
     items: itemIds.length,
-    persons: personIds.size,
+    persons: personIds.length,
     accounts: sampleAccountIds.length,
     total:
       feedUrls.length +
       itemIds.length +
-      personIds.size +
+      personIds.length +
       sampleAccountIds.length,
   };
 }

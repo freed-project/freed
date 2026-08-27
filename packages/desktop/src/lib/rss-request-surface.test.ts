@@ -76,8 +76,47 @@ describe("RSS request surface counters", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    mocks.invoke.mockImplementation(async (command: string) => {
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
       if (command === "fetch_url") return FEED_XML;
+      if (command === "query_normalized_library") {
+        const request = (args as {
+          request?: { queryId?: string; schemaVersion?: number };
+        })?.request;
+        if (request?.queryId !== "rss_feed_page_v1") {
+          throw new Error(`Unexpected normalized query: ${request?.queryId}`);
+        }
+        return {
+          layoutRevision: 0,
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: [
+            {
+              activityCount: 0,
+              enabled: true,
+              folder: null,
+              imageUrl: null,
+              lastFetched: null,
+              latestActivityAt: null,
+              pollInterval: null,
+              sampleBatchId: null,
+              sampleGeneratedAt: null,
+              sampleGeneratorVersion: null,
+              siteUrl: null,
+              title: "Example",
+              trackUnread: false,
+              unreadCount: 0,
+              updatedAt: 1,
+              url: "https://example.com/feed.xml",
+            },
+          ],
+          schemaVersion: request.schemaVersion,
+          source: {
+            generationId: "d".repeat(64),
+            projectionRevision: 0,
+            transitionSequence: 0,
+          },
+        };
+      }
       return null;
     });
   });

@@ -1,7 +1,6 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import type { FeedItem } from "@freed/shared";
 import type { PlatformConfig } from "@freed/ui/context";
 import { PlatformProvider } from "@freed/ui/context";
 import type { LibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
@@ -14,35 +13,6 @@ import {
 import { useAppStore } from "../lib/store";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-function makeItem(overrides: Partial<FeedItem> = {}): FeedItem {
-  const now = 1_774_389_200_000;
-  return {
-    globalId: "facebook:item-1",
-    platform: "facebook",
-    sourceUrl: "https://facebook.example/item",
-    author: {
-      id: "facebook-author",
-      displayName: "Facebook Author",
-      handle: "facebook-author",
-    },
-    content: {
-      text: "Post text",
-    },
-    userState: {
-      hidden: false,
-      saved: false,
-      archived: false,
-      tags: [],
-      highlights: [],
-    },
-    topics: [],
-    contentType: "post",
-    capturedAt: now,
-    publishedAt: now - 60_000,
-    ...overrides,
-  } as FeedItem;
-}
 
 function facetSummary(
   overrides: Partial<LibraryFacetSummary> = {},
@@ -120,33 +90,12 @@ async function renderWithPlatform(
 describe("PWA source provider settings", () => {
   afterEach(() => {
     useAppStore.setState({
-      items: [],
-      accounts: {},
-      feeds: {},
-      persons: {},
       pendingMatchCount: 0,
     });
     document.body.innerHTML = "";
   });
 
   it("shows social sync statistics from SQLite facets without provider management controls", async () => {
-    useAppStore.setState({
-      items: [
-        makeItem(),
-        makeItem({
-          globalId: "facebook:item-2",
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            readAt: 1_774_389_199_000,
-            tags: [],
-            highlights: [],
-          },
-        }),
-      ],
-    });
-
     const { container, cleanup } = await renderWithPlatform(
       createElement(PwaFacebookSettings, { surface: "settings" }),
       facetSummary({
@@ -179,17 +128,6 @@ describe("PWA source provider settings", () => {
   });
 
   it("shows YouTube sync status without provider management controls", async () => {
-    useAppStore.setState({
-      items: [
-        makeItem({
-          globalId: "youtube:item-1",
-          platform: "youtube",
-          contentType: "video",
-          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        }),
-      ],
-    });
-
     const { container, cleanup } = await renderWithPlatform(
       createElement(PwaYouTubeSettings, { surface: "settings" }),
       facetSummary({
@@ -239,46 +177,6 @@ describe("PWA source provider settings", () => {
   });
 
   it("shows feed sync status without subscription management controls", async () => {
-    useAppStore.setState({
-      feeds: {
-        "https://example.com/feed.xml": {
-          url: "https://example.com/feed.xml",
-          title: "Example Feed",
-          enabled: true,
-          trackUnread: true,
-          lastFetched: 1_774_389_150_000,
-        },
-      },
-      items: [
-        makeItem({
-          globalId: "rss:item-1",
-          platform: "rss",
-          rssSource: {
-            feedUrl: "https://example.com/feed.xml",
-            feedTitle: "Example Feed",
-            siteUrl: "https://example.com",
-          },
-        }),
-        makeItem({
-          globalId: "rss:item-2",
-          platform: "rss",
-          rssSource: {
-            feedUrl: "https://example.com/feed.xml",
-            feedTitle: "Example Feed",
-            siteUrl: "https://example.com",
-          },
-          userState: {
-            hidden: false,
-            saved: false,
-            archived: false,
-            readAt: 1_774_389_199_000,
-            tags: [],
-            highlights: [],
-          },
-        }),
-      ],
-    });
-
     const { container, cleanup } = await renderWithPlatform(
       createElement(PwaFeedsSettings),
       facetSummary({

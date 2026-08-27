@@ -8,6 +8,7 @@ export * from "./normalized-intent-segment-contracts.js";
 export * from "./normalized-result-segment-contracts.js";
 export * from "./normalized-checkpoint-stage-contracts.js";
 export * from "./normalized-feed-readers.js";
+export * from "./normalized-maintenance.js";
 export * from "./normalized-surface-readers.js";
 export * from "./sqlite-worker-protocol.js";
 export * from "./actor-enrollment-verification.js";

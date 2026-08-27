@@ -119,7 +119,6 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     useAppStore.setState({
       syncConnected: true,
       isSyncing: false,
-      feeds: {},
     });
     useDebugStore.setState({
       docSnapshot: {
@@ -157,7 +156,6 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     useAppStore.setState({
       syncConnected: false,
       isSyncing: false,
-      feeds: {},
     });
     useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
     document.body.innerHTML = "";

@@ -286,21 +286,14 @@ test("authenticated YouTube login captures followed channels and recent videos",
 
   const stored = await page.evaluate(
     ({ expectedChannelId }) => {
-      const store = (window as unknown as Record<string, unknown>)
-        .__FREED_STORE__ as {
-        getState: () => {
-          accounts: Record<string, unknown>;
-          items: Array<{ globalId: string }>;
-        };
-      };
-      const state = store.getState();
       const sqlite = (window as unknown as Record<string, unknown>)
         .__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        accounts: Record<string, unknown>;
         items: Record<string, { __deleted?: boolean }>;
       };
       return {
         hasChannel: Boolean(
-          state.accounts[`social:youtube:${expectedChannelId}`],
+          sqlite.accounts[`social:youtube:${expectedChannelId}`],
         ),
         hasVideo: Boolean(
           sqlite.items["youtube:yt:video:dQw4w9WgXcQ"] &&

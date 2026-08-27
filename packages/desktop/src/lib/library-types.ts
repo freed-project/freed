@@ -44,6 +44,11 @@ export interface DocState {
   unreadCountByPlatform: Record<string, number>;
   totalItemCount: number;
   itemCountByPlatform: Record<string, number>;
+  rssFeedCount?: number;
+  enabledRssFeedCount?: number;
+  archivedItemCount?: number;
+  friendPersonCount?: number;
+  socialAccountCount?: number;
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;

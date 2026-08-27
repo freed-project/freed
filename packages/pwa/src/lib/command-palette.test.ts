@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person } from "@freed/shared";
+import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person, type RssFeed } from "@freed/shared";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreRssFeedPageRowV1,
@@ -99,23 +99,20 @@ function createItem(overrides: Partial<FeedItem> = {}): FeedItem {
 
 function createTestStore(overrides: Partial<BaseAppState> = {}) {
   return create<BaseAppState>((set) => ({
-    items: overrides.items ?? [],
     searchCorpusVersion: overrides.searchCorpusVersion ?? 0,
     libraryItemVersion: overrides.libraryItemVersion,
-    feeds: overrides.feeds ?? {},
-    persons: overrides.persons ?? {},
-    accounts: overrides.accounts ?? {},
-    friends: overrides.friends ?? {},
     preferences: overrides.preferences ?? createDefaultPreferences(),
-    feedUnreadCounts: overrides.feedUnreadCounts ?? {},
-    feedTotalCounts: overrides.feedTotalCounts ?? {},
     totalUnreadCount: overrides.totalUnreadCount ?? 0,
     unreadCountByPlatform: overrides.unreadCountByPlatform ?? {},
-    totalItemCount: overrides.totalItemCount ?? (overrides.items?.length ?? 0),
+    totalItemCount: overrides.totalItemCount ?? 0,
     itemCountByPlatform: overrides.itemCountByPlatform ?? {},
+    rssFeedCount: overrides.rssFeedCount ?? 0,
+    enabledRssFeedCount: overrides.enabledRssFeedCount ?? 0,
+    archivedItemCount: overrides.archivedItemCount ?? 0,
+    friendPersonCount: overrides.friendPersonCount ?? 0,
+    socialAccountCount: overrides.socialAccountCount ?? 0,
     totalArchivableCount: overrides.totalArchivableCount ?? 0,
     archivableCountByPlatform: overrides.archivableCountByPlatform ?? {},
-    archivableFeedCounts: overrides.archivableFeedCounts ?? {},
     mapFriendLocationCount: overrides.mapFriendLocationCount ?? 0,
     mapAllContentLocationCount: overrides.mapAllContentLocationCount ?? 0,
     isLoading: false,
@@ -131,92 +128,20 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     addItems: overrides.addItems ?? noopAsync,
     updateItem: overrides.updateItem ?? noopAsync,
     markAsRead: overrides.markAsRead ?? noopAsync,
-    markItemsAsRead:
-      overrides.markItemsAsRead
-      ?? (async (ids: string[]) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            ids.includes(item.globalId)
-              ? {
-                  ...item,
-                  userState: {
-                    ...item.userState,
-                    readAt: item.userState.readAt ?? Date.now(),
-                  },
-                }
-              : item,
-          ),
-        }));
-      }),
+    markItemsAsRead: overrides.markItemsAsRead ?? noopAsync,
     markAllAsRead: overrides.markAllAsRead ?? noopAsync,
-    toggleSaved:
-      overrides.toggleSaved
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, saved: !item.userState.saved } }
-              : item,
-          ),
-        }));
-      }),
-    toggleArchived:
-      overrides.toggleArchived
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, archived: !item.userState.archived } }
-              : item,
-          ),
-        }));
-      }),
-    archiveItems:
-      overrides.archiveItems
-      ?? (async (ids: string[]) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            ids.includes(item.globalId)
-              ? { ...item, userState: { ...item.userState, archived: true, archivedAt: Date.now() } }
-              : item,
-          ),
-        }));
-      }),
+    toggleSaved: overrides.toggleSaved ?? noopAsync,
+    toggleArchived: overrides.toggleArchived ?? noopAsync,
+    archiveItems: overrides.archiveItems ?? noopAsync,
     archiveAllReadUnsaved: overrides.archiveAllReadUnsaved ?? noopAsync,
-    unarchiveSavedItems:
-      overrides.unarchiveSavedItems
-      ?? (async () => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.userState.saved
-              ? { ...item, userState: { ...item.userState, archived: false } }
-              : item,
-          ),
-        }));
-      }),
-    deleteAllArchived:
-      overrides.deleteAllArchived
-      ?? (async () => {
-        set((state) => ({
-          items: state.items.filter((item) => !item.userState.archived || item.userState.saved),
-        }));
-      }),
+    unarchiveSavedItems: overrides.unarchiveSavedItems ?? noopAsync,
+    deleteAllArchived: overrides.deleteAllArchived ?? noopAsync,
     removeItem: overrides.removeItem ?? noopAsync,
     clearSampleData:
       overrides.clearSampleData
       ?? (async () => ({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
     addSampleLibraryData: overrides.addSampleLibraryData ?? noopAsync,
-    toggleLiked:
-      overrides.toggleLiked
-      ?? (async (id: string) => {
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.globalId === id
-              ? { ...item, userState: { ...item.userState, liked: !item.userState.liked } }
-              : item,
-          ),
-        }));
-      }),
+    toggleLiked: overrides.toggleLiked ?? noopAsync,
     addFeed: overrides.addFeed ?? noopAsync,
     removeFeed: overrides.removeFeed ?? noopAsync,
     renameFeed: overrides.renameFeed ?? noopAsync,
@@ -268,21 +193,24 @@ function createPlatform(store: PlatformConfig["store"], overrides: Partial<Platf
   };
 }
 
-function identityQueryFromStore(
-  store: PlatformConfig["store"],
+function identityQueryFixture(
+  state: {
+    accounts?: Record<string, Account>;
+    feeds?: Record<string, RssFeed>;
+    persons?: Record<string, Person>;
+  },
 ): LibraryCoreNormalizedQueryExecutor {
   return (async (request: { queryId: string; limit?: number }) => {
-    const state = store.getState() as Pick<
-      BaseAppState,
-      "accounts" | "feeds" | "persons"
-    >;
+    const accounts = state.accounts ?? {};
+    const feeds = state.feeds ?? {};
+    const persons = state.persons ?? {};
     const source = {
       generationId: "a".repeat(64),
       projectionRevision: 1,
       transitionSequence: 1,
     };
     if (request.queryId === "rss_feed_page_v1") {
-      const rows: LibraryCoreRssFeedPageRowV1[] = Object.values(state.feeds)
+      const rows: LibraryCoreRssFeedPageRowV1[] = Object.values(feeds)
         .map((feed) => ({
           activityCount: 0,
           enabled: feed.enabled !== false,
@@ -315,7 +243,7 @@ function identityQueryFromStore(
       };
     }
     if (request.queryId === "account_graph_page_v1") {
-      const rows: LibraryCoreAccountGraphRowV1[] = Object.values(state.accounts)
+      const rows: LibraryCoreAccountGraphRowV1[] = Object.values(accounts)
         .filter((account) => typeof account.externalId === "string")
         .map((account) => ({
           activityCount: 0,
@@ -336,7 +264,7 @@ function identityQueryFromStore(
           latestActivityAt: null,
           personId: account.personId ?? null,
           personName: account.personId
-            ? state.persons[account.personId]?.name ?? null
+            ? persons[account.personId]?.name ?? null
             : null,
           provider: account.provider,
           updatedAt: account.updatedAt,
@@ -748,16 +676,16 @@ describe("command palette", () => {
     const store = createTestStore({
       activeView: "friends",
       activeFilter: { platform: "rss", feedUrl: "https://alpha.example/feed.xml" },
-      feeds: {
+    });
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({ feeds: {
         "https://alpha.example/feed.xml": {
           url: "https://alpha.example/feed.xml",
           title: "Alpha Feed",
           enabled: true,
-        } as BaseAppState["feeds"][string],
-      },
-    });
-    const platform = createPlatform(store, {
-      queryLibraryCore: identityQueryFromStore(store),
+          trackUnread: false,
+        },
+      } }),
     });
     const render = renderNode(
       createElement(
@@ -862,15 +790,17 @@ describe("command palette", () => {
   });
 
   it("renders with malformed stored feed and account labels", async () => {
-    const store = createTestStore({
-      feeds: {
+    const store = createTestStore();
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({
+        feeds: {
         "https://broken.example/feed.xml": {
           url: "https://broken.example/feed.xml",
           title: undefined,
           enabled: true,
-        } as unknown as BaseAppState["feeds"][string],
-      },
-      accounts: {
+        } as unknown as RssFeed,
+        },
+        accounts: {
         "social:x:broken": {
           id: "social:x:broken",
           kind: "social",
@@ -882,10 +812,8 @@ describe("command palette", () => {
           createdAt: 1,
           updatedAt: 1,
         } as unknown as Account,
-      },
-    });
-    const platform = createPlatform(store, {
-      queryLibraryCore: identityQueryFromStore(store),
+        },
+      }),
     });
     const render = renderNode(
       createElement(
@@ -934,7 +862,6 @@ describe("command palette", () => {
     });
     const store = createTestStore({
       activeFilter: { platform: "instagram", socialContentFilter: "posts" },
-      items: [visibleReadPost, unreadPost, savedPost],
       archiveItems,
       toggleArchived,
     });
@@ -993,7 +920,6 @@ describe("command palette", () => {
     });
     const store = createTestStore({
       archiveItems,
-      items: [scopedItem],
       searchQuery: "cats",
     });
     const platform = createPlatform(store, { executeLibraryScopeAction });
@@ -1060,7 +986,6 @@ describe("command palette", () => {
   it("reads SearchJump facets and simple-scope counts without hydrating the Desktop corpus", async () => {
     const openBoundedFeedReader = vi.fn(boundedReaderFactory([]));
     const store = createTestStore({
-      items: [],
       totalArchivableCount: 9,
       totalUnreadCount: 17,
     });
@@ -1068,7 +993,7 @@ describe("command palette", () => {
       openBoundedFeedReader,
       readLibraryFacetSummary: async () => ({
         archivedCount: 3,
-        archivableCount: 0,
+        archivableCount: 9,
         contactAccountCount: 0,
         contactLinkedPersonCount: 0,
         enabledRssFeedCount: 0,
@@ -1095,8 +1020,8 @@ describe("command palette", () => {
         savedPlatformCount: 0,
         socialAccountCount: 0,
         tags: ["Architecture", "Research", "Secret"],
-        totalCount: 3,
-        unreadCount: 0,
+        totalCount: 17,
+        unreadCount: 17,
       }),
     });
     const render = renderNode(
@@ -1147,7 +1072,6 @@ describe("command palette", () => {
     const store = createTestStore({
       activeFilter: { platform: "rss" },
       archiveItems,
-      items: [],
     });
     const openBoundedFeedReader = vi.fn(boundedReaderFactory(scopedItems));
     const platform = createPlatform(store, {
@@ -1213,7 +1137,6 @@ describe("command palette", () => {
     const selectedItem = createItem({ globalId: "selected" });
     const store = createTestStore({
       activeFilter: { tags: ["Research"] },
-      items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
@@ -1275,11 +1198,6 @@ describe("command palette", () => {
     expect(
       document.querySelector("[data-testid='search-command-action-item-toggle-saved']"),
     ).toBeNull();
-
-    act(() => store.setState({ persons: {}, accounts: {}, friends: {} }));
-    await flush();
-    expect(openBoundedFeedReader).toHaveBeenCalledOnce();
-    expect(readLibraryItemDetail).toHaveBeenCalledOnce();
 
     act(() => store.setState({ libraryItemVersion: 2 }));
     expect(
@@ -1379,7 +1297,6 @@ describe("command palette", () => {
       .mockReturnValueOnce(first)
       .mockReturnValueOnce(second);
     const store = createTestStore({
-      items: [],
       libraryItemVersion: 1,
       selectedItemId: "selected",
     });
@@ -1471,21 +1388,8 @@ describe("command palette", () => {
   });
 
   it("shows destructive confirmation and refuses to run before the token matches", async () => {
-    const archivedItem = createItem({
-      globalId: "archived-1",
-      userState: {
-        hidden: false,
-        saved: false,
-        archived: true,
-        readAt: Date.now(),
-        liked: false,
-        tags: [],
-        highlights: [],
-      },
-    });
     const deleteArchived = vi.fn(async () => {});
     const store = createTestStore({
-      items: [archivedItem],
       deleteAllArchived: deleteArchived,
     });
     const platform = createPlatform(store, {
@@ -1568,16 +1472,16 @@ describe("command palette", () => {
   it("navigates to a feed destination and then applies explicit search without losing the feed scope", async () => {
     const store = createTestStore({
       activeView: "friends",
-      feeds: {
+    });
+    const platform = createPlatform(store, {
+      queryLibraryCore: identityQueryFixture({ feeds: {
         "https://alpha.example/feed.xml": {
           url: "https://alpha.example/feed.xml",
           title: "Alpha Feed",
           enabled: true,
-        } as BaseAppState["feeds"][string],
-      },
-    });
-    const platform = createPlatform(store, {
-      queryLibraryCore: identityQueryFromStore(store),
+          trackUnread: false,
+        },
+      } }),
     });
     const render = renderNode(
       createElement(

@@ -128,22 +128,15 @@ describe("Desktop store factory reset write boundary", () => {
     expect(automerge.docUpdatePreferences).not.toHaveBeenCalled();
   });
 
-  it("does not project optimistic state after local writers quiesce", async () => {
+  it("does not submit SQLite mutations after local writers quiesce", async () => {
     const { quiesceDesktopStoreForFactoryReset, useAppStore } = await import("./store");
-    const feed = {
-      url: "https://example.com/reset-feed.xml",
-      title: "Before reset",
-      enabled: true,
-      trackUnread: true,
-    };
-    useAppStore.setState({ feeds: { [feed.url]: feed } });
+    const feedUrl = "https://example.com/reset-feed.xml";
     await quiesceDesktopStoreForFactoryReset();
 
     await expect(
-      useAppStore.getState().renameFeed(feed.url, "After reset"),
+      useAppStore.getState().renameFeed(feedUrl, "After reset"),
     ).rejects.toThrow("Desktop store is quiesced for factory reset");
 
-    expect(useAppStore.getState().feeds[feed.url]?.title).toBe("Before reset");
     expect(automerge.docUpdateRssFeed).not.toHaveBeenCalled();
   });
 

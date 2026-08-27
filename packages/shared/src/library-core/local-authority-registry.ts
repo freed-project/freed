@@ -436,31 +436,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     sourceReferences: ["packages/desktop/src/lib/desktop-client-registration.ts"],
   },
   {
-    registryKey: "desktop-client-warning-acknowledgement",
-    soleOwner: "packages/desktop/src/lib/desktop-client-warning.ts",
-    locality: "device-local",
-    role: "control",
-    authoritative: true,
-    physicalStores: [{
-      kind: "local-storage",
-      platforms: ["desktop"],
-      locator: "origin:localStorage",
-      keys: ["freed-multiple-desktop-warning-ack-v1"],
-    }],
-    retention: { kind: "until-reset" },
-    backup: "exclude-device-local",
-    export: "exclude",
-    redaction: "not-applicable",
-    resetSemantics: "Factory reset removes the acknowledged client-set signature so setup can warn again.",
-    snapshot: "excluded",
-    migration: "retain-current-device-owner",
-    cutover: {
-      blocksCutover: false,
-      reason: "The acknowledgement is a local warning control and carries no library or provider authority.",
-    },
-    sourceReferences: ["packages/desktop/src/lib/desktop-client-warning.ts"],
-  },
-  {
     registryKey: "desktop-legal-consent",
     soleOwner: "packages/desktop/src/lib/legal-consent.ts",
     locality: "device-local",
@@ -2319,14 +2294,6 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       "freed-desktop-client-registration-v1",
       "freed-desktop-client-registration-v1.recovery.<capturedAtMs>",
     ],
-  },
-  {
-    registryKey: "desktop-client-warning-acknowledgement",
-    sourcePath: "packages/desktop/src/lib/desktop-client-warning.ts",
-    sourceTokens: [
-      'const DESKTOP_WARNING_ACK_KEY = "freed-multiple-desktop-warning-ack-v1"',
-    ],
-    registeredKeys: ["freed-multiple-desktop-warning-ack-v1"],
   },
   {
     registryKey: "desktop-legal-consent",

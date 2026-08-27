@@ -14,6 +14,7 @@ import {
 import { LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION } from "@freed/shared/library-core";
 
 import { usePlatform } from "../context/PlatformContext.js";
+import type { LibraryFacetSummary } from "../context/PlatformContext.js";
 import { getFeedActionCounts } from "../lib/feed-action-scope.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "./useLibraryItemDetail.js";
@@ -88,13 +89,8 @@ function compactScopeCounts(
   activeFilter: FilterOptions,
   identityMode: "friends" | "all_content",
   state: Pick<
-    BaseAppState,
-    | "archivableCountByPlatform"
-    | "archivableFeedCounts"
-    | "feedUnreadCounts"
-    | "totalArchivableCount"
-    | "totalUnreadCount"
-    | "unreadCountByPlatform"
+    LibraryFacetSummary,
+    "archivableCount" | "platformCounts" | "unreadCount"
   >,
 ): ScopeCounts | null {
   const filter = normalizeLibraryCoreFeedBrowseFilterV1(activeFilter);
@@ -112,25 +108,26 @@ function compactScopeCounts(
   }
 
   if (filter.feedUrl !== null) {
-    if (filter.platform !== null && filter.platform !== "rss") return null;
-    return {
-      archivableCount: state.archivableFeedCounts[filter.feedUrl] ?? 0,
-      unreadCount: state.feedUnreadCounts[filter.feedUrl] ?? 0,
-    };
+    return null;
   }
   if (filter.platform !== null) {
     // The canonical RSS filter includes any row carrying rssSource, even when
     // its provider platform is not "rss". Platform aggregates cannot prove
     // that mixed-schema membership, so the bounded scanner owns this scope.
     if (filter.platform === "rss") return null;
-    return {
-      archivableCount: state.archivableCountByPlatform[filter.platform] ?? 0,
-      unreadCount: state.unreadCountByPlatform[filter.platform] ?? 0,
-    };
+    const platform = state.platformCounts.find(
+      (candidate) => candidate.platform === filter.platform,
+    );
+    return platform
+      ? {
+          archivableCount: platform.archivableCount,
+          unreadCount: platform.unreadCount,
+        }
+      : EMPTY_COUNTS;
   }
   return {
-    archivableCount: state.totalArchivableCount,
-    unreadCount: state.totalUnreadCount,
+    archivableCount: state.archivableCount,
+    unreadCount: state.unreadCount,
   };
 }
 
@@ -160,47 +157,21 @@ export function useLibraryCommandPaletteReader({
     readLibraryFacetSummary,
     store,
   } = platform;
-  const archivableCountByPlatform = store(
-    (state) => state.archivableCountByPlatform,
-  );
-  const archivableFeedCounts = store((state) => state.archivableFeedCounts);
-  const feedUnreadCounts = store((state) => state.feedUnreadCounts);
-  const totalArchivableCount = store((state) => state.totalArchivableCount);
-  const totalUnreadCount = store((state) => state.totalUnreadCount);
-  const unreadCountByPlatform = store((state) => state.unreadCountByPlatform);
-  const compactInputs = useMemo(
-    () => ({
-      archivableCountByPlatform,
-      archivableFeedCounts,
-      feedUnreadCounts,
-      totalArchivableCount,
-      totalUnreadCount,
-      unreadCountByPlatform,
-    }),
-    [
-      archivableCountByPlatform,
-      archivableFeedCounts,
-      feedUnreadCounts,
-      totalArchivableCount,
-      totalUnreadCount,
-      unreadCountByPlatform,
-    ],
-  );
   const stableFilter = useStableFilter(activeFilter);
   const normalizedFilter = stableFilter.normalized;
   const normalizedFilterSignature = stableFilter.signature;
+  const libraryFacets = useLibraryFacetSummary(
+    sourceVersion,
+    enabled && Boolean(readLibraryFacetSummary),
+  );
   const compactCounts = useMemo(
-    () => compactScopeCounts(activeFilter, identityMode, compactInputs),
-    [activeFilter, compactInputs, identityMode],
+    () => compactScopeCounts(activeFilter, identityMode, libraryFacets),
+    [activeFilter, identityMode, libraryFacets],
   );
   const openScopeReader =
     identityMode === "friends"
       ? openBoundedFriendsFeedReader
       : openBoundedFeedReader;
-  const libraryFacets = useLibraryFacetSummary(
-    sourceVersion,
-    enabled && Boolean(readLibraryFacetSummary),
-  );
   const inputHasQuery = inputValue.trim().length > 0;
   const committedSearchHasQuery = searchQuery.trim().length > 0;
   const queryIsCommitted = inputValue.trim() === searchQuery.trim();

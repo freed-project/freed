@@ -6,6 +6,8 @@ import {
   readLibraryCoreRssFeedV1,
   scanLibraryCoreContentFetchCandidatesV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
+  scanLibraryCoreAccountRowsV1,
+  scanLibraryCorePersonRowsV1,
   scanLibraryCoreRssFeedsV1,
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
@@ -253,6 +255,96 @@ describe("cross-platform normalized feed readers", () => {
         limit: 128,
         queryId: "rss_feed_page_v1",
       }),
+    );
+  });
+
+  it("streams Person and Account maintenance rows through bounded identity pages", async () => {
+    const person = {
+      avatarUrl: null,
+      careLevel: 5,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      id: "person-ada",
+      lastReachOutAt: 12,
+      name: "Ada",
+      reachOutIntervalDays: 30,
+      relationshipStatus: "friend",
+      updatedAt: 20,
+    };
+    const account = {
+      activityCount: 3,
+      avatarUrl: null,
+      discoveredFrom: "captured_item",
+      displayName: "Ada",
+      externalId: "ada",
+      firstSeenAt: 1,
+      followRosterActive: true,
+      graphPinned: false,
+      graphUpdatedAt: null,
+      graphX: null,
+      graphY: null,
+      handle: "ada",
+      id: "account-ada",
+      kind: "social",
+      lastSeenAt: 19,
+      latestActivityAt: 18,
+      personId: "person-ada",
+      personName: "Ada",
+      provider: "x",
+      updatedAt: 20,
+    };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ nextCursor: "person-next", rows: [person] })
+      .mockResolvedValueOnce({ nextCursor: null, rows: [] })
+      .mockResolvedValueOnce({ nextCursor: "account-next", rows: [account] })
+      .mockResolvedValueOnce({ nextCursor: null, rows: [] }) as unknown as
+      LibraryCoreNormalizedQueryExecutor;
+    const persons: string[][] = [];
+    const accounts: string[][] = [];
+
+    await scanLibraryCorePersonRowsV1(
+      { query, randomId: () => "test" },
+      (rows) => {
+        persons.push(rows.map((row) => row.id));
+        return "continue";
+      },
+    );
+    await scanLibraryCoreAccountRowsV1(
+      { query, randomId: () => "test" },
+      (rows) => {
+        accounts.push(rows.map((row) => row.id));
+        return "continue";
+      },
+    );
+
+    expect(persons).toEqual([["person-ada"], []]);
+    expect(accounts).toEqual([["account-ada"], []]);
+    expect(query).toHaveBeenNthCalledWith(1, {
+      cancellationId: "person-maintenance-cancel:test",
+      cursor: null,
+      limit: 128,
+      queryId: "person_graph_page_v1",
+      readerSessionId: "person-maintenance-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: "person-next" }),
+    );
+    expect(query).toHaveBeenNthCalledWith(3, {
+      cancellationId: "account-maintenance-cancel:test",
+      cursor: null,
+      limit: 128,
+      queryId: "account_graph_page_v1",
+      readerSessionId: "account-maintenance-reader:test",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ cursor: "account-next" }),
     );
   });
 

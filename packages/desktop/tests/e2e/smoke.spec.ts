@@ -1030,27 +1030,6 @@ test("an appearance change cannot replay a stale synced sidebar mode", async ({ 
   })).toBe(1);
 });
 
-test("a newly detected Freed Desktop peer warns outside Settings", async ({ app, page }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      setState: (patch: Record<string, unknown>) => void;
-    };
-    store.setState({
-      desktopClientIds: ["desktop-current", "desktop-peer"],
-    });
-  });
-
-  await expect(
-    page.getByText("More than one Freed Desktop installation is registered.", { exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Review Sync" }).click();
-  await expect(page.getByRole("heading", { name: "Sync", exact: true })).toBeVisible();
-  await expect(page.getByTestId("multiple-desktop-client-warning")).toBeVisible();
-});
-
 test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

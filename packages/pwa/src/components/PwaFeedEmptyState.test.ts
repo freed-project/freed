@@ -52,10 +52,6 @@ describe("PwaFeedEmptyState", () => {
       syncConnected: true,
       isSyncing: false,
       activeFilter: {},
-      feeds: {},
-      items: [],
-      persons: {},
-      accounts: {},
     });
     useDebugStore.setState({ cloudProviders: null });
   });
@@ -66,10 +62,6 @@ describe("PwaFeedEmptyState", () => {
       syncConnected: false,
       isSyncing: false,
       activeFilter: {},
-      feeds: {},
-      items: [],
-      persons: {},
-      accounts: {},
     });
     useDebugStore.setState({ cloudProviders: null });
     document.body.innerHTML = "";
@@ -161,15 +153,6 @@ describe("PwaFeedEmptyState", () => {
     const feedUrl = "https://example.com/feed.xml";
     useAppStore.setState({
       activeFilter: { feedUrl },
-      feeds: {
-        [feedUrl]: {
-          enabled: true,
-          lastFetched: Date.now(),
-          title: "Stale renderer Feed",
-          trackUnread: true,
-          url: feedUrl,
-        },
-      },
       searchCorpusVersion: 7,
     });
     const queryLibraryCore = vi.fn(async () => ({

@@ -173,26 +173,52 @@ describe("capture factory reset boundary", () => {
   });
 
   it("does not start another RSS batch after reset begins", async () => {
-    mocks.state.feeds = Object.fromEntries(
-      Array.from({ length: 6 }, (_, index) => {
+    const feeds = Array.from({ length: 6 }, (_, index) => {
         const number = index + 1;
-        return [
-          `feed-${number.toLocaleString()}`,
-          {
+        return {
             url: `https://example.com/feed-${number.toLocaleString()}.xml`,
             title: `Feed ${number.toLocaleString()}`,
             enabled: true,
             trackUnread: false,
-          },
-        ];
-      }),
-    );
+          };
+      });
     const pendingFetches: Array<(html: string) => void> = [];
     mocks.invoke.mockImplementation((command: string, args?: unknown) => {
       if (command === "query_normalized_library") {
         const request = (args as {
           request?: { queryId?: string; schemaVersion?: number };
         })?.request;
+        if (request?.queryId === "rss_feed_page_v1") {
+          return Promise.resolve({
+            layoutRevision: 0,
+            nextCursor: null,
+            queryId: request.queryId,
+            rows: feeds.map((feed) => ({
+              activityCount: 0,
+              enabled: true,
+              folder: null,
+              imageUrl: null,
+              lastFetched: null,
+              latestActivityAt: null,
+              pollInterval: null,
+              sampleBatchId: null,
+              sampleGeneratedAt: null,
+              sampleGeneratorVersion: null,
+              siteUrl: null,
+              title: feed.title,
+              trackUnread: false,
+              unreadCount: 0,
+              updatedAt: 1,
+              url: feed.url,
+            })),
+            schemaVersion: request.schemaVersion,
+            source: {
+              generationId: "d".repeat(64),
+              projectionRevision: 0,
+              transitionSequence: 0,
+            },
+          });
+        }
         if (request?.queryId !== "background_item_page_v1") {
           throw new Error(`Unexpected normalized query: ${request?.queryId}`);
         }
@@ -213,13 +239,13 @@ describe("capture factory reset boundary", () => {
 
     const { refreshScheduledRssFeeds } = await import("./capture");
     const refreshing = refreshScheduledRssFeeds();
-    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(5));
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(6));
 
     mocks.resetActive = true;
     for (const resolve of pendingFetches) resolve(FEED_XML);
     await refreshing;
 
-    expect(mocks.invoke).toHaveBeenCalledTimes(6);
+    expect(mocks.invoke).toHaveBeenCalledTimes(7);
     expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_url", {
       url: "https://example.com/feed-6.xml",
     });

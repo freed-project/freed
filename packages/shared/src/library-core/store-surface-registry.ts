@@ -12,6 +12,7 @@ export type StoreSurfaceClassification =
   | "legacy_compatibility"
   | "legacy_unbounded"
   | "lifecycle"
+  | "sqlite_mutation"
   | "ui_local";
 
 interface StoreSurfaceDefinition {
@@ -61,165 +62,115 @@ const stateSurface = (
  * Exhaustive inventory of the current shared Zustand contract.
  *
  * `satisfies StoreSurfaceRegistry` makes a new BaseAppState key fail typecheck
- * until it is classified. Every persisted mutation remains legacy until its
- * blocked successor operation has a closed payload, field algebra, materializer,
- * and activation receipt.
+ * until it is classified. Product writes may remain as UI conveniences only
+ * when they terminate in a registered SQLite mutation or frozen scope action.
  */
 export const BASE_APP_STORE_SURFACE_REGISTRY = {
-  accounts: stateSurface("legacy_unbounded", {
-    successorOperationIds: [],
-    successorQueryIds: ["account_detail_v1", "persons_graph_v1"],
-    activationBlocker: "complete account record is retained in renderer state",
-  }),
   acknowledgeSavedFeedPresentationPatch: functionSurface("ui_local"),
   activeFilter: stateSurface("ui_local"),
   activeView: stateSurface("ui_local"),
-  addFeed: functionSurface("legacy_compatibility", {
+  addFeed: functionSurface("sqlite_mutation", {
     successorOperationIds: ["rss_feed_upsert"],
     successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and its successor payload is unresolved",
+    activationBlocker: null,
   }),
-  addItems: functionSurface("legacy_unbounded", {
+  addItems: functionSurface("sqlite_mutation", {
     successorOperationIds: [
       "feed_item_capture_upsert",
       "feed_items_deduplicate_frozen",
     ],
     successorQueryIds: [],
-    activationBlocker:
-      "caller-supplied capture array has no hard member or byte bound, provider, import, and user-capture authority are not separated, and the conditional legacy duplicate-removal contract is frozen",
+    activationBlocker: null,
   }),
-  addSampleLibraryData: functionSurface("legacy_unbounded", {
+  addSampleLibraryData: functionSurface("sqlite_mutation", {
     successorOperationIds: ["sample_library_import"],
     successorQueryIds: [],
-    activationBlocker:
-      "multi-root sample payload has no hard member or byte bound",
+    activationBlocker: null,
   }),
-  archiveAllReadUnsaved: functionSurface("legacy_unbounded", {
+  archiveAllReadUnsaved: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_archive_read_unsaved_frozen"],
     successorQueryIds: [],
-    activationBlocker:
-      "current implementation scans a mutable full document instead of frozen membership",
+    activationBlocker: null,
   }),
-  archiveItems: functionSurface("legacy_unbounded", {
+  archiveItems: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_archive_frozen"],
     successorQueryIds: [],
-    activationBlocker: "caller enumerates an unbounded item-id set",
+    activationBlocker: null,
   }),
+  archivedItemCount: stateSurface("derived"),
   archivableCountByPlatform: stateSurface("derived"),
-  archivableFeedCounts: stateSurface("derived"),
-  clearSampleData: functionSurface("legacy_unbounded", {
+  clearSampleData: functionSurface("sqlite_mutation", {
     successorOperationIds: ["sample_library_remove"],
     successorQueryIds: [],
-    activationBlocker: "current implementation scans every synchronized root",
+    activationBlocker: null,
   }),
-  deleteAllArchived: functionSurface("legacy_unbounded", {
+  deleteAllArchived: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_delete_archived_frozen"],
     successorQueryIds: [],
-    activationBlocker: "current implementation scans mutable corpus membership",
+    activationBlocker: null,
   }),
   error: stateSurface("lifecycle"),
-  feedTotalCounts: stateSurface("derived"),
-  feedUnreadCounts: stateSurface("derived"),
-  feeds: stateSurface("legacy_unbounded", {
-    successorOperationIds: [],
-    successorQueryIds: ["feed_subscription_page_v1"],
-    activationBlocker:
-      "complete RSS subscription map is retained in renderer state",
-  }),
-  friends: stateSurface("legacy_unbounded", {
-    successorOperationIds: [],
-    successorQueryIds: ["persons_graph_v1"],
-    activationBlocker:
-      "deprecated Friend projection duplicates the complete Person and Account corpora in renderer state",
-    deprecatedAliasFor: "persons",
-  }),
-  initialize: functionSurface("legacy_unbounded", {
+  enabledRssFeedCount: stateSurface("derived"),
+  friendPersonCount: stateSurface("derived"),
+  initialize: functionSurface("lifecycle", {
     successorOperationIds: [],
     successorQueryIds: [],
-    activationBlocker:
-      "initialization decodes and hydrates the complete legacy document before bounded Library Core queries exist",
+    activationBlocker: null,
   }),
   isInitialized: stateSurface("lifecycle"),
   isLoading: stateSurface("lifecycle"),
   isSyncing: stateSurface("lifecycle"),
   itemCountByPlatform: stateSurface("derived"),
-  items: stateSurface("legacy_unbounded", {
-    successorOperationIds: [],
-    successorQueryIds: [
-      "feed_browse_page_v2",
-      "feed_browse_page_v3",
-      "feed_page_v1",
-      "item_detail_v1",
-      "account_timeline_v1",
-      "person_timeline_v1",
-      "persons_graph_v1",
-      "saved_analytics_v1",
-      "search_page_v1",
-    ],
-    activationBlocker:
-      "ranked feed array retains a corpus-sized renderer projection",
-  }),
   mapAllContentLocationCount: stateSurface("derived"),
   mapFriendLocationCount: stateSurface("derived"),
-  markAllAsRead: functionSurface("legacy_unbounded", {
+  markAllAsRead: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_read_frozen", "provider_intent"],
     successorQueryIds: [],
-    activationBlocker:
-      "current implementation resolves mutable corpus membership and derives provider seen actions from ordinary read state",
+    activationBlocker: null,
   }),
-  markAsRead: functionSurface("legacy_compatibility", {
+  markAsRead: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_read_assignment", "provider_intent"],
     successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and derives a provider seen action from ordinary read state",
+    activationBlocker: null,
   }),
-  markItemsAsRead: functionSurface("legacy_unbounded", {
+  markItemsAsRead: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_read_frozen", "provider_intent"],
     successorQueryIds: [],
-    activationBlocker:
-      "caller enumerates an unbounded item-id set and derives provider seen actions from ordinary read state",
+    activationBlocker: null,
   }),
   openMapForPerson: functionSurface("ui_local"),
   pendingMatchCount: stateSurface("derived"),
-  persons: stateSurface("legacy_unbounded", {
-    successorOperationIds: [],
-    successorQueryIds: ["person_detail_v1", "persons_graph_v1"],
-    activationBlocker: "complete Person map is retained in renderer state",
-  }),
-  preferences: stateSurface("legacy_unbounded", {
+  preferences: stateSurface("derived", {
     successorOperationIds: [],
     successorQueryIds: ["preferences_snapshot_v1"],
-    activationBlocker:
-      "complete preferences include dynamic maps without closed nested bounds",
+    activationBlocker: null,
   }),
-  removeAllFeeds: functionSurface("legacy_unbounded", {
+  removeAllFeeds: functionSurface("sqlite_mutation", {
     successorOperationIds: [
       "rss_feeds_remove_keep_items",
       "rss_feeds_remove_with_items",
     ],
     successorQueryIds: [],
-    activationBlocker: "boolean parameter conceals a corpus-wide cascade",
+    activationBlocker: null,
   }),
-  removeFeed: functionSurface("legacy_compatibility", {
+  removeFeed: functionSurface("sqlite_mutation", {
     successorOperationIds: [
       "rss_feed_remove_keep_items",
       "rss_feed_remove_with_items",
     ],
     successorQueryIds: [],
-    activationBlocker: "includeItems boolean conceals a relationship cascade",
+    activationBlocker: null,
   }),
-  removeItem: functionSurface("legacy_compatibility", {
+  removeItem: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_remove"],
     successorQueryIds: [],
-    activationBlocker:
-      "current method physically deletes from legacy Automerge without a tombstone receipt",
+    activationBlocker: null,
   }),
-  renameFeed: functionSurface("legacy_compatibility", {
+  rssFeedCount: stateSurface("derived"),
+  renameFeed: functionSurface("sqlite_mutation", {
     successorOperationIds: ["rss_feed_title_assignment"],
     successorQueryIds: [],
-    activationBlocker:
-      "current method writes legacy Automerge and its successor payload is unresolved",
+    activationBlocker: null,
   }),
   searchCorpusVersion: stateSurface("derived"),
   libraryItemVersion: stateSurface("derived"),
@@ -251,41 +202,39 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
   setSelectedItem: functionSurface("ui_local"),
   setSelectedPerson: functionSurface("ui_local"),
   setSyncing: functionSurface("lifecycle"),
-  toggleArchived: functionSurface("legacy_compatibility", {
+  socialAccountCount: stateSurface("derived"),
+  toggleArchived: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_archive_assignment"],
     successorQueryIds: [],
-    activationBlocker: "toggle is not a replay-idempotent authority command",
+    activationBlocker: null,
   }),
-  toggleLiked: functionSurface("legacy_compatibility", {
+  toggleLiked: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_like_assignment", "provider_intent"],
     successorQueryIds: [],
-    activationBlocker:
-      "toggle is not replay-idempotent and current item state directly feeds the provider outbox",
+    activationBlocker: null,
   }),
-  toggleSaved: functionSurface("legacy_compatibility", {
+  toggleSaved: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_saved_assignment"],
     successorQueryIds: [],
-    activationBlocker: "toggle is not a replay-idempotent authority command",
+    activationBlocker: null,
   }),
   totalArchivableCount: stateSurface("derived"),
   totalItemCount: stateSurface("derived"),
   totalUnreadCount: stateSurface("derived"),
-  unarchiveSavedItems: functionSurface("legacy_unbounded", {
+  unarchiveSavedItems: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_items_unarchive_saved_frozen"],
     successorQueryIds: [],
-    activationBlocker: "current repair scans mutable corpus membership",
+    activationBlocker: null,
   }),
   unreadCountByPlatform: stateSurface("derived"),
-  updateItem: functionSurface("legacy_compatibility", {
+  updateItem: functionSurface("sqlite_mutation", {
     successorOperationIds: ["feed_item_capture_upsert"],
     successorQueryIds: [],
-    activationBlocker:
-      "generic Partial<FeedItem> merge has no closed authoritative payload or separated capture-source authority",
+    activationBlocker: null,
   }),
-  updatePreferences: functionSurface("legacy_compatibility", {
+  updatePreferences: functionSurface("sqlite_mutation", {
     successorOperationIds: ["preferences_leaf_assignment"],
     successorQueryIds: [],
-    activationBlocker:
-      "generic nested merge cannot distinguish omission from clear or deletion",
+    activationBlocker: null,
   }),
 } as const satisfies StoreSurfaceRegistry;

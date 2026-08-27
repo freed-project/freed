@@ -309,6 +309,13 @@ are deleted. Identity writes exist only as closed registered SQLite operations
 through the platform boundary. Development fixtures call the same PWA SQLite
 runtime directly instead of reviving a store mutation path.
 
+The renderer store also exposes no complete FeedItem, RSS Feed, Person,
+Account, or Friend collection and no per-feed count dictionary. Typed SQLite
+mutations return invalidations that reopen only affected bounded query windows.
+Maintenance work traverses source-fenced SQLite pages outside React and retains
+only the mutation targets required by its registered operation. There is no
+whole-corpus optimistic projector or shell-shaped mutation preview.
+
 PWA empty-feed status reads one selected RSS Feed through
 `rss_feed_detail_v1`. PWA sync status reads the latest successful RSS refresh
 from `library_facet_summary_v1`. Neither surface reads or retains the complete

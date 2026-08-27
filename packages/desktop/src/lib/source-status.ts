@@ -1,4 +1,3 @@
-import type { RssFeed } from "@freed/shared";
 import type { SidebarSourceStatusSummary } from "@freed/ui/context";
 import type { ProviderHealthDebugState } from "@freed/ui/lib/debug-store";
 import {
@@ -20,7 +19,7 @@ type ProviderAuthState = {
 type SocialProviderSourceId = Exclude<keyof ProviderSyncCountsShape, "rss">;
 
 export interface SourceStatusInput {
-  feeds: Record<string, RssFeed>;
+  enabledRssFeedCount: number;
   providerSyncCounts: ProviderSyncCountsShape;
   itemCountByPlatform: Record<string, number>;
   xAuth?: ProviderAuthState;
@@ -92,10 +91,11 @@ export function getDesktopSourceStatus(
   health: ProviderHealthDebugState | null,
 ): SidebarSourceStatusSummary | null {
   if (sourceId === "rss") {
-    const enabledFeeds = Object.values(desktopState.feeds).filter((feed) => feed.enabled);
-    const enabledCount = enabledFeeds.length;
-    const failingFeedUrls = new Set((health?.failingRssFeeds ?? []).map((feed) => feed.feedUrl));
-    const failingCount = enabledFeeds.filter((feed) => failingFeedUrls.has(feed.url)).length;
+    const enabledCount = desktopState.enabledRssFeedCount;
+    const failingCount = Math.min(
+      enabledCount,
+      health?.failingRssFeeds.length ?? 0,
+    );
     const syncing = (desktopState.providerSyncCounts.rss ?? 0) > 0;
 
     if (enabledCount === 0 && !syncing) {

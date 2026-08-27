@@ -12,21 +12,6 @@ import {
   personFromLegacyFriend,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
-import {
-  projectArchiveAllReadUnsaved,
-  projectArchiveItems,
-  projectMarkAllAsRead,
-  projectMarkItemsAsRead,
-  projectRemoveItem,
-  projectRenameFeed,
-  projectToggleArchived,
-  projectToggleLiked,
-  projectToggleSaved,
-  projectUpdateItem,
-  projectUpdatePreferences,
-  rollbackOptimisticPatch,
-  type OptimisticPatch,
-} from "@freed/shared/optimistic-state";
 import type {
   BaseAppState,
   Friend,
@@ -51,7 +36,6 @@ import {
   migrateLegacyDeviceAIPreferences,
   setDeviceAIPreferences,
 } from "@freed/ui/lib/device-ai-preferences";
-import { migrateLegacyDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
   clearPwaLibraryCoreSampleData,
@@ -74,6 +58,7 @@ import {
   enqueuePwaLibraryCoreUserStateToggle,
   ensurePwaLibraryCoreLocalSampleState,
   initializePwaLibraryCoreState,
+  readPwaLibraryCoreItemDetail,
   subscribePwaLibraryCoreState,
 } from "./library-core-runtime";
 import {
@@ -108,22 +93,40 @@ interface AppState extends BaseAppState {
   setSyncConnected: (connected: boolean) => void;
 }
 
+function applyDefinedUpdate<T extends object>(current: T, updates: Partial<T>): T {
+  const next: Record<string, unknown> = {
+    ...(current as unknown as Record<string, unknown>),
+  };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  }
+  return next as T;
+}
+
+function isMergeableObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferenceUpdate<T extends object>(current: T, update: Partial<T>): T {
+  const next = { ...current };
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeableObject(currentValue) && isMergeableObject(updateValue)
+        ? mergePreferenceUpdate<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+  return next;
+}
+
 /**
  * Shallow-compare two string-keyed number maps.
  * Preserves object identity on count maps so Zustand selectors don't trigger
  * re-renders when values haven't changed.
  */
-function optimisticBefore(
-  state: AppState,
-  patch: OptimisticPatch,
-): OptimisticPatch {
-  const before: OptimisticPatch = {};
-  for (const key of Object.keys(patch) as Array<keyof OptimisticPatch>) {
-    before[key] = state[key] as never;
-  }
-  return before;
-}
-
 function optimisticMutationTestFailure(source: string): Error | null {
   if (import.meta.env.VITE_TEST_TAURI !== "1") return null;
   const hook = (
@@ -151,11 +154,22 @@ function assertPwaStoreWritable(
   }
 }
 
-async function runOptimisticMutation(
+function invalidateLibraryWindows(
+  getState: () => AppState,
+  setState: (patch: Partial<AppState>) => void,
+): void {
+  const current = getState();
+  setState({
+    libraryItemVersion: (current.libraryItemVersion ?? 0) + 1,
+    savedFeedVersion: (current.savedFeedVersion ?? 0) + 1,
+    searchCorpusVersion: current.searchCorpusVersion + 1,
+  });
+}
+
+async function runSqliteMutation(
   getState: () => AppState,
   setState: (patch: Partial<AppState>) => void,
   source: string,
-  project: (state: AppState) => OptimisticPatch | null,
   task: () => Promise<void>,
   options: {
     allowLibraryCoreIntent?: boolean;
@@ -166,30 +180,6 @@ async function runOptimisticMutation(
   assertPwaStoreWritable({
     allowLibraryCoreIntent: options.allowLibraryCoreIntent,
   });
-  const projected = project(getState());
-  if (!projected) {
-    if (options.waitForPersistence === false) {
-      void task().catch((error) => {
-        if (options.recordFailure !== false) {
-          const detail = error instanceof Error ? error.message : String(error);
-          recordRuntimeError({ source, error, fatal: false });
-          recordBugReportEvent(
-            source,
-            "error",
-            "Optimistic mutation failed",
-            detail,
-          );
-        }
-      });
-      return;
-    }
-    await task();
-    return;
-  }
-
-  const before = optimisticBefore(getState(), projected);
-  setState(projected as Partial<AppState>);
-
   const persist = async () => {
     try {
       const testFailure = optimisticMutationTestFailure(source);
@@ -198,18 +188,15 @@ async function runOptimisticMutation(
         throw testFailure;
       }
       await task();
+      invalidateLibraryWindows(getState, setState);
     } catch (error) {
-      const rollback = rollbackOptimisticPatch(getState(), before, projected);
-      if (rollback) {
-        setState(rollback as Partial<AppState>);
-      }
       if (options.recordFailure !== false) {
         const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source, error, fatal: false });
         recordBugReportEvent(
           source,
           "error",
-          "Optimistic mutation failed",
+          "SQLite mutation failed",
           detail,
         );
       }
@@ -246,22 +233,19 @@ registerPwaFactoryResetQuiesceHandler("store", stopPwaStoreForFactoryReset, 20);
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
-  items: [],
   searchCorpusVersion: 0,
-  feeds: {},
-  persons: {},
-  accounts: {},
-  friends: {},
   preferences: createDefaultPreferences(),
-  feedUnreadCounts: {},
-  feedTotalCounts: {},
   totalUnreadCount: 0,
   unreadCountByPlatform: {},
   totalItemCount: 0,
   itemCountByPlatform: {},
+  rssFeedCount: 0,
+  enabledRssFeedCount: 0,
+  archivedItemCount: 0,
+  friendPersonCount: 0,
+  socialAccountCount: 0,
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
-  archivableFeedCounts: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
   syncConnected: false,
@@ -297,7 +281,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         migrateLegacyDeviceDisplayPreferences(state.preferences.display);
         migrateLegacyThemePreference(state.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(state.preferences.ai);
-        migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
         documentSubscriptionTeardown?.();
         documentSubscriptionTeardown = subscribePwaLibraryCoreState(
           (next) => {
@@ -336,30 +319,38 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions — errors propagate to callers so UI can surface them
   addItems: async (items) => {
-    await enqueuePwaLibraryCoreFeedItemCaptures(items);
+    await runSqliteMutation(
+      get,
+      set,
+      "pwa:addItems",
+      () => enqueuePwaLibraryCoreFeedItemCaptures(items),
+      { allowLibraryCoreIntent: true },
+    );
   },
 
   updateItem: async (id, update) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:updateItem",
-      (state) => projectUpdateItem(state, id, update),
-      () => {
-        const item = get().items.find((candidate) => candidate.globalId === id);
+      async () => {
+        const item = await readPwaLibraryCoreItemDetail(id);
         if (!item) throw new Error("Feed item is unavailable");
-        return enqueuePwaLibraryCoreFeedItemCapture(item);
+        const next = applyDefinedUpdate(item, update);
+        if (update.userState) {
+          next.userState = applyDefinedUpdate(item.userState, update.userState);
+        }
+        await enqueuePwaLibraryCoreFeedItemCapture(next);
       },
       { allowLibraryCoreIntent: true },
     );
   },
 
   markAsRead: async (id) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:readState",
-      (state) => projectMarkItemsAsRead(state, [id]),
       () => enqueuePwaLibraryCoreReadAssignments([id]),
       { allowLibraryCoreIntent: true, recordFailure: false },
     );
@@ -381,11 +372,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
 
     try {
-      await runOptimisticMutation(
+      await runSqliteMutation(
         get,
         set,
         "pwa:readState",
-        (state) => projectMarkItemsAsRead(state, nextIds),
         () => enqueuePwaLibraryCoreReadAssignments(nextIds),
         { allowLibraryCoreIntent: true, recordFailure: false },
       );
@@ -412,24 +402,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllAsRead: async (platform) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:markAllAsRead",
-      (state) => projectMarkAllAsRead(state, platform),
       () => enqueuePwaLibraryCoreMarkAllAsRead(platform),
       { allowLibraryCoreIntent: true },
     );
   },
 
   toggleSaved: async (id) => {
-    const item = get().items.find((candidate) => candidate.globalId === id);
+    const item = await readPwaLibraryCoreItemDetail(id);
     const shouldPin = !!item && !item.userState.saved;
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:toggleSaved",
-      (state) => projectToggleSaved(state, id),
       () => enqueuePwaLibraryCoreUserStateToggle(id, "saved"),
       { allowLibraryCoreIntent: true },
     );
@@ -445,70 +433,79 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleArchived: async (id) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:toggleArchived",
-      (state) => projectToggleArchived(state, id),
       () => enqueuePwaLibraryCoreUserStateToggle(id, "archived"),
       { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
 
   archiveItems: async (ids) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:archiveItems",
-      (state) => projectArchiveItems(state, ids),
       () => enqueuePwaLibraryCoreArchiveItems(ids),
       { allowLibraryCoreIntent: true },
     );
   },
 
   toggleLiked: async (id) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:toggleLiked",
-      (state) => projectToggleLiked(state, id),
       () => enqueuePwaLibraryCoreUserStateToggle(id, "liked"),
       { allowLibraryCoreIntent: true, waitForPersistence: false },
     );
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:archiveAllReadUnsaved",
-      (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
       () => enqueuePwaLibraryCoreArchiveAllReadUnsaved(platform, feedUrl),
       { allowLibraryCoreIntent: true },
     );
   },
 
   unarchiveSavedItems: async () => {
-    await enqueuePwaLibraryCoreUnarchiveSavedItems();
+    await runSqliteMutation(
+      get,
+      set,
+      "pwa:unarchiveSavedItems",
+      enqueuePwaLibraryCoreUnarchiveSavedItems,
+      { allowLibraryCoreIntent: true },
+    );
   },
 
   deleteAllArchived: async () => {
-    await enqueuePwaLibraryCoreDeleteAllArchived();
+    await runSqliteMutation(
+      get,
+      set,
+      "pwa:deleteAllArchived",
+      enqueuePwaLibraryCoreDeleteAllArchived,
+      { allowLibraryCoreIntent: true },
+    );
   },
 
   removeItem: async (id) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:removeItem",
-      (state) => projectRemoveItem(state, id),
       () => enqueuePwaLibraryCoreFeedItemRemove(id),
       { allowLibraryCoreIntent: true },
     );
   },
 
   clearSampleData: async () => {
-    return clearPwaLibraryCoreSampleData();
+    const summary = await clearPwaLibraryCoreSampleData();
+    invalidateLibraryWindows(get, set);
+    return summary;
   },
 
   addSampleLibraryData: async (data: SampleLibraryData) => {
@@ -523,30 +520,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     await enqueuePwaLibraryCoreFeedItemCaptures(data.items);
     await enqueuePwaLibraryCorePersonUpserts(persons);
     await enqueuePwaLibraryCoreAccountUpserts(accounts);
+    invalidateLibraryWindows(get, set);
   },
 
   // Feed actions
   addFeed: async (feed) => {
-    await enqueuePwaLibraryCoreRssFeedUpsert(feed);
+    await runSqliteMutation(
+      get,
+      set,
+      "pwa:addFeed",
+      () => enqueuePwaLibraryCoreRssFeedUpsert(feed),
+      { allowLibraryCoreIntent: true },
+    );
   },
 
   removeFeed: async (url, options?: RemoveFeedOptions) => {
-    await enqueuePwaLibraryCoreRssFeedRemove(
-      url,
-      options?.includeItems ?? false,
+    await runSqliteMutation(
+      get,
+      set,
+      "pwa:removeFeed",
+      () =>
+        enqueuePwaLibraryCoreRssFeedRemove(
+          url,
+          options?.includeItems ?? false,
+        ),
+      { allowLibraryCoreIntent: true },
     );
   },
 
   removeAllFeeds: async (includeItems) => {
     await removeAllPwaLibraryCoreRssFeeds(includeItems);
+    invalidateLibraryWindows(get, set);
   },
 
   renameFeed: async (url, title) => {
-    await runOptimisticMutation(
+    await runSqliteMutation(
       get,
       set,
       "pwa:renameFeed",
-      (state) => projectRenameFeed(state, url, title),
       () => enqueuePwaLibraryCoreRssFeedTitleAssignment(url, title),
       { allowLibraryCoreIntent: true },
     );
@@ -569,14 +580,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
     if (Object.keys(syncedUpdate).length === 0) return;
-    await runOptimisticMutation(
-      get,
-      set,
-      "pwa:updatePreferences",
-      (state) => projectUpdatePreferences(state, syncedUpdate),
-      () => enqueuePwaLibraryCorePreferencesPatch(syncedUpdate),
-      { allowLibraryCoreIntent: true },
-    );
+    const currentPreferences = get().preferences;
+    const nextPreferences = mergePreferenceUpdate(currentPreferences, syncedUpdate);
+    set({ preferences: nextPreferences });
+    try {
+      await runSqliteMutation(
+        get,
+        set,
+        "pwa:updatePreferences",
+        () => enqueuePwaLibraryCorePreferencesPatch(syncedUpdate),
+        { allowLibraryCoreIntent: true },
+      );
+    } catch (error) {
+      set({ preferences: currentPreferences });
+      throw error;
+    }
   },
 
   // Sync actions

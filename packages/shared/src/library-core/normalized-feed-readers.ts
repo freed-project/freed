@@ -47,10 +47,16 @@ import type {
   LibraryCoreSqliteQueryResponseFor,
 } from "./sqlite-worker-protocol.js";
 import {
+  LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_PAGE_QUERY_ID,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
   libraryCoreRssFeedPageRowToRssFeedV1,
+  type LibraryCoreAccountGraphPageResponseV1,
+  type LibraryCoreAccountGraphRowV1,
+  type LibraryCorePersonGraphPageResponseV1,
+  type LibraryCorePersonGraphRowV1,
   type LibraryCoreRssFeedPageResponseV1,
 } from "./friends-identity-page-contracts.js";
 import {
@@ -136,6 +142,68 @@ export async function scanLibraryCoreRssFeedsV1(
       response.rows.map(libraryCoreRssFeedPageRowToRssFeedV1),
     );
     if (decision === "stop" || response.nextCursor === null) return;
+    cursor = response.nextCursor;
+  }
+}
+
+/** Visit every Person identity through bounded source-fenced SQLite pages. */
+export async function scanLibraryCorePersonRowsV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  visit: (
+    rows: readonly LibraryCorePersonGraphRowV1[],
+  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+): Promise<void> {
+  let cursor: string | null = null;
+  const readerSessionId = createLibraryCoreOperationInstanceId(
+    "person-maintenance-reader",
+    runtime.randomId(),
+  );
+  for (;;) {
+    const response: LibraryCorePersonGraphPageResponseV1 = await runtime.query({
+      cancellationId: createLibraryCoreOperationInstanceId(
+        "person-maintenance-cancel",
+        runtime.randomId(),
+      ),
+      cursor,
+      limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_PERSON_GRAPH_PAGE_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
+    });
+    if ((await visit(response.rows)) === "stop" || response.nextCursor === null) {
+      return;
+    }
+    cursor = response.nextCursor;
+  }
+}
+
+/** Visit every Account identity through bounded source-fenced SQLite pages. */
+export async function scanLibraryCoreAccountRowsV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  visit: (
+    rows: readonly LibraryCoreAccountGraphRowV1[],
+  ) => LibraryCoreBackgroundScanDecision | Promise<LibraryCoreBackgroundScanDecision>,
+): Promise<void> {
+  let cursor: string | null = null;
+  const readerSessionId = createLibraryCoreOperationInstanceId(
+    "account-maintenance-reader",
+    runtime.randomId(),
+  );
+  for (;;) {
+    const response: LibraryCoreAccountGraphPageResponseV1 = await runtime.query({
+      cancellationId: createLibraryCoreOperationInstanceId(
+        "account-maintenance-cancel",
+        runtime.randomId(),
+      ),
+      cursor,
+      limit: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
+      queryId: LIBRARY_CORE_ACCOUNT_GRAPH_PAGE_QUERY_ID,
+      readerSessionId,
+      schemaVersion: LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_SCHEMA_VERSION,
+    });
+    if ((await visit(response.rows)) === "stop" || response.nextCursor === null) {
+      return;
+    }
     cursor = response.nextCursor;
   }
 }

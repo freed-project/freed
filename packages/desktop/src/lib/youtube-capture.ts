@@ -542,24 +542,23 @@ export function captureYouTube(
     }
 
     const before = useAppStore.getState();
-    const existingAccountIds = new Set(Object.keys(before.accounts));
-    const existingItemIds = new Set(before.items.map((item) => item.globalId));
-    result.diag.accountsAdded = result.accounts.filter(
-      (account) => !existingAccountIds.has(account.id),
-    ).length;
-    const beforeItemCount = typeof before.docItemCount === "number"
-      ? before.docItemCount
-      : null;
+    const beforeAccountCount = before.socialAccountCount ?? 0;
+    const beforeItemCount = before.docItemCount ?? 0;
 
     await docReconcileYouTubeCapture(result.accounts, result.items, {
       rosterComplete: result.diag.rosterComplete,
       capturedAt: result.capturedAt,
     });
     assertFactoryResetEpoch(resetEpoch);
-    const afterItemCount = useAppStore.getState().docItemCount;
-    result.diag.itemsAdded = beforeItemCount !== null && typeof afterItemCount === "number"
-      ? Math.max(0, afterItemCount - beforeItemCount)
-      : result.items.filter((item) => !existingItemIds.has(item.globalId)).length;
+    const after = useAppStore.getState();
+    result.diag.accountsAdded = Math.max(
+      0,
+      (after.socialAccountCount ?? beforeAccountCount) - beforeAccountCount,
+    );
+    result.diag.itemsAdded = Math.max(
+      0,
+      (after.docItemCount ?? beforeItemCount) - beforeItemCount,
+    );
 
     const auth = {
       ...useAppStore.getState().ytAuth,

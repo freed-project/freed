@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultPreferences,
-  type Account,
   type FeedItem,
-  type Person,
 } from "@freed/shared";
 import {
   getDeviceDisplayPreferences,
@@ -622,62 +620,4 @@ describe("store startup migrations", () => {
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps pins through empty startup and prunes only authoritative Desktop states", async () => {
-    const person: Person = {
-      id: "person-removed",
-      name: "Removed",
-      relationshipStatus: "friend",
-      careLevel: 3,
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const account: Account = {
-      id: "account-linked",
-      personId: person.id,
-      kind: "social",
-      provider: "instagram",
-      externalId: "linked",
-      firstSeenAt: 1,
-      lastSeenAt: 1,
-      discoveredFrom: "captured_item",
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const { useAppStore } = await import("./store");
-    const {
-      getDeviceAccountGraphLayout,
-      getDevicePersonGraphLayout,
-      setDeviceAccountGraphPosition,
-      setDevicePersonGraphPosition,
-    } = await import("@freed/ui/lib/device-graph-layout");
-
-    setDevicePersonGraphPosition(person.id, 10, 20, 100);
-    setDeviceAccountGraphPosition(account.id, 30, 40, 200);
-    await useAppStore.getState().initialize();
-
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
-
-    const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
-      | ((
-        state: ReturnType<typeof createDocState>,
-        event: { mutation?: string },
-      ) => void)
-      | undefined;
-    expect(subscriber).toBeTypeOf("function");
-    subscriber?.(createDocState(), { mutation: "UPDATE_PERSON" });
-
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
-
-    const accountRemoved = createDocState();
-    accountRemoved.persons = { [person.id]: person };
-    subscriber?.(accountRemoved, { mutation: "REMOVE_ACCOUNT" });
-    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
-    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
-
-    subscriber?.(createDocState(), { mutation: "REMOVE_PERSON" });
-    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
-
-  });
 });
