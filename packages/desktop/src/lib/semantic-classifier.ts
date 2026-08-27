@@ -1,5 +1,8 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { docBackfillContentSignals, subscribe } from "./library-client";
+import {
+  docBackfillContentSignals,
+  subscribeDesktopLibraryRuntime,
+} from "./library-client";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
 import {
@@ -27,7 +30,7 @@ let completed = 0;
 let failedCount = 0;
 let lastFailureAt = 0;
 let lastRunAt: number | undefined;
-let lastScannedDocItemCount: number | null = null;
+let lastScannedItemCount: number | null = null;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
@@ -136,12 +139,12 @@ export function start(options: SemanticClassifierOptions = {}): void {
   running = true;
   scheduled = isEnabled();
   pending = scheduled ? 1 : 0;
-  lastScannedDocItemCount = null;
+  lastScannedItemCount = null;
   startedAt = Date.now();
 
-  unsubscribeDoc = subscribe((state) => {
-    if (lastScannedDocItemCount === state.docItemCount) return;
-    lastScannedDocItemCount = state.docItemCount;
+  unsubscribeDoc = subscribeDesktopLibraryRuntime((state) => {
+    if (lastScannedItemCount === state.totalItemCount) return;
+    lastScannedItemCount = state.totalItemCount;
     scheduleBackfill();
   });
   unsubscribeLocalAIModelState = subscribeToLocalAIModelState(() => {

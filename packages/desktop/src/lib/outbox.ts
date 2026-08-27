@@ -23,7 +23,7 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
-import type { DocChangeEvent } from "./library-types";
+import type { LibraryMutationEvent } from "./library-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -113,7 +113,7 @@ export function startOutboxProcessor(
   scanItems: (
     visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
   ) => Promise<void>,
-  subscribe: (cb: (event: DocChangeEvent) => void) => () => void,
+  subscribe: (cb: (event: LibraryMutationEvent) => void) => () => void,
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
@@ -129,7 +129,7 @@ export function startOutboxProcessor(
   let unsubscribe: () => void = () => {};
   const pendingChangedItems = new Map<string, FeedItem>();
 
-  function addDrainEvent(event?: DocChangeEvent) {
+  function addDrainEvent(event?: LibraryMutationEvent) {
     if (!event) {
       return;
     }
@@ -390,7 +390,7 @@ export function startOutboxProcessor(
     });
   }
 
-  function scheduleDrain(event?: DocChangeEvent) {
+  function scheduleDrain(event?: LibraryMutationEvent) {
     if (stopped) return;
     addDrainEvent(event);
     if (isDraining) {

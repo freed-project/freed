@@ -22,11 +22,11 @@ import {
   type UserPreferences,
 } from "@freed/shared";
 import type {
-  DocChangeEvent,
-  DocState,
+  LibraryMutationEvent,
   RssFeedRefreshUpdate,
   WorkerRequest,
 } from "./library-types";
+import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
 import { registerDocAccessors, setDocSnapshot } from "@freed/ui/lib/debug-store";
 import {
   clearSqliteLibrary,
@@ -38,17 +38,20 @@ import {
 import { scanLibraryCoreBackgroundItems } from "./library-core-item-detail-runtime";
 import { hasLegacyLibraryData } from "./legacy-library-presence";
 
-export type { DocChangeEvent, DocState } from "./library-types";
+export type { LibraryMutationEvent } from "./library-types";
 
 export class StaleDocumentRevisionError extends Error {}
 
 export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
   "freed.libraryCore.rendererItemEvictionV1.disabled";
 
-type Subscriber = (state: DocState, event: DocChangeEvent) => void;
+type Subscriber = (
+  state: LibraryCoreRuntimeStateV1,
+  event: LibraryMutationEvent,
+) => void;
 
 const subscribers = new Set<Subscriber>();
-let lastState: DocState | null = null;
+let lastState: LibraryCoreRuntimeStateV1 | null = null;
 let nextRequestId = 1;
 let mutationQueue: Promise<void> = Promise.resolve();
 
@@ -59,23 +62,26 @@ function registerSqliteDebugAccessors(): void {
   );
 }
 
-function updateSqliteDebugSnapshot(state: DocState): void {
+function updateSqliteDebugSnapshot(state: LibraryCoreRuntimeStateV1): void {
   setDocSnapshot({
     documentId: "sqlite-library",
     itemCount: state.totalItemCount,
-    feedCount: Object.keys(state.feeds).length,
+    feedCount: state.rssFeedCount,
     binarySize: 0,
     savedAt: Date.now(),
   });
 }
 
-function publish(state: DocState, event: DocChangeEvent): void {
+function publish(
+  state: LibraryCoreRuntimeStateV1,
+  event: LibraryMutationEvent,
+): void {
   lastState = state;
   updateSqliteDebugSnapshot(state);
   for (const subscriber of subscribers) subscriber(state, event);
 }
 
-async function ensureInitialized(): Promise<DocState> {
+async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
   if (lastState) return lastState;
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
   let legacyDataPresent = false;
@@ -102,8 +108,8 @@ async function ensureInitialized(): Promise<DocState> {
 async function dispatch(message: WorkerRequest): Promise<unknown> {
   let result: unknown;
   const operation = mutationQueue.then(async () => {
-    const current = await ensureInitialized();
-    const dispatched = await dispatchSqliteMutation(message, current);
+    await ensureInitialized();
+    const dispatched = await dispatchSqliteMutation(message);
     result = dispatched.result;
     publish(dispatched.state, dispatched.event);
   });
@@ -116,24 +122,24 @@ function request<T extends { readonly type: WorkerRequest["type"] }>(message: T)
   return dispatch({ ...message, reqId: nextRequestId++ } as unknown as WorkerRequest);
 }
 
-export function subscribe(callback: Subscriber): () => void {
+export function subscribeDesktopLibraryRuntime(callback: Subscriber): () => void {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
 }
 
 export function setRelayClientCount(_count: number): void {}
 
-export async function initDoc(
+export async function initializeDesktopLibraryRuntime(
   _registration?: DesktopClientRegistration,
-): Promise<DocState> {
+): Promise<LibraryCoreRuntimeStateV1> {
   return ensureInitialized();
 }
 
-export function getDocState(): DocState | null {
+export function getDesktopLibraryRuntimeState(): LibraryCoreRuntimeStateV1 | null {
   return lastState;
 }
 
-export async function reloadSqliteLibraryState(): Promise<DocState> {
+export async function reloadDesktopLibraryRuntimeState(): Promise<LibraryCoreRuntimeStateV1> {
   const state = await loadSqliteLibraryState();
   publish(state, {
     source: "state_update",

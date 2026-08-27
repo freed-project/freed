@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
 
-const automerge = vi.hoisted(() => {
+const libraryRuntime = vi.hoisted(() => {
   const resolved = () => vi.fn(() => Promise.resolve());
   return {
-    initDoc: vi.fn(),
+    initializeDesktopLibraryRuntime: vi.fn(),
     quiesceDesktopLibraryForFactoryReset: resolved(),
-    subscribe: vi.fn(() => () => {}),
-    getDocState: vi.fn(() => null),
+    subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
+    getDesktopLibraryRuntimeState: vi.fn(() => null),
     docAddFeedItems: resolved(),
     docAddSampleLibraryData: resolved(),
     docAddRssFeed: resolved(),
@@ -42,7 +42,7 @@ const automerge = vi.hoisted(() => {
   };
 });
 
-vi.mock("./library-client", () => automerge);
+vi.mock("./library-client", () => libraryRuntime);
 
 vi.mock("./outbox", () => ({
   startOutboxProcessor: vi.fn(() => () => {}),
@@ -66,38 +66,21 @@ function makeDocState() {
   preferences.display.sidebarMode = "closed";
   preferences.ai.provider = "ollama";
   return {
-    items: [],
     searchCorpusVersion: 0,
-    feeds: {},
-    persons: {
-      legacy: {
-        id: "legacy",
-        name: "Legacy",
-        relationshipStatus: "friend" as const,
-        careLevel: 3,
-        graphX: 10,
-        graphY: 20,
-        graphPinned: true,
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    },
-    accounts: {},
-    friends: {},
     preferences,
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
     totalUnreadCount: 0,
     unreadCountByPlatform: {},
     totalItemCount: 0,
     itemCountByPlatform: {},
+    rssFeedCount: 0,
+    enabledRssFeedCount: 0,
+    archivedItemCount: 0,
+    friendPersonCount: 0,
+    socialAccountCount: 0,
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
-    archivableFeedCounts: {},
     mapFriendLocationCount: 0,
     mapAllContentLocationCount: 0,
-    docItemCount: 0,
   };
 }
 
@@ -106,12 +89,15 @@ describe("Desktop store factory reset write boundary", () => {
     vi.resetModules();
     vi.clearAllMocks();
     localStorage.clear();
-    for (const mock of Object.values(automerge)) {
+    for (const mock of Object.values(libraryRuntime)) {
       if ("mockResolvedValue" in mock && typeof mock.mockResolvedValue === "function") {
         mock.mockResolvedValue(undefined);
       }
     }
-    automerge.docBackfillContentSignals.mockResolvedValue({ updated: 0, remaining: 0 });
+    libraryRuntime.docBackfillContentSignals.mockResolvedValue({
+      updated: 0,
+      remaining: 0,
+    });
   });
 
   it("rejects preference writes after local writers quiesce", async () => {
@@ -125,7 +111,7 @@ describe("Desktop store factory reset write boundary", () => {
 
     expect(localStorage.getItem("freed-device-display-preferences-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-ai-preferences-v1")).toBeNull();
-    expect(automerge.docUpdatePreferences).not.toHaveBeenCalled();
+    expect(libraryRuntime.docUpdatePreferences).not.toHaveBeenCalled();
   });
 
   it("does not submit SQLite mutations after local writers quiesce", async () => {
@@ -137,12 +123,12 @@ describe("Desktop store factory reset write boundary", () => {
       useAppStore.getState().renameFeed(feedUrl, "After reset"),
     ).rejects.toThrow("Desktop store is quiesced for factory reset");
 
-    expect(automerge.docUpdateRssFeed).not.toHaveBeenCalled();
+    expect(libraryRuntime.docUpdateRssFeed).not.toHaveBeenCalled();
   });
 
   it("does not migrate device state when startup finishes during quiescence", async () => {
     let finishInitialization!: (state: ReturnType<typeof makeDocState>) => void;
-    automerge.initDoc.mockImplementationOnce(
+    libraryRuntime.initializeDesktopLibraryRuntime.mockImplementationOnce(
       () => new Promise((resolve) => {
         finishInitialization = resolve;
       }),
@@ -150,7 +136,11 @@ describe("Desktop store factory reset write boundary", () => {
     const { quiesceDesktopStoreForFactoryReset, useAppStore } = await import("./store");
 
     const initializing = useAppStore.getState().initialize();
-    await vi.waitFor(() => expect(automerge.initDoc).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(
+        libraryRuntime.initializeDesktopLibraryRuntime,
+      ).toHaveBeenCalledOnce(),
+    );
     const quiescing = quiesceDesktopStoreForFactoryReset();
     const quiesced = vi.fn();
     void quiescing.then(quiesced);
@@ -163,6 +153,8 @@ describe("Desktop store factory reset write boundary", () => {
     expect(localStorage.getItem("freed-device-graph-layout-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-display-preferences-v1")).toBeNull();
     expect(localStorage.getItem("freed-device-ai-preferences-v1")).toBeNull();
-    expect(automerge.subscribe).not.toHaveBeenCalled();
+    expect(
+      libraryRuntime.subscribeDesktopLibraryRuntime,
+    ).not.toHaveBeenCalled();
   });
 });

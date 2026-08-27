@@ -543,7 +543,7 @@ export function captureYouTube(
 
     const before = useAppStore.getState();
     const beforeAccountCount = before.socialAccountCount ?? 0;
-    const beforeItemCount = before.docItemCount ?? 0;
+    const beforeItemCount = before.totalItemCount;
 
     await docReconcileYouTubeCapture(result.accounts, result.items, {
       rosterComplete: result.diag.rosterComplete,
@@ -557,7 +557,7 @@ export function captureYouTube(
     );
     result.diag.itemsAdded = Math.max(
       0,
-      (after.docItemCount ?? beforeItemCount) - beforeItemCount,
+      after.totalItemCount - beforeItemCount,
     );
 
     const auth = {

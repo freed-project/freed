@@ -91,107 +91,154 @@ export function tauriInitScript(): string {
         totalCount: items.length,
       };
     }
-    window.__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__ = function(items) {
-      var state = sqliteState();
-      (items || []).forEach(function(item) {
-        state.items[item.globalId] = JSON.parse(JSON.stringify(item));
-      });
-      state.revision += 1;
-      persistSqliteState();
-    };
-    window.__FREED_E2E_NORMALIZED_CAPTURE_METADATA__ = function(patch) {
-      var state = sqliteState();
-      state.accounts = state.accounts || {};
-      state.feeds = state.feeds || {};
-      state.persons = state.persons || {};
-      (patch.accountUpserts || []).forEach(function(account) {
-        state.accounts[account.id] = JSON.parse(JSON.stringify(account));
-      });
-      (patch.accountRemovals || []).forEach(function(id) { delete state.accounts[id]; });
-      (patch.feedUpserts || []).forEach(function(feed) {
-        state.feeds[feed.url] = JSON.parse(JSON.stringify(feed));
-      });
-      (patch.feedRemovals || []).forEach(function(url) { delete state.feeds[url]; });
-      (patch.personUpserts || []).forEach(function(person) {
-        state.persons[person.id] = JSON.parse(JSON.stringify(person));
-      });
-      (patch.personRemovals || []).forEach(function(id) { delete state.persons[id]; });
-      state.revision += 1;
-      persistSqliteState();
-    };
-    function sqliteMutateItems(args) {
-      var state = sqliteState();
-      var request = args && args.request ? args.request : {};
-      var ids = request.ids || [];
-      var candidates = ids.length > 0
-        ? ids.map(function(id) { return state.items[id]; }).filter(Boolean)
-        : Object.values(state.items);
-      var affected = 0;
-      candidates.forEach(function(item) {
-        if (!item || item.__deleted) return;
-        if (request.platform && item.platform !== request.platform) return;
-        if (request.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== request.feedUrl)) return;
-        var user = item.userState || (item.userState = {});
-        switch (request.mutation) {
-          case 'mark_read':
-          case 'mark_all_read':
-            if (user.readAt == null) user.readAt = request.timestampMs;
-            break;
-          case 'toggle_saved':
-            user.saved = !user.saved;
-            if (user.saved) { user.savedAt = request.timestampMs; user.archived = false; delete user.archivedAt; }
-            else delete user.savedAt;
-            break;
-          case 'toggle_archived':
-            if (user.saved) return;
-            user.archived = !user.archived;
-            if (user.archived) user.archivedAt = request.timestampMs;
-            else delete user.archivedAt;
-            break;
-          case 'archive':
-          case 'archive_all_read_unsaved':
-            if (user.saved || user.hidden || user.readAt == null) return;
-            user.archived = true; user.archivedAt = user.archivedAt || request.timestampMs;
-            break;
-          case 'toggle_liked':
-            user.liked = !user.liked;
-            if (user.liked) user.likedAt = request.timestampMs;
-            else { delete user.likedAt; delete user.likedSyncedAt; }
-            break;
-          case 'confirm_liked': user.likedSyncedAt = request.timestampMs; break;
-          case 'confirm_seen': user.seenSyncedAt = request.timestampMs; break;
-          case 'unarchive_saved':
-            if (!user.saved || !user.archived) return;
-            user.archived = false; delete user.archivedAt;
-            break;
-          case 'delete_all_archived':
-            if (!user.archived || user.saved) return;
-            item.__deleted = true;
-            break;
-          case 'prune_archived':
-            if (!user.archived || user.saved || user.archivedAt == null || user.archivedAt > request.timestampMs - (request.maxAgeMs || 0)) return;
-            item.__deleted = true;
-            break;
-          case 'delete_rss':
-            if (item.platform !== 'rss') return;
-            item.__deleted = true;
-            break;
-          case 'delete': item.__deleted = true; break;
-          case 'clear_sample':
-            if (!item.sampleData) return;
-            item.__deleted = true;
-            break;
-          default: return;
-        }
-        affected += 1;
-      });
-      state.revision += 1;
-      persistSqliteState();
-      return affected;
+    function normalizedPrimaryMutationContext() {
+      return {
+        libraryId: '2'.repeat(64),
+        epoch: 1,
+        epochId: '3'.repeat(64),
+        actorId: '6'.repeat(64),
+        actorPublicKey: '7'.repeat(64),
+        nextCounter: 1,
+        previousOperationId: null,
+        previousChainDigest: '8'.repeat(64),
+        observedFrontier: [],
+      };
     }
-    window.__FREED_E2E_NORMALIZED_MUTATE_ITEMS__ = function(request) {
-      return sqliteMutateItems({ request: request });
-    };
+    function applyNormalizedEnvelope(envelope) {
+      var state = sqliteState();
+      var payload = envelope.payload || {};
+      var item = state.items[envelope.entity_id];
+      var user = item && (item.userState || (item.userState = {}));
+      switch (envelope.operation_type) {
+        case 'feed_item_capture_upsert':
+          state.items[envelope.entity_id] = JSON.parse(JSON.stringify(payload.item));
+          break;
+        case 'feed_item_read_assignment':
+          if (user) user.readAt = payload.read_at_ms;
+          break;
+        case 'feed_item_saved_assignment':
+          if (user) {
+            user.saved = payload.assigned;
+            if (payload.assigned) {
+              user.savedAt = payload.assigned_at_ms;
+              user.archived = false;
+              delete user.archivedAt;
+            } else {
+              delete user.savedAt;
+            }
+          }
+          break;
+        case 'feed_item_archive_assignment':
+          if (user) {
+            user.archived = payload.assigned;
+            if (payload.assigned) user.archivedAt = payload.assigned_at_ms;
+            else delete user.archivedAt;
+          }
+          break;
+        case 'feed_item_like_assignment':
+          if (user) {
+            user.liked = payload.assigned;
+            if (payload.assigned) user.likedAt = payload.assigned_at_ms;
+            else {
+              delete user.likedAt;
+              delete user.likedSyncedAt;
+            }
+          }
+          break;
+        case 'feed_item_like_sync_receipt':
+          if (user) user.likedSyncedAt = payload.synced_at_ms;
+          break;
+        case 'feed_item_seen_sync_receipt':
+          if (user) user.seenSyncedAt = payload.synced_at_ms;
+          break;
+        case 'feed_item_remove':
+          if (item) item.__deleted = true;
+          break;
+        case 'rss_feed_upsert':
+          state.feeds[envelope.entity_id] = JSON.parse(JSON.stringify(payload.feed));
+          break;
+        case 'rss_feed_title_assignment':
+          if (state.feeds[envelope.entity_id]) {
+            state.feeds[envelope.entity_id].title = payload.title;
+          }
+          break;
+        case 'rss_feed_remove_keep_items':
+        case 'rss_feed_remove_with_items':
+          delete state.feeds[envelope.entity_id];
+          if (envelope.operation_type === 'rss_feed_remove_with_items') {
+            Object.values(state.items).forEach(function(candidate) {
+              if (candidate.rssSource && candidate.rssSource.feedUrl === envelope.entity_id) {
+                candidate.__deleted = true;
+              }
+            });
+          }
+          break;
+        case 'person_upsert':
+          state.persons[envelope.entity_id] = JSON.parse(JSON.stringify(payload.person));
+          break;
+        case 'person_reach_out_append':
+          if (state.persons[envelope.entity_id]) {
+            var person = state.persons[envelope.entity_id];
+            person.reachOutLog = [{
+              channel: payload.channel || undefined,
+              loggedAt: payload.logged_at_ms,
+              notes: payload.notes || undefined,
+            }].concat(person.reachOutLog || []).slice(0, 20);
+          }
+          break;
+        case 'person_remove_and_accounts':
+          delete state.persons[envelope.entity_id];
+          Object.keys(state.accounts).forEach(function(accountId) {
+            if (state.accounts[accountId].personId === envelope.entity_id) {
+              delete state.accounts[accountId];
+            }
+          });
+          break;
+        case 'account_upsert':
+          state.accounts[envelope.entity_id] = JSON.parse(JSON.stringify(payload.account));
+          break;
+        case 'account_person_assignment':
+          if (state.accounts[envelope.entity_id]) {
+            if (payload.person_id == null) delete state.accounts[envelope.entity_id].personId;
+            else state.accounts[envelope.entity_id].personId = payload.person_id;
+          }
+          break;
+        case 'account_remove':
+          delete state.accounts[envelope.entity_id];
+          break;
+        case 'preferences_leaf_assignment':
+          state.preferences = Object.assign({}, state.preferences || {}, payload.updates || {});
+          break;
+      }
+    }
+    function commitNormalizedLibraryTransaction(args) {
+      var request = args.request || {};
+      var envelopes = (request.canonicalEnvelopeJson || []).map(function(value) {
+        return JSON.parse(value);
+      });
+      var first = envelopes[0];
+      var previousRevision = sqliteState().revision;
+      envelopes.forEach(applyNormalizedEnvelope);
+      sqliteState().revision = previousRevision + 1;
+      persistSqliteState();
+      return {
+        transactionId: first.transaction_id,
+        transactionDigest: first.transaction_digest,
+        actorId: first.actor_id,
+        memberCount: envelopes.length,
+        firstCounter: first.actor_sequence,
+        lastCounter: envelopes[envelopes.length - 1].actor_sequence,
+        committedOperationId: envelopes[envelopes.length - 1].operation_id,
+        committedChainDigest: envelopes[envelopes.length - 1].actor_chain_digest,
+        previousRevision: previousRevision,
+        committedRevision: sqliteState().revision,
+        committedAt: request.committedAtMs,
+        followerResultDigest: '9'.repeat(64),
+        followerResultSequence: sqliteState().revision,
+        canonicalFollowerResultJson: '{}',
+        invalidations: [],
+      };
+    }
     function sqliteFeedCard(item) {
       var user = sqliteItemState(item);
       var content = item.content || {};
@@ -919,6 +966,14 @@ export function tauriInitScript(): string {
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       read_sqlite_library_facet_summary: sqliteFacetSummary,
       query_normalized_library: sqliteNormalizedQuery,
+      normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
+      normalized_library_follower_mutation_context: () => null,
+      sign_normalized_library_operation: (args) => ({
+        actorId: args.request.actorId,
+        operationSigningBodyDigest: args.request.operationSigningBodyDigest,
+        signature: 'a'.repeat(128),
+      }),
+      commit_normalized_library_transaction: commitNormalizedLibraryTransaction,
       mutate_normalized_device_graph_layout: mutateDeviceGraphLayout,
       mutate_normalized_device_contacts: mutateDeviceContacts,
       query_normalized_device_contact_status: deviceContactStatus,

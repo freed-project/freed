@@ -192,6 +192,11 @@
         quoted keys, and scalar leaves. PWA state hydration now takes
         synchronized preferences from this SQLite query instead of
         `00_library_shell`.
+  - [x] PWA and Freed Desktop now derive the same row-free runtime summary from
+        the shared Library Core transform over normalized preferences and
+        `library_facet_summary_v1`. The PWA-only Library state type is deleted,
+        and neither runtime summary can contain entity rows or compatibility
+        shell fields.
   - [x] `item_detail_v1` performs one primary-key lookup in browser SQLite and
         returns the same closed compact card and typed reader-body locators as
         native Rust. Full reader content remains outside the metadata response.

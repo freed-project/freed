@@ -107,15 +107,21 @@ async function loadContentFetcherModule(options: {
       }),
   );
   const mockSubscribe = vi.fn<(cb: (
-    state: { items: FeedItem[]; docItemCount: number },
+    state: { totalItemCount: number },
     event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
   ) => void) => () => void>();
   const subscriberRef: {
-    current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
-  } = { current: null };
+    current: ((state: { totalItemCount: number }) => void) | null;
+    emitItems: (items: readonly FeedItem[]) => void;
+  } = {
+    current: null,
+    emitItems: (items) => {
+      latestItems = items;
+      subscriberRef.current?.({ totalItemCount: items.length });
+    },
+  };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
-      latestItems = state.items;
       cb(state, {
         source: "state_update",
         changedItemIds: null,
@@ -137,7 +143,7 @@ async function loadContentFetcherModule(options: {
   }));
   vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
-    subscribe: mockSubscribe,
+    subscribeDesktopLibraryRuntime: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
     scanLibraryCoreContentFetchCandidates:
@@ -247,15 +253,21 @@ async function loadContentFetcherModuleWithAi({
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
   const mockSubscribe = vi.fn<(cb: (
-    state: { items: FeedItem[]; docItemCount: number },
+    state: { totalItemCount: number },
     event: { source: "state_update"; changedItemIds: null; requiresFullScan: true },
   ) => void) => () => void>();
   const subscriberRef: {
-    current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
-  } = { current: null };
+    current: ((state: { totalItemCount: number }) => void) | null;
+    emitItems: (items: readonly FeedItem[]) => void;
+  } = {
+    current: null,
+    emitItems: (items) => {
+      latestItems = items;
+      subscriberRef.current?.({ totalItemCount: items.length });
+    },
+  };
   mockSubscribe.mockImplementation((cb) => {
     subscriberRef.current = (state) => {
-      latestItems = state.items;
       cb(state, {
         source: "state_update",
         changedItemIds: null,
@@ -283,7 +295,7 @@ async function loadContentFetcherModuleWithAi({
   }));
   vi.doMock("./library-client.js", () => ({
     docUpdateFeedItem: mockDocUpdateFeedItem,
-    subscribe: mockSubscribe,
+    subscribeDesktopLibraryRuntime: mockSubscribe,
   }));
   vi.doMock("./library-core-item-detail-runtime.js", () => ({
     scanLibraryCoreContentFetchCandidates: vi.fn(async (visitPage) =>
@@ -393,7 +405,7 @@ describe("content fetcher", () => {
       });
 
     mod.start();
-    subscriberRef.current?.({ items: [], docItemCount: 1 });
+    subscriberRef.emitItems([]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -423,7 +435,7 @@ describe("content fetcher", () => {
       });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockCacheSet).toHaveBeenCalledOnce();
 
@@ -467,7 +479,7 @@ describe("content fetcher", () => {
       });
 
       mod.start();
-      subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+      subscriberRef.emitItems([makeStubItem()]);
       await vi.advanceTimersByTimeAsync(0);
       expect(mockInvoke).toHaveBeenCalledOnce();
 
@@ -511,7 +523,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockCacheSet).toHaveBeenCalledOnce();
     expect(mockGetApiKey).toHaveBeenCalledOnce();
@@ -537,7 +549,7 @@ describe("content fetcher", () => {
     } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -570,7 +582,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -589,7 +601,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -609,7 +621,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -631,7 +643,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(10_000);
 
@@ -649,7 +661,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mod.getStatus()).toEqual(expect.objectContaining({
@@ -683,7 +695,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -712,7 +724,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
@@ -734,7 +746,7 @@ describe("content fetcher", () => {
     });
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(60_000);
     mod.stop();
@@ -793,7 +805,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
 
     mod.start();
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mod.getStatus()).toEqual(expect.objectContaining({
@@ -814,7 +826,7 @@ describe("content fetcher", () => {
     const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
 
     mod.start({ startupDelayMs: 60_000 });
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(59_999);
 
     expect(mockInvoke).not.toHaveBeenCalled();
@@ -890,7 +902,7 @@ describe("content fetcher", () => {
     });
 
     mod.start({ memoryGuard: true });
-    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
 
     const fetchCallsBeforeRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");

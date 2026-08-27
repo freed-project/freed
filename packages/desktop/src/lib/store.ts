@@ -39,8 +39,8 @@ import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import { migrateLegacyDeviceGraphLayoutToSqlite } from "@freed/ui/lib/device-graph-layout";
 import { migrateLegacyFacebookGroupDiscovery } from "./facebook-group-discovery";
 import {
-  initDoc,
-  subscribe,
+  initializeDesktopLibraryRuntime,
+  subscribeDesktopLibraryRuntime,
   docAddFeedItems,
   docAddSampleLibraryData,
   docAddRssFeed,
@@ -67,8 +67,7 @@ import {
   docConfirmLikedSynced,
   docConfirmSeenSynced,
   quiesceDesktopLibraryForFactoryReset,
-  type DocChangeEvent,
-  type DocState,
+  type LibraryMutationEvent,
 } from "./library-client";
 import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor, stopAndDrainOutboxProcessor } from "./outbox";
@@ -90,7 +89,10 @@ import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
-import { scanLibraryCoreRssFeedsV1 } from "@freed/shared/library-core";
+import {
+  scanLibraryCoreRssFeedsV1,
+  type LibraryCoreRuntimeStateV1,
+} from "@freed/shared/library-core";
 import {
   mutateNormalizedDeviceGraphLayout,
   queryNormalizedLibrary,
@@ -161,7 +163,7 @@ function compactSavedFeedUserState(
 function mergeSavedFeedPresentationPatch(
   previous: SavedFeedPresentationPatch | null,
   sourceVersion: number,
-  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+  event: Extract<LibraryMutationEvent, { source: "item_patch" }>,
 ): SavedFeedPresentationPatch {
   const current =
     previous?.sourceVersion === sourceVersion ? previous : null;
@@ -211,7 +213,7 @@ function mergeSavedFeedPresentationPatch(
 function savedFeedPresentationPatchExceedsLimit(
   previous: SavedFeedPresentationPatch | null,
   sourceVersion: number,
-  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+  event: Extract<LibraryMutationEvent, { source: "item_patch" }>,
 ): boolean {
   const current = previous?.sourceVersion === sourceVersion ? previous : null;
   if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
@@ -299,8 +301,6 @@ interface AppState {
   archivableCountByPlatform: Record<string, number>;
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
-  /** Total feed-item records including hidden and archived items. */
-  docItemCount: number;
 
   // X auth state
   xAuth: XAuthState;
@@ -412,10 +412,9 @@ function shallowEqualRecord(
   );
 }
 
-function runtimeStatePatch(state: DocState): Pick<
+function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
   AppState,
   | "archivableCountByPlatform"
-  | "docItemCount"
   | "itemCountByPlatform"
   | "rssFeedCount"
   | "enabledRssFeedCount"
@@ -433,13 +432,12 @@ function runtimeStatePatch(state: DocState): Pick<
 > {
   return {
     archivableCountByPlatform: state.archivableCountByPlatform,
-    docItemCount: state.docItemCount,
     itemCountByPlatform: state.itemCountByPlatform,
-    rssFeedCount: state.rssFeedCount ?? 0,
-    enabledRssFeedCount: state.enabledRssFeedCount ?? 0,
-    archivedItemCount: state.archivedItemCount ?? 0,
-    friendPersonCount: state.friendPersonCount ?? 0,
-    socialAccountCount: state.socialAccountCount ?? 0,
+    rssFeedCount: state.rssFeedCount,
+    enabledRssFeedCount: state.enabledRssFeedCount,
+    archivedItemCount: state.archivedItemCount,
+    friendPersonCount: state.friendPersonCount,
+    socialAccountCount: state.socialAccountCount,
     mapAllContentLocationCount: state.mapAllContentLocationCount,
     mapFriendLocationCount: state.mapFriendLocationCount,
     preferences: state.preferences,
@@ -530,11 +528,10 @@ async function runStoreMutation(
 
 /**
  * Run idempotent startup migrations after the app survives launch.
- * subscribe() is already wired up at call time, so any doc mutations propagate
- * to the UI automatically. Errors are swallowed - all three ops are non-fatal.
- * Migrations run in the worker, but WebKit still owns worker memory. Delaying
- * them keeps large libraries from immediately reloading the Automerge document
- * right after first paint.
+ * The SQLite runtime subscription is already wired up at call time, so
+ * mutation invalidations propagate to the UI automatically. Errors are
+ * swallowed because all three operations are non-fatal. Delaying maintenance
+ * keeps startup work away from first paint.
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
@@ -739,7 +736,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   mapFriendLocationCount: 0,
   mapAllContentLocationCount: 0,
-  docItemCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -787,30 +783,32 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         recordDocumentHydrationStarted();
         assertDesktopStoreWritable();
-        const docState = await initDoc(desktopClientRegistration);
+        const runtimeState = await initializeDesktopLibraryRuntime(
+          desktopClientRegistration,
+        );
         // Closes the shell-baseline window. Any memory sample after this point
         // includes the materialized Library shell, so it cannot be a baseline.
         recordDocumentHydrated();
         assertDesktopStoreWritable();
-        migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
-        migrateLegacyThemePreference(docState.preferences.display.themeId);
-        migrateLegacyDeviceAIPreferences(docState.preferences.ai);
+        migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display);
+        migrateLegacyThemePreference(runtimeState.preferences.display.themeId);
+        migrateLegacyDeviceAIPreferences(runtimeState.preferences.ai);
         await migrateLegacyDeviceGraphLayoutToSqlite({
           mutate: mutateNormalizedDeviceGraphLayout,
           query: queryNormalizedLibrary,
         });
-        migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
+        migrateLegacyFacebookGroupDiscovery(
+          runtimeState.preferences.fbCapture?.knownGroups,
+        );
 
         // Subscribe to bounded SQLite state updates. Preserve object identity on
         // count maps to avoid spurious selector re-renders.
         documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribe((state: DocState, event) => {
+        documentSubscriptionTeardown = subscribeDesktopLibraryRuntime((state, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
           const prev = get();
           const libraryItemVersion =
-            event.source === "item_patch" ||
-            (event.source === "state_update" &&
-              event.mutation !== "SET_RENDERER_ITEM_HYDRATION")
+            event.source === "item_patch" || event.source === "state_update"
               ? prev.libraryItemVersion + 1
               : prev.libraryItemVersion;
           const savedFeedPresentationPatchOverflow =
@@ -828,8 +826,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             event.source === "preferences_patch" &&
             state.preferences.weights !== prev.preferences.weights;
           const savedFeedVersion =
-            (event.source === "state_update" &&
-              event.mutation !== "SET_RENDERER_ITEM_HYDRATION") ||
+            event.source === "state_update" ||
             savedFeedRankingWeightsChanged ||
             (event.source === "item_patch" &&
               (!SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
@@ -890,9 +887,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (liAuth !== previousAuth.liAuth) storeLiAuthState(liAuth);
         }
 
-        // Hydrate immediately from the initial DocState returned by the worker.
+        // Hydrate immediately from the row-free SQLite runtime snapshot.
         set({
-          ...runtimeStatePatch(docState),
+          ...runtimeStatePatch(runtimeState),
           activeFilter: applyFeedSignalModesToFilter(
             get().activeFilter,
             getDeviceDisplayPreferences().feedSignalModes,
@@ -920,14 +917,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
         outboxTeardown = startOutboxProcessor(
           scanLibraryCoreItems,
-          (cb) => subscribe((_state, event) => cb(event)),
+          (cb) =>
+            subscribeDesktopLibraryRuntime((_state, event) => cb(event)),
           platformActionsRegistry,
           async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
           async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
         );
 
         // Schedule bounded local SQLite maintenance after initial hydration.
-        const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
+        const archivePruneDays =
+          runtimeState.preferences.display.archivePruneDays ?? 30;
         scheduleStartupMigrations(archivePruneDays);
       } catch (error) {
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
@@ -946,9 +945,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions
   addItems: async (items) => {
-    const before = get().docItemCount;
+    const before = get().totalItemCount;
     await docAddFeedItems(items);
-    const after = get().docItemCount;
+    const after = get().totalItemCount;
     log.info(
       `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
     );

@@ -22,7 +22,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe, type DocChangeEvent } from "./library-client";
+import {
+  docUpdateFeedItem,
+  subscribeDesktopLibraryRuntime,
+  type LibraryMutationEvent,
+} from "./library-client";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
@@ -114,7 +118,7 @@ let workerTimer: ReturnType<typeof setTimeout> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
-let lastScannedDocItemCount: number | null = null;
+let lastScannedItemCount: number | null = null;
 let activeStartedAt: number | null = null;
 let nextDelayMs: number | undefined;
 let backoffLevel = 0;
@@ -269,17 +273,17 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
 }
 
 function maybeScanLibraryItems(
-  docItemCount: number,
-  event: DocChangeEvent,
+  itemCount: number,
+  event: LibraryMutationEvent,
 ): void {
   if (event.source === "item_patch") {
     enqueue(event.changedItems);
-    lastScannedDocItemCount = docItemCount;
+    lastScannedItemCount = itemCount;
     return;
   }
   if (!event.requiresFullScan) return;
-  if (lastScannedDocItemCount === docItemCount) return;
-  lastScannedDocItemCount = docItemCount;
+  if (lastScannedItemCount === itemCount) return;
+  lastScannedItemCount = itemCount;
   void scanLibraryCoreContentFetchCandidates((page) =>
     enqueueEntries(
       page.map((candidate) => ({
@@ -671,15 +675,15 @@ export function start(options: ContentFetcherOptions = {}): void {
   if (running) return;
   running = true;
   memoryGuardEnabled = options.memoryGuard ?? false;
-  lastScannedDocItemCount = null;
+  lastScannedItemCount = null;
 
   // Wire up the SQLite subscription so new stub items are enqueued directly.
   //
   // Important: never rescan the Library for an ordinary item patch. New rows
   // arrive with their exact payload. A whole-corpus scan is reserved for an
   // explicit state replacement whose changed identities are unknowable.
-  unsubscribeDoc = subscribe((state, event) => {
-    maybeScanLibraryItems(state.docItemCount, event);
+  unsubscribeDoc = subscribeDesktopLibraryRuntime((state, event) => {
+    maybeScanLibraryItems(state.totalItemCount, event);
   });
 
   log.info("[content-fetcher] started");

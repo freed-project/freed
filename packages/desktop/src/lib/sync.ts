@@ -25,7 +25,7 @@ import {
   stopSqliteLibraryCloudSync,
   syncSqliteLibraryFollowerGoogleDriveOnce,
 } from "./library-core-cloud-sync";
-import { reloadSqliteLibraryState } from "./library-client";
+import { reloadDesktopLibraryRuntimeState } from "./library-client";
 import { base64ToBytes } from "./google-drive";
 import {
   readLibraryCoreDesktopRole,
@@ -530,7 +530,7 @@ export async function startCloudSync(
               });
             },
             onSynced: async () => {
-              await reloadSqliteLibraryState();
+              await reloadDesktopLibraryRuntimeState();
               markConnected(false, true);
             },
             resolveAccessToken,
@@ -630,7 +630,7 @@ export async function syncCloudProviderNow(
       "Another Freed Desktop currently owns writes for this Library.",
     );
   }
-  if (follower) await reloadSqliteLibraryState();
+  if (follower) await reloadDesktopLibraryRuntimeState();
   markConnected(result.status === "published", follower);
 }
 
@@ -654,7 +654,7 @@ export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> 
       "Library ownership changed. Review the current owner and try again.",
     );
   }
-  await reloadSqliteLibraryState();
+  await reloadDesktopLibraryRuntimeState();
   await startCloudSync("gdrive", accessToken);
 }
 

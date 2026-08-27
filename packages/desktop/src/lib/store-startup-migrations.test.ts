@@ -41,10 +41,10 @@ const {
 }));
 
 vi.mock("./library-client", () => ({
-  initDoc: mockInitDoc,
+  initializeDesktopLibraryRuntime: mockInitDoc,
   quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
-  subscribe: mockSubscribe,
-  getDocState: vi.fn(() => null),
+  subscribeDesktopLibraryRuntime: mockSubscribe,
+  getDesktopLibraryRuntimeState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),
   docAddSampleLibraryData: vi.fn(),
   docAddRssFeed: vi.fn(),
@@ -134,26 +134,21 @@ vi.mock("./logger", () => ({
 
 function createDocState() {
   return {
-    items: [],
     searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
     preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
     totalUnreadCount: 0,
     unreadCountByPlatform: {},
     totalItemCount: 0,
     itemCountByPlatform: {},
+    rssFeedCount: 0,
+    enabledRssFeedCount: 0,
+    archivedItemCount: 0,
+    friendPersonCount: 0,
+    socialAccountCount: 0,
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
-    archivableFeedCounts: {},
     mapFriendLocationCount: 0,
     mapAllContentLocationCount: 0,
-    docItemCount: 0,
   };
 }
 
@@ -432,10 +427,6 @@ describe("store startup migrations", () => {
     subscriber?.(createDocState(), {
       mutation: "UPDATE_RSS_FEED",
       source: "feeds_patch",
-    });
-    subscriber?.(createDocState(), {
-      mutation: "SET_RENDERER_ITEM_HYDRATION",
-      source: "state_update",
     });
     expect(useAppStore.getState().libraryItemVersion).toBe(5);
     expect(useAppStore.getState().savedFeedVersion).toBe(1);

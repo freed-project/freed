@@ -50,17 +50,16 @@ vi.mock("./sqlite-library", async (importOriginal) => {
         archivableFeedCounts: {},
         mapFriendLocationCount: 0,
         mapAllContentLocationCount: 0,
-        docItemCount: 0,
       };
     }),
   };
 });
 
-import { initDoc } from "./library-client";
+import { initializeDesktopLibraryRuntime } from "./library-client";
 
 describe("fresh normalized Desktop startup", () => {
   it("selects native SQLite without creating or bootstrapping a historical Library", async () => {
-    await initDoc();
+    await initializeDesktopLibraryRuntime();
 
     expect(mocks.calls).toEqual(["select:false", "select:true", "load"]);
   });

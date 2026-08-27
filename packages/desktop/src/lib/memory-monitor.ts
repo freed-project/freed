@@ -202,7 +202,7 @@ function captureShellBaselineFromNative(
  * it there is correct for pressure handling but too late for attribution. App
  * startup primes this probe before legal and document initialization. The store
  * also primes it as a fallback, then closes the baseline window before
- * `initDoc()` begins.
+ * SQLite runtime initialization begins.
  *
  * Measurement is never a startup dependency. Callers deliberately do not await
  * this promise. The sample disables storage scans but requires rooted WebKit

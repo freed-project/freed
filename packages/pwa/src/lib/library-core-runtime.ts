@@ -1,5 +1,4 @@
 import {
-  createDefaultPreferences,
   sanitizeFeedItemWrite,
   sanitizeRssFeedWrite,
   type Account,
@@ -35,6 +34,8 @@ import {
   scanLibraryCoreNormalizedBackgroundItemsV1,
   searchLibraryCoreNormalizedItemsV1,
   executeLibraryCoreScopeActionV1,
+  createEmptyLibraryCoreRuntimeStateV1,
+  libraryCoreRuntimeStateFromFacetSummaryV1,
   libraryCoreFeedBrowseFilterInputFromV1,
   readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedMapCandidatesV1,
@@ -45,6 +46,7 @@ import {
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
+  type LibraryCoreRuntimeStateV1,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type {
@@ -58,7 +60,6 @@ import {
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreNormalizedCheckpointV2,
 } from "@freed/sync/cloud/library-core";
-import type { LibraryState } from "./library-state-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
   appendPwaScopeActionStage,
@@ -98,10 +99,10 @@ import {
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT,
 } from "./library-core-pwa-follower-mutations";
 
-type LibraryCoreStateListener = (state: LibraryState) => void;
+type LibraryCoreStateListener = (state: LibraryCoreRuntimeStateV1) => void;
 
 const listeners = new Set<LibraryCoreStateListener>();
-let lastState: LibraryState | null = null;
+let lastState: LibraryCoreRuntimeStateV1 | null = null;
 
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryPwaNormalizedLibrary,
@@ -112,27 +113,7 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
   return (await readPwaNormalizedCheckpointReceipt()).receipt;
 }
 
-function emptyState(): LibraryState {
-  return {
-    searchCorpusVersion: 0,
-    preferences: createDefaultPreferences(),
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    rssFeedCount: 0,
-    enabledRssFeedCount: 0,
-    archivedItemCount: 0,
-    friendPersonCount: 0,
-    socialAccountCount: 0,
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-  };
-}
-
-async function readSelectedState(): Promise<LibraryState | null> {
+async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
   const selected = await readPwaLibraryCoreSelectedCheckpointReceipt();
   if (!selected) return null;
   const [preferences, facetSummary] = await Promise.all([
@@ -147,43 +128,14 @@ async function readSelectedState(): Promise<LibraryState | null> {
   ) {
     throw new Error("Selected PWA Library changed while reading its window");
   }
-  const itemCountByPlatform = Object.fromEntries(
-    facetSummary.platformCounts.map((entry) => [
-      entry.platform,
-      entry.totalCount,
-    ]),
-  );
-  const unreadCountByPlatform = Object.fromEntries(
-    facetSummary.platformCounts.map((entry) => [
-      entry.platform,
-      entry.unreadCount,
-    ]),
-  );
-  const archivableCountByPlatform = Object.fromEntries(
-    facetSummary.platformCounts.map((entry) => [
-      entry.platform,
-      entry.archivableCount,
-    ]),
-  );
-  return Object.freeze({
-    ...emptyState(),
+  return libraryCoreRuntimeStateFromFacetSummaryV1(
     preferences,
-    searchCorpusVersion: selected.sourceRevision,
-    totalArchivableCount: facetSummary.archivableCount,
-    totalItemCount: facetSummary.totalCount,
-    totalUnreadCount: facetSummary.unreadCount,
-    rssFeedCount: facetSummary.rssFeedCount,
-    enabledRssFeedCount: facetSummary.enabledRssFeedCount,
-    archivedItemCount: facetSummary.archivedCount,
-    friendPersonCount: facetSummary.friendPersonCount,
-    socialAccountCount: facetSummary.socialAccountCount,
-    archivableCountByPlatform,
-    itemCountByPlatform,
-    unreadCountByPlatform,
-  });
+    facetSummary,
+    selected.sourceRevision,
+  );
 }
 
-function publishState(state: LibraryState): void {
+function publishState(state: LibraryCoreRuntimeStateV1): void {
   lastState = state;
   for (const listener of listeners) listener(state);
 }
@@ -200,8 +152,9 @@ export function subscribePwaLibraryCoreState(
   return () => listeners.delete(listener);
 }
 
-export async function initializePwaLibraryCoreState(): Promise<LibraryState> {
-  const state = (await readSelectedState()) ?? emptyState();
+export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
+  const state =
+    (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
   publishState(state);
   return state;
 }
@@ -955,7 +908,7 @@ export const readPwaLibraryCoreMapCandidates: NonNullable<
   PlatformConfig["readLibraryMapCandidates"]
 > = () => readLibraryCoreNormalizedMapCandidatesV1(NORMALIZED_READER_RUNTIME);
 
-async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryState> {
+async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRuntimeStateV1> {
   const state = await readSelectedState();
   if (!state) {
     throw new Error("Imported SQLite Library checkpoint is not selected");
@@ -969,7 +922,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
   readonly followerTransport?: PwaLibraryCoreFollowerTransportV2;
   readonly signal?: AbortSignal;
-}): Promise<LibraryState> {
+}): Promise<LibraryCoreRuntimeStateV1> {
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
     signal: input.signal,

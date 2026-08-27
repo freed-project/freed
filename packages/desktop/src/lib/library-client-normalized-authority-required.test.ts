@@ -26,11 +26,13 @@ vi.mock("./sqlite-library", async (importOriginal) => {
   };
 });
 
-import { initDoc } from "./library-client";
+import { initializeDesktopLibraryRuntime } from "./library-client";
 
 describe("normalized Desktop authority requirement", () => {
   it("fails closed without creating a portable shell when native cutover is unavailable", async () => {
-    await expect(initDoc()).rejects.toThrow(/one-time SQLite Library transition/);
+    await expect(initializeDesktopLibraryRuntime()).rejects.toThrow(
+      /one-time SQLite Library transition/,
+    );
 
     expect(mocks.load).not.toHaveBeenCalled();
   });

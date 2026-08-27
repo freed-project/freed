@@ -83,8 +83,10 @@ describe("desktop hot-path contract", () => {
   it("keeps provider outbox drains wired to Library mutation metadata", () => {
     const storeSource = readFileSync(join(LIB_DIR, "store.ts"), "utf8");
     const outboxSource = readFileSync(join(LIB_DIR, "outbox.ts"), "utf8");
-    expect(storeSource).toContain("subscribe((_state, event) => cb(event))");
-    expect(outboxSource).toContain("DocChangeEvent");
+    expect(storeSource).toContain(
+      "subscribeDesktopLibraryRuntime((_state, event) => cb(event))",
+    );
+    expect(outboxSource).toContain("LibraryMutationEvent");
     expect(outboxSource).toContain("pendingChangedItems");
   });
 

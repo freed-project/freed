@@ -1,6 +1,9 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { waitForFactoryResetDrain, isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
-import { reloadSqliteLibraryState, subscribe } from "./library-client";
+import {
+  reloadDesktopLibraryRuntimeState,
+  subscribeDesktopLibraryRuntime,
+} from "./library-client";
 import { readLibraryCoreFacetSummary } from "./library-core-item-detail-runtime";
 import { queryNormalizedDeviceContacts } from "./library-core-normalized-query-client.js";
 import {
@@ -142,7 +145,7 @@ async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSumm
   const snapshot = (await listSnapshots()).find((entry) => entry.id === snapshotId);
   if (!snapshot) throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
   await restoreSqliteLibraryBackup(snapshotId);
-  await reloadSqliteLibraryState();
+  await reloadDesktopLibraryRuntimeState();
   notifySnapshotListeners();
   log.info(`[snapshots] restored SQLite backup ...${snapshotId.slice(-8)}`);
   return snapshot;
@@ -178,7 +181,7 @@ export async function startSnapshotManager(): Promise<void> {
   const existing = await listSnapshots();
   lastSnapshotAt = existing[0]?.createdAt ?? 0;
   if (existing.length === 0) await createSnapshot("auto");
-  snapshotUnsubscribe = subscribe(scheduleAutoSnapshot);
+  snapshotUnsubscribe = subscribeDesktopLibraryRuntime(scheduleAutoSnapshot);
   snapshotManagerStarted = true;
   scheduleAutoSnapshot();
 }

@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences } from "@freed/shared";
-import type { DocState } from "./library-types";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -69,31 +67,6 @@ function normalizedCard(globalId = ITEM_ID) {
     ...card
   } = normalizedRow(globalId);
   return card;
-}
-
-function state(): DocState {
-  return {
-    items: [],
-    searchCorpusVersion: 1,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 1,
-    unreadCountByPlatform: { rss: 1 },
-    totalItemCount: 1,
-    itemCountByPlatform: { rss: 1 },
-    totalArchivableCount: 1,
-    archivableCountByPlatform: { rss: 1 },
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-    docItemCount: 1,
-  };
 }
 
 describe("SQLite editable follower mutations", () => {
@@ -195,6 +168,14 @@ describe("SQLite editable follower mutations", () => {
             },
           };
         }
+        if (request.queryId === "preferences_snapshot_v1") {
+          return {
+            queryId: request.queryId,
+            rows: [],
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
         if (request.queryId === "item_detail_v1") {
           return {
             item: {
@@ -224,7 +205,6 @@ describe("SQLite editable follower mutations", () => {
   it("signs and enqueues a read intent without using writer mutation authority", async () => {
     const result = await dispatchSqliteMutation(
       { reqId: 1, type: "MARK_AS_READ", globalId: ITEM_ID },
-      state(),
     );
 
     const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
@@ -247,7 +227,6 @@ describe("SQLite editable follower mutations", () => {
   it("routes saved state through the follower intent outbox", async () => {
     await dispatchSqliteMutation(
       { reqId: 2, type: "TOGGLE_SAVED", globalId: ITEM_ID },
-      state(),
     );
 
     const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
@@ -262,7 +241,7 @@ describe("SQLite editable follower mutations", () => {
     expect(parsed[0].payload.assigned_at_ms).toEqual(expect.any(Number));
   });
 
-  it("routes RSS edits through a signed intent without replacing the shell", async () => {
+  it("routes RSS edits through a signed intent without constructing a shell", async () => {
     const feed = {
       url: "https://example.com/feed.xml",
       title: "Example",
@@ -273,7 +252,6 @@ describe("SQLite editable follower mutations", () => {
     };
     const result = await dispatchSqliteMutation(
       { reqId: 3, type: "ADD_RSS_FEED", feed },
-      state(),
     );
 
     const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
@@ -283,13 +261,12 @@ describe("SQLite editable follower mutations", () => {
       entity_id: feed.url,
       payload: { feed },
     });
-    expect(result.state.feeds[feed.url]).toEqual(feed);
+    expect(result.state).not.toHaveProperty("feeds");
   });
 
   it("expands a bulk read action into one signed transaction", async () => {
     await dispatchSqliteMutation(
       { reqId: 4, type: "MARK_ALL_AS_READ", platform: "rss" },
-      state(),
     );
 
     const parsed = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
@@ -486,6 +463,14 @@ describe("SQLite Primary mutations", () => {
             },
           };
         }
+        if (request.queryId === "preferences_snapshot_v1") {
+          return {
+            queryId: request.queryId,
+            rows: [],
+            schemaVersion: request.schemaVersion,
+            source,
+          };
+        }
         if (request.queryId === "item_detail_v1") {
           return {
             item: null,
@@ -550,7 +535,6 @@ describe("SQLite Primary mutations", () => {
   it("commits a read assignment through the selected normalized Primary", async () => {
     await dispatchSqliteMutation(
       { reqId: 5, type: "MARK_AS_READ", globalId: ITEM_ID },
-      state(),
     );
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -590,7 +574,6 @@ describe("SQLite Primary mutations", () => {
           globalId: ITEM_ID,
           syncedAt: 1_783_000_000_000,
         },
-        state(),
       );
 
       const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -620,7 +603,6 @@ describe("SQLite Primary mutations", () => {
         personId: "person-1",
         updates: { notes: "Follow up next week" },
       },
-      state(),
     );
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -761,7 +743,6 @@ describe("SQLite Primary mutations", () => {
         url: "https://example.com/feed.xml",
         updates: { title: "Renamed Feed" },
       },
-      state(),
     );
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -804,7 +785,6 @@ describe("SQLite Primary mutations", () => {
   it("removes the complete frozen RSS Feed scope without a renderer feed map", async () => {
     await dispatchSqliteMutation(
       { includeItems: false, reqId: 8, type: "REMOVE_ALL_FEEDS" },
-      state(),
     );
 
     const envelopes = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
@@ -830,7 +810,6 @@ describe("SQLite Primary mutations", () => {
   it("repairs the complete frozen untitled RSS scope with title assignments", async () => {
     await dispatchSqliteMutation(
       { reqId: 9, type: "HEAL_UNTITLED_FEEDS" },
-      state(),
     );
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -852,7 +831,6 @@ describe("SQLite Primary mutations", () => {
   it("keeps provider-visible likes off the Primary path", async () => {
     await dispatchSqliteMutation(
       { reqId: 6, type: "TOGGLE_LIKED", globalId: ITEM_ID },
-      state(),
     );
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>

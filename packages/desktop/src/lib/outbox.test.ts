@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import type { DocChangeEvent } from "./library-types";
+import type { LibraryMutationEvent } from "./library-types";
 import type { ConfirmFn } from "./outbox";
 import type { PlatformActions } from "./platform-actions";
 
@@ -79,7 +79,7 @@ function makeItem(
   };
 }
 
-function makePatchEvent(item: FeedItem): DocChangeEvent {
+function makePatchEvent(item: FeedItem): LibraryMutationEvent {
   return {
     source: "item_patch",
     mutation: "TOGGLE_LIKED",
@@ -89,7 +89,7 @@ function makePatchEvent(item: FeedItem): DocChangeEvent {
   };
 }
 
-function makeFullScanEvent(): DocChangeEvent {
+function makeFullScanEvent(): LibraryMutationEvent {
   return {
     source: "state_update",
     mutation: "ADD_FEED_ITEMS",
@@ -109,8 +109,8 @@ function scanFixtureItems(
 }
 
 function requireSubscriber(
-  subscriber: ((event: DocChangeEvent) => void) | null,
-): (event: DocChangeEvent) => void {
+  subscriber: ((event: LibraryMutationEvent) => void) | null,
+): (event: LibraryMutationEvent) => void {
   expect(subscriber).not.toBeNull();
   if (!subscriber) {
     throw new Error("outbox processor did not subscribe");
@@ -143,7 +143,7 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const scanItems = scanFixtureItems(() => [makeItem("x:startup")]);
     const like = vi.fn(async () => true);
     const actions: PlatformActions = {
@@ -260,7 +260,7 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const scanItems = scanFixtureItems(() => [makeItem("x:startup")]);
     const like = vi.fn()
       .mockResolvedValueOnce(false)
@@ -308,7 +308,7 @@ describe("outbox processor", () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
 
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     let scanRows = [makeItem("x:startup")];
     const scanItems = scanFixtureItems(() => scanRows);
     const like = vi.fn(async () => true);
@@ -439,7 +439,7 @@ describe("outbox processor", () => {
     });
 
     const { startOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const like = vi.fn(async () => false);
     const actions: PlatformActions = {
       like,
@@ -519,7 +519,7 @@ describe("outbox processor", () => {
   it("gives a new like intent a fresh budget after a historical failure", async () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const historical = makeItem("x:new-intent", {
       liked: true,
       likedAt: 60,
@@ -796,7 +796,7 @@ describe("outbox processor", () => {
   it("drops a provider action queued by the debounce when reset begins", async () => {
     vi.useFakeTimers();
     const { startOutboxProcessor, stopAndDrainOutboxProcessor } = await loadOutbox();
-    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
     const like = vi.fn(async () => true);
     const confirmLiked = vi.fn(async () => undefined);
     const actions: PlatformActions = {

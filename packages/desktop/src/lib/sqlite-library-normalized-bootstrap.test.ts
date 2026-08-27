@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences, type FeedItem } from "@freed/shared";
-import type { DocState } from "./library-types";
+import type { FeedItem } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -21,31 +20,6 @@ const {
   loadSqliteLibraryState,
   readSqliteItems,
 } = await import("./sqlite-library");
-
-function emptyState(): DocState {
-  return {
-    items: [],
-    searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-    docItemCount: 0,
-  };
-}
 
 function item(): FeedItem {
   return {
@@ -127,18 +101,15 @@ describe("Freed Desktop normalized bootstrap projection", () => {
       throw new Error("unexpected normalized query");
     });
 
-    await expect(loadSqliteLibraryState()).resolves.toEqual(
+    const state = await loadSqliteLibraryState();
+    expect(state).toEqual(
       expect.objectContaining({
-        accounts: {},
-        docItemCount: 19,
-        feeds: {},
-        items: [],
-        persons: {},
         searchCorpusVersion: 7,
         totalArchivableCount: 16,
         totalItemCount: 19,
       }),
     );
+    expect(state).not.toHaveProperty("items");
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(
       mocks.queryNormalizedLibrary.mock.calls.map(
@@ -210,8 +181,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
     await expect(
       dispatchSqliteMutation(
         { reqId: 1, type: "ADD_FEED_ITEM", item: item() },
-        emptyState(),
       ),
-    ).rejects.toThrow(/whole-item upsert is unavailable/);
+    ).rejects.toThrow(/Normalized SQLite FeedItem mutation context is required/);
   });
 });

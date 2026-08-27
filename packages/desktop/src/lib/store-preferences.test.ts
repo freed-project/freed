@@ -20,10 +20,10 @@ const {
 }));
 
 vi.mock("./library-client", () => ({
-  initDoc: vi.fn(),
+  initializeDesktopLibraryRuntime: vi.fn(),
   quiesceDesktopLibraryForFactoryReset: vi.fn(() => Promise.resolve()),
-  subscribe: vi.fn(() => () => {}),
-  getDocState: vi.fn(() => null),
+  subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
+  getDesktopLibraryRuntimeState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),
   docAddSampleLibraryData: vi.fn(),
   docAddRssFeed: vi.fn(),

@@ -446,7 +446,7 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
           return result;
         }
 
-        const beforeItemCount = store.docItemCount ?? 0;
+        const beforeItemCount = store.totalItemCount;
         const beforeAccountCount = store.socialAccountCount ?? 0;
         assertFactoryResetEpoch(resetEpoch);
         await docReconcileFollowRosterCapture(result.accounts, result.items, {
@@ -457,7 +457,7 @@ export function captureAuthenticatedEssayProvider<Entry, Profile>(
         const reconciledState = useAppStore.getState();
         result.diag.itemsAdded = Math.max(
           0,
-          (reconciledState.docItemCount ?? beforeItemCount) - beforeItemCount,
+          reconciledState.totalItemCount - beforeItemCount,
         );
         result.diag.accountsAdded = Math.max(
           0,

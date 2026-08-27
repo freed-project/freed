@@ -71,7 +71,7 @@ export async function importMarkdownFiles(
   // Snapshot existing globalIds once upfront — O(1) per lookup vs O(n) Automerge reads.
   // This is the primary deduplication gate; docBatchImportItems has a secondary guard
   // inside the CRDT change for within-batch duplicates. Fetch the full id set
-  // on demand rather than keeping it inside every live DocState update.
+  // on demand rather than keeping it inside every live runtime update.
   const existingIds = new Set(await getAllItemIds());
 
   const parsedItems: FeedItem[] = [];

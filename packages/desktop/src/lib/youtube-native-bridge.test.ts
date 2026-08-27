@@ -10,7 +10,7 @@ type EventHandler = (event: { payload: unknown }) => void;
 const mocks = vi.hoisted(() => {
   const listeners = new Map<string, EventHandler>();
   const state = {
-    docItemCount: 0,
+    totalItemCount: 0,
     socialAccountCount: 0,
     ytAuth: { isAuthenticated: true } as Record<string, unknown>,
     setYtAuth: vi.fn((next: Record<string, unknown>) => {
@@ -158,13 +158,13 @@ describe("YouTube native bridge", () => {
     mocks.reconcile.mockReset();
     mocks.reconcile.mockImplementation(async (accounts: unknown[], items: unknown[]) => {
       mocks.state.socialAccountCount += accounts.length;
-      mocks.state.docItemCount += items.length;
+      mocks.state.totalItemCount += items.length;
     });
     mocks.getSavedUrls.mockReset();
     mocks.recordHealth.mockReset();
     mocks.recordScrape.mockReset();
     mocks.recordRuntime.mockReset();
-    mocks.state.docItemCount = 0;
+    mocks.state.totalItemCount = 0;
     mocks.state.socialAccountCount = 0;
     mocks.state.ytAuth = { isAuthenticated: true };
     mocks.state.setYtAuth.mockClear();

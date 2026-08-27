@@ -15,7 +15,7 @@ async function loadSemanticClassifierModule({
   vi.resetModules();
 
   const callbacks: {
-    doc: ((state: { docItemCount: number }) => void) | null;
+    doc: ((state: { totalItemCount: number }) => void) | null;
     model: (() => void) | null;
     preferences: (() => void) | null;
   } = {
@@ -44,7 +44,7 @@ async function loadSemanticClassifierModule({
 
   vi.doMock("./library-client.js", () => ({
     docBackfillContentSignals: mockDocBackfillContentSignals,
-    subscribe: vi.fn((callback: (state: { docItemCount: number }) => void) => {
+    subscribeDesktopLibraryRuntime: vi.fn((callback: (state: { totalItemCount: number }) => void) => {
       callbacks.doc = callback;
       return () => {
         callbacks.doc = null;
@@ -140,7 +140,7 @@ describe("semantic classifier", () => {
     const { callbacks, mockDocBackfillContentSignals, mockUpdateHealth, mod } =
       await loadSemanticClassifierModule({ enabled });
 
-    callbacks.doc?.({ docItemCount: 1 });
+    callbacks.doc?.({ totalItemCount: 1 });
     callbacks.model?.();
     callbacks.preferences?.();
     await vi.advanceTimersByTimeAsync(15_000);

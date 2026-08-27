@@ -628,7 +628,7 @@ async function refreshEnabledRssFeeds(
       const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
-      const rssBefore = store.docItemCount ?? 0;
+      const rssBefore = store.totalItemCount;
       let rssSeen = 0;
 
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
@@ -729,7 +729,7 @@ async function refreshEnabledRssFeeds(
         await docBatchRefreshFeeds(feedUpdates, allNewItems);
       }
       const rssAfterState = useAppStore.getState();
-      const rssAfter = rssAfterState.docItemCount ?? rssBefore;
+      const rssAfter = rssAfterState.totalItemCount;
       const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
       await recordProviderHealthEvent({
         provider: "rss",

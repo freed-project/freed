@@ -12,8 +12,8 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
   waitForFactoryResetDrain: vi.fn(),
 }));
 vi.mock("./library-client", () => ({
-  reloadSqliteLibraryState: vi.fn(),
-  subscribe: vi.fn(() => () => {}),
+  reloadDesktopLibraryRuntimeState: vi.fn(),
+  subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
 }));
 vi.mock("./library-core-item-detail-runtime", () => ({
   readLibraryCoreFacetSummary: mocks.facetSummary,

@@ -4,6 +4,8 @@ import {
   parseLibraryCoreFacetSummaryRequestV1,
   parseLibraryCoreFacetSummaryResponseV1,
 } from "./facet-summary-contracts.js";
+import { libraryCoreRuntimeStateFromFacetSummaryV1 } from "./runtime-state.js";
+import { createDefaultPreferences } from "../types.js";
 
 const source = {
   generationId: "a".repeat(64),
@@ -111,5 +113,32 @@ describe("Library Core facet summary contract", () => {
         summary: { ...response.summary, savedArchivedCount: 4 },
       }).ok,
     ).toBe(false);
+  });
+
+  it("projects the same row-free runtime snapshot for every SQLite host", () => {
+    const preferences = createDefaultPreferences();
+    expect(
+      libraryCoreRuntimeStateFromFacetSummaryV1(
+        preferences,
+        summary,
+        source.projectionRevision,
+      ),
+    ).toEqual({
+      archivedItemCount: 2,
+      archivableCountByPlatform: { rss: 1 },
+      enabledRssFeedCount: 2,
+      friendPersonCount: 3,
+      itemCountByPlatform: { rss: 5 },
+      mapAllContentLocationCount: 0,
+      mapFriendLocationCount: 0,
+      preferences,
+      rssFeedCount: 4,
+      searchCorpusVersion: 7,
+      socialAccountCount: 5,
+      totalArchivableCount: 1,
+      totalItemCount: 5,
+      totalUnreadCount: 2,
+      unreadCountByPlatform: { rss: 2 },
+    });
   });
 });

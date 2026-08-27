@@ -5,7 +5,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
-  createDefaultPreferences,
   sanitizeAccountWrite,
   sanitizePersonRootWrite,
   sanitizeReachOutLogWrite,
@@ -49,6 +48,7 @@ import {
   LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
+  libraryCoreRuntimeStateFromFacetSummaryV1,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -66,6 +66,7 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedPreferencesV1,
   collectLibraryCoreSampleRemovalPlanV1,
+  scanLibraryCoreAccountRowsV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
   RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA,
@@ -102,6 +103,7 @@ import {
   type LibraryCoreNormalizedResultTransportImportV2,
   type LibraryCoreOperationInstanceId,
   type LibraryCoreRssFeedScopeActionKindV1,
+  type LibraryCoreRuntimeStateV1,
   type LibraryCoreScopeActionStagePageV1,
   type PersonRemoveTransactionMemberInputV1,
   type PersonReachOutAppendTransactionMemberInputV1,
@@ -112,7 +114,7 @@ import {
   type RssFeedUpsertTransactionMemberInputV1,
 } from "@freed/shared/library-core";
 import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
-import type { DocChangeEvent, DocState, WorkerRequest } from "./library-types";
+import type { LibraryMutationEvent, WorkerRequest } from "./library-types";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { mergeSqliteFeedItem } from "./sqlite-feed-item-merge";
 
@@ -763,14 +765,9 @@ async function submitProviderSyncReceipt(
 ): Promise<void> {
   const context = await primaryMutationContext();
   if (!context) {
-    requireBrowserTestProjection("provider delivery receipt");
-    await mutateItems(
-      operationType === "feed_item_like_sync_receipt"
-        ? "confirm_liked"
-        : "confirm_seen",
-      { ids: [entityId], timestampMs: syncedAtMs },
+    throw new Error(
+      "Normalized SQLite Primary provider receipt context is required",
     );
-    return;
   }
   const transactionId =
     `desktop-provider-receipt:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
@@ -1633,35 +1630,6 @@ export function isSqliteLibraryActive(): boolean {
   return sqliteActive;
 }
 
-function emptyShell(): Omit<DocState, "items"> {
-  return {
-    searchCorpusVersion: 0,
-    feeds: {},
-    persons: {},
-    accounts: {},
-    friends: {},
-    preferences: createDefaultPreferences(),
-    desktopClientIds: [],
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: 0,
-    unreadCountByPlatform: {},
-    totalItemCount: 0,
-    itemCountByPlatform: {},
-    rssFeedCount: 0,
-    enabledRssFeedCount: 0,
-    archivedItemCount: 0,
-    friendPersonCount: 0,
-    socialAccountCount: 0,
-    totalArchivableCount: 0,
-    archivableCountByPlatform: {},
-    archivableFeedCounts: {},
-    mapFriendLocationCount: 0,
-    mapAllContentLocationCount: 0,
-    docItemCount: 0,
-  };
-}
-
 export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
   if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return null;
   const status = await invoke<SqliteStatus | null>("sqlite_library_status");
@@ -1889,7 +1857,7 @@ export async function listSqliteLibraryActorEnrollments(input: {
   );
 }
 
-export async function loadSqliteLibraryState(): Promise<DocState> {
+export async function loadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
   const [facets, preferences] = await Promise.all([
     queryNormalizedLibrary({
       queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
@@ -1898,44 +1866,11 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
     readLibraryCoreNormalizedPreferencesV1(NORMALIZED_MUTATION_READER_RUNTIME),
   ]);
   sqliteActive = true;
-  return {
-    ...emptyShell(),
-    items: [],
+  return libraryCoreRuntimeStateFromFacetSummaryV1(
     preferences,
-    searchCorpusVersion: facets.source.projectionRevision,
-    totalItemCount: facets.summary.totalCount,
-    rssFeedCount: facets.summary.rssFeedCount,
-    enabledRssFeedCount: facets.summary.enabledRssFeedCount,
-    archivedItemCount: facets.summary.archivedCount,
-    friendPersonCount: facets.summary.friendPersonCount,
-    socialAccountCount: facets.summary.socialAccountCount,
-    totalArchivableCount: facets.summary.archivableCount,
-    docItemCount: facets.summary.totalCount,
-  };
-}
-
-function requireBrowserTestProjection(operation: string): void {
-  if (import.meta.env.VITE_TEST_TAURI !== "1") {
-    throw new Error(
-      `Historical SQLite ${operation} is unavailable outside the browser test projection`,
-    );
-  }
-}
-
-async function upsertSqliteItems(items: readonly FeedItem[]): Promise<void> {
-  if (items.length === 0) return;
-  requireBrowserTestProjection("whole-item upsert");
-  const captureItems = (
-    window as unknown as {
-      __FREED_E2E_NORMALIZED_CAPTURE_ITEMS__?: (
-        items: readonly FeedItem[],
-      ) => void;
-    }
-  ).__FREED_E2E_NORMALIZED_CAPTURE_ITEMS__;
-  if (!captureItems) {
-    throw new Error("Browser SQLite test capture bridge is unavailable");
-  }
-  captureItems(items);
+    facets.summary,
+    facets.source.projectionRevision,
+  );
 }
 
 export async function readSqliteItems(
@@ -1964,7 +1899,7 @@ async function insertMissingSqliteItems(
   );
   const missing = items.filter((item) => !existing.has(item.globalId));
   if (!(await maybeSubmitFeedItemCaptures(missing, Date.now()))) {
-    await upsertSqliteItems(missing);
+    throw new Error("Normalized SQLite FeedItem mutation context is required");
   }
   return missing;
 }
@@ -1984,7 +1919,7 @@ async function mergeIncomingSqliteItems(
     return mergeSqliteFeedItem(current, incoming);
   });
   if (!(await maybeSubmitFeedItemCaptures(merged, Date.now()))) {
-    await upsertSqliteItems(merged);
+    throw new Error("Normalized SQLite FeedItem mutation context is required");
   }
   return merged;
 }
@@ -2036,51 +1971,6 @@ async function collectSqliteItemIds(
   return ids;
 }
 
-async function mutateItems(
-  mutation: string,
-  options: {
-    ids?: readonly string[];
-    platform?: string;
-    feedUrl?: string;
-    timestampMs?: number;
-    maxAgeMs?: number;
-  } = {},
-): Promise<number> {
-  requireBrowserTestProjection("generic item mutation");
-  const ids = options.ids ?? [];
-  const timestampMs = options.timestampMs ?? Date.now();
-  const mutate = (
-    window as unknown as {
-      __FREED_E2E_NORMALIZED_MUTATE_ITEMS__?: (request: {
-        mutation: string;
-        ids: readonly string[];
-        platform: string | null;
-        feedUrl: string | null;
-        timestampMs: number;
-        maxAgeMs: number | null;
-      }) => number;
-    }
-  ).__FREED_E2E_NORMALIZED_MUTATE_ITEMS__;
-  if (!mutate) {
-    throw new Error("Browser SQLite test mutation bridge is unavailable");
-  }
-  const mutateBatch = (batch: readonly string[]) =>
-    mutate({
-      mutation,
-      ids: [...batch],
-      platform: options.platform ?? null,
-      feedUrl: options.feedUrl ?? null,
-      timestampMs,
-      maxAgeMs: options.maxAgeMs ?? null,
-    });
-  if (ids.length === 0) return mutateBatch([]);
-  let affected = 0;
-  for (let start = 0; start < ids.length; start += 1_000) {
-    affected += mutateBatch(ids.slice(start, start + 1_000));
-  }
-  return affected;
-}
-
 function deepMerge<T>(current: T, update: Partial<T>): T {
   if (
     !current ||
@@ -2106,47 +1996,6 @@ function deepMerge<T>(current: T, update: Partial<T>): T {
         : value;
   }
   return next as T;
-}
-
-async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
-  const facets = await queryNormalizedLibrary({
-    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-  });
-  return {
-    ...state,
-    searchCorpusVersion: facets.source.projectionRevision,
-    feedUnreadCounts: {},
-    feedTotalCounts: {},
-    totalUnreadCount: facets.summary.unreadCount,
-    unreadCountByPlatform: Object.fromEntries(
-      facets.summary.platformCounts.map((count) => [
-        count.platform,
-        count.unreadCount,
-      ]),
-    ),
-    totalItemCount: facets.summary.totalCount,
-    rssFeedCount: facets.summary.rssFeedCount,
-    enabledRssFeedCount: facets.summary.enabledRssFeedCount,
-    archivedItemCount: facets.summary.archivedCount,
-    friendPersonCount: facets.summary.friendPersonCount,
-    socialAccountCount: facets.summary.socialAccountCount,
-    itemCountByPlatform: Object.fromEntries(
-      facets.summary.platformCounts.map((count) => [
-        count.platform,
-        count.totalCount,
-      ]),
-    ),
-    totalArchivableCount: facets.summary.archivableCount,
-    archivableCountByPlatform: Object.fromEntries(
-      facets.summary.platformCounts.map((count) => [
-        count.platform,
-        count.archivableCount,
-      ]),
-    ),
-    archivableFeedCounts: {},
-    docItemCount: facets.summary.totalCount,
-  };
 }
 
 const NORMALIZED_MUTATION_READER_RUNTIME = Object.freeze({
@@ -2292,13 +2141,11 @@ async function readNormalizedRssFeed(url: string): Promise<RssFeed | null> {
 }
 
 async function refreshNormalizedMutationProjection(
-  state: DocState,
   changedIds: readonly string[],
-): Promise<{ state: DocState; changedItems: FeedItem[] }> {
-  const facets = await queryNormalizedLibrary({
-    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-  });
+): Promise<{
+  state: LibraryCoreRuntimeStateV1;
+  changedItems: FeedItem[];
+}> {
   const changedItems: FeedItem[] = [];
   for (const globalId of changedIds) {
     const item = await readLibraryCoreNormalizedItemDetailV1(
@@ -2308,120 +2155,32 @@ async function refreshNormalizedMutationProjection(
     if (item) changedItems.push(item);
   }
   return {
-    state: {
-      ...state,
-      searchCorpusVersion: facets.source.projectionRevision,
-      totalItemCount: facets.summary.totalCount,
-      rssFeedCount: facets.summary.rssFeedCount,
-      enabledRssFeedCount: facets.summary.enabledRssFeedCount,
-      archivedItemCount: facets.summary.archivedCount,
-      friendPersonCount: facets.summary.friendPersonCount,
-      socialAccountCount: facets.summary.socialAccountCount,
-      docItemCount: facets.summary.totalCount,
-    },
+    state: await loadSqliteLibraryState(),
     changedItems,
   };
 }
 
-async function saveMetadataMutation(
-  current: DocState,
-  update: (next: DocState) => void,
-): Promise<DocState> {
-  const next: DocState = {
-    ...current,
-    feeds: { ...current.feeds },
-    persons: { ...current.persons },
-    accounts: { ...current.accounts },
-    friends: { ...current.friends },
-    preferences: { ...current.preferences },
-  };
-  update(next);
-  if (import.meta.env.VITE_TEST_TAURI !== "1") {
-    throw new Error(
-      "Normalized SQLite mutation context is required for durable Library metadata",
-    );
-  }
-  const captureMetadata = (
-    window as unknown as {
-      __FREED_E2E_NORMALIZED_CAPTURE_METADATA__?: (patch: Readonly<{
-        accountRemovals: readonly string[];
-        accountUpserts: readonly Account[];
-        feedRemovals: readonly string[];
-        feedUpserts: readonly RssFeed[];
-        personRemovals: readonly string[];
-        personUpserts: readonly Person[];
-      }>) => void;
-    }
-  ).__FREED_E2E_NORMALIZED_CAPTURE_METADATA__;
-  if (!captureMetadata) {
-    throw new Error("Browser SQLite test metadata bridge is unavailable");
-  }
-  captureMetadata({
-    accountRemovals: Object.keys(current.accounts).filter(
-      (id) => next.accounts[id] === undefined,
-    ),
-    accountUpserts: Object.values(next.accounts).filter(
-      (account) => current.accounts[account.id] !== account,
-    ),
-    feedRemovals: Object.keys(current.feeds).filter(
-      (url) => next.feeds[url] === undefined,
-    ),
-    feedUpserts: Object.values(next.feeds).filter(
-      (feed) => current.feeds[feed.url] !== feed,
-    ),
-    personRemovals: Object.keys(current.persons).filter(
-      (id) => next.persons[id] === undefined,
-    ),
-    personUpserts: Object.values(next.persons).filter(
-      (person) => current.persons[person.id] !== person,
-    ),
-  });
-  return next;
-}
-
 export async function dispatchSqliteMutation(
   message: WorkerRequest,
-  current: DocState,
-): Promise<{ state: DocState; event: DocChangeEvent; result?: unknown }> {
+): Promise<{
+  state: LibraryCoreRuntimeStateV1;
+  event: LibraryMutationEvent;
+  result?: unknown;
+}> {
   const timestamp = Date.now();
   let changedIds: string[] = [];
-  let source: DocChangeEvent["source"] = "state_update";
+  let source: LibraryMutationEvent["source"] = "state_update";
   let result: unknown;
-  let nextState = current;
-  const projectMetadata = (update: (next: DocState) => void) => {
-    nextState = {
-      ...nextState,
-      feeds: { ...nextState.feeds },
-      persons: { ...nextState.persons },
-      accounts: { ...nextState.accounts },
-      friends: { ...nextState.friends },
-      preferences: { ...nextState.preferences },
-    };
-    update(nextState);
-  };
-  const saveMetadata = async (
-    update: (next: DocState) => void,
-    normalizedHandled = false,
-  ) => {
-    if (normalizedHandled) {
-      projectMetadata(update);
-    } else {
-      nextState = await saveMetadataMutation(nextState, update);
-    }
-  };
   const saveDiscoveredAccounts = async (items: readonly FeedItem[]) => {
-    const missing = buildDiscoveredAccountsFromItems(
-      [...items],
-      current.accounts,
-    );
+    const candidates = buildDiscoveredAccountsFromItems([...items], {});
+    const missing: Account[] = [];
+    for (const candidate of candidates) {
+      if (!(await readNormalizedAccount(candidate.id))) missing.push(candidate);
+    }
     if (missing.length === 0) return;
-    const normalizedHandled = await maybeSubmitAccountUpserts(
-      missing,
-      timestamp,
-    );
-    await saveMetadata((next) => {
-      for (const account of missing) next.accounts[account.id] = account;
-    }, normalizedHandled);
+    if (!(await maybeSubmitAccountUpserts(missing, timestamp))) {
+      throw new Error("Normalized SQLite Account mutation context is required");
+    }
   };
 
   switch (message.type) {
@@ -2448,9 +2207,7 @@ export async function dispatchSqliteMutation(
         message.accounts.map((account) => account.id),
       );
       for (const account of message.accounts) {
-        const existing =
-          nextState.accounts[account.id] ??
-          (await readNormalizedAccount(account.id));
+        const existing = await readNormalizedAccount(account.id);
         reconciled.set(
           account.id,
           existing ? { ...existing, ...account } : account,
@@ -2460,47 +2217,59 @@ export async function dispatchSqliteMutation(
         message.type === "RECONCILE_YOUTUBE_CAPTURE" &&
         message.options.rosterComplete
       ) {
-        for (const [id, account] of Object.entries(nextState.accounts)) {
-          if (
-            account.provider === "youtube" &&
-            account.discoveredFrom === "follow_roster" &&
-            !incomingIds.has(id)
-          ) {
-            reconciled.set(id, {
-              ...account,
-              followRosterActive: false,
-              followRosterSyncedAt: message.options.capturedAt,
-              updatedAt: message.options.capturedAt,
-            });
+        await scanLibraryCoreAccountRowsV1(
+          NORMALIZED_MUTATION_READER_RUNTIME,
+          async (rows) => {
+            for (const row of rows) {
+              if (
+                row.provider !== "youtube" ||
+                row.discoveredFrom !== "follow_roster" ||
+                incomingIds.has(row.id)
+              ) {
+                continue;
+              }
+              const account = await readNormalizedAccount(row.id);
+              if (account) {
+                reconciled.set(row.id, {
+                  ...account,
+                  followRosterActive: false,
+                  followRosterSyncedAt: message.options.capturedAt,
+                  updatedAt: message.options.capturedAt,
+                });
+              }
+            }
+            return "continue" as const;
           }
-        }
+        );
       }
-      const normalizedHandled = await maybeSubmitAccountUpserts(
-        [...reconciled.values()],
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        for (const [id, account] of reconciled) next.accounts[id] = account;
-      }, normalizedHandled);
+      if (
+        !(await maybeSubmitAccountUpserts(
+          [...reconciled.values()],
+          timestamp,
+        ))
+      ) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       changedIds = merged.map((item) => item.globalId);
       break;
     }
     case "ADD_SAMPLE_LIBRARY_DATA": {
       await insertMissingSqliteItems(message.items);
       const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        for (const feed of message.feeds) {
-          await maybeSubmitRssFeedUpsert(feed, timestamp);
-        }
-        await maybeSubmitPersonUpserts(message.persons, timestamp);
-        await maybeSubmitAccountUpserts(message.accounts, timestamp);
+      if (!normalizedHandled) {
+        throw new Error("Normalized SQLite sample mutation context is required");
       }
-      await saveMetadata((next) => {
-        for (const feed of message.feeds) next.feeds[feed.url] = feed;
-        for (const person of message.persons) next.persons[person.id] = person;
-        for (const account of message.accounts)
-          next.accounts[account.id] = account;
-      }, normalizedHandled);
+      for (const feed of message.feeds) {
+        if (!(await maybeSubmitRssFeedUpsert(feed, timestamp))) {
+          throw new Error("Normalized SQLite RSS Feed mutation context changed");
+        }
+      }
+      if (!(await maybeSubmitPersonUpserts(message.persons, timestamp))) {
+        throw new Error("Normalized SQLite Person mutation context changed");
+      }
+      if (!(await maybeSubmitAccountUpserts(message.accounts, timestamp))) {
+        throw new Error("Normalized SQLite Account mutation context changed");
+      }
       changedIds = message.items.map((item) => item.globalId);
       break;
     }
@@ -2515,34 +2284,47 @@ export async function dispatchSqliteMutation(
         NORMALIZED_MUTATION_READER_RUNTIME,
       );
       const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        await maybeSubmitAccountUpserts(
+      if (!normalizedHandled) {
+        throw new Error("Normalized SQLite sample mutation context is required");
+      }
+      if (
+        !(await maybeSubmitAccountUpserts(
           realLinkedAccounts.map(({ personId, ...account }) => {
             void personId;
             return { ...account, updatedAt: timestamp };
           }),
           timestamp,
-        );
-        await maybeSubmitFeedItemRemoves(sampleItemIds, timestamp);
-        for (const url of feedUrls) {
-          await maybeSubmitRssFeedRemove({
+        ))
+      ) {
+        throw new Error("Normalized SQLite Account mutation context changed");
+      }
+      if (!(await maybeSubmitFeedItemRemoves(sampleItemIds, timestamp))) {
+        throw new Error("Normalized SQLite item mutation context changed");
+      }
+      for (const url of feedUrls) {
+        if (
+          !(await maybeSubmitRssFeedRemove({
             includeItems: false,
             removedAtMs: timestamp,
             url,
-          });
+          }))
+        ) {
+          throw new Error("Normalized SQLite RSS Feed mutation context changed");
         }
-        for (const personId of samplePersonIds) {
-          await maybeSubmitPersonRemove(personId, timestamp);
+      }
+      for (const personId of samplePersonIds) {
+        if (!(await maybeSubmitPersonRemove(personId, timestamp))) {
+          throw new Error("Normalized SQLite Person mutation context changed");
         }
-        for (const accountId of sampleAccountIds) {
-          await maybeSubmitAccountRemove(accountId, timestamp);
+      }
+      for (const accountId of sampleAccountIds) {
+        if (!(await maybeSubmitAccountRemove(accountId, timestamp))) {
+          throw new Error("Normalized SQLite Account mutation context changed");
         }
       }
       const summary = {
         feeds: feedUrls.length,
-        items: normalizedHandled
-          ? sampleItemIds.length
-          : await mutateItems("clear_sample", { timestampMs: timestamp }),
+        items: sampleItemIds.length,
         persons: samplePersonIds.length,
         accounts: sampleAccountIds.length,
         total: 0,
@@ -2557,7 +2339,7 @@ export async function dispatchSqliteMutation(
       if (item) {
         const updated = deepMerge(item, message.updates);
         if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
-          await upsertSqliteItems([updated]);
+          throw new Error("Normalized SQLite FeedItem mutation context is required");
         }
       }
       changedIds = [message.globalId];
@@ -2566,37 +2348,28 @@ export async function dispatchSqliteMutation(
     }
     case "MARK_AS_READ":
       if (!(await maybeSubmitReadAssignments([message.globalId], timestamp))) {
-        await mutateItems("mark_read", {
-          ids: [message.globalId],
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite read mutation context is required");
       }
       changedIds = [message.globalId];
       source = "item_patch";
       break;
     case "MARK_ITEMS_AS_READ":
       if (!(await maybeSubmitReadAssignments(message.globalIds, timestamp))) {
-        await mutateItems("mark_read", {
-          ids: message.globalIds,
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite read mutation context is required");
       }
       changedIds = [...message.globalIds];
       source = "item_patch";
       break;
     case "MARK_ALL_AS_READ": {
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        const ids = await collectSqliteItemIds(
-          { platform: message.platform },
-          (item) => item.userState.readAt === undefined,
-        );
-        await maybeSubmitReadAssignments(ids, timestamp);
-      } else {
-        await mutateItems("mark_all_read", {
-          platform: message.platform,
-          timestampMs: timestamp,
-        });
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite read mutation context is required");
+      }
+      const ids = await collectSqliteItemIds(
+        { platform: message.platform },
+        (item) => item.userState.readAt === undefined,
+      );
+      if (!(await maybeSubmitReadAssignments(ids, timestamp))) {
+        throw new Error("Library mutation context changed during read commit");
       }
       break;
     }
@@ -2613,10 +2386,7 @@ export async function dispatchSqliteMutation(
           },
         ]))
       ) {
-        await mutateItems("toggle_saved", {
-          ids: [message.globalId],
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite saved mutation context is required");
       }
       changedIds = [message.globalId];
       source = "item_patch";
@@ -2635,10 +2405,7 @@ export async function dispatchSqliteMutation(
           },
         ]))
       ) {
-        await mutateItems("toggle_archived", {
-          ids: [message.globalId],
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite archive mutation context is required");
       }
       changedIds = [message.globalId];
       source = "item_patch";
@@ -2655,10 +2422,7 @@ export async function dispatchSqliteMutation(
           })),
         ))
       ) {
-        await mutateItems("archive", {
-          ids: message.globalIds,
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite archive mutation context is required");
       }
       changedIds = [...message.globalIds];
       source = "item_patch";
@@ -2676,10 +2440,7 @@ export async function dispatchSqliteMutation(
           },
         ]))
       ) {
-        await mutateItems("toggle_liked", {
-          ids: [message.globalId],
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite liked mutation context is required");
       }
       changedIds = [message.globalId];
       source = "item_patch";
@@ -2705,209 +2466,169 @@ export async function dispatchSqliteMutation(
       break;
     case "REMOVE_FEED_ITEM":
       if (!(await maybeSubmitFeedItemRemoves([message.globalId], timestamp))) {
-        await mutateItems("delete", {
-          ids: [message.globalId],
-          timestampMs: timestamp,
-        });
+        throw new Error("Normalized SQLite FeedItem removal context is required");
       }
       changedIds = [message.globalId];
       break;
     case "ARCHIVE_ALL_READ_UNSAVED": {
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        const ids = await collectSqliteItemIds(
-          { platform: message.platform, feedUrl: message.feedUrl },
-          (item) =>
-            item.userState.readAt !== undefined &&
-            !item.userState.saved &&
-            !item.userState.archived &&
-            !item.userState.hidden,
-        );
-        await maybeSubmitUserStateAssignments(
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite archive mutation context is required");
+      }
+      const ids = await collectSqliteItemIds(
+        { platform: message.platform, feedUrl: message.feedUrl },
+        (item) =>
+          item.userState.readAt !== undefined &&
+          !item.userState.saved &&
+          !item.userState.archived &&
+          !item.userState.hidden,
+      );
+      if (
+        !(await maybeSubmitUserStateAssignments(
           ids.map((entityId) => ({
             entityId,
             field: "archived" as const,
             assigned: true,
             assignedAtMs: timestamp,
           })),
-        );
-      } else {
-        await mutateItems("archive_all_read_unsaved", {
-          platform: message.platform,
-          feedUrl: message.feedUrl,
-          timestampMs: timestamp,
-        });
+        ))
+      ) {
+        throw new Error("Library mutation context changed during archive commit");
       }
       break;
     }
     case "UNARCHIVE_SAVED_ITEMS": {
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        const ids = await collectSqliteItemIds(
-          { saved: true, archived: true },
-          () => true,
-        );
-        await maybeSubmitUserStateAssignments(
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite archive mutation context is required");
+      }
+      const ids = await collectSqliteItemIds(
+        { saved: true, archived: true },
+        () => true,
+      );
+      if (
+        !(await maybeSubmitUserStateAssignments(
           ids.map((entityId) => ({
             entityId,
             field: "archived" as const,
             assigned: false,
             assignedAtMs: timestamp,
           })),
-        );
-      } else {
-        await mutateItems("unarchive_saved", { timestampMs: timestamp });
+        ))
+      ) {
+        throw new Error("Library mutation context changed during unarchive commit");
       }
       break;
     }
     case "DELETE_ALL_ARCHIVED": {
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        const ids = await collectSqliteItemIds(
-          { archived: true },
-          (item) => !item.userState.saved,
-        );
-        await maybeSubmitFeedItemRemoves(ids, timestamp);
-      } else {
-        await mutateItems("delete_all_archived", { timestampMs: timestamp });
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite FeedItem removal context is required");
+      }
+      const ids = await collectSqliteItemIds(
+        { archived: true },
+        (item) => !item.userState.saved,
+      );
+      if (!(await maybeSubmitFeedItemRemoves(ids, timestamp))) {
+        throw new Error("Library mutation context changed during removal commit");
       }
       break;
     }
     case "PRUNE_ARCHIVED_ITEMS": {
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        const cutoff = timestamp - Math.max(0, message.maxAgeMs ?? 0);
-        const ids = await collectSqliteItemIds(
-          { archived: true },
-          (item) =>
-            !item.userState.saved &&
-            item.userState.archivedAt !== undefined &&
-            item.userState.archivedAt <= cutoff,
-        );
-        await maybeSubmitFeedItemRemoves(ids, timestamp);
-      } else {
-        await mutateItems("prune_archived", {
-          maxAgeMs: message.maxAgeMs,
-          timestampMs: timestamp,
-        });
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite FeedItem removal context is required");
+      }
+      const cutoff = timestamp - Math.max(0, message.maxAgeMs ?? 0);
+      const ids = await collectSqliteItemIds(
+        { archived: true },
+        (item) =>
+          !item.userState.saved &&
+          item.userState.archivedAt !== undefined &&
+          item.userState.archivedAt <= cutoff,
+      );
+      if (!(await maybeSubmitFeedItemRemoves(ids, timestamp))) {
+        throw new Error("Library mutation context changed during pruning commit");
       }
       break;
     }
     case "ADD_RSS_FEED": {
-      const normalizedHandled = await maybeSubmitRssFeedUpsert(
-        message.feed,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        next.feeds[message.feed.url] = message.feed;
-      }, normalizedHandled);
+      if (!(await maybeSubmitRssFeedUpsert(message.feed, timestamp))) {
+        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+      }
       break;
     }
     case "UPDATE_RSS_FEED": {
-      const feed =
-        nextState.feeds[message.url] ??
-        (await readNormalizedRssFeed(message.url));
+      const feed = await readNormalizedRssFeed(message.url);
       const updated = feed ? { ...feed, ...message.updates } : null;
-      const normalizedHandled = updated
-        ? await maybeSubmitRssFeedUpsert(updated, timestamp)
-        : false;
-      await saveMetadata((next) => {
-        if (updated) next.feeds[message.url] = updated;
-      }, normalizedHandled);
+      if (!updated) break;
+      if (!(await maybeSubmitRssFeedUpsert(updated, timestamp))) {
+        throw new Error("Normalized SQLite RSS Feed mutation context is required");
+      }
       break;
     }
     case "REMOVE_RSS_FEED": {
-      const normalizedHandled = await maybeSubmitRssFeedRemove({
-        includeItems: message.includeItems === true,
-        removedAtMs: timestamp,
-        url: message.url,
-      });
-      if (message.includeItems && !normalizedHandled) {
-        await mutateItems("delete_rss", {
-          feedUrl: message.url,
-          timestampMs: timestamp,
-        });
+      if (
+        !(await maybeSubmitRssFeedRemove({
+          includeItems: message.includeItems === true,
+          removedAtMs: timestamp,
+          url: message.url,
+        }))
+      ) {
+        throw new Error("Normalized SQLite RSS Feed mutation context is required");
       }
-      await saveMetadata((next) => {
-        delete next.feeds[message.url];
-      }, normalizedHandled);
       break;
     }
     case "REMOVE_ALL_FEEDS": {
       const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        await executeFrozenRssFeedScope(
-          message.includeItems === true
-            ? "rss_feeds_remove_with_items"
-            : "rss_feeds_remove_keep_items",
-          timestamp,
-          async (urls) => {
-            if (
-              !(await maybeSubmitRssFeedRemoves(
-                urls,
-                message.includeItems === true,
-                timestamp,
-              ))
-            ) {
-              throw new Error(
-                "Library mutation context changed during frozen RSS Feed removal",
-              );
-            }
-          },
-        );
-      } else if (message.includeItems) {
-        await mutateItems("delete_rss", { timestampMs: timestamp });
+      if (!normalizedHandled) {
+        throw new Error("Normalized SQLite RSS Feed mutation context is required");
       }
-      await saveMetadata((next) => {
-        next.feeds = {};
-      }, normalizedHandled);
+      await executeFrozenRssFeedScope(
+        message.includeItems === true
+          ? "rss_feeds_remove_with_items"
+          : "rss_feeds_remove_keep_items",
+        timestamp,
+        async (urls) => {
+          if (
+            !(await maybeSubmitRssFeedRemoves(
+              urls,
+              message.includeItems === true,
+              timestamp,
+            ))
+          ) {
+            throw new Error(
+              "Library mutation context changed during frozen RSS Feed removal",
+            );
+          }
+        },
+      );
       break;
     }
     case "UPDATE_PREFERENCES": {
-      const normalizedHandled = await maybeSubmitPreferences(
-        message.updates,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        next.preferences = deepMerge<UserPreferences>(
-          next.preferences,
-          message.updates,
-        );
-      }, normalizedHandled);
+      if (!(await maybeSubmitPreferences(message.updates, timestamp))) {
+        throw new Error("Normalized SQLite preference mutation context is required");
+      }
       source = "preferences_patch";
       break;
     }
     case "ADD_PERSON": {
-      const normalizedHandled = await maybeSubmitPersonUpserts(
-        [message.person],
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        next.persons[message.person.id] = message.person;
-      }, normalizedHandled);
+      if (!(await maybeSubmitPersonUpserts([message.person], timestamp))) {
+        throw new Error("Normalized SQLite Person mutation context is required");
+      }
       break;
     }
     case "ADD_PERSONS": {
-      const normalizedHandled = await maybeSubmitPersonUpserts(
-        message.persons,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        for (const person of message.persons) next.persons[person.id] = person;
-      }, normalizedHandled);
+      if (!(await maybeSubmitPersonUpserts(message.persons, timestamp))) {
+        throw new Error("Normalized SQLite Person mutation context is required");
+      }
       break;
     }
     case "UPDATE_PERSON": {
-      const person =
-        nextState.persons[message.personId] ??
-        (await readNormalizedPerson(message.personId));
+      const person = await readNormalizedPerson(message.personId);
       const updated = person ? { ...person, ...message.updates } : null;
-      const normalizedHandled = updated
-        ? await maybeSubmitPersonUpserts([updated], timestamp)
-        : false;
-      await saveMetadata((next) => {
-        if (updated) next.persons[message.personId] = updated;
-      }, normalizedHandled);
+      if (
+        updated &&
+        !(await maybeSubmitPersonUpserts([updated], timestamp))
+      ) {
+        throw new Error("Normalized SQLite Person mutation context is required");
+      }
       break;
     }
     case "UPSERT_CONNECTION_PERSONS": {
@@ -2915,167 +2636,98 @@ export async function dispatchSqliteMutation(
       const accounts: Account[] = [];
       for (const candidate of message.candidates) {
         for (const accountId of candidate.accountIds) {
-          const account =
-            nextState.accounts[accountId] ??
-            (await readNormalizedAccount(accountId));
+          const account = await readNormalizedAccount(accountId);
           if (account)
             accounts.push({ ...account, personId: candidate.person.id });
         }
       }
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        await maybeSubmitPersonUpserts(persons, timestamp);
-        await maybeSubmitAccountUpserts(accounts, timestamp);
+      if (!(await maybeSubmitPersonUpserts(persons, timestamp))) {
+        throw new Error("Normalized SQLite Person mutation context is required");
       }
-      await saveMetadata((next) => {
-        for (const person of persons) next.persons[person.id] = person;
-        for (const account of accounts) next.accounts[account.id] = account;
-      }, normalizedHandled);
+      if (!(await maybeSubmitAccountUpserts(accounts, timestamp))) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       break;
     }
     case "REMOVE_PERSON": {
-      const normalizedHandled = await maybeSubmitPersonRemove(
-        message.personId,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        delete next.persons[message.personId];
-        for (const [id, account] of Object.entries(next.accounts)) {
-          if (account.personId !== message.personId) continue;
-          if (normalizedHandled) {
-            delete next.accounts[id];
-          } else {
-            next.accounts[id] = { ...account, personId: undefined };
-          }
-        }
-      }, normalizedHandled);
+      if (!(await maybeSubmitPersonRemove(message.personId, timestamp))) {
+        throw new Error("Normalized SQLite Person mutation context is required");
+      }
       break;
     }
     case "LOG_REACH_OUT": {
-      const person =
-        nextState.persons[message.personId] ??
-        (await readNormalizedPerson(message.personId));
-      const updated = person
-        ? {
-            ...person,
-            reachOutLog: [message.entry, ...(person.reachOutLog ?? [])].slice(
-              0,
-              20,
-            ) as ReachOutLog[],
-            updatedAt: timestamp,
-          }
-        : null;
-      const normalizedHandled = updated
-        ? await maybeSubmitPersonUpserts([updated], timestamp)
-        : false;
-      await saveMetadata((next) => {
-        if (updated) next.persons[message.personId] = updated;
-      }, normalizedHandled);
+      await appendSqliteLibraryPersonReachOut(
+        message.personId,
+        message.entry,
+        timestamp,
+      );
       break;
     }
     case "ADD_ACCOUNT": {
-      const normalizedHandled = await maybeSubmitAccountUpserts(
-        [message.account],
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        next.accounts[message.account.id] = message.account;
-      }, normalizedHandled);
+      if (!(await maybeSubmitAccountUpserts([message.account], timestamp))) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       break;
     }
     case "ADD_ACCOUNTS": {
-      const normalizedHandled = await maybeSubmitAccountUpserts(
-        message.accounts,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        for (const account of message.accounts)
-          next.accounts[account.id] = account;
-      }, normalizedHandled);
+      if (!(await maybeSubmitAccountUpserts(message.accounts, timestamp))) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       break;
     }
     case "UPDATE_ACCOUNT": {
-      const account =
-        nextState.accounts[message.accountId] ??
-        (await readNormalizedAccount(message.accountId));
+      const account = await readNormalizedAccount(message.accountId);
       const updated = account ? { ...account, ...message.updates } : null;
-      const normalizedHandled = updated
-        ? await maybeSubmitAccountUpserts([updated], timestamp)
-        : false;
-      await saveMetadata((next) => {
-        if (updated) next.accounts[message.accountId] = updated;
-      }, normalizedHandled);
+      if (
+        updated &&
+        !(await maybeSubmitAccountUpserts([updated], timestamp))
+      ) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       break;
     }
     case "REMOVE_ACCOUNT": {
-      const normalizedHandled = await maybeSubmitAccountRemove(
-        message.accountId,
-        timestamp,
-      );
-      await saveMetadata((next) => {
-        delete next.accounts[message.accountId];
-      }, normalizedHandled);
+      if (!(await maybeSubmitAccountRemove(message.accountId, timestamp))) {
+        throw new Error("Normalized SQLite Account mutation context is required");
+      }
       break;
     }
     case "BATCH_REFRESH_FEEDS": {
       await mergeIncomingSqliteItems(message.items);
       const feeds: RssFeed[] = [];
       for (const update of message.feeds) {
-        const feed =
-          nextState.feeds[update.url] ??
-          (await readNormalizedRssFeed(update.url));
+        const feed = await readNormalizedRssFeed(update.url);
         if (feed) feeds.push({ ...feed, ...update });
       }
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        for (const feed of feeds) {
-          await maybeSubmitRssFeedUpsert(feed, timestamp);
+      for (const feed of feeds) {
+        if (!(await maybeSubmitRssFeedUpsert(feed, timestamp))) {
+          throw new Error("Normalized SQLite RSS Feed mutation context is required");
         }
       }
-      await saveMetadata((next) => {
-        for (const feed of feeds) next.feeds[feed.url] = feed;
-      }, normalizedHandled);
       changedIds = message.items.map((item) => item.globalId);
       break;
     }
     case "HEAL_UNTITLED_FEEDS": {
-      const visibleAssignments: Array<{ title: string; url: string }> = [];
-      for (const feed of Object.values(nextState.feeds)) {
-        if (feed.title !== "Untitled Feed" && feed.title !== feed.url) continue;
-        const title = repairedRssFeedTitle(feed.url);
-        if (title && title !== feed.title) {
-          visibleAssignments.push({ title, url: feed.url });
-        }
+      if ((await mutationContext()) === null) {
+        throw new Error("Normalized SQLite RSS Feed mutation context is required");
       }
-      const normalizedHandled = (await mutationContext()) !== null;
-      if (normalizedHandled) {
-        await executeFrozenRssFeedScope(
-          "rss_feeds_heal_untitled_frozen",
-          timestamp,
-          async (urls) => {
-            const assignments = urls.flatMap((url) => {
-              const title = repairedRssFeedTitle(url);
-              return title ? [{ title, url }] : [];
-            });
-            if (
-              !(await maybeSubmitRssFeedTitleAssignments(
-                assignments,
-                timestamp,
-              ))
-            ) {
-              throw new Error(
-                "Library mutation context changed during frozen RSS Feed repair",
-              );
-            }
-          },
-        );
-      }
-      await saveMetadata((next) => {
-        for (const assignment of visibleAssignments) {
-          const feed = next.feeds[assignment.url];
-          if (feed) next.feeds[assignment.url] = { ...feed, ...assignment };
-        }
-      }, normalizedHandled);
+      await executeFrozenRssFeedScope(
+        "rss_feeds_heal_untitled_frozen",
+        timestamp,
+        async (urls) => {
+          const assignments = urls.flatMap((url) => {
+            const title = repairedRssFeedTitle(url);
+            return title ? [{ title, url }] : [];
+          });
+          if (
+            !(await maybeSubmitRssFeedTitleAssignments(assignments, timestamp))
+          ) {
+            throw new Error(
+              "Library mutation context changed during frozen RSS Feed repair",
+            );
+          }
+        },
+      );
       break;
     }
     case "DEDUPLICATE_ITEMS":
@@ -3085,25 +2737,9 @@ export async function dispatchSqliteMutation(
       throw new Error(`SQLite Library does not implement ${message.type}`);
   }
 
-  const selectedPrimary = await primaryMutationContext();
-  let state: DocState;
-  let changedItems: FeedItem[];
-  if (selectedPrimary) {
-    const normalized = await refreshNormalizedMutationProjection(
-      nextState,
-      changedIds,
-    );
-    state = normalized.state;
-    changedItems = normalized.changedItems;
-  } else {
-    // The browser harness keeps only the current visible test projection.
-    // Durable test rows remain behind its bounded query command, just as
-    // production rows remain behind native SQLite.
-    state = await refreshSqliteLibraryCounts(nextState);
-    changedItems =
-      changedIds.length > 0 ? await readSqliteItems(changedIds) : [];
-  }
-  const event: DocChangeEvent =
+  const { state, changedItems } =
+    await refreshNormalizedMutationProjection(changedIds);
+  const event: LibraryMutationEvent =
     source === "item_patch"
       ? {
           source,

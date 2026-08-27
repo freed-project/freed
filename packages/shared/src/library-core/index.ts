@@ -82,6 +82,7 @@ export * from "./secondary-surface-contracts.js";
 export * from "./facet-summary-contracts.js";
 export * from "./filter-scope-summary-contracts.js";
 export * from "./preferences-snapshot-contracts.js";
+export * from "./runtime-state.js";
 export * from "./sha256.js";
 export * from "./wire-frame.js";
 export * from "./user-state-merge-algebra.js";
