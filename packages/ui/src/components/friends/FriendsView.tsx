@@ -54,7 +54,6 @@ import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntriesFromActivity,
-  buildFriendsById,
   buildFriendsWorkspaceIndexes,
   friendActivitySourceKey,
   friendFromPersonWithIndexes,
@@ -609,7 +608,6 @@ export function FriendsView({
   onFriendsSidebarOpenChange,
   mobileSurface,
 }: FriendsViewProps) {
-  const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const addPerson = useAppStore((s) => s.addPerson);
@@ -693,19 +691,6 @@ export function FriendsView({
     [accounts],
   );
 
-  const friendPersons = useMemo(
-    () =>
-      Object.values(persons)
-        .filter((person) => person.relationshipStatus === "friend")
-        .sort((left, right) =>
-          personName(left).localeCompare(personName(right)),
-        ),
-    [persons],
-  );
-  const friendsById = useMemo<Record<string, Friend>>(
-    () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
-    [friendPersons, friendsWorkspaceIndexes],
-  );
   const friendCount = libraryFacets.friendPersonCount;
   const socialAccountCount = libraryFacets.socialAccountCount;
 
@@ -835,20 +820,6 @@ export function FriendsView({
     return next;
   }, [friendCandidateSuggestions]);
 
-  const overviewEntries = useMemo(() => {
-    if (nativeActivity) {
-      return buildFriendOverviewEntriesFromActivity(
-        friendsById,
-        nativeActivity.socialActivityBySourceKey,
-        friendsGraphRequest.recentWindow.endMs,
-      );
-    }
-    return buildFriendOverviewEntriesFromActivity(
-      friendsById,
-      {},
-      friendsGraphRequest.recentWindow.endMs,
-    );
-  }, [friendsById, friendsGraphRequest.recentWindow.endMs, nativeActivity]);
   const sourceActivityEvidence = useMemo(
     () =>
       buildFriendSourceActivityEvidence({
@@ -864,13 +835,20 @@ export function FriendsView({
     ? (friendCandidateByAccount.get(selectedAccount.id) ?? null)
     : null;
   const selectedOverviewEntry = useMemo(
-    () =>
-      selectedPerson
-        ? (overviewEntries.find(
-            (entry) => entry.friend.id === selectedPerson.id,
-          ) ?? null)
-        : null,
-    [overviewEntries, selectedPerson],
+    () => {
+      if (!selectedFriend) return null;
+      return (
+        buildFriendOverviewEntriesFromActivity(
+          { [selectedFriend.id]: selectedFriend },
+          nativeActivity?.socialActivityBySourceKey ?? {},
+          friendsGraphRequest.recentWindow.endMs,
+        )[0] ?? null
+      );
+    }, [
+      friendsGraphRequest.recentWindow.endMs,
+      nativeActivity,
+      selectedFriend,
+    ],
   );
   const friendOverviewVirtualizer = useVirtualizer({
     count: friendsDirectory.rows.length,
@@ -968,7 +946,16 @@ export function FriendsView({
       editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
     ) => {
       const now = Date.now();
-      const existingPerson = personId ? (persons[personId] ?? null) : null;
+      const existingPerson = personId
+        ? selectedPerson?.id === personId
+          ? selectedPerson
+          : readLibraryPersonDetail
+            ? await readLibraryPersonDetail(personId)
+            : null
+        : null;
+      if (personId && !existingPerson) {
+        throw new Error("The selected Person SQLite row is unavailable.");
+      }
       const nextPersonId = existingPerson?.id ?? crypto.randomUUID();
 
       const nextPerson: Person = {
@@ -1096,8 +1083,9 @@ export function FriendsView({
       accounts,
       addAccount,
       addPerson,
-      persons,
+      readLibraryPersonDetail,
       removeAccount,
+      selectedPerson,
       setSelectedPerson,
       sourceActivityEvidence,
       updateAccount,
@@ -1916,7 +1904,7 @@ export function FriendsView({
   const renderCollapsedSelectionCard = () => {
     if (selectedAccount) {
       const linkedPerson = selectedAccount.personId
-        ? (persons[selectedAccount.personId] ?? null)
+        ? selectedAccountLinkedPersonDetail.value
         : null;
       return (
         <CompactDetailCard>
@@ -2305,7 +2293,9 @@ export function FriendsView({
         <FriendEditor
           existing={
             editorState.kind === "edit"
-              ? (friendsById[editorState.personId] ?? null)
+              ? selectedFriend?.id === editorState.personId
+                ? selectedFriend
+                : null
               : null
           }
           draft={
