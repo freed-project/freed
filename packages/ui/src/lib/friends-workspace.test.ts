@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Account, FeedItem, Person, RssFeed } from "@freed/shared";
+import type { Account, FeedItem, Person } from "@freed/shared";
 import {
   buildFriendOverviewEntries,
   buildFriendOverviewEntriesFromActivity,
@@ -278,22 +278,12 @@ describe("Friends workspace indexes", () => {
         updatedAt: now,
       },
     };
-    const feed: RssFeed = {
-      url: " https://example.test/feed.xml ",
-      title: "Exact identity feed",
-      enabled: true,
-      trackUnread: false,
-    };
-    const request = createLibraryFriendsGraphRequest(
-      accounts,
-      { [feed.url]: feed },
-      now,
-    );
+    const request = createLibraryFriendsGraphRequest(accounts, now);
     expect(request.sources).toEqual([
       { platform: "instagram", authorId: "é " },
       { platform: "x", authorId: "z" },
     ]);
-    expect(request.rssFeedUrls).toEqual([" https://example.test/feed.xml "]);
+    expect(request.rssFeedUrls).toEqual([]);
     expect(request.recentWindow).toEqual({
       startMs: now - 45 * 24 * 60 * 60 * 1_000,
       endMs: now,

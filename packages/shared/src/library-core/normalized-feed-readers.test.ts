@@ -10,6 +10,8 @@ import {
   type LibraryCoreNormalizedQueryExecutor,
 } from "./normalized-feed-readers.js";
 import {
+  readLibraryCoreNormalizedAccountDetailV1,
+  readLibraryCoreNormalizedPersonDetailV1,
   readLibraryCoreNormalizedPreferencesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
@@ -56,6 +58,92 @@ const backgroundCard = (globalId: string) => ({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        person: {
+          avatarUrl: null,
+          bio: "Mathematician",
+          careLevel: 5,
+          createdAt: 1,
+          id: "person-ada",
+          name: "Ada",
+          notes: null,
+          reachOutIntervalDays: 7,
+          reachOuts: [
+            {
+              channel: "email",
+              loggedAt: 9,
+              notes: "Analytical engine",
+              reachOutId: "reach-1",
+            },
+          ],
+          relationshipStatus: "friend",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          tags: ["computing"],
+          updatedAt: 10,
+        },
+      })
+      .mockResolvedValueOnce({
+        account: {
+          address: null,
+          avatarUrl: null,
+          createdAt: 1,
+          discoveredFrom: "captured_item",
+          displayName: "Ada",
+          email: null,
+          externalId: "ada",
+          firstSeenAt: 2,
+          followRosterActive: true,
+          followRosterRoles: ["following"],
+          followRosterSyncedAt: 8,
+          handle: "ada",
+          id: "account-ada",
+          importedAt: null,
+          kind: "social",
+          lastSeenAt: 9,
+          personId: "person-ada",
+          phone: null,
+          profileUrl: "https://example.test/ada",
+          provider: "x",
+          sampleBatchId: null,
+          sampleGeneratedAt: null,
+          sampleGeneratorVersion: null,
+          updatedAt: 10,
+        },
+      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const runtime = { query, randomId: () => "test" };
+
+    await expect(
+      readLibraryCoreNormalizedPersonDetailV1(runtime, "person-ada"),
+    ).resolves.toMatchObject({
+      id: "person-ada",
+      reachOutLog: [{ channel: "email", loggedAt: 9 }],
+      tags: ["computing"],
+    });
+    await expect(
+      readLibraryCoreNormalizedAccountDetailV1(runtime, "account-ada"),
+    ).resolves.toMatchObject({
+      followRosterActive: true,
+      followRosterRoles: ["following"],
+      id: "account-ada",
+      personId: "person-ada",
+    });
+    expect(query).toHaveBeenNthCalledWith(1, {
+      personId: "person-ada",
+      queryId: "person_detail_v1",
+      schemaVersion: 1,
+    });
+    expect(query).toHaveBeenNthCalledWith(2, {
+      accountId: "account-ada",
+      queryId: "account_detail_v1",
+      schemaVersion: 1,
+    });
+  });
+
   it("shares exact and paged RSS Feed transforms without renderer state", async () => {
     const row = {
       activityCount: 3,

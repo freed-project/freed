@@ -33,6 +33,10 @@ import {
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useLibraryFriendsRows } from "../../hooks/useLibraryFriendsRows.js";
+import {
+  useLibraryAccountDetail,
+  useLibraryPersonDetail,
+} from "../../hooks/useLibraryIdentityDetail.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -607,7 +611,6 @@ export function FriendsView({
 }: FriendsViewProps) {
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
-  const feeds = useAppStore((s) => s.feeds);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
@@ -700,9 +703,15 @@ export function FriendsView({
     [accounts],
   );
 
-  const selectedPerson = selectedPersonId
-    ? (persons[selectedPersonId] ?? null)
-    : null;
+  const selectedPersonDetail = useLibraryPersonDetail(
+    selectedPersonId,
+    searchCorpusVersion,
+  );
+  const selectedAccountDetail = useLibraryAccountDetail(
+    selectedAccountId,
+    searchCorpusVersion,
+  );
+  const selectedPerson = selectedPersonDetail.value;
   const selectedFriend = useMemo(
     () =>
       selectedPerson
@@ -710,13 +719,11 @@ export function FriendsView({
         : null,
     [friendsWorkspaceIndexes, selectedPerson],
   );
-  const selectedAccount = selectedAccountId
-    ? (accounts[selectedAccountId] ?? null)
-    : null;
+  const selectedAccount = selectedAccountDetail.value;
 
   const friendsGraphRequest = useMemo(
-    () => createLibraryFriendsGraphRequest(accounts, feeds),
-    [accounts, feeds, searchCorpusVersion],
+    () => createLibraryFriendsGraphRequest(accounts),
+    [accounts, searchCorpusVersion],
   );
   const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
     const sources = selectedFriend
@@ -938,16 +945,24 @@ export function FriendsView({
   ]);
 
   useEffect(() => {
-    if (selectedPersonId && !persons[selectedPersonId]) {
+    if (
+      selectedPersonId &&
+      selectedPersonDetail.status === "ready" &&
+      selectedPersonDetail.value === null
+    ) {
       setSelectedPerson(null);
     }
-  }, [persons, selectedPersonId, setSelectedPerson]);
+  }, [selectedPersonDetail, selectedPersonId, setSelectedPerson]);
 
   useEffect(() => {
-    if (selectedAccountId && !accounts[selectedAccountId]) {
+    if (
+      selectedAccountId &&
+      selectedAccountDetail.status === "ready" &&
+      selectedAccountDetail.value === null
+    ) {
       setSelectedAccount(null);
     }
-  }, [accounts, selectedAccountId, setSelectedAccount]);
+  }, [selectedAccountDetail, selectedAccountId, setSelectedAccount]);
 
   useEffect(() => {
     if (dragWidth !== null || isDraggingSidebar.current) return;
@@ -2161,7 +2176,6 @@ export function FriendsView({
                 ref={graphRef}
                 persons={graphPersons}
                 accounts={graphEntities.accounts}
-                feeds={feeds}
                 activitySummaries={graphActivitySummaries}
                 sqliteGraphQuery={queryLibraryCore}
                 mode={effectiveMode}

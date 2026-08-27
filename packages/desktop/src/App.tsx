@@ -96,7 +96,9 @@ import {
   readLibraryCoreFriendsLocationItem,
   readLibraryCoreItemDetail,
   readLibraryCoreMapCandidates,
+  readLibraryCoreAccountDetail,
   readLibraryCorePersonTimeline,
+  readLibraryCorePersonDetail,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreStoryWallCandidates,
   scanLibraryCoreBackgroundItems,
@@ -1635,6 +1637,14 @@ function App() {
       readLibraryFriendsGraph:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFriendsGraph
+          : undefined,
+      readLibraryPersonDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCorePersonDetail
+          : undefined,
+      readLibraryAccountDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreAccountDetail
           : undefined,
       queryLibraryCore:
         tauriRuntimeAvailable && isInitialized

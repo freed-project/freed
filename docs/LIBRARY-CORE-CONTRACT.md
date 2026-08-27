@@ -670,6 +670,13 @@ roles in SQLite binary order, and carries no Person, FeedItem, or graph corpus.
 The source-fenced response is capped at 512 KiB. Missing Accounts return a
 typed null result rather than causing a whole-library fallback.
 
+The Friends selection boundary uses `person_detail_v1` and
+`account_detail_v1` directly. Freed Desktop supplies the native executor and
+the PWA supplies the OPFS SQLite worker executor to one shared typed reader.
+React retains only the selected Person and selected Account. A missing row
+clears that selection after a successful source-fenced read. A failed read
+does not consult a renderer identity dictionary.
+
 `contact_match_v1` resolves one Google Contact against trigger-maintained
 normalized identity keys in SQLite. The closed request accepts at most eight
 sorted normalized names and 16 sorted normalized email addresses. The
@@ -703,8 +710,10 @@ It includes the visible activity count and latest activity time computed by
 SQLite through the provider and author index. The RSS feed projection carries
 every synchronized subscription field plus exact visible and unread activity
 counts. Its activity and image fallback use the RSS feed item index. Friends
-compilation consumes only the compact subset it needs, while catalog views
-reuse the same closed row without a second query contract. These fields replace
+compilation consumes only the compact subset it needs. The Friends worker
+pages RSS rows from SQLite itself, so the React shell neither subscribes to nor
+forwards an RSS Feed dictionary. Catalog views reuse the same closed row
+without a second query contract. These fields replace
 the separate whole-graph activity aggregate. JavaScript never scans FeedItems
 to assemble graph activity. When legal RSS rows approach 2 MiB, native and
 browser executors shorten the page by exact serialized bytes and bind the

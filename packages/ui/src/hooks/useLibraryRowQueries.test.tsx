@@ -13,9 +13,11 @@ import {
   vi,
 } from "vitest";
 import type {
+  Account,
   FeedItem,
   FilterOptions,
   LibraryMapLocationCandidate,
+  Person,
   StoryWallCandidate,
 } from "@freed/shared";
 import type {
@@ -46,6 +48,11 @@ import {
   useLibraryMapCandidates,
   useLibraryStoryWallCandidates,
 } from "./useLibrarySurfaceItems.js";
+import {
+  useLibraryAccountDetail,
+  useLibraryPersonDetail,
+  type LibraryIdentityDetailResult,
+} from "./useLibraryIdentityDetail.js";
 import {
   useLibraryFriendsRows,
   type LibraryFriendsRowsState,
@@ -82,11 +89,13 @@ function platformConfig(
   overrides: Partial<
     Pick<
       PlatformConfig,
+      | "readLibraryAccountDetail"
       | "readLibraryFacetSummary"
       | "readLibraryFriendsGraph"
       | "readLibraryFriendsLocationItem"
       | "readLibraryMapCandidates"
       | "readLibraryPersonTimeline"
+      | "readLibraryPersonDetail"
       | "readLibrarySavedAnalytics"
       | "readLibraryStoryWallCandidates"
       | "queryLibraryCore"
@@ -109,6 +118,22 @@ function platformConfig(
     GoogleContactsSettingsContent: null,
     ...overrides,
   };
+}
+
+function IdentityDetailHarness({
+  accountId,
+  onAccount,
+  onPerson,
+  personId,
+}: {
+  accountId: string | null;
+  onAccount: (state: LibraryIdentityDetailResult<Account>) => void;
+  onPerson: (state: LibraryIdentityDetailResult<Person>) => void;
+  personId: string | null;
+}) {
+  onAccount(useLibraryAccountDetail(accountId, 12));
+  onPerson(useLibraryPersonDetail(personId, 12));
+  return null;
 }
 
 function SurfaceHarness({
@@ -398,6 +423,59 @@ async function flush(): Promise<void> {
 }
 
 describe("Library row query hooks", () => {
+  it("retains only the exact selected Person and Account SQLite rows", async () => {
+    const person: Person = {
+      careLevel: 5,
+      createdAt: 1,
+      id: "person-ada",
+      name: "Ada",
+      relationshipStatus: "friend",
+      updatedAt: 2,
+    };
+    const account: Account = {
+      createdAt: 1,
+      discoveredFrom: "captured_item",
+      externalId: "ada",
+      firstSeenAt: 1,
+      id: "account-ada",
+      kind: "social",
+      lastSeenAt: 2,
+      personId: person.id,
+      provider: "x",
+      updatedAt: 2,
+    };
+    const readLibraryPersonDetail = vi.fn(async () => person);
+    const readLibraryAccountDetail = vi.fn(async () => account);
+    const config = platformConfig({
+      readLibraryAccountDetail,
+      readLibraryPersonDetail,
+    });
+    let personState: LibraryIdentityDetailResult<Person> | null = null;
+    let accountState: LibraryIdentityDetailResult<Account> | null = null;
+
+    renderHarness(
+      <PlatformProvider value={config}>
+        <IdentityDetailHarness
+          accountId={account.id}
+          onAccount={(state) => {
+            accountState = state;
+          }}
+          onPerson={(state) => {
+            personState = state;
+          }}
+          personId={person.id}
+        />
+      </PlatformProvider>,
+    );
+    await flush();
+    await flush();
+
+    expect(personState).toEqual({ status: "ready", value: person });
+    expect(accountState).toEqual({ status: "ready", value: account });
+    expect(readLibraryPersonDetail).toHaveBeenCalledOnce();
+    expect(readLibraryAccountDetail).toHaveBeenCalledOnce();
+  });
+
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 

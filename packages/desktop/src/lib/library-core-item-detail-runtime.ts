@@ -1,10 +1,17 @@
-import { type ContentSignal, type FeedItem } from "@freed/shared";
 import {
+  type Account,
+  type ContentSignal,
+  type FeedItem,
+  type Person,
+} from "@freed/shared";
+import {
+  readLibraryCoreNormalizedAccountDetailV1,
   readLibraryCoreNormalizedFacetSummaryV1,
   readLibraryCoreNormalizedAccountTimelineV1,
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedMapCandidatesV1,
   readLibraryCoreNormalizedPersonTimelineV1,
+  readLibraryCoreNormalizedPersonDetailV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   readLibraryCoreNormalizedStoryWallCandidatesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
@@ -154,6 +161,24 @@ export async function readLibraryCoreItemDetail(
   return readLibraryCoreNormalizedItemDetailV1(
     NORMALIZED_READER_RUNTIME,
     globalId,
+  );
+}
+
+export async function readLibraryCorePersonDetail(
+  personId: string,
+): Promise<Person | null> {
+  return readLibraryCoreNormalizedPersonDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    personId,
+  );
+}
+
+export async function readLibraryCoreAccountDetail(
+  accountId: string,
+): Promise<Account | null> {
+  return readLibraryCoreNormalizedAccountDetailV1(
+    NORMALIZED_READER_RUNTIME,
+    accountId,
   );
 }
 

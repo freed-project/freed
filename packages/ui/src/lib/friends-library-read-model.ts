@@ -1,7 +1,6 @@
 import type {
   Account,
   FriendCandidateActivityAggregate,
-  RssFeed,
 } from "@freed/shared";
 import { compareUtf8Binary } from "@freed/shared";
 import type {
@@ -86,7 +85,6 @@ export function friendSourceAccountProvenance(
 /** Build one deterministic request for the compact Friends overview. */
 export function createLibraryFriendsGraphRequest(
   accounts: Readonly<Record<string, Account>>,
-  feeds: Readonly<Record<string, RssFeed>>,
   referenceTimeMs = Date.now(),
 ): LibraryFriendsGraphRequest {
   const sources = new Map<string, { platform: string; authorId: string }>();
@@ -98,20 +96,13 @@ export function createLibraryFriendsGraphRequest(
     const key = socialActivitySummaryKey(platform, authorId);
     if (!sources.has(key)) sources.set(key, { platform, authorId });
   }
-  const rssFeedUrls = [
-    ...new Set(
-      Object.values(feeds)
-        .map((feed) => feed.url)
-        .filter((feedUrl) => feedUrl.trim().length > 0),
-    ),
-  ].sort(compareUtf8Binary);
   return {
     sources: [...sources.values()].sort(
       (left, right) =>
         compareUtf8Binary(left.platform, right.platform) ||
         compareUtf8Binary(left.authorId, right.authorId),
     ),
-    rssFeedUrls,
+    rssFeedUrls: [],
     recentWindow: {
       startMs: referenceTimeMs - FRIEND_SUGGESTION_WINDOW_MS,
       endMs: referenceTimeMs,

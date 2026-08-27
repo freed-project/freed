@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  Account,
   BaseAppState,
   ContactSyncState,
   ContentSignal,
@@ -31,6 +32,7 @@ import type {
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   LibraryMapLocationCandidate,
+  Person,
   ReportPrivacyTier,
   SavedContentSortMode,
   StoryWallManifest,
@@ -704,6 +706,12 @@ export interface PlatformConfig {
   readLibraryFriendsGraph?: (
     request: LibraryFriendsGraphRequest,
   ) => Promise<LibraryFriendsGraph>;
+
+  /** One exact Person selected from the current SQLite generation. */
+  readLibraryPersonDetail?: (personId: string) => Promise<Person | null>;
+
+  /** One exact Account selected from the current SQLite generation. */
+  readLibraryAccountDetail?: (accountId: string) => Promise<Account | null>;
 
   /** Execute one registered, bounded, typed query against local SQLite. */
   queryLibraryCore?: LibraryCoreNormalizedQueryExecutor;

@@ -16,7 +16,6 @@ import type {
   FriendCandidateConfidence,
   MapMode,
   Person,
-  RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
@@ -57,7 +56,6 @@ import type {
 } from "../../lib/friends-galaxy-viewport.js";
 import {
   sameFriendsGalaxyAccounts,
-  sameFriendsGalaxyFeeds,
   sameFriendsGalaxyPersons,
 } from "../../lib/friends-galaxy-source-equality.js";
 import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
@@ -82,7 +80,6 @@ export interface FriendGraphHandle {
 interface FriendGraphProps {
   persons: Person[];
   accounts: Record<string, Account>;
-  feeds: Record<string, RssFeed>;
   feedItems?: Record<string, FeedItem>;
   activitySummaries?: IdentityGraphActivitySummaries;
   sqliteGraphQuery?: FriendsGalaxySqliteGraphQuery;
@@ -283,14 +280,12 @@ function normalizedNodeId(
   id: string,
   persons: ReadonlyMap<string, Person>,
   accounts: Record<string, Account>,
-  feeds: Record<string, RssFeed>,
 ): string {
   if (id.startsWith("person:") || id.startsWith("account:") || id.startsWith("feed:")) {
     return id;
   }
   if (persons.has(id)) return `person:${id}`;
   if (accounts[id]) return `account:${id}`;
-  if (feeds[id]) return `feed:${id}`;
   return id;
 }
 
@@ -298,7 +293,6 @@ function synthesizeContextNode(
   target: FriendsGalaxyContextTarget,
   persons: ReadonlyMap<string, Person>,
   accounts: Record<string, Account>,
-  feeds: Record<string, RssFeed>,
 ): IdentityGraphAtlasNode | null {
   if (target.nodeId.startsWith("person:")) {
     const personId = target.nodeId.slice("person:".length);
@@ -342,8 +336,7 @@ function synthesizeContextNode(
   }
   if (target.nodeId.startsWith("feed:")) {
     const feedUrl = target.nodeId.slice("feed:".length);
-    const feed = feeds[feedUrl];
-    const label = feed?.title || feedUrl;
+    const label = feedUrl;
     return {
       id: target.nodeId,
       kind: "feed",
@@ -427,7 +420,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   {
     persons,
     accounts,
-    feeds,
     feedItems,
     activitySummaries: activitySummariesProp,
     sqliteGraphQuery,
@@ -489,7 +481,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   });
   const sourcePersons = useStableGraphSourceValue(persons, sameFriendsGalaxyPersons);
   const sourceAccounts = useStableGraphSourceValue(accounts, sameFriendsGalaxyAccounts);
-  const sourceFeeds = useStableGraphSourceValue(feeds, sameFriendsGalaxyFeeds);
   const personsById = useMemo(
     () => new Map(sourcePersons.map((person) => [person.id, person])),
     [sourcePersons],
@@ -506,9 +497,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   );
   const personCount = sourcePersons.length;
   const channelCount = useMemo(
-    () => Object.values(sourceAccounts).filter((account) => account.kind === "social").length +
-      Object.values(sourceFeeds).filter((feed) => feed.enabled !== false).length,
-    [sourceAccounts, sourceFeeds],
+    () => Object.values(sourceAccounts).filter((account) => account.kind === "social").length,
+    [sourceAccounts],
   );
   const linkCount = useMemo(() => {
     const visiblePersonIds = new Set(
@@ -814,7 +804,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     const viewport = viewportRef.current;
     const node = engineRef.current?.metadata(target.nodeId) ??
-      synthesizeContextNode(target, personsById, accounts, feeds);
+      synthesizeContextNode(target, personsById, accounts);
     if (!viewport || !node) return;
     const x = Math.max(8, Math.min(target.interactionX, viewport.clientWidth - MENU_WIDTH - 8));
     const y = Math.max(
@@ -1050,7 +1040,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const source: BuildIdentityGraphAtlasModelInput = {
       persons: sourcePersons,
       accounts: sourceAccounts,
-      feeds: sourceFeeds,
+      feeds: {},
       activitySummaries: baseline,
       mode,
       width: 1_400,
@@ -1092,7 +1082,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     proceduralBackgroundStarCount,
     sourceAccounts,
     channelCount,
-    sourceFeeds,
     mode,
     personSuggestionRecord,
     sourcePersons,
@@ -1133,7 +1122,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   const fitAll = useCallback(() => controllerRef.current?.fitAll(), []);
   const focusNode = useCallback((id: string) => {
-    const nodeId = normalizedNodeId(id, personsById, accounts, feeds);
+    const nodeId = normalizedNodeId(id, personsById, accounts);
     controllerRef.current?.focusNode(nodeId);
     const label = nodeId.startsWith("person:")
       ? personsById.get(nodeId.slice("person:".length))?.name ?? null
@@ -1141,7 +1130,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         ? accounts[nodeId.slice("account:".length)]?.displayName ?? null
         : null;
     setAnnouncement(friendsGalaxySelectionAnnouncement(label, "focus"));
-  }, [accounts, feeds, personsById]);
+  }, [accounts, personsById]);
   useImperativeHandle(ref, () => ({
     fitAll,
     focusNode,

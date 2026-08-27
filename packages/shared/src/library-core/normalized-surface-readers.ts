@@ -1,8 +1,15 @@
 import {
   mergeDefaultPreferences,
+  type Account,
   type FeedItem,
+  type Person,
   type UserPreferences,
 } from "../types.js";
+import {
+  LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
+  LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
+  type LibraryCoreAccountDetailV1,
+} from "./account-detail-contracts.js";
 import {
   extractLocationFromItem,
   isLocationItemVisibleInTimeMode,
@@ -26,6 +33,11 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_QUERY_ID,
   LIBRARY_CORE_PERSON_TIMELINE_SCHEMA_VERSION,
 } from "./person-timeline-contracts.js";
+import {
+  LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
+  LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
+  type LibraryCorePersonDetailV1,
+} from "./person-detail-contracts.js";
 import {
   LIBRARY_CORE_ACCOUNT_TIMELINE_DEFAULT_LIMIT,
   LIBRARY_CORE_ACCOUNT_TIMELINE_MAXIMUM_LIMIT,
@@ -275,6 +287,124 @@ export async function readLibraryCoreNormalizedItemDetailV1(
   return response.item === null
     ? null
     : libraryCoreFeedCardToItemV1(response.item.card);
+}
+
+function sampleDataFingerprint(
+  value: Readonly<{
+    sampleBatchId: string | null;
+    sampleGeneratedAt: number | null;
+    sampleGeneratorVersion: number | null;
+  }>,
+) {
+  return value.sampleBatchId === null ||
+    value.sampleGeneratedAt === null ||
+    value.sampleGeneratorVersion === null
+    ? undefined
+    : {
+        batchId: value.sampleBatchId,
+        generatedAt: value.sampleGeneratedAt,
+        generatorVersion: value.sampleGeneratorVersion,
+        marker: "freed.sample-data.v1" as const,
+      };
+}
+
+/** Convert one closed SQLite Person detail into the shared domain record. */
+export function libraryCorePersonDetailToPersonV1(
+  value: LibraryCorePersonDetailV1,
+): Person {
+  return {
+    id: value.id,
+    name: value.name,
+    ...(value.avatarUrl === null ? {} : { avatarUrl: value.avatarUrl }),
+    ...(value.bio === null ? {} : { bio: value.bio }),
+    relationshipStatus: value.relationshipStatus as Person["relationshipStatus"],
+    careLevel: value.careLevel as Person["careLevel"],
+    ...(value.reachOutIntervalDays === null
+      ? {}
+      : { reachOutIntervalDays: value.reachOutIntervalDays }),
+    reachOutLog: value.reachOuts.map((reachOut) => ({
+      loggedAt: reachOut.loggedAt,
+      ...(reachOut.channel === null
+        ? {}
+        : { channel: reachOut.channel as NonNullable<Person["reachOutLog"]>[number]["channel"] }),
+      ...(reachOut.notes === null ? {} : { notes: reachOut.notes }),
+    })),
+    tags: [...value.tags],
+    ...(value.notes === null ? {} : { notes: value.notes }),
+    ...(sampleDataFingerprint(value)
+      ? { sampleDataFingerprint: sampleDataFingerprint(value)! }
+      : {}),
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+/** Convert one closed SQLite Account detail into the shared domain record. */
+export function libraryCoreAccountDetailToAccountV1(
+  value: LibraryCoreAccountDetailV1,
+): Account {
+  return {
+    id: value.id,
+    ...(value.personId === null ? {} : { personId: value.personId }),
+    kind: value.kind as Account["kind"],
+    provider: value.provider as Account["provider"],
+    externalId: value.externalId,
+    ...(value.handle === null ? {} : { handle: value.handle }),
+    ...(value.displayName === null ? {} : { displayName: value.displayName }),
+    ...(value.avatarUrl === null ? {} : { avatarUrl: value.avatarUrl }),
+    ...(value.profileUrl === null ? {} : { profileUrl: value.profileUrl }),
+    ...(value.email === null ? {} : { email: value.email }),
+    ...(value.phone === null ? {} : { phone: value.phone }),
+    ...(value.address === null ? {} : { address: value.address }),
+    ...(value.importedAt === null ? {} : { importedAt: value.importedAt }),
+    firstSeenAt: value.firstSeenAt,
+    lastSeenAt: value.lastSeenAt,
+    discoveredFrom: value.discoveredFrom as Account["discoveredFrom"],
+    ...(value.followRosterActive === null
+      ? {}
+      : { followRosterActive: value.followRosterActive }),
+    ...(value.followRosterSyncedAt === null
+      ? {}
+      : { followRosterSyncedAt: value.followRosterSyncedAt }),
+    followRosterRoles: [...value.followRosterRoles] as NonNullable<
+      Account["followRosterRoles"]
+    >,
+    ...(sampleDataFingerprint(value)
+      ? { sampleDataFingerprint: sampleDataFingerprint(value)! }
+      : {}),
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+/** Read one exact Person directly from the selected SQLite generation. */
+export async function readLibraryCoreNormalizedPersonDetailV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  personId: string,
+): Promise<Person | null> {
+  const response = await runtime.query({
+    personId,
+    queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
+  });
+  return response.person === null
+    ? null
+    : libraryCorePersonDetailToPersonV1(response.person);
+}
+
+/** Read one exact Account directly from the selected SQLite generation. */
+export async function readLibraryCoreNormalizedAccountDetailV1(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  accountId: string,
+): Promise<Account | null> {
+  const response = await runtime.query({
+    accountId,
+    queryId: LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
+  });
+  return response.account === null
+    ? null
+    : libraryCoreAccountDetailToAccountV1(response.account);
 }
 
 export async function readLibraryCoreNormalizedFacetSummaryV1(

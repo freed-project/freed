@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress. The canonical identity model uses `Person` plus attached `Account` records, and the shipping Friends route uses the GPU-resident Friends Galaxy. Freed Desktop uses bounded SQLite aggregates and pages. The current PWA transition store proved equivalent bounded reads in IndexedDB. Phase 6 replaces that store with SQLite WebAssembly over OPFS and the same named query contracts. Native contacts, overlap, and Mozi work remain unfinished.
+> **Status:** In Progress. The canonical identity model uses normalized `Person` plus attached `Account` records in SQLite, and the shipping Friends route uses the GPU-resident Friends Galaxy. Freed Desktop runs the shared query contracts in native SQLite. The PWA runs the same contracts in SQLite WebAssembly over OPFS. Native contacts, overlap, and Mozi work remain unfinished.
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -119,9 +119,15 @@ interface Account {
 }
 ```
 
-Legacy `Friend`, `FriendSource`, and `DeviceContact` shims still exist for compatibility, but canonical persistence now lives in `persons` and `accounts` inside the Automerge document. Legacy docs hydrate through a migration that splits embedded sources and contact data into standalone account records.
+Canonical persistence lives in normalized `persons` and `accounts` SQLite
+tables. Signed typed operations mutate those rows. Typed normalized records,
+not a document shell, carry identity through checkpoints and synchronization.
+The renderer never treats a reconstructed `Friend` or identity dictionary as
+authority.
 
-Legacy Person and Account types retain optional graph placement fields only so older documents can be read. Current clients migrate valid pins once into a versioned device-local layout store, ignore later stale synchronized coordinates, and keep each viewport's pin positions out of Automerge.
+Graph placement is installation-local SQLite state. It is excluded from
+checkpoints and synchronization because each viewport owns its own useful
+layout.
 
 Default nudge intervals by care level:
 

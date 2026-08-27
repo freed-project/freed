@@ -13,6 +13,7 @@ import {
 import { sanitizeAccountWrite, sanitizePersonWrite } from "@freed/shared";
 import {
   LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT,
+  readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
   readLibraryCoreNormalizedFacetSummaryV1,
@@ -20,6 +21,7 @@ import {
   readLibraryCoreNormalizedFeedSignalCountsV1,
   readLibraryCoreNormalizedItemDetailV1,
   readLibraryCoreNormalizedPersonTimelineV1,
+  readLibraryCoreNormalizedPersonDetailV1,
   readLibraryCoreNormalizedPreferencesV1,
   readLibraryCoreNormalizedPersonsGraphV1,
   readLibraryCoreNormalizedFriendsLocationItemV1,
@@ -832,6 +834,18 @@ export const readPwaLibraryCoreFriendsGraph: NonNullable<
   PlatformConfig["readLibraryFriendsGraph"]
 > = (request) =>
   readLibraryCoreNormalizedPersonsGraphV1(NORMALIZED_READER_RUNTIME, request);
+
+/** Read one exact Person from OPFS SQLite. */
+export const readPwaLibraryCorePersonDetail: NonNullable<
+  PlatformConfig["readLibraryPersonDetail"]
+> = (personId) =>
+  readLibraryCoreNormalizedPersonDetailV1(NORMALIZED_READER_RUNTIME, personId);
+
+/** Read one exact Account from OPFS SQLite. */
+export const readPwaLibraryCoreAccountDetail: NonNullable<
+  PlatformConfig["readLibraryAccountDetail"]
+> = (accountId) =>
+  readLibraryCoreNormalizedAccountDetailV1(NORMALIZED_READER_RUNTIME, accountId);
 
 /** Read one bounded Person timeline page through normalized SQLite. */
 export const readPwaLibraryCorePersonTimeline: NonNullable<
