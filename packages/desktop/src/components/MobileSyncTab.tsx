@@ -26,8 +26,8 @@ import {
   type LibraryCoreDesktopRole,
 } from "../lib/library-core-desktop-role";
 import {
-  readSqliteLibraryFollowerRuntimeStatus,
-  type SqliteLibraryFollowerRuntimeStatus,
+  readNormalizedLibraryFollowerRuntimeStatus,
+  type NormalizedLibraryFollowerRuntimeStatus,
 } from "../lib/sqlite-library";
 import {
   readSqliteLibraryGoogleDrivePublicationReceipt,
@@ -99,7 +99,7 @@ function isWriterOwnershipWarning(message?: string | null): boolean {
 }
 
 function describeFollowerState(
-  state: SqliteLibraryFollowerRuntimeStatus["state"],
+  state: NormalizedLibraryFollowerRuntimeStatus["state"],
 ): string {
   switch (state) {
     case "awaiting_checkpoint":
@@ -109,7 +109,7 @@ function describeFollowerState(
     case "enrollment_pending":
       return "Waiting for the primary source to accept this follower.";
     case "active":
-      return "Follower journal is active.";
+      return "Follower SQLite is active.";
   }
 }
 
@@ -132,7 +132,7 @@ export function MobileSyncTab() {
     readLibraryCoreDesktopRole(),
   );
   const [followerStatus, setFollowerStatus] =
-    useState<SqliteLibraryFollowerRuntimeStatus | null>(null);
+    useState<NormalizedLibraryFollowerRuntimeStatus | null>(null);
   const [followerStatusError, setFollowerStatusError] = useState<string | null>(
     null,
   );
@@ -183,7 +183,7 @@ export function MobileSyncTab() {
     let disposed = false;
     const refresh = async () => {
       try {
-        const status = await readSqliteLibraryFollowerRuntimeStatus();
+        const status = await readNormalizedLibraryFollowerRuntimeStatus();
         if (!disposed) {
           setFollowerStatus(status);
           setFollowerStatusError(null);
@@ -426,9 +426,9 @@ export function MobileSyncTab() {
                       <DiagnosticCell
                         label="Remote revision"
                         value={
-                          followerStatus.remoteIngestSequence === null
+                          followerStatus.sourceRevision === null
                             ? "-"
-                            : followerStatus.remoteIngestSequence.toLocaleString()
+                            : followerStatus.sourceRevision.toLocaleString()
                         }
                       />
                       <DiagnosticCell

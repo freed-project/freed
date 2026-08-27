@@ -417,13 +417,13 @@ const handlers: Record<string, Handler> = {
       verifiedAtMs: null,
     },
   sqlite_library_follower_intent_context: () => null,
-  sqlite_library_follower_runtime_status: () => ({
+  normalized_library_follower_runtime_status: () => ({
     state: "awaiting_checkpoint",
     libraryId: null,
-    epochId: null,
+    authorityEpochId: null,
     actorId: null,
     checkpointGeneration: null,
-    remoteIngestSequence: null,
+    sourceRevision: null,
     pendingIntentCount: 0,
     publishedIntentCount: 0,
     importedResultCount: 0,

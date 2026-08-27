@@ -4,10 +4,7 @@ use crate::library_core_authority_genesis::PlatformAuthorityKeyStore;
 use crate::library_core_platform_key::{load_platform_key, store_platform_key, PlatformKeyVault};
 use freed_library_core::{ActorKeyStore, LibraryCoreJournal};
 
-pub(super) use freed_library_core::{
-    prepare_follower_actor_enrollment_request, sign_library_core_operation_digest,
-    EnrollmentAuthority,
-};
+pub(super) use freed_library_core::sign_library_core_operation_digest;
 
 const ACTOR_VAULT: PlatformKeyVault = PlatformKeyVault {
     account: "actor-current",

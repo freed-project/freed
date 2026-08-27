@@ -55,10 +55,10 @@ const mocks = vi.hoisted(() => ({
   followerStatus: {
     state: "active" as const,
     libraryId: "a".repeat(64),
-    epochId: "b".repeat(64),
+    authorityEpochId: "b".repeat(64),
     actorId: "c".repeat(64),
     checkpointGeneration: 12,
-    remoteIngestSequence: 345,
+    sourceRevision: 345,
     pendingIntentCount: 6,
     publishedIntentCount: 7,
     importedResultCount: 8,
@@ -94,7 +94,7 @@ vi.mock("../lib/sync", () => ({
 }));
 
 vi.mock("../lib/sqlite-library", () => ({
-  readSqliteLibraryFollowerRuntimeStatus: vi.fn(
+  readNormalizedLibraryFollowerRuntimeStatus: vi.fn(
     async () => mocks.followerStatus,
   ),
 }));
@@ -268,7 +268,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     const diagnostics = container.querySelector(
       "[data-testid='library-core-follower-diagnostics']",
     );
-    expect(diagnostics?.textContent).toContain("Follower journal is active.");
+    expect(diagnostics?.textContent).toContain("Follower SQLite is active.");
     expect(diagnostics?.textContent).toContain("Queued edits");
     expect(diagnostics?.textContent).toContain("6");
     expect(diagnostics?.textContent).toContain("Published edits");

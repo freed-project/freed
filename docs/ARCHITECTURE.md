@@ -120,6 +120,11 @@ writer while the receiving installation has a distinct candidate actor for an
 explicit writer transfer. No whole-item digest or compatibility authority
 bootstrap mediates this distinction.
 
+Desktop follower checkpoint status, actor enrollment requests, and installed
+enrollment certificates use the selected normalized SQLite catalog directly.
+The sync settings view reads that same bounded status contract. It never opens
+the retired journal database to reconstruct follower state.
+
 No `shellJson`, `DocState`, monolithic FeedItem record, generic JSON patch, or
 equivalent catch-all object is part of the runtime model.
 

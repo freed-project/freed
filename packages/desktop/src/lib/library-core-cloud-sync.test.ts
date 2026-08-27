@@ -123,7 +123,7 @@ vi.mock("./sqlite-library", () => ({
   clearSqliteLibrary: mocks.clearSqliteLibrary,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
   describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
-  installSqliteLibraryFollowerActorEnrollment:
+  installNormalizedLibraryFollowerActorEnrollment:
     mocks.installFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments: vi.fn(async () => [
     {
@@ -140,11 +140,12 @@ vi.mock("./sqlite-library", () => ({
   ]),
   readNormalizedLibraryCheckpointPage: mocks.readNormalizedCheckpointPage,
   readPwaIntentResultOutbox: mocks.readIntentResults,
-  prepareSqliteLibraryFollowerActorRequest: mocks.prepareFollowerActorRequest,
+  prepareNormalizedLibraryFollowerActorRequest:
+    mocks.prepareFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate:
     mocks.readFollowerIntentCandidate,
   readSqliteLibraryFollowerResultImportCursor: mocks.readFollowerResultCursor,
-  readSqliteLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
+  readNormalizedLibraryFollowerRuntimeStatus: mocks.followerRuntimeStatus,
   recordSqliteLibraryFollowerIntentPublication:
     mocks.recordFollowerIntentPublication,
   reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
@@ -546,10 +547,10 @@ describe("SQLite Library Google Drive production wiring", () => {
       .mockResolvedValueOnce({
         state: "awaiting_checkpoint",
         libraryId: null,
-        epochId: null,
+        authorityEpochId: null,
         actorId: null,
         checkpointGeneration: null,
-        remoteIngestSequence: null,
+        sourceRevision: null,
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
@@ -557,22 +558,22 @@ describe("SQLite Library Google Drive production wiring", () => {
       .mockResolvedValueOnce({
         state: "awaiting_enrollment",
         libraryId,
-        epochId,
+        authorityEpochId: epochId,
         actorId: null,
         checkpointGeneration: 9,
-        remoteIngestSequence: 9,
+        sourceRevision: 9,
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
       });
     mocks.prepareFollowerActorRequest.mockResolvedValue({
       libraryId,
-      epochId,
+      authorityEpochId: epochId,
       actorId: "78".repeat(32),
       actorPublicKey: "89".repeat(32),
       enrollmentRequestDigest: "90".repeat(32),
       canonicalEnrollmentRequestJson: "{}",
-      createdAtMs: 1,
+      createdAt: 1,
     });
 
     await expect(
@@ -640,10 +641,10 @@ describe("SQLite Library Google Drive production wiring", () => {
     const activeStatus = {
       state: "active",
       libraryId,
-      epochId,
+      authorityEpochId: epochId,
       actorId,
       checkpointGeneration: 9,
-      remoteIngestSequence: 9,
+      sourceRevision: 9,
       pendingIntentCount: 1,
       publishedIntentCount: 0,
       importedResultCount: 0,
@@ -753,10 +754,10 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.followerRuntimeStatus.mockResolvedValue({
       state: "active",
       libraryId,
-      epochId,
+      authorityEpochId: epochId,
       actorId,
       checkpointGeneration: 9,
-      remoteIngestSequence: 9,
+      sourceRevision: 9,
       pendingIntentCount: 0,
       publishedIntentCount: 1,
       importedResultCount: 0,

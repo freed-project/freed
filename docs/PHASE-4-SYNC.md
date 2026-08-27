@@ -423,6 +423,7 @@ loads an alternate Library engine or compatibility path.
 | 4.229 | Route Desktop follower bootstrap and writer-transfer restore through the normalized v2 checkpoint importer and one shared cross-runtime staging state machine. Delete the portable checkpoint producer, importer, contracts, and whole-item compatibility tests without changing Drive request behavior | ✓      | High       |
 | 4.230 | Replace the historical source-digest sync descriptor and authority bootstrap with one normalized SQLite cloud identity read. Keep the checkpoint writer and this installation's actor identity distinct so restored clients can transfer authority without a compatibility journal | ✓      | High       |
 | 4.231 | Move the device-local cloud writer admission lease into the selected normalized SQLite catalog. Exclude it from checkpoints and delete the retired local-only admission path and tests | ✓      | High       |
+| 4.232 | Route Desktop follower status, actor request creation, and enrollment installation through the selected normalized SQLite catalog. Delete the historical journal commands without changing Drive provider behavior | ✓      | High       |
 
 ---
 

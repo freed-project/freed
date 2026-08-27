@@ -3,7 +3,6 @@
 pub(super) use freed_library_core::{
     FollowerIntentEnqueueReceipt, FollowerIntentOutboxCandidate, FollowerIntentPublicationReceipt,
     FollowerOverlayReplayReceipt, FollowerResultImportCursor, FollowerResultImportReceipt,
-    FollowerRuntimeStatus, IntentResultOutboxEntry, LibraryCoreJournal,
-    StoredFollowerActorEnrollment, StoredFollowerActorRequest, VerifiedFollowerIntentPublication,
+    IntentResultOutboxEntry, LibraryCoreJournal, VerifiedFollowerIntentPublication,
     VerifiedFollowerIntentResult, VerifiedFollowerResultSegment,
 };

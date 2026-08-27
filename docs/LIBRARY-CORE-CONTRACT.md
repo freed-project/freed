@@ -418,6 +418,12 @@ missing local receipt. It refuses a remote head behind SQLite or more than one
 unrecorded segment ahead. Google Drive endpoint selection, headers, retries,
 paging, and cadence remain inside the Drive adapter.
 
+Desktop uses the same normalized follower boundary for local coordination.
+Runtime status, stable actor request creation, and certificate installation are
+native calls against the selected normalized SQLite catalog. Their typed
+responses carry the authority epoch and source revision directly. No renderer
+translation layer or historical follower journal participates in enrollment.
+
 The Primary admits browser intent pages through dedicated SQLite staging
 tables that are excluded from checkpoints, materialized-state digests, and
 replication. One page carries at most 128 records. One transaction carries at

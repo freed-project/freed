@@ -55,14 +55,14 @@ import {
   beginNormalizedLibraryCheckpointImport,
   describeNormalizedLibraryCloudIdentity,
   describeNormalizedLibraryCheckpoint,
-  installSqliteLibraryFollowerActorEnrollment,
+  installNormalizedLibraryFollowerActorEnrollment,
   listSqliteLibraryActorEnrollments,
   readNormalizedLibraryCheckpointPage,
   readPwaIntentResultOutbox,
-  prepareSqliteLibraryFollowerActorRequest,
+  prepareNormalizedLibraryFollowerActorRequest,
   readSqliteLibraryFollowerIntentOutboxCandidate,
   readSqliteLibraryFollowerResultImportCursor,
-  readSqliteLibraryFollowerRuntimeStatus,
+  readNormalizedLibraryFollowerRuntimeStatus,
   reassignNormalizedLibraryWriterEpoch,
   recordSqliteLibraryFollowerIntentPublication,
   setSqliteLibraryCloudWriterAdmission,
@@ -1380,10 +1380,10 @@ async function enrollSqliteLibraryFollower(input: {
   readonly libraryId: string;
   readonly signal?: AbortSignal;
 }): Promise<string | null> {
-  const request = await prepareSqliteLibraryFollowerActorRequest();
+  const request = await prepareNormalizedLibraryFollowerActorRequest();
   if (
     request.libraryId !== input.libraryId ||
-    request.epochId !== input.epochId
+    request.authorityEpochId !== input.epochId
   ) {
     throw new Error(
       "Follower actor request does not match the active Drive authority",
@@ -1405,7 +1405,7 @@ async function enrollSqliteLibraryFollower(input: {
     const canonical = new TextDecoder("utf-8", { fatal: true }).decode(
       enrollment.bytes,
     );
-    await installSqliteLibraryFollowerActorEnrollment(canonical);
+    await installNormalizedLibraryFollowerActorEnrollment(canonical);
     return request.actorId;
   }
 
@@ -1679,10 +1679,10 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
       "The Primary Freed Desktop has not published a Library checkpoint",
     );
   }
-  const before = await readSqliteLibraryFollowerRuntimeStatus();
+  const before = await readNormalizedLibraryFollowerRuntimeStatus();
   if (
     before.libraryId !== pointer.libraryId ||
-    before.epochId !== pointer.storageEpoch ||
+    before.authorityEpochId !== pointer.storageEpoch ||
     before.checkpointGeneration !== pointer.generation
   ) {
     await bootstrapCloudCheckpointIntoSqlite({
@@ -1692,7 +1692,7 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
       pointer,
     });
   }
-  const afterCheckpoint = await readSqliteLibraryFollowerRuntimeStatus();
+  const afterCheckpoint = await readNormalizedLibraryFollowerRuntimeStatus();
   const actorId =
     afterCheckpoint.state === "active"
       ? afterCheckpoint.actorId

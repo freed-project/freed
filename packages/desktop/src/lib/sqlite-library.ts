@@ -175,17 +175,17 @@ export interface SqliteLibraryFollowerIntentContext {
   readonly previousChainDigest: string;
 }
 
-export interface SqliteLibraryFollowerRuntimeStatus {
+export interface NormalizedLibraryFollowerRuntimeStatus {
   readonly state:
     | "awaiting_checkpoint"
     | "awaiting_enrollment"
     | "enrollment_pending"
     | "active";
   readonly libraryId: string | null;
-  readonly epochId: string | null;
+  readonly authorityEpochId: string | null;
   readonly actorId: string | null;
   readonly checkpointGeneration: number | null;
-  readonly remoteIngestSequence: number | null;
+  readonly sourceRevision: number | null;
   readonly pendingIntentCount: number;
   readonly publishedIntentCount: number;
   readonly importedResultCount: number;
@@ -263,24 +263,25 @@ export interface SqliteLibraryFollowerIntentReceipt {
   readonly status: "enqueued" | "already_enqueued";
 }
 
-export interface SqliteLibraryFollowerActorRequest {
+export interface NormalizedLibraryFollowerActorRequest {
   readonly libraryId: string;
-  readonly epochId: string;
+  readonly authorityEpochId: string;
   readonly actorId: string;
   readonly actorPublicKey: string;
   readonly enrollmentRequestDigest: string;
   readonly canonicalEnrollmentRequestJson: string;
-  readonly createdAtMs: number;
+  readonly createdAt: number;
 }
 
-export interface SqliteLibraryFollowerActorEnrollment {
+export interface NormalizedLibraryFollowerActorEnrollment {
   readonly libraryId: string;
-  readonly epochId: string;
+  readonly authorityEpochId: string;
   readonly actorId: string;
   readonly actorPublicKey: string;
   readonly enrollmentCertificateDigest: string;
+  readonly canonicalEnrollmentCertificateJson: string;
   readonly actorChainGenesis: string;
-  readonly enrolledAtMs: number;
+  readonly enrolledAt: number;
 }
 
 export interface SqliteLibraryFollowerIntentOutboxCandidate {
@@ -321,19 +322,19 @@ export interface SqliteLibraryFollowerResultImportReceipt {
   readonly status: "imported" | "already_imported";
 }
 
-export async function prepareSqliteLibraryFollowerActorRequest(): Promise<SqliteLibraryFollowerActorRequest> {
-  return invoke<SqliteLibraryFollowerActorRequest>(
-    "prepare_sqlite_library_follower_actor_request",
-    { request: { createdAtMs: Date.now() } },
+export async function prepareNormalizedLibraryFollowerActorRequest(): Promise<NormalizedLibraryFollowerActorRequest> {
+  return invoke<NormalizedLibraryFollowerActorRequest>(
+    "prepare_normalized_library_follower_actor_request",
+    { createdAt: Date.now() },
   );
 }
 
-export async function installSqliteLibraryFollowerActorEnrollment(
+export async function installNormalizedLibraryFollowerActorEnrollment(
   canonicalEnrollmentCertificateJson: string,
-): Promise<SqliteLibraryFollowerActorEnrollment> {
-  return invoke<SqliteLibraryFollowerActorEnrollment>(
-    "install_sqlite_library_follower_actor_enrollment",
-    { request: { canonicalEnrollmentCertificateJson } },
+): Promise<NormalizedLibraryFollowerActorEnrollment> {
+  return invoke<NormalizedLibraryFollowerActorEnrollment>(
+    "install_normalized_library_follower_actor_enrollment",
+    { canonicalEnrollmentCertificateJson },
   );
 }
 
@@ -410,9 +411,9 @@ export async function sqliteLibraryFollowerIntentContext(): Promise<SqliteLibrar
   );
 }
 
-export async function readSqliteLibraryFollowerRuntimeStatus(): Promise<SqliteLibraryFollowerRuntimeStatus> {
-  return invoke<SqliteLibraryFollowerRuntimeStatus>(
-    "sqlite_library_follower_runtime_status",
+export async function readNormalizedLibraryFollowerRuntimeStatus(): Promise<NormalizedLibraryFollowerRuntimeStatus> {
+  return invoke<NormalizedLibraryFollowerRuntimeStatus>(
+    "normalized_library_follower_runtime_status",
   );
 }
 
