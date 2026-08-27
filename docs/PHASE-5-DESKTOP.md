@@ -22,7 +22,9 @@
       lease. Startup installs and verifies the generated schema identity, and
       one registered Tauri command accepts only the flat closed typed query
       requests implemented by the native core. The historical database remains
-      outside this database and receives no mirrored normalized writes.
+      outside this database and receives no mirrored normalized writes. A fresh
+      installation creates only the normalized database and never creates the
+      historical directory, process lease, backup directory, store, or shell.
 - [x] Generate the shared checkpoint registry, protocol limits, 39 mutation
       IDs, and 40 bounded query IDs for Rust and TypeScript from one executable
       contract source, with generated-drift validation. The same source now
@@ -660,6 +662,7 @@ export async function captureDomFeed(
 | 5.133 | Route Friends graph pin set and clear actions through the native typed SQLite mutation boundary. Startup imports valid historical graph positions into foreign-keyed device-local SQLite rows once, drops missing entities, deletes the retired localStorage key only after a successful import, and preserves the source when a query or mutation fails. React retains only the visible graph and a query invalidation counter | High       | ✓ Complete |
 | 5.134 | Replace the Desktop runtime shell with one shared row-free Library Core summary built from normalized preferences and `library_facet_summary_v1`. Mutation dispatch no longer receives a Library state projection, Person, Account, and RSS partial writes prepare from exact SQLite rows, reach-out logging uses its closed append operation, and the browser-only whole-item and generic mutation fallbacks are deleted | High       | ✓ Complete |
 | 5.135 | Delete the document-era Desktop mutation facade. The public client exposes only Library-named typed operations, its closed request union contains only executable SQLite mutations, identity E2E fixtures write through typed SQLite upserts, factory reset clears the Library, and diagnostics expose a row-free Library summary with no document binary accessor | High       | ✓ Complete |
+| 5.136 | Make the descriptor-bound Desktop process binding open the historical migration source only when it already exists. Fresh installations create and lease only normalized SQLite and the content vault, while existing installations retain the fenced one-time migration reader without creating a second authority on clean profiles | High       | ✓ Complete |
 
 ---
 

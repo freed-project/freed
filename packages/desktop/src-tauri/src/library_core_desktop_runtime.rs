@@ -30,9 +30,7 @@ use super::library_core_actor_enrollment::{
 use super::library_core_authority_genesis::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
 };
-use super::library_core_journal::{
-    IntentResultOutboxEntry, LibraryCoreJournal,
-};
+use super::library_core_journal::{IntentResultOutboxEntry, LibraryCoreJournal};
 const BACKUP_DIRECTORY: &str = "library-backups";
 const JOURNAL_DIRECTORY: &str = "library-core";
 const JOURNAL_FILE: &str = "library-core.sqlite";
@@ -551,7 +549,7 @@ pub(super) fn complete_normalized_desktop_cutover_if_ready() -> Result<bool, Str
 #[cfg(unix)]
 #[tauri::command]
 pub(super) fn ensure_fresh_normalized_desktop_library(
-    legacy_data_absent: bool,
+    historical_data_absent: bool,
 ) -> Result<bool, String> {
     let binding = freed_library_core::desktop_binding().map_err(|error| error.to_string())?;
     if binding
@@ -560,56 +558,57 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
     {
         return Ok(true);
     }
-    if !legacy_data_absent {
+    if !historical_data_absent {
         return Ok(false);
     }
-    let source = binding.connect().map_err(|error| error.to_string())?;
-    let source_state: Option<i64> = source
-        .query_row(
-            "SELECT singletonId FROM library_core_desktop_state WHERE singletonId = 1;",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    if source_state.is_some() {
-        return Ok(false);
-    }
-    let mut tables = source
-        .prepare(
-            "SELECT name FROM sqlite_schema
-             WHERE type = 'table' AND name LIKE 'library_core_%'
-             ORDER BY name;",
-        )
-        .map_err(|error| error.to_string())?;
-    let table_names = tables
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    drop(tables);
-    for table_name in table_names {
-        if table_name == "library_core_meta" {
-            continue;
-        }
-        if !table_name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        {
-            return Err("historical Library table identity is invalid".into());
-        }
-        let occupied: i64 = source
+    if binding.historical_source_is_present_v1() {
+        let source = binding.connect().map_err(|error| error.to_string())?;
+        let source_state: Option<i64> = source
             .query_row(
-                &format!("SELECT EXISTS(SELECT 1 FROM \"{table_name}\" LIMIT 1);"),
+                "SELECT singletonId FROM library_core_desktop_state WHERE singletonId = 1;",
                 [],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(|error| error.to_string())?;
-        if occupied != 0 {
+        if source_state.is_some() {
             return Ok(false);
         }
+        let mut tables = source
+            .prepare(
+                "SELECT name FROM sqlite_schema
+                 WHERE type = 'table' AND name LIKE 'library_core_%'
+                 ORDER BY name;",
+            )
+            .map_err(|error| error.to_string())?;
+        let table_names = tables
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        drop(tables);
+        for table_name in table_names {
+            if table_name == "library_core_meta" {
+                continue;
+            }
+            if !table_name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            {
+                return Err("historical Library table identity is invalid".into());
+            }
+            let occupied: i64 = source
+                .query_row(
+                    &format!("SELECT EXISTS(SELECT 1 FROM \"{table_name}\" LIMIT 1);"),
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())?;
+            if occupied != 0 {
+                return Ok(false);
+            }
+        }
     }
-    drop(source);
     let mut target = binding
         .connect_normalized()
         .map_err(|error| error.to_string())?;

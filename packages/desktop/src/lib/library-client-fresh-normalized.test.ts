@@ -24,9 +24,9 @@ vi.mock("./sqlite-library", async (importOriginal) => {
   const original = await importOriginal<typeof import("./sqlite-library")>();
   return {
     ...original,
-    ensureFreshNormalizedDesktopLibrary: vi.fn(async (legacyDataAbsent: boolean) => {
-      mocks.calls.push(`select:${String(legacyDataAbsent)}`);
-      return legacyDataAbsent;
+    ensureFreshNormalizedDesktopLibrary: vi.fn(async (historicalDataAbsent: boolean) => {
+      mocks.calls.push(`select:${String(historicalDataAbsent)}`);
+      return historicalDataAbsent;
     }),
     loadSqliteLibraryState: vi.fn(async () => {
       mocks.calls.push("load");

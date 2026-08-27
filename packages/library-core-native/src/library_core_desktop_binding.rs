@@ -46,11 +46,11 @@ struct DesktopAuthoritySelectionV1 {
 /// journal, lease, and backup operation resolves from held directory handles.
 pub struct LibraryCoreDesktopBinding {
     content_vault: LibraryCoreContentVault,
-    store: LibraryCoreStore,
+    historical_store: Option<LibraryCoreStore>,
     normalized_database: BoundSqliteDatabase,
-    _lease: LibraryCoreProcessLease,
+    _historical_lease: Option<LibraryCoreProcessLease>,
     _normalized_lease: LibraryCoreProcessLease,
-    _library_root: LibraryCoreBoundRoot,
+    _historical_root: Option<LibraryCoreBoundRoot>,
     _normalized_root: LibraryCoreBoundRoot,
     app_root: LibraryCoreBoundRoot,
 }
@@ -106,12 +106,31 @@ impl LibraryCoreDesktopBinding {
         let app_parent = LibraryCoreBoundRoot::from_inherited_descriptor(descriptor.as_raw_fd())?;
         let app_directory = app_parent.open_or_create_private_directory(app_leaf)?;
         let app_root = LibraryCoreBoundRoot::from_inherited_descriptor(app_directory.as_raw_fd())?;
-        let library_directory = app_root.open_or_create_private_directory(LIBRARY_DIRECTORY)?;
-        let library_root =
-            LibraryCoreBoundRoot::from_inherited_descriptor(library_directory.as_raw_fd())?;
-        let lease = LibraryCoreProcessLease::acquire_bound(&library_root, identity)
-            .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
-        after_lease();
+        let historical_directory =
+            app_root.open_private_directory_if_present(LIBRARY_DIRECTORY)?;
+        let (historical_store, historical_lease, historical_root) =
+            if let Some(historical_directory) = historical_directory {
+                let historical_root = LibraryCoreBoundRoot::from_inherited_descriptor(
+                    historical_directory.as_raw_fd(),
+                )?;
+                let historical_lease =
+                    LibraryCoreProcessLease::acquire_bound(&historical_root, identity)
+                        .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
+                after_lease();
+                let backup_directory =
+                    app_root.open_or_create_private_directory("library-backups")?;
+                let historical_store = LibraryCoreStore::open_bound_directories(
+                    historical_directory,
+                    backup_directory,
+                )?;
+                (
+                    Some(historical_store),
+                    Some(historical_lease),
+                    Some(historical_root),
+                )
+            } else {
+                (None, None, None)
+            };
         let normalized_directory =
             app_root.open_or_create_private_directory(NORMALIZED_LIBRARY_DIRECTORY)?;
         let normalized_root =
@@ -129,23 +148,20 @@ impl LibraryCoreDesktopBinding {
             .map_err(|error| LibraryCoreStoreError::from(error.to_string()))?;
         content_vault.reconcile_v1(&mut normalized_connection)?;
         drop(normalized_connection);
-        let backup_directory = app_root.open_or_create_private_directory("library-backups")?;
-        let store = LibraryCoreStore::open_bound_directories(library_directory, backup_directory)?;
         Ok(Self {
             content_vault,
-            store,
+            historical_store,
             normalized_database,
-            _lease: lease,
+            _historical_lease: historical_lease,
             _normalized_lease: normalized_lease,
-            _library_root: library_root,
+            _historical_root: historical_root,
             _normalized_root: normalized_root,
             app_root,
         })
     }
 
     pub fn connect(&self) -> Result<Connection, LibraryCoreStoreError> {
-        self.require_legacy_authority()?;
-        self.store.connect()
+        self.require_historical_source()?.connect()
     }
 
     /// Opens Freed Desktop's final normalized SQLite authority.
@@ -272,22 +288,28 @@ impl LibraryCoreDesktopBinding {
     }
 
     pub fn open_journal(&self) -> Result<LibraryCoreJournal, LibraryCoreStoreError> {
-        self.require_legacy_authority()?;
-        self.store.open_bound_journal()
+        self.require_historical_source()?.open_bound_journal()
     }
 
     pub fn store(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
-        self.require_legacy_authority()?;
-        Ok(&self.store)
+        self.require_historical_source()
     }
 
-    fn require_legacy_authority(&self) -> Result<(), LibraryCoreStoreError> {
+    pub fn historical_source_is_present_v1(&self) -> bool {
+        self.historical_store.is_some()
+    }
+
+    fn require_historical_source(&self) -> Result<&LibraryCoreStore, LibraryCoreStoreError> {
         if self.authority_selection()?.is_some() {
             return Err(LibraryCoreStoreError::from(
-                "historical Desktop Library authority is retired".to_string(),
+                "historical Desktop migration source is fenced after SQLite selection".to_string(),
             ));
         }
-        Ok(())
+        self.historical_store.as_ref().ok_or_else(|| {
+            LibraryCoreStoreError::from(
+                "historical Desktop migration source is absent".to_string(),
+            )
+        })
     }
 
     fn authority_selection(
@@ -444,6 +466,9 @@ mod tests {
             .expect("set app root permissions");
         let visible_library = app_root.join(LIBRARY_DIRECTORY);
         let moved_library = app_root.join("moved-library-core");
+        fs::create_dir(&visible_library).expect("create historical Library directory");
+        fs::set_permissions(&visible_library, fs::Permissions::from_mode(0o700))
+            .expect("set historical Library permissions");
         let replacement = visible_library.clone();
         let moved = moved_library.clone();
         let binding =
@@ -784,5 +809,25 @@ mod tests {
                 .connect_selected_normalized()
                 .expect("stable selector accepts a verified authority advance"),
         );
+    }
+
+    #[test]
+    fn fresh_binding_creates_only_the_normalized_sqlite_store() {
+        let fixture = tempfile::TempDir::new().expect("create fresh Desktop fixture");
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).expect("create app root");
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700))
+            .expect("set app root permissions");
+
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY)
+            .expect("open fresh Desktop binding");
+
+        assert!(!binding.historical_source_is_present_v1());
+        assert!(!app_root.join(LIBRARY_DIRECTORY).exists());
+        assert!(binding.connect().is_err());
+        assert!(app_root
+            .join(NORMALIZED_LIBRARY_DIRECTORY)
+            .join("library-core.sqlite")
+            .is_file());
     }
 }

@@ -74,6 +74,23 @@ impl LibraryCoreBoundRoot {
         &self,
         name: &str,
     ) -> Result<OwnedFd, LibraryCoreStoreError> {
+        self.open_private_directory(name, true)?.ok_or_else(|| {
+            LibraryCoreStoreError::from("bound directory was not created".to_string())
+        })
+    }
+
+    pub(crate) fn open_private_directory_if_present(
+        &self,
+        name: &str,
+    ) -> Result<Option<OwnedFd>, LibraryCoreStoreError> {
+        self.open_private_directory(name, false)
+    }
+
+    fn open_private_directory(
+        &self,
+        name: &str,
+        create: bool,
+    ) -> Result<Option<OwnedFd>, LibraryCoreStoreError> {
         if name.is_empty() || matches!(name, "." | "..") || name.as_bytes().contains(&b'/') {
             return Err(LibraryCoreStoreError::from(
                 "invalid bound directory leaf".to_string(),
@@ -88,7 +105,14 @@ impl LibraryCoreBoundRoot {
                 libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
             )
         };
-        if descriptor < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
+        if descriptor < 0
+            && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
+            && !create
+        {
+            return Ok(None);
+        }
+        if descriptor < 0
+            && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound
         {
             let created = unsafe { libc::mkdirat(self.descriptor(), name.as_ptr(), 0o700) };
             if created < 0 {
@@ -132,7 +156,7 @@ impl LibraryCoreBoundRoot {
                 ));
             }
         }
-        Ok(descriptor)
+        Ok(Some(descriptor))
     }
 
     pub(crate) fn read_bounded_private_file(
