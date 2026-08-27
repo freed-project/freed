@@ -68,6 +68,10 @@ interface FriendsGalaxyPresentationRequestState {
 
 export class FriendsGalaxyProductEngine {
   private readonly presentation = new FriendsGalaxyProductPresentationIndex();
+  private readonly sourceMetadataByNodeId = new Map<
+    string,
+    IdentityGraphAtlasNode
+  >();
   private readonly worker: FriendsGalaxyProductWorkerClient;
   private readonly rendererOptions: Omit<
     FriendsGalaxyRendererHostOptions,
@@ -435,7 +439,7 @@ export class FriendsGalaxyProductEngine {
   }
 
   metadata(nodeId: string): IdentityGraphAtlasNode | null {
-    return this.presentation.node(nodeId);
+    return this.sourceMetadataByNodeId.get(nodeId) ?? null;
   }
 
   avatarUrl(nodeId: string): string | null {
@@ -506,6 +510,7 @@ export class FriendsGalaxyProductEngine {
     this.latestPresentation = null;
     this.pendingSourceResponse = null;
     this.admittedSourceRevision = null;
+    this.sourceMetadataByNodeId.clear();
   }
 
   private assertActive(): void {
@@ -523,6 +528,10 @@ export class FriendsGalaxyProductEngine {
   }
 
   private admitSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
+    this.sourceMetadataByNodeId.clear();
+    for (const node of response.rendererScene.atlas.nodes) {
+      this.sourceMetadataByNodeId.set(node.id, node);
+    }
     this.presentation.replace(response.rendererScene.atlas);
     this.admittedSourceRevision = response.sourceRevision;
     this.sceneIndex = new FriendsGalaxySceneIndex(

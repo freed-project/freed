@@ -1704,7 +1704,7 @@ export async function loadSqliteLibraryState(): Promise<DocState> {
     ...emptyShell(),
     items: [],
     preferences,
-    searchCorpusVersion: facets.source.transitionSequence,
+    searchCorpusVersion: facets.source.projectionRevision,
     totalItemCount: facets.summary.totalCount,
     totalArchivableCount: facets.summary.archivableCount,
     docItemCount: facets.summary.totalCount,
@@ -1912,7 +1912,7 @@ async function refreshSqliteLibraryCounts(state: DocState): Promise<DocState> {
   });
   return {
     ...state,
-    searchCorpusVersion: facets.source.transitionSequence,
+    searchCorpusVersion: facets.source.projectionRevision,
     feedUnreadCounts: {},
     feedTotalCounts: {},
     totalUnreadCount: facets.summary.unreadCount,
@@ -2102,7 +2102,7 @@ async function refreshNormalizedMutationProjection(
   return {
     state: {
       ...state,
-      searchCorpusVersion: facets.source.transitionSequence,
+      searchCorpusVersion: facets.source.projectionRevision,
       totalItemCount: facets.summary.totalCount,
       docItemCount: facets.summary.totalCount,
     },
@@ -2128,6 +2128,41 @@ async function saveMetadataMutation(
       "Normalized SQLite mutation context is required for durable Library metadata",
     );
   }
+  const captureMetadata = (
+    window as unknown as {
+      __FREED_E2E_NORMALIZED_CAPTURE_METADATA__?: (patch: Readonly<{
+        accountRemovals: readonly string[];
+        accountUpserts: readonly Account[];
+        feedRemovals: readonly string[];
+        feedUpserts: readonly RssFeed[];
+        personRemovals: readonly string[];
+        personUpserts: readonly Person[];
+      }>) => void;
+    }
+  ).__FREED_E2E_NORMALIZED_CAPTURE_METADATA__;
+  if (!captureMetadata) {
+    throw new Error("Browser SQLite test metadata bridge is unavailable");
+  }
+  captureMetadata({
+    accountRemovals: Object.keys(current.accounts).filter(
+      (id) => next.accounts[id] === undefined,
+    ),
+    accountUpserts: Object.values(next.accounts).filter(
+      (account) => current.accounts[account.id] !== account,
+    ),
+    feedRemovals: Object.keys(current.feeds).filter(
+      (url) => next.feeds[url] === undefined,
+    ),
+    feedUpserts: Object.values(next.feeds).filter(
+      (feed) => current.feeds[feed.url] !== feed,
+    ),
+    personRemovals: Object.keys(current.persons).filter(
+      (id) => next.persons[id] === undefined,
+    ),
+    personUpserts: Object.values(next.persons).filter(
+      (person) => current.persons[person.id] !== person,
+    ),
+  });
   return next;
 }
 

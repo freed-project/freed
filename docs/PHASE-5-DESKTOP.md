@@ -176,9 +176,11 @@
         store wiring remain open.
   - [x] The shared Friends graph engine accepts a bounded SQLite query
         function and pumps Person, Account, and RSS pages into worker-owned
-        compact source state one page at a time. The Freed Desktop native query
-        binding remains open and the existing graph path stays active until
-        the reader cutover.
+        compact source state one page at a time. Freed Desktop supplies the
+        native query binding directly. The React graph no longer accepts an
+        Account catalog, compiles a fallback identity source, or resolves node
+        selections through renderer dictionaries. Worker-owned scene metadata
+        returns stable Person and Account IDs, labels, and admitted counts.
   - [x] `item_reader_body_v1` now reads one exact byte range from inline SQLite
         text or no more than five content-addressed chunks through native Rust.
         Requests are capped at 256 KiB, responses at 512 KiB, and offsets past

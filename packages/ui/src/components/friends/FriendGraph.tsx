@@ -11,11 +11,8 @@ import {
   type CSSProperties,
 } from "react";
 import type {
-  Account,
   FeedItem,
-  FriendCandidateConfidence,
   MapMode,
-  Person,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
@@ -38,7 +35,6 @@ import {
 import { FriendsGalaxyInputController } from "../../lib/friends-galaxy-input-controller.js";
 import type { FriendsGalaxyContextTarget } from "../../lib/friends-galaxy-interaction.js";
 import { FriendsGalaxyProductEngine } from "../../lib/friends-galaxy-product-engine.js";
-import type { FriendsGalaxyProductWorkerSourceInput } from "../../lib/friends-galaxy-product-worker-client.js";
 import type { FriendsGalaxySqliteGraphQuery } from "../../lib/friends-galaxy-product-worker-client.js";
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
@@ -54,17 +50,12 @@ import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportGeometry,
 } from "../../lib/friends-galaxy-viewport.js";
-import {
-  sameFriendsGalaxyAccounts,
-  sameFriendsGalaxyPersons,
-} from "../../lib/friends-galaxy-source-equality.js";
 import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
   buildIdentityGraphActivitySummaries,
   type IdentityGraphActivitySummaries,
 } from "../../lib/identity-graph-activity-summary.js";
 import type {
-  BuildIdentityGraphAtlasModelInput,
   IdentityGraphAtlas,
   IdentityGraphAtlasNode,
 } from "../../lib/identity-graph-atlas.js";
@@ -73,21 +64,35 @@ import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
-  focusNode: (id: string) => void;
+  focusNode: (nodeId: string) => void;
   setPresentationVisible: (visible: boolean) => void;
 }
 
+export type FriendGraphContextResolver = (
+  target: FriendsGalaxyContextTarget,
+) => Promise<IdentityGraphAtlasNode | null>;
+
 interface FriendGraphProps {
-  persons: Person[];
-  accounts: Record<string, Account>;
+  personPickerOptions: readonly Readonly<{
+    id: string;
+    name: string;
+    relationshipStatus: "connection" | "friend";
+  }>[];
   feedItems?: Record<string, FeedItem>;
   activitySummaries?: IdentityGraphActivitySummaries;
-  sqliteGraphQuery?: FriendsGalaxySqliteGraphQuery;
+  sqliteGraphQuery: FriendsGalaxySqliteGraphQuery;
+  sourceVersion: number;
   mode: MapMode;
   selectedPersonId?: string | null;
   selectedAccountId?: string | null;
-  onSelectPerson: (person: Person) => void;
-  onSelectAccount: (account: Account) => void;
+  onSelectPersonId: (personId: string) => void;
+  onSelectAccountId: (accountId: string) => void;
+  onSourceCounts: (counts: Readonly<{
+    channelCount: number;
+    linkedAccountCount: number;
+    personCount: number;
+  }>) => void;
+  resolveContextNode: FriendGraphContextResolver;
   onClearSelection?: () => void;
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
   onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
@@ -97,8 +102,6 @@ interface FriendGraphProps {
     accountId?: string;
     level: 1 | 3 | 5;
   }) => Promise<void> | void;
-  friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
-  friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
   presentationVisible?: boolean;
   controlsAdjacentToSidebar?: boolean;
@@ -197,8 +200,18 @@ interface GraphDiagnosticState {
 }
 
 interface ScheduledFriendsGalaxySource {
-  input: FriendsGalaxyProductWorkerSourceInput;
+  readonly backgroundSeed: string;
+  readonly backgroundStarCount: number;
   fallbackBaseline: IdentityGraphActivitySummaries;
+  readonly mode: MapMode;
+  readonly proceduralBackgroundStarCount: number;
+  readonly sourceRevision: number;
+  readonly viewport: {
+    readonly height: number;
+    readonly selectedAccountId?: string | null;
+    readonly selectedPersonId?: string | null;
+    readonly width: number;
+  };
 }
 
 const BACKGROUND_STAR_COUNT = 100_000;
@@ -220,48 +233,6 @@ function shouldExposeGraphDebug(): boolean {
       .__FREED_GRAPH_DEBUG_ENABLED__ === true;
 }
 
-function buildSuggestionRecord(
-  map: Map<string, FriendCandidateConfidence> | undefined,
-): Record<string, FriendCandidateConfidence> {
-  return map ? Object.fromEntries(map.entries()) : {};
-}
-
-function useStableSuggestionRecord(
-  map: Map<string, FriendCandidateConfidence> | undefined,
-): Record<string, FriendCandidateConfidence> {
-  const next = buildSuggestionRecord(map);
-  const stable = useRef(next);
-  const nextKeys = Object.keys(next);
-  const current = stable.current;
-  if (
-    nextKeys.length !== Object.keys(current).length ||
-    nextKeys.some((key) => current[key] !== next[key])
-  ) {
-    stable.current = next;
-  }
-  return stable.current;
-}
-
-function useStableGraphSourceValue<T>(
-  value: T,
-  equal: (left: T, right: T) => boolean,
-): T {
-  const stable = useRef(value);
-  if (!equal(stable.current, value)) stable.current = value;
-  return stable.current;
-}
-
-function accountLabel(account: Account): string {
-  return account.displayName || account.handle || account.externalId || "Unnamed account";
-}
-
-function initialsForLabel(label: string): string {
-  const parts = label.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return Array.from(parts[0]!).slice(0, 2).join("").toUpperCase();
-  return `${Array.from(parts[0]!)[0] ?? ""}${Array.from(parts[1]!)[0] ?? ""}`.toUpperCase();
-}
-
 function nodeKindLabel(node: IdentityGraphAtlasNode): string {
   if (node.kind === "friend_person") return "Friend";
   if (node.kind === "connection_person") return "Connection";
@@ -274,84 +245,6 @@ function lodForScale(scale: number): GraphSurfacePerfSnapshot["lod"] {
   if (scale < 0.24) return "overview";
   if (scale < 0.9) return "middle";
   return "detail";
-}
-
-function normalizedNodeId(
-  id: string,
-  persons: ReadonlyMap<string, Person>,
-  accounts: Record<string, Account>,
-): string {
-  if (id.startsWith("person:") || id.startsWith("account:") || id.startsWith("feed:")) {
-    return id;
-  }
-  if (persons.has(id)) return `person:${id}`;
-  if (accounts[id]) return `account:${id}`;
-  return id;
-}
-
-function synthesizeContextNode(
-  target: FriendsGalaxyContextTarget,
-  persons: ReadonlyMap<string, Person>,
-  accounts: Record<string, Account>,
-): IdentityGraphAtlasNode | null {
-  if (target.nodeId.startsWith("person:")) {
-    const personId = target.nodeId.slice("person:".length);
-    const person = persons.get(personId);
-    if (!person) return null;
-    return {
-      id: target.nodeId,
-      kind: person.relationshipStatus === "friend" ? "friend_person" : "connection_person",
-      label: person.name || "Unnamed friend",
-      x: target.worldX,
-      y: target.worldY,
-      radius: 32,
-      priority: 1,
-      personId,
-      initials: initialsForLabel(person.name),
-      activityCount: 0,
-      careLevel: person.careLevel,
-      graphPinned: person.graphPinned,
-    };
-  }
-  if (target.nodeId.startsWith("account:")) {
-    const accountId = target.nodeId.slice("account:".length);
-    const account = accounts[accountId];
-    if (!account) return null;
-    const label = accountLabel(account);
-    return {
-      id: target.nodeId,
-      kind: "account",
-      label,
-      x: target.worldX,
-      y: target.worldY,
-      radius: 14,
-      priority: 1,
-      accountId,
-      provider: account.provider,
-      linkedPersonId: account.personId ?? null,
-      initials: initialsForLabel(label),
-      activityCount: 0,
-      graphPinned: account.graphPinned,
-    };
-  }
-  if (target.nodeId.startsWith("feed:")) {
-    const feedUrl = target.nodeId.slice("feed:".length);
-    const label = feedUrl;
-    return {
-      id: target.nodeId,
-      kind: "feed",
-      label,
-      x: target.worldX,
-      y: target.worldY,
-      radius: 10,
-      priority: 1,
-      feedUrl,
-      provider: "rss",
-      initials: initialsForLabel(label),
-      activityCount: 0,
-    };
-  }
-  return null;
 }
 
 function graphDebugNodes(
@@ -418,23 +311,23 @@ function graphDebugNodes(
 
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
   {
-    persons,
-    accounts,
+    personPickerOptions,
     feedItems,
     activitySummaries: activitySummariesProp,
     sqliteGraphQuery,
+    sourceVersion,
     mode,
     selectedPersonId,
     selectedAccountId,
-    onSelectPerson,
-    onSelectAccount,
+    onSelectPersonId,
+    onSelectAccountId,
+    onSourceCounts,
+    resolveContextNode,
     onClearSelection,
     onLinkAccountToPerson,
     onPinPersonPosition,
     onPinAccountPosition,
     onDropNodeToRelationshipTier,
-    friendSuggestionStrengthByPerson,
-    friendSuggestionStrengthByAccount,
     themeId,
     presentationVisible = true,
     controlsAdjacentToSidebar = false,
@@ -453,6 +346,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const diagnosticsOwnerRef = useRef({});
   const recoveringRef = useRef(false);
   const contextMenuOpenRef = useRef(false);
+  const contextResolutionRef = useRef(0);
   const sourceRevisionRef = useRef(0);
   const activityRevisionRef = useRef(0);
   const sourceSchedulerRef = useRef<FriendsGalaxySourceScheduler<ScheduledFriendsGalaxySource> | null>(null);
@@ -479,37 +373,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     activityPatchNodeCount: 0,
     unknownActivitySourceCount: 0,
   });
-  const sourcePersons = useStableGraphSourceValue(persons, sameFriendsGalaxyPersons);
-  const sourceAccounts = useStableGraphSourceValue(accounts, sameFriendsGalaxyAccounts);
-  const personsById = useMemo(
-    () => new Map(sourcePersons.map((person) => [person.id, person])),
-    [sourcePersons],
-  );
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
     [activitySummariesProp, feedItems],
   );
-  const personSuggestionRecord = useStableSuggestionRecord(
-    friendSuggestionStrengthByPerson,
-  );
-  const accountSuggestionRecord = useStableSuggestionRecord(
-    friendSuggestionStrengthByAccount,
-  );
-  const personCount = sourcePersons.length;
-  const channelCount = useMemo(
-    () => Object.values(sourceAccounts).filter((account) => account.kind === "social").length,
-    [sourceAccounts],
-  );
-  const linkCount = useMemo(() => {
-    const visiblePersonIds = new Set(
-      persons
-        .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
-        .map((person) => person.id),
-    );
-    return Object.values(accounts).filter((account) =>
-      account.kind === "social" && Boolean(account.personId && visiblePersonIds.has(account.personId)),
-    ).length;
-  }, [accounts, mode, persons]);
+  const [sourceCounts, setSourceCounts] = useState({
+    channelCount: 0,
+    linkCount: 0,
+    personCount: 0,
+  });
+  const { channelCount, linkCount, personCount } = sourceCounts;
   const [graphReady, setGraphReady] = useState(false);
   const [graphStatus, setGraphStatus] = useState("Building galaxy...");
   const [graphError, setGraphError] = useState<string | null>(null);
@@ -535,13 +408,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   latestActivityRef.current = activitySummaries;
   sqliteGraphQueryRef.current = sqliteGraphQuery;
 
-  const personPickerOptions = useMemo(() => {
+  const visiblePersonPickerOptions = useMemo(() => {
     const query = linkPickerQuery.trim().toLocaleLowerCase();
-    return persons
+    return personPickerOptions
       .filter((person) => {
         if (!query) return true;
-        return person.name.toLocaleLowerCase().includes(query) ||
-          person.notes?.toLocaleLowerCase().includes(query);
+        return person.name.toLocaleLowerCase().includes(query);
       })
       .sort((left, right) => {
         const friendOrder = Number(right.relationshipStatus === "friend") -
@@ -549,9 +421,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         return friendOrder || left.name.localeCompare(right.name);
       })
       .slice(0, 12);
-  }, [linkPickerQuery, persons]);
+  }, [linkPickerQuery, personPickerOptions]);
 
   const closeContextMenu = useCallback(() => {
+    contextResolutionRef.current += 1;
     const shouldRestoreFocus = contextMenuOpenRef.current;
     contextMenuOpenRef.current = false;
     setContextMenu(null);
@@ -568,16 +441,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onClearSelection?.();
       return;
     }
-    if (nodeId.startsWith("person:")) {
-      const person = personsById.get(nodeId.slice("person:".length));
-      if (person) onSelectPerson(person);
+    const node = engineRef.current?.metadata(nodeId);
+    if (node?.personId) {
+      onSelectPersonId(node.personId);
       return;
     }
-    if (nodeId.startsWith("account:")) {
-      const account = accounts[nodeId.slice("account:".length)];
-      if (account) onSelectAccount(account);
+    if (node?.accountId) {
+      onSelectAccountId(node.accountId);
     }
-  }, [accounts, closeContextMenu, onClearSelection, onSelectAccount, onSelectPerson, personsById]);
+  }, [closeContextMenu, onClearSelection, onSelectAccountId, onSelectPersonId]);
 
   const selectNodeRef = useRef(selectNode);
   selectNodeRef.current = selectNode;
@@ -760,6 +632,17 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     diagnostic.sourceScene = response.rendererScene;
     diagnostic.presentationAtlas = response.rendererScene.atlas;
     diagnostic.sourceReceipt = response.receipt;
+    const nextSourceCounts = {
+      channelCount: response.rendererScene.accountCount,
+      linkedAccountCount: response.rendererScene.linkedAccountCount,
+      personCount: response.rendererScene.personCount,
+    };
+    setSourceCounts({
+      channelCount: nextSourceCounts.channelCount,
+      linkCount: nextSourceCounts.linkedAccountCount,
+      personCount: nextSourceCounts.personCount,
+    });
+    onSourceCounts(nextSourceCounts);
     diagnostic.sourceDurationMs = response.durationMs;
     diagnostic.sceneSyncMs = 0;
     diagnostic.sceneSyncCount += 1;
@@ -803,18 +686,35 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       return;
     }
     const viewport = viewportRef.current;
-    const node = engineRef.current?.metadata(target.nodeId) ??
-      synthesizeContextNode(target, personsById, accounts);
-    if (!viewport || !node) return;
-    const x = Math.max(8, Math.min(target.interactionX, viewport.clientWidth - MENU_WIDTH - 8));
-    const y = Math.max(
-      8,
-      Math.min(target.interactionY, viewport.clientHeight - MENU_ESTIMATED_HEIGHT - 8),
-    );
-    setLinkPickerAccountId(null);
-    setLinkPickerQuery("");
-    contextMenuOpenRef.current = true;
-    setContextMenu({ x, y, node });
+    const node = engineRef.current?.metadata(target.nodeId);
+    if (!viewport) return;
+    const openMenu = (resolvedNode: IdentityGraphAtlasNode) => {
+      const x = Math.max(
+        8,
+        Math.min(target.interactionX, viewport.clientWidth - MENU_WIDTH - 8),
+      );
+      const y = Math.max(
+        8,
+        Math.min(target.interactionY, viewport.clientHeight - MENU_ESTIMATED_HEIGHT - 8),
+      );
+      setLinkPickerAccountId(null);
+      setLinkPickerQuery("");
+      contextMenuOpenRef.current = true;
+      setContextMenu({ x, y, node: resolvedNode });
+    };
+    if (node) {
+      contextResolutionRef.current += 1;
+      openMenu(node);
+      return;
+    }
+    const resolution = contextResolutionRef.current + 1;
+    contextResolutionRef.current = resolution;
+    void resolveContextNode(target).then((resolvedNode) => {
+      if (contextResolutionRef.current !== resolution || !resolvedNode) return;
+      openMenu(resolvedNode);
+    }).catch(() => {
+      if (contextResolutionRef.current === resolution) closeContextMenu();
+    });
   };
 
   useEffect(() => {
@@ -835,13 +735,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [contextMenu, linkPickerAccountId]);
 
   useEffect(() => {
-    const selectedLabel = selectedPersonId
-      ? personsById.get(selectedPersonId)?.name ?? null
+    const selectedNodeId = selectedPersonId
+      ? `person:${selectedPersonId}`
       : selectedAccountId
-        ? accounts[selectedAccountId]?.displayName ?? null
+        ? `account:${selectedAccountId}`
         : null;
+    const selectedLabel = selectedNodeId
+      ? engineRef.current?.metadata(selectedNodeId)?.label ?? null
+      : null;
     setAnnouncement(friendsGalaxySelectionAnnouncement(selectedLabel, "selection"));
-  }, [accounts, personsById, selectedAccountId, selectedPersonId]);
+  }, [selectedAccountId, selectedPersonId]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -944,7 +847,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     });
     engineRef.current = engine;
     sourceSchedulerRef.current = new FriendsGalaxySourceScheduler({
-      flush: ({ input, fallbackBaseline }) => {
+      flush: ({ fallbackBaseline, ...input }) => {
         const baseline = latestActivityRef.current ?? fallbackBaseline;
         sourceActivityBaselineRef.current.set(input.sourceRevision, baseline);
         if (!engine.sourceReady) {
@@ -955,25 +858,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         sourceBuildStartedAtRef.current = nowMs();
         setSourceBuildInFlight(true);
         setGraphError(null);
-        const normalizedQuery = sqliteGraphQueryRef.current;
-        if (normalizedQuery) {
-          engine.requestNormalizedSource({
-            backgroundSeed: input.backgroundSeed,
-            backgroundStarCount: input.backgroundStarCount,
-            mode: input.source.mode,
-            proceduralBackgroundStarCount: input.proceduralBackgroundStarCount,
-            sourceRevision: input.sourceRevision,
-            viewport: input.viewport,
-          }, normalizedQuery);
-        } else {
-          engine.requestSource({
-            ...input,
-            source: {
-              ...input.source,
-              activitySummaries: baseline,
-            },
-          });
-        }
+        engine.requestNormalizedSource(input, sqliteGraphQueryRef.current);
       },
     });
     engine.setFieldStyle("nebula");
@@ -1037,21 +922,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const sourceRevision = sourceRevisionRef.current;
     const baseline = latestActivityRef.current ?? activitySummaries;
     const geometry = controller.geometry;
-    const source: BuildIdentityGraphAtlasModelInput = {
-      persons: sourcePersons,
-      accounts: sourceAccounts,
-      feeds: {},
-      activitySummaries: baseline,
-      mode,
-      width: 1_400,
-      height: 900,
-      friendSuggestionStrengthByPerson: personSuggestionRecord,
-      friendSuggestionStrengthByAccount: accountSuggestionRecord,
-    };
     const controlSignature = [
       mode,
       backgroundStarCount,
       proceduralBackgroundStarCount,
+      sourceVersion,
       sourceRetry,
     ].join(":");
     const controlsChanged = sourceControlSignatureRef.current !== null &&
@@ -1061,30 +936,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     nextSourceImmediateRef.current = false;
     scheduler.request({
       fallbackBaseline: baseline,
-      input: {
-        kind: "source",
-        sourceRevision,
-        source,
-        viewport: {
-          width: geometry.canvasWidth,
-          height: geometry.canvasHeight,
-          selectedPersonId,
-          selectedAccountId,
-        },
-        backgroundStarCount,
-        proceduralBackgroundStarCount,
-        backgroundSeed: `freed-friends-${mode}-${sourcePersons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
+      backgroundSeed: `freed-friends-${mode}-${sourceRevision.toLocaleString()}`,
+      backgroundStarCount,
+      mode,
+      proceduralBackgroundStarCount,
+      sourceRevision,
+      viewport: {
+        width: geometry.canvasWidth,
+        height: geometry.canvasHeight,
+        selectedPersonId,
+        selectedAccountId,
       },
     }, immediate);
   }, [
-    accountSuggestionRecord,
     backgroundStarCount,
     proceduralBackgroundStarCount,
-    sourceAccounts,
-    channelCount,
     mode,
-    personSuggestionRecord,
-    sourcePersons,
+    sourceVersion,
     sourceRetry,
   ]);
 
@@ -1121,16 +989,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [presentationVisible]);
 
   const fitAll = useCallback(() => controllerRef.current?.fitAll(), []);
-  const focusNode = useCallback((id: string) => {
-    const nodeId = normalizedNodeId(id, personsById, accounts);
+  const focusNode = useCallback((nodeId: string) => {
     controllerRef.current?.focusNode(nodeId);
-    const label = nodeId.startsWith("person:")
-      ? personsById.get(nodeId.slice("person:".length))?.name ?? null
-      : nodeId.startsWith("account:")
-        ? accounts[nodeId.slice("account:".length)]?.displayName ?? null
-        : null;
+    const label = engineRef.current?.metadata(nodeId)?.label ?? null;
     setAnnouncement(friendsGalaxySelectionAnnouncement(label, "focus"));
-  }, [accounts, personsById]);
+  }, []);
   useImperativeHandle(ref, () => ({
     fitAll,
     focusNode,
@@ -1271,9 +1134,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       <p id={graphDescriptionId} className="sr-only">
         {friendsGalaxyGraphDescription(
           selectedPersonId
-            ? personsById.get(selectedPersonId)?.name ?? null
+            ? engineRef.current?.metadata(`person:${selectedPersonId}`)?.label ?? null
             : selectedAccountId
-              ? accounts[selectedAccountId]?.displayName ?? null
+              ? engineRef.current?.metadata(`account:${selectedAccountId}`)?.label ?? null
               : null,
           reducedMotion,
         )}
@@ -1345,7 +1208,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
                 autoFocus
               />
               <div className="max-h-64 space-y-1 overflow-y-auto">
-                {personPickerOptions.map((person) => (
+                {visiblePersonPickerOptions.map((person) => (
                   <button
                     key={person.id}
                     type="button"

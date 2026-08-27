@@ -36,6 +36,13 @@ Rust and browser OPFS SQLite now enforce the same field set, nullability,
 boolean representation, integer ranges, UTF-8 byte ranges, and enum values.
 Neither runtime maintains a hand-written row transform for that query.
 
+The Friends Galaxy runtime now requires the bounded SQLite graph executor. It
+cannot rebuild a fallback scene from React Person or Account dictionaries.
+Worker-owned scene metadata returns stable selection IDs, labels, and admitted
+counts, while React retains only the scene buffers and visible metadata needed
+for interaction. Installation-local graph positions remain joined by the
+SQLite graph pages and never require a renderer layout catalog.
+
 SearchJump bulk read and archive now cross one closed platform action boundary.
 React sends only the normalized feed or search scope and receives one compact
 receipt. Desktop and PWA freeze the complete eligible set in installation-local

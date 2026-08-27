@@ -5131,7 +5131,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
   ).toBe(true);
 });
 
-test("linking a channel from the graph context menu survives reload", async ({ app, page }) => {
+test("linking a channel through bounded graph queries survives reload", async ({ app, page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -5230,42 +5230,34 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   await menu.getByPlaceholder("Search people").fill("Ada");
   await menu.getByRole("button", { name: /Ada Lovelace/ }).click();
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            accounts: Record<string, { personId?: string }>;
-          };
-        }
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string; linkedPersonId?: string | null }> }
       | undefined;
-    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_LIBRARY_CORE__ as
-      | {
-          getDocState: () => {
-            accounts: Record<string, { personId?: string }>;
-          } | null;
-        }
-      | undefined;
-    return automerge?.getDocState()?.accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
+    return graph?.nodes?.find(
+      (node) => node.accountId === "social:instagram:nora-ig",
+    )?.linkedPersonId ?? null;
+  })).toBe("friend-ada");
 
   await page.reload();
   await app.waitForReady();
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            accounts: Record<string, { personId?: string }>;
-          };
-        }
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setActiveView: (view: string) => void };
+    };
+    store.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string; linkedPersonId?: string | null }> }
       | undefined;
-    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
-  }, { timeout: 10_000 });
+    return graph?.nodes?.find(
+      (node) => node.accountId === "social:instagram:nora-ig",
+    )?.linkedPersonId ?? null;
+  })).toBe("friend-ada");
 });
 
 test("pinning a person stays device-local and survives reload", async ({ app, page }) => {

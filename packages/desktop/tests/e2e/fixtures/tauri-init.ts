@@ -34,8 +34,10 @@ export function tauriInitScript(): string {
       sourceRevision: 0,
       sourceDigest: '',
       expectedItemCount: 0,
-      shell: null,
+      accounts: {},
+      feeds: {},
       items: {},
+      persons: {},
     };
     function persistSqliteState() {
       try {
@@ -94,6 +96,26 @@ export function tauriInitScript(): string {
       (items || []).forEach(function(item) {
         state.items[item.globalId] = JSON.parse(JSON.stringify(item));
       });
+      state.revision += 1;
+      persistSqliteState();
+    };
+    window.__FREED_E2E_NORMALIZED_CAPTURE_METADATA__ = function(patch) {
+      var state = sqliteState();
+      state.accounts = state.accounts || {};
+      state.feeds = state.feeds || {};
+      state.persons = state.persons || {};
+      (patch.accountUpserts || []).forEach(function(account) {
+        state.accounts[account.id] = JSON.parse(JSON.stringify(account));
+      });
+      (patch.accountRemovals || []).forEach(function(id) { delete state.accounts[id]; });
+      (patch.feedUpserts || []).forEach(function(feed) {
+        state.feeds[feed.url] = JSON.parse(JSON.stringify(feed));
+      });
+      (patch.feedRemovals || []).forEach(function(url) { delete state.feeds[url]; });
+      (patch.personUpserts || []).forEach(function(person) {
+        state.persons[person.id] = JSON.parse(JSON.stringify(person));
+      });
+      (patch.personRemovals || []).forEach(function(id) { delete state.persons[id]; });
       state.revision += 1;
       persistSqliteState();
     };
@@ -236,6 +258,175 @@ export function tauriInitScript(): string {
         projectionRevision: Math.max(0, state.revision || 0),
         transitionSequence: Math.max(0, state.sourceGeneration || 0),
       };
+      if (request.queryId === 'friends_directory_page_v1') {
+        var directoryQuery = String(request.search || '').toLowerCase();
+        var directoryRows = Object.values(state.persons || {})
+          .filter(function(person) {
+            return person.relationshipStatus === 'friend' &&
+              (!directoryQuery || String(person.name || '').toLowerCase().includes(directoryQuery));
+          })
+          .sort(function(left, right) {
+            if (request.sort === 'care_level') {
+              return right.careLevel - left.careLevel || left.name.localeCompare(right.name);
+            }
+            return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+          });
+        return {
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: directoryRows.slice(0, request.limit || 64).map(function(person) {
+            var lastContactAt = (person.reachOutLog || []).reduce(function(latest, entry) {
+              return Math.max(latest, entry.loggedAt || 0);
+            }, 0) || null;
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              bio: person.bio == null ? null : person.bio,
+              careLevel: person.careLevel,
+              hasLocation: false,
+              id: person.id,
+              isRecentlyActive: false,
+              lastContactAt: lastContactAt,
+              latestActivityAt: null,
+              latestAvatarUrl: null,
+              name: person.name,
+              needsOutreach: false,
+              reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+              relationshipStatus: 'friend',
+            };
+          }),
+          schemaVersion: request.schemaVersion,
+          source: source,
+          totalCount: directoryRows.length,
+        };
+      }
+      if (request.queryId === 'person_graph_page_v1') {
+        var personRows = Object.values(state.persons || {})
+          .sort(function(left, right) { return left.id.localeCompare(right.id); })
+          .slice(0, request.limit || 256)
+          .map(function(person) {
+            var graphPinned = person.graphPinned === true &&
+              Number.isFinite(person.graphX) && Number.isFinite(person.graphY) &&
+              Number.isSafeInteger(person.graphUpdatedAt);
+            return {
+              avatarUrl: person.avatarUrl == null ? null : person.avatarUrl,
+              careLevel: person.careLevel,
+              graphPinned: graphPinned,
+              graphUpdatedAt: graphPinned ? person.graphUpdatedAt : null,
+              graphX: graphPinned ? person.graphX : null,
+              graphY: graphPinned ? person.graphY : null,
+              id: person.id,
+              lastReachOutAt: person.lastReachOutAt == null ? null : person.lastReachOutAt,
+              name: person.name,
+              reachOutIntervalDays: person.reachOutIntervalDays == null ? null : person.reachOutIntervalDays,
+              relationshipStatus: person.relationshipStatus,
+              updatedAt: person.updatedAt,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: personRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'account_graph_page_v1') {
+        var accountPersons = state.persons || {};
+        var accountItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var accountRows = Object.values(state.accounts || {})
+          .filter(function(account) { return account.kind === 'social'; })
+          .sort(function(left, right) { return left.id.localeCompare(right.id); })
+          .slice(0, request.limit || 256)
+          .map(function(account) {
+            var activity = accountItems.filter(function(item) {
+              return item.platform === account.provider && item.author &&
+                item.author.id === account.externalId;
+            });
+            var graphPinned = account.graphPinned === true &&
+              Number.isFinite(account.graphX) && Number.isFinite(account.graphY) &&
+              Number.isSafeInteger(account.graphUpdatedAt);
+            var person = account.personId ? accountPersons[account.personId] : null;
+            return {
+              activityCount: activity.length,
+              avatarUrl: account.avatarUrl == null ? null : account.avatarUrl,
+              discoveredFrom: account.discoveredFrom,
+              displayName: account.displayName == null ? null : account.displayName,
+              externalId: account.externalId,
+              firstSeenAt: account.firstSeenAt,
+              followRosterActive: account.followRosterActive == null ? null : !!account.followRosterActive,
+              graphPinned: graphPinned,
+              graphUpdatedAt: graphPinned ? account.graphUpdatedAt : null,
+              graphX: graphPinned ? account.graphX : null,
+              graphY: graphPinned ? account.graphY : null,
+              handle: account.handle == null ? null : account.handle,
+              id: account.id,
+              kind: account.kind,
+              lastSeenAt: account.lastSeenAt,
+              latestActivityAt: activity.reduce(function(latest, item) {
+                return Math.max(latest, item.publishedAt || item.capturedAt || 0);
+              }, 0) || null,
+              personId: account.personId == null ? null : account.personId,
+              personName: person ? person.name : null,
+              provider: account.provider,
+              updatedAt: account.updatedAt,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: accountRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'rss_feed_page_v1') {
+        var feedItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && !sqliteItemState(item).hidden;
+        });
+        var feedRows = Object.values(state.feeds || {})
+          .sort(function(left, right) { return left.url.localeCompare(right.url); })
+          .slice(0, request.limit || 256)
+          .map(function(feed) {
+            var activity = feedItems.filter(function(item) {
+              return item.rssSource && item.rssSource.feedUrl === feed.url;
+            });
+            var fingerprint = feed.sampleDataFingerprint || null;
+            return {
+              activityCount: activity.length,
+              enabled: feed.enabled !== false,
+              folder: feed.folder == null ? null : feed.folder,
+              imageUrl: feed.imageUrl == null ? null : feed.imageUrl,
+              lastFetched: feed.lastFetched == null ? null : feed.lastFetched,
+              latestActivityAt: activity.reduce(function(latest, item) {
+                return Math.max(latest, item.publishedAt || item.capturedAt || 0);
+              }, 0) || null,
+              pollInterval: feed.pollInterval == null ? null : feed.pollInterval,
+              sampleBatchId: fingerprint ? fingerprint.batchId : null,
+              sampleGeneratedAt: fingerprint ? fingerprint.generatedAt : null,
+              sampleGeneratorVersion: fingerprint ? fingerprint.generatorVersion : null,
+              siteUrl: feed.siteUrl == null ? null : feed.siteUrl,
+              title: feed.title || feed.url,
+              trackUnread: feed.trackUnread !== false,
+              unreadCount: activity.filter(function(item) {
+                return sqliteItemState(item).readAt == null;
+              }).length,
+              updatedAt: feed.updatedAt || feed.lastFetched || 0,
+              url: feed.url,
+            };
+          });
+        return {
+          layoutRevision: source.projectionRevision,
+          nextCursor: null,
+          queryId: request.queryId,
+          rows: feedRows,
+          schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
       if (request.queryId === 'library_facet_summary_v1') {
         var liveItems = Object.values(state.items).filter(function(item) {
           return item && !item.__deleted;
@@ -263,10 +454,9 @@ export function tauriInitScript(): string {
           platformCounts[platform] = counts;
           (user.tags || []).forEach(function(tag) { tags.add(tag); });
         });
-        var shell = state.shell || {};
-        var feeds = Object.values(shell.feeds || {});
-        var persons = Object.values(shell.persons || {});
-        var accounts = Object.values(shell.accounts || {});
+        var feeds = Object.values(state.feeds || {});
+        var persons = Object.values(state.persons || {});
+        var accounts = Object.values(state.accounts || {});
         var contactAccounts = accounts.filter(function(account) {
           return account.kind === 'contact' && account.provider === 'google_contacts';
         });
@@ -319,13 +509,12 @@ export function tauriInitScript(): string {
         };
       }
       if (request.queryId === 'filter_scope_summary_v1') {
-        var shell = state.shell || {};
-        var account = Object.values(shell.accounts || {}).find(function(candidate) {
+        var account = Object.values(state.accounts || {}).find(function(candidate) {
           return request.feedUrl == null &&
             candidate.provider === request.platform &&
             candidate.externalId === request.authorId;
         }) || null;
-        var feed = Object.values(shell.feeds || {}).find(function(candidate) {
+        var feed = Object.values(state.feeds || {}).find(function(candidate) {
           return request.feedUrl != null && candidate.url === request.feedUrl;
         }) || null;
         var itemCount = Object.values(sqliteState().items).filter(function(item) {
@@ -356,8 +545,7 @@ export function tauriInitScript(): string {
         };
       }
       if (request.queryId === 'account_detail_v1') {
-        var shell = state.shell || {};
-        var account = shell.accounts && shell.accounts[request.accountId] || null;
+        var account = state.accounts && state.accounts[request.accountId] || null;
         var fingerprint = account && account.sampleDataFingerprint || null;
         return {
           account: account ? {

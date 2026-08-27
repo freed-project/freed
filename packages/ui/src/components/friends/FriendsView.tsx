@@ -13,8 +13,8 @@ import type {
   DeviceContact,
   Friend,
   FriendCandidateSuggestion,
-  FriendCandidateConfidence,
   FriendSource,
+  MapMode,
   Person,
   ReachOutLog,
 } from "@freed/shared";
@@ -23,7 +23,11 @@ import {
   buildFriendCandidateSuggestionsFromActivity,
   compareUtf8Binary,
 } from "@freed/shared";
-import type { LibraryCoreFriendsDirectoryRowV1 } from "@freed/shared/library-core";
+import {
+  readLibraryCoreRssFeedV1,
+  type LibraryCoreFriendsDirectoryRowV1,
+  type LibraryCoreNormalizedQueryExecutor,
+} from "@freed/shared/library-core";
 import {
   useAppStore,
   usePlatform,
@@ -78,10 +82,8 @@ import {
 import { px } from "../layout/layoutConstants.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import {
-  applyDeviceGraphLayout,
   setDeviceAccountGraphPosition,
   setDevicePersonGraphPosition,
-  useDeviceGraphLayout,
 } from "../../lib/device-graph-layout.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
 
@@ -108,6 +110,10 @@ const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 const MAP_SURFACE_COMMIT_RETRY_MS = 150;
+
+const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor = async () => {
+  throw new Error("The bounded SQLite Library query boundary is unavailable");
+};
 const NEED_OUTREACH_DIRECTORY_FILTERS = ["need_outreach"] as const;
 
 type RelationshipTierLevel = 1 | 3 | 5;
@@ -626,7 +632,6 @@ export function FriendsView({
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
-  const deviceGraphLayout = useDeviceGraphLayout();
   const themeId = useAppliedThemeId();
   const friendSuggestionPreferences = useAppStore(
     (s) => s.preferences.friendSuggestions,
@@ -648,6 +653,12 @@ export function FriendsView({
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedSidebarWidth, setCommittedSidebarWidth] =
     useState(savedSidebarWidth);
+  const [graphSourceCounts, setGraphSourceCounts] = useState<Readonly<{
+    channelCount: number;
+    linkedAccountCount: number;
+    mode: MapMode;
+    personCount: number;
+  }> | null>(null);
 
   const graphRef = useRef<FriendGraphHandle>(null);
   const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
@@ -673,7 +684,13 @@ export function FriendsView({
   });
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
 
-  const { googleContacts, queryLibraryCore } = usePlatform();
+  const {
+    googleContacts,
+    queryLibraryCore,
+    readLibraryAccountDetail,
+    readLibraryPersonDetail,
+  } = usePlatform();
+  const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
   const friendsWorkspaceIndexes = useMemo(
     () => buildFriendsWorkspaceIndexes(accounts, {}),
@@ -695,17 +712,6 @@ export function FriendsView({
         personName(left).localeCompare(personName(right)),
       ),
     [persons],
-  );
-  const graphEntities = useMemo(
-    () => applyDeviceGraphLayout(persons, accounts, deviceGraphLayout),
-    [accounts, deviceGraphLayout, persons],
-  );
-  const graphPersons = useMemo(
-    () =>
-      Object.values(graphEntities.persons).sort((left, right) =>
-        personName(left).localeCompare(personName(right)),
-      ),
-    [graphEntities.persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
     () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
@@ -853,24 +859,6 @@ export function FriendsView({
     }
     return next;
   }, [friendCandidateSuggestions]);
-  const friendSuggestionStrengthByPerson = useMemo(() => {
-    const next = new Map<string, FriendCandidateConfidence>();
-    for (const suggestion of friendCandidateSuggestions) {
-      if (suggestion.personId) {
-        next.set(suggestion.personId, suggestion.confidence);
-      }
-    }
-    return next;
-  }, [friendCandidateSuggestions]);
-  const friendSuggestionStrengthByAccount = useMemo(() => {
-    const next = new Map<string, FriendCandidateConfidence>();
-    for (const suggestion of friendCandidateSuggestions) {
-      for (const accountId of suggestion.accountIds) {
-        next.set(accountId, suggestion.confidence);
-      }
-    }
-    return next;
-  }, [friendCandidateSuggestions]);
 
   const overviewEntries = useMemo(() => {
     if (nativeActivity) {
@@ -964,15 +952,15 @@ export function FriendsView({
   }, [dragWidth, savedSidebarWidth]);
 
   const sidebarWidth = dragWidth ?? committedSidebarWidth;
-  const focusGraphNode = useCallback((id: string) => {
-    graphRef.current?.focusNode(id);
+  const focusGraphNode = useCallback((nodeId: string) => {
+    graphRef.current?.focusNode(nodeId);
   }, []);
 
   const handleSelectPerson = useCallback(
     (person: Person, focusGraph: boolean = false) => {
       setSelectedPerson(person.id);
       if (focusGraph) {
-        focusGraphNode(person.id);
+        focusGraphNode(`person:${person.id}`);
       }
     },
     [focusGraphNode, setSelectedPerson],
@@ -982,7 +970,7 @@ export function FriendsView({
     (account: Account, focusGraph: boolean = false) => {
       setSelectedAccount(account.id);
       if (focusGraph) {
-        focusGraphNode(account.id);
+        focusGraphNode(`account:${account.id}`);
       }
     },
     [focusGraphNode, setSelectedAccount],
@@ -1670,7 +1658,7 @@ export function FriendsView({
                     selected={row.id === selectedPerson?.id}
                     onSelect={() => {
                       setSelectedPerson(row.id);
-                      focusGraphNode(row.id);
+                      focusGraphNode(`person:${row.id}`);
                     }}
                   />
                 </div>
@@ -2162,11 +2150,10 @@ export function FriendsView({
   const showMobileSidebar = isMobile && mobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
-  const graphIsEmpty =
-    (effectiveMode === "friends" && friendCount === 0) ||
-    (effectiveMode === "all_content" &&
-      socialAccountCount === 0 &&
-      friendCount === 0);
+  const graphIsEmpty = graphSourceCounts?.mode === effectiveMode &&
+    (effectiveMode === "friends"
+      ? graphSourceCounts.personCount === 0
+      : graphSourceCounts.channelCount === 0 && graphSourceCounts.personCount === 0);
   const renderGraphLoadingState = (overlay = false) => (
     <div
       className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}
@@ -2190,49 +2177,106 @@ export function FriendsView({
               : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
           }`}
         >
-          {graphIsEmpty ? (
-            friendsRows.graphLoading ? (
-              renderGraphLoadingState()
-            ) : (
-              renderGraphEmptyState()
-            )
-          ) : (
-            <>
-              <FriendGraph
-                ref={graphRef}
-                persons={graphPersons}
-                accounts={graphEntities.accounts}
-                activitySummaries={graphActivitySummaries}
-                sqliteGraphQuery={queryLibraryCore}
-                mode={effectiveMode}
-                selectedPersonId={selectedPerson?.id ?? null}
-                selectedAccountId={selectedAccount?.id ?? null}
-                onSelectPerson={(person) => handleSelectPerson(person, false)}
-                onSelectAccount={(account) =>
-                  handleSelectAccount(account, false)
-                }
-                onClearSelection={
-                  showCollapsedSelectionCard ? handleClearSelection : undefined
-                }
-                onLinkAccountToPerson={handleLinkAccountToPerson}
-                onPinPersonPosition={handlePinPersonPosition}
-                onPinAccountPosition={handlePinAccountPosition}
-                onDropNodeToRelationshipTier={
-                  handleDropGraphNodeToRelationshipTier
-                }
-                friendSuggestionStrengthByPerson={
-                  friendSuggestionStrengthByPerson
-                }
-                friendSuggestionStrengthByAccount={
-                  friendSuggestionStrengthByAccount
-                }
-                themeId={themeId}
-                presentationVisible={showGraphSurface}
-                controlsAdjacentToSidebar={showDesktopSidebar}
-              />
-              {friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
-            </>
-          )}
+          <FriendGraph
+            ref={graphRef}
+            personPickerOptions={friendsDirectory.rows}
+            activitySummaries={graphActivitySummaries}
+            sqliteGraphQuery={graphSqliteQuery}
+            sourceVersion={searchCorpusVersion}
+            mode={effectiveMode}
+            selectedPersonId={selectedPerson?.id ?? null}
+            selectedAccountId={selectedAccount?.id ?? null}
+            onSelectPersonId={(personId) => setSelectedPerson(personId)}
+            onSelectAccountId={(accountId) => setSelectedAccount(accountId)}
+            onSourceCounts={(counts) => {
+              setGraphSourceCounts({ ...counts, mode: effectiveMode });
+            }}
+            resolveContextNode={async (target) => {
+              if (target.nodeId.startsWith("account:")) {
+                const accountId = target.nodeId.slice("account:".length);
+                const account = await readLibraryAccountDetail?.(accountId);
+                if (!account) return null;
+                return {
+                  accountId,
+                  activityCount: 0,
+                  avatarUrl: account.avatarUrl ?? null,
+                  graphPinned: account.graphPinned,
+                  id: target.nodeId,
+                  initials: "",
+                  kind: "account",
+                  label: accountTitle(account),
+                  linkedPersonId: account.personId ?? null,
+                  priority: 1,
+                  provider: account.provider,
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              if (target.nodeId.startsWith("person:")) {
+                const personId = target.nodeId.slice("person:".length);
+                const person = await readLibraryPersonDetail?.(personId);
+                if (!person) return null;
+                return {
+                  activityCount: 0,
+                  avatarUrl: person.avatarUrl ?? null,
+                  careLevel: person.careLevel,
+                  graphPinned: person.graphPinned,
+                  id: target.nodeId,
+                  initials: "",
+                  kind: person.relationshipStatus === "friend"
+                    ? "friend_person"
+                    : "connection_person",
+                  label: personName(person),
+                  personId,
+                  priority: 1,
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              if (target.nodeId.startsWith("feed:")) {
+                const feedUrl = target.nodeId.slice("feed:".length);
+                const feed = await readLibraryCoreRssFeedV1(
+                  graphSqliteQuery,
+                  feedUrl,
+                );
+                if (!feed) return null;
+                return {
+                  activityCount: 0,
+                  avatarUrl: feed.imageUrl ?? null,
+                  feedUrl,
+                  id: target.nodeId,
+                  initials: "",
+                  kind: "feed",
+                  label: feed.title || feed.url,
+                  priority: 1,
+                  provider: "rss",
+                  radius: 0,
+                  x: target.worldX,
+                  y: target.worldY,
+                };
+              }
+              return null;
+            }}
+            onClearSelection={
+              showCollapsedSelectionCard ? handleClearSelection : undefined
+            }
+            onLinkAccountToPerson={handleLinkAccountToPerson}
+            onPinPersonPosition={handlePinPersonPosition}
+            onPinAccountPosition={handlePinAccountPosition}
+            onDropNodeToRelationshipTier={
+              handleDropGraphNodeToRelationshipTier
+            }
+            themeId={themeId}
+            presentationVisible={showGraphSurface}
+            controlsAdjacentToSidebar={showDesktopSidebar}
+          />
+          {graphIsEmpty && !friendsRows.graphLoading ? (
+            <div className="absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]">
+              {renderGraphEmptyState()}
+            </div>
+          ) : friendsRows.graphLoading ? renderGraphLoadingState(true) : null}
         </div>
 
         {showDesktopSidebar && (

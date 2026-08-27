@@ -134,7 +134,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
         feeds: {},
         items: [],
         persons: {},
-        searchCorpusVersion: 11,
+        searchCorpusVersion: 7,
         totalArchivableCount: 16,
         totalItemCount: 19,
       }),
