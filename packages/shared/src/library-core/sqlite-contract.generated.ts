@@ -1281,12 +1281,12 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "countSql": "SELECT 1;",
     "variants": {
       "account": {
-        "sql": "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score DESC, personId COLLATE BINARY ASC LIMIT ?2;",
-        "reverseSql": "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score ASC, personId COLLATE BINARY DESC LIMIT ?2;"
+        "sql": "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT account.avatar_url AS accountAvatarUrl, account.display_name AS accountDisplayName, account.external_id AS accountExternalId, account.handle AS accountHandle, candidate_scores.accountId, account.provider AS accountProvider, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, person.avatar_url AS personAvatarUrl, candidate_scores.personId, person.name AS personName, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores JOIN library_accounts AS account ON account.id = candidate_scores.accountId JOIN library_persons AS person ON person.id = candidate_scores.personId ORDER BY score DESC, candidate_scores.personId COLLATE BINARY ASC LIMIT ?2;",
+        "reverseSql": "WITH selected AS (SELECT id, lower(trim(COALESCE(display_name, handle, external_id))) AS display_key, lower(trim(replace(replace(replace(COALESCE(handle, external_id), '.', ' '), '_', ' '), '-', ' '))) AS handle_key FROM library_accounts WHERE id = ?1 COLLATE BINARY AND kind = 'social' AND person_id IS NULL), candidate_scores AS (SELECT selected.id AS accountId, person.id AS personId, max(CASE key.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected JOIN library_person_contact_match_keys AS key ON key.match_value IN (selected.display_key, selected.handle_key) JOIN library_persons AS person ON person.id = key.person_id AND person.relationship_status = 'friend' GROUP BY selected.id, person.id) SELECT account.avatar_url AS accountAvatarUrl, account.display_name AS accountDisplayName, account.external_id AS accountExternalId, account.handle AS accountHandle, candidate_scores.accountId, account.provider AS accountProvider, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, person.avatar_url AS personAvatarUrl, candidate_scores.personId, person.name AS personName, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores JOIN library_accounts AS account ON account.id = candidate_scores.accountId JOIN library_persons AS person ON person.id = candidate_scores.personId ORDER BY score ASC, candidate_scores.personId COLLATE BINARY DESC LIMIT ?2;"
       },
       "person": {
-        "sql": "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score DESC, accountId COLLATE BINARY ASC LIMIT ?2;",
-        "reverseSql": "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT accountId, personId, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores ORDER BY score ASC, accountId COLLATE BINARY DESC LIMIT ?2;"
+        "sql": "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT account.avatar_url AS accountAvatarUrl, account.display_name AS accountDisplayName, account.external_id AS accountExternalId, account.handle AS accountHandle, candidate_scores.accountId, account.provider AS accountProvider, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, person.avatar_url AS personAvatarUrl, candidate_scores.personId, person.name AS personName, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores JOIN library_accounts AS account ON account.id = candidate_scores.accountId JOIN library_persons AS person ON person.id = candidate_scores.personId ORDER BY score DESC, candidate_scores.accountId COLLATE BINARY ASC LIMIT ?2;",
+        "reverseSql": "WITH selected_keys AS (SELECT match_value, min(match_rank) AS match_rank FROM library_person_contact_match_keys WHERE person_id = ?1 COLLATE BINARY GROUP BY match_value), candidate_scores AS (SELECT account.id AS accountId, ?1 AS personId, max(CASE selected_keys.match_rank WHEN 3 THEN 95 ELSE 84 END) AS score FROM selected_keys JOIN library_account_contact_match_keys AS account_key ON account_key.match_value = selected_keys.match_value JOIN library_accounts AS account ON account.id = account_key.account_id AND account.kind = 'social' AND account.person_id IS NULL JOIN library_persons AS person ON person.id = ?1 COLLATE BINARY AND person.relationship_status = 'friend' GROUP BY account.id) SELECT account.avatar_url AS accountAvatarUrl, account.display_name AS accountDisplayName, account.external_id AS accountExternalId, account.handle AS accountHandle, candidate_scores.accountId, account.provider AS accountProvider, CASE WHEN score >= 80 THEN 'high' ELSE 'medium' END AS confidence, person.avatar_url AS personAvatarUrl, candidate_scores.personId, person.name AS personName, CASE WHEN score >= 95 THEN 'Same handle as an account already linked to this friend.' ELSE 'Display name matches this friend.' END AS reason, score FROM candidate_scores JOIN library_accounts AS account ON account.id = candidate_scores.accountId JOIN library_persons AS person ON person.id = candidate_scores.personId ORDER BY score ASC, candidate_scores.accountId COLLATE BINARY DESC LIMIT ?2;"
       }
     }
   },
@@ -1398,7 +1398,7 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
   "person_picker_page_v1": {
     "maximumScanRows": 13,
     "countSql": "SELECT count(*) FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE;",
-    "sql": "SELECT person.avatar_url AS avatarUrl, person.id, person.name, person.relationship_status AS relationshipStatus FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE ORDER BY person.relationship_status DESC, person.name COLLATE NOCASE ASC, person.id COLLATE BINARY ASC LIMIT ?2;"
+    "sql": "SELECT person.avatar_url AS avatarUrl, person.care_level AS careLevel, person.id, person.name, person.relationship_status AS relationshipStatus FROM library_persons AS person WHERE person.relationship_status IN ('friend', 'connection') AND person.name LIKE ?1 ESCAPE '\\' COLLATE NOCASE ORDER BY person.relationship_status DESC, person.name COLLATE NOCASE ASC, person.id COLLATE BINARY ASC LIMIT ?2;"
   },
   "person_timeline_v1": {
     "maximumScanRows": 101,
@@ -1472,10 +1472,65 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "integerValues": [],
       "kind": "text",
       "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "accountAvatarUrl",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 512,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "accountDisplayName",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 4096,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "accountExternalId",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 512,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "accountHandle",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
       "maximumUtf8Bytes": 2048,
       "minimumInteger": null,
       "minimumUtf8Bytes": 1,
       "name": "accountId",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 64,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "accountProvider",
       "nullable": false
     },
     {
@@ -1497,10 +1552,32 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "integerValues": [],
       "kind": "text",
       "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "personAvatarUrl",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
       "maximumUtf8Bytes": 2048,
       "minimumInteger": null,
       "minimumUtf8Bytes": 1,
       "name": "personId",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 4096,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "personName",
       "nullable": false
     },
     {
@@ -1758,6 +1835,17 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "minimumUtf8Bytes": 0,
       "name": "avatarUrl",
       "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 5,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 1,
+      "minimumUtf8Bytes": null,
+      "name": "careLevel",
+      "nullable": false
     },
     {
       "enumValues": [],

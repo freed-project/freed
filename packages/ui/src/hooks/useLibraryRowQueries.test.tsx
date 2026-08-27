@@ -27,6 +27,7 @@ import type {
   LibraryCoreFriendsDirectoryPageResponseV1,
   LibraryCoreFriendsDirectoryPageRequestV1,
   LibraryCoreFriendsDirectoryRowV1,
+  LibraryCorePersonPickerRowV1,
   LibraryCoreRssFeedPageResponseV1,
   LibraryCoreRssFeedPageRowV1,
 } from "@freed/shared/library-core";
@@ -83,6 +84,7 @@ import {
   type LibraryFriendsDirectoryState,
 } from "./useLibraryFriendsDirectory.js";
 import { useLibraryAccountLinkCandidates } from "./useLibraryAccountLinkCandidates.js";
+import { useLibraryPersonPicker } from "./useLibraryPersonPicker.js";
 import type { AccountLinkSuggestion } from "../lib/account-link-suggestion.js";
 
 function item(globalId: string): FeedItem {
@@ -164,6 +166,26 @@ function AccountLinkCandidatesHarness({
   onRows(
     useLibraryAccountLinkCandidates({ entityId, entityKind, sourceVersion }),
   );
+  return null;
+}
+
+function PersonPickerHarness({
+  enabled,
+  onState,
+  query,
+  search,
+  sourceVersion,
+}: {
+  enabled: boolean;
+  onState: (state: {
+    readonly loading: boolean;
+    readonly rows: readonly LibraryCorePersonPickerRowV1[];
+  }) => void;
+  query: LibraryCoreNormalizedQueryExecutor;
+  search: string;
+  sourceVersion: number;
+}) {
+  onState(useLibraryPersonPicker({ enabled, query, search, sourceVersion }));
   return null;
 }
 
@@ -566,9 +588,16 @@ describe("Library row query hooks", () => {
       queryId: "account_link_candidates_v1",
       rows: [
         {
+          accountAvatarUrl: null,
+          accountDisplayName: "Ada",
+          accountExternalId: "ada",
+          accountHandle: "ada",
           accountId: "account-ada",
+          accountProvider: "x",
           confidence: "high",
+          personAvatarUrl: null,
           personId: "person-ada",
+          personName: "Ada Lovelace",
           reason: "Same handle as an account already linked to this friend.",
           score: 95,
         },
@@ -612,6 +641,64 @@ describe("Library row query hooks", () => {
         score: 95,
       }),
     ]);
+  });
+
+  it("retains only one bounded Person picker window", async () => {
+    const query = vi.fn(async () => ({
+      queryId: "person_picker_page_v1",
+      rows: [
+        {
+          avatarUrl: null,
+          careLevel: 5,
+          id: "person-ada",
+          name: "Ada Lovelace",
+          relationshipStatus: "friend",
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        generationId: "b".repeat(64),
+        projectionRevision: 12,
+        transitionSequence: 12,
+      },
+    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    let state: {
+      readonly loading: boolean;
+      readonly rows: readonly LibraryCorePersonPickerRowV1[];
+    } = { loading: false, rows: [] };
+
+    renderHarness(
+      <PersonPickerHarness
+        enabled
+        onState={(next) => {
+          state = next;
+        }}
+        query={query}
+        search=" Ada "
+        sourceVersion={12}
+      />,
+    );
+    await flush();
+    await flush();
+
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 12,
+        queryId: "person_picker_page_v1",
+        schemaVersion: 1,
+        search: "Ada",
+      }),
+    );
+    expect(state).toEqual({
+      loading: false,
+      rows: [
+        expect.objectContaining({
+          careLevel: 5,
+          id: "person-ada",
+          name: "Ada Lovelace",
+        }),
+      ],
+    });
   });
 
   let container: HTMLDivElement | null = null;
@@ -1710,10 +1797,10 @@ describe("Library row query hooks", () => {
     ];
     const queryLibraryCore = vi.fn(
       async (request: { cursor: string | null }) => {
-      if (request.cursor === null) {
-        return rssFeedResponse(firstRawPage, "second-raw-page");
-      }
-      return rssFeedResponse(matchingRows, null);
+        if (request.cursor === null) {
+          return rssFeedResponse(firstRawPage, "second-raw-page");
+        }
+        return rssFeedResponse(matchingRows, null);
       },
     ) as unknown as LibraryCoreNormalizedQueryExecutor;
     let current: LibraryRssFeedPageState | null = null;
@@ -1759,8 +1846,8 @@ describe("Library row query hooks", () => {
     const queryLibraryCore = vi.fn(async () =>
       accountGraphResponse(
         [
-      accountGraphRow("unrelated", null),
-      accountGraphRow("target-account", "Ada Lovelace"),
+          accountGraphRow("unrelated", null),
+          accountGraphRow("target-account", "Ada Lovelace"),
         ],
         null,
       ),
@@ -1790,17 +1877,17 @@ describe("Library row query hooks", () => {
     expect(queryLibraryCore).toHaveBeenCalledOnce();
     expect(queryLibraryCore).toHaveBeenCalledWith(
       expect.objectContaining({
-      cursor: null,
-      limit: 128,
-      queryId: "account_graph_page_v1",
+        cursor: null,
+        limit: 128,
+        queryId: "account_graph_page_v1",
       }),
     );
     expect((current as LibrarySocialChannelPageState | null)?.channels).toEqual(
       [
-      expect.objectContaining({
-        account: expect.objectContaining({ id: "target-account" }),
-        personName: "Ada Lovelace",
-      }),
+        expect.objectContaining({
+          account: expect.objectContaining({ id: "target-account" }),
+          personName: "Ada Lovelace",
+        }),
       ],
     );
   });
@@ -1808,16 +1895,16 @@ describe("Library row query hooks", () => {
   it("queries only exact Feed and provider-author filter identities", async () => {
     const queryLibraryCore = vi.fn(
       async (request: { feedUrl: string | null }) => ({
-      accountId: request.feedUrl ? null : "account-ada",
-      itemCount: request.feedUrl ? 4 : 7,
-      label: request.feedUrl ? "Example Feed" : "Ada",
-      queryId: "filter_scope_summary_v1",
-      schemaVersion: 1,
-      source: {
-        generationId: "a".repeat(64),
-        projectionRevision: 8,
-        transitionSequence: 0,
-      },
+        accountId: request.feedUrl ? null : "account-ada",
+        itemCount: request.feedUrl ? 4 : 7,
+        label: request.feedUrl ? "Example Feed" : "Ada",
+        queryId: "filter_scope_summary_v1",
+        schemaVersion: 1,
+        source: {
+          generationId: "a".repeat(64),
+          projectionRevision: 8,
+          transitionSequence: 0,
+        },
       }),
     ) as unknown as LibraryCoreNormalizedQueryExecutor;
     const config = platformConfig({ queryLibraryCore });

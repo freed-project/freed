@@ -1213,6 +1213,7 @@ pub struct NormalizedFriendsDirectoryPageResponseV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonPickerRowV1 {
     pub avatar_url: Option<String>,
+    pub care_level: i64,
     pub id: String,
     pub name: String,
     pub relationship_status: String,
@@ -1250,9 +1251,16 @@ pub struct NormalizedAccountPickerPageResponseV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedAccountLinkCandidateRowV1 {
+    pub account_avatar_url: Option<String>,
+    pub account_display_name: Option<String>,
+    pub account_external_id: String,
+    pub account_handle: Option<String>,
     pub account_id: String,
+    pub account_provider: String,
     pub confidence: String,
+    pub person_avatar_url: Option<String>,
     pub person_id: String,
+    pub person_name: String,
     pub reason: String,
     pub score: i64,
 }

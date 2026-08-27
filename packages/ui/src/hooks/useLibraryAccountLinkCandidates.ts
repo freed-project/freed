@@ -14,9 +14,16 @@ function toSuggestion(
   row: LibraryCoreAccountLinkCandidateRowV1,
 ): AccountLinkSuggestion {
   return {
+    accountAvatarUrl: row.accountAvatarUrl,
+    accountDisplayName: row.accountDisplayName,
+    accountExternalId: row.accountExternalId,
+    accountHandle: row.accountHandle,
     accountId: row.accountId,
+    accountProvider: row.accountProvider,
     confidence: row.confidence,
+    personAvatarUrl: row.personAvatarUrl,
     personId: row.personId,
+    personName: row.personName,
     reason: row.reason,
     score: row.score,
   };

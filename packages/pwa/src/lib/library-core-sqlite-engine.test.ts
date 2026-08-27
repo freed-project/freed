@@ -2844,6 +2844,7 @@ describe("PWA Library Core SQLite engine", () => {
       queryId: "person_picker_page_v1",
       rows: [
         {
+          careLevel: 5,
           id: "person-1",
           name: "Ada",
           relationshipStatus: "friend",
@@ -2865,9 +2866,13 @@ describe("PWA Library Core SQLite engine", () => {
       queryId: "account_link_candidates_v1",
       rows: [
         {
+          accountDisplayName: "Ada Lovelace",
+          accountExternalId: "ada-instagram",
           accountId: "account-4",
+          accountProvider: "instagram",
           confidence: "high",
           personId: "person-1",
+          personName: "Ada",
           score: 95,
         },
       ],

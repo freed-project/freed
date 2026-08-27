@@ -735,6 +735,10 @@ export function FriendsView({
     [friendsWorkspaceIndexes, selectedPerson],
   );
   const selectedAccount = selectedAccountDetail.value;
+  const selectedAccountLinkedPersonDetail = useLibraryPersonDetail(
+    selectedAccount?.personId ?? null,
+    searchCorpusVersion,
+  );
 
   const friendsGraphRequest = useMemo(
     () => createLibraryFriendsGraphRequest(accounts),
@@ -1771,15 +1775,17 @@ export function FriendsView({
           </div>
           <div className="mt-3 space-y-2">
             {selectedPersonSuggestions.map((suggestion) => {
-              const account = accounts[suggestion.accountId];
-              if (!account) return null;
+              const accountLabel =
+                suggestion.accountDisplayName ??
+                suggestion.accountHandle ??
+                suggestion.accountExternalId;
               return (
                 <button
                   key={`${suggestion.personId}:${suggestion.accountId}`}
                   type="button"
                   onClick={() =>
                     void handleLinkAccountToPerson(
-                      account.id,
+                      suggestion.accountId,
                       selectedPerson.id,
                     )
                   }
@@ -1787,9 +1793,7 @@ export function FriendsView({
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                      {account.displayName ??
-                        account.handle ??
-                        account.externalId}
+                      {accountLabel}
                     </p>
                     <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                       {suggestion.reason}
@@ -1841,16 +1845,14 @@ export function FriendsView({
 
   const renderSelectedAccountSidebar = () => {
     if (!selectedAccount) return null;
-    const linkedPerson = selectedAccount.personId
-      ? (persons[selectedAccount.personId] ?? null)
-      : null;
+    const linkedPerson = selectedAccountLinkedPersonDetail.value;
     return (
       <AccountDetailPanel
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
         friendSuggestion={selectedAccountFriendSuggestion}
-        persons={allPersons}
+        sourceVersion={searchCorpusVersion}
         feedItems={friendsRows.timelineItems}
         timelineLoading={friendsRows.timelineLoading}
         timelineTotalCount={friendsRows.timelineTotalCount}
@@ -1862,10 +1864,7 @@ export function FriendsView({
           void handleLinkAccountToPerson(selectedAccount.id, personId)
         }
         onOpenPerson={(personId) => {
-          const person = persons[personId];
-          if (person) {
-            handleSelectPerson(person);
-          }
+          setSelectedPerson(personId);
         }}
       />
     );

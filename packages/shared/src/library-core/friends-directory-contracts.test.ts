@@ -235,6 +235,7 @@ describe("Person picker contract", () => {
           rows: [
             {
               avatarUrl: null,
+              careLevel: 5,
               id: "person-ada",
               name: "Ada Lovelace",
               relationshipStatus: "friend",
@@ -253,6 +254,7 @@ describe("Person picker contract", () => {
           rows: [
             {
               avatarUrl: null,
+              careLevel: 5,
               id: "person-ada",
               name: "Ada Lovelace",
               notes: "must never cross the picker boundary",
@@ -384,10 +386,18 @@ describe("Account link candidates contract", () => {
           queryId: "account_link_candidates_v1",
           rows: [
             {
+              accountAvatarUrl: null,
+              accountDisplayName: "Ada Lovelace",
+              accountExternalId: "ada",
+              accountHandle: "ada",
               accountId: "account-1",
+              accountProvider: "x",
               confidence: "high",
+              personAvatarUrl: null,
               personId: "person-1",
-              reason: "Same handle as an account already linked to this friend.",
+              personName: "Ada Lovelace",
+              reason:
+                "Same handle as an account already linked to this friend.",
               score: 95,
             },
           ],
@@ -420,9 +430,16 @@ describe("Account link candidates contract", () => {
         {
           queryId: "account_link_candidates_v1",
           rows: Array.from({ length: 6 }, (_, index) => ({
+            accountAvatarUrl: null,
+            accountDisplayName: `Account ${index.toLocaleString()}`,
+            accountExternalId: `account-${index.toLocaleString()}`,
+            accountHandle: null,
             accountId: `account-${index.toLocaleString()}`,
+            accountProvider: "x",
             confidence: "medium",
+            personAvatarUrl: null,
             personId: "person-1",
+            personName: "Ada Lovelace",
             reason: "Display name matches this friend.",
             score: 84,
           })),
