@@ -476,6 +476,9 @@ export function FeedView() {
     savedBoundedFeedEligible || friendsBoundedFeedEligible;
   const boundedFeedEligible =
     pagedBoundedFeedEligible || ordinaryBoundedFeedEligible;
+  const boundedFeedSourceVersion = savedBoundedFeedEligible
+    ? savedFeedVersion
+    : libraryItemVersion;
   const boundedReaderIdentity = JSON.stringify({
     filter: activeFilter,
     kind: savedBoundedFeedEligible
@@ -484,9 +487,7 @@ export function FeedView() {
         ? "friends"
         : "ordinary",
     sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
-    sourceVersion: pagedBoundedFeedEligible
-      ? savedFeedVersion
-      : searchCorpusVersion,
+    sourceVersion: boundedFeedSourceVersion,
   });
   const boundedReaderRankingClockRef = useRef<BoundedReaderRankingClock | null>(
     null,
@@ -535,9 +536,7 @@ export function FeedView() {
     maxResidentPages: PAGED_FEED_RESIDENT_PAGE_LIMIT,
     openReader: activeBoundedFeedReader,
     rankingClockMs: boundedReaderRankingClockMs,
-    sourceVersion: pagedBoundedFeedEligible
-      ? savedFeedVersion
-      : searchCorpusVersion,
+    sourceVersion: boundedFeedSourceVersion,
   });
   const boundedFeedReadyIsCurrent =
     boundedFeedStatusIsCurrent && boundedFeed.status === "ready";

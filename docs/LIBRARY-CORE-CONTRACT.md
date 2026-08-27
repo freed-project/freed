@@ -541,6 +541,13 @@ rows for a 128-row result. Next and previous cursors bind the database
 generation and exact source revision. A filter change starts a new query
 instead of reusing a cursor from another result set.
 
+The ordinary and Friends visible-window lifecycles reopen on the host's exact
+Library item invalidation revision. Saved uses its dedicated presentation
+revision, and search uses its own committed-query revision. These ephemeral
+React fences never become storage authority. A successful mutation cannot
+advance navigation counts while leaving an older empty or stale feed window
+selected.
+
 No query may scan or sort the full corpus in JavaScript. No query returns an
 unbounded ID list. Corpus aggregates execute inside SQLite and return bounded
 typed summaries. A view refreshes only invalidated pages and aggregates.
@@ -1295,6 +1302,14 @@ a failed query proves nothing, and a late response cannot clear a newer
 selection. Each host injects its typed point reader into the shared hook. The
 root app never tries to consume its own Platform context while that context is
 still being constructed.
+
+The always-mounted Header and the command palette share one bounded
+`item_detail_v1` lifecycle keyed by item identity and source revision. One
+host reader retains at most one detail row and deduplicates concurrent requests.
+A changed identity or revision immediately fences the previous row. Pending,
+missing, and failed reads remain distinct interface states, so the Header never
+shows list controls merely because the current point query has not settled.
+Neither surface subscribes to the renderer item collection.
 
 Desktop background services follow the same rule. Snapshot summaries read the
 maintained Friend count from `facet_summary_v1`. Content fetching accepts exact

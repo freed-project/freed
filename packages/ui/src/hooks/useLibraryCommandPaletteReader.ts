@@ -16,6 +16,7 @@ import { LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION } from "@freed/shared/library-
 import { usePlatform } from "../context/PlatformContext.js";
 import { getFeedActionCounts } from "../lib/feed-action-scope.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
+import { useLibraryItemDetail } from "./useLibraryItemDetail.js";
 
 interface ScopeCounts {
   readonly archivableCount: number;
@@ -25,12 +26,6 @@ interface ScopeCounts {
 interface PaletteScanState extends ScopeCounts {
   readonly sourceVersion: number;
   readonly status: "idle" | "loading" | "ready" | "failed";
-}
-
-interface ItemDetailState {
-  readonly item: FeedItem | null;
-  readonly key: string;
-  readonly status: "loading" | "ready" | "failed";
 }
 
 export interface UseLibraryCommandPaletteReaderOptions {
@@ -163,7 +158,6 @@ export function useLibraryCommandPaletteReader({
     openBoundedFeedReader,
     openBoundedFriendsFeedReader,
     readLibraryFacetSummary,
-    readLibraryItemDetail,
     store,
   } = platform;
   const archivableCountByPlatform = store(
@@ -227,12 +221,11 @@ export function useLibraryCommandPaletteReader({
   const [paletteScan, setPaletteScan] = useState<PaletteScanState>(() =>
     emptyPaletteScan("idle", sourceVersion),
   );
-  const detailKey = `${sourceVersion}:${selectedItemId ?? ""}`;
-  const [itemDetail, setItemDetail] = useState<ItemDetailState>({
-    item: null,
-    key: "",
-    status: "loading",
-  });
+  const itemDetail = useLibraryItemDetail(
+    selectedItemId,
+    sourceVersion,
+    enabled,
+  );
 
   useEffect(() => {
     if (!scopeReadNeeded || !openScopeReader) {
@@ -290,35 +283,6 @@ export function useLibraryCommandPaletteReader({
     sourceVersion,
   ]);
 
-  useEffect(() => {
-    if (!enabled || !selectedItemId || !readLibraryItemDetail) {
-      if (!enabled || !selectedItemId) {
-        setItemDetail({ item: null, key: "", status: "loading" });
-      }
-      return;
-    }
-    let cancelled = false;
-    setItemDetail({ item: null, key: detailKey, status: "loading" });
-    void readLibraryItemDetail(selectedItemId)
-      .then((item) => {
-        if (!cancelled) {
-          setItemDetail({
-            item,
-            key: detailKey,
-            status: "ready",
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setItemDetail({ item: null, key: detailKey, status: "failed" });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [detailKey, enabled, readLibraryItemDetail, selectedItemId]);
-
   const paletteScanIsCurrent = paletteScan.sourceVersion === sourceVersion;
   const paletteScanReady =
     paletteScanIsCurrent && paletteScan.status === "ready";
@@ -342,7 +306,6 @@ export function useLibraryCommandPaletteReader({
 
   const selectedItem =
     selectedItemId &&
-    itemDetail.key === detailKey &&
     itemDetail.status === "ready"
       ? itemDetail.item
       : null;
